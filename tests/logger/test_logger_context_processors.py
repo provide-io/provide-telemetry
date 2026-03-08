@@ -1,27 +1,18 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
 
 import pytest
-import structlog
 
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.logger import context as context_mod
-from provide.telemetry.logger import processors as processors_mod
-from provide.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
-from provide.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
-from provide.telemetry.tracing.context import set_trace_context
-
-
-@pytest.fixture(autouse=True)
-def _reset_runtime() -> None:
-    """Reset active runtime config so processor tests use factory-captured values."""
-    from provide.telemetry import runtime as runtime_mod
-
-    runtime_mod.reset_runtime_for_tests()
+from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.logger import context as context_mod
+from undef.telemetry.logger import processors as processors_mod
+from undef.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
+from undef.telemetry.logger.processors import add_standard_fields, enforce_event_schema
+from undef.telemetry.schema.events import EventSchemaError
 
 
 def test_context_unbind_missing_key_is_noop_and_keeps_dict_state() -> None:
@@ -52,40 +43,6 @@ def test_add_standard_fields_sets_exact_expected_keys() -> None:
     assert "XXversionXX" not in out
 
 
-def test_add_standard_fields_error_taxonomy_when_exc_name_present() -> None:
-    cfg = TelemetryConfig.from_env({"PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "true"})
-    processor = add_standard_fields(cfg)
-    out = processor(None, "error", {"event": "auth.login.error", "exc_name": "ValueError"})
-    assert out["error_type"] == "internal"
-    assert out["error_name"] == "ValueError"
-
-
-def test_apply_sampling_drop_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry import sampling as sampling_mod
-
-    monkeypatch.setattr(sampling_mod, "should_sample", lambda _signal, _event: False)
-    with pytest.raises(structlog.DropEvent):
-        apply_sampling(None, "info", {"event": "auth.login.success"})
-
-
-def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry import sampling as sampling_mod
-
-    monkeypatch.setattr(sampling_mod, "should_sample", lambda _signal, _event: True)
-    payload = {"event": "auth.login.success"}
-    out = apply_sampling(None, "info", payload)
-    assert out is payload
-
-
-def test_merge_runtime_context_includes_trace_context() -> None:
-    clear_context()
-    set_trace_context("trace-1", "span-1")
-    out = processors_mod.merge_runtime_context(None, "info", {"event": "auth.login.success"})
-    assert out["trace_id"] == "trace-1"
-    assert out["span_id"] == "span-1"
-    set_trace_context(None, None)
-
-
 def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[tuple[str, bool]] = []
     required_calls: list[tuple[dict[str, object], tuple[str, ...]]] = []
@@ -98,7 +55,7 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 
     monkeypatch.setattr(processors_mod, "validate_event_name", _validate_event_name)
     monkeypatch.setattr(processors_mod, "validate_required_keys", _validate_required_keys)
-    cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "false"})
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
     processor = enforce_event_schema(cfg)
     payload: dict[str, object] = {"request_id": "r1"}
     out = processor(None, "info", payload)
@@ -108,112 +65,7 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 
 
 def test_enforce_event_schema_required_keys_error_message() -> None:
-    cfg = TelemetryConfig.from_env(
-        {
-            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
-            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id,session_id",
-        }
-    )
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
     processor = enforce_event_schema(cfg)
-    result = processor(None, "info", {"event": "auth.login.success"})
-    assert "_schema_error" in result
-    assert "missing required keys: request_id, session_id" in result["_schema_error"]
-
-
-def test_enforce_event_schema_enforces_required_keys_in_compat_mode() -> None:
-    cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
-    processor = enforce_event_schema(cfg)
-    result = processor(None, "info", {"event": "auth.login.success"})
-    assert "_schema_error" in result
-    assert "missing required keys" in result["_schema_error"]
-
-
-def test_enforce_event_schema_policy_matrix() -> None:
-    compat_default = TelemetryConfig.from_env({})
-    compat_relaxed = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "false"})
-    strict = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_SCHEMA": "true"})
-
-    relaxed_default = enforce_event_schema(compat_default)
-    relaxed_explicit = enforce_event_schema(compat_relaxed)
-    strict_name_strict_schema = enforce_event_schema(strict)
-
-    # Default is now relaxed (strict_event_name=False)
-    relaxed_default(None, "info", {"event": "bad event"})
-    relaxed_explicit(None, "info", {"event": "bad event"})
-    result = strict_name_strict_schema(None, "info", {"event": "bad event"})
-    assert "_schema_error" in result
-    assert "invalid event name" in result["_schema_error"]
-
-
-def test_save_context_preserves_current_values() -> None:
-    """save_context must snapshot current context, not null it."""
-    from provide.telemetry.logger.context import bind_context, get_context, reset_context, save_context
-
-    bind_context(user="alice")
-    token = save_context()
-    bind_context(user="bob")
-    assert get_context()["user"] == "bob"
-    reset_context(token)
-    assert get_context()["user"] == "alice"
-
-
-def test_get_active_config_returns_none_when_runtime_absent() -> None:
-    """Covers the `return None` branch when runtime module is not in sys.modules."""
-    import sys
-
-    from provide.telemetry.logger.processors import _get_active_config
-
-    saved = sys.modules.pop("provide.telemetry.runtime", None)
-    try:
-        assert _get_active_config() is None
-    finally:
-        if saved is not None:
-            sys.modules["provide.telemetry.runtime"] = saved
-
-
-# ── _LevelFilter dot-hierarchy prefix matching (Issue #2) ──────────────────
-
-
-class TestLevelFilterPrefixSemantics:
-    """_LevelFilter must use dot-hierarchy matching, not raw string prefix."""
-
-    def _make_filter(self, default: str, overrides: dict[str, str]) -> processors_mod._LevelFilter:
-        return processors_mod._LevelFilter(default, overrides)
-
-    def test_partial_string_does_not_match(self) -> None:
-        # "foobar" must NOT match prefix "foo" — no dot separator
-        f = self._make_filter("INFO", {"foo": "DEBUG"})
-        # If it wrongly matched, DEBUG event for "foobar" would pass; it must be dropped.
-        with pytest.raises(structlog.DropEvent):
-            f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foobar"})
-
-    def test_dot_child_matches(self) -> None:
-        # "foo.bar" starts with "foo." → DEBUG override applies → passes through
-        f = self._make_filter("INFO", {"foo": "DEBUG"})
-        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo.bar"})
-        assert result["event"] == "x"
-
-    def test_exact_name_matches(self) -> None:
-        # "foo" == "foo" → exact match → DEBUG override applies → passes through
-        f = self._make_filter("INFO", {"foo": "DEBUG"})
-        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo"})
-        assert result["event"] == "x"
-
-    def test_empty_prefix_matches_all(self) -> None:
-        # Empty prefix is a catch-all → DEBUG for everything
-        f = self._make_filter("INFO", {"": "DEBUG"})
-        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "anything.at.all"})
-        assert result["event"] == "x"
-
-    def test_longer_prefix_wins(self) -> None:
-        # "foo.bar.baz" matches both "foo" (WARN) and "foo.bar" (DEBUG)
-        # Longer prefix "foo.bar" must win → DEBUG → passes
-        f = self._make_filter("INFO", {"foo": "WARN", "foo.bar": "DEBUG"})
-        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo.bar.baz"})
-        assert result["event"] == "x"
-
-    def test_non_matching_module_uses_global(self) -> None:
-        # "other.module" has no match → global INFO → debug is dropped
-        f = self._make_filter("INFO", {"foo": "DEBUG"})
-        with pytest.raises(structlog.DropEvent):
-            f(None, "debug", {"event": "x", "level": "debug", "logger_name": "other.module"})
+    with pytest.raises(EventSchemaError, match=r"missing required keys: request_id, session_id"):
+        processor(None, "info", {"event": "auth.login.success"})

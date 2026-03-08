@@ -1,13 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 repos:
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
-      - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.2
     hooks:
@@ -27,14 +18,6 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]
-        exclude: "package-lock\\.json"
-
-  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-    rev: v9.18.0
-    hooks:
-      - id: commitlint
-        stages: [commit-msg]
-        additional_dependencies: ['@commitlint/config-conventional']
 
   - repo: local
     hooks:
@@ -49,14 +32,6 @@ repos:
       - id: spdx-header-check
         name: python spdx header check
         entry: uv run python scripts/check_spdx_headers.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        types: [python]
-
-      - id: event-literal-check
-        name: telemetry event literal check
-        entry: uv run python scripts/check_event_literals.py
         language: system
         pass_filenames: false
         always_run: true
@@ -103,38 +78,6 @@ repos:
         always_run: true
         types: [python]
 
-      - id: pip-audit
-        name: pip-audit (vulnerability scan)
-        entry: uv run python -m pip_audit --path .
-        language: system
-        pass_filenames: false
-        always_run: true
-        types: [python]
-
-      - id: xenon
-        name: xenon complexity
-        entry: uv run xenon --max-absolute C --max-modules B --max-average A src/
-        language: system
-        pass_filenames: false
-        always_run: true
-        types: [python]
-
-      - id: vulture
-        name: vulture dead code
-        entry: uv run vulture src/ tests/
-        language: system
-        pass_filenames: false
-        always_run: true
-        types: [python]
-
-      - id: check-licenses
-        name: license check
-        entry: uv run python scripts/check_licenses.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        types: [python]
-
       - id: mutation-gate
         name: mutmut gate (manual)
         entry: uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1
@@ -143,106 +86,3 @@ repos:
         always_run: true
         stages: [manual]
         types: [python]
-
-      - id: performance-smoke
-        name: performance smoke (manual)
-        entry: uv run python scripts/run_performance_smoke.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-        types: [python]
-
-      # ── TypeScript package (typescript/) ───────────────────────────────────
-      - id: ts-typecheck
-        name: typescript type check
-        entry: bash -c 'cd typescript && npm run typecheck'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^typescript/
-
-      - id: ts-lint
-        name: typescript lint (eslint)
-        entry: bash -c 'cd typescript && npm run lint'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^typescript/src/|^typescript/tests/
-
-      - id: ts-format-check
-        name: typescript format check (prettier)
-        entry: bash -c 'cd typescript && npm run format:check'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^typescript/src/|^typescript/tests/
-
-      - id: ts-test
-        name: typescript tests (vitest)
-        entry: bash -c 'cd typescript && npm run test'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^typescript/
-
-      # ── Rust crate (rust/) ────────────────────────────────────────────────
-      - id: rust-fmt
-        name: rust format check
-        entry: bash -c 'cd rust && cargo fmt --check'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^rust/
-
-      - id: rust-clippy
-        name: rust clippy
-        entry: bash -c 'cd rust && cargo clippy --all-targets -- -D warnings'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^rust/
-
-      - id: rust-test
-        name: rust tests
-        entry: bash -c 'cd rust && cargo test'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^rust/
-
-      # ── Go library and contract probe (go/, spec/probes/contract_probe_go/) ──
-      - id: go-fmt
-        name: go format check
-        entry: bash -c 'test -z "$(gofmt -l go/ spec/probes/contract_probe_go/)"'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^go/|^spec/probes/contract_probe_go/
-
-      - id: go-vet
-        name: go vet
-        entry: bash -c 'cd go && go vet ./...'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^go/|^spec/probes/contract_probe_go/
-
-      - id: go-test
-        name: go tests
-        entry: bash -c 'cd go && go test ./...'
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^go/
-
-  - repo: https://github.com/hukkin/mdformat
-    rev: 0.7.22
-    hooks:
-      - id: mdformat
-        additional_dependencies:
-          - mdformat-gfm
-          - mdformat-frontmatter
-          - mdformat-tables
-        args: [--wrap, 'no']
-        exclude: '\.tmpl\.md$'

@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev
+      - run: uv run python scripts/check_max_loc.py --max-lines 500
+      - run: uv run python scripts/check_spdx_headers.py
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy src tests
+      - run: uv run ty check src tests
+      - run: uv run bandit -r src -ll
+      - run: uv run python scripts/run_pytest_gate.py
+
+  mutation-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+
+  compliance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uvx reuse lint
+      - run: uv sync --group dev
+      - run: uv run codespell
+
+  otel-extras-validation:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev --extra otel
+      - run: uv run python scripts/run_pytest_gate.py -m otel --no-cov -q
+
+  release-readiness:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - run: uv run python -m build
+      - run: uv run twine check dist/*
+
+  otlp-integration:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Start OTLP collector
+        run: |
+          docker run -d --name otelcol \
+            -p 4318:4318 \
+            -p 13133:13133 \
+            -v "$PWD/tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1
+      - name: Wait for collector health
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "collector failed health check"
+          exit 1
+      - run: uv sync --group dev --extra otel
+      - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
+        env:
+          UNDEF_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+      - name: Collector logs
+        if: always()
+        run: docker logs otelcol || true
+      - name: Stop collector
+        if: always()
+        run: docker rm -f otelcol || true
+
+  openobserve-e2e:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      OPENOBSERVE_URL: ${{ vars.OPENOBSERVE_URL }}
+      OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
+      OPENOBSERVE_PASSWORD: ${{ secrets.OPENOBSERVE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra otel
+      - name: Run OpenObserve E2E
+        run: |
+          if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
+            echo "OPENOBSERVE_* not configured; skipping e2e run."
+            exit 0
+          fi
+          uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q

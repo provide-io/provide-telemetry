@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from urllib.parse import quote
 from hypothesis import given
 from hypothesis import strategies as st
 
-from provide.telemetry.config import _parse_bool, _parse_otlp_headers
+from undef.telemetry.config import _parse_bool, _parse_otlp_headers
 
 
 def _encode_headers(headers: dict[str, str]) -> str:

@@ -1,30 +1,27 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
 
-from provide.telemetry import _otel
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.metrics import provider as metrics_provider
-from provide.telemetry.tracing import provider as tracing_provider
-from provide.telemetry.tracing.provider import _reset_tracing_for_tests
-
-pytestmark = pytest.mark.otel
+from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.metrics import provider as metrics_provider
+from undef.telemetry.tracing import provider as tracing_provider
 
 
 def test_metrics_has_otel_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(importlib, "import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     assert metrics_provider._has_otel_metrics() is False
 
 
 def test_tracing_has_otel_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(importlib, "import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     assert tracing_provider._has_otel() is False
 
 
@@ -33,7 +30,7 @@ def test_metrics_has_otel_true(monkeypatch: pytest.MonkeyPatch) -> None:
         assert name == "opentelemetry"
         return object()
 
-    monkeypatch.setattr(_otel, "_import_module", _import_module)
+    monkeypatch.setattr(importlib, "import_module", _import_module)
     assert metrics_provider._has_otel_metrics() is True
 
 
@@ -42,7 +39,7 @@ def test_tracing_has_otel_true(monkeypatch: pytest.MonkeyPatch) -> None:
         assert name == "opentelemetry"
         return object()
 
-    monkeypatch.setattr(_otel, "_import_module", _import_module)
+    monkeypatch.setattr(importlib, "import_module", _import_module)
     assert tracing_provider._has_otel() is True
 
 
@@ -60,14 +57,14 @@ def test_tracing_load_helpers_none_when_disabled(monkeypatch: pytest.MonkeyPatch
 
 def test_metrics_load_helpers_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(metrics_provider, "_HAS_OTEL_METRICS", True)
-    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(importlib, "import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     assert metrics_provider._load_otel_metrics_api() is None
     assert metrics_provider._load_otel_metrics_components() is None
 
 
 def test_tracing_load_helpers_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
-    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(importlib, "import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     assert tracing_provider._load_otel_trace_api() is None
     assert tracing_provider._load_otel_tracing_components() is None
 
@@ -82,7 +79,7 @@ def test_metrics_setup_with_missing_components(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_tracing_setup_with_missing_components(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_tracing_for_tests()
+    tracing_provider._provider_configured = False
     monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
     monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: None)
     monkeypatch.setattr(tracing_provider, "_load_otel_tracing_components", lambda: None)
@@ -98,7 +95,7 @@ def test_metrics_load_components_success(monkeypatch: pytest.MonkeyPatch) -> Non
         "opentelemetry.exporter.otlp.proto.http.metric_exporter": SimpleNamespace(OTLPMetricExporter="exp"),
     }
     monkeypatch.setattr(metrics_provider, "_HAS_OTEL_METRICS", True)
-    monkeypatch.setattr(_otel, "_import_module", lambda name: modules[name])
+    monkeypatch.setattr(importlib, "import_module", lambda name: modules[name])
     assert metrics_provider._load_otel_metrics_components() == ("mp", "res", "reader", "exp")
 
 
@@ -110,7 +107,7 @@ def test_metrics_load_api_success_imports_expected_module(monkeypatch: pytest.Mo
         assert name == "opentelemetry.metrics"
         return token
 
-    monkeypatch.setattr(_otel, "_import_module", _import_module)
+    monkeypatch.setattr(importlib, "import_module", _import_module)
     assert metrics_provider._load_otel_metrics_api() is token
 
 
@@ -122,7 +119,7 @@ def test_tracing_load_components_success(monkeypatch: pytest.MonkeyPatch) -> Non
         "opentelemetry.exporter.otlp.proto.http.trace_exporter": SimpleNamespace(OTLPSpanExporter="exp"),
     }
     monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
-    monkeypatch.setattr(_otel, "_import_module", lambda name: modules[name])
+    monkeypatch.setattr(importlib, "import_module", lambda name: modules[name])
     assert tracing_provider._load_otel_tracing_components() == ("res", "tp", "bsp", "exp")
 
 
@@ -134,5 +131,5 @@ def test_tracing_load_api_success_imports_expected_module(monkeypatch: pytest.Mo
         assert name == "opentelemetry.trace"
         return token
 
-    monkeypatch.setattr(_otel, "_import_module", _import_module)
+    monkeypatch.setattr(importlib, "import_module", _import_module)
     assert tracing_provider._load_otel_trace_api() is token

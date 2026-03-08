@@ -1,37 +1,23 @@
-# Provide Telemetry
+# undef-telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`).
+Unified telemetry package for the Undef ecosystem.
 
-[![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml) [![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml) [![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml) [![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
+## API
 
-## Install
-
-**Python:**
-
-```bash
-pip install provide-telemetry              # core (structlog)
-pip install "provide-telemetry[otel]"      # + OpenTelemetry export
-```
-
-**TypeScript:**
-
-```bash
-npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
-```
-
-**Rust:**
-
-```bash
-cargo add provide-telemetry
-cargo add provide-telemetry --features otel
+```python
+from undef.telemetry import (
+    setup_telemetry,
+    get_logger, logger,
+    trace, tracer, get_tracer,
+    counter, gauge, histogram, get_meter,
+    TelemetryMiddleware,
+)
 ```
 
 ## Quick Start
 
-**Python:**
-
 ```python
-from provide.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event
+from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger
 
 setup_telemetry()
 log = get_logger(__name__)
@@ -39,111 +25,89 @@ log.info("app.start.ok", request_id="req-1")
 shutdown_telemetry()
 ```
 
-**TypeScript:**
+## Async Safety
 
-```typescript
-import { setupTelemetry, getLogger, shutdownTelemetry } from '@provide-io/telemetry';
+The library uses `contextvars` for runtime context propagation and lock-protected setup for idempotent initialization.
 
-setupTelemetry({ serviceName: 'my-app' });
-const log = getLogger('api');
-log.info({ event: 'app.start.ok', requestId: 'req-1' });
-await shutdownTelemetry();
+## OpenTelemetry Extras Validation
+
+Install with OTel extras and run OTel-marked tests:
+
+```bash
+uv sync --group dev --extra otel
+uv run pytest -m otel -q
 ```
 
-All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration.
+## Environment Variables
 
-## Configuration
-
-All runtime config is via environment variables:
-
-| Variable                         | Default           | Description                              |
-| -------------------------------- | ----------------- | ---------------------------------------- |
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity                         |
-| `PROVIDE_LOG_LEVEL`              | `INFO`            | Log level                                |
-| `PROVIDE_LOG_FORMAT`             | `console`         | Renderer: `console`, `json`, or `pretty` |
-| `PROVIDE_TELEMETRY_ENV`          | `dev`             | Deployment environment                   |
-| `PROVIDE_TELEMETRY_VERSION`      | `0.0.0`           | Service version                          |
-| `PROVIDE_TRACE_ENABLED`          | `true`            | Enable OTel tracing                      |
-| `PROVIDE_METRICS_ENABLED`        | `true`            | Enable OTel metrics                      |
-
-See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
-
-## Event Naming
-
-Event names follow the DA(R)S pattern — Domain, Action, (Resource), Status — as 3 or 4 dot-separated lowercase segments. `event()` returns a structured `Event` (a `str` subclass with `.domain`, `.action`, `.resource`, and `.status` fields):
-
-```python
-# Python
-log.info("auth.login.success", user_id="u-123")
-log.info(event("auth", "login", "failed"), reason="bad_password")
-```
-
-```typescript
-// TypeScript
-log.info({ event: 'auth.login.success', userId: 'u-123' });
-```
-
-See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) for full naming rules.
-
-## API Surface
-
-All implementations export equivalent APIs (signatures vary per language idiom):
-
-| Category  | Functions                                                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Lifecycle | `setup_telemetry()`, `shutdown_telemetry()`                                                                                       |
-| Logging   | `get_logger()`, `bind_context()`, `clear_context()`                                                                               |
-| Tracing   | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()`                                                              |
-| Metrics   | `counter()`, `gauge()`, `histogram()`                                                                                             |
-| Policies  | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()`                                                            |
-| Safety    | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()`                                   |
-| Health    | `get_health_snapshot()`                                                                                                           |
-| Runtime   | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
-
-Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
-
-## Polyglot Architecture
-
-```
-provide-telemetry/
-  src/provide/telemetry/    # Python package
-  typescript/             # TypeScript package (@provide-io/telemetry)
-  go/                     # Go module (github.com/provide-io/provide-telemetry/go)
-  rust/                   # Rust crate (provide-telemetry)
-  spec/                   # Canonical API spec — all languages validate against it
-  e2e/                    # Cross-language E2E tests (W3C trace propagation)
-```
-
-A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, Go, and Rust exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
+- `UNDEF_TELEMETRY_SERVICE_NAME`
+- `UNDEF_TELEMETRY_ENV`
+- `UNDEF_TELEMETRY_VERSION`
+- `UNDEF_TELEMETRY_STRICT_SCHEMA`
+- `UNDEF_LOG_LEVEL`
+- `UNDEF_LOG_FORMAT`
+- `UNDEF_TRACE_ENABLED`
+- `UNDEF_METRICS_ENABLED`
+- `UNDEF_LOG_CODE_ATTRIBUTES`
+- `OTEL_EXPORTER_OTLP_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
 
 ## Quality
 
-- 100% branch coverage (Python + TypeScript + Go; Rust crate verified with `cargo test`)
-- 100% mutation kill score for Python and Go (mutmut + gremlins); TypeScript uses Stryker with documented file-scoped exemptions for OTel wiring; Rust is not mutation-gated
-- Strict type checking (mypy + ty + tsc)
-- CodeQL SAST scanning
-- SHA-pinned GitHub Actions
-- Sigstore artifact signing
-- CycloneDX SBOM on releases
+```bash
+uv sync --group dev
+uvx reuse lint
+uv run codespell
+uv run python scripts/check_max_loc.py --max-lines 500
+uv run python scripts/check_spdx_headers.py
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests
+uv run ty check src tests
+uv run bandit -r src -ll
+uv run python scripts/run_pytest_gate.py
+uv sync --group dev --extra otel
+uv run python scripts/run_pytest_gate.py -m otel -q
+# Optional full E2E against live OpenObserve
+export OPENOBSERVE_URL=http://localhost:5080/api/default
+export OPENOBSERVE_USER=user@example.com
+export OPENOBSERVE_PASSWORD=password
+uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+# Property + mutation quality gates
+uv run python scripts/run_pytest_gate.py -k hypothesis -q --no-cov
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+```
 
-## Documentation
+> Marker-specific runs (e.g., `-m otel`, `-m e2e`, `-k hypothesis`) already pass `--no-cov`; the strict 100% coverage gate only applies to the baseline `uv run python scripts/run_pytest_gate.py` invocation.
 
-- [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — shared semantic contract and Python-centered examples
-- [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) — core guarantees vs feature-gated or idiomatic differences
-- [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
-- [Developer Experience Rubric](https://github.com/provide-io/provide-telemetry/blob/main/docs/DX_RUBRIC.md) — criteria for cross-language consistency and usability
-- [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
-- [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
-- [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
-- [Polyglot Parity Roadmap](https://github.com/provide-io/provide-telemetry/blob/main/docs/PARITY_ROADMAP.md) — prioritized work to reach true behavioral parity
-- [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
-- [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
-- [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
-- [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
-- [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) — Rust-specific source and examples
-- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for the polyglot repo
+`run_mutation_gate.py` automatically injects a local `setproctitle` compatibility shim for mutmut subprocesses.
 
-## License
+## Python SPDX Header Convention
 
-Apache-2.0. See [LICENSES/](https://github.com/provide-io/provide-telemetry/tree/main/LICENSES).
+Every Python file uses this exact first-block structure:
+
+```python
+#!/usr/bin/env python3  # optional
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of Undef Telemetry.
+#
+```
+
+Normalization and enforcement:
+
+```bash
+uv run python scripts/normalize_spdx_headers.py
+uv run python scripts/check_spdx_headers.py
+```
+
+## Docs
+
+- [Operations Runbook](docs/OPERATIONS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Telemetry Conventions](docs/CONVENTIONS.md)
+- [Compliance Notes](docs/COMPLIANCE.md)
+- [Release Runbook](docs/RELEASE.md)
+- [Examples](examples/README.md)

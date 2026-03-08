@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (C) 2026 provide.io llc
-# This file is part of Provide Telemetry.
+# Copyright (C) 2026 MindTenet LLC
+# This file is part of Undef Telemetry.
 
 receivers:
   otlp:
@@ -10,7 +10,7 @@ receivers:
 
 exporters:
   debug:
-    verbosity: detailed
+    verbosity: basic
 
 extensions:
   health_check:
@@ -19,9 +19,6 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    logs:
-      receivers: [otlp]
-      exporters: [debug]
     traces:
       receivers: [otlp]
       exporters: [debug]

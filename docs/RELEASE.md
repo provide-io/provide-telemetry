@@ -5,10 +5,6 @@
 - Tag format: `vX.Y.Z`
 - Keep `project.version` in `pyproject.toml` aligned with release tag.
 
-## Release Notes Checklist
-
-- Document runtime API contract: runtime update/reload mutates internal state only; read the applied snapshot back via the language-specific `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` accessor.
-
 ## Release Validation
 
 Run locally:
@@ -17,7 +13,7 @@ Run locally:
 uv sync --group dev
 uv run python scripts/check_max_loc.py --max-lines 500
 uv run python scripts/run_pytest_gate.py
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
 uv run python -m build
 uv run twine check dist/*
 ```
@@ -38,89 +34,9 @@ act workflow_dispatch -W .github/workflows/ci.yml --container-architecture linux
 
 Prerequisites: run from a git repository checkout and ensure Docker daemon is running.
 
-## Local Act Validation (Docker-in-Docker)
-
-When Docker access is proxied through `colima` (macOS) or you need to reuse the host daemon, configure the socket before running `act`:
-
-```bash
-export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-```
-
-Run the quality job manually with Docker-in-Docker support:
-
-```bash
-act -W .github/workflows/ci.yml workflow_dispatch -j quality \
-  --container-architecture linux/amd64 \
-  --container-daemon-socket "${DOCKER_HOST}" \
-  -P ubuntu-latest=catthehacker/ubuntu:act-latest
-```
-
-For jobs that do not require Docker inside the container (for example `docs-quality`), disable daemon socket bind-mount:
-
-```bash
-act -W .github/workflows/ci.yml pull_request -j docs-quality \
-  --container-architecture linux/amd64 \
-  --container-daemon-socket -
-```
-
-Document any socket/mount issues and rerun once host access is restored.
-
 ## Publish Path
 
-### Python (PyPI)
-
 1. Push tag `vX.Y.Z`.
-1. Create GitHub release from tag.
-1. `release.yml` runs build and `twine check`.
-1. `publish-pypi` job uploads to PyPI via trusted publisher (OIDC — no token required).
-
-### TypeScript (npm)
-
-Prerequisites (one-time setup):
-
-- Create an `npm` environment in GitHub repo Settings → Environments.
-- Add `NPM_TOKEN` as a repository secret (generate at npmjs.com → Access Tokens → Granular).
-
-Release steps:
-
-1. Same tag/release as Python — both publish jobs fire from the same `release.yml`.
-1. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
-1. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
-
-### Go (pkg.go.dev)
-
-Go modules publish automatically when a git tag is pushed — no explicit upload step.
-
-Prerequisites (one-time setup):
-
-- Ensure `go/VERSION` and `go/CHANGELOG.md` are updated.
-- The `go/LICENSE` file must be present at the module root (already committed).
-
-Release steps:
-
-1. Same tag `vX.Y.Z` as Python/TypeScript — `go get github.com/provide-io/provide-telemetry/go@vX.Y.Z` will resolve once the tag is pushed.
-1. pkg.go.dev picks up the new version automatically within a few minutes of the tag being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
-
-### Go validation before release
-
-```bash
-cd go
-go build ./...
-go test -race -count=1 -coverprofile=coverage.out .
-go tool cover -func=coverage.out | grep total   # must be 100.0%
-go vet ./...
-golangci-lint run
-govulncheck ./...
-```
-
-### TypeScript validation before release
-
-```bash
-cd typescript
-npm run lint
-npm run format:check
-npm run typecheck
-npm run test:coverage
-npm run build
-npm pack --dry-run   # verify tarball contents and size
-```
+2. Create GitHub release from tag.
+3. `release.yml` runs build and `twine check`.
+4. `publish-pypi` job uploads to PyPI via trusted publisher.
