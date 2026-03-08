@@ -1,0 +1,71 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.2
+    hooks:
+      - id: ruff-format
+        name: ruff format
+      - id: ruff
+        name: ruff lint
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.2.0
+    hooks:
+      - id: reuse
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: ["tomli"]
+
+  - repo: local
+    hooks:
+      - id: max-loc
+        name: python max loc
+        entry: uv run python scripts/check_max_loc.py --max-lines 500
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: ty
+        name: ty check
+        entry: uv run ty check src tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: mypy
+        name: mypy strict
+        entry: uv run mypy src tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: bandit
+        name: bandit
+        entry: uv run bandit -r src -ll
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: mutation-gate
+        name: mutmut gate (manual)
+        entry: uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+        types: [python]
