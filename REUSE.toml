@@ -1,85 +1,31 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 version = 1
 
 [[annotations]]
 path = [
   "README.md",
-  "CLAUDE.md",
-  "CHANGELOG.md",
-  "SECURITY.md",
   "docs/**",
   "examples/**",
-  "go/examples/**",
-  ".github/**",
-  ".ci/**",
+  ".github/workflows/**",
   ".pre-commit-config.yaml",
   ".actrc",
-  ".gitattributes",
   ".gitignore",
-  ".release-please-config.json",
-  ".release-please-manifest.json",
-  "commitlint.config.js",
   "pyproject.toml",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
   "LICENSES/**",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
-  "src/provide/telemetry/py.typed",
-  ".secrets.baseline",
+  "src/undef/telemetry/py.typed",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
-path = [".claude/**"]
-precedence = "override"
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
-path = [
-  "Makefile",
-  "go/Makefile",
-  "go/.golangci.yml",
-  "go/VERSION",
-  "go/go.mod",
-  "go/go.sum",
-  "go/go.work",
-  "go/internal/go.mod",
-  "go/logger/go.mod",
-  "go/logger/VERSION",
-  "go/tracer/go.mod",
-  "go/tracer/go.sum",
-  "go/tracer/VERSION",
-  "go/cmd/e2e_cross_language_client/.gitignore",
-  "go/cmd/e2e_cross_language_client/go.mod",
-  "go/cmd/e2e_cross_language_client/go.sum",
-  "typescript/README.md",
-  "typescript/CHANGELOG.md",
-  "go/CHANGELOG.md",
-  "go/LICENSE",
-  "go/README.md",
-  "typescript/VERSION",
-  "typescript/package.json",
-  "typescript/.gitignore",
-  "typescript/.npmrc",
-  "typescript/.prettierrc",
-  "typescript/tsconfig.json",
-  "typescript/tsconfig.scripts.json",
-  "typescript/tsconfig.test.json",
-]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
@@ -97,30 +43,6 @@ path = [
   "src/*.egg-info/**",
   "dist/**",
   "uv.lock",
-  "VERSION",
-  ".pymutant-ledger.json",
-  ".pymutant-state/**",
-  "typescript/package-lock.json",
-  "tests/memray/baselines.json",
-  ".playwright-mcp/**",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
-path = ["go/coverage_new.out", "go/coverage.out", "go/logger/coverage.out", "go/logger/cover.out", "go/tracer/cover.out"]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
-path = [
-  "go/go.work.sum",
-  "go/tests/integration/otel-output-go/collector.log",
-  "tests/integration/otel-output-python/collector.log",
-  "rust/tests/property_test.proptest-regressions",
-  ".trufflehog-exclude-paths.txt",
-  "rust/Cargo.lock",
-  "rust/README.md",
-]
-SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"

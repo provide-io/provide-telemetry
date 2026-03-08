@@ -1,322 +1,44 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-name: 🚀 Release
+name: Release
 
 on:
   push:
-    # Only go sub-module tags trigger this workflow on push (for verify-go-proxy).
-    # Main release builds/publishes are gated on GitHub Release creation below.
     tags:
-      - 'go/logger/v*'
-      - 'go/tracer/v*'
+      - "v*"
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      # When retriggering a release manually, pass the tag so sign-and-upload targets the right release
-      release_tag:
-        description: 'Release tag to publish (e.g. v0.3.0). Leave blank to use current ref.'
-        required: false
-        default: ''
 
 jobs:
   build:
-    # Run on GitHub Release creation or manual dispatch only
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: uv sync --group dev
-      - run: uv run pytest --no-header -q
-      - run: uv build
-      - run: uvx twine check dist/*
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+      - run: uv run python -m build
+      - run: uv run twine check dist/*
+      - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*
-      - name: Generate Python SBOM
-        run: uvx cyclonedx-py environment --output-format json -o sbom-python.cdx.json
-      - name: Generate TypeScript SBOM
-        # Install deps first — cyclonedx-npm requires node_modules for npm-ls
-        run: |
-          npm install -g @cyclonedx/cyclonedx-npm
-          cd typescript
-          npm ci
-          cyclonedx-npm --output-file ../sbom-typescript.cdx.json
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
-        with:
-          name: sbom-python
-          path: sbom-python.cdx.json
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
-        with:
-          name: sbom-typescript
-          path: sbom-typescript.cdx.json
-
-  publish-testpypi:
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      id-token: write
-      contents: read
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/provide-telemetry
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: dist
-          path: dist
-      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-
-  verify-testpypi:
-    needs: publish-testpypi
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
-        with:
-          python-version: "3.11"
-          enable-cache: false
-      - name: Extract version from tag
-        # Use workflow_dispatch release_tag input when set; fall back to ref name (e.g. v0.3.0)
-        id: version
-        run: |
-          TAG="${{ inputs.release_tag || github.ref_name }}"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-      - name: Wait for TestPyPI propagation
-        run: sleep 30
-      - name: Install from TestPyPI and verify
-        run: |
-          pip install \
-            --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple/ \
-            "provide-telemetry==${{ steps.version.outputs.version }}"
-          python -c "
-          from provide.telemetry import __version__
-          assert __version__ == '${{ steps.version.outputs.version }}', \
-              f'Version mismatch: {__version__} != ${{ steps.version.outputs.version }}'
-          print(f'provide-telemetry {__version__} OK')
-          "
 
   publish-pypi:
-    needs: [build, verify-testpypi]
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
     permissions:
       id-token: write
       contents: read
     environment:
       name: pypi
-      url: https://pypi.org/p/provide-telemetry
+      url: https://pypi.org/p/undef-telemetry
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+      - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
-        with:
-          # Safe to retrigger — skip if version already published
-          skip-existing: true
-
-  build-npm:
-    # Run on GitHub Release creation or manual dispatch only
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: typescript
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      # Install deps and run tests before packing
-      - name: Install dependencies
-        run: npm ci
-      - name: Run TypeScript tests
-        run: npx vitest run
-      # Build and pack the distributable tarball
-      - name: Build and pack
-        run: npm run build && npm pack
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
-        with:
-          name: npm-pack
-          path: typescript/*.tgz
-
-  build-rust:
-    # Run on GitHub Release creation or manual dispatch only
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
-      - name: Run Rust tests
-        run: cargo test --locked --all-targets --all-features
-      - name: Package Rust crate
-        run: cargo package --locked
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
-        with:
-          name: rust-package
-          path: rust/target/package/*.crate
-
-  publish-npm:
-    needs: build-npm
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    # continue-on-error: safe to retrigger — npm will fail with 403 if version already published
-    continue-on-error: true
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    environment:
-      name: npm
-      url: https://www.npmjs.com/package/@provide-io/telemetry
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      # Download the pre-built tarball from the build job
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: npm-pack
-          path: npm-pack
-      # Publish the packed tarball — NPM_TOKEN must be set as a repo secret
-      - name: Publish to npm
-        run: |
-          ls -la npm-pack/
-          cd npm-pack
-          tar xzf *.tgz
-          cd package
-          cat package.json | head -5
-          npm publish --access public --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-rust:
-    needs: build-rust
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # Required for crates.io trusted publishing (OIDC — no CARGO_REGISTRY_TOKEN needed)
-      id-token: write
-    environment:
-      name: crates-io
-      url: https://crates.io/crates/provide-telemetry
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
-      - name: Publish to crates.io via trusted publishing (OIDC)
-        run: cargo publish --locked
-
-  sign-and-upload:
-    needs: [build, build-rust]
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: dist
-          path: dist
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: sbom-python
-          path: sbom
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: sbom-typescript
-          path: sbom
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: rust-package
-          path: rust-dist
-      - uses: sigstore/gh-action-sigstore-python@f514d46b907ebcd5bedc05145c03b69c1edd8b46  # v3.0.0
-        with:
-          inputs: dist/*.whl dist/*.tar.gz
-      - name: Upload artifacts and signatures to release
-        # Priority: workflow_dispatch input > release event tag > ref_name
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
-        run: |
-          gh release upload "${RELEASE_TAG}" \
-            dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
-            rust-dist/*.crate \
-            sbom/sbom-python.cdx.json \
-            sbom/sbom-typescript.cdx.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
-
-  verify-go-proxy:
-    # Triggered only when a go sub-module tag is pushed (go/logger/v* or go/tracer/v*)
-    if: startsWith(github.ref, 'refs/tags/go/')
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version: "1.25"
-      # Extract module path and version from the tag (e.g. go/logger/v0.2.5)
-      - name: Parse tag into module and version
-        id: tag
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          # TAG format: go/logger/v0.2.5 or go/tracer/v0.2.5
-          SUB="${TAG%/v*}"           # go/logger or go/tracer
-          VER="${TAG##*/}"           # v0.2.5
-          MODULE="github.com/provide-io/provide-telemetry/${SUB}"
-          echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "Module: ${MODULE}  Version: ${VER}"
-      # Poll proxy.golang.org until the new version is available (up to 5 min)
-      - name: Wait for Go proxy to index new tag
-        run: |
-          MODULE="${{ steps.tag.outputs.module }}"
-          VERSION="${{ steps.tag.outputs.version }}"
-          PROXY_URL="https://proxy.golang.org/${MODULE}/@v/${VERSION}.info"
-          echo "Polling: ${PROXY_URL}"
-          for i in $(seq 1 30); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PROXY_URL}")
-            echo "Attempt ${i}: HTTP ${STATUS}"
-            if [ "${STATUS}" = "200" ]; then
-              echo "OK: proxy has indexed ${MODULE}@${VERSION}"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "FAIL: proxy did not index ${MODULE}@${VERSION} within 5 minutes"
-          exit 1
-      # Verify the module can be fetched cleanly
-      - name: Verify module fetchable via go get
-        run: |
-          cd $(mktemp -d)
-          go mod init probe
-          go get "${{ steps.tag.outputs.module }}@${{ steps.tag.outputs.version }}"
-          echo "OK: go get succeeded"
+      - uses: pypa/gh-action-pypi-publish@release/v1

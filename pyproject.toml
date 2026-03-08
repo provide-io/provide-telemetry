@@ -1,53 +1,25 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-#
-# provide-telemetry/pyproject.toml
-#
-# Unified telemetry library for the provide.io ecosystem
-#
-
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "provide-telemetry"
-dynamic = ["version"]
-description = "Unified telemetry library for the provide.io ecosystem — structured logging, distributed tracing, and metrics"
+name = "undef-telemetry"
+version = "0.1.0"
+description = "Unified telemetry library for the Undef ecosystem"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSES/*"]
-authors = [
-    {name = "Tim Perkins", email = "code@tim.life"},
-    {name = "provide.io llc", email = "code@provide.io"},
-]
-maintainers = [{name = "provide.io llc", email = "code@provide.io"}]
-keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Intended Audience :: Developers",
-  "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3.14",
-  "Topic :: Software Development :: Libraries :: Python Modules",
-  "Topic :: System :: Monitoring",
-  "Topic :: System :: Logging",
-  "Typing :: Typed",
-]
+authors = [{name = "MindTenet LLC"}]
 dependencies = [
   "structlog>=24.0.0",
+  "pydantic>=2.10.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/provide-io/provide-telemetry"
-Documentation = "https://foundry.provide.io/telemetry/"
-Repository = "https://github.com/provide-io/provide-telemetry"
-Issues = "https://github.com/provide-io/provide-telemetry/issues"
+Homepage = "https://github.com/undef-games/undef-telemetry"
+Repository = "https://github.com/undef-games/undef-telemetry"
+Issues = "https://github.com/undef-games/undef-telemetry/issues"
 
 [project.optional-dependencies]
 otel = [
@@ -56,16 +28,17 @@ otel = [
   "opentelemetry-exporter-otlp-proto-http>=1.27.0",
   "opentelemetry-instrumentation-logging>=0.61b0",
 ]
+prometheus = [
+  "opentelemetry-exporter-prometheus>=0.48b0",
+  "prometheus-client>=0.23.1",
+]
 fastapi = [
   "fastapi>=0.115.0",
   "starlette>=0.40.0",
 ]
 all = [
-  "provide-telemetry[otel,fastapi]",
+  "undef-telemetry[otel,prometheus,fastapi]",
 ]
-
-[tool.setuptools.dynamic]
-version = {file = "VERSION"}
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -73,15 +46,8 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# NOTE: intentionally NOT registered as a pytest11 entry point.
-# Auto-loading a pytest plugin on install would globally reconfigure
-# structlog and reset telemetry state in every downstream test suite,
-# which is surprising and dangerous for a library dependency.
-# Consumers opt in explicitly via `-p provide.telemetry.testing`
-# or by adding it to `pytest_plugins` in their own conftest.py.
-
 [tool.setuptools.package-data]
-"provide.telemetry" = ["py.typed"]
+"undef.telemetry" = ["py.typed"]
 
 [dependency-groups]
 dev = [
@@ -90,30 +56,20 @@ dev = [
   "codespell>=2.4.1",
   "hypothesis>=6.130.0",
   "mypy>=1.18.0",
-  "types-PyYAML>=6.0.12",
   "mutmut>=3.3.1",
-  "pip-audit>=2.7.0",
-  "pip-licenses>=5.0.0",
-  "playwright>=1.50.0",
   "pre-commit>=4.0.1",
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
   "pytest-cov>=6.1.1",
-  "pytest-randomly>=3.15.0",
-  "pytest-rerunfailures>=14.0",
   "pytest-xdist>=3.8.0",
   "reuse>=6.2.0",
   "ruff>=0.14.5",
   "twine>=5.1.1",
   "ty>=0.0.18",
-  "vulture>=2.14",
-  "xenon>=0.9.3",
-  "memray>=1.0; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = ["src"]
 python_files = ["test_*.py"]
 norecursedirs = [".*", "build", "dist", "mutants"]
 markers = [
@@ -121,25 +77,20 @@ markers = [
   "integration: tests that require external runtime dependencies",
   "e2e: end-to-end validation against a live telemetry backend",
   "tooling: tests that validate local development scripts/tooling",
-  "memray: memory profiling stress tests (deselected by default, run with -m memray)",
-  "slow: long-running tests excluded from default runs",
-  "flaky: tests that may flake on slow CI — retried automatically via pytest-rerunfailures",
 ]
 addopts = [
-  "-p", "no:provide_telemetry",
   "-q",
   "--strict-markers",
   "--strict-config",
   "--tb=short",
-  "-m", "not e2e and not memray",
-  "--cov=src/provide/telemetry",
+  "--cov=src/undef/telemetry",
   "--cov-branch",
   "--cov-report=term-missing",
   "--cov-fail-under=100",
 ]
 
 [tool.coverage.run]
-source = ["src/provide/telemetry"]
+source = ["src/undef/telemetry"]
 branch = true
 
 [tool.coverage.report]
@@ -158,8 +109,6 @@ ignore = ["E501", "S101"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "S", "RUF012"]
-"e2e/**/*.py" = ["ARG", "S", "SIM105", "RUF012"]
-"scripts/**/*.py" = ["S"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -174,9 +123,6 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 ignore_missing_imports = false
-namespace_packages = true
-explicit_package_bases = true
-mypy_path = "src"
 
 [[tool.mypy.overrides]]
 module = [
@@ -184,51 +130,24 @@ module = [
 ]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = [
-  "tests.parity.test_behavioral_fixtures",
-  "tests.parity.test_behavioral_fixtures_ext",
-  "tests.tooling.test_check_fixture_coverage",
-]
-ignore_missing_imports = true
-disable_error_code = ["import-untyped"]
-
 [tool.ty.environment]
 python-version = "3.11"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
 
-[[tool.ty.overrides]]
-include = ["tests/**"]
-[tool.ty.overrides.rules]
-invalid-assignment = "ignore"
-call-top-callable = "ignore"
-unsupported-operator = "ignore"
-unused-type-ignore-comment = "ignore"
-
 [tool.codespell]
-skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,./typescript/dist,./typescript/dist/*,./typescript/package-lock.json,./typescript/coverage,./typescript/coverage/*,./typescript/reports,./typescript/reports/*,./memray-output,./memray-output/*"
-ignore-words-list = "ore,opps,wont,strat,nd,rade,caf,als,afterAll,beforeAll"
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock"
+ignore-words-list = "ore,opps,wont,strat,nd,rade"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
 
-[tool.vulture]
-min_confidence = 80
-paths = ["src", "tests"]
-
-[tool.xenon]
-max_absolute = "C"
-max_modules = "B"
-max_average = "A"
-
 [tool.mutmut]
-paths_to_mutate = ["src/provide/telemetry/"]
+paths_to_mutate = ["src/undef/telemetry/"]
 tests_dir = ["tests/"]
-do_not_mutate = []
-pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
+pytest_add_cli_args = ["--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
-  "not integration and not e2e and not otel and not tooling and not memray",
+  "not integration and not e2e and not otel and not tooling",
 ]
