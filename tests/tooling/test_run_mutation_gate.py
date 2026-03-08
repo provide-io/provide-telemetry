@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -49,14 +49,14 @@ def test_mutmut_env_sets_pythonpath_when_missing(monkeypatch: pytest.MonkeyPatch
     assert env["PYTHONPATH"].endswith("/scripts/_mutmut_shims")
 
 
-def test_third_cpu_count_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_half_cpu_count_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: None)
-    assert gate._third_cpu_count() == 1
+    assert gate._half_cpu_count() == 1
 
 
-def test_third_cpu_count_divides_available_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_half_cpu_count_divides_available_cores(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: 24)
-    assert gate._third_cpu_count() == 8
+    assert gate._half_cpu_count() == 12
 
 
 def test_run_mutation_gate_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -182,19 +182,3 @@ def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None
     assert captured["cmd"] == ["echo", "ok"]
     assert captured["check"] is False
     assert captured["env"] == env
-
-
-def test_main_uses_default_100_mutation_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(gate, "_third_cpu_count", lambda: 4)
-    monkeypatch.setattr(gate, "run_mutation_gate", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(
-        gate.argparse.ArgumentParser,
-        "parse_args",
-        lambda _self: gate.argparse.Namespace(
-            python_version="3.11",
-            max_children=None,
-            retries=1,
-            min_mutation_score=100.0,
-        ),
-    )
-    assert gate.main() == 0

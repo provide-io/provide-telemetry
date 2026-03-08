@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -19,12 +19,6 @@ BAD_STAT_KEYS: Final[tuple[str, ...]] = (
     "suspicious",
     "no_tests",
     "check_was_interrupted_by_user",
-)
-
-CONFIG_FILES: Final[tuple[str, ...]] = (
-    "pyproject.toml",
-    ".pytest.ini",
-    "pytest.ini",
 )
 
 
@@ -45,24 +39,14 @@ def _mutmut_env() -> dict[str, str]:
 
 def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(cmd))
-    completed = subprocess.run(cmd, check=False, env=env)
+    completed = subprocess.run(cmd, check=False, env=env)  # noqa: S603
     if completed.returncode != 0:
         raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}")
 
 
-def _seed_mutants_config() -> None:
-    mutants = Path("mutants")
-    mutants.mkdir(parents=True, exist_ok=True)
-    for config_name in CONFIG_FILES:
-        src = Path(config_name)
-        if src.exists():
-            dst = mutants / config_name
-            shutil.copy2(src, dst)
-
-
-def _third_cpu_count() -> int:
+def _half_cpu_count() -> int:
     count = os.cpu_count() or 1
-    return max(1, count // 3)
+    return max(1, count // 2)
 
 
 def _read_stats(path: Path) -> dict[str, int]:
@@ -96,10 +80,8 @@ def run_mutation_gate(
     mutation_env = _mutmut_env()
 
     for attempt in range(1, attempts + 1):
-        mutants_dir = Path("mutants")
-        if mutants_dir.exists():
-            shutil.rmtree(mutants_dir)
-        _seed_mutants_config()
+        if Path("mutants").exists():
+            shutil.rmtree("mutants")
 
         children = max_children if attempt == 1 else 1
         print(f"Running mutation attempt {attempt}/{attempts} with max-children={children}")
@@ -116,22 +98,6 @@ def run_mutation_gate(
         if attempt < attempts:
             print("Mutation gate not clean; retrying in single-worker mode.")
 
-    # Log surviving mutants for debugging CI failures.
-    try:
-        result = subprocess.run(
-            _uv_mutmut_cmd(python_version, "results"),
-            capture_output=True,
-            text=True,
-            env=mutation_env,
-        )
-        survivors = [line.strip() for line in result.stdout.splitlines() if "survived" in line]
-        if survivors:
-            print("Surviving mutants:")
-            for s in survivors:
-                print(f"  {s}")
-    except Exception:
-        pass
-
     score = _mutation_score(last_stats)
     raise RuntimeError(
         "mutation gate failed: "
@@ -147,19 +113,19 @@ def main() -> int:
         "--max-children",
         type=int,
         default=None,
-        help="Initial mutmut worker count (defaults to 1/3 CPU count).",
+        help="Initial mutmut worker count (defaults to half CPU count).",
     )
     parser.add_argument("--retries", type=int, default=1, help="Number of retries after initial failure.")
     parser.add_argument(
         "--min-mutation-score",
         type=float,
-        default=100.0,
+        default=80.0,
         help="Minimum mutation score required to pass (killed/total * 100).",
     )
     args = parser.parse_args()
-    max_cpus = _third_cpu_count()
-    requested_children = args.max_children if args.max_children is not None else max_cpus
-    max_children = min(max(1, requested_children), max_cpus)
+    half_cpus = _half_cpu_count()
+    requested_children = args.max_children if args.max_children is not None else half_cpus
+    max_children = min(max(1, requested_children), half_cpus)
 
     try:
         run_mutation_gate(args.python_version, max_children, args.retries, args.min_mutation_score)

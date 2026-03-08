@@ -1,15 +1,15 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
 
 from pathlib import Path
 
-SPDX_COPYRIGHT = "# SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
+SPDX_COPYRIGHT = "# SPDX-FileCopyrightText" + ": Copyright (C) 2026 MindTenet LLC\n"
 SPDX_LICENSE = "# SPDX-License-Identifier" + ": Apache-2.0\n"
-SPDX_COMMENT = "# SPDX-Comment" + ": Part of provide-telemetry.\n"
+SPDX_COMMENT = "# SPDX-Comment" + ": Part of Undef Telemetry.\n"
 SPDX_SEPARATOR = "#\n"
 SPDX_BLANK = "\n"
 
@@ -21,22 +21,9 @@ CANONICAL_BLOCK = (
     SPDX_BLANK,
 )
 
-GO_COPYRIGHT = "// SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
-GO_LICENSE = "// SPDX-License-Identifier" + ": Apache-2.0\n"
-GO_CANONICAL_BLOCK = (GO_COPYRIGHT, GO_LICENSE)
-
-
-def has_go_canonical_header(text: str) -> bool:
-    lines = text.splitlines(keepends=True)
-    if len(lines) < 2:
-        return False
-    return lines[0] == GO_COPYRIGHT and lines[1] == GO_LICENSE
-
-
 EXCLUDED_DIRS = {
     ".git",
     ".venv",
-    "workenv",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
@@ -44,7 +31,6 @@ EXCLUDED_DIRS = {
     "mutants",
     "dist",
     "build",
-    "node_modules",
     "__pycache__",
 }
 

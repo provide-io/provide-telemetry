@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -52,9 +52,9 @@ def test_otlp_http_exports_all_three_signal_types() -> None:
         env = dict(os.environ)
         env.update(
             {
-                "PROVIDE_TELEMETRY_SERVICE_NAME": "otlp-local-http-test",
-                "PROVIDE_TRACE_ENABLED": "true",
-                "PROVIDE_METRICS_ENABLED": "true",
+                "UNDEF_TELEMETRY_SERVICE_NAME": "otlp-local-http-test",
+                "UNDEF_TRACE_ENABLED": "true",
+                "UNDEF_METRICS_ENABLED": "true",
                 "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"http://127.0.0.1:{server_port}/v1/traces",
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"http://127.0.0.1:{server_port}/v1/metrics",
                 "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"http://127.0.0.1:{server_port}/v1/logs",
@@ -64,7 +64,7 @@ def test_otlp_http_exports_all_three_signal_types() -> None:
             }
         )
         code = (
-            "from provide.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace\n"
+            "from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace\n"
             "setup_telemetry()\n"
             "@trace('otlp.local_http.span')\n"
             "def run(i: int) -> None:\n"
