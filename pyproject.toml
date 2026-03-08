@@ -1,0 +1,153 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "undef-telemetry"
+version = "0.1.0"
+description = "Unified telemetry library for the Undef ecosystem"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSES/*"]
+authors = [{name = "MindTenet LLC"}]
+dependencies = [
+  "structlog>=24.0.0",
+  "pydantic>=2.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/undef-games/undef-telemetry"
+Repository = "https://github.com/undef-games/undef-telemetry"
+Issues = "https://github.com/undef-games/undef-telemetry/issues"
+
+[project.optional-dependencies]
+otel = [
+  "opentelemetry-api>=1.27.0",
+  "opentelemetry-sdk>=1.27.0",
+  "opentelemetry-exporter-otlp-proto-http>=1.27.0",
+  "opentelemetry-instrumentation-logging>=0.61b0",
+]
+prometheus = [
+  "opentelemetry-exporter-prometheus>=0.48b0",
+  "prometheus-client>=0.23.1",
+]
+fastapi = [
+  "fastapi>=0.115.0",
+  "starlette>=0.40.0",
+]
+all = [
+  "undef-telemetry[otel,prometheus,fastapi]",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"undef.telemetry" = ["py.typed"]
+
+[dependency-groups]
+dev = [
+  "bandit>=1.8.6",
+  "build>=1.2.2",
+  "codespell>=2.4.1",
+  "hypothesis>=6.130.0",
+  "mypy>=1.18.0",
+  "mutmut>=3.3.1",
+  "pre-commit>=4.0.1",
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "pytest-cov>=6.1.1",
+  "pytest-xdist>=3.8.0",
+  "reuse>=6.2.0",
+  "ruff>=0.14.5",
+  "twine>=5.1.1",
+  "ty>=0.0.18",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+python_files = ["test_*.py"]
+norecursedirs = [".*", "build", "dist", "mutants"]
+markers = [
+  "otel: tests that validate optional OpenTelemetry extras",
+  "integration: tests that require external runtime dependencies",
+  "e2e: end-to-end validation against a live telemetry backend",
+  "tooling: tests that validate local development scripts/tooling",
+]
+addopts = [
+  "-q",
+  "--strict-markers",
+  "--strict-config",
+  "--tb=short",
+  "--cov=src/undef/telemetry",
+  "--cov-branch",
+  "--cov-report=term-missing",
+  "--cov-fail-under=100",
+]
+
+[tool.coverage.run]
+source = ["src/undef/telemetry"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["mutants"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ARG", "RUF", "S"]
+ignore = ["E501", "S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG", "S", "RUF012"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = [
+  "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+
+[tool.codespell]
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock"
+ignore-words-list = "ore,opps,wont,strat,nd,rade"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.mutmut]
+paths_to_mutate = ["src/undef/telemetry/"]
+tests_dir = ["tests/"]
+pytest_add_cli_args = ["--no-cov"]
+pytest_add_cli_args_test_selection = [
+  "-m",
+  "not integration and not e2e and not otel and not tooling",
+]
