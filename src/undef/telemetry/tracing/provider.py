@@ -1,6 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (C) 2026 MindTenet LLC
-# This file is part of Undef Telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
 """Tracer setup and acquisition."""
 
 from __future__ import annotations

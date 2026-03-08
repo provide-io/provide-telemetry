@@ -29,6 +29,23 @@ repos:
         always_run: true
         types: [python]
 
+      - id: spdx-header-check
+        name: python spdx header check
+        entry: uv run python scripts/check_spdx_headers.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: spdx-header-normalize
+        name: python spdx header normalize (manual)
+        entry: uv run python scripts/normalize_spdx_headers.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+        types: [python]
+
       - id: ty
         name: ty check
         entry: uv run ty check src tests

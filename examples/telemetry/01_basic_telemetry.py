@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (C) 2026 MindTenet LLC
-# This file is part of Undef Telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
 from __future__ import annotations
 
 import time

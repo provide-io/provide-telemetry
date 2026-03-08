@@ -54,3 +54,13 @@ When adding new telemetry fields:
 1. Keep old field names for at least one release cycle.
 2. Introduce aliases in dashboards/queries first.
 3. Announce canonical key in changelog and docs.
+
+## Python File Header Convention
+
+Use the canonical SPDX block for all Python files, with optional shebang first:
+
+- `SPDX-FileCopyrightText` with `Copyright (C) 2026 MindTenet LLC`
+- `SPDX-License-Identifier` with `Apache-2.0`
+- `SPDX-Comment` with `Part of Undef Telemetry.`
+- `#`
+- blank line

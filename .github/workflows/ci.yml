@@ -24,6 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
       - run: uv run python scripts/check_max_loc.py --max-lines 500
+      - run: uv run python scripts/check_spdx_headers.py
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy src tests
