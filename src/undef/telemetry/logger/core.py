@@ -7,15 +7,15 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 import sys
 import threading
 import warnings
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import structlog
 
+from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.processors import (
     add_standard_fields,
@@ -40,56 +40,31 @@ def _get_level(level: str) -> int:
 _configured = False
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
-_otel_log_provider: Any | None = None
+_otel_log_provider: object | None = None
 
 
 def _has_otel_logs() -> bool:
-    try:
-        importlib.import_module("opentelemetry")
-        return True
-    except ImportError:
-        return False
+    return _otel.has_otel()
 
 
 class _InstrumentationLoggingHandlerFactory(Protocol):
     def __call__(
         self,
         level: int,
-        logger_provider: Any | None,
+        logger_provider: object | None,
         log_code_attributes: bool,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> logging.Handler: ...
 
 
 def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
     if not _has_otel_logs():
         return None
-    try:
-        logs_api_mod = importlib.import_module("opentelemetry._logs")
-        sdk_logs_mod = importlib.import_module("opentelemetry.sdk._logs")
-        sdk_logs_export_mod = importlib.import_module("opentelemetry.sdk._logs.export")
-        sdk_resources_mod = importlib.import_module("opentelemetry.sdk.resources")
-        otlp_logs_mod = importlib.import_module("opentelemetry.exporter.otlp.proto.http._log_exporter")
-        return (
-            logs_api_mod,
-            sdk_logs_mod,
-            sdk_logs_export_mod,
-            sdk_resources_mod.Resource,
-            otlp_logs_mod.OTLPLogExporter,
-        )
-    except ImportError:
-        return None
+    return _otel.load_otel_logs_components()
 
 
 def _load_instrumentation_logging_handler() -> _InstrumentationLoggingHandlerFactory | None:
-    try:
-        handler_mod: Any = importlib.import_module("opentelemetry.instrumentation.logging.handler")
-        handler_cls: Any | None = getattr(handler_mod, "LoggingHandler", None)
-        if handler_cls is None:
-            return None
-        return cast(_InstrumentationLoggingHandlerFactory, handler_cls)  # pragma: no cover # pragma: no mutate
-    except ImportError:
-        return None
+    return _otel.load_instrumentation_logging_handler()
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:

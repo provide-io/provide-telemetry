@@ -65,11 +65,22 @@ def test_enforce_schema_processor() -> None:
 
 
 def test_enforce_required_keys_processor() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id"})
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
+            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id",
+        }
+    )
     processor = enforce_event_schema(cfg)
     processor(None, "info", {"event": "a.b.c", "request_id": "x"})
     with pytest.raises(EventSchemaError):
         processor(None, "info", {"event": "a.b.c"})
+
+
+def test_enforce_required_keys_skipped_in_compat_mode() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id"})
+    processor = enforce_event_schema(cfg)
+    processor(None, "info", {"event": "a.b.c"})
 
 
 def test_configure_and_get_logger() -> None:

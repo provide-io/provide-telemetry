@@ -8,10 +8,11 @@ from __future__ import annotations
 import logging
 import warnings
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
+from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as core_mod
 
@@ -30,8 +31,7 @@ def test_has_otel_logs_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
     assert core_mod._has_otel_logs() is False
 
 
@@ -40,8 +40,7 @@ def test_has_otel_logs_success(monkeypatch: pytest.MonkeyPatch) -> None:
         assert name == "opentelemetry"
         return object()
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     assert core_mod._has_otel_logs() is True
 
 
@@ -57,8 +56,7 @@ def test_load_otel_logs_components_import_error(monkeypatch: pytest.MonkeyPatch)
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
     assert core_mod._load_otel_logs_components() is None
 
 
@@ -67,8 +65,7 @@ def test_load_instrumentation_logging_handler_import_error(monkeypatch: pytest.M
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
     assert core_mod._load_instrumentation_logging_handler() is None
 
 
@@ -77,15 +74,14 @@ def test_load_instrumentation_logging_handler_handles_missing_attr(monkeypatch: 
         pass
 
     fake_module = _FakeModule()
-    core_mod_any = cast(Any, core_mod)
-    real_import = core_mod_any.importlib.import_module
+    real_import = _otel._import_module
 
     def _import(name: str) -> object:
         if name == "opentelemetry.instrumentation.logging.handler":
             return fake_module
         return real_import(name)
 
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     assert core_mod._load_instrumentation_logging_handler() is None
 
 
@@ -108,8 +104,7 @@ def test_load_otel_logs_components_success(monkeypatch: pytest.MonkeyPatch) -> N
     def _import(name: str) -> object:
         return mapping[name]
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     components = core_mod._load_otel_logs_components()
     assert components == (
         logs_api_mod,
@@ -252,15 +247,14 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     def _set_logger_provider(provider: _Provider) -> None:
         calls["provider"] = provider
 
-    core_mod_any = cast(Any, core_mod)
-    real_import = core_mod_any.importlib.import_module
+    real_import = _otel._import_module
 
     def _import(name: str) -> object:
         if name == "opentelemetry.instrumentation.logging.handler":
             return SimpleNamespace(LoggingHandler=_InstrumentationHandler)
         return real_import(name)
 
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     monkeypatch.setattr(
         core_mod,
         "_load_otel_logs_components",
@@ -351,15 +345,14 @@ def test_load_instrumentation_logging_handler_returns_handler(monkeypatch: pytes
             super().__init__(level=level)
 
     fake_module = SimpleNamespace(LoggingHandler=_FakeHandler)
-    core_mod_any = cast(Any, core_mod)
-    real_import = core_mod_any.importlib.import_module
+    real_import = _otel._import_module
 
     def _import(name: str) -> object:
         if name == "opentelemetry.instrumentation.logging.handler":
             return fake_module
         return real_import(name)
 
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     handler_cls = core_mod._load_instrumentation_logging_handler()
     assert handler_cls is _FakeHandler
 

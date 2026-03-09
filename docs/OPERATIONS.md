@@ -49,7 +49,7 @@ Examples:
 
 - Missing OTel dependencies: library falls back to no-op tracing/metrics wrappers.
 - Invalid event names with strict event mode enabled: raises `EventSchemaError`.
-- Missing required keys: raises `EventSchemaError`.
+- Missing required keys: raises `EventSchemaError` only when `UNDEF_TELEMETRY_STRICT_SCHEMA=true`.
 
 ## Lifecycle
 
@@ -74,7 +74,7 @@ uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Optional fuzz/property run
 uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov
 # Optional mutation pass (can take time)
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 ```
 
 Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.

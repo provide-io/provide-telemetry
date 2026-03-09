@@ -137,7 +137,7 @@ def main() -> int:
     parser.add_argument(
         "--min-mutation-score",
         type=float,
-        default=80.0,
+        default=100.0,
         help="Minimum mutation score required to pass (killed/total * 100).",
     )
     args = parser.parse_args()

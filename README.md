@@ -77,7 +77,7 @@ export OPENOBSERVE_PASSWORD=password
 uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Property + mutation quality gates
 uv run python scripts/run_pytest_gate.py -k hypothesis -q --no-cov
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 ```
 
 > Marker-specific runs (e.g., `-m otel`, `-m e2e`, `-k hypothesis`) already pass `--no-cov`; the strict 100% coverage gate only applies to the baseline `uv run python scripts/run_pytest_gate.py` invocation.
