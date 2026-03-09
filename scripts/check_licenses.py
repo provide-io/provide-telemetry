@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Check that installed runtime and optional dependencies use permissive licenses.
@@ -12,7 +12,6 @@ explicitly excluded because they are never distributed with the package.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -41,18 +40,6 @@ ALLOWED_LICENSES: frozenset[str] = frozenset(
     }
 )
 
-ALLOWED_LICENSE_TOKENS: frozenset[str] = frozenset(
-    {
-        "Apache-2.0",
-        "BSD-2-Clause",
-        "BSD-3-Clause",
-        "MIT",
-        "ISC",
-        "PSF-2.0",
-        "MPL-2.0",
-    }
-)
-
 # Dev-only tools that are never distributed — copyleft is acceptable here.
 DEV_ONLY_SKIP: frozenset[str] = frozenset(
     {
@@ -61,9 +48,6 @@ DEV_ONLY_SKIP: frozenset[str] = frozenset(
         "reuse",  # GPLv3+ (SPDX compliance tool)
         "docutils",  # Mixed: BSD/GPL/Public Domain (GPL clause applies only to
         # the command-line interface, not the library; kept as dev dep)
-        "python-dateutil",  # Apache-2.0 + BSD dual licence reported with semicolon
-        # separator that the pip-licenses parser emits as one token; dev-only
-        # transitive dep, never distributed with the library.
     }
 )
 
@@ -81,20 +65,6 @@ def _get_installed_licenses() -> list[dict[str, str]]:
     return json.loads(result.stdout)  # type: ignore[no-any-return]
 
 
-def _license_allowed(license_str: str) -> bool:
-    normalized = " ".join(license_str.strip().split())
-    if normalized in ALLOWED_LICENSES or normalized in ALLOWED_LICENSE_TOKENS:
-        return True
-
-    if " OR " not in normalized and " AND " not in normalized:
-        return False
-
-    tokens = [tok.strip() for tok in re.split(r"\s+(?:OR|AND)\s+", normalized) if tok.strip()]
-    if not tokens:
-        return False
-    return all(token in ALLOWED_LICENSE_TOKENS for token in tokens)
-
-
 def main() -> int:
     packages = _get_installed_licenses()
     violations: list[str] = []
@@ -106,7 +76,7 @@ def main() -> int:
         if name in DEV_ONLY_SKIP:
             skipped.append(name)
             continue
-        if not _license_allowed(license_str):
+        if license_str not in ALLOWED_LICENSES:
             violations.append(f"  {name} {pkg['Version']}: {license_str!r}")
 
     if violations:

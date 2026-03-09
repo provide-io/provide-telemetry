@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ _DEFAULT_EXCLUDE_PARTS = {
     "build",
     "dist",
 }
-_SEG = r"[a-z][a-z0-9_]*"
-_EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG})*$")
+_EVENT_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 _LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "trace"}
 
 
@@ -70,7 +69,7 @@ def find_event_literal_violations(roots: Iterable[Path], exclude_parts: set[str]
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate telemetry event-name string literals in log calls use valid segment format."
+        description="Validate telemetry event-name string literals in log calls use domain.action.status format."
     )
     parser.add_argument(
         "--roots",
@@ -91,7 +90,7 @@ def main() -> int:
     exclude_parts.update(args.exclude_part)
     violations = find_event_literal_violations(roots, exclude_parts)
     if not violations:
-        print("Event literal check passed: all scanned log event literals use valid segment format.")
+        print("Event literal check passed: all scanned log event literals match domain.action.status.")
         return 0
 
     print(f"Event literal check failed: {len(violations)} invalid literal(s).")
