@@ -28,7 +28,7 @@ Environment:
 
 ```bash
 export OPENOBSERVE_URL=http://localhost:5080/api/default
-export OPENOBSERVE_USER=tim@provide.io
+export OPENOBSERVE_USER=user@example.com
 export OPENOBSERVE_PASSWORD=password
 ```
 

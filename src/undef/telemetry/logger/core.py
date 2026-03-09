@@ -70,6 +70,14 @@ def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
         return None
 
 
+def _load_instrumentation_logging_handler() -> type[logging.Handler] | None:
+    try:
+        handler_mod = importlib.import_module("opentelemetry.instrumentation.logging.handler")
+        return handler_mod.LoggingHandler
+    except ImportError:
+        return None
+
+
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
     global _otel_log_provider
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]  # pragma: no mutate
@@ -88,7 +96,17 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     exporter = otlp_exporter_cls(endpoint=config.logging.otlp_endpoint, headers=config.logging.otlp_headers)
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
-    handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
+    instrumentation_handler_cls = _load_instrumentation_logging_handler()
+    if instrumentation_handler_cls is not None:
+        handlers.append(
+            instrumentation_handler_cls(
+                level=level,
+                logger_provider=provider,
+                log_code_attributes=config.logging.log_code_attributes,
+            )
+        )
+    else:
+        handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
     _otel_log_provider = provider
     return handlers
 

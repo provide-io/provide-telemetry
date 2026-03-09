@@ -48,6 +48,7 @@ uv run pytest -m otel -q
 - `UNDEF_LOG_FORMAT`
 - `UNDEF_TRACE_ENABLED`
 - `UNDEF_METRICS_ENABLED`
+- `UNDEF_LOG_CODE_ATTRIBUTES`
 - `OTEL_EXPORTER_OTLP_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
@@ -71,7 +72,7 @@ uv sync --group dev --extra otel
 uv run python scripts/run_pytest_gate.py -m otel -q
 # Optional full E2E against live OpenObserve
 export OPENOBSERVE_URL=http://localhost:5080/api/default
-export OPENOBSERVE_USER=tim@provide.io
+export OPENOBSERVE_USER=user@example.com
 export OPENOBSERVE_PASSWORD=password
 uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Property + mutation quality gates

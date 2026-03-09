@@ -22,6 +22,7 @@ class LoggingConfig(BaseModel):
     sanitize: bool = True
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = Field(default_factory=dict)
+    log_code_attributes: bool = False
 
     @field_validator("level")
     @classmethod
@@ -89,6 +90,7 @@ class TelemetryConfig(BaseModel):
                 include_timestamp=_parse_bool(data.get("UNDEF_LOG_INCLUDE_TIMESTAMP"), True),
                 include_caller=_parse_bool(data.get("UNDEF_LOG_INCLUDE_CALLER"), True),
                 sanitize=_parse_bool(data.get("UNDEF_LOG_SANITIZE"), True),
+                log_code_attributes=_parse_bool(data.get("UNDEF_LOG_CODE_ATTRIBUTES"), False),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
