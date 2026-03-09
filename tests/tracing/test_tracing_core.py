@@ -202,7 +202,7 @@ def test_trace_decorator_span_name_resolution(monkeypatch: pytest.MonkeyPatch) -
         def __enter__(self) -> None:
             return None
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
             return None
 
     class _Tracer:
@@ -234,7 +234,7 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
         def __enter__(self) -> None:
             return None
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
             return None
 
     class _Tracer:

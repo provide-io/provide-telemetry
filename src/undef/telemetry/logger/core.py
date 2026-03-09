@@ -11,7 +11,8 @@ import importlib
 import logging
 import sys
 import threading
-from typing import Any
+import warnings
+from typing import Any, Protocol, cast
 
 import structlog
 
@@ -50,6 +51,16 @@ def _has_otel_logs() -> bool:
         return False
 
 
+class _InstrumentationLoggingHandlerFactory(Protocol):
+    def __call__(
+        self,
+        level: int,
+        logger_provider: Any | None,
+        log_code_attributes: bool,
+        **kwargs: Any,
+    ) -> logging.Handler: ...
+
+
 def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
     if not _has_otel_logs():
         return None
@@ -70,10 +81,13 @@ def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
         return None
 
 
-def _load_instrumentation_logging_handler() -> type[logging.Handler] | None:
+def _load_instrumentation_logging_handler() -> _InstrumentationLoggingHandlerFactory | None:
     try:
-        handler_mod = importlib.import_module("opentelemetry.instrumentation.logging.handler")
-        return handler_mod.LoggingHandler
+        handler_mod: Any = importlib.import_module("opentelemetry.instrumentation.logging.handler")
+        handler_cls: Any | None = getattr(handler_mod, "LoggingHandler", None)
+        if handler_cls is None:
+            return None
+        return cast(_InstrumentationLoggingHandlerFactory, handler_cls)  # pragma: no cover # pragma: no mutate
     except ImportError:
         return None
 
@@ -106,7 +120,9 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
             )
         )
     else:
-        handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
     _otel_log_provider = provider
     return handlers
 

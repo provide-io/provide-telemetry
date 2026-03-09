@@ -41,7 +41,7 @@ class _NoopSpan(AbstractContextManager["_NoopSpan"]):
         set_trace_context(self.trace_id, self.span_id)
         return self
 
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         set_trace_context(None, None)
 
 

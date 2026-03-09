@@ -21,6 +21,12 @@ BAD_STAT_KEYS: Final[tuple[str, ...]] = (
     "check_was_interrupted_by_user",
 )
 
+CONFIG_FILES: Final[tuple[str, ...]] = (
+    "pyproject.toml",
+    ".pytest.ini",
+    "pytest.ini",
+)
+
 
 def _uv_mutmut_cmd(python_version: str | None, *args: str) -> list[str]:
     base = ["uv", "run"]
@@ -39,9 +45,19 @@ def _mutmut_env() -> dict[str, str]:
 
 def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(cmd))
-    completed = subprocess.run(cmd, check=False, env=env)  # noqa: S603
+    completed = subprocess.run(cmd, check=False, env=env)
     if completed.returncode != 0:
         raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}")
+
+
+def _seed_mutants_config() -> None:
+    mutants = Path("mutants")
+    mutants.mkdir(parents=True, exist_ok=True)
+    for config_name in CONFIG_FILES:
+        src = Path(config_name)
+        if src.exists():
+            dst = mutants / config_name
+            shutil.copy2(src, dst)
 
 
 def _half_cpu_count() -> int:
@@ -80,8 +96,10 @@ def run_mutation_gate(
     mutation_env = _mutmut_env()
 
     for attempt in range(1, attempts + 1):
-        if Path("mutants").exists():
-            shutil.rmtree("mutants")
+        mutants_dir = Path("mutants")
+        if mutants_dir.exists():
+            shutil.rmtree(mutants_dir)
+        _seed_mutants_config()
 
         children = max_children if attempt == 1 else 1
         print(f"Running mutation attempt {attempt}/{attempts} with max-children={children}")
