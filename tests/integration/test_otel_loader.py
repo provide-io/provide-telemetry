@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -10,9 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from provide.telemetry import _otel
-
-pytestmark = pytest.mark.otel
+from undef.telemetry import _otel
 
 
 def test_has_otel_handles_import_error(monkeypatch: pytest.MonkeyPatch) -> None:

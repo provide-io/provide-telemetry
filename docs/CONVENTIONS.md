@@ -2,12 +2,12 @@
 
 ## Event Naming
 
-Use: `domain.action.status`
+Use: `domain.action.status` (exactly 3 segments)
 
 Rules:
 
 - lowercase only
-- dot-separated segments
+- exactly 3 dot-separated segments
 - underscores allowed inside segments
 
 Examples:
@@ -15,6 +15,30 @@ Examples:
 - `auth.login.success`
 - `matchmaking.queue.joined`
 - `inventory.item.removed`
+
+Use `undef.telemetry.event_name(domain, action, status)` when event names are composed dynamically.
+
+### `event_name` Cookbook
+
+Recommended:
+
+- Fixed event:
+  - `log.info("auth.login.success", user_id=user_id)`
+- Dynamic status:
+  - `log.info(event_name("auth", "login", "failed"), reason="bad_password")`
+- Dynamic action from known enum/constant set:
+  - `log.info(event_name("ws", action, "received"), size=len(payload))`
+- Middleware/instrumentation composition:
+  - `log.info(event_name("http", "request", "started"), method=method, path=path)`
+
+Avoid:
+
+- 4+ segment names:
+  - `auth.login.password.failed`
+- Free-form strings as segments:
+  - `event_name("auth", user_input, "success")`
+- Encoding details in event name instead of attributes:
+  - prefer `event_name("auth", "login", "failed")` with `reason="token_expired"`
 
 ## Required Context Keys
 
