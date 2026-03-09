@@ -1,0 +1,48 @@
+version = 1
+
+[[annotations]]
+path = [
+  "README.md",
+  "docs/**",
+  "examples/**",
+  ".github/workflows/**",
+  ".pre-commit-config.yaml",
+  ".actrc",
+  ".gitignore",
+  "pyproject.toml",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  "LICENSES/**",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  "src/undef/telemetry/py.typed",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  ".venv/**",
+  ".hypothesis/**",
+  ".mypy_cache/**",
+  ".pytest_cache/**",
+  ".ruff_cache/**",
+  ".coverage",
+  "**/__pycache__/**",
+  "*.pyc",
+  "build/**",
+  "mutants/**",
+  "src/*.egg-info/**",
+  "dist/**",
+  "uv.lock",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-License-Identifier = "Apache-2.0"
