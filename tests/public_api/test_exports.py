@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
+from __future__ import annotations
+
+import importlib
+import importlib.metadata as metadata
+import re
+
+import pytest
+
+import undef.telemetry as t
+
+
+def test_public_api_exports() -> None:
+    assert callable(t.setup_telemetry)
+    assert callable(t.get_logger)
+    assert callable(t.counter)
+    assert callable(t.gauge)
+    assert callable(t.histogram)
+    assert callable(t.trace)
+    assert hasattr(t, "TelemetryMiddleware")
+    assert callable(t.shutdown_telemetry)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", t.__version__) is not None
+
+
+def test_public_api_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(_: str) -> str:
+        raise metadata.PackageNotFoundError
+
+    monkeypatch.setattr(metadata, "version", _raise)
+    module = importlib.reload(t)
+    assert module.__version__ == "0.0.0"
+    importlib.reload(module)
+
+
+def test_public_api_version_type_error_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(_: str) -> str:
+        raise TypeError("bad metadata payload")
+
+    monkeypatch.setattr(metadata, "version", _raise)
+    module = importlib.reload(t)
+    assert module.__version__ == "0.0.0"
+    importlib.reload(module)
