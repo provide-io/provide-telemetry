@@ -5,99 +5,56 @@ SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 
 ## Operator Checklist
 
-1. Use the real `undef-telemetry` git checkout (must include `.git`).
-2. Apply/sync these file changes into that checkout.
-3. Run:
-   - `uv sync --group dev`
-   - `pre-commit run --all-files`
-   - `uv run pytest`
-   - `uv sync --group dev --extra otel && uv run pytest -m otel --no-cov -q`
-   - `OPENOBSERVE_URL=http://localhost:5080/api/default OPENOBSERVE_USER=user@example.com OPENOBSERVE_PASSWORD=password uv run pytest -m e2e --no-cov -q`
-   - `uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1`
-   - `act -W .github/workflows/ci.yml workflow_dispatch -j quality --container-architecture linux/amd64`
-4. Build/release readiness:
-   - `uv run python -m build`
-   - `uv run twine check dist/*`
-5. Commit and push.
+1. `uv sync --group dev` then rerun `uv sync --group dev --extra otel` before any OTEL-marked jobs.
+2. `pre-commit run --all-files`
+3. `uv run python scripts/run_pytest_gate.py`
+4. `uv run python scripts/run_pytest_gate.py -m otel --no-cov -q`
+5. `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` (requires OpenObserve running and `OPENOBSERVE_*` env vars)
+6. `uv run python scripts/run_pytest_gate.py -k hypothesis --no-cov -q`
+7. `uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov`
+8. `uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1 --min-mutation-score 100`
+9. `act -W .github/workflows/ci.yml workflow_dispatch -j quality --container-architecture linux/amd64 --container-daemon-socket <socket> -P ubuntu-latest=catthehacker/ubuntu:act-latest` (see Known Blockers for the current socket issue).
 
-## Snapshot (March 7, 2026)
+## Snapshot (March 8, 2026)
 
-- Scope: `undef-telemetry` hardening for strict quality/compliance/release workflow.
-- Status: code changes are complete on disk but **not committed** (directory is not a git repo checkout).
-- Python target: 3.11+ only.
+- Working branch: `main` inside the real `undef-telemetry` checkout.
+- Python target: 3.11+ (we tested with 3.13 inside `uv`).
+- OpenObserve backend on `http://localhost:5080` was unreachable (connection refused) during the examples and e2e run.
+- Docker-in-Docker `act` attempt failed for all matrix jobs because mounting `$HOME/.colima/default/docker.sock` triggers `mkdir ... operation not supported`; the exact command we ran is captured in the journal above.
 
 ## What Was Implemented
 
-- Strict pre-commit updates:
-  - Added `max-loc`, `pytest`, and manual `mutation-gate` hooks.
-- CI updates:
-  - Added max LOC check to quality job.
-  - Added dedicated mutation-gate job.
-  - Matrix remains Python 3.11 -> 3.14.
-- Tooling scripts:
-  - `scripts/check_max_loc.py`
-  - `scripts/run_mutation_gate.py`
-  - `scripts/_mutmut_shims/setproctitle.py` (no-op shim used only during mutmut runs)
-  - `scripts/__init__.py`
-- Test structure and stability:
-  - Tests are split by feature directories.
-  - Added `tests/conftest.py` for consistent local imports.
-  - Added/updated tooling tests under `tests/tooling/`.
-  - Added `tooling` marker and excluded tooling tests from mutmut test selection.
-- Docs/runbooks updated:
-  - `README.md`, `docs/OPERATIONS.md`, `docs/RELEASE.md`.
-- Compliance config updated:
-  - `REUSE.toml` annotations expanded for generated/cache paths.
+- Logging : raised coverage and mutation safety around OTel handler wiring: `_load_instrumentation_logging_handler` now uses a `# pragma: no mutate` cast, `_build_handlers` passes the provider to the instrumentation handler, and a new test ensures the fallback path explicitly filters `DeprecationWarning`.
+- Tests : added deterministic assertions around instrumentation handler wiring and warnings; `test_logger_core.py` dropped an unused `SimpleNamespace` import after clean formatting.
+- Tooling/Docs : mutation gate reseeds configs per run, README/docs/OPERATIONS/docs/RELEASE cover Docker-in-Docker `act`, OpenObserve verification, and the tight compliance checklist referenced by the pre-commit hooks.
 
 ## Validation Results (Local)
 
-Passed:
-
-- `uv run ruff format --check .`
-- `uv run ruff check .`
+- `uv sync --group dev`
+- `uv sync --group dev --extra otel`
+- `uv run python scripts/check_max_loc.py --max-lines 500`
+- `uv run python scripts/check_spdx_headers.py`
+- `uv run ruff format --check .` / `uv run ruff check .`
 - `uv run mypy src tests`
 - `uv run ty check src tests`
 - `uv run bandit -r src -ll`
-- `uv run python scripts/check_max_loc.py --max-lines 500`
-- `uv run pytest` (100% coverage)
-- `uv sync --group dev --extra otel && uv run pytest -m otel --no-cov -q`
-- `OPENOBSERVE_URL=http://localhost:5080/api/default OPENOBSERVE_USER=user@example.com OPENOBSERVE_PASSWORD=password uv run pytest -m e2e --no-cov -q`
-- `uv run python -m build`
-- `uv run twine check dist/*`
-- `uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 1 --retries 0 --min-mutation-score 1`
-- `uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 0 --min-mutation-score 1`
-- `uvx reuse lint` passes in a clean copy that excludes runtime artifacts (`.venv`, caches, `mutants`, `dist`, `build`).
+- `uv run codespell`
+- `uv run python scripts/run_pytest_gate.py` (100% coverage, 142 passed, 7 skipped)
+- `uv run python scripts/run_pytest_gate.py -k hypothesis --no-cov -q`
+- `uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov`
+- `uv run python scripts/run_pytest_gate.py -m otel --no-cov -q`
+- `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` *(fails: OpenObserve connection refused; see Known Blockers)*
+- `uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1 --min-mutation-score 100` (mutation_score=100.00, killed=645/645, stats in `mutants/mutmut-cicd-stats.json`)
+- `act -W .github/workflows/ci.yml workflow_dispatch -j quality --container-architecture linux/amd64 --container-daemon-socket $HOME/.colima/default/docker.sock -P ubuntu-latest=catthehacker/ubuntu:act-latest` *(fails: Docker cannot create/mount the socket on macOS; see Known Blockers)*
 
 ## Known Blockers
 
-1. `act` verification is currently blocked in this environment because:
-   - Current directory is not a git checkout (`.git` missing).
-   - Docker daemon is unavailable.
-2. `pre-commit run --all-files` is blocked outside a git repo.
+1. OpenObserve at `http://localhost:5080` returned connection refused, so the example runs and e2e suite cannot reach the backend yet. Start the service or reconfigure the host networking, then rerun the example scripts and `uv run python scripts/run_pytest_gate.py -m e2e` to confirm telemetry hits the UI.
+2. `act`'s Docker-in-Docker jobs cannot start because the host socket `$HOME/.colima/default/docker.sock` is a file that `docker run` tries to `mkdir` before mounting; once the socket is writable/mountable (or a different host socket is provided), rerun the DIND `act` command so the GN matrix passes.
 
-## Next Actions (Required)
+## Next Actions
 
-1. Move/apply this tree into the actual git checkout of `undef-telemetry`.
-2. Commit all changed files.
-3. Re-run in repo context:
-   - `pre-commit run --all-files`
-   - `act -W .github/workflows/ci.yml workflow_dispatch -j quality --container-architecture linux/amd64`
-4. Keep using `scripts/run_mutation_gate.py` (it now injects a no-op `setproctitle` shim via `PYTHONPATH` for mutmut subprocesses to avoid observed segfault behavior).
-
-## Changed Files (High-Level)
-
-- `.pre-commit-config.yaml`
-- `.github/workflows/ci.yml`
-- `README.md`
-- `docs/OPERATIONS.md`
-- `docs/RELEASE.md`
-- `pyproject.toml`
-- `REUSE.toml`
-- `scripts/__init__.py`
-- `scripts/check_max_loc.py`
-- `scripts/run_mutation_gate.py`
-- `scripts/_mutmut_shims/setproctitle.py`
-- `tests/conftest.py`
-- `tests/tooling/test_check_max_loc.py`
-- `tests/tooling/test_run_mutation_gate.py`
-- plus test file relocations into feature directories completed during this implementation cycle.
+1. Run `pre-commit run --all-files` once more to verify all hooks pass inside the checkout; this also executes linting, formatting, and typing gates in lockstep with CI.
+2. After the OpenObserve backend is available, rerun the example scripts (`examples/openobserve/01_emit_all_signals.py` and `02_verify_ingestion.py`) and then the e2e pytest marker so the UI shows the new spans/logs/metrics (use the commands in README and copy the `curl` checks in docs/OPERATIONS for verification).
+3. Once the socket/mount permissions permit reuse of `colima`'s daemon, rerun the Docker-in-Docker `act` quality job with the same `--container-daemon-socket` flag and confirm the matrix (3.11–3.14) finishes clean.
+4. Commit the updated docs/tests/tooling to capture the new quality narrative and mutation gating details; the `mutants/mutmut-cicd-stats.json` file already tracks the 100% kill score for this run.

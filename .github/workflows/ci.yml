@@ -9,7 +9,24 @@ on:
   schedule:
     - cron: "0 7 * * *"
 
+permissions:
+  contents: read
+
 jobs:
+  docs-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - name: Markdown lint + docs accuracy
+        run: uv run python scripts/check_docs_accuracy.py
+      - name: README snippet tests
+        run: uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_docs_accuracy.py --no-cov -q
+
   quality:
     runs-on: ubuntu-latest
     strategy:
@@ -25,11 +42,16 @@ jobs:
       - run: uv sync --group dev
       - run: uv run python scripts/check_max_loc.py --max-lines 500
       - run: uv run python scripts/check_spdx_headers.py
+      - run: uv run python scripts/check_event_literals.py
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy src tests
       - run: uv run ty check src tests
       - run: uv run bandit -r src -ll
+      - run: uv run xenon --max-absolute C --max-modules B --max-average A src/
+      - run: uv run vulture src/ tests/
+      - run: uv run python -m pip_audit --path .
+      - run: uv run python scripts/check_licenses.py
       - run: uv run python scripts/run_pytest_gate.py
 
   mutation-gate:
@@ -41,7 +63,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --group dev
-      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 
   compliance:
     runs-on: ubuntu-latest
@@ -73,6 +95,57 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m otel --no-cov -q
+
+  examples-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra otel
+      - name: Run telemetry examples
+        run: |
+          set -euo pipefail
+          for f in examples/telemetry/*.py; do
+            echo "running $f"
+            uv run --group dev --extra otel python "$f"
+          done
+      - name: Start OpenObserve
+        run: |
+          docker run -d --name openobserve-local \
+            -p 5080:5080 \
+            -e ZO_ROOT_USER_EMAIL='user@example.com' \
+            -e ZO_ROOT_USER_PASSWORD='password' \
+            openobserve/openobserve:latest
+      - name: Wait for OpenObserve health
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5080/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "openobserve failed health check"
+          exit 1
+      - name: Run OpenObserve examples
+        env:
+          OPENOBSERVE_URL: http://127.0.0.1:5080/api/default
+          OPENOBSERVE_USER: user@example.com
+          OPENOBSERVE_PASSWORD: password
+        run: |
+          set -euo pipefail
+          for f in examples/openobserve/*.py; do
+            echo "running $f"
+            uv run --group dev --extra otel python "$f"
+          done
+      - name: OpenObserve logs
+        if: always()
+        run: docker logs openobserve-local || true
+      - name: Stop OpenObserve
+        if: always()
+        run: docker rm -f openobserve-local || true
 
   release-readiness:
     runs-on: ubuntu-latest
@@ -145,3 +218,15 @@ jobs:
             exit 0
           fi
           uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+
+  performance-smoke:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra otel
+      - run: uv run python scripts/run_performance_smoke.py --iterations 300000
