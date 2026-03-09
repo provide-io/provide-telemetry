@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
@@ -22,7 +21,13 @@ from undef.telemetry.logger.processors import (
     merge_runtime_context,
     sanitize_sensitive_fields,
 )
+from undef.telemetry.pii import reset_pii_rules_for_tests
 from undef.telemetry.schema.events import EventSchemaError
+
+
+@pytest.fixture(autouse=True)
+def _reset_pii_rules() -> None:
+    reset_pii_rules_for_tests()
 
 
 def test_get_level() -> None:
@@ -66,11 +71,22 @@ def test_enforce_schema_processor() -> None:
 
 
 def test_enforce_required_keys_processor() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id"})
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
+            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id",
+        }
+    )
     processor = enforce_event_schema(cfg)
     processor(None, "info", {"event": "a.b.c", "request_id": "x"})
     with pytest.raises(EventSchemaError):
         processor(None, "info", {"event": "a.b.c"})
+
+
+def test_enforce_required_keys_skipped_in_compat_mode() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id"})
+    processor = enforce_event_schema(cfg)
+    processor(None, "info", {"event": "a.b.c"})
 
 
 def test_configure_and_get_logger() -> None:
@@ -255,3 +271,15 @@ def test_shutdown_logging_with_missing_shutdown_attr() -> None:
     core_mod._otel_log_provider = provider
     core_mod.shutdown_logging()
     assert core_mod._otel_log_provider is None
+
+
+def test_build_handlers_returns_console_only_when_exporter_creation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://logs"})
+    monkeypatch.setattr(
+        core_mod,
+        "_load_otel_logs_components",
+        lambda: (Mock(), Mock(), Mock(), Mock(), Mock()),
+    )
+    monkeypatch.setattr(core_mod, "run_with_resilience", lambda _signal, _op: None)
+    handlers = core_mod._build_handlers(cfg, logging.INFO)
+    assert len(handlers) == 1

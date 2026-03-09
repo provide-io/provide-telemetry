@@ -6,12 +6,15 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
 
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.metrics import api as api_mod
 from undef.telemetry.metrics import counter, gauge, histogram
+from undef.telemetry.metrics import fallback as fallback_mod
 from undef.telemetry.metrics import instruments as instruments_mod
 from undef.telemetry.metrics import provider as provider_mod
 from undef.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics, shutdown_metrics
@@ -105,7 +108,7 @@ def test_metric_factory_calls_expected_meter_methods() -> None:
 
 
 def test_metric_wrapper_no_meter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(instruments_mod, "get_meter", lambda: None)
+    monkeypatch.setattr(api_mod, "get_meter", lambda: None)
     assert instruments_mod.counter("c")._otel_counter is None
     assert instruments_mod.gauge("g")._otel_gauge is None
     assert instruments_mod.histogram("h")._otel_histogram is None
@@ -227,6 +230,25 @@ def test_setup_metrics_with_only_one_otel_dependency_available(monkeypatch: pyte
     assert provider_mod._meter is None
 
 
+def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_meter_for_test(None)
+    mock_otel = SimpleNamespace(set_meter_provider=Mock(), get_meter=Mock(return_value="meter"))
+    provider_cls = Mock(return_value="provider")
+    resource_cls = SimpleNamespace(create=Mock(return_value="res"))
+    reader_cls = Mock(return_value="reader")
+    exporter_cls = Mock(return_value="exporter")
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
+    monkeypatch.setattr(
+        provider_mod,
+        "_load_otel_metrics_components",
+        lambda: (provider_cls, resource_cls, reader_cls, exporter_cls),
+    )
+    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _signal, _op: None)
+    setup_metrics(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"}))
+    provider_cls.assert_called_once_with(resource="res", metric_readers=[])
+
+
 def test_shutdown_metrics_calls_provider_shutdown() -> None:
     provider = Mock()
     provider_mod._meter_provider = provider
@@ -295,3 +317,129 @@ def test_metric_exception_fallback_preserves_name() -> None:
     assert counter("c").name == "c"
     assert gauge("g").name == "g"
     assert histogram("h").name == "h"
+
+
+def test_metric_sampling_and_backpressure_drop_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_meter_for_test(None)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: False)
+    c = counter("c")
+    c.add(5)
+    assert c.value == 0
+
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.try_acquire", lambda _signal: None)
+    g = gauge("g")
+    g.add(3)
+    assert g.value == 0
+    h = histogram("h")
+    h.record(1.0)
+    assert h.records == []
+
+
+def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Counter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        def add(self, *args: object, **kwargs: object) -> None:
+            self.calls.append((args, kwargs))
+            if "exemplar" in kwargs:
+                raise TypeError("unsupported")
+
+    class _Histogram:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        def record(self, *args: object, **kwargs: object) -> None:
+            self.calls.append((args, kwargs))
+            if "exemplar" in kwargs:
+                raise TypeError("unsupported")
+
+    counter_impl = _Counter()
+    hist_impl = _Histogram()
+    c = instruments_mod.Counter("ctr", counter_impl)
+    h = instruments_mod.Histogram("hist", hist_impl)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.try_acquire",
+        lambda _signal: SimpleNamespace(signal="metrics", token=1),
+    )
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.run_with_resilience", lambda _signal, fn: fn())
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.get_trace_context",
+        lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
+    )
+    c.add(1, {"user_id": "u1"})
+    h.record(1.0, {"user_id": "u2"})
+    assert len(counter_impl.calls) == 2
+    assert len(hist_impl.calls) == 2
+
+
+def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Counter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        def add(self, *args: object, **kwargs: object) -> None:
+            self.calls.append((args, kwargs))
+
+    class _Histogram:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        def record(self, *args: object, **kwargs: object) -> None:
+            self.calls.append((args, kwargs))
+
+    counter_impl = _Counter()
+    hist_impl = _Histogram()
+    c = instruments_mod.Counter("ctr", counter_impl)
+    h = instruments_mod.Histogram("hist", hist_impl)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.try_acquire",
+        lambda _signal: SimpleNamespace(signal="metrics", token=1),
+    )
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.run_with_resilience", lambda _signal, fn: fn())
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.get_trace_context",
+        lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
+    )
+    c.add(1)
+    h.record(1.0)
+    counter_kwargs = cast(dict[str, Any], counter_impl.calls[0][1])
+    hist_kwargs = cast(dict[str, Any], hist_impl.calls[0][1])
+    assert cast(dict[str, str], counter_kwargs["exemplar"])["trace_id"] == "a" * 32
+    assert cast(dict[str, str], hist_kwargs["exemplar"])["span_id"] == "b" * 16
+
+
+def test_metric_exemplar_empty_context_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.get_trace_context", lambda: {"trace_id": None, "span_id": None}
+    )
+    assert fallback_mod._exemplar() == {}
+
+
+def test_metric_early_return_branches_for_sampling_and_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, name: name != "no-sample")
+    monkeypatch.setattr(
+        "undef.telemetry.metrics.fallback.try_acquire",
+        lambda _signal: None,
+    )
+
+    c = instruments_mod.Counter("no-sample")
+    c.add(1)
+    assert c.value == 0
+
+    g = instruments_mod.Gauge("no-sample")
+    g.add(2)
+    assert g.value == 0
+
+    h = instruments_mod.Histogram("no-sample")
+    h.record(3.0)
+    assert h.records == []
+
+    c2 = instruments_mod.Counter("queue-none")
+    c2.add(1)
+    assert c2.value == 0

@@ -2,6 +2,18 @@
 
 Unified telemetry package for the Undef ecosystem.
 
+## Install
+
+```bash
+pip install undef-telemetry
+```
+
+Optional extras:
+
+```bash
+pip install "undef-telemetry[otel]"
+```
+
 ## API
 
 ```python
@@ -25,19 +37,6 @@ log.info("app.start.ok", request_id="req-1")
 shutdown_telemetry()
 ```
 
-## Async Safety
-
-The library uses `contextvars` for runtime context propagation and lock-protected setup for idempotent initialization.
-
-## OpenTelemetry Extras Validation
-
-Install with OTel extras and run OTel-marked tests:
-
-```bash
-uv sync --group dev --extra otel
-uv run pytest -m otel -q
-```
-
 ## Environment Variables
 
 - `UNDEF_TELEMETRY_SERVICE_NAME`
@@ -54,60 +53,59 @@ uv run pytest -m otel -q
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
 
-## Quality
+## Event Naming Rule
+
+Event names are strict: `domain.action.status` with exactly 3 segments.
+If you build names dynamically, use `undef.telemetry.event_name(domain, action, status)`.
+
+```python
+from undef.telemetry import event_name, get_logger
+
+log = get_logger(__name__)
+log.info(event_name("auth", "login", "success"), user_id="u-123")
+log.info(event_name("auth", "login", "failed"), reason="bad_password")
+```
+
+## OpenObserve Quick Verification
 
 ```bash
-uv sync --group dev
-uvx reuse lint
-uv run codespell
-uv run python scripts/check_max_loc.py --max-lines 500
-uv run python scripts/check_spdx_headers.py
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src tests
-uv run ty check src tests
-uv run bandit -r src -ll
-uv run python scripts/run_pytest_gate.py
-uv sync --group dev --extra otel
-uv run python scripts/run_pytest_gate.py -m otel -q
-# Optional full E2E against live OpenObserve
 export OPENOBSERVE_URL=http://localhost:5080/api/default
 export OPENOBSERVE_USER=user@example.com
 export OPENOBSERVE_PASSWORD=password
-uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
-# Property + mutation quality gates
-uv run python scripts/run_pytest_gate.py -k hypothesis -q --no-cov
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+export OPENOBSERVE_REQUIRED_SIGNALS=logs
+uv run --group dev --extra otel python examples/openobserve/01_emit_all_signals.py
+uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.py
 ```
 
-> Marker-specific runs (e.g., `-m otel`, `-m e2e`, `-k hypothesis`) already pass `--no-cov`; the strict 100% coverage gate only applies to the baseline `uv run python scripts/run_pytest_gate.py` invocation.
+Set `OPENOBSERVE_REQUIRED_SIGNALS=logs,metrics,traces` when your runtime has OTel extras and you want hard all-signal verification.
 
-`run_mutation_gate.py` automatically injects a local `setproctitle` compatibility shim for mutmut subprocesses.
+Script references:
 
-## Python SPDX Header Convention
+- [Emit all signals example](https://github.com/undef-games/undef-telemetry/blob/main/examples/openobserve/01_emit_all_signals.py)
+- [Verify ingestion example](https://github.com/undef-games/undef-telemetry/blob/main/examples/openobserve/02_verify_ingestion.py)
 
-Every Python file uses this exact first-block structure:
+## Quality Guarantees
 
-```python
-#!/usr/bin/env python3  # optional
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
-# SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
-#
-```
+- Baseline test gate runs at `100%` branch coverage (`--cov-branch`).
+- Mutation gate enforces `--min-mutation-score 100`.
+- CI validates linting, typing, security, compliance, examples, and integration slices.
+- Async-safe default exporter policy keeps retries/backoff at zero; non-zero async retry behavior is opt-in via `UNDEF_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`.
 
-Normalization and enforcement:
+## Documentation Ownership
 
-```bash
-uv run python scripts/normalize_spdx_headers.py
-uv run python scripts/check_spdx_headers.py
-```
+- README: onboarding and first successful local/backend verification.
+- Operations: full CQ matrix, troubleshooting, and environment operations.
+- Conventions: event/schema rules and naming standards.
+- Release: packaging/tagging/publishing workflow.
 
 ## Docs
 
-- [Operations Runbook](docs/OPERATIONS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Telemetry Conventions](docs/CONVENTIONS.md)
-- [Compliance Notes](docs/COMPLIANCE.md)
-- [Release Runbook](docs/RELEASE.md)
-- [Examples](examples/README.md)
+- [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md)
+- [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md)
+- [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md)
+- [Telemetry Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md)
+- [Compliance Notes](https://github.com/undef-games/undef-telemetry/blob/main/docs/COMPLIANCE.md)
+- [Release Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/RELEASE.md)
+- [Examples](https://github.com/undef-games/undef-telemetry/blob/main/examples/README.md)
+- [Main CI Workflow](https://github.com/undef-games/undef-telemetry/blob/main/.github/workflows/ci.yml)
+- [Release Workflow](https://github.com/undef-games/undef-telemetry/blob/main/.github/workflows/release.yml)

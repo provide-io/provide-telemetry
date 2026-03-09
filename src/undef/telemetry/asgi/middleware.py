@@ -7,11 +7,16 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from undef.telemetry.logger.context import bind_context, clear_context
+from undef.telemetry.logger.core import get_logger
+from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
+from undef.telemetry.schema.events import event_name
+from undef.telemetry.slo import record_red_metrics
 
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
@@ -19,8 +24,10 @@ Send = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class TelemetryMiddleware:
-    def __init__(self, app: Callable[[Scope, Receive, Send], Awaitable[None]]) -> None:
+    def __init__(self, app: Callable[[Scope, Receive, Send], Awaitable[None]], *, auto_slo: bool = False) -> None:
         self.app = app
+        self.auto_slo = auto_slo
+        self._logger = get_logger("undef.asgi") if auto_slo else None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") not in {"http", "websocket"}:
@@ -32,9 +39,43 @@ class TelemetryMiddleware:
         bind_context(request_id=request_id)
         if session_id is not None:
             bind_context(session_id=session_id)
+        bind_propagation_context(extract_w3c_context(scope))
+        status_code = 500
+        started = time.perf_counter()
+
+        async def _wrapped_send(message: dict[str, Any]) -> None:
+            nonlocal status_code
+            if message.get("type") == "http.response.start":
+                status = message.get("status")
+                if isinstance(status, int):
+                    status_code = status
+            elif message.get("type") == "websocket.accept":
+                status_code = 101
+            elif message.get("type") == "websocket.close":
+                code = message.get("code")
+                if isinstance(code, int):
+                    status_code = code
+            await send(message)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
+        except Exception as exc:
+            if self.auto_slo and self._logger is not None:
+                scope_type = str(scope.get("type", "http"))
+                self._logger.error(
+                    event_name(scope_type, "request", "unhandled_exception"),
+                    exc_info=True,
+                    exc_name=exc.__class__.__name__,
+                    path=str(scope.get("path", "unknown")),
+                )
+            raise
         finally:
+            if self.auto_slo:
+                duration_ms = (time.perf_counter() - started) * 1000.0
+                route = str(scope.get("path", "unknown"))
+                method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
+                record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)
+            clear_propagation_context()
             clear_context()
 
 

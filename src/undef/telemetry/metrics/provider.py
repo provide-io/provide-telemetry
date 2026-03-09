@@ -7,19 +7,16 @@
 
 from __future__ import annotations
 
-import importlib
 import threading
 from typing import Any
 
+from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.resilience import run_with_resilience
 
 
 def _has_otel_metrics() -> bool:
-    try:
-        importlib.import_module("opentelemetry")
-        return True
-    except ImportError:
-        return False
+    return _otel.has_otel()
 
 
 _HAS_OTEL_METRICS = _has_otel_metrics()
@@ -31,28 +28,13 @@ _meter_lock = threading.Lock()
 def _load_otel_metrics_api() -> Any | None:
     if not _HAS_OTEL_METRICS:
         return None
-    try:
-        return importlib.import_module("opentelemetry.metrics")
-    except ImportError:
-        return None
+    return _otel.load_otel_metrics_api()
 
 
 def _load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
     if not _HAS_OTEL_METRICS:
         return None
-    try:
-        sdk_metrics_mod = importlib.import_module("opentelemetry.sdk.metrics")
-        resources_mod = importlib.import_module("opentelemetry.sdk.resources")
-        export_mod = importlib.import_module("opentelemetry.sdk.metrics.export")
-        otlp_mod = importlib.import_module("opentelemetry.exporter.otlp.proto.http.metric_exporter")
-        return (
-            sdk_metrics_mod.MeterProvider,
-            resources_mod.Resource,
-            export_mod.PeriodicExportingMetricReader,
-            otlp_mod.OTLPMetricExporter,
-        )
-    except ImportError:
-        return None
+    return _otel.load_otel_metrics_components()
 
 
 def setup_metrics(config: TelemetryConfig) -> None:
@@ -72,8 +54,12 @@ def setup_metrics(config: TelemetryConfig) -> None:
         provider_cls, resource_cls, reader_cls, exporter_cls = components
         readers: list[Any] = []
         if config.metrics.otlp_endpoint:
-            exporter = exporter_cls(endpoint=config.metrics.otlp_endpoint, headers=config.metrics.otlp_headers)
-            readers.append(reader_cls(exporter))
+            exporter = run_with_resilience(
+                "metrics",
+                lambda: exporter_cls(endpoint=config.metrics.otlp_endpoint, headers=config.metrics.otlp_headers),
+            )
+            if exporter is not None:
+                readers.append(reader_cls(exporter))
 
         resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
         provider = provider_cls(resource=resource, metric_readers=readers)

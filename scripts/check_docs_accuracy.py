@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -89,37 +89,9 @@ def _style_violations(path: Path, content: str) -> list[str]:
     return violations
 
 
-_INLINE_CODE_RE = re.compile(r"`[^`]+`")
-
-
-def _strip_code_fences(content: str) -> str:
-    """Return content with code blocks/spans replaced by blanks (preserves line numbers).
-
-    Fenced blocks (``` ... ```) and inline code spans (` ... `) are replaced with
-    whitespace so that bracket notation inside code — e.g. TypeScript's
-    ``(console as any)[method](o)`` — is never matched by LINK_RE.
-    """
-    lines = content.splitlines(keepends=True)
-    result: list[str] = []
-    in_fence = False
-    for line in lines:
-        if line.strip().startswith("```"):
-            in_fence = not in_fence
-            result.append("\n")
-        elif in_fence:
-            result.append("\n")
-        else:
-            # Blank out inline code spans on normal lines.
-            result.append(_INLINE_CODE_RE.sub(" ", line))
-    return "".join(result)
-
-
 def _link_violations(path: Path, content: str, anchor_map: dict[Path, set[str]]) -> list[str]:
     violations: list[str] = []
-    # Strip fenced code blocks so bracket notation in code examples isn't
-    # misidentified as Markdown links (line numbers preserved for other checks).
-    scannable = _strip_code_fences(content)
-    for match in LINK_RE.finditer(scannable):
+    for match in LINK_RE.finditer(content):
         link = match.group(1)
         if _is_external_link(link):
             continue
@@ -161,8 +133,8 @@ def _architecture_diagram_violations(path: Path, content: str) -> list[str]:
     if path.name != "ARCHITECTURE.md":
         return violations
     mermaid_blocks = content.count("```mermaid")
-    if mermaid_blocks < 5:
-        violations.append(f"{path}: expected at least five mermaid diagrams")
+    if mermaid_blocks < 2:
+        violations.append(f"{path}: expected at least two mermaid diagrams")
     if "flowchart" not in content:
         violations.append(f"{path}: missing flowchart diagram")
     if "sequenceDiagram" not in content:

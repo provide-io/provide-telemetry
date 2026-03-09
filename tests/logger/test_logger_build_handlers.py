@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
+from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as core_mod
 
@@ -29,8 +31,7 @@ def test_has_otel_logs_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
     assert core_mod._has_otel_logs() is False
 
 
@@ -39,8 +40,7 @@ def test_has_otel_logs_success(monkeypatch: pytest.MonkeyPatch) -> None:
         assert name == "opentelemetry"
         return object()
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     assert core_mod._has_otel_logs() is True
 
 
@@ -56,8 +56,7 @@ def test_load_otel_logs_components_import_error(monkeypatch: pytest.MonkeyPatch)
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
     assert core_mod._load_otel_logs_components() is None
 
 
@@ -66,8 +65,23 @@ def test_load_instrumentation_logging_handler_import_error(monkeypatch: pytest.M
         _ = name
         raise ImportError
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _raise)
+    monkeypatch.setattr(_otel, "_import_module", _raise)
+    assert core_mod._load_instrumentation_logging_handler() is None
+
+
+def test_load_instrumentation_logging_handler_handles_missing_attr(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeModule:
+        pass
+
+    fake_module = _FakeModule()
+    real_import = _otel._import_module
+
+    def _import(name: str) -> object:
+        if name == "opentelemetry.instrumentation.logging.handler":
+            return fake_module
+        return real_import(name)
+
+    monkeypatch.setattr(_otel, "_import_module", _import)
     assert core_mod._load_instrumentation_logging_handler() is None
 
 
@@ -90,8 +104,7 @@ def test_load_otel_logs_components_success(monkeypatch: pytest.MonkeyPatch) -> N
     def _import(name: str) -> object:
         return mapping[name]
 
-    core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(core_mod_any.importlib, "import_module", _import)
+    monkeypatch.setattr(_otel, "_import_module", _import)
     components = core_mod._load_otel_logs_components()
     assert components == (
         logs_api_mod,
@@ -234,7 +247,14 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     def _set_logger_provider(provider: _Provider) -> None:
         calls["provider"] = provider
 
-    monkeypatch.setattr(core_mod, "_load_instrumentation_logging_handler", lambda: _InstrumentationHandler)
+    real_import = _otel._import_module
+
+    def _import(name: str) -> object:
+        if name == "opentelemetry.instrumentation.logging.handler":
+            return SimpleNamespace(LoggingHandler=_InstrumentationHandler)
+        return real_import(name)
+
+    monkeypatch.setattr(_otel, "_import_module", _import)
     monkeypatch.setattr(
         core_mod,
         "_load_otel_logs_components",
@@ -252,9 +272,89 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     assert isinstance(handlers[1], _InstrumentationHandler)
     assert handlers[1].log_code_attributes is True
     provider = calls["provider"]
+    assert handlers[1].logger_provider is provider
     assert isinstance(provider, _Provider)
     assert provider.resource["service.name"] == "svc"
     assert provider.resource["service.version"] == "1.0.0"
+
+
+def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_TELEMETRY_SERVICE_NAME": "svc",
+            "UNDEF_TELEMETRY_VERSION": "1.0.0",
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
+        }
+    )
+
+    class _Resource:
+        @staticmethod
+        def create(values: dict[str, str]) -> dict[str, str]:
+            return values
+
+    class _Provider:
+        def __init__(self, resource: dict[str, str]) -> None:
+            self.resource = resource
+            self.processors: list[object] = []
+
+        def add_log_record_processor(self, proc: object) -> None:
+            self.processors.append(proc)
+
+    class _Exporter:
+        def __init__(self, endpoint: str, headers: dict[str, str]) -> None:
+            self.endpoint = endpoint
+            self.headers = headers
+
+    class _BatchProcessor:
+        def __init__(self, exporter: object) -> None:
+            self.exporter = exporter
+
+    class _SDKLoggingHandler(logging.Handler):
+        def __init__(self, level: int, logger_provider: _Provider) -> None:
+            super().__init__(level=level)
+            self.logger_provider = logger_provider
+
+    monkeypatch.setattr(
+        core_mod,
+        "_load_otel_logs_components",
+        lambda: (
+            SimpleNamespace(set_logger_provider=lambda _: None),
+            SimpleNamespace(LoggerProvider=_Provider, LoggingHandler=_SDKLoggingHandler),
+            SimpleNamespace(BatchLogRecordProcessor=_BatchProcessor),
+            _Resource,
+            _Exporter,
+        ),
+    )
+    monkeypatch.setattr(core_mod, "_load_instrumentation_logging_handler", lambda: None)
+
+    filter_calls: list[tuple[str, type | None]] = []
+
+    def _capture_filter(action: str, category: type | None = None) -> None:
+        filter_calls.append((action, category))
+
+    monkeypatch.setattr(warnings, "simplefilter", _capture_filter)
+
+    handlers = core_mod._build_handlers(cfg, logging.INFO)
+    assert len(handlers) == 2
+    assert any(call == ("ignore", DeprecationWarning) for call in filter_calls)
+
+
+def test_load_instrumentation_logging_handler_returns_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeHandler(logging.Handler):
+        def __init__(self, level: int, **kwargs: Any) -> None:
+            super().__init__(level=level)
+
+    fake_module = SimpleNamespace(LoggingHandler=_FakeHandler)
+    real_import = _otel._import_module
+
+    def _import(name: str) -> object:
+        if name == "opentelemetry.instrumentation.logging.handler":
+            return fake_module
+        return real_import(name)
+
+    monkeypatch.setattr(_otel, "_import_module", _import)
+    handler_cls = core_mod._load_instrumentation_logging_handler()
+    assert handler_cls is _FakeHandler
 
 
 def test_shutdown_logging_without_provider() -> None:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -11,9 +11,9 @@ import time
 from base64 import b64encode
 from urllib.parse import quote
 
-from provide.telemetry import (
+from undef.telemetry import (
     PIIRule,
-    event,
+    event_name,
     get_health_snapshot,
     get_logger,
     register_cardinality_limit,
@@ -22,7 +22,7 @@ from provide.telemetry import (
     shutdown_telemetry,
     trace,
 )
-from provide.telemetry.config import TelemetryConfig
+from undef.telemetry.config import TelemetryConfig
 
 
 def _require_env(name: str) -> str:
@@ -33,11 +33,11 @@ def _require_env(name: str) -> str:
     return value
 
 
-@trace(event("example", "openobserve", "work"))
+@trace(event_name("example", "openobserve", "work"))
 def _emit(iteration: int) -> None:
-    token_value = os.getenv("PROVIDE_EXAMPLE_TOKEN", "example-token-from-env")
+    token_value = os.getenv("UNDEF_EXAMPLE_TOKEN", "example-token-from-env")
     get_logger("examples.openobserve.hardening").info(
-        event("example", "openobserve", "log"),
+        event_name("example", "openobserve", "log"),
         iteration=iteration,
         user={"email": "ops@example.com", "full_name": "Operator Example"},
         token=token_value,
@@ -52,21 +52,21 @@ def main() -> None:
     auth = f"Basic {b64encode(f'{user}:{password}'.encode()).decode('ascii')}"
     cfg = TelemetryConfig.from_env(
         {
-            "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-hardening-example",
-            "PROVIDE_TELEMETRY_VERSION": "hardening",
-            "PROVIDE_SAMPLING_LOGS_RATE": "1.0",
-            "PROVIDE_SAMPLING_TRACES_RATE": "1.0",
-            "PROVIDE_SAMPLING_METRICS_RATE": "1.0",
-            "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE": "64",
-            "PROVIDE_EXPORTER_LOGS_RETRIES": "1",
-            "PROVIDE_EXPORTER_TRACES_RETRIES": "1",
-            "PROVIDE_EXPORTER_METRICS_RETRIES": "1",
+            "UNDEF_TELEMETRY_SERVICE_NAME": "undef-telemetry-hardening-example",
+            "UNDEF_TELEMETRY_VERSION": "hardening",
+            "UNDEF_SAMPLING_LOGS_RATE": "1.0",
+            "UNDEF_SAMPLING_TRACES_RATE": "1.0",
+            "UNDEF_SAMPLING_METRICS_RATE": "1.0",
+            "UNDEF_BACKPRESSURE_TRACES_MAXSIZE": "64",
+            "UNDEF_EXPORTER_LOGS_RETRIES": "1",
+            "UNDEF_EXPORTER_TRACES_RETRIES": "1",
+            "UNDEF_EXPORTER_METRICS_RETRIES": "1",
             "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={quote(auth, safe='')}",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{base_url}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{base_url}/v1/logs",
-            "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
-            "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
+            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
+            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
         }
     )
 

@@ -11,7 +11,7 @@ from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import context as context_mod
 from undef.telemetry.logger import processors as processors_mod
 from undef.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
-from undef.telemetry.logger.processors import add_standard_fields, enforce_event_schema
+from undef.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
 from undef.telemetry.schema.events import EventSchemaError
 
 
@@ -43,6 +43,27 @@ def test_add_standard_fields_sets_exact_expected_keys() -> None:
     assert "XXversionXX" not in out
 
 
+def test_add_standard_fields_error_taxonomy_when_exc_name_present() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "true"})
+    processor = add_standard_fields(cfg)
+    out = processor(None, "error", {"event": "auth.login.error", "exc_name": "ValueError"})
+    assert out["error_type"] == "internal"
+    assert out["error_name"] == "ValueError"
+
+
+def test_apply_sampling_drop_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: False)
+    out = apply_sampling(None, "info", {"event": "auth.login.success"})
+    assert out == {"event": "telemetry.log.dropped", "dropped_event": "auth.login.success"}
+
+
+def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: True)
+    payload = {"event": "auth.login.success"}
+    out = apply_sampling(None, "info", payload)
+    assert out is payload
+
+
 def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[tuple[str, bool]] = []
     required_calls: list[tuple[dict[str, object], tuple[str, ...]]] = []
@@ -65,7 +86,35 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 
 
 def test_enforce_event_schema_required_keys_error_message() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
+            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id",
+        }
+    )
     processor = enforce_event_schema(cfg)
     with pytest.raises(EventSchemaError, match=r"missing required keys: request_id, session_id"):
         processor(None, "info", {"event": "auth.login.success"})
+
+
+def test_enforce_event_schema_skips_required_keys_in_compat_mode() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
+    processor = enforce_event_schema(cfg)
+    out = processor(None, "info", {"event": "auth.login.success"})
+    assert out["event"] == "auth.login.success"
+
+
+def test_enforce_event_schema_policy_matrix() -> None:
+    compat_default = TelemetryConfig.from_env({})
+    compat_relaxed = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
+    strict = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_SCHEMA": "true"})
+
+    strict_name_compat_default = enforce_event_schema(compat_default)
+    relaxed_name_compat = enforce_event_schema(compat_relaxed)
+    strict_name_strict_schema = enforce_event_schema(strict)
+
+    with pytest.raises(EventSchemaError, match="invalid event name"):
+        strict_name_compat_default(None, "info", {"event": "bad event"})
+    relaxed_name_compat(None, "info", {"event": "bad event"})
+    with pytest.raises(EventSchemaError, match="invalid event name"):
+        strict_name_strict_schema(None, "info", {"event": "bad event"})

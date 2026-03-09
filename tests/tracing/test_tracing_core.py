@@ -8,6 +8,7 @@ from __future__ import annotations
 import inspect
 import warnings
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
@@ -44,7 +45,7 @@ def test_get_tracer_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_api = SimpleNamespace(get_tracer=Mock(return_value="otel-tracer"))
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
-    assert get_tracer("x") == "otel-tracer"
+    assert cast(Any, get_tracer("x")) == "otel-tracer"
     get_tracer()
     mock_api.get_tracer.assert_any_call("undef.telemetry")
     assert None not in [args[0][0] for args in mock_api.get_tracer.call_args_list]
@@ -150,6 +151,27 @@ def test_setup_tracing_with_missing_components(monkeypatch: pytest.MonkeyPatch) 
     provider_mod.setup_tracing(TelemetryConfig())
     assert provider_mod._provider_configured is False
 
+
+def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider_mod._provider_configured = False
+    provider = Mock()
+    mock_otel = SimpleNamespace(set_tracer_provider=Mock())
+    resource_cls = SimpleNamespace(create=Mock(return_value="res"))
+    provider_cls = Mock(return_value=provider)
+    processor_cls = Mock(return_value="processor")
+    exporter_cls = Mock(return_value="exporter")
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_otel)
+    monkeypatch.setattr(
+        provider_mod,
+        "_load_otel_tracing_components",
+        lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
+    )
+    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _signal, _op: None)
+    cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://trace"})
+    provider_mod.setup_tracing(cfg)
+    provider.add_span_processor.assert_not_called()
+
     provider_mod._provider_configured = False
     monkeypatch.setattr(provider_mod, "_load_otel_tracing_components", lambda: (object(), object(), object(), object()))
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: None)
@@ -202,7 +224,7 @@ def test_trace_decorator_span_name_resolution(monkeypatch: pytest.MonkeyPatch) -
         def __enter__(self) -> None:
             return None
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
             return None
 
     class _Tracer:
@@ -234,7 +256,7 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
         def __enter__(self) -> None:
             return None
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
             return None
 
     class _Tracer:
@@ -285,3 +307,70 @@ def test_trace_async_detection_uses_inspect_without_deprecation_warning() -> Non
 
     deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
     assert deprecations == []
+
+
+def test_trace_decorator_sampling_and_backpressure_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: False)
+
+    @trace("sampled.out")
+    def sampled_out() -> int:
+        return 1
+
+    assert sampled_out() == 1
+
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: None)
+
+    @trace("queue.drop")
+    def queue_drop() -> int:
+        return 2
+
+    assert queue_drop() == 2
+
+
+def test_trace_decorator_releases_backpressure_ticket(monkeypatch: pytest.MonkeyPatch) -> None:
+    releases: list[object] = []
+
+    class _Span:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+            return None
+
+    class _Tracer:
+        def start_as_current_span(self, _name: str, **_: object) -> _Span:
+            return _Span()
+
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda ticket: releases.append(ticket))
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
+
+    @trace("ticket.release")
+    def with_ticket() -> int:
+        return 7
+
+    assert with_ticket() == 7
+    assert len(releases) == 1
+
+
+def test_trace_decorator_async_sampling_and_queue_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: False)
+
+    @trace("async.sampled.out")
+    async def sampled_out() -> int:
+        return 11
+
+    assert asyncio.run(sampled_out()) == 11
+
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: None)
+
+    @trace("async.queue.drop")
+    async def queue_drop() -> int:
+        return 12
+
+    assert asyncio.run(queue_drop()) == 12

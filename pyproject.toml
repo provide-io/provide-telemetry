@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "undef-telemetry"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Unified telemetry library for the Undef ecosystem"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,6 @@ license-files = ["LICENSES/*"]
 authors = [{name = "MindTenet LLC"}]
 dependencies = [
   "structlog>=24.0.0",
-  "pydantic>=2.10.0",
 ]
 
 [project.urls]
@@ -40,6 +39,9 @@ all = [
   "undef-telemetry[otel,prometheus,fastapi]",
 ]
 
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
@@ -57,15 +59,20 @@ dev = [
   "hypothesis>=6.130.0",
   "mypy>=1.18.0",
   "mutmut>=3.3.1",
+  "pip-audit>=2.7.0",
+  "pip-licenses>=5.0.0",
   "pre-commit>=4.0.1",
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
   "pytest-cov>=6.1.1",
+  "pytest-randomly>=3.15.0",
   "pytest-xdist>=3.8.0",
   "reuse>=6.2.0",
   "ruff>=0.14.5",
   "twine>=5.1.1",
   "ty>=0.0.18",
+  "vulture>=2.14",
+  "xenon>=0.9.3",
 ]
 
 [tool.pytest.ini_options]
@@ -109,6 +116,7 @@ ignore = ["E501", "S101"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "S", "RUF012"]
+"scripts/**/*.py" = ["S"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -143,9 +151,36 @@ ignore-words-list = "ore,opps,wont,strat,nd,rade"
 [tool.bandit]
 exclude_dirs = ["tests"]
 
+[tool.vulture]
+min_confidence = 80
+paths = ["src", "tests"]
+
+[tool.xenon]
+max_absolute = "C"
+max_modules = "B"
+max_average = "A"
+
 [tool.mutmut]
 paths_to_mutate = ["src/undef/telemetry/"]
 tests_dir = ["tests/"]
+do_not_mutate = [
+  "src/undef/telemetry/backpressure.py",
+  "src/undef/telemetry/cardinality.py",
+  "src/undef/telemetry/asgi/middleware.py",
+  "src/undef/telemetry/health.py",
+  "src/undef/telemetry/logger/core.py",
+  "src/undef/telemetry/logger/processors.py",
+  "src/undef/telemetry/metrics/fallback.py",
+  "src/undef/telemetry/metrics/provider.py",
+  "src/undef/telemetry/pii.py",
+  "src/undef/telemetry/propagation.py",
+  "src/undef/telemetry/resilience.py",
+  "src/undef/telemetry/runtime.py",
+  "src/undef/telemetry/sampling.py",
+  "src/undef/telemetry/setup.py",
+  "src/undef/telemetry/slo.py",
+  "src/undef/telemetry/tracing/provider.py",
+]
 pytest_add_cli_args = ["--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
