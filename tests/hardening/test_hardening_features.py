@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import queue
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -117,6 +120,67 @@ def test_resilience_success_fail_open_and_fail_closed() -> None:
         resilience_mod.run_with_resilience("logs", lambda: (_ for _ in ()).throw(ValueError("hard")))
 
 
+def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
+    resilience_mod.set_exporter_policy(
+        "metrics",
+        resilience_mod.ExporterPolicy(retries=1, timeout_seconds=0.01, backoff_seconds=0.0, fail_open=True),
+    )
+    calls = {"count": 0}
+
+    def _too_slow() -> str:
+        calls["count"] += 1
+        time.sleep(0.05)
+        return "late"
+
+    assert resilience_mod.run_with_resilience("metrics", _too_slow) is None
+    assert calls["count"] == 2
+    assert health_mod.get_health_snapshot().export_failures_metrics == 2
+    assert health_mod.get_health_snapshot().retries_metrics == 1
+
+    resilience_mod.set_exporter_policy(
+        "logs",
+        resilience_mod.ExporterPolicy(retries=0, timeout_seconds=0.01, fail_open=False),
+    )
+    with pytest.raises(TimeoutError, match="operation timed out"):
+        resilience_mod.run_with_resilience("logs", _too_slow)
+
+
+def test_run_attempt_with_timeout_zero_delegates_directly() -> None:
+    assert resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.0) == "ok"
+
+
+def test_run_attempt_with_timeout_invalid_payload_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeQueue:
+        def __init__(self, maxsize: int = 1) -> None:
+            _ = maxsize
+
+        def put(self, item: tuple[bool, object]) -> None:
+            _ = item
+
+        def get_nowait(self) -> tuple[bool, object]:
+            return (False, object())
+
+    class _FakeThread:
+        def __init__(self, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            self._target()
+
+        def join(self, _timeout: float) -> None:
+            return None
+
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(queue, "Queue", _FakeQueue)
+    monkeypatch.setattr(threading, "Thread", _FakeThread)
+
+    with pytest.raises(RuntimeError, match="invalid exception payload"):
+        resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.1)
+
+
 def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
     now = {"value": 1000.0}
     monkeypatch.setattr("time.monotonic", lambda: now["value"])
@@ -201,13 +265,27 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_propagation_extra_header_parsing_branches() -> None:
     ctx = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", "bad-format")]})
-    assert ctx.traceparent == "bad-format"
+    assert ctx.traceparent is None
     ctx2 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", 123)]})
     assert ctx2.traceparent is None
+    malformed_utf8 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", b"\xff")]})
+    assert malformed_utf8.traceparent is None
     invalid_hex = propagation_mod.extract_w3c_context(
         {"headers": [(b"traceparent", b"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-gggggggggggggggg-01")]}
     )
     assert invalid_hex.trace_id is None
+    invalid_version = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")]}
+    )
+    assert invalid_version.trace_id is None
+    invalid_flags = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-zz")]}
+    )
+    assert invalid_flags.trace_id is None
+    zero_ids = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"00-00000000000000000000000000000000-0000000000000000-01")]}
+    )
+    assert zero_ids.trace_id is None
 
 
 def test_health_snapshot_and_unknown_signal_branch() -> None:

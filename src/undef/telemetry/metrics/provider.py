@@ -56,7 +56,11 @@ def setup_metrics(config: TelemetryConfig) -> None:
         if config.metrics.otlp_endpoint:
             exporter = run_with_resilience(
                 "metrics",
-                lambda: exporter_cls(endpoint=config.metrics.otlp_endpoint, headers=config.metrics.otlp_headers),
+                lambda: exporter_cls(
+                    endpoint=config.metrics.otlp_endpoint,
+                    headers=config.metrics.otlp_headers,
+                    timeout=config.exporter.metrics_timeout_seconds,
+                ),
             )
             if exporter is not None:
                 readers.append(reader_cls(exporter))

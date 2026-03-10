@@ -7,6 +7,7 @@ path = [
   "docs/**",
   "examples/**",
   ".github/workflows/**",
+  ".ci/**",
   ".pre-commit-config.yaml",
   ".actrc",
   ".gitignore",
@@ -46,6 +47,9 @@ path = [
   "src/*.egg-info/**",
   "dist/**",
   "uv.lock",
+  "VERSION",
+  ".pymutant-ledger.json",
+  ".pymutant-state/**",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"

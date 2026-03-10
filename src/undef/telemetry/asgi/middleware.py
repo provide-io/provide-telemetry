@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from undef.telemetry.headers import get_header
 from undef.telemetry.logger.context import bind_context, clear_context
 from undef.telemetry.logger.core import get_logger
 from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
@@ -80,7 +81,4 @@ class TelemetryMiddleware:
 
 
 def _extract_header(scope: Scope, key: bytes) -> str | None:
-    for name, value in scope.get("headers", []):
-        if name.lower() == key:
-            return str(value.decode("utf-8"))  # pragma: no mutate
-    return None
+    return get_header(scope, key)

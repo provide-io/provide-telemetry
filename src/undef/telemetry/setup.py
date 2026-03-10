@@ -10,10 +10,13 @@ from __future__ import annotations
 import threading
 
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from undef.telemetry.logger.core import configure_logging, shutdown_logging
+from undef.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
 from undef.telemetry.metrics.provider import setup_metrics, shutdown_metrics
 from undef.telemetry.runtime import apply_runtime_config
 from undef.telemetry.slo import record_red_metrics, record_use_metrics
+from undef.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 from undef.telemetry.tracing.provider import setup_tracing, shutdown_tracing
 
 _lock = threading.Lock()
@@ -40,6 +43,14 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
 def _reset_setup_state_for_tests() -> None:
     global _setup_done
     _setup_done = False
+
+
+def _reset_all_for_tests() -> None:
+    global _setup_done
+    _setup_done = False
+    _reset_logging()
+    _reset_tracing()
+    _reset_metrics(None)
 
 
 def shutdown_telemetry() -> None:

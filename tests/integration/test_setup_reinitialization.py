@@ -13,7 +13,7 @@ import pytest
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as logger_core
 from undef.telemetry.metrics import provider as metrics_provider
-from undef.telemetry.setup import _reset_setup_state_for_tests, setup_telemetry, shutdown_telemetry
+from undef.telemetry.setup import _reset_all_for_tests, setup_telemetry, shutdown_telemetry
 from undef.telemetry.tracing import provider as tracing_provider
 
 pytestmark = pytest.mark.integration
@@ -26,9 +26,10 @@ class _FakeResource:
 
 
 class _FakeLogExporter:
-    def __init__(self, *, endpoint: str, headers: dict[str, str]) -> None:
+    def __init__(self, *, endpoint: str, headers: dict[str, str], timeout: float) -> None:
         self.endpoint = endpoint
         self.headers = headers
+        self.timeout = timeout
 
 
 class _FakeLogRecordProcessor:
@@ -59,9 +60,10 @@ class _FakeLoggingHandler(logging.Handler):
 
 
 class _FakeSpanExporter:
-    def __init__(self, *, endpoint: str, headers: dict[str, str]) -> None:
+    def __init__(self, *, endpoint: str, headers: dict[str, str], timeout: float) -> None:
         self.endpoint = endpoint
         self.headers = headers
+        self.timeout = timeout
 
 
 class _FakeSpanProcessor:
@@ -83,9 +85,10 @@ class _FakeTracerProvider:
 
 
 class _FakeMetricExporter:
-    def __init__(self, *, endpoint: str, headers: dict[str, str]) -> None:
+    def __init__(self, *, endpoint: str, headers: dict[str, str], timeout: float) -> None:
         self.endpoint = endpoint
         self.headers = headers
+        self.timeout = timeout
 
 
 class _FakeMetricReader:
@@ -104,13 +107,7 @@ class _FakeMeterProvider:
 
 
 def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_setup_state_for_tests()
-    tracing_provider._provider_configured = False
-    tracing_provider._provider_ref = None
-    metrics_provider._set_meter_for_test(None)
-    logger_core._configured = False
-    logger_core._active_config = None
-    logger_core._otel_log_provider = None
+    _reset_all_for_tests()
 
     logs_api_mod = SimpleNamespace(set_logger_provider=lambda _provider: None)
     sdk_logs_mod = SimpleNamespace(LoggerProvider=_FakeLogProvider, LoggingHandler=_FakeLoggingHandler)
