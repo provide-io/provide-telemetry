@@ -266,6 +266,31 @@ def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest
     assert calls["count"] == 2
 
 
+def test_lazy_logger_proxies_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, object] = {"trace": None, "bind": None, "info": None}
+
+    class _Resolved:
+        def trace(self, event: str, **kwargs: object) -> None:
+            calls["trace"] = (event, kwargs)
+
+        def bind(self, **kwargs: object) -> str:
+            calls["bind"] = kwargs
+            return "bound-result"
+
+        def info(self, event: str) -> None:
+            calls["info"] = event
+
+    lazy = core_mod._LazyLogger()
+    monkeypatch.setattr(core_mod, "get_logger", lambda _name=None: cast(Any, _Resolved()))
+
+    lazy.trace("trace.event", key="value")
+    assert calls["trace"] == ("trace.event", {"key": "value"})
+    assert lazy.bind(component="svc") == "bound-result"
+    assert calls["bind"] == {"component": "svc"}
+    lazy.info("info.event")
+    assert calls["info"] == "info.event"
+
+
 def test_shutdown_logging_with_missing_shutdown_attr() -> None:
     provider = object()
     core_mod._otel_log_provider = provider
@@ -283,3 +308,25 @@ def test_build_handlers_returns_console_only_when_exporter_creation_fails(monkey
     monkeypatch.setattr(core_mod, "run_with_resilience", lambda _signal, _op: None)
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
+
+
+def test_configure_logging_rebuilds_after_shutdown_even_with_same_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    core_mod._configured = False
+    core_mod._active_config = None
+    core_mod._otel_log_provider = None
+    build_calls = {"count": 0}
+
+    def _build_handlers(_config: TelemetryConfig, _level: int) -> list[logging.Handler]:
+        build_calls["count"] += 1
+        core_mod._otel_log_provider = object()
+        return []
+
+    core_mod_any = cast(Any, core_mod)
+    logging_mod: Any = core_mod_any.logging
+    monkeypatch.setattr(core_mod, "_build_handlers", _build_handlers)
+    monkeypatch.setattr(logging_mod, "basicConfig", lambda **_kwargs: None)
+    cfg = TelemetryConfig.from_env({})
+    configure_logging(cfg)
+    core_mod.shutdown_logging()
+    configure_logging(cfg)
+    assert build_calls["count"] == 2

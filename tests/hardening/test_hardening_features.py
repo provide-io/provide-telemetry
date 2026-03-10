@@ -17,6 +17,7 @@ from undef.telemetry import propagation as propagation_mod
 from undef.telemetry import resilience as resilience_mod
 from undef.telemetry import runtime as runtime_mod
 from undef.telemetry import sampling as sampling_mod
+from undef.telemetry import slo as slo_mod
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.context import clear_context, get_context
 from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
@@ -177,16 +178,25 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
     runtime_mod.apply_runtime_config(cfg)
+    runtime_cfg = runtime_mod.get_runtime_config()
+    assert runtime_cfg.sampling.logs_rate == 0.3
+    runtime_cfg.sampling.logs_rate = 1.0
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
     assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
     assert backpressure_mod.get_queue_policy().logs_maxsize == 5
     assert resilience_mod.get_exporter_policy("logs").retries == 2
+    cfg.sampling.logs_rate = 0.9
+    assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
+    assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
     updated = runtime_mod.update_runtime_config(cfg)
-    assert updated is cfg
+    assert updated is not cfg
+    assert updated.sampling.logs_rate == 0.9
+    assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.9
 
     monkeypatch.setattr("undef.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
     reloaded = runtime_mod.reload_runtime_from_env()
-    assert reloaded is cfg
+    assert reloaded is not cfg
+    assert reloaded.sampling.logs_rate == cfg.sampling.logs_rate
 
 
 def test_propagation_extra_header_parsing_branches() -> None:
@@ -216,12 +226,15 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
 
 
 def test_slo_helpers_and_error_taxonomy() -> None:
+    errors_before = slo_mod._http_errors_total.value
     record_red_metrics("/health", "GET", 200, 12.0)
     record_red_metrics("/health", "GET", 500, 13.0)
+    record_red_metrics("/ws", "WS", 1008, 5.0)
     record_use_metrics("cpu", 42)
     assert classify_error("ValueError") == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
+    assert slo_mod._http_errors_total.value - errors_before == 1
 
 
 @pytest.mark.asyncio

@@ -62,6 +62,9 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 
 - Call `setup_telemetry()` once during process startup.
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
+- `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
+- After `shutdown_telemetry()`, a subsequent `setup_telemetry()` call performs a full reinitialization (including logging providers).
+- `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot, not a caller-owned mutable config reference.
 
 ## Local Health Check
 

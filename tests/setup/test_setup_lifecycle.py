@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from undef.telemetry import setup as setup_mod
@@ -90,7 +93,62 @@ def test_shutdown_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called == {"log": 1, "trace": 1, "metrics": 1}
 
 
+def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_logging", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_metrics", lambda: None)
+    shutdown_telemetry()
+    assert setup_mod._setup_done is False
+
+
 def test_reset_setup_state_sets_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_mod, "_setup_done", True)
     _reset_setup_state_for_tests()
     assert setup_mod._setup_done is False
+
+
+def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_setup_state_for_tests()
+    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    calls = {"runtime": 0, "log": 0, "trace": 0, "metrics": 0}
+    shutdown_started = threading.Event()
+    allow_shutdown_to_continue = threading.Event()
+
+    def _runtime(_cfg: object) -> None:
+        calls["runtime"] += 1
+
+    def _log(_cfg: object) -> None:
+        calls["log"] += 1
+
+    def _trace(_cfg: object) -> None:
+        calls["trace"] += 1
+
+    def _metrics(_cfg: object) -> None:
+        calls["metrics"] += 1
+
+    def _shutdown_log() -> None:
+        shutdown_started.set()
+        assert allow_shutdown_to_continue.wait(timeout=1.0)
+
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", _runtime)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", _log)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", _trace)
+    monkeypatch.setattr("undef.telemetry.setup.setup_metrics", _metrics)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_logging", _shutdown_log)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.shutdown_metrics", lambda: None)
+
+    shutdown_thread = threading.Thread(target=shutdown_telemetry, daemon=True)
+    setup_thread = threading.Thread(target=lambda: setup_telemetry(TelemetryConfig()), daemon=True)
+    shutdown_thread.start()
+    assert shutdown_started.wait(timeout=1.0)
+    setup_thread.start()
+    time.sleep(0.05)
+    # setup_telemetry should still be blocked until shutdown releases the lifecycle lock.
+    assert calls == {"runtime": 0, "log": 0, "trace": 0, "metrics": 0}
+    allow_shutdown_to_continue.set()
+    shutdown_thread.join(timeout=1.0)
+    setup_thread.join(timeout=1.0)
+    assert calls == {"runtime": 1, "log": 1, "trace": 1, "metrics": 1}
+    assert setup_mod._setup_done is True

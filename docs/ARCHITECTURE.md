@@ -40,7 +40,10 @@ flowchart TD
 
 - One telemetry setup per process (`setup_telemetry`) guarded by a lock.
 - Provider initialization is idempotent and lock-protected.
-- `shutdown_telemetry` flushes/stops tracing+metrics providers when configured.
+- `shutdown_telemetry` is serialized with `setup_telemetry` under the same lock to prevent setup/shutdown races.
+- `shutdown_telemetry` marks setup state as not-ready before provider teardown so the next setup call fully reinitializes.
+- Runtime policy updates snapshot (`deepcopy`) the provided `TelemetryConfig` before storing/applying it.
+- Runtime update/reload APIs return the applied runtime snapshot (not the caller-owned config object).
 - All context propagation uses `contextvars` for async task safety.
 
 ## Async Safety
@@ -49,7 +52,7 @@ flowchart TD
 
 - Request context fields are isolated per task via `contextvars`.
 - Trace context remains stable across await boundaries inside traced async callables.
-- Setup routines are race-safe for concurrent callers in the same process.
+- Setup and shutdown routines are race-safe for concurrent callers in the same process.
 
 ### Scope Limits
 
