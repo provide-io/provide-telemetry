@@ -23,6 +23,7 @@ from undef.telemetry.propagation import bind_propagation_context, extract_w3c_co
 from undef.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
 from undef.telemetry.runtime import get_runtime_config, reload_runtime_from_env, update_runtime_config
 from undef.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
+from undef.telemetry.schema.events import event_name
 from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
 from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 from undef.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace, tracer
@@ -48,6 +49,7 @@ __all__ = [
     "clear_cardinality_limits",
     "clear_context",
     "counter",
+    "event_name",
     "extract_w3c_context",
     "gauge",
     "get_cardinality_limits",

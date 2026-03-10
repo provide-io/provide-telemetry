@@ -5,15 +5,42 @@ SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 
 ## Telemetry
 
+Event naming in examples follows strict `domain.action.status` (exactly 3 segments).
+Use `undef.telemetry.event_name(domain, action, status)` when composing names.
+
 - `telemetry/01_basic_telemetry.py`
   - Local console/json logging.
   - Trace decorator usage.
   - Counter/histogram emission.
+- `telemetry/02_w3c_propagation_asgi.py`
+  - W3C `traceparent`/`tracestate`/`baggage` extraction through `TelemetryMiddleware`.
+  - Demonstrates bound log context + active trace context.
+- `telemetry/03_sampling_and_backpressure.py`
+  - Runtime sampling policies per signal.
+  - Trace backpressure with bounded queue + drop accounting snapshot.
+- `telemetry/04_runtime_reconfigure.py`
+  - In-process runtime config update flow.
+  - Demonstrates behavior before/after sampling reconfiguration.
+- `telemetry/05_pii_and_cardinality_policy.py`
+  - PII rules (`hash`, `truncate`, `drop`) and default redaction.
+  - Cardinality guard usage for metric attributes.
+- `telemetry/06_exporter_resilience_modes.py`
+  - Fail-open vs fail-closed exporter behavior with retries.
+  - Health counters for retries/failures.
+- `telemetry/07_slo_pack_and_health_snapshot.py`
+  - RED/USE helper emissions.
+  - Error taxonomy and health snapshot output.
 
 Run:
 
 ```bash
 uv run --group dev --extra otel python examples/telemetry/01_basic_telemetry.py
+uv run --group dev --extra otel python examples/telemetry/02_w3c_propagation_asgi.py
+uv run --group dev --extra otel python examples/telemetry/03_sampling_and_backpressure.py
+uv run --group dev --extra otel python examples/telemetry/04_runtime_reconfigure.py
+uv run --group dev --extra otel python examples/telemetry/05_pii_and_cardinality_policy.py
+uv run --group dev --extra otel python examples/telemetry/06_exporter_resilience_modes.py
+uv run --group dev --extra otel python examples/telemetry/07_slo_pack_and_health_snapshot.py
 ```
 
 ## OpenObserve
@@ -23,6 +50,9 @@ uv run --group dev --extra otel python examples/telemetry/01_basic_telemetry.py
 - `openobserve/02_verify_ingestion.py`
   - Captures pre/post stream document totals from OpenObserve API.
   - Fails fast if logs/traces/metrics did not increase.
+- `openobserve/03_hardening_profile.py`
+  - Uses hardening-focused config profile for sampling/backpressure/resilience/SLO.
+  - Emits sanitized logs with W3C-ready tracing and metrics export.
 
 Environment:
 
@@ -37,4 +67,5 @@ Run:
 ```bash
 uv run --group dev --extra otel python examples/openobserve/01_emit_all_signals.py
 uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.py
+uv run --group dev --extra otel python examples/openobserve/03_hardening_profile.py
 ```

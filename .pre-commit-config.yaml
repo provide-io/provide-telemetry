@@ -43,6 +43,14 @@ repos:
         always_run: true
         types: [python]
 
+      - id: event-literal-check
+        name: telemetry event literal check
+        entry: uv run python scripts/check_event_literals.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
       - id: spdx-header-normalize
         name: python spdx header normalize (manual)
         entry: uv run python scripts/normalize_spdx_headers.py

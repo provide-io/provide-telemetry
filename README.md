@@ -54,6 +54,19 @@ uv run pytest -m otel -q
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
 
+## Event Naming Rule
+
+Event names are strict: `domain.action.status` with exactly 3 segments.
+If you build names dynamically, use `undef.telemetry.event_name(domain, action, status)`.
+
+```python
+from undef.telemetry import event_name, get_logger
+
+log = get_logger(__name__)
+log.info(event_name("auth", "login", "success"), user_id="u-123")
+log.info(event_name("auth", "login", "failed"), reason="bad_password")
+```
+
 ## Quality
 
 ```bash
@@ -62,6 +75,7 @@ uvx reuse lint
 uv run codespell
 uv run python scripts/check_max_loc.py --max-lines 500
 uv run python scripts/check_spdx_headers.py
+uv run python scripts/check_event_literals.py
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests

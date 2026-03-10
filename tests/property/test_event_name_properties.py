@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
+from __future__ import annotations
+
+from hypothesis import given
+from hypothesis import strategies as st
+
+from undef.telemetry.schema.events import EventSchemaError, event_name, validate_event_name
+
+_segment_chars = "abcdefghijklmnopqrstuvwxyz0123456789_"
+_segment = st.from_regex(r"[a-z][a-z0-9_]{0,15}", fullmatch=True)
+
+
+@given(domain=_segment, action=_segment, status=_segment)
+def test_event_name_property_builds_valid_strict_name(domain: str, action: str, status: str) -> None:
+    name = event_name(domain, action, status)
+    assert name == f"{domain}.{action}.{status}"
+    validate_event_name(name, strict_event_name=True)
+
+
+@given(base=_segment)
+def test_event_name_property_rejects_hyphenated_segment(base: str) -> None:
+    bad = f"{base}-x"
+    try:
+        event_name("auth", bad, "success")
+    except EventSchemaError as exc:
+        assert str(exc) == f"invalid event segment: action={bad}"
+    else:
+        msg = "event_name accepted hyphenated segment"
+        raise AssertionError(msg)
+
+
+@given(
+    segment=st.text(
+        alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")),
+        min_size=1,
+        max_size=8,
+    ).filter(lambda s: not s[0].islower() or any(ch not in _segment_chars for ch in s)),
+)
+def test_event_name_property_rejects_non_matching_domain(segment: str) -> None:
+    try:
+        event_name(segment, "login", "success")
+    except EventSchemaError as exc:
+        assert str(exc) == f"invalid event segment: domain={segment}"
+    else:
+        msg = "event_name accepted invalid domain"
+        raise AssertionError(msg)
