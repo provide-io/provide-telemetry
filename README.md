@@ -26,6 +26,12 @@ from undef.telemetry import (
 )
 ```
 
+## Runtime Config API
+
+- `update_runtime_config(config)` applies a config and returns the active runtime snapshot.
+- `reload_runtime_from_env()` reloads env config, applies it, and returns the active runtime snapshot.
+- `get_runtime_config()` returns a defensive copy of the active runtime snapshot.
+
 ## Quick Start
 
 ```python

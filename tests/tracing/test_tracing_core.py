@@ -180,25 +180,33 @@ def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyP
 
 
 def test_shutdown_tracing_calls_provider_shutdown() -> None:
+    provider_mod._provider_configured = True
     provider = Mock()
     provider_mod._provider_ref = provider
     provider_mod.shutdown_tracing()
     provider.shutdown.assert_called_once()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
 
 def test_shutdown_tracing_provider_absent_and_noncallable() -> None:
+    provider_mod._provider_configured = True
     provider_mod._provider_ref = None
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
+    provider_mod._provider_configured = True
     provider_mod._provider_ref = SimpleNamespace(shutdown="nope")
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
+    provider_mod._provider_configured = True
     provider_mod._provider_ref = SimpleNamespace()
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
 
 def test_trace_decorator_sync_and_async() -> None:
