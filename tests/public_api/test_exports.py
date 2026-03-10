@@ -23,6 +23,10 @@ def test_public_api_exports() -> None:
     assert callable(t.trace)
     assert hasattr(t, "TelemetryMiddleware")
     assert callable(t.shutdown_telemetry)
+    assert callable(t.extract_w3c_context)
+    assert callable(t.set_sampling_policy)
+    assert callable(t.get_health_snapshot)
+    assert callable(t.update_runtime_config)
     assert re.fullmatch(r"\d+\.\d+\.\d+", t.__version__) is not None
 
 

@@ -45,6 +45,13 @@ def test_tracing_config_validation() -> None:
         TracingConfig(sample_rate=1.1)
 
 
+def test_new_config_validation_guards() -> None:
+    with pytest.raises(ValueError):
+        TelemetryConfig.from_env({"UNDEF_SAMPLING_LOGS_RATE": "1.1"})
+    with pytest.raises(ValueError):
+        TelemetryConfig.from_env({"UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "-1"})
+
+
 def test_telemetry_from_env_defaults() -> None:
     cfg = TelemetryConfig.from_env({})
     assert cfg.service_name == "undef-service"
@@ -76,6 +83,27 @@ def test_telemetry_from_env_values() -> None:
             "OTEL_EXPORTER_OTLP_METRICS_HEADERS": "Authorization=Basic%20metrics",
             "UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false",
             "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id, session_id",
+            "UNDEF_SAMPLING_LOGS_RATE": "0.9",
+            "UNDEF_SAMPLING_TRACES_RATE": "0.8",
+            "UNDEF_SAMPLING_METRICS_RATE": "0.7",
+            "UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "10",
+            "UNDEF_BACKPRESSURE_TRACES_MAXSIZE": "11",
+            "UNDEF_BACKPRESSURE_METRICS_MAXSIZE": "12",
+            "UNDEF_EXPORTER_LOGS_RETRIES": "1",
+            "UNDEF_EXPORTER_TRACES_RETRIES": "2",
+            "UNDEF_EXPORTER_METRICS_RETRIES": "3",
+            "UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS": "0.1",
+            "UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS": "0.2",
+            "UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS": "0.3",
+            "UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS": "5.0",
+            "UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS": "6.0",
+            "UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS": "7.0",
+            "UNDEF_EXPORTER_LOGS_FAIL_OPEN": "false",
+            "UNDEF_EXPORTER_TRACES_FAIL_OPEN": "false",
+            "UNDEF_EXPORTER_METRICS_FAIL_OPEN": "false",
+            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
+            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
+            "UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "false",
         }
     )
     assert cfg.service_name == "svc"
@@ -99,6 +127,27 @@ def test_telemetry_from_env_values() -> None:
     assert cfg.metrics.otlp_headers == {"Authorization": "Basic metrics"}
     assert cfg.event_schema.strict_event_name is False
     assert cfg.event_schema.required_keys == ("request_id", "session_id")
+    assert cfg.sampling.logs_rate == 0.9
+    assert cfg.sampling.traces_rate == 0.8
+    assert cfg.sampling.metrics_rate == 0.7
+    assert cfg.backpressure.logs_maxsize == 10
+    assert cfg.backpressure.traces_maxsize == 11
+    assert cfg.backpressure.metrics_maxsize == 12
+    assert cfg.exporter.logs_retries == 1
+    assert cfg.exporter.traces_retries == 2
+    assert cfg.exporter.metrics_retries == 3
+    assert cfg.exporter.logs_backoff_seconds == 0.1
+    assert cfg.exporter.traces_backoff_seconds == 0.2
+    assert cfg.exporter.metrics_backoff_seconds == 0.3
+    assert cfg.exporter.logs_timeout_seconds == 5.0
+    assert cfg.exporter.traces_timeout_seconds == 6.0
+    assert cfg.exporter.metrics_timeout_seconds == 7.0
+    assert cfg.exporter.logs_fail_open is False
+    assert cfg.exporter.traces_fail_open is False
+    assert cfg.exporter.metrics_fail_open is False
+    assert cfg.slo.enable_red_metrics is True
+    assert cfg.slo.enable_use_metrics is True
+    assert cfg.slo.include_error_taxonomy is False
 
 
 def test_telemetry_otlp_fallback_endpoint() -> None:

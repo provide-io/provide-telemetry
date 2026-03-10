@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from undef.telemetry.logger.context import bind_context, clear_context
+from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
 
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
@@ -32,9 +33,11 @@ class TelemetryMiddleware:
         bind_context(request_id=request_id)
         if session_id is not None:
             bind_context(session_id=session_id)
+        bind_propagation_context(extract_w3c_context(scope))
         try:
             await self.app(scope, receive, send)
         finally:
+            clear_propagation_context()
             clear_context()
 
 

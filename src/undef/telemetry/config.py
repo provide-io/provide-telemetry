@@ -66,6 +66,53 @@ class SchemaConfig(BaseModel):
     required_keys: tuple[str, ...] = ()
 
 
+class SamplingConfig(BaseModel):
+    logs_rate: float = 1.0
+    traces_rate: float = 1.0
+    metrics_rate: float = 1.0
+
+    @field_validator("logs_rate", "traces_rate", "metrics_rate")
+    @classmethod
+    def validate_rate(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("sampling rate must be between 0 and 1")
+        return value
+
+
+class BackpressureConfig(BaseModel):
+    logs_maxsize: int = 0
+    traces_maxsize: int = 0
+    metrics_maxsize: int = 0
+
+    @field_validator("logs_maxsize", "traces_maxsize", "metrics_maxsize")
+    @classmethod
+    def validate_maxsize(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("queue maxsize must be >= 0")
+        return value
+
+
+class ExporterPolicyConfig(BaseModel):
+    logs_retries: int = 0
+    traces_retries: int = 0
+    metrics_retries: int = 0
+    logs_backoff_seconds: float = 0.0
+    traces_backoff_seconds: float = 0.0
+    metrics_backoff_seconds: float = 0.0
+    logs_timeout_seconds: float = 10.0
+    traces_timeout_seconds: float = 10.0
+    metrics_timeout_seconds: float = 10.0
+    logs_fail_open: bool = True
+    traces_fail_open: bool = True
+    metrics_fail_open: bool = True
+
+
+class SLOConfig(BaseModel):
+    enable_red_metrics: bool = False
+    enable_use_metrics: bool = False
+    include_error_taxonomy: bool = True
+
+
 class TelemetryConfig(BaseModel):
     service_name: str = "undef-service"
     environment: str = "dev"
@@ -75,6 +122,10 @@ class TelemetryConfig(BaseModel):
     tracing: TracingConfig = Field(default_factory=TracingConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     event_schema: SchemaConfig = Field(default_factory=SchemaConfig)
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
+    backpressure: BackpressureConfig = Field(default_factory=BackpressureConfig)
+    exporter: ExporterPolicyConfig = Field(default_factory=ExporterPolicyConfig)
+    slo: SLOConfig = Field(default_factory=SLOConfig)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
@@ -117,6 +168,35 @@ class TelemetryConfig(BaseModel):
                 required_keys=tuple(
                     k.strip() for k in data.get("UNDEF_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
+            ),
+            sampling=SamplingConfig(
+                logs_rate=float(data.get("UNDEF_SAMPLING_LOGS_RATE", "1.0")),
+                traces_rate=float(data.get("UNDEF_SAMPLING_TRACES_RATE", "1.0")),
+                metrics_rate=float(data.get("UNDEF_SAMPLING_METRICS_RATE", "1.0")),
+            ),
+            backpressure=BackpressureConfig(
+                logs_maxsize=int(data.get("UNDEF_BACKPRESSURE_LOGS_MAXSIZE", "0")),
+                traces_maxsize=int(data.get("UNDEF_BACKPRESSURE_TRACES_MAXSIZE", "0")),
+                metrics_maxsize=int(data.get("UNDEF_BACKPRESSURE_METRICS_MAXSIZE", "0")),
+            ),
+            exporter=ExporterPolicyConfig(
+                logs_retries=int(data.get("UNDEF_EXPORTER_LOGS_RETRIES", "0")),
+                traces_retries=int(data.get("UNDEF_EXPORTER_TRACES_RETRIES", "0")),
+                metrics_retries=int(data.get("UNDEF_EXPORTER_METRICS_RETRIES", "0")),
+                logs_backoff_seconds=float(data.get("UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0")),
+                traces_backoff_seconds=float(data.get("UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS", "0.0")),
+                metrics_backoff_seconds=float(data.get("UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS", "0.0")),
+                logs_timeout_seconds=float(data.get("UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS", "10.0")),
+                traces_timeout_seconds=float(data.get("UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS", "10.0")),
+                metrics_timeout_seconds=float(data.get("UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0")),
+                logs_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_LOGS_FAIL_OPEN"), True),
+                traces_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_TRACES_FAIL_OPEN"), True),
+                metrics_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_METRICS_FAIL_OPEN"), True),
+            ),
+            slo=SLOConfig(
+                enable_red_metrics=_parse_bool(data.get("UNDEF_SLO_ENABLE_RED_METRICS"), False),
+                enable_use_metrics=_parse_bool(data.get("UNDEF_SLO_ENABLE_USE_METRICS"), False),
+                include_error_taxonomy=_parse_bool(data.get("UNDEF_SLO_INCLUDE_ERROR_TAXONOMY"), True),
             ),
         )
 

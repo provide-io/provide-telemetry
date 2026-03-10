@@ -14,6 +14,7 @@ from undef.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header
 from undef.telemetry.asgi.websocket import _extract_header as ws_extract_header
 from undef.telemetry.asgi.websocket import bind_websocket_context
 from undef.telemetry.logger import get_context
+from undef.telemetry.tracing import get_trace_context
 
 
 async def _dummy_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -223,3 +224,38 @@ async def test_middleware_websocket_path(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     assert {"request_id": "rw"} in bound
     assert {"session_id": "sw"} in bound
+
+
+@pytest.mark.asyncio
+async def test_middleware_extracts_w3c_headers_and_clears_trace_context() -> None:
+    seen_trace_ctx: dict[str, str | None] = {}
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(scope: dict[str, Any], _recv: Any, _send: Any) -> None:
+        assert scope["type"] == "http"
+        seen_trace_ctx.update(get_trace_context())
+        traceparent = get_context()["traceparent"]
+        assert isinstance(traceparent, str)
+        assert traceparent.startswith("00-")
+        assert get_context()["tracestate"] == "vendor=value"
+
+    middleware = TelemetryMiddleware(app)
+    await middleware(
+        {
+            "type": "http",
+            "headers": [
+                (b"x-request-id", b"rw"),
+                (b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+                (b"tracestate", b"vendor=value"),
+            ],
+        },
+        receive,
+        send,
+    )
+    assert seen_trace_ctx == {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
+    assert get_trace_context() == {"trace_id": None, "span_id": None}
