@@ -3,6 +3,7 @@ version = 1
 [[annotations]]
 path = [
   "README.md",
+  "CLAUDE.md",
   "docs/**",
   "examples/**",
   ".github/workflows/**",
@@ -24,6 +25,8 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 path = [
   "src/undef/telemetry/py.typed",
+  ".secrets.baseline",
+  ".claude/**",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"

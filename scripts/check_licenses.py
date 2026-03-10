@@ -28,6 +28,7 @@ ALLOWED_LICENSES: frozenset[str] = frozenset(
         "BSD License",
         "BSD-2-Clause",
         "BSD-3-Clause",
+        "3-Clause BSD License",
         "ISC",
         "ISC License",
         "PSF-2.0",
