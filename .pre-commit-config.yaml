@@ -1,4 +1,10 @@
 repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.2
     hooks:
@@ -73,6 +79,38 @@ repos:
       - id: pytest
         name: pytest
         entry: uv run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: pip-audit
+        name: pip-audit (vulnerability scan)
+        entry: uv run python -m pip_audit --path .
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: xenon
+        name: xenon complexity
+        entry: uv run xenon --max-absolute C --max-modules B --max-average A src/
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: vulture
+        name: vulture dead code
+        entry: uv run vulture src/ tests/
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
+      - id: check-licenses
+        name: license check
+        entry: uv run python scripts/check_licenses.py
         language: system
         pass_filenames: false
         always_run: true

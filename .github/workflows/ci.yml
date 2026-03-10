@@ -30,6 +30,10 @@ jobs:
       - run: uv run mypy src tests
       - run: uv run ty check src tests
       - run: uv run bandit -r src -ll
+      - run: uv run xenon --max-absolute C --max-modules B --max-average A src/
+      - run: uv run vulture src/ tests/
+      - run: uv run python -m pip_audit --path .
+      - run: uv run python scripts/check_licenses.py
       - run: uv run python scripts/run_pytest_gate.py
 
   mutation-gate:
@@ -41,7 +45,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --group dev
-      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 
   compliance:
     runs-on: ubuntu-latest

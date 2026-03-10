@@ -34,6 +34,27 @@ act workflow_dispatch -W .github/workflows/ci.yml --container-architecture linux
 
 Prerequisites: run from a git repository checkout and ensure Docker daemon is running.
 
+## Local Act Validation (Docker-in-Docker)
+
+When Docker access is proxied through `colima` (macOS) or you need to reuse the host daemon,
+configure the socket before running `act`:
+
+```bash
+export DOCKER_HOST=unix:///REDACTED_ABS_PATH
+```
+
+Run the quality job manually with Docker-in-Docker support:
+
+```bash
+act -W .github/workflows/ci.yml workflow_dispatch -j quality \
+  --container-architecture linux/amd64 \
+  --container-daemon-socket "${DOCKER_HOST}" \
+  -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+If you run `act` frequently, extend `.actrc` with the same options so every invocation reuses the
+configured socket and image. Document any socket/mount issues and rerun once host access is restored.
+
 ## Publish Path
 
 1. Push tag `vX.Y.Z`.

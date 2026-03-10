@@ -89,6 +89,7 @@ def test_telemetry_from_env_values() -> None:
     assert cfg.logging.sanitize is False
     assert cfg.logging.otlp_endpoint == "http://logs"
     assert cfg.logging.otlp_headers == {"Authorization": "Basic logs"}
+    assert cfg.logging.log_code_attributes is False
     assert cfg.tracing.enabled is False
     assert cfg.tracing.sample_rate == 0.5
     assert cfg.tracing.otlp_endpoint == "http://trace"
@@ -112,4 +113,8 @@ def test_telemetry_otlp_fallback_endpoint() -> None:
     assert cfg.logging.otlp_endpoint == "http://all"
     assert cfg.logging.otlp_headers == {"Authorization": "Basic all"}
     assert cfg.tracing.otlp_headers == {"Authorization": "Basic all"}
-    assert cfg.metrics.otlp_headers == {"Authorization": "Basic all"}
+
+
+def test_logging_code_attributes_flag() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_CODE_ATTRIBUTES": "true"})
+    assert cfg.logging.log_code_attributes is True

@@ -65,7 +65,35 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 
 
 def test_enforce_event_schema_required_keys_error_message() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
+            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id",
+        }
+    )
     processor = enforce_event_schema(cfg)
     with pytest.raises(EventSchemaError, match=r"missing required keys: request_id, session_id"):
         processor(None, "info", {"event": "auth.login.success"})
+
+
+def test_enforce_event_schema_skips_required_keys_in_compat_mode() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
+    processor = enforce_event_schema(cfg)
+    out = processor(None, "info", {"event": "auth.login.success"})
+    assert out["event"] == "auth.login.success"
+
+
+def test_enforce_event_schema_policy_matrix() -> None:
+    compat_default = TelemetryConfig.from_env({})
+    compat_relaxed = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
+    strict = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_SCHEMA": "true"})
+
+    strict_name_compat_default = enforce_event_schema(compat_default)
+    relaxed_name_compat = enforce_event_schema(compat_relaxed)
+    strict_name_strict_schema = enforce_event_schema(strict)
+
+    with pytest.raises(EventSchemaError, match="invalid event name"):
+        strict_name_compat_default(None, "info", {"event": "bad event"})
+    relaxed_name_compat(None, "info", {"event": "bad event"})
+    with pytest.raises(EventSchemaError, match="invalid event name"):
+        strict_name_strict_schema(None, "info", {"event": "bad event"})

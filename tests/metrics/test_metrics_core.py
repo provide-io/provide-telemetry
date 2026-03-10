@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.metrics import api as api_mod
 from undef.telemetry.metrics import counter, gauge, histogram
 from undef.telemetry.metrics import instruments as instruments_mod
 from undef.telemetry.metrics import provider as provider_mod
@@ -105,7 +106,7 @@ def test_metric_factory_calls_expected_meter_methods() -> None:
 
 
 def test_metric_wrapper_no_meter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(instruments_mod, "get_meter", lambda: None)
+    monkeypatch.setattr(api_mod, "get_meter", lambda: None)
     assert instruments_mod.counter("c")._otel_counter is None
     assert instruments_mod.gauge("g")._otel_gauge is None
     assert instruments_mod.histogram("h")._otel_histogram is None

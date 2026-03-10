@@ -7,19 +7,15 @@
 
 from __future__ import annotations
 
-import importlib
 import threading
 from typing import Any
 
+from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 
 
 def _has_otel_metrics() -> bool:
-    try:
-        importlib.import_module("opentelemetry")
-        return True
-    except ImportError:
-        return False
+    return _otel.has_otel()
 
 
 _HAS_OTEL_METRICS = _has_otel_metrics()
@@ -31,28 +27,13 @@ _meter_lock = threading.Lock()
 def _load_otel_metrics_api() -> Any | None:
     if not _HAS_OTEL_METRICS:
         return None
-    try:
-        return importlib.import_module("opentelemetry.metrics")
-    except ImportError:
-        return None
+    return _otel.load_otel_metrics_api()
 
 
 def _load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
     if not _HAS_OTEL_METRICS:
         return None
-    try:
-        sdk_metrics_mod = importlib.import_module("opentelemetry.sdk.metrics")
-        resources_mod = importlib.import_module("opentelemetry.sdk.resources")
-        export_mod = importlib.import_module("opentelemetry.sdk.metrics.export")
-        otlp_mod = importlib.import_module("opentelemetry.exporter.otlp.proto.http.metric_exporter")
-        return (
-            sdk_metrics_mod.MeterProvider,
-            resources_mod.Resource,
-            export_mod.PeriodicExportingMetricReader,
-            otlp_mod.OTLPMetricExporter,
-        )
-    except ImportError:
-        return None
+    return _otel.load_otel_metrics_components()
 
 
 def setup_metrics(config: TelemetryConfig) -> None:

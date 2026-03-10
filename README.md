@@ -48,6 +48,7 @@ uv run pytest -m otel -q
 - `UNDEF_LOG_FORMAT`
 - `UNDEF_TRACE_ENABLED`
 - `UNDEF_METRICS_ENABLED`
+- `UNDEF_LOG_CODE_ATTRIBUTES`
 - `OTEL_EXPORTER_OTLP_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
@@ -76,10 +77,31 @@ export OPENOBSERVE_PASSWORD=password
 uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Property + mutation quality gates
 uv run python scripts/run_pytest_gate.py -k hypothesis -q --no-cov
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 ```
 
 > Marker-specific runs (e.g., `-m otel`, `-m e2e`, `-k hypothesis`) already pass `--no-cov`; the strict 100% coverage gate only applies to the baseline `uv run python scripts/run_pytest_gate.py` invocation.
+
+## OpenObserve Verification
+
+Set the OpenObserve credentials and run the e2e suite to prove all signals arrive in the backend:
+
+```bash
+export OPENOBSERVE_URL=http://localhost:5080/api/default
+export OPENOBSERVE_USER=someuserexample@provide.test
+export OPENOBSERVE_PASSWORD=password
+uv run --group dev --extra otel python examples/openobserve/01_emit_all_signals.py
+uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.py
+uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+```
+
+Once the run finishes, open `http://localhost:5080/web/streams?org_identifier=default` and search for:
+
+- `default` traces where `operation_name` is `e2e.openobserve.span`
+- logs tagged with `e2e.openobserve.log`
+- metric stream names like `e2e.requests.<timestamp>`
+
+Refreshing the UI should show the incremental doc counts that the examples and tests emit.
 
 `run_mutation_gate.py` automatically injects a local `setproctitle` compatibility shim for mutmut subprocesses.
 

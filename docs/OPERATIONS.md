@@ -19,6 +19,7 @@
 - `UNDEF_LOG_FORMAT`
 - `UNDEF_LOG_INCLUDE_TIMESTAMP`
 - `UNDEF_LOG_INCLUDE_CALLER`
+- `UNDEF_LOG_CODE_ATTRIBUTES`
 - `UNDEF_LOG_SANITIZE`
 - `UNDEF_TRACE_ENABLED`
 - `UNDEF_TRACE_SAMPLE_RATE`
@@ -48,7 +49,7 @@ Examples:
 
 - Missing OTel dependencies: library falls back to no-op tracing/metrics wrappers.
 - Invalid event names with strict event mode enabled: raises `EventSchemaError`.
-- Missing required keys: raises `EventSchemaError`.
+- Missing required keys: raises `EventSchemaError` only when `UNDEF_TELEMETRY_STRICT_SCHEMA=true`.
 
 ## Lifecycle
 
@@ -73,8 +74,31 @@ uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Optional fuzz/property run
 uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov
 # Optional mutation pass (can take time)
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 ```
 
 Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.
 Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
+
+## Act / Docker-in-Docker Quality Runs
+
+When acting as a local runner reuse the host docker daemon socket. On macOS with `colima`:
+
+```bash
+export DOCKER_HOST=unix:///REDACTED_ABS_PATH
+act -W .github/workflows/ci.yml workflow_dispatch -j quality \
+  --container-architecture linux/amd64 \
+  --container-daemon-socket "${DOCKER_HOST}" \
+  -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+Add the above to `.actrc` for quieter commands and document any socket/mount errors.
+
+## OpenObserve Validation
+
+After running `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` with the `OPENOBSERVE_*`
+env vars in place, verify telemetry landed:
+
+1. Browse `http://localhost:5080/web/streams?org_identifier=default` and look for `undef-telemetry` streams.
+2. Search for `e2e.openobserve.span` or the metric stream name from `tests/e2e/test_openobserve_e2e.py`.
+3. Rerun the examples in `examples/openobserve/` if nothing appears immediately, then refresh the UI.
