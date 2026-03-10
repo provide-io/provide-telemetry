@@ -20,7 +20,7 @@ R = TypeVar("R")
 
 def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        span_name = name or getattr(fn, "__name__", fn.__class__.__name__)
+        span_name = str(name or getattr(fn, "__name__", fn.__class__.__name__))
 
         if inspect.iscoroutinefunction(fn):
 
