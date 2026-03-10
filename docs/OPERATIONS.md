@@ -7,6 +7,8 @@
 - Event schema validation: enabled (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=true` by default)
 - Strict schema mode: off by default (`UNDEF_TELEMETRY_STRICT_SCHEMA=false`)
 
+See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/compat/high-throughput presets.
+
 ## Core Environment Variables
 
 - `UNDEF_TELEMETRY_SERVICE_NAME`
@@ -31,27 +33,30 @@
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`
 - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_METRICS_HEADERS`
+- `UNDEF_EXPORTER_LOGS_RETRIES`
+- `UNDEF_EXPORTER_TRACES_RETRIES`
+- `UNDEF_EXPORTER_METRICS_RETRIES`
+- `UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS`
+- `UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS`
+- `UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS`
+- `UNDEF_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP`
+- `UNDEF_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP`
+- `UNDEF_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP`
 - `OPENOBSERVE_URL`
 - `OPENOBSERVE_USER`
 - `OPENOBSERVE_PASSWORD`
 
 ## Event Naming Policy
 
-Use `domain.action.status`, all lowercase, underscores allowed, and exactly 3 segments.
-
-Examples:
-
-- `auth.login.success`
-- `session.connect.failed`
-- `ws.message.received`
-
-For dynamic names, use `undef.telemetry.event_name(domain, action, status)` to avoid invalid 4+ segment values.
+Canonical naming rules and examples live in [`docs/CONVENTIONS.md`](CONVENTIONS.md).
+Operationally, keep strict validation enabled unless you are in an explicit migration window.
 
 ## Failure Behavior
 
-- Missing OTel dependencies: library falls back to no-op tracing/metrics wrappers.
+- Missing OTel dependencies: tracing falls back to no-op tracer objects and metrics use in-process fallback wrappers.
 - Invalid event names with strict event mode enabled: raises `EventSchemaError`.
 - Missing required keys: raises `EventSchemaError` only when `UNDEF_TELEMETRY_STRICT_SCHEMA=true`.
+- Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`.
 
 ## Lifecycle
 
@@ -78,21 +83,43 @@ uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov
 # Optional mutation pass (can take time)
 uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
+# Optional performance smoke (report-only by default)
+uv run python scripts/run_performance_smoke.py --iterations 300000
 ```
 
 Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.
 Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
 
-## Act / Docker-in-Docker Quality Runs
+## Docs Quality
 
-When acting as a local runner reuse the host docker daemon socket. On macOS with `colima`:
+The `docs-quality` CI job is a required gate. Run the same checks locally:
 
 ```bash
-export DOCKER_HOST=unix:///REDACTED_ABS_PATH
+uv sync --group dev
+uv run python scripts/check_docs_accuracy.py
+uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_docs_accuracy.py --no-cov -q
+```
+
+## Act / Docker-in-Docker Quality Runs
+
+When acting as a local runner on macOS with `colima`, prefer `${HOME}`-based socket paths:
+
+```bash
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 act -W .github/workflows/ci.yml workflow_dispatch -j quality \
   --container-architecture linux/amd64 \
   --container-daemon-socket "${DOCKER_HOST}" \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+For jobs that do not need Docker inside the job container (for example `docs-quality`), disable
+daemon socket bind-mount to avoid macOS/Colima mount issues:
+
+```bash
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+act -W .github/workflows/ci.yml pull_request -j docs-quality \
+  --container-architecture linux/amd64 \
+  --container-daemon-socket -
 ```
 
 Add the above to `.actrc` for quieter commands and document any socket/mount errors.

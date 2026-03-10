@@ -57,6 +57,13 @@ def test_apply_sampling_drop_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out == {"event": "telemetry.log.dropped", "dropped_event": "auth.login.success"}
 
 
+def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: True)
+    payload = {"event": "auth.login.success"}
+    out = apply_sampling(None, "info", payload)
+    assert out is payload
+
+
 def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[tuple[str, bool]] = []
     required_calls: list[tuple[dict[str, object], tuple[str, ...]]] = []

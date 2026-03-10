@@ -9,90 +9,76 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from urllib.parse import unquote
 
-from pydantic import BaseModel, Field, field_validator
 
-
-class LoggingConfig(BaseModel):
+@dataclass(slots=True)
+class LoggingConfig:
     level: str = "INFO"
     fmt: str = "console"  # console | json
     include_timestamp: bool = True
     include_caller: bool = True
     sanitize: bool = True
     otlp_endpoint: str | None = None
-    otlp_headers: dict[str, str] = Field(default_factory=dict)
+    otlp_headers: dict[str, str] = field(default_factory=dict)
     log_code_attributes: bool = False
 
-    @field_validator("level")
-    @classmethod
-    def validate_level(cls, value: str) -> str:
-        allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        normalized = value.upper()
-        if normalized not in allowed:
-            raise ValueError(f"invalid log level: {value}")
-        return normalized
-
-    @field_validator("fmt")
-    @classmethod
-    def validate_fmt(cls, value: str) -> str:
-        if value not in {"console", "json"}:
-            raise ValueError(f"invalid log format: {value}")
-        return value
+    def __post_init__(self) -> None:
+        self.level = _normalize_level(self.level)
+        _validate_fmt(self.fmt)
 
 
-class TracingConfig(BaseModel):
+@dataclass(slots=True)
+class TracingConfig:
     enabled: bool = True
     sample_rate: float = 1.0
     otlp_endpoint: str | None = None
-    otlp_headers: dict[str, str] = Field(default_factory=dict)
+    otlp_headers: dict[str, str] = field(default_factory=dict)
 
-    @field_validator("sample_rate")
-    @classmethod
-    def validate_rate(cls, value: float) -> float:
-        if not 0.0 <= value <= 1.0:
-            raise ValueError("sample_rate must be between 0 and 1")
-        return value
+    def __post_init__(self) -> None:
+        _validate_rate(self.sample_rate, "sample_rate must be between 0 and 1")
 
 
-class MetricsConfig(BaseModel):
+@dataclass(slots=True)
+class MetricsConfig:
     enabled: bool = True
     otlp_endpoint: str | None = None
-    otlp_headers: dict[str, str] = Field(default_factory=dict)
+    otlp_headers: dict[str, str] = field(default_factory=dict)
 
 
-class SchemaConfig(BaseModel):
+@dataclass(slots=True)
+class SchemaConfig:
     strict_event_name: bool = True
     required_keys: tuple[str, ...] = ()
 
 
-class SamplingConfig(BaseModel):
+@dataclass(slots=True)
+class SamplingConfig:
     logs_rate: float = 1.0
     traces_rate: float = 1.0
     metrics_rate: float = 1.0
 
-    @field_validator("logs_rate", "traces_rate", "metrics_rate")
-    @classmethod
-    def validate_rate(cls, value: float) -> float:
-        if not 0.0 <= value <= 1.0:
-            raise ValueError("sampling rate must be between 0 and 1")
-        return value
+    def __post_init__(self) -> None:
+        _validate_rate(self.logs_rate, "sampling rate must be between 0 and 1")
+        _validate_rate(self.traces_rate, "sampling rate must be between 0 and 1")
+        _validate_rate(self.metrics_rate, "sampling rate must be between 0 and 1")
 
 
-class BackpressureConfig(BaseModel):
+@dataclass(slots=True)
+class BackpressureConfig:
     logs_maxsize: int = 0
     traces_maxsize: int = 0
     metrics_maxsize: int = 0
 
-    @field_validator("logs_maxsize", "traces_maxsize", "metrics_maxsize")
-    @classmethod
-    def validate_maxsize(cls, value: int) -> int:
-        if value < 0:
-            raise ValueError("queue maxsize must be >= 0")
-        return value
+    def __post_init__(self) -> None:
+        _validate_non_negative(self.logs_maxsize, "queue maxsize must be >= 0")
+        _validate_non_negative(self.traces_maxsize, "queue maxsize must be >= 0")
+        _validate_non_negative(self.metrics_maxsize, "queue maxsize must be >= 0")
 
 
-class ExporterPolicyConfig(BaseModel):
+@dataclass(slots=True)
+class ExporterPolicyConfig:
     logs_retries: int = 0
     traces_retries: int = 0
     metrics_retries: int = 0
@@ -105,27 +91,32 @@ class ExporterPolicyConfig(BaseModel):
     logs_fail_open: bool = True
     traces_fail_open: bool = True
     metrics_fail_open: bool = True
+    logs_allow_blocking_in_event_loop: bool = False
+    traces_allow_blocking_in_event_loop: bool = False
+    metrics_allow_blocking_in_event_loop: bool = False
 
 
-class SLOConfig(BaseModel):
+@dataclass(slots=True)
+class SLOConfig:
     enable_red_metrics: bool = False
     enable_use_metrics: bool = False
     include_error_taxonomy: bool = True
 
 
-class TelemetryConfig(BaseModel):
+@dataclass(slots=True)
+class TelemetryConfig:
     service_name: str = "undef-service"
     environment: str = "dev"
     version: str = "0.0.0"
     strict_schema: bool = False
-    logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    tracing: TracingConfig = Field(default_factory=TracingConfig)
-    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
-    event_schema: SchemaConfig = Field(default_factory=SchemaConfig)
-    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
-    backpressure: BackpressureConfig = Field(default_factory=BackpressureConfig)
-    exporter: ExporterPolicyConfig = Field(default_factory=ExporterPolicyConfig)
-    slo: SLOConfig = Field(default_factory=SLOConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    tracing: TracingConfig = field(default_factory=TracingConfig)
+    metrics: MetricsConfig = field(default_factory=MetricsConfig)
+    event_schema: SchemaConfig = field(default_factory=SchemaConfig)
+    sampling: SamplingConfig = field(default_factory=SamplingConfig)
+    backpressure: BackpressureConfig = field(default_factory=BackpressureConfig)
+    exporter: ExporterPolicyConfig = field(default_factory=ExporterPolicyConfig)
+    slo: SLOConfig = field(default_factory=SLOConfig)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
@@ -192,6 +183,15 @@ class TelemetryConfig(BaseModel):
                 logs_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_LOGS_FAIL_OPEN"), True),
                 traces_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_TRACES_FAIL_OPEN"), True),
                 metrics_fail_open=_parse_bool(data.get("UNDEF_EXPORTER_METRICS_FAIL_OPEN"), True),
+                logs_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("UNDEF_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                ),
+                traces_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("UNDEF_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), False
+                ),
+                metrics_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("UNDEF_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                ),
             ),
             slo=SLOConfig(
                 enable_red_metrics=_parse_bool(data.get("UNDEF_SLO_ENABLE_RED_METRICS"), False),
@@ -199,6 +199,29 @@ class TelemetryConfig(BaseModel):
                 include_error_taxonomy=_parse_bool(data.get("UNDEF_SLO_INCLUDE_ERROR_TAXONOMY"), True),
             ),
         )
+
+
+def _normalize_level(value: str) -> str:
+    allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    normalized = value.upper()
+    if normalized not in allowed:
+        raise ValueError(f"invalid log level: {value}")
+    return normalized
+
+
+def _validate_fmt(value: str) -> None:
+    if value not in {"console", "json"}:
+        raise ValueError(f"invalid log format: {value}")
+
+
+def _validate_rate(value: float, message: str) -> None:
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(message)
+
+
+def _validate_non_negative(value: int, message: str) -> None:
+    if value < 0:
+        raise ValueError(message)
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:

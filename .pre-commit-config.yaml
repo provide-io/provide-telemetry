@@ -132,3 +132,12 @@ repos:
         always_run: true
         stages: [manual]
         types: [python]
+
+      - id: performance-smoke
+        name: performance smoke (manual)
+        entry: uv run python scripts/run_performance_smoke.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+        types: [python]

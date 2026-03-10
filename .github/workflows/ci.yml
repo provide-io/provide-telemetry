@@ -9,7 +9,24 @@ on:
   schedule:
     - cron: "0 7 * * *"
 
+permissions:
+  contents: read
+
 jobs:
+  docs-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - name: Markdown lint + docs accuracy
+        run: uv run python scripts/check_docs_accuracy.py
+      - name: README snippet tests
+        run: uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_docs_accuracy.py --no-cov -q
+
   quality:
     runs-on: ubuntu-latest
     strategy:
@@ -99,7 +116,7 @@ jobs:
         run: |
           docker run -d --name openobserve-local \
             -p 5080:5080 \
-            -e ZO_ROOT_USER_EMAIL='tim@provide.io' \
+            -e ZO_ROOT_USER_EMAIL='user@example.com' \
             -e ZO_ROOT_USER_PASSWORD='password' \
             openobserve/openobserve:latest
       - name: Wait for OpenObserve health
@@ -115,7 +132,7 @@ jobs:
       - name: Run OpenObserve examples
         env:
           OPENOBSERVE_URL: http://127.0.0.1:5080/api/default
-          OPENOBSERVE_USER: tim@provide.io
+          OPENOBSERVE_USER: user@example.com
           OPENOBSERVE_PASSWORD: password
         run: |
           set -euo pipefail
@@ -201,3 +218,15 @@ jobs:
             exit 0
           fi
           uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+
+  performance-smoke:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra otel
+      - run: uv run python scripts/run_performance_smoke.py --iterations 300000

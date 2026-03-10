@@ -21,7 +21,13 @@ from undef.telemetry.logger.processors import (
     merge_runtime_context,
     sanitize_sensitive_fields,
 )
+from undef.telemetry.pii import reset_pii_rules_for_tests
 from undef.telemetry.schema.events import EventSchemaError
+
+
+@pytest.fixture(autouse=True)
+def _reset_pii_rules() -> None:
+    reset_pii_rules_for_tests()
 
 
 def test_get_level() -> None:

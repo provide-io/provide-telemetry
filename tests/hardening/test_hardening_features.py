@@ -222,3 +222,69 @@ def test_slo_helpers_and_error_taxonomy() -> None:
     assert classify_error("ValueError") == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
+
+
+@pytest.mark.asyncio
+async def test_resilience_async_guard_forces_fail_fast_without_override() -> None:
+    resilience_mod.set_exporter_policy(
+        "logs",
+        resilience_mod.ExporterPolicy(
+            retries=2, backoff_seconds=0.5, fail_open=True, allow_blocking_in_event_loop=False
+        ),
+    )
+    calls = {"count": 0}
+
+    def _always_fail() -> str:
+        calls["count"] += 1
+        raise RuntimeError("boom")
+
+    with pytest.warns(RuntimeWarning, match="forcing fail-fast behavior"):
+        assert resilience_mod.run_with_resilience("logs", _always_fail) is None
+    assert calls["count"] == 1
+    assert health_mod.get_health_snapshot().async_blocking_risk_logs == 1
+
+
+@pytest.mark.asyncio
+async def test_resilience_async_guard_allows_blocking_when_explicit() -> None:
+    resilience_mod.set_exporter_policy(
+        "metrics",
+        resilience_mod.ExporterPolicy(
+            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
+        ),
+    )
+    calls = {"count": 0}
+
+    def _flaky() -> str:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
+        assert resilience_mod.run_with_resilience("metrics", _flaky) == "ok"
+    assert calls["count"] == 2
+    snap = health_mod.get_health_snapshot()
+    assert snap.async_blocking_risk_metrics == 1
+    assert snap.retries_metrics == 1
+
+
+@pytest.mark.asyncio
+async def test_resilience_async_guard_warns_only_once_per_signal() -> None:
+    resilience_mod.set_exporter_policy(
+        "traces",
+        resilience_mod.ExporterPolicy(
+            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
+        ),
+    )
+
+    calls = {"count": 0}
+
+    def _always_fail() -> str:
+        calls["count"] += 1
+        raise RuntimeError("boom")
+
+    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
+        assert resilience_mod.run_with_resilience("traces", _always_fail) is None
+    # Warning is suppressed for same signal after first emission.
+    assert resilience_mod.run_with_resilience("traces", _always_fail) is None
+    assert calls["count"] == 4

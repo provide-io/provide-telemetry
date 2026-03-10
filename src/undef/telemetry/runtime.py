@@ -39,6 +39,7 @@ def apply_runtime_config(config: TelemetryConfig) -> None:
                 backoff_seconds=config.exporter.logs_backoff_seconds,
                 timeout_seconds=config.exporter.logs_timeout_seconds,
                 fail_open=config.exporter.logs_fail_open,
+                allow_blocking_in_event_loop=config.exporter.logs_allow_blocking_in_event_loop,
             ),
         )
         set_exporter_policy(
@@ -48,6 +49,7 @@ def apply_runtime_config(config: TelemetryConfig) -> None:
                 backoff_seconds=config.exporter.traces_backoff_seconds,
                 timeout_seconds=config.exporter.traces_timeout_seconds,
                 fail_open=config.exporter.traces_fail_open,
+                allow_blocking_in_event_loop=config.exporter.traces_allow_blocking_in_event_loop,
             ),
         )
         set_exporter_policy(
@@ -57,6 +59,7 @@ def apply_runtime_config(config: TelemetryConfig) -> None:
                 backoff_seconds=config.exporter.metrics_backoff_seconds,
                 timeout_seconds=config.exporter.metrics_timeout_seconds,
                 fail_open=config.exporter.metrics_fail_open,
+                allow_blocking_in_event_loop=config.exporter.metrics_allow_blocking_in_event_loop,
             ),
         )
 

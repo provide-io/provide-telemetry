@@ -25,6 +25,9 @@ class HealthSnapshot:
     retries_logs: int
     retries_traces: int
     retries_metrics: int
+    async_blocking_risk_logs: int
+    async_blocking_risk_traces: int
+    async_blocking_risk_metrics: int
     export_failures_logs: int
     export_failures_traces: int
     export_failures_metrics: int
@@ -44,6 +47,7 @@ _lock = threading.Lock()
 _queue_depth: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _dropped: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _retries: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
+_async_blocking_risk: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _export_failures: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _last_error: dict[Signal, str | None] = {"logs": None, "traces": None, "metrics": None}
 _last_success: dict[Signal, float | None] = {"logs": None, "traces": None, "metrics": None}
@@ -73,6 +77,12 @@ def increment_retries(signal: Signal, amount: int = 1) -> None:
     sig = _known_signal(signal)
     with _lock:
         _retries[sig] += max(0, amount)
+
+
+def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:
+    sig = _known_signal(signal)
+    with _lock:
+        _async_blocking_risk[sig] += max(0, amount)
 
 
 def record_export_failure(signal: Signal, exc: Exception) -> None:
@@ -108,6 +118,9 @@ def get_health_snapshot() -> HealthSnapshot:
             retries_logs=_retries["logs"],
             retries_traces=_retries["traces"],
             retries_metrics=_retries["metrics"],
+            async_blocking_risk_logs=_async_blocking_risk["logs"],
+            async_blocking_risk_traces=_async_blocking_risk["traces"],
+            async_blocking_risk_metrics=_async_blocking_risk["metrics"],
             export_failures_logs=_export_failures["logs"],
             export_failures_traces=_export_failures["traces"],
             export_failures_metrics=_export_failures["metrics"],
@@ -131,6 +144,7 @@ def reset_health_for_tests() -> None:
             _queue_depth[signal] = 0
             _dropped[signal] = 0
             _retries[signal] = 0
+            _async_blocking_risk[signal] = 0
             _export_failures[signal] = 0
             _last_error[signal] = None
             _last_success[signal] = None
