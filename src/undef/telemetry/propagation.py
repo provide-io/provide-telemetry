@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from undef.telemetry.headers import get_header
 from undef.telemetry.logger.context import bind_context
 from undef.telemetry.tracing.context import set_trace_context
 
@@ -24,14 +25,7 @@ class PropagationContext:
 
 
 def _extract_header(scope: dict[str, Any], key: bytes) -> str | None:
-    for name, value in scope.get("headers", []):
-        if name.lower() == key:
-            if isinstance(value, bytes):
-                return value.decode("utf-8")
-            if isinstance(value, str):
-                return value
-            return None
-    return None
+    return get_header(scope, key)
 
 
 def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
@@ -40,22 +34,29 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     parts = value.split("-")
     if len(parts) != 4:
         return (None, None)
-    _, trace_id, span_id, _ = parts
-    if len(trace_id) != 32 or len(span_id) != 16:
+    version, trace_id, span_id, trace_flags = parts
+    if len(version) != 2 or len(trace_id) != 32 or len(span_id) != 16 or len(trace_flags) != 2:
+        return (None, None)
+    if trace_id == "0" * 32 or span_id == "0" * 16:
+        return (None, None)
+    if version.lower() == "ff":
         return (None, None)
     try:
+        int(version, 16)
         int(trace_id, 16)
         int(span_id, 16)
+        int(trace_flags, 16)
     except ValueError:
         return (None, None)
     return (trace_id, span_id)
 
 
 def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
-    traceparent = _extract_header(scope, b"traceparent")
+    raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    trace_id, span_id = _parse_traceparent(traceparent)
+    trace_id, span_id = _parse_traceparent(raw_traceparent)
+    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None
     return PropagationContext(
         traceparent=traceparent,
         tracestate=tracestate,

@@ -52,6 +52,9 @@ shutdown_telemetry()
 - `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
 - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
+- `UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS`
+- `UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS`
+- `UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS`
 
 ## Event Naming Rule
 
@@ -88,8 +91,10 @@ Script references:
 
 - Baseline test gate runs at `100%` branch coverage (`--cov-branch`).
 - Mutation gate enforces `--min-mutation-score 100`.
+- Mutation policy is pinned in `.ci/pymutant-profiles.json` (`min_score: 1.0`, `max_drop_from_baseline: 0.0`) with baseline score in `.ci/pymutant-policy-baseline.json`.
 - CI validates linting, typing, security, compliance, examples, and integration slices.
 - Async-safe default exporter policy keeps retries/backoff at zero; non-zero async retry behavior is opt-in via `UNDEF_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`.
+- Exporter timeout settings are enforced both in OTLP exporter construction and per-attempt resilience execution bounds.
 
 ## Documentation Ownership
 
