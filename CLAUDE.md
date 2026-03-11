@@ -41,7 +41,7 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 
 - **100% branch coverage** is enforced — every new code path needs test coverage.
 - **100% mutation kill score** is required in CI — tests must detect behavioural changes.
 - **500 LOC max per file** — split files before they exceed this limit.
-- **SPDX license headers required** in all source files: `# SPDX-License-Identifier: MIT`
+- **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
 - Pytest markers: `otel`, `integration`, `e2e`, `tooling` — tag tests appropriately.
 

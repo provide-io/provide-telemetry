@@ -12,6 +12,7 @@ from typing import Any
 
 from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.resilience import run_with_resilience
 
 
 def _has_otel_metrics() -> bool:
@@ -53,8 +54,12 @@ def setup_metrics(config: TelemetryConfig) -> None:
         provider_cls, resource_cls, reader_cls, exporter_cls = components
         readers: list[Any] = []
         if config.metrics.otlp_endpoint:
-            exporter = exporter_cls(endpoint=config.metrics.otlp_endpoint, headers=config.metrics.otlp_headers)
-            readers.append(reader_cls(exporter))
+            exporter = run_with_resilience(
+                "metrics",
+                lambda: exporter_cls(endpoint=config.metrics.otlp_endpoint, headers=config.metrics.otlp_headers),
+            )
+            if exporter is not None:
+                readers.append(reader_cls(exporter))
 
         resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
         provider = provider_cls(resource=resource, metric_readers=readers)

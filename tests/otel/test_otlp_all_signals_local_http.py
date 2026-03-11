@@ -48,7 +48,7 @@ def test_otlp_http_exports_all_three_signal_types() -> None:
     thread.start()
 
     try:
-        auth = "Basic " + base64.b64encode(b"someuserexample@provide.test:password").decode("ascii")
+        auth = "Basic " + base64.b64encode(b"user@example.com:password").decode("ascii")
         env = dict(os.environ)
         env.update(
             {

@@ -118,6 +118,22 @@ def _stream_names(base_url: str, stream_type: str, auth: str) -> set[str]:
     return names
 
 
+def _required_signals_from_env() -> set[str]:
+    raw = os.getenv("OPENOBSERVE_REQUIRED_SIGNALS", "logs")
+    requested = {part.strip().lower() for part in raw.split(",") if part.strip()}
+    if not requested:
+        requested = {"logs"}
+    valid = {"logs", "metrics", "traces"}
+    invalid = requested - valid
+    if invalid:
+        msg = (
+            "invalid OPENOBSERVE_REQUIRED_SIGNALS entries: "
+            f"{', '.join(sorted(invalid))}; expected only logs,metrics,traces"
+        )
+        raise RuntimeError(msg)
+    return requested
+
+
 def main() -> None:
     base_url = _require_env("OPENOBSERVE_URL").rstrip("/")
     user = _require_env("OPENOBSERVE_USER")
@@ -151,7 +167,9 @@ def main() -> None:
         "metrics_stream_present": metric_stream in before_metric_streams,
         "traces": before_traces,
     }
+    required_signals = _required_signals_from_env()
     print(f"before={before}")
+    print(f"required_signals={sorted(required_signals)}")
 
     runpy.run_path("examples/openobserve/01_emit_all_signals.py", run_name="__main__")
 
@@ -167,21 +185,20 @@ def main() -> None:
             "metrics_stream_present": metric_stream in metric_streams,
             "traces": len([hit for hit in trace_hits if hit.get("operation_name") == trace_name]),
         }
-        if (
-            after["logs"] > before["logs"]
-            and bool(after["metrics_stream_present"])
-            and after["traces"] > before["traces"]
-        ):
+        logs_ok = after["logs"] > before["logs"] if "logs" in required_signals else True
+        metrics_ok = bool(after["metrics_stream_present"]) if "metrics" in required_signals else True
+        traces_ok = after["traces"] > before["traces"] if "traces" in required_signals else True
+        if logs_ok and metrics_ok and traces_ok:
             break
         time.sleep(1)
 
     print(f"after={after}")
     missing: list[str] = []
-    if after["logs"] <= before["logs"]:
+    if "logs" in required_signals and after["logs"] <= before["logs"]:
         missing.append("logs")
-    if not after["metrics_stream_present"]:
+    if "metrics" in required_signals and not after["metrics_stream_present"]:
         missing.append("metrics")
-    if after["traces"] <= before["traces"]:
+    if "traces" in required_signals and after["traces"] <= before["traces"]:
         missing.append("traces")
     if missing:
         msg = f"ingestion did not increase for: {', '.join(missing)}"

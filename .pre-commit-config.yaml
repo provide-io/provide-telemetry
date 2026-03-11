@@ -43,6 +43,14 @@ repos:
         always_run: true
         types: [python]
 
+      - id: event-literal-check
+        name: telemetry event literal check
+        entry: uv run python scripts/check_event_literals.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        types: [python]
+
       - id: spdx-header-normalize
         name: python spdx header normalize (manual)
         entry: uv run python scripts/normalize_spdx_headers.py
@@ -119,6 +127,15 @@ repos:
       - id: mutation-gate
         name: mutmut gate (manual)
         entry: uv run python scripts/run_mutation_gate.py --python-version 3.11 --max-children 4 --retries 1
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+        types: [python]
+
+      - id: performance-smoke
+        name: performance smoke (manual)
+        entry: uv run python scripts/run_performance_smoke.py
         language: system
         pass_filenames: false
         always_run: true

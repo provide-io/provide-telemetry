@@ -11,7 +11,10 @@ from typing import Any
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.context import get_context
+from undef.telemetry.pii import sanitize_payload
+from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
+from undef.telemetry.slo import classify_error
 
 _SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
 
@@ -26,9 +29,20 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
         event_dict.setdefault("service", config.service_name)
         event_dict.setdefault("env", config.environment)
         event_dict.setdefault("version", config.version)
+        if config.slo.include_error_taxonomy and "error_type" not in event_dict and "exc_name" in event_dict:
+            status_code = event_dict.get("status_code")
+            typed_status = status_code if isinstance(status_code, int) else None
+            event_dict.update(classify_error(str(event_dict["exc_name"]), typed_status))
         return event_dict
 
     return _processor
+
+
+def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    event_name = str(event_dict.get("event", ""))
+    if should_sample("logs", event_name):
+        return event_dict
+    return {"event": "telemetry.log.dropped", "dropped_event": event_name}
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
@@ -48,12 +62,6 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
 
 def sanitize_sensitive_fields(enabled: bool) -> Any:
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        if not enabled:
-            return event_dict
-        redacted = dict(event_dict)
-        for key in list(redacted.keys()):
-            if key.lower() in _SENSITIVE_KEYS:
-                redacted[key] = "***"
-        return redacted
+        return sanitize_payload(event_dict, enabled)
 
     return _processor

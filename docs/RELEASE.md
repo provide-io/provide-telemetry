@@ -13,7 +13,7 @@ Run locally:
 uv sync --group dev
 uv run python scripts/check_max_loc.py --max-lines 500
 uv run python scripts/run_pytest_gate.py
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
 uv run python -m build
 uv run twine check dist/*
 ```
@@ -40,7 +40,7 @@ When Docker access is proxied through `colima` (macOS) or you need to reuse the 
 configure the socket before running `act`:
 
 ```bash
-export DOCKER_HOST=unix:///REDACTED_ABS_PATH
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 ```
 
 Run the quality job manually with Docker-in-Docker support:
@@ -50,6 +50,15 @@ act -W .github/workflows/ci.yml workflow_dispatch -j quality \
   --container-architecture linux/amd64 \
   --container-daemon-socket "${DOCKER_HOST}" \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+For jobs that do not require Docker inside the container (for example `docs-quality`), disable
+daemon socket bind-mount:
+
+```bash
+act -W .github/workflows/ci.yml pull_request -j docs-quality \
+  --container-architecture linux/amd64 \
+  --container-daemon-socket -
 ```
 
 If you run `act` frequently, extend `.actrc` with the same options so every invocation reuses the

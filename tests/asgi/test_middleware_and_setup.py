@@ -14,6 +14,7 @@ from undef.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header
 from undef.telemetry.asgi.websocket import _extract_header as ws_extract_header
 from undef.telemetry.asgi.websocket import bind_websocket_context
 from undef.telemetry.logger import get_context
+from undef.telemetry.tracing import get_trace_context
 
 
 async def _dummy_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -223,3 +224,196 @@ async def test_middleware_websocket_path(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     assert {"request_id": "rw"} in bound
     assert {"session_id": "sw"} in bound
+
+
+@pytest.mark.asyncio
+async def test_middleware_extracts_w3c_headers_and_clears_trace_context() -> None:
+    seen_trace_ctx: dict[str, str | None] = {}
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(scope: dict[str, Any], _recv: Any, _send: Any) -> None:
+        assert scope["type"] == "http"
+        seen_trace_ctx.update(get_trace_context())
+        traceparent = get_context()["traceparent"]
+        assert isinstance(traceparent, str)
+        assert traceparent.startswith("00-")
+        assert get_context()["tracestate"] == "vendor=value"
+
+    middleware = TelemetryMiddleware(app)
+    await middleware(
+        {
+            "type": "http",
+            "headers": [
+                (b"x-request-id", b"rw"),
+                (b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+                (b"tracestate", b"vendor=value"),
+            ],
+        },
+        receive,
+        send,
+    )
+    assert seen_trace_ctx == {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
+    assert get_trace_context() == {"trace_id": None, "span_id": None}
+
+
+@pytest.mark.asyncio
+async def test_middleware_auto_slo_records_red_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def _record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None:
+        calls.append(
+            {
+                "route": route,
+                "method": method,
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+            }
+        )
+
+    monkeypatch.setattr(middleware_mod, "record_red_metrics", _record_red_metrics)
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(_scope: dict[str, Any], _recv: Any, send_fn: Any) -> None:
+        await send_fn({"type": "http.response.start", "status": 204})
+        await send_fn({"type": "http.response.body", "body": b""})
+
+    middleware = TelemetryMiddleware(app, auto_slo=True)
+    await middleware({"type": "http", "path": "/ok", "method": "GET", "headers": []}, receive, send)
+    assert len(calls) == 1
+    assert calls[0]["route"] == "/ok"
+    assert calls[0]["method"] == "GET"
+    assert calls[0]["status_code"] == 204
+    assert isinstance(calls[0]["duration_ms"], float)
+
+
+@pytest.mark.asyncio
+async def test_middleware_auto_slo_handles_non_int_http_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def _record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None:
+        calls.append(
+            {
+                "route": route,
+                "method": method,
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+            }
+        )
+
+    monkeypatch.setattr(middleware_mod, "record_red_metrics", _record_red_metrics)
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(_scope: dict[str, Any], _recv: Any, send_fn: Any) -> None:
+        await send_fn({"type": "http.response.start", "status": "oops"})
+        await send_fn({"type": "http.response.body", "body": b""})
+
+    middleware = TelemetryMiddleware(app, auto_slo=True)
+    await middleware({"type": "http", "path": "/bad-status", "method": "GET", "headers": []}, receive, send)
+    assert len(calls) == 1
+    # Non-int status leaves default value untouched.
+    assert calls[0]["status_code"] == 500
+
+
+@pytest.mark.asyncio
+async def test_middleware_auto_slo_logs_unhandled_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _StubLogger:
+        def error(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+    monkeypatch.setattr(middleware_mod, "get_logger", lambda _name: _StubLogger())
+    monkeypatch.setattr(middleware_mod, "record_red_metrics", lambda *_args, **_kwargs: None)
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(_scope: dict[str, Any], _recv: Any, _send: Any) -> None:
+        raise RuntimeError("boom")
+
+    middleware = TelemetryMiddleware(app, auto_slo=True)
+    with pytest.raises(RuntimeError, match="boom"):
+        await middleware({"type": "http", "path": "/err", "method": "GET", "headers": []}, receive, send)
+
+    assert len(events) == 1
+    event_name_value, fields = events[0]
+    assert event_name_value == "http.request.unhandled_exception"
+    assert fields["exc_name"] == "RuntimeError"
+    assert fields["path"] == "/err"
+
+
+@pytest.mark.asyncio
+async def test_middleware_exception_without_auto_slo(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _StubLogger:
+        def error(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+    monkeypatch.setattr(middleware_mod, "get_logger", lambda _name: _StubLogger())
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(_scope: dict[str, Any], _recv: Any, _send: Any) -> None:
+        raise RuntimeError("boom")
+
+    middleware = TelemetryMiddleware(app)
+    with pytest.raises(RuntimeError, match="boom"):
+        await middleware({"type": "http", "path": "/err", "headers": []}, receive, send)
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_middleware_auto_slo_websocket_status_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def _record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None:
+        calls.append(
+            {
+                "route": route,
+                "method": method,
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+            }
+        )
+
+    monkeypatch.setattr(middleware_mod, "record_red_metrics", _record_red_metrics)
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(_scope: dict[str, Any], _recv: Any, send_fn: Any) -> None:
+        await send_fn({"type": "websocket.accept"})
+        await send_fn({"type": "websocket.close", "code": "bad"})
+        await send_fn({"type": "websocket.close", "code": 1008})
+
+    middleware = TelemetryMiddleware(app, auto_slo=True)
+    await middleware({"type": "websocket", "path": "/ws", "headers": []}, receive, send)
+    assert len(calls) == 1
+    assert calls[0]["method"] == "WS"
+    assert calls[0]["status_code"] == 1008

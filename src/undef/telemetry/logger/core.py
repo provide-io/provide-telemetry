@@ -19,10 +19,12 @@ from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.processors import (
     add_standard_fields,
+    apply_sampling,
     enforce_event_schema,
     merge_runtime_context,
     sanitize_sensitive_fields,
 )
+from undef.telemetry.resilience import run_with_resilience
 
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
@@ -82,7 +84,11 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     logs_api_mod, sdk_logs_mod, sdk_logs_export_mod, resource_cls, otlp_exporter_cls = components
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
-    exporter = otlp_exporter_cls(endpoint=config.logging.otlp_endpoint, headers=config.logging.otlp_headers)
+    exporter = run_with_resilience(
+        "logs", lambda: otlp_exporter_cls(endpoint=config.logging.otlp_endpoint, headers=config.logging.otlp_headers)
+    )
+    if exporter is None:
+        return handlers
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
@@ -123,6 +129,7 @@ def configure_logging(config: TelemetryConfig) -> None:
         processors.extend(
             [
                 add_standard_fields(config),
+                apply_sampling,
                 enforce_event_schema(config),
                 sanitize_sensitive_fields(config.logging.sanitize),
             ]
