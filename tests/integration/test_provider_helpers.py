@@ -13,6 +13,7 @@ from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.metrics import provider as metrics_provider
 from undef.telemetry.tracing import provider as tracing_provider
+from undef.telemetry.tracing.provider import _reset_tracing_for_tests
 
 
 def test_metrics_has_otel_false(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,7 +80,7 @@ def test_metrics_setup_with_missing_components(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_tracing_setup_with_missing_components(monkeypatch: pytest.MonkeyPatch) -> None:
-    tracing_provider._provider_configured = False
+    _reset_tracing_for_tests()
     monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
     monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: None)
     monkeypatch.setattr(tracing_provider, "_load_otel_tracing_components", lambda: None)

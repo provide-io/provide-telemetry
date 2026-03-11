@@ -12,11 +12,11 @@ import pytest
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as core_mod
+from undef.telemetry.logger.core import _reset_logging_for_tests
 
 
 def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
 
     seen_level: list[int] = []
     seen_sanitize: list[bool] = []
@@ -56,8 +56,7 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
 
 
 def test_configure_logging_console_renderer_uses_colors_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     captured: list[bool | None] = []
 
     class _ConsoleRenderer:

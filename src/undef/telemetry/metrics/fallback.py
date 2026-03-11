@@ -12,7 +12,6 @@ from typing import Any
 from undef.telemetry.backpressure import release, try_acquire
 from undef.telemetry.cardinality import guard_attributes
 from undef.telemetry.health import increment_exemplar_unsupported
-from undef.telemetry.resilience import run_with_resilience
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.tracing.context import get_trace_context
 
@@ -43,18 +42,14 @@ class Counter:
             otel_counter = self._otel_counter
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
-
-                def _send() -> None:
-                    exemplar = _exemplar()
-                    if exemplar:
-                        try:
-                            otel_counter.add(amount, attrs, exemplar=exemplar)
-                            return
-                        except TypeError:
-                            increment_exemplar_unsupported()
-                    otel_counter.add(amount, attrs)
-
-                run_with_resilience("metrics", _send)
+                exemplar = _exemplar()
+                if exemplar:
+                    try:
+                        otel_counter.add(amount, attrs, exemplar=exemplar)
+                        return
+                    except TypeError:
+                        increment_exemplar_unsupported()
+                otel_counter.add(amount, attrs)
         finally:
             release(ticket)
 
@@ -76,7 +71,7 @@ class Gauge:
             otel_gauge = self._otel_gauge
             if otel_gauge is not None:
                 attrs = guard_attributes(attributes or {})
-                run_with_resilience("metrics", lambda: otel_gauge.add(amount, attrs))
+                otel_gauge.add(amount, attrs)
         finally:
             release(ticket)
 
@@ -98,17 +93,13 @@ class Histogram:
             otel_histogram = self._otel_histogram
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
-
-                def _send() -> None:
-                    exemplar = _exemplar()
-                    if exemplar:
-                        try:
-                            otel_histogram.record(value, attrs, exemplar=exemplar)
-                            return
-                        except TypeError:
-                            increment_exemplar_unsupported()
-                    otel_histogram.record(value, attrs)
-
-                run_with_resilience("metrics", _send)
+                exemplar = _exemplar()
+                if exemplar:
+                    try:
+                        otel_histogram.record(value, attrs, exemplar=exemplar)
+                        return
+                    except TypeError:
+                        increment_exemplar_unsupported()
+                otel_histogram.record(value, attrs)
         finally:
             release(ticket)

@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import asyncio
+import queue
 import threading
 import time
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from undef.telemetry.health import (
     increment_async_blocking_risk,
@@ -60,6 +61,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     policy = get_exporter_policy(signal)
     attempts = max(1, policy.retries + 1)
     backoff_seconds = policy.backoff_seconds
+    timeout_seconds = max(0.0, policy.timeout_seconds)
     if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):
         increment_async_blocking_risk(signal)
         _warn_async_risk(signal, policy)
@@ -70,7 +72,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
-            result = operation()
+            result = _run_attempt_with_timeout(operation, timeout_seconds)
             latency_ms = (time.perf_counter() - started) * 1000.0
             record_export_success(signal, latency_ms=latency_ms)
             return result
@@ -86,6 +88,30 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     if last_error is not None:
         raise last_error
     raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover
+
+
+def _run_attempt_with_timeout(operation: Callable[[], T], timeout_seconds: float) -> T:
+    if timeout_seconds <= 0:
+        return operation()
+    outcome: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+    def _target() -> None:
+        try:
+            outcome.put((True, operation()))
+        except Exception as exc:  # pragma: no cover - exercised by caller path
+            outcome.put((False, exc))
+
+    worker = threading.Thread(target=_target, daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise TimeoutError(f"operation timed out after {timeout_seconds}s")
+    ok, payload = outcome.get_nowait()
+    if ok:
+        return cast(T, payload)
+    if isinstance(payload, Exception):
+        raise payload
+    raise RuntimeError("timeout worker returned invalid exception payload")
 
 
 def reset_resilience_for_tests() -> None:

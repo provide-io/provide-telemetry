@@ -159,6 +159,27 @@ def test_extract_header_positive_and_case_insensitive_name() -> None:
     assert _extract_header(scope, b"x-missing") is None
 
 
+def test_extract_header_ignores_malformed_utf8_bytes() -> None:
+    scope = {"headers": [(b"x-request-id", b"\xff")]}
+    assert _extract_header(scope, b"x-request-id") is None
+    assert ws_extract_header(scope, b"x-request-id") is None
+
+
+@pytest.mark.asyncio
+async def test_middleware_ignores_malformed_header_bytes_without_crashing() -> None:
+    events: list[dict[str, Any]] = []
+
+    async def send(msg: dict[str, Any]) -> None:
+        events.append(msg)
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    middleware = TelemetryMiddleware(_dummy_app)
+    await middleware({"type": "http", "headers": [(b"x-request-id", b"\xff")]}, receive, send)
+    assert events[0]["scope_type"] == "http"
+
+
 def test_websocket_context_binding() -> None:
     result = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r2"), (b"x-session-id", b"s2"), (b"x-actor-id", b"u1")]}

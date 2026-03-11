@@ -165,7 +165,7 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "undef-service", "service.version": "0.0.0"})
     provider_cls.assert_called_once_with(resource="res", metric_readers=["reader"])
-    exporter_cls.assert_called_once_with(endpoint="http://metrics", headers={})
+    exporter_cls.assert_called_once_with(endpoint="http://metrics", headers={}, timeout=10.0)
     reader_cls.assert_called_once_with("exporter")
     mock_otel.set_meter_provider.assert_called_once_with("provider")
     mock_otel.get_meter.assert_called_once_with("undef.telemetry")
@@ -365,7 +365,6 @@ def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.run_with_resilience", lambda _signal, fn: fn())
     monkeypatch.setattr(
         "undef.telemetry.metrics.fallback.get_trace_context",
         lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
@@ -401,7 +400,6 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.run_with_resilience", lambda _signal, fn: fn())
     monkeypatch.setattr(
         "undef.telemetry.metrics.fallback.get_trace_context",
         lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},

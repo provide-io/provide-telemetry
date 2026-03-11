@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 
 from undef.telemetry.schema.events import EventSchemaError, event_name, validate_event_name
 
-_segment_chars = "abcdefghijklmnopqrstuvwxyz0123456789_"
+_segment_chars = "abcdefghijklmnopqrstuvwxyz0123456789_"  # pragma: allowlist secret
 _segment = st.from_regex(r"[a-z][a-z0-9_]{0,15}", fullmatch=True)
 
 

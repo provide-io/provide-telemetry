@@ -85,7 +85,12 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
     exporter = run_with_resilience(
-        "logs", lambda: otlp_exporter_cls(endpoint=config.logging.otlp_endpoint, headers=config.logging.otlp_headers)
+        "logs",
+        lambda: otlp_exporter_cls(
+            endpoint=config.logging.otlp_endpoint,
+            headers=config.logging.otlp_headers,
+            timeout=config.exporter.logs_timeout_seconds,
+        ),
     )
     if exporter is None:
         return handlers
@@ -175,7 +180,14 @@ def shutdown_logging() -> None:
         _otel_log_provider = None
 
 
-def get_logger(name: str | None = None) -> Any:
+def _reset_logging_for_tests() -> None:
+    global _configured, _active_config, _otel_log_provider
+    _configured = False
+    _active_config = None
+    _otel_log_provider = None
+
+
+def get_logger(name: str | None = None) -> _TraceWrapper:
     if not _configured:
         from undef.telemetry.config import TelemetryConfig
 

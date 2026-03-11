@@ -14,7 +14,7 @@ import pytest
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import bind_context, clear_context, get_context, get_logger, unbind_context
 from undef.telemetry.logger import core as core_mod
-from undef.telemetry.logger.core import _get_level, configure_logging
+from undef.telemetry.logger.core import _get_level, _reset_logging_for_tests, configure_logging
 from undef.telemetry.logger.processors import (
     add_standard_fields,
     enforce_event_schema,
@@ -90,8 +90,7 @@ def test_enforce_required_keys_skipped_in_compat_mode() -> None:
 
 
 def test_configure_and_get_logger() -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE", "UNDEF_LOG_FORMAT": "json"})
     configure_logging(cfg)
     configure_logging(cfg)  # idempotent branch
@@ -102,17 +101,15 @@ def test_configure_and_get_logger() -> None:
 
 
 def test_trace_suppressed_when_not_trace() -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "INFO"})
     configure_logging(cfg)
     log = get_logger("test2")
-    assert log.trace("auth.login.success") is None
+    log.trace("auth.login.success")
 
 
 def test_configure_logging_with_console_no_caller_timestamp() -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     cfg = TelemetryConfig.from_env(
         {
             "UNDEF_LOG_LEVEL": "INFO",
@@ -126,15 +123,13 @@ def test_configure_logging_with_console_no_caller_timestamp() -> None:
 
 
 def test_get_logger_lazy_config_path() -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     log = core_mod.get_logger("lazy")
     log.info("auth.login.success")
 
 
 def test_get_logger_default_name_and_lazy_behavior(monkeypatch: pytest.MonkeyPatch) -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     configured = {"count": 0}
     names: list[str] = []
 
@@ -190,8 +185,7 @@ def test_trace_wrapper_trace_calls_debug_only_for_trace_level() -> None:
 
 
 def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
 
     basic_calls: list[dict[str, Any]] = []
     configure_calls: list[dict[str, Any]] = []
@@ -247,8 +241,7 @@ def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.M
 
 
 def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    core_mod._configured = False
-    core_mod._active_config = None
+    _reset_logging_for_tests()
     calls = {"count": 0}
 
     def _basic_config(**kwargs: Any) -> None:
@@ -264,6 +257,31 @@ def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest
     configure_logging(cfg_a)
     configure_logging(cfg_b)
     assert calls["count"] == 2
+
+
+def test_lazy_logger_proxies_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, object] = {"trace": None, "bind": None, "info": None}
+
+    class _Resolved:
+        def trace(self, event: str, **kwargs: object) -> None:
+            calls["trace"] = (event, kwargs)
+
+        def bind(self, **kwargs: object) -> str:
+            calls["bind"] = kwargs
+            return "bound-result"
+
+        def info(self, event: str) -> None:
+            calls["info"] = event
+
+    lazy = core_mod._LazyLogger()
+    monkeypatch.setattr(core_mod, "get_logger", lambda _name=None: cast(Any, _Resolved()))
+
+    lazy.trace("trace.event", key="value")
+    assert calls["trace"] == ("trace.event", {"key": "value"})
+    assert cast(Any, lazy.bind(component="svc")) == "bound-result"
+    assert calls["bind"] == {"component": "svc"}
+    lazy.info("info.event")
+    assert calls["info"] == "info.event"
 
 
 def test_shutdown_logging_with_missing_shutdown_attr() -> None:
@@ -283,3 +301,23 @@ def test_build_handlers_returns_console_only_when_exporter_creation_fails(monkey
     monkeypatch.setattr(core_mod, "run_with_resilience", lambda _signal, _op: None)
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
+
+
+def test_configure_logging_rebuilds_after_shutdown_even_with_same_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    build_calls = {"count": 0}
+
+    def _build_handlers(_config: TelemetryConfig, _level: int) -> list[logging.Handler]:
+        build_calls["count"] += 1
+        core_mod._otel_log_provider = object()
+        return []
+
+    core_mod_any = cast(Any, core_mod)
+    logging_mod: Any = core_mod_any.logging
+    monkeypatch.setattr(core_mod, "_build_handlers", _build_handlers)
+    monkeypatch.setattr(logging_mod, "basicConfig", lambda **_kwargs: None)
+    cfg = TelemetryConfig.from_env({})
+    configure_logging(cfg)
+    core_mod.shutdown_logging()
+    configure_logging(cfg)
+    assert build_calls["count"] == 2
