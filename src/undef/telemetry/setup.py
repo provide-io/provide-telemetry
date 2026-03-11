@@ -12,6 +12,8 @@ import threading
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.core import configure_logging, shutdown_logging
 from undef.telemetry.metrics.provider import setup_metrics, shutdown_metrics
+from undef.telemetry.runtime import apply_runtime_config
+from undef.telemetry.slo import record_red_metrics, record_use_metrics
 from undef.telemetry.tracing.provider import setup_tracing, shutdown_tracing
 
 _lock = threading.Lock()
@@ -23,9 +25,14 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
     cfg = config or TelemetryConfig.from_env()
     with _lock:
         if not _setup_done:
+            apply_runtime_config(cfg)
             configure_logging(cfg)
             setup_tracing(cfg)
             setup_metrics(cfg)
+            if cfg.slo.enable_red_metrics:
+                record_red_metrics("startup", "INIT", 200, 0.0)
+            if cfg.slo.enable_use_metrics:
+                record_use_metrics("startup", 0)
             _setup_done = True
     return cfg
 

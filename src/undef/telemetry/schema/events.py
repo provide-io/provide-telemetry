@@ -10,10 +10,19 @@ from __future__ import annotations
 import re
 
 _EVENT_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+_SEGMENT_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 class EventSchemaError(ValueError):
     """Raised when an event violates schema policy."""
+
+
+def event_name(domain: str, action: str, status: str) -> str:
+    """Build a strict event name from validated segments."""
+    for label, value in (("domain", domain), ("action", action), ("status", status)):
+        if not _SEGMENT_RE.match(value):
+            raise EventSchemaError(f"invalid event segment: {label}={value}")
+    return f"{domain}.{action}.{status}"
 
 
 def validate_event_name(name: str, strict_event_name: bool) -> None:
