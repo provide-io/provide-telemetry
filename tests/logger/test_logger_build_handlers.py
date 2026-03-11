@@ -8,13 +8,14 @@ from __future__ import annotations
 import logging
 import warnings
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as core_mod
+from undef.telemetry.logger.core import _reset_logging_for_tests
 
 
 def test_build_handlers_without_otel_endpoint() -> None:
@@ -152,9 +153,10 @@ def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> N
             return None
 
     class _Exporter:
-        def __init__(self, endpoint: str, headers: dict[str, str]) -> None:
+        def __init__(self, endpoint: str, headers: dict[str, str], timeout: float) -> None:
             self.endpoint = endpoint
             self.headers = headers
+            self.timeout = timeout
 
     class _BatchProcessor:
         def __init__(self, exporter: object) -> None:
@@ -194,10 +196,11 @@ def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> N
     assert provider.resource["service.version"] == "1.0.0"
     assert len(provider.processors) == 1
     assert isinstance(provider.processors[0], _BatchProcessor)
-    exporter = provider.processors[0].exporter
+    exporter = cast(Any, provider.processors[0]).exporter
     assert isinstance(exporter, _Exporter)
     assert exporter.endpoint == "http://logs"
     assert exporter.headers == {"Authorization": "Basic abc"}
+    assert exporter.timeout == 10.0
     assert core_mod._otel_log_provider is provider
 
 
@@ -228,9 +231,10 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
             return None
 
     class _Exporter:
-        def __init__(self, endpoint: str, headers: dict[str, str]) -> None:
+        def __init__(self, endpoint: str, headers: dict[str, str], timeout: float) -> None:
             self.endpoint = endpoint
             self.headers = headers
+            self.timeout = timeout
 
     class _BatchProcessor:
         def __init__(self, exporter: object) -> None:
@@ -276,6 +280,9 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     assert isinstance(provider, _Provider)
     assert provider.resource["service.name"] == "svc"
     assert provider.resource["service.version"] == "1.0.0"
+    exporter = cast(Any, provider.processors[0]).exporter
+    assert isinstance(exporter, _Exporter)
+    assert exporter.timeout == 10.0
 
 
 def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -301,9 +308,10 @@ def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyP
             self.processors.append(proc)
 
     class _Exporter:
-        def __init__(self, endpoint: str, headers: dict[str, str]) -> None:
+        def __init__(self, endpoint: str, headers: dict[str, str], timeout: float) -> None:
             self.endpoint = endpoint
             self.headers = headers
+            self.timeout = timeout
 
     class _BatchProcessor:
         def __init__(self, exporter: object) -> None:
@@ -358,7 +366,7 @@ def test_load_instrumentation_logging_handler_returns_handler(monkeypatch: pytes
 
 
 def test_shutdown_logging_without_provider() -> None:
-    core_mod._otel_log_provider = None
+    _reset_logging_for_tests()
     core_mod.shutdown_logging()
     assert core_mod._otel_log_provider is None
 

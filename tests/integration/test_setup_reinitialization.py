@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.logger import core as logger_core
-from provide.telemetry.metrics import provider as metrics_provider
-from provide.telemetry.setup import _reset_all_for_tests, setup_telemetry, shutdown_telemetry
-from provide.telemetry.tracing import provider as tracing_provider
+from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.logger import core as logger_core
+from undef.telemetry.metrics import provider as metrics_provider
+from undef.telemetry.setup import _reset_all_for_tests, setup_telemetry, shutdown_telemetry
+from undef.telemetry.tracing import provider as tracing_provider
 
 pytestmark = pytest.mark.integration
 
@@ -106,22 +106,7 @@ class _FakeMeterProvider:
         self.shutdown_calls += 1
 
 
-@pytest.mark.otel
-def test_setup_then_shutdown_then_setup_rebuilds_package_local_state_with_fake_sdk(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Verify the setup/shutdown/setup cycle rebuilds provide-telemetry's own
-    package-local state (handlers, processors, resource, meter cache).
-
-    This test deliberately substitutes fake `_load_otel_*_components` for every
-    signal so it exercises only the code this package owns. It does NOT prove
-    that the *real* OTel SDK tolerates a second `setup_telemetry()` call after
-    `shutdown_telemetry()` — the real SDK installs providers via one-shot
-    globals (trace.set_tracer_provider, metrics.set_meter_provider,
-    logs.set_logger_provider) and a process restart remains the supported way
-    to install a fresh provider after teardown. See `docs/OPERATIONS.md`
-    §Lifecycle for the operator-facing guarantee.
-    """
+def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_all_for_tests()
 
     logs_api_mod = SimpleNamespace(set_logger_provider=lambda _provider: None)

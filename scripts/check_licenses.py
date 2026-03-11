@@ -12,6 +12,7 @@ explicitly excluded because they are never distributed with the package.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +41,18 @@ ALLOWED_LICENSES: frozenset[str] = frozenset(
     }
 )
 
+ALLOWED_LICENSE_TOKENS: frozenset[str] = frozenset(
+    {
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "MIT",
+        "ISC",
+        "PSF-2.0",
+        "MPL-2.0",
+    }
+)
+
 # Dev-only tools that are never distributed — copyleft is acceptable here.
 DEV_ONLY_SKIP: frozenset[str] = frozenset(
     {
@@ -65,6 +78,20 @@ def _get_installed_licenses() -> list[dict[str, str]]:
     return json.loads(result.stdout)  # type: ignore[no-any-return]
 
 
+def _license_allowed(license_str: str) -> bool:
+    normalized = " ".join(license_str.strip().split())
+    if normalized in ALLOWED_LICENSES or normalized in ALLOWED_LICENSE_TOKENS:
+        return True
+
+    if " OR " not in normalized and " AND " not in normalized:
+        return False
+
+    tokens = [tok.strip() for tok in re.split(r"\s+(?:OR|AND)\s+", normalized) if tok.strip()]
+    if not tokens:
+        return False
+    return all(token in ALLOWED_LICENSE_TOKENS for token in tokens)
+
+
 def main() -> int:
     packages = _get_installed_licenses()
     violations: list[str] = []
@@ -76,7 +103,7 @@ def main() -> int:
         if name in DEV_ONLY_SKIP:
             skipped.append(name)
             continue
-        if license_str not in ALLOWED_LICENSES:
+        if not _license_allowed(license_str):
             violations.append(f"  {name} {pkg['Version']}: {license_str!r}")
 
     if violations:
