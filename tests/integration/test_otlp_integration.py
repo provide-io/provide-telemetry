@@ -11,9 +11,7 @@ import pytest
 
 from undef.telemetry import counter, setup_telemetry, shutdown_telemetry, trace
 from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.metrics.provider import _set_meter_for_test
-from undef.telemetry.setup import _reset_setup_state_for_tests
-from undef.telemetry.tracing import provider as tracing_provider
+from undef.telemetry.setup import _reset_all_for_tests
 
 pytestmark = pytest.mark.integration
 
@@ -30,10 +28,7 @@ def test_otlp_collector_smoke() -> None:
             "is not set"
         )
 
-    _reset_setup_state_for_tests()
-    _set_meter_for_test(None)
-    tracing_provider._provider_configured = False
-    tracing_provider._provider_ref = None
+    _reset_all_for_tests()
 
     cfg = TelemetryConfig.from_env(
         {

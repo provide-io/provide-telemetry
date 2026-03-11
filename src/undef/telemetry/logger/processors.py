@@ -14,8 +14,8 @@ from undef.telemetry.logger.context import get_context
 from undef.telemetry.pii import sanitize_payload
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
-from undef.telemetry.tracing.context import get_trace_context
 from undef.telemetry.slo import classify_error
+from undef.telemetry.tracing.context import get_trace_context
 
 _SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
 

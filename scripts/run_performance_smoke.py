@@ -37,7 +37,7 @@ def _bench_ns_per_op(iterations: int, fn: Callable[[], object]) -> float:
 def run_benchmarks(iterations: int) -> PerfResult:
     policy = SamplingPolicy(default_rate=1.0)
     sanitize = sanitize_sensitive_fields(enabled=True)
-    event_payload = {"password": "secret", "token": "abc", "request_id": "r1"}
+    event_payload = {"password": "secret", "token": "abc", "request_id": "r1"}  # pragma: allowlist secret
     _ = policy  # Keep explicit policy object benchmark setup for future extension.
 
     event_name_ns = _bench_ns_per_op(iterations, lambda: event_name("auth", "login", "success"))
