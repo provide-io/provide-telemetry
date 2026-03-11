@@ -89,15 +89,17 @@ def setup_tracing(config: TelemetryConfig) -> None:
 
 
 def shutdown_tracing() -> None:
-    global _provider_ref
+    global _provider_ref, _provider_configured
     with _provider_lock:
         provider = _provider_ref
         if provider is None:
+            _provider_configured = False
             return
         shutdown = getattr(provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
         _provider_ref = None
+        _provider_configured = False
 
 
 class _TracerLike(Protocol):

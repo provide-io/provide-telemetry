@@ -164,15 +164,16 @@ def configure_logging(config: TelemetryConfig) -> None:
 
 
 def shutdown_logging() -> None:
-    global _otel_log_provider
+    global _configured, _active_config, _otel_log_provider
     with _lock:
         provider = _otel_log_provider
-        if provider is None:
-            return
-        shutdown = getattr(provider, "shutdown", None)
-        if callable(shutdown):
-            shutdown()
+        if provider is not None:
+            shutdown = getattr(provider, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
         _otel_log_provider = None
+        _active_config = None
+        _configured = False
 
 
 def get_logger(name: str | None = None) -> Any:
@@ -198,4 +199,18 @@ class _TraceWrapper:
         return _TraceWrapper(self._logger.bind(**kwargs))
 
 
-logger = get_logger()
+class _LazyLogger:
+    def _resolve(self) -> _TraceWrapper:
+        return get_logger()
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._resolve(), item)
+
+    def trace(self, event: str, **kwargs: Any) -> None:
+        self._resolve().trace(event, **kwargs)
+
+    def bind(self, **kwargs: Any) -> _TraceWrapper:
+        return self._resolve().bind(**kwargs)
+
+
+logger = _LazyLogger()

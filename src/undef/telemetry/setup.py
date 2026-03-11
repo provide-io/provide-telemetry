@@ -44,6 +44,9 @@ def _reset_setup_state_for_tests() -> None:
 
 def shutdown_telemetry() -> None:
     """Flush and tear down telemetry providers when available."""
-    shutdown_logging()
-    shutdown_metrics()
-    shutdown_tracing()
+    global _setup_done
+    with _lock:
+        _setup_done = False
+        shutdown_logging()
+        shutdown_metrics()
+        shutdown_tracing()
