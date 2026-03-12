@@ -79,7 +79,11 @@ def setup_tracing(config: TelemetryConfig) -> None:
         if config.tracing.otlp_endpoint:
             exporter = run_with_resilience(
                 "traces",
-                lambda: exporter_cls(endpoint=config.tracing.otlp_endpoint, headers=config.tracing.otlp_headers),
+                lambda: exporter_cls(
+                    endpoint=config.tracing.otlp_endpoint,
+                    headers=config.tracing.otlp_headers,
+                    timeout=config.exporter.traces_timeout_seconds,
+                ),
             )
             if exporter is not None:
                 provider.add_span_processor(processor_cls(exporter))
@@ -89,15 +93,23 @@ def setup_tracing(config: TelemetryConfig) -> None:
 
 
 def shutdown_tracing() -> None:
-    global _provider_ref
+    global _provider_ref, _provider_configured
     with _provider_lock:
         provider = _provider_ref
         if provider is None:
+            _provider_configured = False
             return
         shutdown = getattr(provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
         _provider_ref = None
+        _provider_configured = False
+
+
+def _reset_tracing_for_tests() -> None:
+    global _provider_configured, _provider_ref
+    _provider_configured = False
+    _provider_ref = None
 
 
 class _TracerLike(Protocol):
