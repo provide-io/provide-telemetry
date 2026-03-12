@@ -33,6 +33,7 @@ _module = _load_script_module()
 PerfResult = _module.PerfResult
 evaluate_thresholds = _module.evaluate_thresholds
 _bench_ns_per_op = _module._bench_ns_per_op
+run_benchmarks_stable = _module.run_benchmarks_stable
 
 
 def test_bench_ns_per_op_reports_positive_value() -> None:
@@ -53,3 +54,18 @@ def test_evaluate_thresholds_reports_each_exceeded_limit() -> None:
     assert "event_name_ns" in failures[0]
     assert "should_sample_ns" in failures[1]
     assert "sanitize_ns" in failures[2]
+
+
+def test_run_benchmarks_stable_uses_median(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = iter(
+        [
+            PerfResult(event_name_ns=100.0, should_sample_ns=300.0, sanitize_ns=500.0),
+            PerfResult(event_name_ns=200.0, should_sample_ns=100.0, sanitize_ns=700.0),
+            PerfResult(event_name_ns=900.0, should_sample_ns=200.0, sanitize_ns=600.0),
+        ]
+    )
+    monkeypatch.setattr(_module, "run_benchmarks", lambda _iterations: next(values))
+    result = run_benchmarks_stable(iterations=1000, runs=3)
+    assert result.event_name_ns == 200.0
+    assert result.should_sample_ns == 200.0
+    assert result.sanitize_ns == 600.0

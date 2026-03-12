@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 import structlog
 
-from undef.telemetry.logger import core as core_mod
+from undef.telemetry.logger.core import _reset_logging_for_tests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -31,6 +30,4 @@ def reset_logger_state() -> None:
     retains a reference to the local object.
     """
     structlog.reset_defaults()
-    cast(Any, core_mod)._configured = False
-    cast(Any, core_mod)._active_config = None
-    cast(Any, core_mod)._otel_log_provider = None
+    _reset_logging_for_tests()

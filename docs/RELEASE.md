@@ -5,6 +5,10 @@
 - Tag format: `vX.Y.Z`
 - Keep `project.version` in `pyproject.toml` aligned with release tag.
 
+## Release Notes Checklist
+
+- Document runtime API contract: `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot.
+
 ## Release Validation
 
 Run locally:

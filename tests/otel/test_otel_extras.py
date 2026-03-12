@@ -9,9 +9,11 @@ import pytest
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as logger_core
+from undef.telemetry.logger.core import _reset_logging_for_tests
 from undef.telemetry.metrics import provider as metrics_provider
 from undef.telemetry.setup import shutdown_telemetry
 from undef.telemetry.tracing import provider as tracing_provider
+from undef.telemetry.tracing.provider import _reset_tracing_for_tests
 
 pytestmark = pytest.mark.otel
 
@@ -22,7 +24,7 @@ def test_otel_import_available_for_marked_suite() -> None:
 
 def test_setup_tracing_with_real_otel_imports() -> None:
     pytest.importorskip("opentelemetry")
-    tracing_provider._provider_configured = False
+    _reset_tracing_for_tests()
     cfg = TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"})
     tracing_provider.setup_tracing(cfg)
     # setup may no-op safely depending on runtime, but must not raise
@@ -41,9 +43,7 @@ def test_setup_metrics_with_real_otel_imports() -> None:
 
 def test_setup_logging_with_real_otel_imports() -> None:
     pytest.importorskip("opentelemetry")
-    logger_core._configured = False
-    logger_core._active_config = None
-    logger_core._otel_log_provider = None
+    _reset_logging_for_tests()
     cfg = TelemetryConfig.from_env(
         {
             "UNDEF_LOG_LEVEL": "INFO",

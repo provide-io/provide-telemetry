@@ -16,6 +16,7 @@ import pytest
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace
 from undef.telemetry.tracing import provider as provider_mod
+from undef.telemetry.tracing.provider import _reset_tracing_for_tests
 
 
 def test_trace_context_helpers() -> None:
@@ -53,24 +54,22 @@ def test_get_tracer_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_setup_tracing_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     cfg = TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "false"})
     provider_mod.setup_tracing(cfg)  # disabled branch
 
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
     provider_mod.setup_tracing(TelemetryConfig())  # has_otel false branch
 
-    provider_mod._provider_configured = False
-    provider_mod._provider_ref = None
+    _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
     provider_mod.setup_tracing(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
     assert provider_mod._provider_ref is None
 
 
 def test_setup_tracing_short_circuits_when_otel_missing_even_if_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
-    provider_mod._provider_ref = None
+    _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
 
     def _boom_components() -> object:
@@ -85,15 +84,15 @@ def test_setup_tracing_short_circuits_when_otel_missing_even_if_enabled(monkeypa
 
 
 def test_setup_tracing_already_configured_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_tracing_for_tests()
     provider_mod._provider_configured = True
-    provider_mod._provider_ref = None
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
     provider_mod.setup_tracing(TelemetryConfig())
     assert provider_mod._provider_configured is True
 
 
 def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     provider = Mock()
     mock_otel = SimpleNamespace(set_tracer_provider=Mock())
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
@@ -111,7 +110,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     provider_mod.setup_tracing(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "undef-service", "service.version": "0.0.0"})
     provider_cls.assert_called_once_with(resource="res")
-    exporter_cls.assert_called_once_with(endpoint="http://trace", headers={})
+    exporter_cls.assert_called_once_with(endpoint="http://trace", headers={}, timeout=10.0)
     processor_cls.assert_called_once_with("exporter")
     provider.add_span_processor.assert_called_once_with("processor")
     mock_otel.set_tracer_provider.assert_called_once_with(provider)
@@ -120,7 +119,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     provider = Mock()
     mock_otel = SimpleNamespace(set_tracer_provider=Mock())
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
@@ -143,8 +142,7 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
 
 
 def test_setup_tracing_with_missing_components(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
-    provider_mod._provider_ref = None
+    _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
     monkeypatch.setattr(provider_mod, "_load_otel_tracing_components", lambda: None)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: None)
@@ -153,7 +151,7 @@ def test_setup_tracing_with_missing_components(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     provider = Mock()
     mock_otel = SimpleNamespace(set_tracer_provider=Mock())
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
@@ -172,7 +170,7 @@ def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyP
     provider_mod.setup_tracing(cfg)
     provider.add_span_processor.assert_not_called()
 
-    provider_mod._provider_configured = False
+    _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_load_otel_tracing_components", lambda: (object(), object(), object(), object()))
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: None)
     provider_mod.setup_tracing(TelemetryConfig())
@@ -180,25 +178,34 @@ def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyP
 
 
 def test_shutdown_tracing_calls_provider_shutdown() -> None:
+    _reset_tracing_for_tests()
+    provider_mod._provider_configured = True
     provider = Mock()
     provider_mod._provider_ref = provider
     provider_mod.shutdown_tracing()
     provider.shutdown.assert_called_once()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
 
 def test_shutdown_tracing_provider_absent_and_noncallable() -> None:
-    provider_mod._provider_ref = None
+    _reset_tracing_for_tests()
+    provider_mod._provider_configured = True
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
+    provider_mod._provider_configured = True
     provider_mod._provider_ref = SimpleNamespace(shutdown="nope")
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
+    provider_mod._provider_configured = True
     provider_mod._provider_ref = SimpleNamespace()
     provider_mod.shutdown_tracing()
     assert provider_mod._provider_ref is None
+    assert provider_mod._provider_configured is False
 
 
 def test_trace_decorator_sync_and_async() -> None:

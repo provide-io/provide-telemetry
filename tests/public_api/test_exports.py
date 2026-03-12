@@ -8,6 +8,8 @@ from __future__ import annotations
 import importlib
 import importlib.metadata as metadata
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -48,3 +50,19 @@ def test_public_api_version_type_error_fallback(monkeypatch: pytest.MonkeyPatch)
     module = importlib.reload(t)
     assert module.__version__ == "0.0.0"
     importlib.reload(module)
+
+
+def test_import_has_no_root_logging_side_effect() -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import logging; before=len(logging.getLogger().handlers); import undef.telemetry; "
+            "after=len(logging.getLogger().handlers); print(before, after)",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    before, after = proc.stdout.strip().split()
+    assert before == after

@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "default": {
+      "mutation_roots": [
+        "src/undef/telemetry/"
+      ],
+      "policy": {
+        "min_score": 1.0,
+        "max_drop_from_baseline": 0.0
+      },
+      "packages": {}
+    }
+  }
+}

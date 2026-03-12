@@ -13,6 +13,7 @@ from undef.telemetry.logger import processors as processors_mod
 from undef.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
 from undef.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
 from undef.telemetry.schema.events import EventSchemaError
+from undef.telemetry.tracing.context import set_trace_context
 
 
 def test_context_unbind_missing_key_is_noop_and_keeps_dict_state() -> None:
@@ -62,6 +63,15 @@ def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {"event": "auth.login.success"}
     out = apply_sampling(None, "info", payload)
     assert out is payload
+
+
+def test_merge_runtime_context_includes_trace_context() -> None:
+    clear_context()
+    set_trace_context("trace-1", "span-1")
+    out = processors_mod.merge_runtime_context(None, "info", {"event": "auth.login.success"})
+    assert out["trace_id"] == "trace-1"
+    assert out["span_id"] == "span-1"
+    set_trace_context(None, None)
 
 
 def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,6 +39,9 @@ See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/com
 - `UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS`
 - `UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS`
 - `UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS`
+- `UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS`
+- `UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS`
+- `UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS`
 - `UNDEF_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP`
 - `UNDEF_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP`
 - `UNDEF_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP`
@@ -57,11 +60,16 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Invalid event names with strict event mode enabled: raises `EventSchemaError`.
 - Missing required keys: raises `EventSchemaError` only when `UNDEF_TELEMETRY_STRICT_SCHEMA=true`.
 - Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`.
+- Exporter timeouts: `UNDEF_EXPORTER_*_TIMEOUT_SECONDS` are enforced for OTLP exporter setup and for each resilience attempt; timed-out attempts count as failures and follow retry/fail-open policy.
+- Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
 
 ## Lifecycle
 
 - Call `setup_telemetry()` once during process startup.
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
+- `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
+- After `shutdown_telemetry()`, a subsequent `setup_telemetry()` call performs a full reinitialization (including logging providers).
+- `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot, not a caller-owned mutable config reference.
 
 ## Local Health Check
 
@@ -89,6 +97,13 @@ uv run python scripts/run_performance_smoke.py --iterations 300000
 
 Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.
 Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
+
+## Mutation Policy Files
+
+- `.ci/pymutant-profiles.json` is the source of truth for mutation roots and policy floors.
+- Current strict policy: `min_score=1.0` and `max_drop_from_baseline=0.0`.
+- `.ci/pymutant-policy-baseline.json` pins the expected baseline score for policy checks.
+- If mutation roots/tests configuration changes, refresh runtime baseline before evaluating policy to avoid false policy failures from stale state.
 
 ## Docs Quality
 

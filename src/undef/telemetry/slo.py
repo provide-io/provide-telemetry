@@ -18,7 +18,7 @@ _resource_utilization = gauge("resource.utilization.percent", "Resource utilizat
 def record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None:
     attrs = {"route": route, "method": method, "status_code": str(status_code)}
     _http_requests_total.add(1, attrs)
-    if status_code >= 500:
+    if method != "WS" and status_code >= 500:
         _http_errors_total.add(1, attrs)
     _http_latency_ms.record(duration_ms, attrs)
 

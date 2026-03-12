@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import queue
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -17,6 +20,7 @@ from undef.telemetry import propagation as propagation_mod
 from undef.telemetry import resilience as resilience_mod
 from undef.telemetry import runtime as runtime_mod
 from undef.telemetry import sampling as sampling_mod
+from undef.telemetry import slo as slo_mod
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.context import clear_context, get_context
 from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
@@ -116,6 +120,67 @@ def test_resilience_success_fail_open_and_fail_closed() -> None:
         resilience_mod.run_with_resilience("logs", lambda: (_ for _ in ()).throw(ValueError("hard")))
 
 
+def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
+    resilience_mod.set_exporter_policy(
+        "metrics",
+        resilience_mod.ExporterPolicy(retries=1, timeout_seconds=0.01, backoff_seconds=0.0, fail_open=True),
+    )
+    calls = {"count": 0}
+
+    def _too_slow() -> str:
+        calls["count"] += 1
+        time.sleep(0.05)
+        return "late"
+
+    assert resilience_mod.run_with_resilience("metrics", _too_slow) is None
+    assert calls["count"] == 2
+    assert health_mod.get_health_snapshot().export_failures_metrics == 2
+    assert health_mod.get_health_snapshot().retries_metrics == 1
+
+    resilience_mod.set_exporter_policy(
+        "logs",
+        resilience_mod.ExporterPolicy(retries=0, timeout_seconds=0.01, fail_open=False),
+    )
+    with pytest.raises(TimeoutError, match="operation timed out"):
+        resilience_mod.run_with_resilience("logs", _too_slow)
+
+
+def test_run_attempt_with_timeout_zero_delegates_directly() -> None:
+    assert resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.0) == "ok"
+
+
+def test_run_attempt_with_timeout_invalid_payload_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeQueue:
+        def __init__(self, maxsize: int = 1) -> None:
+            _ = maxsize
+
+        def put(self, item: tuple[bool, object]) -> None:
+            _ = item
+
+        def get_nowait(self) -> tuple[bool, object]:
+            return (False, object())
+
+    class _FakeThread:
+        def __init__(self, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            self._target()
+
+        def join(self, _timeout: float) -> None:
+            return None
+
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(queue, "Queue", _FakeQueue)
+    monkeypatch.setattr(threading, "Thread", _FakeThread)
+
+    with pytest.raises(RuntimeError, match="invalid exception payload"):
+        resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.1)
+
+
 def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
     now = {"value": 1000.0}
     monkeypatch.setattr("time.monotonic", lambda: now["value"])
@@ -177,27 +242,50 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
     runtime_mod.apply_runtime_config(cfg)
+    runtime_cfg = runtime_mod.get_runtime_config()
+    assert runtime_cfg.sampling.logs_rate == 0.3
+    runtime_cfg.sampling.logs_rate = 1.0
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
     assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
     assert backpressure_mod.get_queue_policy().logs_maxsize == 5
     assert resilience_mod.get_exporter_policy("logs").retries == 2
+    cfg.sampling.logs_rate = 0.9
+    assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
+    assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
     updated = runtime_mod.update_runtime_config(cfg)
-    assert updated is cfg
+    assert updated is not cfg
+    assert updated.sampling.logs_rate == 0.9
+    assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.9
 
     monkeypatch.setattr("undef.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
     reloaded = runtime_mod.reload_runtime_from_env()
-    assert reloaded is cfg
+    assert reloaded is not cfg
+    assert reloaded.sampling.logs_rate == cfg.sampling.logs_rate
 
 
 def test_propagation_extra_header_parsing_branches() -> None:
     ctx = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", "bad-format")]})
-    assert ctx.traceparent == "bad-format"
+    assert ctx.traceparent is None
     ctx2 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", 123)]})
     assert ctx2.traceparent is None
+    malformed_utf8 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", b"\xff")]})
+    assert malformed_utf8.traceparent is None
     invalid_hex = propagation_mod.extract_w3c_context(
         {"headers": [(b"traceparent", b"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-gggggggggggggggg-01")]}
     )
     assert invalid_hex.trace_id is None
+    invalid_version = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")]}
+    )
+    assert invalid_version.trace_id is None
+    invalid_flags = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-zz")]}
+    )
+    assert invalid_flags.trace_id is None
+    zero_ids = propagation_mod.extract_w3c_context(
+        {"headers": [(b"traceparent", b"00-00000000000000000000000000000000-0000000000000000-01")]}
+    )
+    assert zero_ids.trace_id is None
 
 
 def test_health_snapshot_and_unknown_signal_branch() -> None:
@@ -216,12 +304,15 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
 
 
 def test_slo_helpers_and_error_taxonomy() -> None:
+    errors_before = slo_mod._http_errors_total.value
     record_red_metrics("/health", "GET", 200, 12.0)
     record_red_metrics("/health", "GET", 500, 13.0)
+    record_red_metrics("/ws", "WS", 1008, 5.0)
     record_use_metrics("cpu", 42)
     assert classify_error("ValueError") == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
+    assert slo_mod._http_errors_total.value - errors_before == 1
 
 
 @pytest.mark.asyncio
