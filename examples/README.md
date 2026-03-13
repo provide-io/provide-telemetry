@@ -5,8 +5,8 @@ SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 
 ## Telemetry
 
-Event naming in examples follows strict `domain.action.status` (exactly 3 segments).
-Use `undef.telemetry.event_name(domain, action, status)` when composing names.
+Event naming in examples follows strict 3-5 segment format (last segment is status).
+Use `undef.telemetry.event_name(*segments)` when composing names.
 
 - `telemetry/01_basic_telemetry.py`
   - Local console/json logging.
@@ -30,6 +30,13 @@ Use `undef.telemetry.event_name(domain, action, status)` when composing names.
 - `telemetry/07_slo_pack_and_health_snapshot.py`
   - RED/USE helper emissions.
   - Error taxonomy and health snapshot output.
+- `telemetry/08_full_hardening_profile.py`
+  - Combined hardening: PII, cardinality, sampling, backpressure, resilience, SLO.
+- `telemetry/09_error_handling_and_degradation.py`
+  - `TelemetryError` / `ConfigurationError` / `EventSchemaError` exception hierarchy.
+  - Graceful degradation when OTel is not installed.
+  - DEBUG logging to diagnose silent OTel fallbacks.
+  - Diagnostic warnings for sampling rate clamping and malformed OTLP headers.
 
 Run:
 
@@ -41,6 +48,8 @@ uv run --group dev --extra otel python examples/telemetry/04_runtime_reconfigure
 uv run --group dev --extra otel python examples/telemetry/05_pii_and_cardinality_policy.py
 uv run --group dev --extra otel python examples/telemetry/06_exporter_resilience_modes.py
 uv run --group dev --extra otel python examples/telemetry/07_slo_pack_and_health_snapshot.py
+uv run --group dev --extra otel python examples/telemetry/08_full_hardening_profile.py
+uv run --group dev --extra otel python examples/telemetry/09_error_handling_and_degradation.py
 ```
 
 ## OpenObserve

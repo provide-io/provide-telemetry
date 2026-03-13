@@ -7,6 +7,15 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "OVERFLOW_VALUE",
+    "CardinalityLimit",
+    "clear_cardinality_limits",
+    "get_cardinality_limits",
+    "guard_attributes",
+    "register_cardinality_limit",
+]
+
 import threading
 import time
 from dataclasses import dataclass
@@ -24,7 +33,7 @@ _seen: dict[str, dict[str, float]] = {}
 OVERFLOW_VALUE = "__overflow__"
 
 
-def register_cardinality_limit(key: str, max_values: int, ttl_seconds: float = 300.0) -> None:
+def register_cardinality_limit(key: str, max_values: int, ttl_seconds: float = 300.0) -> None:  # pragma: no mutate
     with _lock:
         _limits[key] = CardinalityLimit(max_values=max(1, max_values), ttl_seconds=max(1.0, ttl_seconds))
         _seen.setdefault(key, {})

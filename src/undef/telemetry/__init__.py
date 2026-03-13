@@ -15,15 +15,21 @@ from undef.telemetry.cardinality import (
     get_cardinality_limits,
     register_cardinality_limit,
 )
+from undef.telemetry.exceptions import ConfigurationError, TelemetryError
 from undef.telemetry.health import HealthSnapshot, get_health_snapshot
 from undef.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
 from undef.telemetry.metrics import counter, gauge, get_meter, histogram
 from undef.telemetry.pii import PIIRule, get_pii_rules, register_pii_rule, replace_pii_rules
 from undef.telemetry.propagation import bind_propagation_context, extract_w3c_context
 from undef.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
-from undef.telemetry.runtime import get_runtime_config, reload_runtime_from_env, update_runtime_config
+from undef.telemetry.runtime import (
+    get_runtime_config,
+    reconfigure_telemetry,
+    reload_runtime_from_env,
+    update_runtime_config,
+)
 from undef.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
-from undef.telemetry.schema.events import event_name
+from undef.telemetry.schema.events import EventSchemaError, event_name
 from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
 from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 from undef.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace, tracer
@@ -35,11 +41,14 @@ except (PackageNotFoundError, TypeError):
 
 __all__ = [
     "CardinalityLimit",
+    "ConfigurationError",
+    "EventSchemaError",
     "ExporterPolicy",
     "HealthSnapshot",
     "PIIRule",
     "QueuePolicy",
     "SamplingPolicy",
+    "TelemetryError",
     "TelemetryMiddleware",
     "__version__",
     "bind_context",
@@ -65,6 +74,7 @@ __all__ = [
     "get_tracer",
     "histogram",
     "logger",
+    "reconfigure_telemetry",
     "record_red_metrics",
     "record_use_metrics",
     "register_cardinality_limit",

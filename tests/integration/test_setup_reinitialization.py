@@ -126,6 +126,7 @@ def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch
     )
     monkeypatch.setattr(logger_core, "_load_instrumentation_logging_handler", lambda: None)
     monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    monkeypatch.setattr(tracing_provider, "_has_otel", lambda: True)
     monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: otel_trace_api)
     monkeypatch.setattr(
         tracing_provider,
@@ -133,6 +134,7 @@ def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch
         lambda: (_FakeResource, _FakeTracerProvider, _FakeSpanProcessor, _FakeSpanExporter),
     )
     monkeypatch.setattr(metrics_provider, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(metrics_provider, "_has_otel_metrics", lambda: True)
     monkeypatch.setattr(metrics_provider, "_load_otel_metrics_api", lambda: otel_metrics_api)
     monkeypatch.setattr(
         metrics_provider,

@@ -1,0 +1,255 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
+"""Tests targeting surviving mutation-testing mutants in metrics/fallback.py."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from undef.telemetry.metrics import fallback as fallback_mod
+from undef.telemetry.metrics.fallback import Counter, Gauge, Histogram, _exemplar
+
+
+@pytest.fixture(autouse=True)
+def _patch_sampling_and_backpressure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default: allow all sampling/backpressure so we test deeper logic."""
+    monkeypatch.setattr(fallback_mod, "should_sample", lambda signal, name: True)
+    monkeypatch.setattr(
+        fallback_mod,
+        "try_acquire",
+        lambda signal: SimpleNamespace(signal=signal, token=1),
+    )
+    monkeypatch.setattr(fallback_mod, "release", lambda ticket: None)
+
+
+# ── should_sample receives exact args ────────────────────────────────
+
+
+class TestShouldSampleArgs:
+    """Kill mutants that change 'metrics' to None/'XXmetricsXX'/etc."""
+
+    def test_counter_passes_metrics_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[tuple[str, str]] = []
+
+        def _spy(signal: str, name: str) -> bool:
+            calls.append((signal, name))
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Counter("my.counter").add(1)
+        assert calls == [("metrics", "my.counter")]
+
+    def test_gauge_passes_metrics_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[tuple[str, str]] = []
+
+        def _spy(signal: str, name: str) -> bool:
+            calls.append((signal, name))
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Gauge("my.gauge").add(1)
+        assert calls == [("metrics", "my.gauge")]
+
+    def test_histogram_passes_metrics_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[tuple[str, str]] = []
+
+        def _spy(signal: str, name: str) -> bool:
+            calls.append((signal, name))
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Histogram("my.hist").record(1.0)
+        assert calls == [("metrics", "my.hist")]
+
+
+# ── try_acquire receives exact args ──────────────────────────────────
+
+
+class TestTryAcquireArgs:
+    def test_counter_passes_metrics_to_try_acquire(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        signals: list[str] = []
+
+        def _spy(signal: str) -> SimpleNamespace:
+            signals.append(signal)
+            return SimpleNamespace(signal=signal, token=1)
+
+        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        Counter("c").add(1)
+        assert signals == ["metrics"]
+
+    def test_gauge_passes_metrics_to_try_acquire(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        signals: list[str] = []
+
+        def _spy(signal: str) -> SimpleNamespace:
+            signals.append(signal)
+            return SimpleNamespace(signal=signal, token=1)
+
+        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        Gauge("g").add(1)
+        assert signals == ["metrics"]
+
+    def test_histogram_passes_metrics_to_try_acquire(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        signals: list[str] = []
+
+        def _spy(signal: str) -> SimpleNamespace:
+            signals.append(signal)
+            return SimpleNamespace(signal=signal, token=1)
+
+        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        Histogram("h").record(1.0)
+        assert signals == ["metrics"]
+
+
+# ── release receives correct ticket ─────────────────────────────────
+
+
+class TestReleaseArgs:
+    def test_counter_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ticket = SimpleNamespace(signal="metrics", token=42)
+        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        released: list[object] = []
+        monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
+        Counter("c").add(1)
+        assert released == [ticket]
+        assert released[0] is ticket  # exact object, not None
+
+    def test_gauge_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ticket = SimpleNamespace(signal="metrics", token=42)
+        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        released: list[object] = []
+        monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
+        Gauge("g").add(1)
+        assert released == [ticket]
+        assert released[0] is ticket
+
+    def test_histogram_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ticket = SimpleNamespace(signal="metrics", token=42)
+        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        released: list[object] = []
+        monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
+        Histogram("h").record(1.0)
+        assert released == [ticket]
+        assert released[0] is ticket
+
+
+# ── _exemplar or→and mutation ────────────────────────────────────────
+
+
+class TestExemplarOrVsAnd:
+    def test_returns_empty_when_trace_id_set_but_span_id_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: `trace_id is None or span_id is None` → `and`."""
+        monkeypatch.setattr(
+            fallback_mod,
+            "get_trace_context",
+            lambda: {"trace_id": "a" * 32, "span_id": None},
+        )
+        assert _exemplar() == {}
+
+    def test_returns_empty_when_span_id_set_but_trace_id_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            fallback_mod,
+            "get_trace_context",
+            lambda: {"trace_id": None, "span_id": "b" * 16},
+        )
+        assert _exemplar() == {}
+
+    def test_returns_both_when_both_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            fallback_mod,
+            "get_trace_context",
+            lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
+        )
+        result = _exemplar()
+        assert result == {"trace_id": "a" * 32, "span_id": "b" * 16}
+
+
+# ── OTel delegation: exact args passed ──────────────────────────────
+
+
+class TestOtelDelegationArgs:
+    def test_counter_otel_add_receives_exact_amount_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        otel_counter = Mock()
+        c = Counter("c", otel_counter=otel_counter)
+        c.add(7, {"env": "prod"})
+        otel_counter.add.assert_called_once_with(7, {"env": "prod"})
+
+    def test_counter_otel_add_with_exemplar_receives_all_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            fallback_mod,
+            "get_trace_context",
+            lambda: {"trace_id": "t1", "span_id": "s1"},
+        )
+        otel_counter = Mock()
+        c = Counter("c", otel_counter=otel_counter)
+        c.add(3, {"k": "v"})
+        otel_counter.add.assert_called_once_with(3, {"k": "v"}, exemplar={"trace_id": "t1", "span_id": "s1"})
+
+    def test_gauge_otel_add_receives_exact_amount_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        otel_gauge = Mock()
+        g = Gauge("g", otel_gauge=otel_gauge)
+        g.add(5, {"region": "us"})
+        otel_gauge.add.assert_called_once_with(5, {"region": "us"})
+
+    def test_histogram_otel_record_receives_exact_value_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        otel_hist = Mock()
+        h = Histogram("h", otel_histogram=otel_hist)
+        h.record(42.5, {"path": "/api"})
+        otel_hist.record.assert_called_once_with(42.5, {"path": "/api"})
+
+    def test_histogram_otel_record_with_exemplar_receives_all_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            fallback_mod,
+            "get_trace_context",
+            lambda: {"trace_id": "t2", "span_id": "s2"},
+        )
+        otel_hist = Mock()
+        h = Histogram("h", otel_histogram=otel_hist)
+        h.record(9.9, {"k": "v"})
+        otel_hist.record.assert_called_once_with(9.9, {"k": "v"}, exemplar={"trace_id": "t2", "span_id": "s2"})
+
+
+# ── Counter/Gauge/Histogram use self.name correctly ─────────────────
+
+
+class TestSelfNameUsed:
+    def test_counter_uses_self_name_for_sampling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        names: list[str] = []
+
+        def _spy(_s: str, n: str) -> bool:
+            names.append(n)
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Counter("specific.counter.name").add(1)
+        assert names == ["specific.counter.name"]
+
+    def test_gauge_uses_self_name_for_sampling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        names: list[str] = []
+
+        def _spy(_s: str, n: str) -> bool:
+            names.append(n)
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Gauge("specific.gauge.name").add(1)
+        assert names == ["specific.gauge.name"]
+
+    def test_histogram_uses_self_name_for_sampling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        names: list[str] = []
+
+        def _spy(_s: str, n: str) -> bool:
+            names.append(n)
+            return True
+
+        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        Histogram("specific.hist.name").record(1.0)
+        assert names == ["specific.hist.name"]
