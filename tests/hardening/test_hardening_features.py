@@ -5,9 +5,6 @@
 
 from __future__ import annotations
 
-import queue
-import threading
-import time
 from typing import Any
 
 import pytest
@@ -37,6 +34,101 @@ def _reset_state() -> None:
     pii_mod.reset_pii_rules_for_tests()
     clear_context()
     set_trace_context(None, None)
+
+
+def test_w3c_attach_returns_none_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from undef.telemetry import _otel
+
+    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    assert _otel.attach_w3c_context("00-abc-def-01", None) is None
+
+
+def test_w3c_detach_none_is_noop() -> None:
+    from undef.telemetry import _otel
+
+    _otel.detach_w3c_context(None)  # should not raise
+
+
+def test_w3c_detach_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from undef.telemetry import _otel
+
+    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    _otel.detach_w3c_context("fake_token")  # should not raise
+
+
+def test_w3c_attach_with_mocked_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from undef.telemetry import _otel
+
+    fake_token = object()
+    extract_calls: list[dict[str, str]] = []
+    attach_calls: list[object] = []
+    detach_calls: list[object] = []
+
+    def _fake_extract(*, carrier: dict[str, str]) -> dict[str, bool]:
+        extract_calls.append(dict(carrier))
+        return {"ctx": True}
+
+    def _fake_attach(ctx: object) -> object:
+        attach_calls.append(ctx)
+        return fake_token
+
+    def _fake_detach(t: object) -> None:
+        detach_calls.append(t)
+
+    propagator_mod = SimpleNamespace(TraceContextTextMapPropagator=lambda: SimpleNamespace(extract=_fake_extract))
+    context_mod = SimpleNamespace(attach=_fake_attach, detach=_fake_detach)
+
+    import_calls: list[str] = []
+
+    def _import(name: str) -> object:
+        import_calls.append(name)
+        if name == "opentelemetry.trace.propagation.tracecontext":
+            return propagator_mod
+        if name == "opentelemetry.context":
+            return context_mod
+        raise ImportError(name)
+
+    monkeypatch.setattr(_otel, "_import_module", _import)
+
+    # With tracestate
+    token = _otel.attach_w3c_context("00-abc-def-01", "vendor=v")
+    assert token is fake_token
+    assert extract_calls[-1] == {"traceparent": "00-abc-def-01", "tracestate": "vendor=v"}
+    assert attach_calls[-1] == {"ctx": True}
+
+    # Detach with valid token
+    _otel.detach_w3c_context(token)
+    assert detach_calls[-1] is fake_token
+
+    # With tracestate=None to cover the None branch
+    token2 = _otel.attach_w3c_context("00-abc-def-01", None)
+    assert token2 is fake_token
+    assert extract_calls[-1] == {"traceparent": "00-abc-def-01"}
+    assert "tracestate" not in extract_calls[-1]
+
+
+def test_bind_clear_round_trip_calls_attach_detach(monkeypatch: pytest.MonkeyPatch) -> None:
+    attach_calls: list[tuple[str, str | None]] = []
+    detach_calls: list[object] = []
+
+    def _fake_attach(tp: str, ts: str | None) -> str:
+        attach_calls.append((tp, ts))
+        return "tok"
+
+    monkeypatch.setattr(propagation_mod, "attach_w3c_context", _fake_attach)
+    monkeypatch.setattr(propagation_mod, "detach_w3c_context", lambda t: detach_calls.append(t))
+    scope = {
+        "headers": [
+            (b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+        ]
+    }
+    ctx = propagation_mod.extract_w3c_context(scope)
+    propagation_mod.bind_propagation_context(ctx)
+    assert len(attach_calls) == 1
+    propagation_mod.clear_propagation_context()
+    assert detach_calls == ["tok"]
 
 
 def test_propagation_extract_bind_and_clear() -> None:
@@ -120,65 +212,11 @@ def test_resilience_success_fail_open_and_fail_closed() -> None:
         resilience_mod.run_with_resilience("logs", lambda: (_ for _ in ()).throw(ValueError("hard")))
 
 
-def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
-    resilience_mod.set_exporter_policy(
-        "metrics",
-        resilience_mod.ExporterPolicy(retries=1, timeout_seconds=0.01, backoff_seconds=0.0, fail_open=True),
-    )
-    calls = {"count": 0}
-
-    def _too_slow() -> str:
-        calls["count"] += 1
-        time.sleep(0.05)
-        return "late"
-
-    assert resilience_mod.run_with_resilience("metrics", _too_slow) is None
-    assert calls["count"] == 2
-    assert health_mod.get_health_snapshot().export_failures_metrics == 2
-    assert health_mod.get_health_snapshot().retries_metrics == 1
-
-    resilience_mod.set_exporter_policy(
-        "logs",
-        resilience_mod.ExporterPolicy(retries=0, timeout_seconds=0.01, fail_open=False),
-    )
-    with pytest.raises(TimeoutError, match="operation timed out"):
-        resilience_mod.run_with_resilience("logs", _too_slow)
-
-
-def test_run_attempt_with_timeout_zero_delegates_directly() -> None:
-    assert resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.0) == "ok"
-
-
-def test_run_attempt_with_timeout_invalid_payload_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _FakeQueue:
-        def __init__(self, maxsize: int = 1) -> None:
-            _ = maxsize
-
-        def put(self, item: tuple[bool, object]) -> None:
-            _ = item
-
-        def get_nowait(self) -> tuple[bool, object]:
-            return (False, object())
-
-    class _FakeThread:
-        def __init__(self, target: Any, daemon: bool) -> None:
-            self._target = target
-            self._daemon = daemon
-
-        def start(self) -> None:
-            self._target()
-
-        def join(self, _timeout: float) -> None:
-            return None
-
-        def is_alive(self) -> bool:
-            return False
-
-    monkeypatch.setattr(queue, "Queue", _FakeQueue)
-    monkeypatch.setattr(threading, "Thread", _FakeThread)
-
-    with pytest.raises(RuntimeError, match="invalid exception payload"):
-        resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.1)
+def test_resilience_rejects_unknown_signal() -> None:
+    with pytest.raises(ValueError, match="unknown signal"):
+        resilience_mod.set_exporter_policy("trace", resilience_mod.ExporterPolicy())
+    with pytest.raises(ValueError, match="unknown signal"):
+        resilience_mod.get_exporter_policy("metric")
 
 
 def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -202,6 +240,8 @@ def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch
 
 
 def test_pii_engine_default_and_rules() -> None:
+    import hashlib
+
     payload: dict[str, Any] = {
         "password": "p",
         "nested": {"token": "t", "secret": "s"},
@@ -222,14 +262,22 @@ def test_pii_engine_default_and_rules() -> None:
     ruled = pii_mod.sanitize_payload(payload, enabled=True)
     assert "secret" not in ruled["nested"]
     assert ruled["items"][0]["key"] == "v..."
-    assert len(ruled["password"]) == 12
+    # With precedence fix, custom hash rule runs on original "p", not "***"
+    assert ruled["password"] == hashlib.sha256(b"p").hexdigest()[:12]
     pii_mod.register_pii_rule(pii_mod.PIIRule(path=("nested", "token"), mode="redact"))
     assert pii_mod.get_pii_rules()
     assert pii_mod.sanitize_payload(payload, enabled=False) is payload
 
 
+def test_pii_custom_truncate_preserves_value() -> None:
+    payload: dict[str, Any] = {"token": "mysecrettoken123"}
+    pii_mod.replace_pii_rules([pii_mod.PIIRule(path=("token",), mode="truncate", truncate_to=4)])
+    result = pii_mod.sanitize_payload(payload, enabled=True)
+    assert result["token"] == "myse..."
+
+
 def test_pii_sanitize_payload_non_dict_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pii_mod, "_apply_default_sensitive_key_redaction", lambda _node: [])
+    monkeypatch.setattr(pii_mod, "_apply_default_sensitive_key_redaction", lambda _node, _orig, _keys=None: [])
     assert pii_mod.sanitize_payload({"x": "y"}, enabled=True) == {}
 
 
@@ -269,7 +317,7 @@ def test_propagation_extra_header_parsing_branches() -> None:
     ctx2 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", 123)]})
     assert ctx2.traceparent is None
     malformed_utf8 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", b"\xff")]})
-    assert malformed_utf8.traceparent is None
+    assert malformed_utf8.traceparent is None  # latin-1 decoded but still invalid traceparent format
     invalid_hex = propagation_mod.extract_w3c_context(
         {"headers": [(b"traceparent", b"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-gggggggggggggggg-01")]}
     )
@@ -304,7 +352,7 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
 
 
 def test_slo_helpers_and_error_taxonomy() -> None:
-    errors_before = slo_mod._http_errors_total.value
+    slo_mod._reset_slo_for_tests()
     record_red_metrics("/health", "GET", 200, 12.0)
     record_red_metrics("/health", "GET", 500, 13.0)
     record_red_metrics("/ws", "WS", 1008, 5.0)
@@ -312,70 +360,23 @@ def test_slo_helpers_and_error_taxonomy() -> None:
     assert classify_error("ValueError") == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
-    assert slo_mod._http_errors_total.value - errors_before == 1
+    assert slo_mod._counters["http.errors.total"].value == 1
 
 
-@pytest.mark.asyncio
-async def test_resilience_async_guard_forces_fail_fast_without_override() -> None:
-    resilience_mod.set_exporter_policy(
-        "logs",
-        resilience_mod.ExporterPolicy(
-            retries=2, backoff_seconds=0.5, fail_open=True, allow_blocking_in_event_loop=False
-        ),
-    )
-    calls = {"count": 0}
-
-    def _always_fail() -> str:
-        calls["count"] += 1
-        raise RuntimeError("boom")
-
-    with pytest.warns(RuntimeWarning, match="forcing fail-fast behavior"):
-        assert resilience_mod.run_with_resilience("logs", _always_fail) is None
-    assert calls["count"] == 1
-    assert health_mod.get_health_snapshot().async_blocking_risk_logs == 1
+def test_slo_lazy_creation_populates_dicts() -> None:
+    slo_mod._reset_slo_for_tests()
+    assert slo_mod._counters == {}
+    assert slo_mod._histograms == {}
+    assert slo_mod._gauges == {}
+    record_red_metrics("/test", "GET", 200, 1.0)
+    assert "http.requests.total" in slo_mod._counters
+    assert "http.request.duration_ms" in slo_mod._histograms
+    record_use_metrics("cpu", 10)
+    assert "resource.utilization.percent" in slo_mod._gauges
+    # Call again to hit cached branches
+    record_red_metrics("/test2", "GET", 500, 2.0)
+    record_use_metrics("mem", 20)
 
 
-@pytest.mark.asyncio
-async def test_resilience_async_guard_allows_blocking_when_explicit() -> None:
-    resilience_mod.set_exporter_policy(
-        "metrics",
-        resilience_mod.ExporterPolicy(
-            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
-        ),
-    )
-    calls = {"count": 0}
-
-    def _flaky() -> str:
-        calls["count"] += 1
-        if calls["count"] == 1:
-            raise RuntimeError("boom")
-        return "ok"
-
-    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
-        assert resilience_mod.run_with_resilience("metrics", _flaky) == "ok"
-    assert calls["count"] == 2
-    snap = health_mod.get_health_snapshot()
-    assert snap.async_blocking_risk_metrics == 1
-    assert snap.retries_metrics == 1
-
-
-@pytest.mark.asyncio
-async def test_resilience_async_guard_warns_only_once_per_signal() -> None:
-    resilience_mod.set_exporter_policy(
-        "traces",
-        resilience_mod.ExporterPolicy(
-            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
-        ),
-    )
-
-    calls = {"count": 0}
-
-    def _always_fail() -> str:
-        calls["count"] += 1
-        raise RuntimeError("boom")
-
-    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
-        assert resilience_mod.run_with_resilience("traces", _always_fail) is None
-    # Warning is suppressed for same signal after first emission.
-    assert resilience_mod.run_with_resilience("traces", _always_fail) is None
-    assert calls["count"] == 4
+# Resilience timeout and async guard tests are in
+# test_hardening_resilience.py (500 LOC limit).

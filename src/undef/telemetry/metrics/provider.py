@@ -20,7 +20,7 @@ def _has_otel_metrics() -> bool:
 
 
 _HAS_OTEL_METRICS = _has_otel_metrics()
-_meter: Any | None = None
+_meters: dict[str, Any] = {}
 _meter_provider: Any | None = None
 _meter_lock = threading.Lock()
 
@@ -37,13 +37,18 @@ def _load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
     return _otel.load_otel_metrics_components()
 
 
+def _refresh_otel_metrics() -> None:
+    global _HAS_OTEL_METRICS
+    _HAS_OTEL_METRICS = _has_otel_metrics()
+
+
 def setup_metrics(config: TelemetryConfig) -> None:
-    global _meter, _meter_provider
+    global _meter_provider
     if not config.metrics.enabled or not _HAS_OTEL_METRICS:
         return
 
     with _meter_lock:
-        if _meter is not None:
+        if _meters.get("undef.telemetry") is not None:
             return
 
         components = _load_otel_metrics_components()
@@ -69,27 +74,33 @@ def setup_metrics(config: TelemetryConfig) -> None:
         provider = provider_cls(resource=resource, metric_readers=readers)
         otel_metrics.set_meter_provider(provider)
         _meter_provider = provider
-        _meter = otel_metrics.get_meter("undef.telemetry")
+        _meters["undef.telemetry"] = otel_metrics.get_meter("undef.telemetry")
 
 
 def get_meter(name: str | None = None) -> Any | None:
-    if _meter is not None:
-        return _meter
+    meter_name = "undef.telemetry" if name is None else name
+    cached = _meters.get(meter_name)
+    if cached is not None:
+        return cached
     otel_metrics = _load_otel_metrics_api()
     if otel_metrics is not None:
-        meter_name = "undef.telemetry" if name is None else name
-        return otel_metrics.get_meter(meter_name)
+        meter = otel_metrics.get_meter(meter_name)
+        with _meter_lock:
+            _meters[meter_name] = meter
+        return meter
     return None
 
 
 def _set_meter_for_test(meter: Any | None) -> None:
-    global _meter, _meter_provider
-    _meter = meter
+    global _meter_provider
+    _meters.clear()
+    if meter is not None:
+        _meters["undef.telemetry"] = meter
     _meter_provider = None
 
 
 def shutdown_metrics() -> None:
-    global _meter, _meter_provider
+    global _meter_provider
     with _meter_lock:
         provider = _meter_provider
         if provider is None:
@@ -97,5 +108,5 @@ def shutdown_metrics() -> None:
         shutdown = getattr(provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
-        _meter = None
+        _meters.clear()
         _meter_provider = None

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from undef.telemetry.backpressure import release, try_acquire
@@ -29,6 +30,7 @@ class Counter:
     def __init__(self, name: str, otel_counter: Any | None = None) -> None:
         self.name = name
         self._otel_counter = otel_counter
+        self._lock = threading.Lock()
         self.value = 0
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
@@ -38,7 +40,8 @@ class Counter:
         if ticket is None:
             return
         try:
-            self.value += amount
+            with self._lock:
+                self.value += amount
             otel_counter = self._otel_counter
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -58,6 +61,7 @@ class Gauge:
     def __init__(self, name: str, otel_gauge: Any | None = None) -> None:
         self.name = name
         self._otel_gauge = otel_gauge
+        self._lock = threading.Lock()
         self.value = 0
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
@@ -67,11 +71,29 @@ class Gauge:
         if ticket is None:
             return
         try:
-            self.value += amount
+            with self._lock:
+                self.value += amount
             otel_gauge = self._otel_gauge
             if otel_gauge is not None:
                 attrs = guard_attributes(attributes or {})
                 otel_gauge.add(amount, attrs)
+        finally:
+            release(ticket)
+
+    def set(self, value: int, attributes: dict[str, str] | None = None) -> None:
+        if not should_sample("metrics", self.name):
+            return
+        ticket = try_acquire("metrics")
+        if ticket is None:
+            return
+        try:
+            with self._lock:
+                delta = value - self.value
+                self.value = value
+            otel_gauge = self._otel_gauge
+            if otel_gauge is not None:
+                attrs = guard_attributes(attributes or {})
+                otel_gauge.add(delta, attrs)
         finally:
             release(ticket)
 
@@ -80,7 +102,11 @@ class Histogram:
     def __init__(self, name: str, otel_histogram: Any | None = None) -> None:
         self.name = name
         self._otel_histogram = otel_histogram
-        self.records: list[float] = []
+        self._lock = threading.Lock()
+        self.count: int = 0
+        self.total: float = 0.0
+        self.min: float = float("inf")  # pragma: no mutate
+        self.max: float = float("-inf")  # pragma: no mutate
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
         if not should_sample("metrics", self.name):
@@ -89,7 +115,13 @@ class Histogram:
         if ticket is None:
             return
         try:
-            self.records.append(value)
+            with self._lock:
+                self.count += 1
+                self.total += value
+                if value < self.min:  # pragma: no mutate
+                    self.min = value
+                if value > self.max:  # pragma: no mutate
+                    self.max = value
             otel_histogram = self._otel_histogram
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
