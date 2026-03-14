@@ -103,11 +103,11 @@ def test_setup_metrics_failure_triggers_rollback_of_logging_and_tracing(
     """
     shutdown_calls: list[str] = []
 
-    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.setup_metrics",
         lambda _: (_ for _ in ()).throw(RuntimeError("metrics_boom")),
@@ -150,15 +150,15 @@ def test_setup_telemetry_slo_red_metrics_exact_args(monkeypatch: pytest.MonkeyPa
     import provide.telemetry.slo as slo_mod
 
     red_mock = MagicMock()
-    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
-    monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
-    monkeypatch.setattr(slo_mod, "record_red_metrics", red_mock)
-    monkeypatch.setattr(slo_mod, "record_use_metrics", lambda *_: None)
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup._rebind_slo_instruments", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.record_red_metrics", red_mock)
+    monkeypatch.setattr("undef.telemetry.setup.record_use_metrics", lambda *_: None)
 
     cfg = TelemetryConfig(slo=SLOConfig(enable_red_metrics=True))
     setup_telemetry(cfg)
@@ -179,15 +179,15 @@ def test_setup_telemetry_slo_use_metrics_exact_args(monkeypatch: pytest.MonkeyPa
     import provide.telemetry.slo as slo_mod
 
     use_mock = MagicMock()
-    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
-    monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
-    monkeypatch.setattr(slo_mod, "record_red_metrics", lambda *_: None)
-    monkeypatch.setattr(slo_mod, "record_use_metrics", use_mock)
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup._rebind_slo_instruments", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.record_red_metrics", lambda *_: None)
+    monkeypatch.setattr("undef.telemetry.setup.record_use_metrics", use_mock)
 
     cfg = TelemetryConfig(slo=SLOConfig(enable_use_metrics=True))
     setup_telemetry(cfg)
@@ -201,15 +201,15 @@ def test_setup_telemetry_slo_both_metrics_exact_args(monkeypatch: pytest.MonkeyP
 
     red_mock = MagicMock()
     use_mock = MagicMock()
-    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
-    monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
-    monkeypatch.setattr(slo_mod, "record_red_metrics", red_mock)
-    monkeypatch.setattr(slo_mod, "record_use_metrics", use_mock)
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup._rebind_slo_instruments", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.record_red_metrics", red_mock)
+    monkeypatch.setattr("undef.telemetry.setup.record_use_metrics", use_mock)
 
     cfg = TelemetryConfig(slo=SLOConfig(enable_red_metrics=True, enable_use_metrics=True))
     setup_telemetry(cfg)
@@ -236,12 +236,12 @@ def test_setup_telemetry_completed_list_has_correct_keys(
 
     shutdown_calls: list[str] = []
 
-    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _: None)
     monkeypatch.setattr(
         slo_mod,
         "_rebind_slo_instruments",

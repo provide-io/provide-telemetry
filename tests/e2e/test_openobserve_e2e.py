@@ -77,7 +77,7 @@ def _search_total(base_url: str, stream_type: str, auth: str, sql: str, start_ti
     return int(payload.get("total", 0))
 
 
-def test_openobserve_trace_and_metric_ingestion_e2e() -> None:
+def test_openobserve_trace_and_metric_ingestion_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("opentelemetry")
     user = _require_env("OPENOBSERVE_USER")
     password = _require_env("OPENOBSERVE_PASSWORD")
@@ -98,8 +98,8 @@ def test_openobserve_trace_and_metric_ingestion_e2e() -> None:
     _reset_all_for_tests()
 
     # Keep E2E feedback tight by reducing exporter flush intervals.
-    os.environ["OTEL_BSP_SCHEDULE_DELAY"] = "200"
-    os.environ["OTEL_METRIC_EXPORT_INTERVAL"] = "1000"
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "200")
+    monkeypatch.setenv("OTEL_METRIC_EXPORT_INTERVAL", "1000")
 
     cfg = TelemetryConfig.from_env(
         {

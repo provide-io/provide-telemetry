@@ -15,3 +15,4 @@ mutants/
 .pymutant-state/
 .pymutant-ledger.json
 bf-*.txt
+otel_stderr.txt

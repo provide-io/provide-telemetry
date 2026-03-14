@@ -27,6 +27,7 @@ def has_otel() -> bool:
         _import_module("opentelemetry")
         return True
     except ImportError:
+        _logger.debug("opentelemetry package not installed; telemetry will use no-op fallbacks")  # pragma: no mutate
         return False
 
 
@@ -38,6 +39,7 @@ def load_otel_trace_api() -> Any | None:
     try:
         return _import_module("opentelemetry.trace")
     except ImportError:
+        _logger.debug("opentelemetry.trace not available; tracing will use no-op fallback")  # pragma: no mutate
         return None
 
 
@@ -54,6 +56,7 @@ def load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
             otlp_mod.OTLPSpanExporter,
         )
     except ImportError:
+        _logger.debug("OTel tracing SDK components not available; OTLP trace export disabled")  # pragma: no mutate
         return None
 
 
@@ -61,6 +64,7 @@ def load_otel_metrics_api() -> Any | None:
     try:
         return _import_module("opentelemetry.metrics")
     except ImportError:
+        _logger.debug("opentelemetry.metrics not available; metrics will use no-op fallback")  # pragma: no mutate
         return None
 
 
@@ -77,6 +81,7 @@ def load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
             otlp_mod.OTLPMetricExporter,
         )
     except ImportError:
+        _logger.debug("OTel metrics SDK components not available; OTLP metrics export disabled")  # pragma: no mutate
         return None
 
 
@@ -95,7 +100,37 @@ def load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
             otlp_logs_mod.OTLPLogExporter,
         )
     except ImportError:
+        _logger.debug("OTel logs SDK components not available; OTLP log export disabled")  # pragma: no mutate
         return None
+
+
+def attach_w3c_context(traceparent: str, tracestate: str | None) -> object | None:
+    """Extract W3C headers into OTEL context and attach. Returns token or None."""
+    try:
+        propagator_mod = _import_module("opentelemetry.trace.propagation.tracecontext")
+        context_mod = _import_module("opentelemetry.context")
+    except ImportError:
+        _logger.debug("OTel propagation not available; W3C context attach skipped")  # pragma: no mutate
+        return None
+    carrier: dict[str, str] = {"traceparent": traceparent}
+    if tracestate is not None:
+        carrier["tracestate"] = tracestate
+    propagator = propagator_mod.TraceContextTextMapPropagator()
+    ctx = propagator.extract(carrier=carrier)
+    token: object = context_mod.attach(ctx)
+    return token
+
+
+def detach_w3c_context(token: object | None) -> None:
+    """Detach a previously attached OTEL context token."""
+    if token is None:
+        return
+    try:
+        context_mod = _import_module("opentelemetry.context")
+    except ImportError:
+        _logger.debug("OTel context not available; W3C context detach skipped")  # pragma: no mutate
+        return
+    context_mod.detach(token)
 
 
 def load_instrumentation_logging_handler() -> InstrumentationLoggingHandlerFactory | None:
@@ -106,4 +141,5 @@ def load_instrumentation_logging_handler() -> InstrumentationLoggingHandlerFacto
             return None
         return cast(InstrumentationLoggingHandlerFactory, handler_cls)  # pragma: no cover # pragma: no mutate
     except ImportError:
+        _logger.debug("OTel instrumentation logging handler not available")  # pragma: no mutate
         return None

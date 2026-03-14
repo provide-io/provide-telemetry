@@ -148,35 +148,35 @@ class TestModuleAll:
 
 class TestLazySloLoading:
     def test_classify_error_accessible_via_top_level(self) -> None:
-        import provide.telemetry
+        import undef.telemetry
 
-        fn = provide.telemetry.classify_error
+        fn = undef.telemetry.classify_error
         assert callable(fn)
         result = fn("ValueError", None)
         assert "error_type" in result
 
     def test_record_red_metrics_accessible_via_top_level(self) -> None:
-        import provide.telemetry
+        import undef.telemetry
 
-        assert callable(provide.telemetry.record_red_metrics)
+        assert callable(undef.telemetry.record_red_metrics)
 
     def test_record_use_metrics_accessible_via_top_level(self) -> None:
-        import provide.telemetry
+        import undef.telemetry
 
-        assert callable(provide.telemetry.record_use_metrics)
+        assert callable(undef.telemetry.record_use_metrics)
 
     def test_unknown_attr_raises_attribute_error(self) -> None:
-        import provide.telemetry
+        import undef.telemetry
 
         with pytest.raises(AttributeError, match="no_such_thing"):
-            provide.telemetry.no_such_thing  # noqa: B018
+            undef.telemetry.no_such_thing  # noqa: B018
 
     def test_all_entries_accessible(self) -> None:
         """Every name in __all__ must be resolvable (including lazy ones)."""
-        import provide.telemetry
+        import undef.telemetry
 
-        for name in provide.telemetry.__all__:
-            assert hasattr(provide.telemetry, name), f"__all__ has {name!r} but it's not accessible"
+        for name in undef.telemetry.__all__:
+            assert hasattr(undef.telemetry, name), f"__all__ has {name!r} but it's not accessible"
 
 
 # ── Metric creation logging ─────────────────────────────────────────
@@ -386,6 +386,23 @@ class TestOTelSdkLogSuppression:
 
     def test_setup_quiets_otel_sdk_logger(self) -> None:
         from provide.telemetry.setup import _quiet_otel_sdk_loggers
+
+        _quiet_otel_sdk_loggers()
+        assert logging.getLogger("opentelemetry.sdk").level == logging.CRITICAL
+
+
+# ── OTel SDK log noise suppression ─────────────────────────────────
+
+
+class TestOTelSdkLogSuppression:
+    def test_setup_quiets_otel_exporter_logger(self) -> None:
+        from undef.telemetry.setup import _quiet_otel_sdk_loggers
+
+        _quiet_otel_sdk_loggers()
+        assert logging.getLogger("opentelemetry.exporter").level == logging.CRITICAL
+
+    def test_setup_quiets_otel_sdk_logger(self) -> None:
+        from undef.telemetry.setup import _quiet_otel_sdk_loggers
 
         _quiet_otel_sdk_loggers()
         assert logging.getLogger("opentelemetry.sdk").level == logging.CRITICAL

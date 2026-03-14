@@ -25,13 +25,24 @@ from undef.telemetry.runtime import get_runtime_config, reload_runtime_from_env,
 from undef.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
 from undef.telemetry.schema.events import event_name
 from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
-from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 from undef.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace, tracer
 
 try:
     __version__ = version("undef-telemetry")
 except (PackageNotFoundError, TypeError):
     __version__ = "0.0.0"
+
+# Lazy-load slo functions to avoid pulling in slo/metrics at import time.
+_SLO_NAMES = frozenset({"classify_error", "record_red_metrics", "record_use_metrics"})
+
+
+def __getattr__(name: str) -> object:
+    if name in _SLO_NAMES:
+        from undef.telemetry import slo
+
+        return getattr(slo, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "CardinalityLimit",

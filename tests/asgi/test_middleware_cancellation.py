@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from provide.telemetry.asgi import middleware as middleware_mod
-from provide.telemetry.asgi.middleware import TelemetryMiddleware
-from provide.telemetry.logger.context import clear_context, get_context
-from provide.telemetry.tracing.context import get_trace_context, set_trace_context
+from undef.telemetry.asgi import middleware as middleware_mod
+from undef.telemetry.asgi.middleware import TelemetryMiddleware
+from undef.telemetry.logger.context import clear_context, get_context
+from undef.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 @pytest.fixture(autouse=True)
