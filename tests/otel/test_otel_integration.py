@@ -55,6 +55,7 @@ class TestTraceDecoratorWithRealOTel:
         provider = sdk_trace.TracerProvider(resource=resource)
         otel_trace.set_tracer_provider(provider)
         pmod._HAS_OTEL = True
+        pmod._provider_configured = True
 
         try:
 
@@ -84,6 +85,7 @@ class TestTraceDecoratorWithRealOTel:
         provider = sdk_trace.TracerProvider(resource=resource)
         otel_trace.set_tracer_provider(provider)
         pmod._HAS_OTEL = True
+        pmod._provider_configured = True
 
         try:
 
@@ -194,6 +196,49 @@ class TestSetupLifecycleWithRealOTel:
         cfg = setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
         assert cfg.tracing.enabled is True
         shutdown_telemetry()
+
+    def test_setup_shutdown_setup_reinit_with_real_sdk(self) -> None:
+        """Full setup → use → shutdown → re-setup → use cycle with real OTel SDK."""
+        otel_trace = pytest.importorskip("opentelemetry.trace")
+        pytest.importorskip("opentelemetry.sdk.trace")
+
+        from undef.telemetry.metrics.provider import _set_meter_for_test
+        from undef.telemetry.setup import setup_telemetry
+        from undef.telemetry.tracing import provider as pmod
+        from undef.telemetry.tracing import trace
+
+        _reset_tracing_for_tests()
+        _set_meter_for_test(None)
+
+        # Cycle 1: setup, create a span, verify it works
+        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        assert pmod._provider_configured is True
+
+        @trace("reinit.cycle1")
+        def op1() -> int:
+            span = otel_trace.get_current_span()
+            ctx = span.get_span_context()
+            assert ctx.trace_id != 0, "cycle 1 should produce a real span"
+            return 1
+
+        assert op1() == 1
+        shutdown_telemetry()
+        assert pmod._provider_configured is False
+
+        # Cycle 2: re-setup, create another span, verify it works
+        _reset_tracing_for_tests()
+        _set_meter_for_test(None)
+        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        assert pmod._provider_configured is True
+
+        @trace("reinit.cycle2")
+        def op2() -> int:
+            span = otel_trace.get_current_span()
+            ctx = span.get_span_context()
+            assert ctx.trace_id != 0, "cycle 2 should produce a real span after re-init"
+            return 2
+
+        assert op2() == 2
 
     def test_double_shutdown_is_safe(self) -> None:
         """Calling shutdown_telemetry twice should not raise."""

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l $HOME/code/gh/undef-games/undef-telemetry/src/undef/telemetry/*.py $HOME/code/gh/undef-games/undef-telemetry/src/undef/telemetry/**/*.py 2>/dev/null | tail -1)",
+      "Bash(wc -l $HOME/code/gh/undef-games/undef-telemetry/tests/**/*.py | tail -1)",
+      "mcp__pymutant__pymutant_run",
+      "mcp__pymutant__pymutant_check_setup",
+      "mcp__pymutant__pymutant_set_project_root",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run --python 3.11 python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 2>&1 | tail -40)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run ruff format --check . && uv run ruff check . && uv run mypy src tests && uv run bandit -r src -ll && uv run codespell && uv run python scripts/check_max_loc.py --max-lines 500 && uv run python scripts/check_spdx_headers.py)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run ruff format --check . && uv run ruff check . && uv run mypy src tests && uv run bandit -r src -ll && uv run codespell && uv run python scripts/check_max_loc.py --max-lines 500 && uv run python scripts/check_spdx_headers.py && echo \"ALL GATES PASSED\")",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut results 2>&1 | grep -E \"^\\(Survived|To apply\\)\" | head -40)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut results 2>&1 | head -80)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut show undef.telemetry.config.x__parse_otlp_headers__mutmut_12 2>&1)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && for m in 20 21 23 24 25 28; do echo \"=== counter mutmut_$m ===\"; uv run mutmut show \"undef.telemetry.metrics.api.x_counter__mutmut_$m\" 2>&1; done)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut show \"undef.telemetry.metrics.api.x_gauge__mutmut_20\" 2>&1 | head -15)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut results 2>&1 | grep survived)",
+      "Bash(cd $HOME/code/gh/undef-games/undef-telemetry && uv run mutmut show undef.telemetry.config.x__parse_otlp_headers__mutmut_8 2>&1 && echo \"===\" && uv run mutmut show undef.telemetry.metrics.api.x_counter__mutmut_19 2>&1 && echo \"===\" && uv run mutmut show undef.telemetry.metrics.api.x_counter__mutmut_22 2>&1)"
+    ]
+  }
+}

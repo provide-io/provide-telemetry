@@ -128,6 +128,7 @@ class TestGetMeterCaching:
         """Kills: `_meters[meter_name] = meter` → `= None`.
         After first call, second call should return the same meter from cache."""
         provider_mod._meters.clear()
+        provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
         meter_obj = Mock()
         mock_otel = Mock()
         mock_otel.get_meter.return_value = meter_obj

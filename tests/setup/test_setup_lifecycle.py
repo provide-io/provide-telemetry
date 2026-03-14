@@ -79,7 +79,7 @@ def test_setup_telemetry_calls_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_setup_state_for_tests()
     calls: list[str] = []
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: calls.append("refresh_tracing"))
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: calls.append("refresh_metrics"))
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
@@ -98,7 +98,7 @@ def test_setup_telemetry_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
         calls["runtime"] += 1
         seen_cfg["runtime"] = cfg
 
-    def _log(cfg: object) -> None:
+    def _log(cfg: object, **kw: object) -> None:
         calls["log"] += 1
         seen_cfg["log"] = cfg
 
@@ -139,7 +139,7 @@ def test_setup_telemetry_emits_slo_startup_metrics(monkeypatch: pytest.MonkeyPat
     _reset_setup_state_for_tests()
     calls = {"red": 0, "use": 0}
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
@@ -196,7 +196,7 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -225,7 +225,7 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
@@ -255,7 +255,7 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0}
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
@@ -289,7 +289,7 @@ def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> N
     def _runtime(_cfg: object) -> None:
         calls["runtime"] += 1
 
-    def _log(_cfg: object) -> None:
+    def _log(_cfg: object, **kw: object) -> None:
         calls["log"] += 1
 
     def _trace(_cfg: object) -> None:
