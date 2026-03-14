@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.context import get_context
 from undef.telemetry.pii import sanitize_payload
@@ -47,17 +49,17 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 
 def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    event_name = str(event_dict.get("event", ""))
+    event_name = str(event_dict.get("event", ""))  # pragma: no mutate
     if should_sample("logs", event_name):
         return event_dict
-    return {"event": "telemetry.log.dropped", "dropped_event": event_name}
+    raise structlog.DropEvent()
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
     # strict_schema is authoritative: strict mode always enforces both checks.
     # compat mode keeps event-name policy configurable and skips required-key hard failures.
     strict_event_name = True if config.strict_schema else config.event_schema.strict_event_name
-    required_keys = config.event_schema.required_keys if config.strict_schema else ()
+    required_keys = config.event_schema.required_keys
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         event = str(event_dict.get("event", ""))

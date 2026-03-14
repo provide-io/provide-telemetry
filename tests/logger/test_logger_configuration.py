@@ -55,7 +55,7 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
     assert core_mod._configured is True
 
 
-def test_configure_logging_console_renderer_uses_colors_false(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_configure_logging_console_renderer_respects_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_logging_for_tests()
     captured: list[bool | None] = []
 
@@ -68,4 +68,7 @@ def test_configure_logging_console_renderer_uses_colors_false(monkeypatch: pytes
     monkeypatch.setattr(structlog_mod.dev, "ConsoleRenderer", _ConsoleRenderer)
     cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "console"})
     core_mod.configure_logging(cfg)
-    assert captured == [False]
+    # In test environments, stderr is not a TTY so colors=False
+    import sys
+
+    assert captured == [sys.stderr.isatty()]
