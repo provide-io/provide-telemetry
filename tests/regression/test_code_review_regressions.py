@@ -24,7 +24,7 @@ from undef.telemetry.resilience import (
     run_with_resilience,
     set_exporter_policy,
 )
-from undef.telemetry.sampling import reset_sampling_for_tests
+from undef.telemetry.sampling import reset_sampling_for_tests, should_sample
 from undef.telemetry.schema.events import EventSchemaError
 from undef.telemetry.setup import _reset_all_for_tests
 from undef.telemetry.slo import _reset_slo_for_tests, record_use_metrics
@@ -70,7 +70,7 @@ class TestSetupDoneOrdering:
 
         _reset_setup_state_for_tests()
         monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg: None)
+        monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
         monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
         monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
         monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
@@ -169,6 +169,26 @@ class TestLazyTracer:
         """tracer must be a _LazyTracer, not a frozen _NoopTracer."""
         assert isinstance(provider_mod.tracer, provider_mod._LazyTracer)
 
+    def test_lazy_tracer_passes_name_to_span(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: start_as_current_span(name, ...) → (None, ...)."""
+        monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
+        span = provider_mod.tracer.start_as_current_span("exact.name")
+        assert isinstance(span, provider_mod._NoopSpan)
+        assert span.name == "exact.name"
+
+    def test_lazy_tracer_passes_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: start_as_current_span(name, **kwargs) → (name,)."""
+        seen_kwargs: list[dict[str, object]] = []
+
+        class _SpyTracer:
+            def start_as_current_span(self, name: str, **kwargs: object) -> provider_mod._NoopSpan:
+                seen_kwargs.append(kwargs)
+                return provider_mod._NoopSpan(name)
+
+        monkeypatch.setattr(provider_mod, "get_tracer", lambda _n=None: _SpyTracer())
+        provider_mod.tracer.start_as_current_span("op", attributes={"k": "v"})
+        assert seen_kwargs == [{"attributes": {"k": "v"}}]
+
 
 # ── Issue #6: required_keys must be respected in compat mode ─────────
 
@@ -253,6 +273,32 @@ class TestGaugeSetMethod:
         from undef.telemetry.backpressure import release
 
         release(ticket)
+
+    def test_gauge_set_passes_name_to_should_sample(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: should_sample('metrics', self.name) → ('metrics', None)."""
+        sampled_keys: list[str | None] = []
+        original_should_sample = should_sample
+
+        def _spy_sample(signal: str, key: str | None = None) -> bool:
+            sampled_keys.append(key)
+            return original_should_sample(signal, key)
+
+        monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", _spy_sample)
+        g = Gauge("my.gauge.name")
+        g.set(42)
+        assert "my.gauge.name" in sampled_keys
+
+    def test_gauge_set_releases_actual_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: release(ticket) → release(None)."""
+        released: list[object] = []
+        sentinel = object()
+
+        monkeypatch.setattr("undef.telemetry.metrics.fallback.try_acquire", lambda _s: sentinel)
+        monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda t: released.append(t))
+
+        g = Gauge("test.gauge")
+        g.set(10)
+        assert released == [sentinel]
 
     def test_gauge_set_with_otel_sends_delta(self) -> None:
         """Gauge.set sends the delta to the OTel UpDownCounter."""

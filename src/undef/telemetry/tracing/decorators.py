@@ -14,7 +14,8 @@ from typing import Any, ParamSpec, TypeVar, cast
 
 from undef.telemetry.backpressure import release, try_acquire
 from undef.telemetry.sampling import should_sample
-from undef.telemetry.tracing.provider import get_tracer
+from undef.telemetry.tracing.context import get_trace_context, set_trace_context
+from undef.telemetry.tracing.provider import _sync_otel_trace_context, get_tracer
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -33,10 +34,13 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                 ticket = try_acquire("traces")
                 if ticket is None:
                     return await fn(*args, **kwargs)
+                prev = get_trace_context()
                 with get_tracer(fn.__module__).start_as_current_span(span_name):
+                    _sync_otel_trace_context()
                     try:
                         return await fn(*args, **kwargs)
                     finally:
+                        set_trace_context(prev["trace_id"], prev["span_id"])
                         release(ticket)
 
             return cast(Callable[P, R], async_wrapper)  # pragma: no mutate
@@ -48,10 +52,13 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             ticket = try_acquire("traces")
             if ticket is None:
                 return fn(*args, **kwargs)
+            prev = get_trace_context()
             with get_tracer(fn.__module__).start_as_current_span(span_name):
+                _sync_otel_trace_context()
                 try:
                     return fn(*args, **kwargs)
                 finally:
+                    set_trace_context(prev["trace_id"], prev["span_id"])
                     release(ticket)
 
         return cast(Callable[P, R], sync_wrapper)  # pragma: no mutate

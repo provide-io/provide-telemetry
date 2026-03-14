@@ -103,7 +103,7 @@ def test_setup_metrics_failure_triggers_rollback_of_logging_and_tracing(
     shutdown_calls: list[str] = []
 
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
@@ -146,7 +146,7 @@ def test_setup_telemetry_slo_red_metrics_exact_args(monkeypatch: pytest.MonkeyPa
     """
     red_mock = MagicMock()
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
@@ -173,7 +173,7 @@ def test_setup_telemetry_slo_use_metrics_exact_args(monkeypatch: pytest.MonkeyPa
     """
     use_mock = MagicMock()
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
@@ -193,7 +193,7 @@ def test_setup_telemetry_slo_both_metrics_exact_args(monkeypatch: pytest.MonkeyP
     red_mock = MagicMock()
     use_mock = MagicMock()
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)
@@ -226,7 +226,7 @@ def test_setup_telemetry_completed_list_has_correct_keys(
     shutdown_calls: list[str] = []
 
     monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _: None)
-    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _: None)
+    monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _, **kw: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _: None)

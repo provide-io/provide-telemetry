@@ -43,7 +43,7 @@ _policies: dict[Signal, SamplingPolicy] = {
 def _normalize_rate(rate: float) -> float:
     clamped = max(0.0, min(1.0, rate))
     if clamped != rate:
-        _logger.warning("sampling rate %r clamped to %s (must be 0.0-1.0)", rate, clamped)
+        _logger.warning("sampling rate %r clamped to %s (must be 0.0-1.0)", rate, clamped)  # pragma: no mutate
     return clamped
 
 
