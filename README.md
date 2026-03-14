@@ -31,6 +31,7 @@ from undef.telemetry import (
 - `update_runtime_config(config)` applies a config and returns the active runtime snapshot.
 - `reload_runtime_from_env()` reloads env config, applies it, and returns the active runtime snapshot.
 - `get_runtime_config()` returns a defensive copy of the active runtime snapshot.
+- `reconfigure_telemetry(config)` only applies hot runtime policy changes in-process; provider-changing OpenTelemetry reconfiguration requires a process restart once providers have been installed.
 
 ## Quick Start
 

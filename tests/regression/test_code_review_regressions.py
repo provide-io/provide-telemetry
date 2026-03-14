@@ -65,6 +65,7 @@ class TestApplySamplingDropEvent:
 class TestSetupDoneOrdering:
     def test_setup_done_true_even_if_slo_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """If SLO recording fails, _setup_done must already be True."""
+        import undef.telemetry.slo as slo_mod
         from undef.telemetry import setup as setup_mod
         from undef.telemetry.setup import _reset_setup_state_for_tests, setup_telemetry
 
@@ -75,14 +76,14 @@ class TestSetupDoneOrdering:
         monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
         monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
         monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup._rebind_slo_instruments", lambda: None)
+        monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
 
         def _boom_red(*_args: object) -> None:
             # _setup_done should already be True at this point
             assert setup_mod._setup_done is True
             raise RuntimeError("SLO boom")
 
-        monkeypatch.setattr("undef.telemetry.setup.record_red_metrics", _boom_red)
+        monkeypatch.setattr(slo_mod, "record_red_metrics", _boom_red)
         with pytest.raises(RuntimeError, match="SLO boom"):
             setup_telemetry(TelemetryConfig.from_env({"UNDEF_SLO_ENABLE_RED_METRICS": "true"}))
         # _setup_done remains True — no provider double-init risk

@@ -38,6 +38,13 @@ _policies: dict[Signal, SamplingPolicy] = {
     "traces": SamplingPolicy(),
     "metrics": SamplingPolicy(),
 }
+_VALID_SIGNALS = frozenset(_policies)
+
+
+def _validate_signal(signal: Signal) -> Signal:
+    if signal not in _VALID_SIGNALS:
+        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
+    return signal
 
 
 def _normalize_rate(rate: float) -> float:
@@ -48,7 +55,7 @@ def _normalize_rate(rate: float) -> float:
 
 
 def set_sampling_policy(signal: Signal, policy: SamplingPolicy) -> None:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     normalized = SamplingPolicy(
         default_rate=_normalize_rate(policy.default_rate),
         overrides={k: _normalize_rate(v) for k, v in policy.overrides.items()},
@@ -58,9 +65,10 @@ def set_sampling_policy(signal: Signal, policy: SamplingPolicy) -> None:
 
 
 def get_sampling_policy(signal: Signal) -> SamplingPolicy:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     with _lock:
-        return _policies[sig]
+        stored = _policies[sig]
+        return SamplingPolicy(default_rate=stored.default_rate, overrides=dict(stored.overrides))
 
 
 def should_sample(signal: Signal, key: str | None = None) -> bool:

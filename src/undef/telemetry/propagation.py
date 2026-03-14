@@ -20,12 +20,12 @@ from typing import Any
 
 from undef.telemetry._otel import attach_w3c_context, detach_w3c_context
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context
-from undef.telemetry.tracing.context import set_trace_context
+from undef.telemetry.logger.context import bind_context, get_context, unbind_context
+from undef.telemetry.tracing.context import get_trace_context, set_trace_context
 
-_otel_context_token: contextvars.ContextVar[object | None] = contextvars.ContextVar("_otel_context_token", default=None)
-_otel_reset_token: contextvars.ContextVar[contextvars.Token[object | None] | None] = contextvars.ContextVar(
-    "_otel_reset_token", default=None
+_MISSING = object()
+_restore_stack: contextvars.ContextVar[tuple[dict[str, object], ...]] = contextvars.ContextVar(
+    "_propagation_restore_stack", default=()
 )
 
 
@@ -81,11 +81,24 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
 
 
 def bind_propagation_context(context: PropagationContext) -> None:
+    logger_ctx = get_context()
+    trace_ctx = get_trace_context()
+    # Attach OTel context before snapshotting so the token is owned by this frame.
+    otel_token: object | None = None
+    if context.traceparent is not None:
+        otel_token = attach_w3c_context(context.traceparent, context.tracestate)
+    snapshot = {
+        "traceparent": logger_ctx.get("traceparent", _MISSING),
+        "tracestate": logger_ctx.get("tracestate", _MISSING),
+        "baggage": logger_ctx.get("baggage", _MISSING),
+        "trace_id": trace_ctx["trace_id"],
+        "span_id": trace_ctx["span_id"],
+        "otel_token": otel_token,
+    }
+    stack = _restore_stack.get()
+    _restore_stack.set((*stack, snapshot))
     if context.traceparent is not None:
         bind_context(traceparent=context.traceparent)
-        token = attach_w3c_context(context.traceparent, context.tracestate)
-        reset_tok = _otel_context_token.set(token)
-        _otel_reset_token.set(reset_tok)
     if context.tracestate is not None:
         bind_context(tracestate=context.tracestate)
     if context.baggage is not None:
@@ -95,15 +108,30 @@ def bind_propagation_context(context: PropagationContext) -> None:
 
 
 def clear_propagation_context() -> None:
-    token = _otel_context_token.get()
-    detach_w3c_context(token)
-    reset_tok = _otel_reset_token.get()
-    if reset_tok is not None:
-        try:
-            _otel_context_token.reset(reset_tok)
-        except ValueError:  # pragma: no cover
-            _otel_context_token.set(None)
-        _otel_reset_token.set(None)
+    stack = _restore_stack.get()
+    if stack:
+        previous = stack[-1]
+        _restore_stack.set(stack[:-1])
     else:
-        _otel_context_token.set(None)
-    set_trace_context(None, None)
+        previous = {
+            "traceparent": _MISSING,
+            "tracestate": _MISSING,
+            "baggage": _MISSING,
+            "trace_id": None,
+            "span_id": None,
+            "otel_token": None,  # pragma: no mutate
+        }
+    # Detach only the OTel token introduced by this specific bind frame.
+    detach_w3c_context(previous.get("otel_token"))
+    for key in ("traceparent", "tracestate", "baggage"):
+        value = previous[key]
+        if value is _MISSING:
+            unbind_context(key)
+        else:
+            bind_context(**{key: value})
+    prev_trace_id = previous["trace_id"]
+    prev_span_id = previous["span_id"]
+    set_trace_context(
+        prev_trace_id if isinstance(prev_trace_id, str) or prev_trace_id is None else None,  # pragma: no mutate
+        prev_span_id if isinstance(prev_span_id, str) or prev_span_id is None else None,  # pragma: no mutate
+    )

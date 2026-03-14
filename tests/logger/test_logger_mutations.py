@@ -145,3 +145,27 @@ class TestGetMeterCaching:
         assert second is first
         # If the cache stored None, get_meter would be called again
         assert mock_otel.get_meter.call_count == 1
+
+
+# ── configure_logging default force=False ────────────────────────────
+
+
+class TestConfigureLoggingForceDefault:
+    def test_second_call_without_force_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills mutant: force: bool = False → True.
+
+        If force defaults to True, every call re-runs structlog.configure.
+        We verify the second call with same config is a no-op.
+        """
+        import structlog as sl
+
+        from undef.telemetry.logger.core import configure_logging
+
+        _reset_logging_for_tests()
+        cfg = TelemetryConfig()
+        configure_logging(cfg)  # First call — configures
+
+        reconfigure_calls: list[object] = []
+        monkeypatch.setattr(sl, "configure", lambda **kw: reconfigure_calls.append(kw))
+        configure_logging(cfg)  # Second call without force — must be no-op
+        assert reconfigure_calls == []

@@ -120,7 +120,7 @@ def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
 
 def sanitize_payload(payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
     if not enabled:
-        return payload
+        return dict(payload)
     cleaned = copy.deepcopy(payload)  # pragma: no mutate
     rules = get_pii_rules()
     for rule in rules:

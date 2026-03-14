@@ -12,6 +12,7 @@ import pytest
 import structlog
 
 from undef.telemetry.logger.core import _reset_logging_for_tests
+from undef.telemetry.tracing.context import set_trace_context
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -31,3 +32,14 @@ def reset_logger_state() -> None:
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def reset_trace_context() -> None:
+    """Reset trace context before each test.
+
+    Mutmut's stats collection runs without xdist (single process, sequential),
+    so contextvar state from one test leaks to the next when a mutant prevents
+    cleanup.  This fixture ensures a clean slate for every test.
+    """
+    set_trace_context(None, None)

@@ -54,7 +54,7 @@ _policies: dict[Signal, ExporterPolicy] = {
 }
 _consecutive_timeouts: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
-_async_warned_signals: set[Signal] = set()
+_async_warned_signals: set[tuple[Signal, bool]] = set()
 _timeout_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
 
@@ -191,15 +191,15 @@ def _is_running_in_event_loop() -> bool:
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in {"logs", "traces", "metrics"} else "logs"  # pragma: no mutate
+    key = (signal, policy.allow_blocking_in_event_loop)
     with _lock:
-        if sig in _async_warned_signals:
+        if key in _async_warned_signals:
             return
-        _async_warned_signals.add(sig)
+        _async_warned_signals.add(key)
     if policy.allow_blocking_in_event_loop:
         warnings.warn(  # pragma: no mutate
             (
-                f"resilience policy for {sig} allows blocking behavior in an active event loop "
+                f"resilience policy for {signal} allows blocking behavior in an active event loop "
                 "(retries/backoff configured)"  # pragma: no mutate
             ),
             RuntimeWarning,
@@ -208,7 +208,7 @@ def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
         return
     warnings.warn(  # pragma: no mutate
         (
-            f"resilience policy for {sig} uses retries/backoff in an active event loop; "
+            f"resilience policy for {signal} uses retries/backoff in an active event loop; "
             "forcing fail-fast behavior for this call"  # pragma: no mutate
         ),
         RuntimeWarning,
