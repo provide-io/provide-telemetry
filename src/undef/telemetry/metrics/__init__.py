@@ -7,10 +7,9 @@
 
 from undef.telemetry.metrics.api import counter, gauge, histogram
 from undef.telemetry.metrics.fallback import Counter, Gauge, Histogram
-from undef.telemetry.metrics.provider import _HAS_OTEL_METRICS, get_meter, setup_metrics, shutdown_metrics
+from undef.telemetry.metrics.provider import get_meter, setup_metrics, shutdown_metrics
 
 __all__ = [
-    "_HAS_OTEL_METRICS",
     "Counter",
     "Gauge",
     "Histogram",
