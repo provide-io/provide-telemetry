@@ -113,10 +113,10 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     return handlers
 
 
-def configure_logging(config: TelemetryConfig) -> None:
+def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:
     global _configured, _active_config
     with _lock:
-        if _configured and _active_config == config:
+        if _configured and not force and _active_config == config:
             return
 
         level = _get_level(config.logging.level)

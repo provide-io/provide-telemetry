@@ -14,7 +14,6 @@ from undef.telemetry.logger.context import get_context
 from undef.telemetry.pii import sanitize_payload
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
-from undef.telemetry.slo import classify_error
 from undef.telemetry.tracing.context import get_trace_context
 
 _SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
@@ -31,6 +30,8 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
         event_dict.setdefault("env", config.environment)
         event_dict.setdefault("version", config.version)
         if config.slo.include_error_taxonomy and "error_type" not in event_dict and "exc_name" in event_dict:
+            from undef.telemetry.slo import classify_error  # lazy: avoid loading metrics at logging config time
+
             status_code = event_dict.get("status_code")
             typed_status = status_code if isinstance(status_code, int) else None
             event_dict.update(classify_error(str(event_dict["exc_name"]), typed_status))

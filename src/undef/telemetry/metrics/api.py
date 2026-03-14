@@ -19,6 +19,11 @@ def counter(name: str, description: str | None = None, unit: str | None = None) 
         try:
             return Counter(name, meter.create_counter(name=name, description=desc, unit=metric_unit))
         except Exception:
+            _logger.warning(  # pragma: no mutate
+                "failed to create OTel counter %r, falling back to no-op",  # pragma: no mutate
+                name,  # pragma: no mutate
+                exc_info=True,  # pragma: no mutate
+            )
             return Counter(name)
     return Counter(name)
 
@@ -31,6 +36,11 @@ def gauge(name: str, description: str | None = None, unit: str | None = None) ->
         try:
             return Gauge(name, meter.create_up_down_counter(name=name, description=desc, unit=metric_unit))
         except Exception:
+            _logger.warning(  # pragma: no mutate
+                "failed to create OTel gauge %r, falling back to no-op",  # pragma: no mutate
+                name,  # pragma: no mutate
+                exc_info=True,  # pragma: no mutate
+            )
             return Gauge(name)
     return Gauge(name)
 
@@ -43,5 +53,10 @@ def histogram(name: str, description: str | None = None, unit: str | None = None
         try:
             return Histogram(name, meter.create_histogram(name=name, description=desc, unit=metric_unit))
         except Exception:
+            _logger.warning(  # pragma: no mutate
+                "failed to create OTel histogram %r, falling back to no-op",  # pragma: no mutate
+                name,  # pragma: no mutate
+                exc_info=True,  # pragma: no mutate
+            )
             return Histogram(name)
     return Histogram(name)

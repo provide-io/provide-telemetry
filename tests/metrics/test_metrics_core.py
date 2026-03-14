@@ -50,6 +50,7 @@ def test_metric_wrappers_with_meter() -> None:
     mock_meter.create_up_down_counter.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
+    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
 
     c = counter("c", "d", "u")
     g = gauge("g", "d", "u")
@@ -97,6 +98,7 @@ def test_metric_factory_calls_expected_meter_methods() -> None:
     mock_meter.create_up_down_counter.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
+    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
 
     counter("ctr", "desc", "ms")
     gauge("gg", "desc2", "1")
@@ -177,15 +179,23 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_get_meter_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test("existing")
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)
     assert get_meter() == "existing"
 
     _set_meter_for_test(None)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", False)
     assert get_meter() is None
 
+    # Provider set but OTel API unavailable → fallback return None
+    _set_meter_for_test(None)
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", False)
+    assert get_meter("no_api") is None
+
     mock_otel = Mock()
     mock_otel.get_meter.return_value = "dynamic"
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     assert get_meter("x") == "dynamic"
     get_meter()
@@ -285,12 +295,29 @@ def test_set_meter_for_test_resets_provider_exactly_to_none() -> None:
     assert provider_mod._meter_provider is None
 
 
+def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_meter_for_test(None)
+    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
+    mock_otel = Mock()
+    mock_otel.get_meter.side_effect = lambda name: f"meter-{name}"
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
+    # Default meter
+    m1 = get_meter()
+    assert m1 == "meter-undef.telemetry"
+    # Custom meter is different
+    m2 = get_meter("custom")
+    assert m2 == "meter-custom"
+    assert m1 != m2
+
+
 def test_metric_factories_default_description_and_unit() -> None:
     mock_meter = Mock()
     mock_meter.create_counter.return_value = Mock()
     mock_meter.create_up_down_counter.return_value = Mock()
     mock_meter.create_histogram.return_value = Mock()
     _set_meter_for_test(mock_meter)
+    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
 
     c = counter("ctr")
     g = gauge("gg")

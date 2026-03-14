@@ -159,8 +159,8 @@ class TestAddStandardFieldsErrorTaxonomy:
             "exc_name": "KeyError",
         }
         with patch(
-            "provide.telemetry.slo.classify_error",
-            wraps=lambda exc, _sc=None: {"error_type": "internal", "error_code": "0", "error_name": exc},
+            "undef.telemetry.slo.classify_error",
+            wraps=lambda exc, sc=None: {"error_type": "internal", "error_code": "0", "error_name": exc},
         ) as mock_classify:
             result = processor(None, "", event_dict)
         mock_classify.assert_called_once_with("KeyError", None)

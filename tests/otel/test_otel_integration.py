@@ -202,16 +202,16 @@ class TestSetupLifecycleWithRealOTel:
         otel_trace = pytest.importorskip("opentelemetry.trace")
         pytest.importorskip("opentelemetry.sdk.trace")
 
-        from provide.telemetry.metrics.provider import _set_meter_for_test
-        from provide.telemetry.setup import setup_telemetry
-        from provide.telemetry.tracing import provider as pmod
-        from provide.telemetry.tracing import trace
+        from undef.telemetry.metrics.provider import _set_meter_for_test
+        from undef.telemetry.setup import setup_telemetry
+        from undef.telemetry.tracing import provider as pmod
+        from undef.telemetry.tracing import trace
 
         _reset_tracing_for_tests()
         _set_meter_for_test(None)
 
         # Cycle 1: setup, create a span, verify it works
-        setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
+        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
         assert pmod._provider_configured is True
 
         @trace("reinit.cycle1")
@@ -228,7 +228,7 @@ class TestSetupLifecycleWithRealOTel:
         # Cycle 2: re-setup, create another span, verify it works
         _reset_tracing_for_tests()
         _set_meter_for_test(None)
-        setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
+        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
         assert pmod._provider_configured is True
 
         @trace("reinit.cycle2")
