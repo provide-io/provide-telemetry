@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import pytest
 
-from provide.telemetry.backpressure import reset_queues_for_tests
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.health import (
+from undef.telemetry.backpressure import reset_queues_for_tests
+from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.health import (
     _known_signal,
     get_health_snapshot,
     increment_dropped,
     reset_health_for_tests,
 )
-from provide.telemetry.resilience import reset_resilience_for_tests
-from provide.telemetry.sampling import reset_sampling_for_tests
+from undef.telemetry.resilience import reset_resilience_for_tests
+from undef.telemetry.sampling import reset_sampling_for_tests
 
 
 @pytest.fixture(autouse=True)

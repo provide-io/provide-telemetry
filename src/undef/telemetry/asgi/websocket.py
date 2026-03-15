@@ -10,10 +10,14 @@ from __future__ import annotations
 from typing import Any
 
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context
+from undef.telemetry.logger.context import bind_context, reset_context, save_context
+
+ContextToken = object
 
 
-def bind_websocket_context(scope: dict[str, Any]) -> dict[str, str | None]:
+def bind_websocket_context(scope: dict[str, Any]) -> ContextToken:
+    """Bind WebSocket headers into logger context. Returns a token for cleanup via clear_websocket_context()."""
+    token = save_context()
     request_id = _extract_header(scope, b"x-request-id")
     session_id = _extract_header(scope, b"x-session-id")
     actor_id = _extract_header(scope, b"x-actor-id")
@@ -23,7 +27,12 @@ def bind_websocket_context(scope: dict[str, Any]) -> dict[str, str | None]:
         bind_context(session_id=session_id)
     if actor_id is not None:
         bind_context(actor_id=actor_id)
-    return {"request_id": request_id, "session_id": session_id, "actor_id": actor_id}
+    return token
+
+
+def clear_websocket_context(token: ContextToken) -> None:
+    """Restore context to the state before bind_websocket_context() was called."""
+    reset_context(token)  # type: ignore[arg-type]
 
 
 def _extract_header(scope: dict[str, Any], key: bytes) -> str | None:

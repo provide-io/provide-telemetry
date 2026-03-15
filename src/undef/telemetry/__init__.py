@@ -7,7 +7,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from undef.telemetry.asgi import TelemetryMiddleware, bind_websocket_context
+from undef.telemetry.asgi import TelemetryMiddleware, bind_websocket_context, clear_websocket_context
 from undef.telemetry.backpressure import QueuePolicy, get_queue_policy, set_queue_policy
 from undef.telemetry.cardinality import (
     CardinalityLimit,
@@ -59,6 +59,7 @@ __all__ = [
     "classify_error",
     "clear_cardinality_limits",
     "clear_context",
+    "clear_websocket_context",
     "counter",
     "event_name",
     "extract_w3c_context",

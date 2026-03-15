@@ -64,7 +64,7 @@ def test_processors() -> None:
 
 
 def test_enforce_schema_processor() -> None:
-    cfg = TelemetryConfig()
+    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "true"})
     processor = enforce_event_schema(cfg)
     processor(None, "info", {"event": "a.b.c"})
     with pytest.raises(EventSchemaError):
