@@ -106,3 +106,10 @@ def get_runtime_config() -> TelemetryConfig:
         if _active_config is None:
             return TelemetryConfig.from_env()
         return copy.deepcopy(_active_config)
+
+
+def reset_runtime_for_tests() -> None:
+    """Clear the cached runtime config snapshot."""
+    global _active_config
+    with _lock:
+        _active_config = None

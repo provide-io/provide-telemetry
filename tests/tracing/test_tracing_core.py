@@ -45,6 +45,7 @@ def test_get_tracer_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_tracer_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_api = SimpleNamespace(get_tracer=Mock(return_value="otel-tracer"))
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
     assert cast(Any, get_tracer("x")) == "otel-tracer"
     get_tracer()
