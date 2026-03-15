@@ -17,6 +17,7 @@ import structlog
 
 from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.logger.pretty import PrettyRenderer
 from undef.telemetry.logger.processors import (
     add_standard_fields,
     apply_sampling,
@@ -156,6 +157,15 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None: 
         renderer: Any
         if config.logging.fmt == "json":
             renderer = structlog.processors.JSONRenderer()
+        elif config.logging.fmt == "pretty":
+            from undef.telemetry.logger.pretty import resolve_color
+
+            renderer = PrettyRenderer(
+                colors=sys.stderr.isatty(),
+                key_color=resolve_color(config.logging.pretty_key_color),
+                value_color=resolve_color(config.logging.pretty_value_color),
+                fields=config.logging.pretty_fields,
+            )
         else:
             renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
 

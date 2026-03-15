@@ -47,7 +47,13 @@ def test_check_docs_passes_for_valid_docs(tmp_path: Path, monkeypatch: pytest.Mo
             "## Component Flow\n\n"
             "```mermaid\nflowchart TD\nA-->B\n```\n\n"
             "## Request Lifecycle\n\n"
-            "```mermaid\nsequenceDiagram\nA->>B: go\n```\n"
+            "```mermaid\nsequenceDiagram\nA->>B: go\n```\n\n"
+            "## Processor Pipeline\n\n"
+            "```mermaid\nflowchart LR\nA-->B\n```\n\n"
+            "## State Machine\n\n"
+            "```mermaid\nstateDiagram-v2\nA-->B\n```\n\n"
+            "## Resilience Flow\n\n"
+            "```mermaid\nflowchart TD\nA-->B\n```\n"
         ),
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n\nSee [Main](../README.md).\n")

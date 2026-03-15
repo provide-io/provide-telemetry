@@ -49,14 +49,14 @@ def test_mutmut_env_sets_pythonpath_when_missing(monkeypatch: pytest.MonkeyPatch
     assert env["PYTHONPATH"].endswith("/scripts/_mutmut_shims")
 
 
-def test_half_cpu_count_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_third_cpu_count_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: None)
-    assert gate._half_cpu_count() == 1
+    assert gate._third_cpu_count() == 1
 
 
-def test_half_cpu_count_divides_available_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_third_cpu_count_divides_available_cores(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: 24)
-    assert gate._half_cpu_count() == 12
+    assert gate._third_cpu_count() == 8
 
 
 def test_run_mutation_gate_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -185,7 +185,7 @@ def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_main_uses_default_100_mutation_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(gate, "_half_cpu_count", lambda: 4)
+    monkeypatch.setattr(gate, "_third_cpu_count", lambda: 4)
     monkeypatch.setattr(gate, "run_mutation_gate", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
         gate.argparse.ArgumentParser,

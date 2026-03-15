@@ -10,7 +10,8 @@ from typing import Any, cast
 
 import pytest
 
-from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.config import LoggingConfig, TelemetryConfig
+from undef.telemetry.exceptions import ConfigurationError
 from undef.telemetry.logger import core as core_mod
 from undef.telemetry.logger.core import _reset_logging_for_tests
 
@@ -72,3 +73,51 @@ def test_configure_logging_console_renderer_respects_tty(monkeypatch: pytest.Mon
     import sys
 
     assert captured == [sys.stderr.isatty()]
+
+
+def test_fmt_pretty_is_valid() -> None:
+    cfg = LoggingConfig(fmt="pretty")
+    assert cfg.fmt == "pretty"
+
+
+def test_fmt_invalid_still_rejects() -> None:
+    with pytest.raises(ConfigurationError, match="invalid log format"):
+        LoggingConfig(fmt="xml")
+
+
+def test_from_env_pretty_format() -> None:
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty"})
+    assert cfg.logging.fmt == "pretty"
+
+
+def test_pretty_key_color_valid() -> None:
+    cfg = LoggingConfig(pretty_key_color="cyan")
+    assert cfg.pretty_key_color == "cyan"
+
+
+def test_pretty_key_color_invalid() -> None:
+    with pytest.raises(ConfigurationError, match="invalid color name for pretty_key_color"):
+        LoggingConfig(pretty_key_color="fuchsia")
+
+
+def test_pretty_value_color_invalid() -> None:
+    with pytest.raises(ConfigurationError, match="invalid color name for pretty_value_color"):
+        LoggingConfig(pretty_value_color="fuchsia")
+
+
+def test_pretty_key_color_empty_is_valid() -> None:
+    cfg = LoggingConfig(pretty_key_color="")
+    assert cfg.pretty_key_color == ""
+
+
+def test_from_env_pretty_colors_and_fields() -> None:
+    cfg = TelemetryConfig.from_env(
+        {
+            "UNDEF_LOG_PRETTY_KEY_COLOR": "cyan",
+            "UNDEF_LOG_PRETTY_VALUE_COLOR": "blue",
+            "UNDEF_LOG_PRETTY_FIELDS": "user_id, session_id",
+        }
+    )
+    assert cfg.logging.pretty_key_color == "cyan"
+    assert cfg.logging.pretty_value_color == "blue"
+    assert cfg.logging.pretty_fields == ("user_id", "session_id")
