@@ -239,9 +239,7 @@ class TestLockedProviderAccessors:
 
     # ── Post-shutdown: global-set flag keeps guard alive ─────────────
 
-    def test_has_tracing_provider_true_after_shutdown_via_global_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_has_tracing_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _provider_ref is None but _otel_global_set stays True — guard must fire."""
         from undef.telemetry.tracing import provider as tp
         from undef.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
@@ -251,9 +249,7 @@ class TestLockedProviderAccessors:
         monkeypatch.setattr(tp, "_otel_global_set", True)
         assert _has_tracing_provider() is True
 
-    def test_has_meter_provider_true_after_shutdown_via_global_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_has_meter_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _meter_provider is None but _meter_global_set stays True — guard must fire."""
         from undef.telemetry.metrics import provider as mp
         from undef.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
@@ -263,9 +259,7 @@ class TestLockedProviderAccessors:
         monkeypatch.setattr(mp, "_meter_global_set", True)
         assert _has_meter_provider() is True
 
-    def test_has_otel_log_provider_true_after_shutdown_via_global_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_has_otel_log_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _otel_log_provider is None but _otel_log_global_set stays True — guard must fire."""
         from undef.telemetry.logger import core as lc
         from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests

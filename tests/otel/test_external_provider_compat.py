@@ -43,13 +43,14 @@ class TestExternalTracerProvider:
         )
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
+        monkeypatch.setattr(pmod, "_baseline_captured", False)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer("external.test")
         assert not isinstance(tracer, pmod._NoopTracer)
 
     def test_get_tracer_noop_when_global_is_default_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When the OTel global is the same object as the captured default (identity match),
+        """When the OTel global is the same object as the captured baseline (identity match),
         get_tracer() returns NoopTracer — nobody has installed a real provider."""
         from undef.telemetry.tracing import provider as pmod
 
@@ -57,38 +58,53 @@ class TestExternalTracerProvider:
         fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
-        monkeypatch.setattr(pmod, "_DEFAULT_TRACER_PROVIDER", sentinel)
+        monkeypatch.setattr(pmod, "_baseline_captured", True)
+        monkeypatch.setattr(pmod, "_baseline_tracer_provider", sentinel)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer()
         assert isinstance(tracer, pmod._NoopTracer)
 
-    def test_capture_default_tracer_provider_no_otel(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_tracer_provider() returns None when OTel is not available."""
+    def test_get_tracer_noop_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Before setup_tracing() captures a baseline, a ProxyTracerProvider
+        should be treated as a placeholder (returns NoopTracer)."""
         from undef.telemetry.tracing import provider as pmod
 
-        monkeypatch.setattr(pmod, "_HAS_OTEL", False)
-        assert pmod._capture_default_tracer_provider() is None
+        class ProxyTracerProvider:
+            pass
 
-    def test_capture_default_tracer_provider_api_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_tracer_provider() returns None when the OTel API can't load."""
-        from undef.telemetry import _otel
+        fake_api = SimpleNamespace(get_tracer_provider=lambda: ProxyTracerProvider())
+        monkeypatch.setattr(pmod, "_provider_configured", False)
+        monkeypatch.setattr(pmod, "_otel_global_set", False)
+        monkeypatch.setattr(pmod, "_baseline_captured", False)
+        monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
+
+        tracer = pmod.get_tracer()
+        assert isinstance(tracer, pmod._NoopTracer)
+
+    def test_get_tracer_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Before setup_tracing() is called, if an external caller installed a real
+        (non-Proxy) provider, get_tracer() returns a real tracer."""
         from undef.telemetry.tracing import provider as pmod
 
-        monkeypatch.setattr(pmod, "_HAS_OTEL", True)
-        monkeypatch.setattr(_otel, "load_otel_trace_api", lambda: None)
-        assert pmod._capture_default_tracer_provider() is None
+        class FakeTracer:
+            def start_as_current_span(self, name: str, **kw: object) -> object:
+                return contextlib.nullcontext()
 
-    def test_capture_default_tracer_provider_returns_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_tracer_provider() returns the provider from the OTel API."""
-        from undef.telemetry import _otel
-        from undef.telemetry.tracing import provider as pmod
+        class RealTracerProvider:  # no "Proxy" in name
+            pass
 
-        sentinel = object()
-        fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
-        monkeypatch.setattr(pmod, "_HAS_OTEL", True)
-        monkeypatch.setattr(_otel, "load_otel_trace_api", lambda: fake_api)
-        assert pmod._capture_default_tracer_provider() is sentinel
+        fake_api = SimpleNamespace(
+            get_tracer_provider=lambda: RealTracerProvider(),
+            get_tracer=lambda _name: FakeTracer(),
+        )
+        monkeypatch.setattr(pmod, "_provider_configured", False)
+        monkeypatch.setattr(pmod, "_otel_global_set", False)
+        monkeypatch.setattr(pmod, "_baseline_captured", False)
+        monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
+
+        tracer = pmod.get_tracer("ext")
+        assert not isinstance(tracer, pmod._NoopTracer)
 
     def test_get_tracer_noop_after_our_provider_shut_down(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When _otel_global_set is True (we shut down our provider), get_tracer()
@@ -131,13 +147,14 @@ class TestExternalMeterProvider:
         )
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
+        monkeypatch.setattr(mpmod, "_baseline_captured", False)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter("external.test")
         assert meter is not None
 
     def test_get_meter_none_when_global_is_default_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When the OTel global is the same object as the captured default (identity match),
+        """When the OTel global is the same object as the captured baseline (identity match),
         get_meter() returns None — nobody has installed a real provider."""
         from undef.telemetry.metrics import provider as mpmod
 
@@ -145,38 +162,49 @@ class TestExternalMeterProvider:
         fake_api = SimpleNamespace(get_meter_provider=lambda: sentinel)
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
-        monkeypatch.setattr(mpmod, "_DEFAULT_METER_PROVIDER", sentinel)
+        monkeypatch.setattr(mpmod, "_baseline_captured", True)
+        monkeypatch.setattr(mpmod, "_baseline_meter_provider", sentinel)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter()
         assert meter is None
 
-    def test_capture_default_meter_provider_no_otel(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_meter_provider() returns None when OTel is not available."""
+    def test_get_meter_none_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Before setup_metrics() captures a baseline, a ProxyMeterProvider
+        should be treated as a placeholder (returns None)."""
         from undef.telemetry.metrics import provider as mpmod
 
-        monkeypatch.setattr(mpmod, "_HAS_OTEL_METRICS", False)
-        assert mpmod._capture_default_meter_provider() is None
+        class ProxyMeterProvider:
+            pass
 
-    def test_capture_default_meter_provider_api_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_meter_provider() returns None when the OTel API can't load."""
-        from undef.telemetry import _otel
+        fake_api = SimpleNamespace(get_meter_provider=lambda: ProxyMeterProvider())
+        monkeypatch.setattr(mpmod, "_meter_provider", None)
+        monkeypatch.setattr(mpmod, "_meter_global_set", False)
+        monkeypatch.setattr(mpmod, "_baseline_captured", False)
+        monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
+
+        meter = mpmod.get_meter()
+        assert meter is None
+
+    def test_get_meter_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Before setup_metrics() is called, if an external caller installed a real
+        (non-Proxy) provider, get_meter() returns a real meter."""
         from undef.telemetry.metrics import provider as mpmod
 
-        monkeypatch.setattr(mpmod, "_HAS_OTEL_METRICS", True)
-        monkeypatch.setattr(_otel, "load_otel_metrics_api", lambda: None)
-        assert mpmod._capture_default_meter_provider() is None
+        class RealMeterProvider:  # no "Proxy" in name
+            pass
 
-    def test_capture_default_meter_provider_returns_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_capture_default_meter_provider() returns the provider from the OTel API."""
-        from undef.telemetry import _otel
-        from undef.telemetry.metrics import provider as mpmod
+        fake_api = SimpleNamespace(
+            get_meter_provider=lambda: RealMeterProvider(),
+            get_meter=lambda _name: "real-meter",
+        )
+        monkeypatch.setattr(mpmod, "_meter_provider", None)
+        monkeypatch.setattr(mpmod, "_meter_global_set", False)
+        monkeypatch.setattr(mpmod, "_baseline_captured", False)
+        monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
-        sentinel = object()
-        fake_api = SimpleNamespace(get_meter_provider=lambda: sentinel)
-        monkeypatch.setattr(mpmod, "_HAS_OTEL_METRICS", True)
-        monkeypatch.setattr(_otel, "load_otel_metrics_api", lambda: fake_api)
-        assert mpmod._capture_default_meter_provider() is sentinel
+        meter = mpmod.get_meter("ext")
+        assert meter == "real-meter"
 
     def test_get_meter_none_after_our_provider_shut_down(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When _meter_global_set is True (we shut down our provider), get_meter()

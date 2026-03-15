@@ -185,26 +185,6 @@ def test_trace_decorator_syncs_otel_context(monkeypatch: pytest.MonkeyPatch) -> 
 # ── Mutation-killing tests for provider internals ──────────────────────
 
 
-class TestCaptureTracerProviderMutants:
-    """Kill mutants in _capture_default_tracer_provider (negation flip, api=None, api is None)."""
-
-    def test_returns_sentinel_when_api_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry import _otel as otel_mod
-
-        sentinel = object()
-        fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
-        monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
-        monkeypatch.setattr(otel_mod, "load_otel_trace_api", lambda: fake_api)
-        assert provider_mod._capture_default_tracer_provider() is sentinel
-
-    def test_returns_none_when_api_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry import _otel as otel_mod
-
-        monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
-        monkeypatch.setattr(otel_mod, "load_otel_trace_api", lambda: None)
-        assert provider_mod._capture_default_tracer_provider() is None
-
-
 class TestResetTracingForTestsMutants:
     """Kill mutants in _reset_tracing_for_tests (_otel_global_set = False → None/True)."""
 
@@ -215,6 +195,15 @@ class TestResetTracingForTestsMutants:
         _reset_tracing_for_tests()
         assert provider_mod._otel_global_set is False
 
+    def test_resets_baseline_captured_to_false(self) -> None:
+        from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+
+        provider_mod._baseline_captured = True
+        provider_mod._baseline_tracer_provider = object()
+        _reset_tracing_for_tests()
+        assert provider_mod._baseline_captured is False
+        assert provider_mod._baseline_tracer_provider is None
+
 
 class TestHasRealTracerProviderMutants:
     """Kill mutants in _has_real_tracer_provider (provider=None, is→is not)."""
@@ -224,7 +213,8 @@ class TestHasRealTracerProviderMutants:
         fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
         monkeypatch.setattr(provider_mod, "_provider_configured", False)
         monkeypatch.setattr(provider_mod, "_otel_global_set", False)
-        monkeypatch.setattr(provider_mod, "_DEFAULT_TRACER_PROVIDER", None)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", True)
+        monkeypatch.setattr(provider_mod, "_baseline_tracer_provider", None)
         assert provider_mod._has_real_tracer_provider(fake_api) is True
 
     def test_same_default_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -232,8 +222,29 @@ class TestHasRealTracerProviderMutants:
         fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
         monkeypatch.setattr(provider_mod, "_provider_configured", False)
         monkeypatch.setattr(provider_mod, "_otel_global_set", False)
-        monkeypatch.setattr(provider_mod, "_DEFAULT_TRACER_PROVIDER", sentinel)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", True)
+        monkeypatch.setattr(provider_mod, "_baseline_tracer_provider", sentinel)
         assert provider_mod._has_real_tracer_provider(fake_api) is False
+
+    def test_proxy_provider_before_baseline_captured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class ProxyTracerProvider:
+            pass
+
+        fake_api = SimpleNamespace(get_tracer_provider=lambda: ProxyTracerProvider())
+        monkeypatch.setattr(provider_mod, "_provider_configured", False)
+        monkeypatch.setattr(provider_mod, "_otel_global_set", False)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", False)
+        assert provider_mod._has_real_tracer_provider(fake_api) is False
+
+    def test_real_provider_before_baseline_captured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class RealTracerProvider:
+            pass
+
+        fake_api = SimpleNamespace(get_tracer_provider=lambda: RealTracerProvider())
+        monkeypatch.setattr(provider_mod, "_provider_configured", False)
+        monkeypatch.setattr(provider_mod, "_otel_global_set", False)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", False)
+        assert provider_mod._has_real_tracer_provider(fake_api) is True
 
 
 class TestGetTracerProviderPassthrough:
@@ -254,7 +265,8 @@ class TestGetTracerProviderPassthrough:
         )
         _reset_tracing_for_tests()
         monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
-        monkeypatch.setattr(provider_mod, "_DEFAULT_TRACER_PROVIDER", None)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", True)
+        monkeypatch.setattr(provider_mod, "_baseline_tracer_provider", None)
         monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: fake_api)
         tracer = provider_mod.get_tracer()
         assert not isinstance(tracer, _NoopTracer)
@@ -279,7 +291,8 @@ class TestSyncOtelTraceContextProviderPassthrough:
         )
         monkeypatch.setattr(provider_mod, "_provider_configured", False)
         monkeypatch.setattr(provider_mod, "_otel_global_set", False)
-        monkeypatch.setattr(provider_mod, "_DEFAULT_TRACER_PROVIDER", None)
+        monkeypatch.setattr(provider_mod, "_baseline_captured", True)
+        monkeypatch.setattr(provider_mod, "_baseline_tracer_provider", None)
         monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: fake_api)
         provider_mod._sync_otel_trace_context()
         assert "get_tracer_provider" in calls
@@ -320,6 +333,7 @@ class TestSetupTracingSetsGlobalFlag:
         exporter_cls = Mock()
         fake_otel = SimpleNamespace(
             set_tracer_provider=Mock(),
+            get_tracer_provider=lambda: None,
             get_tracer=Mock(),
         )
         monkeypatch.setattr(
