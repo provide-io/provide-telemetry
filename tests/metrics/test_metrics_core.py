@@ -37,7 +37,10 @@ def test_metric_wrappers_without_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     h.record(2.5)
     assert c.value == 3
     assert g.value == 2
-    assert h.records == [1.5, 2.5]
+    assert h.count == 2
+    assert h.total == 4.0
+    assert h.min == 1.5
+    assert h.max == 2.5
 
 
 def test_metric_wrappers_with_meter() -> None:
@@ -68,7 +71,8 @@ def test_metric_wrappers_with_meter() -> None:
     assert mock_hist.record.call_count == 2
     assert c.value == 2
     assert g.value == -2
-    assert h.records == [1.0, 2.0]
+    assert h.count == 2
+    assert h.total == 3.0
     mock_counter.add.assert_any_call(1, {"k": "v"})
     mock_counter.add.assert_any_call(1, {})
     mock_gauge.add.assert_any_call(-1, {"k": "v"})
@@ -128,7 +132,7 @@ def test_setup_metrics_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", False)
     enabled_cfg = TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"})
     setup_metrics(enabled_cfg)
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
 
 
 def test_setup_metrics_short_circuits_when_otel_missing_even_if_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,14 +224,14 @@ def test_setup_metrics_with_only_one_otel_dependency_available(monkeypatch: pyte
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_components", lambda: None)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace(get_meter=Mock()))
     setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
 
     _set_meter_for_test(None)
     components = (Mock(), SimpleNamespace(create=Mock(return_value="res")), Mock(), Mock())
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_components", lambda: components)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: None)
     setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
 
 
 def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,30 +256,30 @@ def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkey
 def test_shutdown_metrics_calls_provider_shutdown() -> None:
     provider = Mock()
     provider_mod._meter_provider = provider
-    provider_mod._meter = "meter"
+    provider_mod._meters["undef.telemetry"] = "meter"
     shutdown_metrics()
     provider.shutdown.assert_called_once()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
     assert provider_mod._meter_provider is None
 
 
 def test_shutdown_metrics_provider_absent_and_noncallable() -> None:
     provider_mod._meter_provider = None
-    provider_mod._meter = None
+    provider_mod._meters.clear()
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
     assert provider_mod._meter_provider is None
 
     provider_mod._meter_provider = SimpleNamespace(shutdown="nope")
-    provider_mod._meter = "meter"
+    provider_mod._meters["undef.telemetry"] = "meter"
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
     assert provider_mod._meter_provider is None
 
     provider_mod._meter_provider = SimpleNamespace()
-    provider_mod._meter = "meter"
+    provider_mod._meters["undef.telemetry"] = "meter"
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("undef.telemetry") is None
     assert provider_mod._meter_provider is None
 
 
@@ -283,6 +287,21 @@ def test_set_meter_for_test_resets_provider_exactly_to_none() -> None:
     provider_mod._meter_provider = object()
     _set_meter_for_test("meter")
     assert provider_mod._meter_provider is None
+
+
+def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_meter_for_test(None)
+    mock_otel = Mock()
+    mock_otel.get_meter.side_effect = lambda name: f"meter-{name}"
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
+    # Default meter
+    m1 = get_meter()
+    assert m1 == "meter-undef.telemetry"
+    # Custom meter is different
+    m2 = get_meter("custom")
+    assert m2 == "meter-custom"
+    assert m1 != m2
 
 
 def test_metric_factories_default_description_and_unit() -> None:
@@ -333,7 +352,7 @@ def test_metric_sampling_and_backpressure_drop_paths(monkeypatch: pytest.MonkeyP
     assert g.value == 0
     h = histogram("h")
     h.record(1.0)
-    assert h.records == []
+    assert h.count == 0
 
 
 def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -436,7 +455,7 @@ def test_metric_early_return_branches_for_sampling_and_queue(monkeypatch: pytest
 
     h = instruments_mod.Histogram("no-sample")
     h.record(3.0)
-    assert h.records == []
+    assert h.count == 0
 
     c2 = instruments_mod.Counter("queue-none")
     c2.add(1)

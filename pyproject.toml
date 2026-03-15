@@ -142,7 +142,7 @@ unresolved-import = "ignore"
 
 [tool.codespell]
 skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock"
-ignore-words-list = "ore,opps,wont,strat,nd,rade"
+ignore-words-list = "ore,opps,wont,strat,nd,rade,caf"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
@@ -159,25 +159,8 @@ max_average = "A"
 [tool.mutmut]
 paths_to_mutate = ["src/undef/telemetry/"]
 tests_dir = ["tests/"]
-do_not_mutate = [
-  "src/undef/telemetry/backpressure.py",
-  "src/undef/telemetry/cardinality.py",
-  "src/undef/telemetry/asgi/middleware.py",
-  "src/undef/telemetry/health.py",
-  "src/undef/telemetry/logger/core.py",
-  "src/undef/telemetry/logger/processors.py",
-  "src/undef/telemetry/metrics/fallback.py",
-  "src/undef/telemetry/metrics/provider.py",
-  "src/undef/telemetry/pii.py",
-  "src/undef/telemetry/propagation.py",
-  "src/undef/telemetry/resilience.py",
-  "src/undef/telemetry/runtime.py",
-  "src/undef/telemetry/sampling.py",
-  "src/undef/telemetry/setup.py",
-  "src/undef/telemetry/slo.py",
-  "src/undef/telemetry/tracing/provider.py",
-]
-pytest_add_cli_args = ["--no-cov"]
+do_not_mutate = []
+pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
   "not integration and not e2e and not otel and not tooling",

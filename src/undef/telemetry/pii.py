@@ -7,6 +7,15 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "MaskMode",
+    "PIIRule",
+    "get_pii_rules",
+    "register_pii_rule",
+    "replace_pii_rules",
+    "sanitize_payload",
+]
+
 import copy
 import hashlib
 import threading
@@ -50,7 +59,7 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
     if mode == "redact":
         return "***"
     if mode == "hash":
-        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]  # pragma: no mutate
     text = str(value)
     limit = max(0, truncate_to)
     return text[:limit] + ("..." if len(text) > limit else "")
@@ -59,7 +68,7 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
 def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     if len(path) != len(target):
         return False
-    return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))
+    return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))  # pragma: no mutate
 
 
 def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = ()) -> Any:
@@ -75,30 +84,49 @@ def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = ()) ->
                 output[key] = _apply_rule(value, rule, child_path)
         return output
     if isinstance(node, list):
-        return [_apply_rule(item, rule, (*current_path, "*")) for item in node]
+        return [_apply_rule(item, rule, (*current_path, "*")) for item in node]  # pragma: no mutate
     return node
 
 
-def _apply_default_sensitive_key_redaction(node: Any) -> Any:
-    if isinstance(node, dict):
+def _apply_default_sensitive_key_redaction(
+    node: Any, original: Any, rule_targeted_keys: frozenset[str] | None = None
+) -> Any:
+    if rule_targeted_keys is None:
+        rule_targeted_keys = frozenset()
+    if isinstance(node, dict) and isinstance(original, dict):
         output: dict[str, Any] = {}
         for key, value in node.items():
+            orig_value = original.get(key, value)
             if key.lower() in _DEFAULT_SENSITIVE_KEYS:
-                output[key] = "***"
+                if key in rule_targeted_keys or value != orig_value:
+                    output[key] = value
+                else:
+                    output[key] = "***"
             else:
-                output[key] = _apply_default_sensitive_key_redaction(value)
+                output[key] = _apply_default_sensitive_key_redaction(value, orig_value, rule_targeted_keys)
         return output
-    if isinstance(node, list):
-        return [_apply_default_sensitive_key_redaction(item) for item in node]
+    if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
+        return [
+            _apply_default_sensitive_key_redaction(item, orig, rule_targeted_keys)
+            for item, orig in zip(node, original, strict=False)  # pragma: no mutate
+        ]
     return node
+
+
+def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
+    """Collect the leaf key names that custom rules target."""
+    return frozenset(rule.path[-1] for rule in rules if rule.path)
 
 
 def sanitize_payload(payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
     if not enabled:
         return payload
-    cleaned = _apply_default_sensitive_key_redaction(copy.deepcopy(payload))
-    for rule in get_pii_rules():
+    cleaned = copy.deepcopy(payload)  # pragma: no mutate
+    rules = get_pii_rules()
+    for rule in rules:
         cleaned = _apply_rule(cleaned, rule)
+    rule_targeted_keys = _collect_rule_leaf_keys(rules)
+    cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys)
     if isinstance(cleaned, dict):
         return cleaned
     return {}

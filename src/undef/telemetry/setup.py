@@ -7,20 +7,47 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "setup_telemetry",
+    "shutdown_telemetry",
+]
+
+import logging
 import threading
 
+from undef.telemetry.backpressure import reset_queues_for_tests as _reset_queues
+from undef.telemetry.cardinality import clear_cardinality_limits as _reset_cardinality
 from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.health import reset_health_for_tests as _reset_health
 from undef.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from undef.telemetry.logger.core import configure_logging, shutdown_logging
+from undef.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics, shutdown_metrics
 from undef.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
-from undef.telemetry.metrics.provider import setup_metrics, shutdown_metrics
+from undef.telemetry.pii import reset_pii_rules_for_tests as _reset_pii
+from undef.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
 from undef.telemetry.runtime import apply_runtime_config
-from undef.telemetry.slo import record_red_metrics, record_use_metrics
+from undef.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
+from undef.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
+from undef.telemetry.slo import _reset_slo_for_tests as _reset_slo
+from undef.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
 from undef.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
-from undef.telemetry.tracing.provider import setup_tracing, shutdown_tracing
 
+_logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _setup_done = False
+
+
+def _rollback(completed: list[str]) -> None:
+    teardowns = {
+        "configure_logging": shutdown_logging,
+        "setup_tracing": shutdown_tracing,
+        "setup_metrics": shutdown_metrics,
+    }
+    for step in reversed(completed):
+        try:
+            teardowns[step]()
+        except Exception:
+            _logger.warning("rollback failed for %s", step, exc_info=True)
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
@@ -29,28 +56,48 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
     with _lock:
         if not _setup_done:
             apply_runtime_config(cfg)
-            configure_logging(cfg)
-            setup_tracing(cfg)
-            setup_metrics(cfg)
+            completed: list[str] = []
+            try:
+                configure_logging(cfg)
+                completed.append("configure_logging")
+                _refresh_otel_tracing()
+                _refresh_otel_metrics()
+                setup_tracing(cfg)
+                completed.append("setup_tracing")
+                setup_metrics(cfg)
+                completed.append("setup_metrics")
+                _rebind_slo_instruments()
+            except Exception:
+                _rollback(completed)
+                raise
+            _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)
             if cfg.slo.enable_use_metrics:
                 record_use_metrics("startup", 0)
-            _setup_done = True
     return cfg
 
 
 def _reset_setup_state_for_tests() -> None:
     global _setup_done
-    _setup_done = False
+    with _lock:
+        _setup_done = False
 
 
 def _reset_all_for_tests() -> None:
     global _setup_done
-    _setup_done = False
+    with _lock:
+        _setup_done = False
     _reset_logging()
     _reset_tracing()
     _reset_metrics(None)
+    _reset_slo()
+    _reset_resilience()
+    _reset_health()
+    _reset_queues()
+    _reset_pii()
+    _reset_cardinality()
+    _reset_sampling()
 
 
 def shutdown_telemetry() -> None:
@@ -58,6 +105,6 @@ def shutdown_telemetry() -> None:
     global _setup_done
     with _lock:
         _setup_done = False
-        shutdown_logging()
-        shutdown_metrics()
         shutdown_tracing()
+        shutdown_metrics()
+        shutdown_logging()

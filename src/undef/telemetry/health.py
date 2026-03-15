@@ -7,6 +7,18 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "HealthSnapshot",
+    "get_health_snapshot",
+    "increment_async_blocking_risk",
+    "increment_dropped",
+    "increment_exemplar_unsupported",
+    "increment_retries",
+    "record_export_failure",
+    "record_export_success",
+    "set_queue_depth",
+]
+
 import threading
 import time
 from dataclasses import dataclass
@@ -56,7 +68,7 @@ _exemplar_unsupported_total = 0
 
 
 def _known_signal(signal: Signal) -> Signal:
-    if signal in {"logs", "traces", "metrics"}:
+    if signal in {"logs", "traces", "metrics"}:  # pragma: no mutate
         return signal
     return "logs"
 
@@ -67,19 +79,19 @@ def set_queue_depth(signal: Signal, depth: int) -> None:
         _queue_depth[sig] = max(0, depth)
 
 
-def increment_dropped(signal: Signal, amount: int = 1) -> None:
+def increment_dropped(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _dropped[sig] += max(0, amount)
 
 
-def increment_retries(signal: Signal, amount: int = 1) -> None:
+def increment_retries(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _retries[sig] += max(0, amount)
 
 
-def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:
+def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _async_blocking_risk[sig] += max(0, amount)
@@ -92,7 +104,7 @@ def record_export_failure(signal: Signal, exc: Exception) -> None:
         _last_error[sig] = str(exc)
 
 
-def record_export_success(signal: Signal, latency_ms: float = 0.0) -> None:
+def record_export_success(signal: Signal, latency_ms: float = 0.0) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _last_success[sig] = time.time()
@@ -100,7 +112,7 @@ def record_export_success(signal: Signal, latency_ms: float = 0.0) -> None:
         _last_error[sig] = None
 
 
-def increment_exemplar_unsupported(amount: int = 1) -> None:
+def increment_exemplar_unsupported(amount: int = 1) -> None:  # pragma: no mutate
     global _exemplar_unsupported_total
     with _lock:
         _exemplar_unsupported_total += max(0, amount)

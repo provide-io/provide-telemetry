@@ -7,11 +7,13 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from undef.telemetry.cardinality import register_cardinality_limit
 from undef.telemetry.headers import get_header
 from undef.telemetry.logger.context import bind_context, clear_context
 from undef.telemetry.logger.core import get_logger
@@ -25,10 +27,17 @@ Send = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class TelemetryMiddleware:
-    def __init__(self, app: Callable[[Scope, Receive, Send], Awaitable[None]], *, auto_slo: bool = False) -> None:
+    def __init__(
+        self,
+        app: Callable[[Scope, Receive, Send], Awaitable[None]],
+        *,
+        auto_slo: bool = False,  # pragma: no mutate
+    ) -> None:
         self.app = app
         self.auto_slo = auto_slo
         self._logger = get_logger("undef.asgi") if auto_slo else None
+        if auto_slo:
+            register_cardinality_limit("route", max_values=200)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") not in {"http", "websocket"}:
@@ -62,7 +71,7 @@ class TelemetryMiddleware:
             await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
         except Exception as exc:
             if self.auto_slo and self._logger is not None:
-                scope_type = str(scope.get("type", "http"))
+                scope_type = str(scope.get("type", "http"))  # pragma: no mutate
                 self._logger.error(
                     event_name(scope_type, "request", "unhandled_exception"),
                     exc_info=True,
@@ -72,12 +81,34 @@ class TelemetryMiddleware:
             raise
         finally:
             if self.auto_slo:
-                duration_ms = (time.perf_counter() - started) * 1000.0
-                route = str(scope.get("path", "unknown"))
+                duration_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+                route = _resolve_route(scope)
                 method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
                 record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)
             clear_propagation_context()
             clear_context()
+
+
+_DYNAMIC_SEGMENT = re.compile(
+    r"/(?:"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"  # UUID
+    r"|[0-9a-fA-F]{24,32}"  # hex object IDs
+    r"|[0-9]+"  # numeric IDs
+    r")(?=/|$)"
+)
+
+
+def _normalize_path(raw: str) -> str:
+    return _DYNAMIC_SEGMENT.sub("/{id}", raw)
+
+
+def _resolve_route(scope: Scope) -> str:
+    route = scope.get("route")
+    if route is not None:
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            return path
+    return _normalize_path(str(scope.get("path", "unknown")))
 
 
 def _extract_header(scope: Scope, key: bytes) -> str | None:

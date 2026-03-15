@@ -4,32 +4,77 @@
 # SPDX-Comment: Part of Undef Telemetry.
 #
 
+"""🚀 Basic telemetry — logging, tracing, and all three metric types.
+
+Demonstrates:
+- setup_telemetry / shutdown_telemetry lifecycle
+- get_logger for structured logging
+- @trace decorator for automatic span creation
+- counter, gauge, histogram instrument creation and recording
+- bind_context / unbind_context / clear_context for structured fields
+"""
+
 from __future__ import annotations
 
 import time
 
-from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
+from undef.telemetry import (
+    bind_context,
+    clear_context,
+    counter,
+    gauge,
+    get_logger,
+    histogram,
+    setup_telemetry,
+    shutdown_telemetry,
+    trace,
+    unbind_context,
+)
 
 
 @trace("example.basic.work")
 def do_work(iteration: int) -> None:
-    get_logger("examples.basic").info("example.basic.iteration", iteration=str(iteration))
-    counter("example.basic.requests").add(1, {"iteration": str(iteration)})
+    log = get_logger("examples.basic")
+    log.info("example.basic.iteration", iteration=str(iteration))
+    counter("example.basic.requests", "Total request count").add(1, {"iteration": str(iteration)})
+    histogram("example.basic.latency_ms", "Simulated latency", "ms").record(
+        iteration * 12.5, {"iteration": str(iteration)}
+    )
+    gauge("example.basic.active_tasks", "Active task gauge", "1").add(1)
 
 
 def main() -> None:
+    print("🚀 Basic Telemetry Demo\n")
+
     cfg = setup_telemetry()
     log = get_logger("examples.basic")
-    log.info(
-        "example.basic.start",
-        service=cfg.service_name,
-        env=cfg.environment,
-        version=cfg.version,
-    )
+
+    print(f"⚙️  Service: {cfg.service_name}  |  Env: {cfg.environment}  |  Version: {cfg.version}")
+
+    # ── 📋 Structured context binding ───────────────────────
+    print("\n📋 Binding structured context fields...")
+    bind_context(region="us-east-1", tier="premium")
+    log.info("example.basic.start", msg="context is bound")
+    print("  ✅ Bound: region=us-east-1, tier=premium")
+
+    # ── 🔄 Traced work loop with all metric types ──────────
+    print("\n🔄 Running traced iterations with counter + histogram + gauge:")
     for i in range(3):
         do_work(i)
         time.sleep(0.05)
-    log.info("example.basic.complete")
+        print(f"  🔹 Iteration {i}: counter +1, histogram {i * 12.5}ms, gauge +1")
+
+    # ── 🧹 Context cleanup ─────────────────────────────────
+    print("\n🧹 Unbinding 'region', then clearing all context...")
+    unbind_context("region")
+    log.info("example.basic.after_unbind", msg="region removed")
+    print("  🔸 Unbound: region")
+
+    clear_context()
+    log.info("example.basic.after_clear", msg="all context cleared")
+    print("  🔸 Cleared: all context fields")
+
+    print("\n🏁 Done!")
     shutdown_telemetry()
 
 

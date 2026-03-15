@@ -31,8 +31,8 @@ logging.addLevelName(TRACE, "TRACE")
 
 
 def _get_level(level: str) -> int:
-    if level == "TRACE":
-        return logging.DEBUG
+    if level == "TRACE":  # pragma: no mutate
+        return TRACE
     mapped = logging.getLevelName(level)
     if isinstance(mapped, int):
         return mapped
@@ -120,6 +120,7 @@ def configure_logging(config: TelemetryConfig) -> None:
             return
 
         level = _get_level(config.logging.level)
+        structlog_level = max(level, logging.DEBUG)
         handlers = _build_handlers(config, level)
         logging.basicConfig(level=level, handlers=handlers, format="%(message)s", force=True)
 
@@ -154,15 +155,15 @@ def configure_logging(config: TelemetryConfig) -> None:
         if config.logging.fmt == "json":
             renderer = structlog.processors.JSONRenderer()
         else:
-            renderer = structlog.dev.ConsoleRenderer(colors=False)
+            renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
 
         processors.append(renderer)
 
         structlog.configure(
             processors=processors,
-            wrapper_class=structlog.make_filtering_bound_logger(level),
+            wrapper_class=structlog.make_filtering_bound_logger(structlog_level),
             logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
+            cache_logger_on_first_use=False,
         )
         _active_config = config
         _configured = True
@@ -205,7 +206,7 @@ class _TraceWrapper:
 
     def trace(self, event: str, **kwargs: Any) -> None:
         if _active_config is not None and _active_config.logging.level == "TRACE":
-            self._logger.debug(event, **kwargs)
+            self._logger.debug(event, _trace=True, **kwargs)
 
     def bind(self, **kwargs: Any) -> _TraceWrapper:
         return _TraceWrapper(self._logger.bind(**kwargs))

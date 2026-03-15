@@ -240,6 +240,9 @@ def test_trace_decorator_span_name_resolution(monkeypatch: pytest.MonkeyPatch) -
             return _Span()
 
     monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _ticket: None)
 
     @trace()
     def fn_default() -> int:
@@ -276,6 +279,9 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
             return 7
 
     monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _ticket: None)
     wrapped = trace()(_Callable())
     assert wrapped() == 7
     assert seen == ["_Callable"]
@@ -283,6 +289,9 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
 
 def test_trace_async_preserves_context_across_await(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _ticket: None)
 
     @trace("async.context")
     async def afn() -> tuple[str | None, str | None]:

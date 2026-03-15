@@ -2,21 +2,23 @@
 
 ## Event Naming
 
-Use: `domain.action.status` (exactly 3 segments)
+Use 3-5 dot-separated segments (last segment is status by convention).
 
 Rules:
 
 - lowercase only
-- exactly 3 dot-separated segments
+- 3-5 dot-separated segments
 - underscores allowed inside segments
 
 Examples:
 
-- `auth.login.success`
+- `auth.login.success` (3 segments)
+- `auth.login.password.failed` (4 segments)
+- `payment.sub.renewal.attempt.success` (5 segments)
 - `matchmaking.queue.joined`
 - `inventory.item.removed`
 
-Use `undef.telemetry.event_name(domain, action, status)` when event names are composed dynamically.
+Use `undef.telemetry.event_name(*segments)` when event names are composed dynamically.
 
 ### `event_name` Cookbook
 
@@ -30,11 +32,13 @@ Recommended:
   - `log.info(event_name("ws", action, "received"), size=len(payload))`
 - Middleware/instrumentation composition:
   - `log.info(event_name("http", "request", "started"), method=method, path=path)`
+- Nested domain (4 segments):
+  - `log.info(event_name("payment", "subscription", "renewal", "success"))`
 
 Avoid:
 
-- 4+ segment names:
-  - `auth.login.password.failed`
+- 6+ segment names:
+  - `auth.login.password.reset.attempt.failed`
 - Free-form strings as segments:
   - `event_name("auth", user_input, "success")`
 - Encoding details in event name instead of attributes:

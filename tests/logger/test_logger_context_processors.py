@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import pytest
+import structlog
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import context as context_mod
@@ -54,8 +55,8 @@ def test_add_standard_fields_error_taxonomy_when_exc_name_present() -> None:
 
 def test_apply_sampling_drop_event(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: False)
-    out = apply_sampling(None, "info", {"event": "auth.login.success"})
-    assert out == {"event": "telemetry.log.dropped", "dropped_event": "auth.login.success"}
+    with pytest.raises(structlog.DropEvent):
+        apply_sampling(None, "info", {"event": "auth.login.success"})
 
 
 def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,11 +108,11 @@ def test_enforce_event_schema_required_keys_error_message() -> None:
         processor(None, "info", {"event": "auth.login.success"})
 
 
-def test_enforce_event_schema_skips_required_keys_in_compat_mode() -> None:
+def test_enforce_event_schema_enforces_required_keys_in_compat_mode() -> None:
     cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
     processor = enforce_event_schema(cfg)
-    out = processor(None, "info", {"event": "auth.login.success"})
-    assert out["event"] == "auth.login.success"
+    with pytest.raises(EventSchemaError, match="missing required keys"):
+        processor(None, "info", {"event": "auth.login.success"})
 
 
 def test_enforce_event_schema_policy_matrix() -> None:

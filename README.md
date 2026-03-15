@@ -64,8 +64,8 @@ shutdown_telemetry()
 
 ## Event Naming Rule
 
-Event names are strict: `domain.action.status` with exactly 3 segments.
-If you build names dynamically, use `undef.telemetry.event_name(domain, action, status)`.
+Event names are strict: 3-5 dot-separated segments (last segment is status by convention).
+If you build names dynamically, use `undef.telemetry.event_name(*segments)`.
 
 ```python
 from undef.telemetry import event_name, get_logger

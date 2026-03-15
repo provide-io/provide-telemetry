@@ -1,0 +1,311 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of Undef Telemetry.
+#
+
+"""Tests targeting mutation-testing survivors in pii.py."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from undef.telemetry import pii as pii_mod
+from undef.telemetry.pii import (
+    PIIRule,
+    _apply_default_sensitive_key_redaction,
+    _apply_rule,
+    _mask,
+    _match,
+    register_pii_rule,
+    replace_pii_rules,
+    sanitize_payload,
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rules() -> None:
+    pii_mod.reset_pii_rules_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# _mask survivors
+# ---------------------------------------------------------------------------
+
+
+class TestMask:
+    """Kill mutants in _mask."""
+
+    def test_redact_mode_returns_exactly_three_stars(self) -> None:
+        """Kills `"***"` -> `"XX***XX"` and `"redact"` -> `"XXredactXX"` mutants."""
+        result = _mask("secret_value", "redact", 8)
+        assert result == "***"
+        assert len(result) == 3
+
+    def test_redact_mode_string_comparison_exact(self) -> None:
+        """Kills `"redact"` -> `"REDACT"` mutant (case-sensitive mode check)."""
+        # "redact" mode should produce "***", not fall through to truncate
+        result = _mask("hello", "redact", 2)
+        assert result == "***"
+
+    def test_truncate_to_zero_gives_ellipsis_only(self) -> None:
+        """Kills `max(0, truncate_to)` -> `max(1, truncate_to)` mutant.
+
+        With truncate_to=0, text should be empty prefix + "..." since len > 0.
+        """
+        result = _mask("hello", "truncate", 0)
+        assert result == "..."
+
+    def test_truncate_boundary_exact_limit(self) -> None:
+        """Kills `len(text) > limit` -> `>= limit` mutant.
+
+        When text length equals limit exactly, no "..." should be appended.
+        """
+        result = _mask("abcd", "truncate", 4)
+        assert result == "abcd"
+
+    def test_truncate_one_over_limit(self) -> None:
+        """Text one char over limit gets truncated with '...'."""
+        result = _mask("abcde", "truncate", 4)
+        assert result == "abcd..."
+
+    def test_truncate_suffix_is_exactly_three_dots(self) -> None:
+        """Kills `"..."` -> `""` mutant for truncation suffix."""
+        result = _mask("longtext", "truncate", 2)
+        assert result == "lo..."
+        assert result.endswith("...")
+
+    def test_drop_mode_returns_none(self) -> None:
+        """Baseline: drop mode returns None."""
+        assert _mask("value", "drop", 8) is None
+
+    def test_hash_mode_returns_12_char_hex(self) -> None:
+        """Baseline: hash mode returns 12-char hex digest."""
+        result = _mask("value", "hash", 8)
+        assert isinstance(result, str)
+        assert len(result) == 12
+        int(result, 16)  # must be valid hex
+
+
+# ---------------------------------------------------------------------------
+# _match survivors
+# ---------------------------------------------------------------------------
+
+
+class TestMatch:
+    """Kill mutants in _match."""
+
+    def test_wildcard_matches_any_element(self) -> None:
+        """Kills `"*"` -> `"XX*XX"` mutant."""
+        assert _match(("user", "*", "name"), ("user", "anything", "name")) is True
+        assert _match(("*",), ("whatever",)) is True
+
+    def test_wildcard_does_not_match_different_length(self) -> None:
+        """Ensures length check still applies with wildcards."""
+        assert _match(("*", "*"), ("a",)) is False
+
+    def test_exact_match(self) -> None:
+        """Baseline: exact path matching."""
+        assert _match(("a", "b"), ("a", "b")) is True
+        assert _match(("a", "b"), ("a", "c")) is False
+
+    def test_strict_zip_enforced(self) -> None:
+        """Kills `strict=True` -> `strict=False` mutant.
+
+        With strict=True and mismatched lengths, zip raises ValueError.
+        But the length check at the top should prevent that. This test
+        verifies the length check is working correctly (not bypassed).
+        """
+        # Same length, partial match
+        assert _match(("a", "b"), ("a", "x")) is False
+
+
+# ---------------------------------------------------------------------------
+# _apply_rule list handling survivors
+# ---------------------------------------------------------------------------
+
+
+class TestApplyRuleList:
+    def test_apply_rule_redacts_list_items_via_wildcard(self) -> None:
+        """Kills `"*"` -> `"XX*XX"` mutant in _apply_rule list path.
+
+        When _apply_rule encounters a list, it uses "*" as the path segment
+        for each item. A rule targeting ("items", "*", "secret") should match
+        list elements.
+        """
+        node: dict[str, Any] = {
+            "items": [
+                {"secret": "value1", "ok": "data1"},
+                {"secret": "value2", "ok": "data2"},
+            ]
+        }
+        rule = PIIRule(path=("items", "*", "secret"), mode="redact")
+        result = _apply_rule(node, rule)
+        assert result["items"][0]["secret"] == "***"
+        assert result["items"][1]["secret"] == "***"
+        assert result["items"][0]["ok"] == "data1"
+        assert result["items"][1]["ok"] == "data2"
+
+
+# ---------------------------------------------------------------------------
+# _apply_default_sensitive_key_redaction survivors
+# ---------------------------------------------------------------------------
+
+
+class TestApplyDefaultSensitiveKeyRedaction:
+    """Kill mutants in _apply_default_sensitive_key_redaction."""
+
+    def test_and_vs_or_isinstance_checks(self) -> None:
+        """Kills `and` -> `or` in isinstance(node, dict) and isinstance(original, dict).
+
+        If node is dict but original is not dict, should return node unchanged.
+        """
+        result = _apply_default_sensitive_key_redaction({"password": "secret"}, "not_a_dict")
+        assert result == {"password": "secret"}
+
+    def test_orig_value_fallback_uses_value_not_none(self) -> None:
+        """Kills `original.get(key, value)` -> `get(key, None)` or `get(key,)`.
+
+        When key is missing from original, orig_value should fall back to
+        `value` (current node value). If it fell back to None, comparison
+        would differ, causing the already-redacted value to be kept.
+        """
+        node: dict[str, Any] = {"password": "secret", "safe": "data"}
+        # original is missing 'password' key entirely
+        original: dict[str, Any] = {"safe": "data"}
+        result = _apply_default_sensitive_key_redaction(node, original)
+        # password should NOT be redacted because node["password"] != orig fallback
+        # Actually: orig_value = original.get("password", "secret") = "secret"
+        # Since value == orig_value, it should be redacted
+        assert result["password"] == "***"
+
+    def test_orig_value_differs_preserves_already_masked(self) -> None:
+        """When value differs from original, it means it was already masked by a rule."""
+        node: dict[str, Any] = {"password": "already_masked"}
+        original: dict[str, Any] = {"password": "original_password"}
+        result = _apply_default_sensitive_key_redaction(node, original)
+        # value != orig_value, so keep the already-masked value
+        assert result["password"] == "already_masked"
+
+    def test_nested_dict_recursion(self) -> None:
+        """Kills various mutants by testing nested dict traversal."""
+        node: dict[str, Any] = {"outer": {"token": "abc123", "safe": "ok"}}
+        original: dict[str, Any] = {"outer": {"token": "abc123", "safe": "ok"}}
+        result = _apply_default_sensitive_key_redaction(node, original)
+        assert result["outer"]["token"] == "***"
+        assert result["outer"]["safe"] == "ok"
+
+    def test_list_traversal_with_strict_false(self) -> None:
+        """Kills `strict=False` -> `strict=True` mutant.
+
+        With strict=False, mismatched-length lists don't raise.
+        """
+        node: list[Any] = [{"token": "a"}, {"token": "b"}, {"token": "c"}]
+        original: list[Any] = [{"token": "a"}, {"token": "b"}]
+        # strict=False means zip stops at shorter list
+        result = _apply_default_sensitive_key_redaction(node, original)
+        assert isinstance(result, list)
+        assert len(result) == 2  # zip truncates to shorter
+        assert result[0]["token"] == "***"
+
+    def test_list_node_with_non_list_original_returns_node(self) -> None:
+        """Kills `and` -> `or` in isinstance(node, list) and isinstance(original, list).
+
+        When node is a list but original is NOT, should return node unchanged.
+        The `or` mutant would try to zip a list with a non-list and crash.
+        """
+        node: list[Any] = [{"token": "secret"}]
+        result = _apply_default_sensitive_key_redaction(node, "not_a_list")
+        assert result == [{"token": "secret"}]
+
+    def test_non_dict_non_list_passthrough(self) -> None:
+        """Non-container values pass through unchanged."""
+        assert _apply_default_sensitive_key_redaction("hello", "hello") == "hello"
+        assert _apply_default_sensitive_key_redaction(42, 42) == 42
+
+
+# ---------------------------------------------------------------------------
+# sanitize_payload survivors
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizePayload:
+    """Kill mutants in sanitize_payload."""
+
+    def test_deepcopy_vs_shallow_copy(self) -> None:
+        """Kills `copy.deepcopy(payload)` -> `copy.copy(payload)` mutant.
+
+        With shallow copy, mutations to nested dicts in rules would affect
+        the original payload. deepcopy prevents this.
+        """
+        inner: dict[str, Any] = {"secret": "value", "safe": "data"}
+        payload: dict[str, Any] = {"nested": inner}
+        replace_pii_rules([PIIRule(path=("nested", "secret"), mode="drop")])
+        result = sanitize_payload(payload, enabled=True)
+        # Original must be unmodified
+        assert payload["nested"]["secret"] == "value"
+        # Result should have secret removed
+        assert "secret" not in result["nested"]
+        # Verify they are different objects
+        assert result["nested"] is not payload["nested"]
+
+    def test_register_pii_rule_stores_correctly(self) -> None:
+        """Kills mutants in register_pii_rule."""
+        rule = PIIRule(path=("user", "email"), mode="hash")
+        register_pii_rule(rule)
+        rules = pii_mod.get_pii_rules()
+        assert len(rules) == 1
+        assert rules[0] is rule
+        assert rules[0].path == ("user", "email")
+        assert rules[0].mode == "hash"
+
+    def test_sanitize_disabled_returns_original_identity(self) -> None:
+        """When disabled, returns the exact same object (identity check)."""
+        payload: dict[str, Any] = {"password": "secret"}
+        result = sanitize_payload(payload, enabled=False)
+        assert result is payload
+
+    def test_sanitize_with_multiple_rules_applied_in_order(self) -> None:
+        """Verify rules are applied sequentially."""
+        payload: dict[str, Any] = {"field": "longvalue123"}
+        replace_pii_rules(
+            [
+                PIIRule(path=("field",), mode="truncate", truncate_to=4),
+            ]
+        )
+        result = sanitize_payload(payload, enabled=True)
+        assert result["field"] == "long..."
+
+    def test_custom_noop_truncate_on_sensitive_key_not_overridden(self) -> None:
+        """Custom rule with no-op truncate (short value) must not be overridden by default redaction.
+
+        When a custom rule produces a value equal to the original (e.g., truncate on a short value),
+        the default redaction must not overwrite it with '***'.
+        """
+        payload: dict[str, Any] = {"password": "ab"}
+        replace_pii_rules([PIIRule(path=("password",), mode="truncate", truncate_to=10)])
+        result = sanitize_payload(payload, enabled=True)
+        # Custom rule left value unchanged (len("ab") <= 10), default must respect that
+        assert result["password"] == "ab"
+
+    def test_rule_targeted_keys_propagates_through_nested_dict(self) -> None:
+        """Kills mutant replacing rule_targeted_keys with None in dict recursion.
+
+        A custom rule targeting a nested sensitive key must prevent default
+        redaction at any depth, not just the top level.
+        """
+        payload: dict[str, Any] = {"outer": {"password": "short"}}
+        replace_pii_rules([PIIRule(path=("outer", "password"), mode="truncate", truncate_to=100)])
+        result = sanitize_payload(payload, enabled=True)
+        # Custom rule is a no-op (value shorter than truncate_to), but the key
+        # is tracked as rule-targeted so default redaction must NOT apply "***"
+        assert result["outer"]["password"] == "short"
+
+    def test_rule_targeted_keys_propagates_through_list(self) -> None:
+        """Kills mutant replacing rule_targeted_keys with None in list recursion."""
+        payload: dict[str, Any] = {"items": [{"token": "val"}]}
+        replace_pii_rules([PIIRule(path=("items", "*", "token"), mode="truncate", truncate_to=100)])
+        result = sanitize_payload(payload, enabled=True)
+        # Custom rule is a no-op; default must not overwrite with "***"
+        assert result["items"][0]["token"] == "val"

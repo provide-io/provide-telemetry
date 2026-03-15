@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from undef.telemetry.asgi import middleware as middleware_mod
-from undef.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header
+from undef.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header, _resolve_route
 from undef.telemetry.asgi.websocket import _extract_header as ws_extract_header
 from undef.telemetry.asgi.websocket import bind_websocket_context
 from undef.telemetry.logger import get_context
@@ -159,10 +159,10 @@ def test_extract_header_positive_and_case_insensitive_name() -> None:
     assert _extract_header(scope, b"x-missing") is None
 
 
-def test_extract_header_ignores_malformed_utf8_bytes() -> None:
+def test_extract_header_decodes_non_utf8_via_latin1() -> None:
     scope = {"headers": [(b"x-request-id", b"\xff")]}
-    assert _extract_header(scope, b"x-request-id") is None
-    assert ws_extract_header(scope, b"x-request-id") is None
+    assert _extract_header(scope, b"x-request-id") == "\xff"
+    assert ws_extract_header(scope, b"x-request-id") == "\xff"
 
 
 @pytest.mark.asyncio
@@ -215,6 +215,41 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
     result = bind_websocket_context({"headers": [(b"x-session-id", b"s-only")]})
     assert result == {"request_id": None, "session_id": "s-only", "actor_id": None}
     assert calls == [{"session_id": "s-only"}]
+
+
+def test_resolve_route_with_starlette_route() -> None:
+    route = type("Route", (), {"path": "/users/{user_id}"})()
+    scope: dict[str, Any] = {"path": "/users/12345", "route": route}
+    assert _resolve_route(scope) == "/users/{user_id}"
+
+
+def test_resolve_route_without_route_key() -> None:
+    scope: dict[str, Any] = {"path": "/users/12345"}
+    assert _resolve_route(scope) == "/users/{id}"
+
+
+def test_resolve_route_with_route_no_path_attr() -> None:
+    scope: dict[str, Any] = {"path": "/users/12345", "route": object()}
+    assert _resolve_route(scope) == "/users/{id}"
+
+
+def test_cardinality_limit_registered_on_auto_slo() -> None:
+    from undef.telemetry import cardinality as cardinality_mod
+
+    cardinality_mod.clear_cardinality_limits()
+    TelemetryMiddleware(_dummy_app, auto_slo=True)
+    limits = cardinality_mod.get_cardinality_limits()
+    assert "route" in limits
+    assert limits["route"].max_values == 200
+    cardinality_mod.clear_cardinality_limits()
+
+
+def test_cardinality_limit_not_registered_without_auto_slo() -> None:
+    from undef.telemetry import cardinality as cardinality_mod
+
+    cardinality_mod.clear_cardinality_limits()
+    TelemetryMiddleware(_dummy_app, auto_slo=False)
+    assert "route" not in cardinality_mod.get_cardinality_limits()
 
 
 def test_websocket_extract_header_missing_headers_key() -> None:
@@ -309,9 +344,12 @@ async def test_middleware_auto_slo_records_red_metrics(monkeypatch: pytest.Monke
         await send_fn({"type": "http.response.body", "body": b""})
 
     middleware = TelemetryMiddleware(app, auto_slo=True)
-    await middleware({"type": "http", "path": "/ok", "method": "GET", "headers": []}, receive, send)
+    route_obj = type("Route", (), {"path": "/ok"})()
+    await middleware(
+        {"type": "http", "path": "/ok/123", "method": "GET", "headers": [], "route": route_obj}, receive, send
+    )
     assert len(calls) == 1
-    assert calls[0]["route"] == "/ok"
+    assert calls[0]["route"] == "/ok"  # resolved from route.path, not raw path
     assert calls[0]["method"] == "GET"
     assert calls[0]["status_code"] == 204
     assert isinstance(calls[0]["duration_ms"], float)

@@ -3,9 +3,21 @@
 # SPDX-Comment: Part of Undef Telemetry.
 #
 
-"""Runtime config/policy update API."""
+"""Runtime config/policy update API.
+
+Hot-reconfigurable: sampling policies, backpressure queue limits, exporter retry/timeout policies.
+NOT hot-reconfigurable: log handlers, tracer providers, meter providers (require full restart).
+Use ``reconfigure_telemetry()`` for a full shutdown+setup cycle when providers must change.
+"""
 
 from __future__ import annotations
+
+__all__ = [
+    "get_runtime_config",
+    "reconfigure_telemetry",
+    "reload_runtime_from_env",
+    "update_runtime_config",
+]
 
 import copy
 import threading
@@ -16,7 +28,7 @@ from undef.telemetry.resilience import ExporterPolicy, set_exporter_policy
 from undef.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
 _lock = threading.Lock()
-_active_config = TelemetryConfig.from_env({})
+_active_config: TelemetryConfig | None = None
 
 
 def apply_runtime_config(config: TelemetryConfig) -> None:
@@ -25,7 +37,7 @@ def apply_runtime_config(config: TelemetryConfig) -> None:
     with _lock:
         snapshot = copy.deepcopy(config)
         _active_config = snapshot
-        set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))
+        set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))  # pragma: no mutate
         set_sampling_policy("traces", SamplingPolicy(default_rate=snapshot.sampling.traces_rate))
         set_sampling_policy("metrics", SamplingPolicy(default_rate=snapshot.sampling.metrics_rate))
         set_queue_policy(
@@ -80,7 +92,17 @@ def reload_runtime_from_env() -> TelemetryConfig:
     return get_runtime_config()
 
 
+def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    """Full shutdown+setup cycle for when providers must change."""
+    from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
+
+    shutdown_telemetry()
+    return setup_telemetry(config)
+
+
 def get_runtime_config() -> TelemetryConfig:
     """Return a defensive copy of the active runtime config snapshot."""
     with _lock:
+        if _active_config is None:
+            return TelemetryConfig.from_env()
         return copy.deepcopy(_active_config)

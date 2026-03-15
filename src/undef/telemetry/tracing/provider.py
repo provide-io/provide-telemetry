@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import threading
-import uuid
 from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
@@ -29,10 +28,13 @@ _provider_ref: Any | None = None
 
 
 class _NoopSpan(AbstractContextManager["_NoopSpan"]):
+    NOOP_TRACE_ID = "0" * 32
+    NOOP_SPAN_ID = "0" * 16
+
     def __init__(self, name: str) -> None:
         self.name = name
-        self.trace_id = uuid.uuid4().hex
-        self.span_id = uuid.uuid4().hex[:16]
+        self.trace_id = self.NOOP_TRACE_ID
+        self.span_id = self.NOOP_SPAN_ID
 
     def __enter__(self) -> _NoopSpan:
         set_trace_context(self.trace_id, self.span_id)
@@ -45,6 +47,11 @@ class _NoopSpan(AbstractContextManager["_NoopSpan"]):
 class _NoopTracer:
     def start_as_current_span(self, name: str, **_: object) -> _NoopSpan:
         return _NoopSpan(name)
+
+
+def _refresh_otel_tracing() -> None:
+    global _HAS_OTEL
+    _HAS_OTEL = _has_otel()
 
 
 def _load_otel_trace_api() -> Any | None:
@@ -124,4 +131,11 @@ def get_tracer(name: str | None = None) -> _TracerLike:
     return _NoopTracer()
 
 
-tracer = get_tracer()
+class _LazyTracer:
+    """Defers tracer resolution to call time so setup() takes effect."""
+
+    def start_as_current_span(self, name: str, **kwargs: object) -> AbstractContextManager[object]:
+        return get_tracer().start_as_current_span(name, **kwargs)
+
+
+tracer: _TracerLike = _LazyTracer()

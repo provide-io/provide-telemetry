@@ -14,10 +14,10 @@ _segment_chars = "abcdefghijklmnopqrstuvwxyz0123456789_"  # pragma: allowlist se
 _segment = st.from_regex(r"[a-z][a-z0-9_]{0,15}", fullmatch=True)
 
 
-@given(domain=_segment, action=_segment, status=_segment)
-def test_event_name_property_builds_valid_strict_name(domain: str, action: str, status: str) -> None:
-    name = event_name(domain, action, status)
-    assert name == f"{domain}.{action}.{status}"
+@given(segments=st.lists(_segment, min_size=3, max_size=5))
+def test_event_name_property_builds_valid_strict_name(segments: list[str]) -> None:
+    name = event_name(*segments)
+    assert name == ".".join(segments)
     validate_event_name(name, strict_event_name=True)
 
 
@@ -27,7 +27,7 @@ def test_event_name_property_rejects_hyphenated_segment(base: str) -> None:
     try:
         event_name("auth", bad, "success")
     except EventSchemaError as exc:
-        assert str(exc) == f"invalid event segment: action={bad}"
+        assert str(exc) == f"invalid event segment: segment[1]={bad}"
     else:
         msg = "event_name accepted hyphenated segment"
         raise AssertionError(msg)
@@ -44,7 +44,7 @@ def test_event_name_property_rejects_non_matching_domain(segment: str) -> None:
     try:
         event_name(segment, "login", "success")
     except EventSchemaError as exc:
-        assert str(exc) == f"invalid event segment: domain={segment}"
+        assert str(exc) == f"invalid event segment: segment[0]={segment}"
     else:
         msg = "event_name accepted invalid domain"
         raise AssertionError(msg)
