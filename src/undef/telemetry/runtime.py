@@ -72,7 +72,52 @@ def update_runtime_config(config: TelemetryConfig) -> TelemetryConfig:
 def reload_runtime_from_env() -> TelemetryConfig:
     cfg = TelemetryConfig.from_env()
     apply_runtime_config(cfg)
-    return cfg
+    return get_runtime_config()
+
+
+def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    """Apply hot runtime updates or fail fast when provider replacement would be required."""
+    from undef.telemetry.logger import core as logger_core
+    from undef.telemetry.metrics import provider as metrics_provider
+    from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
+    from undef.telemetry.tracing import provider as tracing_provider
+
+    target = config or TelemetryConfig.from_env()
+    current = get_runtime_config()
+    if _provider_config_changed(current, target):
+        if (
+            logger_core._has_otel_log_provider()
+            or tracing_provider._has_tracing_provider()
+            or metrics_provider._has_meter_provider()
+        ):
+            raise RuntimeError(
+                "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
+                "restart the process and call setup_telemetry() with the new config"
+            )
+        shutdown_telemetry()
+        return setup_telemetry(target)
+    return update_runtime_config(target)
+
+
+_COLD_KEYS = frozenset(
+    {
+        "service_name",
+        "environment",
+        "version",
+        "strict_schema",
+        "logging",
+        "tracing",
+        "metrics",
+        "event_schema",
+        "slo",
+    }
+)
+
+
+def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) -> bool:
+    current_data = asdict(current)
+    target_data = asdict(target)
+    return any(current_data.get(k) != target_data.get(k) for k in _COLD_KEYS)
 
 
 def get_runtime_config() -> TelemetryConfig:

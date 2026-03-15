@@ -10,6 +10,7 @@ import sys
 from typing import Any
 
 import pytest
+import structlog
 
 from undef.telemetry.logger.core import _reset_logging_for_tests, configure_logging
 from undef.telemetry.logger.pretty import (
@@ -141,6 +142,7 @@ class TestPrettyRendererFormat:
 
 class TestPrettyRendererIntegration:
     def test_configure_logging_pretty_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -154,8 +156,6 @@ class TestPrettyRendererIntegration:
 
         cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)  # must not raise
-
-        import structlog
 
         bound = structlog.get_logger("test_pretty")
         bound.info("auth.login.complete", user_id="u1")
@@ -178,8 +178,6 @@ class TestPrettyRendererIntegration:
         cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)
 
-        import structlog
-
         bound = structlog.get_logger("test_pretty_notty")
         bound.info("auth.login.complete")
 
@@ -187,6 +185,7 @@ class TestPrettyRendererIntegration:
         assert "\033" not in output  # no ANSI codes when not a TTY
 
     def test_configure_logging_pretty_key_color_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -203,8 +202,6 @@ class TestPrettyRendererIntegration:
         )
         configure_logging(cfg)
 
-        import structlog
-
         bound = structlog.get_logger("test_pretty_key_color")
         bound.info("auth.login.complete", user_id="u1")
 
@@ -212,6 +209,7 @@ class TestPrettyRendererIntegration:
         assert NAMED_COLORS["cyan"] in output
 
     def test_configure_logging_pretty_fields_filter_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -231,8 +229,6 @@ class TestPrettyRendererIntegration:
             }
         )
         configure_logging(cfg)
-
-        import structlog
 
         bound = structlog.get_logger("test_pretty_fields")
         bound.info("auth.login.complete", user_id="u1", secret="s3cr3t")

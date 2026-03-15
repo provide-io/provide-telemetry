@@ -186,6 +186,14 @@ def test_get_timeout_executor_has_2_workers_per_signal() -> None:
         assert executor._max_workers == 2
 
 
+def test_get_timeout_executor_thread_name_prefix() -> None:
+    """Kill mutant: thread_name_prefix=None or removed."""
+    reset_resilience_for_tests()
+    for sig in ("logs", "traces", "metrics"):
+        executor = _get_timeout_executor(sig)
+        assert executor._thread_name_prefix == f"undef-resilience-{sig}"
+
+
 # ---------------------------------------------------------------------------
 # _run_attempt_with_timeout: timeout_seconds=0 boundary (<=0 vs <0)
 # ---------------------------------------------------------------------------

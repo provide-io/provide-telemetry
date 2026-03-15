@@ -93,11 +93,22 @@ def _apply_default_sensitive_key_redaction(node: Any) -> Any:
     return node
 
 
+def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
+    """Collect the leaf key names that custom rules target."""
+    return frozenset(rule.path[-1] for rule in rules if rule.path)
+
+
+def _needs_deep_copy(rules: tuple[PIIRule, ...]) -> bool:  # pragma: no mutate
+    """Return True if any rule targets a nested path (depth > 1)."""
+    return any(len(rule.path) > 1 for rule in rules)  # pragma: no mutate
+
+
 def sanitize_payload(payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
     if not enabled:
-        return payload
-    cleaned = _apply_default_sensitive_key_redaction(copy.deepcopy(payload))
-    for rule in get_pii_rules():
+        return dict(payload)
+    rules = get_pii_rules()
+    cleaned: Any = copy.deepcopy(payload) if _needs_deep_copy(rules) else dict(payload)  # pragma: no mutate
+    for rule in rules:
         cleaned = _apply_rule(cleaned, rule)
     if isinstance(cleaned, dict):
         return cleaned

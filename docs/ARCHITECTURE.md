@@ -144,7 +144,7 @@ flowchart TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `__init__.py` | Public API facade, 52 exports |
+| `__init__.py` | Public API facade, 53 exports |
 | `setup.py` | Lock-protected init/shutdown coordinator with rollback |
 | `config.py` | Pydantic-free dataclass config, env var parsing |
 | `runtime.py` | Hot-reload API, provider-change detection |

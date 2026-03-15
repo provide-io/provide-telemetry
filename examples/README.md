@@ -30,6 +30,17 @@ Use `undef.telemetry.event_name(domain, action, status)` when composing names.
 - `telemetry/07_slo_pack_and_health_snapshot.py`
   - RED/USE helper emissions.
   - Error taxonomy and health snapshot output.
+- `telemetry/08_full_hardening_profile.py`
+  - Combined hardening: PII, cardinality, sampling, backpressure, resilience, SLO.
+- `telemetry/09_error_handling_and_degradation.py`
+  - `TelemetryError` / `ConfigurationError` / `EventSchemaError` exception hierarchy.
+  - Graceful degradation when OTel is not installed.
+  - DEBUG logging to diagnose silent OTel fallbacks.
+  - Diagnostic warnings for sampling rate clamping and malformed OTLP headers.
+- `telemetry/10_performance_metrics.py`
+  - Counter/gauge/histogram usage with circuit breaker recovery.
+- `telemetry/11_lazy_loading_proof.py`
+  - Demonstrates SLO module lazy-loading via `__getattr__` in `__init__.py`.
 
 Run:
 
@@ -41,6 +52,10 @@ uv run --group dev --extra otel python examples/telemetry/04_runtime_reconfigure
 uv run --group dev --extra otel python examples/telemetry/05_pii_and_cardinality_policy.py
 uv run --group dev --extra otel python examples/telemetry/06_exporter_resilience_modes.py
 uv run --group dev --extra otel python examples/telemetry/07_slo_pack_and_health_snapshot.py
+uv run --group dev --extra otel python examples/telemetry/08_full_hardening_profile.py
+uv run --group dev --extra otel python examples/telemetry/09_error_handling_and_degradation.py
+uv run --group dev --extra otel python examples/telemetry/10_performance_metrics.py
+uv run --group dev --extra otel python examples/telemetry/11_lazy_loading_proof.py
 ```
 
 ## OpenObserve

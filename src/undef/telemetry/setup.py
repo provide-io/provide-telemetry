@@ -37,7 +37,7 @@ def _rollback(completed: list[str]) -> None:
         try:
             teardowns[step]()
         except Exception:
-            _logger.warning("rollback failed for %s", step, exc_info=True)  # pragma: no mutate
+            _logger.warning("setup.rollback.step_failed", exc_info=True)  # pragma: no mutate
 
 
 def _quiet_otel_sdk_loggers() -> None:
