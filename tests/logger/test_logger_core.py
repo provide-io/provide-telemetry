@@ -15,6 +15,7 @@ from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import bind_context, clear_context, get_context, get_logger, unbind_context
 from undef.telemetry.logger import core as core_mod
 from undef.telemetry.logger.core import _get_level, _reset_logging_for_tests, configure_logging
+from undef.telemetry.logger.pretty import PrettyRenderer
 from undef.telemetry.logger.processors import (
     add_standard_fields,
     enforce_event_schema,
@@ -321,3 +322,19 @@ def test_configure_logging_rebuilds_after_shutdown_even_with_same_config(monkeyp
     core_mod.shutdown_logging()
     configure_logging(cfg)
     assert build_calls["count"] == 2
+
+
+def test_configure_logging_with_pretty_fmt_uses_pretty_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    configure_calls: list[dict[str, Any]] = []
+
+    core_mod_any = cast(Any, core_mod)
+    structlog_mod: Any = core_mod_any.structlog
+    monkeypatch.setattr(structlog_mod, "configure", lambda **kwargs: configure_calls.append(kwargs))
+
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty"})
+    configure_logging(cfg)
+
+    assert len(configure_calls) == 1
+    processors = configure_calls[0]["processors"]
+    assert isinstance(processors[-1], PrettyRenderer)

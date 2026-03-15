@@ -32,3 +32,20 @@ def unbind_context(*keys: str) -> None:
 
 def clear_context() -> None:
     _context.set({})
+
+
+def restore_context(snapshot: dict[str, object]) -> None:
+    _context.set(snapshot)
+
+
+ContextToken = contextvars.Token[dict[str, object] | None]
+
+
+def save_context() -> ContextToken:
+    """Snapshot the current context, returning a token for zero-copy reset."""
+    return _context.set(_context.get())
+
+
+def reset_context(token: ContextToken) -> None:
+    """Restore context to the point captured by save_context()."""
+    _context.reset(token)

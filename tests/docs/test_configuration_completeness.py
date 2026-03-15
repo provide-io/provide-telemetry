@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Drift guard: every env var in config.py must appear in docs/CONFIGURATION.md."""
@@ -13,11 +13,11 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
-_CONFIG_PY = _ROOT / "src" / "provide" / "telemetry" / "config.py"
+_CONFIG_PY = _ROOT / "src" / "undef" / "telemetry" / "config.py"
 _CONFIG_MD = _ROOT / "docs" / "CONFIGURATION.md"
 
-# Matches data.get("PROVIDE_*") and data.get("OTEL_EXPORTER_OTLP_*") calls in from_env().
-_ENV_VAR_RE = re.compile(r'data\.get\(\s*"((?:PROVIDE_|OTEL_EXPORTER_OTLP_)[A-Z_]+)"')
+# Matches data.get("UNDEF_*") and data.get("OTEL_EXPORTER_OTLP_*") calls in from_env().
+_ENV_VAR_RE = re.compile(r'data\.get\(\s*"((?:UNDEF_|OTEL_EXPORTER_OTLP_)[A-Z_]+)"')
 
 
 def _extract_env_vars_from_config() -> set[str]:
@@ -32,7 +32,7 @@ def _extract_env_vars_from_config() -> set[str]:
 def _extract_documented_vars() -> set[str]:
     content = _CONFIG_MD.read_text(encoding="utf-8")
     # Match backtick-wrapped env var names in markdown table cells.
-    return set(re.findall(r"`((?:PROVIDE_|OTEL_EXPORTER_OTLP_)[A-Z_]+)`", content))
+    return set(re.findall(r"`((?:UNDEF_|OTEL_EXPORTER_OTLP_)[A-Z_]+)`", content))
 
 
 @pytest.mark.tooling
@@ -48,7 +48,7 @@ def test_all_env_vars_documented() -> None:
 
 @pytest.mark.tooling
 def test_no_stale_documented_vars() -> None:
-    """Every PROVIDE_*/OTEL_EXPORTER_OTLP_* var in CONFIGURATION.md should exist in config.py."""
+    """Every UNDEF_*/OTEL_EXPORTER_OTLP_* var in CONFIGURATION.md should exist in config.py."""
     code_vars = _extract_env_vars_from_config()
     doc_vars = _extract_documented_vars()
     # Exclude OpenObserve vars (not in config.py) and OTEL_EXPORTER_OTLP_HEADERS (shared fallback).

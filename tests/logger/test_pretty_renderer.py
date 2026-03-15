@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 from __future__ import annotations
@@ -10,10 +10,9 @@ import sys
 from typing import Any
 
 import pytest
-import structlog
 
-from provide.telemetry.logger.core import _reset_logging_for_tests, configure_logging
-from provide.telemetry.logger.pretty import (
+from undef.telemetry.logger.core import _reset_logging_for_tests, configure_logging
+from undef.telemetry.logger.pretty import (
     _LEVEL_PAD,
     DIM,
     LEVEL_COLORS,
@@ -141,24 +140,7 @@ class TestPrettyRendererFormat:
 
 
 class TestPrettyRendererIntegration:
-    @staticmethod
-    def _force_root_handler_stream(stream: io.StringIO) -> None:
-        """Point all root StreamHandlers at *stream*.
-
-        ``logging.basicConfig(force=True)`` removes old handlers and adds
-        the ones we pass in.  In some Python versions (notably 3.11 under
-        Docker/xdist), the handler's stream reference can desynchronise
-        from ``sys.stderr``.  Explicitly overriding the stream after
-        ``configure_logging()`` makes the test independent of that plumbing.
-        """
-        import logging as _logging
-
-        for h in _logging.root.handlers:
-            if isinstance(h, _logging.StreamHandler) and not isinstance(h, _logging.FileHandler):
-                h.stream = stream
-
     def test_configure_logging_pretty_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -168,11 +150,12 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from provide.telemetry.config import TelemetryConfig
+        from undef.telemetry.config import TelemetryConfig
 
-        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "pretty", "PROVIDE_LOG_INCLUDE_CALLER": "false"})
+        cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)  # must not raise
-        self._force_root_handler_stream(fake_stderr)
+
+        import structlog
 
         bound = structlog.get_logger("test_pretty")
         bound.info("auth.login.complete", user_id="u1")
@@ -190,11 +173,12 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeNonTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from provide.telemetry.config import TelemetryConfig
+        from undef.telemetry.config import TelemetryConfig
 
-        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "pretty", "PROVIDE_LOG_INCLUDE_CALLER": "false"})
+        cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)
-        self._force_root_handler_stream(fake_stderr)
+
+        import structlog
 
         bound = structlog.get_logger("test_pretty_notty")
         bound.info("auth.login.complete")
@@ -203,7 +187,6 @@ class TestPrettyRendererIntegration:
         assert "\033" not in output  # no ANSI codes when not a TTY
 
     def test_configure_logging_pretty_key_color_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -213,17 +196,14 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from provide.telemetry.config import TelemetryConfig
+        from undef.telemetry.config import TelemetryConfig
 
         cfg = TelemetryConfig.from_env(
-            {
-                "PROVIDE_LOG_FORMAT": "pretty",
-                "PROVIDE_LOG_PRETTY_KEY_COLOR": "cyan",
-                "PROVIDE_LOG_INCLUDE_CALLER": "false",
-            }
+            {"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_PRETTY_KEY_COLOR": "cyan", "UNDEF_LOG_INCLUDE_CALLER": "false"}
         )
         configure_logging(cfg)
-        self._force_root_handler_stream(fake_stderr)
+
+        import structlog
 
         bound = structlog.get_logger("test_pretty_key_color")
         bound.info("auth.login.complete", user_id="u1")
@@ -232,7 +212,6 @@ class TestPrettyRendererIntegration:
         assert NAMED_COLORS["cyan"] in output
 
     def test_configure_logging_pretty_fields_filter_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        structlog.reset_defaults()
         _reset_logging_for_tests()
 
         class _FakeTTY(io.StringIO):
@@ -242,17 +221,18 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from provide.telemetry.config import TelemetryConfig
+        from undef.telemetry.config import TelemetryConfig
 
         cfg = TelemetryConfig.from_env(
             {
-                "PROVIDE_LOG_FORMAT": "pretty",
-                "PROVIDE_LOG_PRETTY_FIELDS": "user_id",
-                "PROVIDE_LOG_INCLUDE_CALLER": "false",
+                "UNDEF_LOG_FORMAT": "pretty",
+                "UNDEF_LOG_PRETTY_FIELDS": "user_id",
+                "UNDEF_LOG_INCLUDE_CALLER": "false",
             }
         )
         configure_logging(cfg)
-        self._force_root_handler_stream(fake_stderr)
+
+        import structlog
 
         bound = structlog.get_logger("test_pretty_fields")
         bound.info("auth.login.complete", user_id="u1", secret="s3cr3t")

@@ -109,6 +109,7 @@ def test_openobserve_trace_and_metric_ingestion_e2e(monkeypatch: pytest.MonkeyPa
             "UNDEF_METRICS_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{base_url}/v1/metrics",
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{base_url}/v1/logs",
             "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={quote(auth, safe='')}",
         }
     )

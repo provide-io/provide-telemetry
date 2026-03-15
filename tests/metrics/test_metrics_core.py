@@ -18,6 +18,20 @@ from undef.telemetry.metrics import fallback as fallback_mod
 from undef.telemetry.metrics import instruments as instruments_mod
 from undef.telemetry.metrics import provider as provider_mod
 from undef.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics, shutdown_metrics
+from undef.telemetry.sampling import reset_sampling_for_tests
+from undef.telemetry.tracing.context import set_trace_context
+
+
+def _fake_otel_api(**kw: Any) -> SimpleNamespace:
+    kw.setdefault("get_meter_provider", lambda: None)
+    return SimpleNamespace(**kw)
+
+
+@pytest.fixture(autouse=True)
+def _reset_trace_context() -> None:
+    set_trace_context(None, None)
+    reset_sampling_for_tests()
+    reset_queues_for_tests()
 
 
 def test_metric_wrappers_without_meter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,7 +164,7 @@ def test_setup_metrics_short_circuits_when_otel_missing_even_if_enabled(monkeypa
 
 def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    mock_otel = SimpleNamespace(set_meter_provider=Mock(), get_meter=Mock(return_value="meter"))
+    mock_otel = _fake_otel_api(set_meter_provider=Mock(), get_meter=Mock(return_value="meter"))
     provider_cls = Mock(return_value="provider")
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     reader_cls = Mock(return_value="reader")
@@ -158,11 +172,8 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     monkeypatch.setattr(
-        provider_mod,
-        "_load_otel_metrics_components",
-        lambda: (provider_cls, resource_cls, reader_cls, exporter_cls),
+        provider_mod, "_load_otel_metrics_components", lambda: (provider_cls, resource_cls, reader_cls, exporter_cls)
     )
-
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"})
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "undef-service", "service.version": "0.0.0"})
@@ -173,8 +184,7 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_otel.get_meter.assert_called_once_with("undef.telemetry")
     assert get_meter() == "meter"
     assert provider_mod._meter_provider == "provider"
-    # already configured branch
-    setup_metrics(cfg)
+    setup_metrics(cfg)  # already configured branch
 
 
 def test_get_meter_branches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,7 +217,7 @@ def test_get_meter_branches(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_setup_metrics_without_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    mock_otel = SimpleNamespace(set_meter_provider=Mock(), get_meter=Mock(return_value="m2"))
+    mock_otel = _fake_otel_api(set_meter_provider=Mock(), get_meter=Mock(return_value="m2"))
     provider_cls = Mock(return_value="provider")
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     reader_cls = Mock(return_value="reader")
@@ -215,12 +225,9 @@ def test_setup_metrics_without_exporter(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     monkeypatch.setattr(
-        provider_mod,
-        "_load_otel_metrics_components",
-        lambda: (provider_cls, resource_cls, reader_cls, exporter_cls),
+        provider_mod, "_load_otel_metrics_components", lambda: (provider_cls, resource_cls, reader_cls, exporter_cls)
     )
-    cfg = TelemetryConfig.from_env({})
-    setup_metrics(cfg)
+    setup_metrics(TelemetryConfig.from_env({}))
     assert get_meter() == "m2"
 
 
@@ -228,7 +235,11 @@ def test_setup_metrics_with_only_one_otel_dependency_available(monkeypatch: pyte
     _set_meter_for_test(None)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_components", lambda: None)
-    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace(get_meter=Mock()))
+    monkeypatch.setattr(
+        provider_mod,
+        "_load_otel_metrics_api",
+        lambda: _fake_otel_api(get_meter=Mock()),
+    )
     setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
     assert provider_mod._meter is None
 
@@ -242,7 +253,7 @@ def test_setup_metrics_with_only_one_otel_dependency_available(monkeypatch: pyte
 
 def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    mock_otel = SimpleNamespace(set_meter_provider=Mock(), get_meter=Mock(return_value="meter"))
+    mock_otel = _fake_otel_api(set_meter_provider=Mock(), get_meter=Mock(return_value="meter"))
     provider_cls = Mock(return_value="provider")
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     reader_cls = Mock(return_value="reader")
@@ -250,11 +261,9 @@ def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkey
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     monkeypatch.setattr(
-        provider_mod,
-        "_load_otel_metrics_components",
-        lambda: (provider_cls, resource_cls, reader_cls, exporter_cls),
+        provider_mod, "_load_otel_metrics_components", lambda: (provider_cls, resource_cls, reader_cls, exporter_cls)
     )
-    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _signal, _op: None)
+    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _s, _o: None)
     setup_metrics(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"}))
     provider_cls.assert_called_once_with(resource="res", metric_readers=[])
 

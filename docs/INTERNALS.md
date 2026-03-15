@@ -1,35 +1,21 @@
 # Internals
 
-How provide-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
-
-## Polyglot Note
-
-The Python modules below remain the behavioral reference, but the repo now also carries a Rust crate under `rust/`. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
-
-- `bind_context(...) -> ContextGuard`
-- `bind_session_context(...) -> ContextGuard`
-- `set_trace_context(...) -> ContextGuard`
-- `bind_propagation_context(...) -> PropagationGuard`
-
-Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
+How undef-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
 
 ## Structlog Processor Pipeline
 
 Every log event passes through a linear chain of structlog processors configured in `logger/core.py`. The chain runs in order — each processor transforms the event dict and returns it (or raises `DropEvent` to discard).
 
 1. **`merge_contextvars`** — Pull all structlog contextvars bindings into the event dict.
-1. **`merge_runtime_context`** — Merge logger context (request ID, session, etc.) and inject `trace_id`/`span_id` from tracing contextvars.
-1. **`add_log_level`** — Stamp the log level string.
-1. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add ISO-8601 timestamp.
-1. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
-1. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
-1. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from exception type and normalized stack trace when `exc_info` is present.
-1. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Annotates `_schema_error` on violation instead of dropping.
-1. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
-1. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
-1. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering, placed late so enrichment processors run first.
-1. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
-1. **Renderer** — One of: `ConsoleRenderer` (default), `JSONRenderer` (`fmt=json`), or `PrettyRenderer` (`fmt=pretty`).
+2. **`merge_runtime_context`** — Merge logger context (request ID, session, etc.) and inject `trace_id`/`span_id` from tracing contextvars.
+3. **`add_log_level`** — Stamp the log level string.
+4. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add ISO-8601 timestamp.
+5. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
+6. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event_name)`. Raises `DropEvent` to discard below-rate events.
+7. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Raises `EventSchemaError` on violation.
+8. **`sanitize_sensitive_fields(sanitize)`** — Run PII rules then default sensitive-key redaction on the event dict.
+9. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
+10. **Renderer** — One of: `ConsoleRenderer` (default), `JSONRenderer` (`fmt=json`), or `PrettyRenderer` (`fmt=pretty`).
 
 ## Setup and Shutdown Coordinator
 
@@ -38,13 +24,13 @@ Every log event passes through a linear chain of structlog processors configured
 ### Initialization Sequence
 
 1. Suppress OTel SDK export loggers (noise handled by resilience layer).
-1. `apply_runtime_config(cfg)` — snapshot config, push sampling/backpressure/exporter policies.
-1. `configure_logging(cfg, force=True)` — build structlog processor chain + handlers.
-1. `_refresh_otel_tracing()` — detect if OTel tracing SDK is importable.
-1. `_refresh_otel_metrics()` — detect if OTel metrics SDK is importable.
-1. `setup_tracing(cfg)` — create `TracerProvider` with OTLP exporter if tracing is enabled and OTel is available; otherwise returns without action (no-op tracer is a runtime fallback in `get_tracer()`).
-1. `setup_metrics(cfg)` — create `MeterProvider` with OTLP exporter if metrics are enabled and OTel is available; otherwise returns without action. The in-process fallback lives in the `counter()` / `gauge()` / `histogram()` wrappers.
-1. `_rebind_slo_instruments()` — clear cached SLO counter/gauge/histogram so they rebind to new providers.
+2. `apply_runtime_config(cfg)` — snapshot config, push sampling/backpressure/exporter policies.
+3. `configure_logging(cfg, force=True)` — build structlog processor chain + handlers.
+4. `_refresh_otel_tracing()` — detect if OTel tracing SDK is importable.
+5. `_refresh_otel_metrics()` — detect if OTel metrics SDK is importable.
+6. `setup_tracing(cfg)` — create `TracerProvider` with OTLP exporter if tracing is enabled and OTel is available; otherwise returns without action (no-op tracer is a runtime fallback in `get_tracer()`).
+7. `setup_metrics(cfg)` — create `MeterProvider` with OTLP exporter if metrics are enabled and OTel is available; otherwise returns without action. The in-process fallback lives in the `counter()` / `gauge()` / `histogram()` wrappers.
+8. `_rebind_slo_instruments()` — clear cached SLO counter/gauge/histogram so they rebind to new providers.
 
 If any step after `configure_logging` fails, `_rollback()` tears down completed steps in reverse order.
 
@@ -60,7 +46,6 @@ stateDiagram-v2
 ```
 
 The `_setup_done` flag and `_lock` mutex ensure:
-
 - Concurrent `setup_telemetry()` calls are serialized; only the first performs work.
 - `shutdown_telemetry()` clears `_setup_done` before tearing down providers, preventing races.
 - After shutdown, package-local setup state is cleared. Reinstalling real OTel process-global providers still requires a full process restart.
@@ -93,20 +78,11 @@ This flow applies to all three signals (logs, traces, metrics). Each signal has 
 
 ## Resilience and Circuit Breaker
 
-The resilience layer wraps export operations with retry, timeout, and circuit-breaking logic.
-
-**Per-language enforcement point:**
-
-| Language   | Module                                    | Enforcement point                                                                                                                                                                                                                                                      |
-| ---------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Python     | `resilience.py` + `resilient_exporter.py` | Per-export: every `BatchProcessor.export()` call applies the policy.                                                                                                                                                                                                   |
-| TypeScript | `resilience.ts` + `resilient-exporter.ts` | Per-export: callback-based exporters are wrapped so each batch runs under the policy.                                                                                                                                                                                  |
-| Go         | `resilience.go` + `resilient_exporter.go` | Per-export: `ExportSpans`/`Export` delegate through `RunWithResilience`.                                                                                                                                                                                               |
-| Rust       | `resilience.rs` + `otel/resilient.rs`     | Per-export: `ResilientSpanExporter`, `ResilientLogExporter`, and `ResilientMetricExporter` wrap the OTLP exporters so every batch export runs the retry/timeout/circuit-breaker loop against the same shared `POLICIES` and `CIRCUITS` state as `run_with_resilience`. |
+The resilience layer (`resilience.py`) wraps every export operation with retry, timeout, and circuit-breaking logic.
 
 ### Timeout Execution
 
-Each signal (logs, traces, metrics) gets its own lazily-created `ThreadPoolExecutor(max_workers=2)`, isolating failure domains so a timeout storm in one signal cannot starve workers used by another. Export operations run with `future.result(timeout=...)`. On timeout, the future is cancelled (but already-running work continues on its daemon thread). When the circuit breaker trips (3 consecutive timeouts), the executor for that signal is replaced — the old pool is shut down (non-blocking) and a fresh pool is created for the next half-open probe.
+A fixed `ThreadPoolExecutor(max_workers=4)` runs export operations with `future.result(timeout=...)`. On timeout, the future is cancelled (but already-running work continues on its daemon thread). Under sustained timeout pressure, the pool can saturate — the circuit breaker exists to prevent this.
 
 ### Circuit Breaker
 
@@ -118,7 +94,6 @@ Each signal (logs, traces, metrics) gets its own lazily-created `ThreadPoolExecu
 ### Async Safety
 
 When retries or backoff are configured and the code detects an active `asyncio` event loop:
-
 - A `RuntimeWarning` is emitted (once per signal).
 - Unless `allow_blocking_in_event_loop=true`, retries are forced to 1 and backoff to 0 (fail-fast).
 
@@ -143,7 +118,6 @@ flowchart TD
 ```
 
 Each signal degrades independently:
-
 - **Tracing**: `TracerProvider` with OTLP exporter → `TracerProvider` without exporter → no-op tracer objects.
 - **Metrics**: `MeterProvider` with OTLP exporter → `MeterProvider` without exporter → in-process `Counter`/`Gauge`/`Histogram` wrappers.
 - **Logging**: Always functional via structlog. OTLP log export is additive — if the OTel logging handler fails to initialize, console/JSON output continues.
@@ -155,13 +129,12 @@ Each signal degrades independently:
 The PII engine (`pii.py`) processes log payloads in two passes:
 
 1. **Custom rules**: Each `PIIRule` specifies a `path` (tuple of key segments, with `"*"` as wildcard) and a `mode`:
-
    - `"drop"` — remove the value entirely
    - `"redact"` — replace with `"***"`
    - `"hash"` — replace with first 12 chars of SHA-256 hex digest
    - `"truncate"` — keep first N characters, append `"..."`
 
-1. **Default sensitive key redaction**: Keys matching `{"password", "token", "authorization", "api_key", "secret"}` (case-insensitive) are redacted with `"***"` unless a custom rule already targeted them.
+2. **Default sensitive key redaction**: Keys matching `{"password", "token", "authorization", "api_key", "secret"}` (case-insensitive) are redacted with `"***"` unless a custom rule already targeted them.
 
 Both passes traverse nested dicts and lists recursively.
 
@@ -195,34 +168,13 @@ Call `get_health_snapshot()` for a point-in-time frozen dataclass of all counter
 - Sampling policies (per-signal rates and overrides)
 - Backpressure queue limits
 - Exporter resilience policies (retries, backoff, timeout, fail-open)
-- Security config (PII key sets, secret pattern registration)
-- SLO config (RED/USE metric enable flags and thresholds)
-- PII max traversal depth (`pii_max_depth`)
-- Schema strictness (`strict_schema`) and event-schema fields (`strict_event_name`, `required_keys`)
-- Safe logging pipeline rebuilds (level, format, timestamp/caller inclusion, sanitize flag, pretty settings, module levels)
 
 These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 
 ### NOT hot-reloadable (requires process restart)
 
-- OTLP log-provider/exporter settings (`logging.otlp_endpoint`, `logging.otlp_headers`, `exporter.logs_timeout_seconds`) after a global OTel log provider is installed
+- Log handlers and structlog processor chain
 - OTel `TracerProvider` / `MeterProvider` (process-global singletons in the OTel SDK)
 - Service name, environment, version
 
 `reconfigure_telemetry()` detects whether the config change affects providers. If so and providers are already installed, it raises `RuntimeError` rather than silently producing inconsistent state.
-
-## Rust Verification
-
-The Rust implementation is considered healthy when these commands pass:
-
-```bash
-cd rust
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
-cargo test --features otel
-cargo build --examples --features otel
-uv run python spec/validate_conformance.py --lang rust
-uv run python scripts/check_version_sync.py
-uv run pytest -o addopts= e2e/test_cross_language_trace_e2e.py -q --no-cov
-```

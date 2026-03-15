@@ -1,14 +1,10 @@
 # API Reference
 
-All public symbols are exported from `provide.telemetry`. Import everything from the top-level package:
+All public symbols are exported from `undef.telemetry`. Import everything from the top-level package:
 
 ```python
-from provide.telemetry import setup_telemetry, get_logger, trace
+from undef.telemetry import setup_telemetry, get_logger, trace
 ```
-
-Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
-
-This document is the shared semantic contract for Python, TypeScript, Go, and Rust. Names and signatures vary by language, but the behavioral guarantees described here are the parity target.
 
 ## Setup and Lifecycle
 
@@ -16,67 +12,33 @@ This document is the shared semantic contract for Python, TypeScript, Go, and Ru
 
 Initialize logging, tracing, and metrics providers. Lock-protected and idempotent — safe to call concurrently. Accepts an optional config; defaults to `TelemetryConfig.from_env()`. Returns the applied config.
 
-> **Per-language signatures:** Python accepts an optional `TelemetryConfig` object. TypeScript accepts `Partial<TelemetryConfig>` overrides merged over env config. Go reads env vars and accepts functional `SetupOption` arguments. Rust reads env vars with no programmatic config argument. All four read `PROVIDE_*` / `OTEL_*` environment variables as the primary config source.
->
-> Exporter/provider initialization is fail-open by default: if OTLP provider construction fails, setup still succeeds and the affected signals remain on the local fallback path.
-
 ### `shutdown_telemetry() -> None`
 
-Flush and tear down all providers and clear local runtime state. A later `setup_telemetry()` call returns the package to the same runtime-status shape as the initial setup for the common path, including after lazy logger use.
-
-Provider-changing `reconfigure_telemetry()` remains intentionally rejected once real OpenTelemetry providers are live; use shutdown+setup or restart the process.
+Flush and tear down all providers and reset runtime policies. This clears the package's local setup state, but real OpenTelemetry process-global providers still cannot be replaced in-process once installed. For provider-changing lifecycle transitions, restart the process and call `setup_telemetry()` with the desired config.
 
 ## Runtime Configuration
 
-### `update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig`
+### `update_runtime_config(config: TelemetryConfig) -> TelemetryConfig`
 
-Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded from `RuntimeOverrides`. Returns the applied runtime snapshot. Safe logging pipeline settings are rebuilt in-process; provider-changing OTLP log settings are rejected once a global OTel log provider is installed.
+Apply a config snapshot to runtime signal policies (sampling, backpressure, exporter). Returns the active runtime snapshot.
 
 ### `reload_runtime_from_env() -> TelemetryConfig`
 
-Reload config from environment variables, apply only hot-reloadable fields, warn on cold-field drift, and return the active snapshot.
+Reload config from environment variables, apply it, and return the active snapshot.
 
 ### `get_runtime_config() -> TelemetryConfig`
 
-Return a defensive copy of the effective runtime config. If explicit setup or runtime reconfiguration has already run, this is the active in-process snapshot. Otherwise it is the environment-derived config that lazy-init would use.
-
-> **Per-language behavior before setup:** Python and TypeScript return a config snapshot derived from environment variables even before `setup_telemetry()` is called. Go returns `nil` and Rust returns `None` until explicit setup — callers must check for nil/None before accessing config fields.
-
-### `get_runtime_status() -> RuntimeStatus`
-
-Return runtime/provider state using the shared cross-language shape:
-
-```text
-{
-  setup_done: bool,
-  signals: { logs: bool, traces: bool, metrics: bool },
-  providers: { logs: bool, traces: bool, metrics: bool },
-  fallback: { logs: bool, traces: bool, metrics: bool },
-  setup_error: str | null,
-}
-```
-
-Field names follow each language's normal casing conventions (`setup_done` in Python/Rust, `setupDone` in TypeScript, `SetupDone` in Go), but the semantic shape is the same.
-
-Semantics:
-
-- `setup_done` means explicit setup completed in this process.
-- `signals` reports whether each signal is enabled by config.
-- `providers` reports whether each signal has a real provider/export path installed.
-- `fallback` reports whether the signal is currently on the local fallback/no-op path.
-- `setup_error` is the last setup-time error snapshot exposed for diagnostics.
+Return a defensive copy of the active runtime config.
 
 ### `reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
 
-Apply hot runtime changes. Raises `RuntimeError` if provider-changing config differs and OTel providers are already installed (requires process restart), including OTLP log-provider changes after the global OTel log provider is live.
+Apply hot runtime policy changes. Raises `RuntimeError` if provider-changing config differs and OTel providers are already installed (requires process restart).
 
 ## Logging
 
-### `get_logger(name: str | None = None) -> structlog-compatible logger`
+### `get_logger(name: str | None = None) -> BoundLogger`
 
-Return a structlog-compatible wrapped logger (internally a `_TraceWrapper` around a `FilteringBoundLogger`). Auto-configures on first call if `setup_telemetry()` hasn't been called.
-
-The lazy-init path uses the same effective environment config as explicit setup for the common logging path, including `service`, `env`, `version`, timestamp/caller toggles, and strict-schema / required-key behavior.
+Return a structlog logger. Auto-configures on first call if `setup_telemetry()` hasn't been called.
 
 ### `logger`
 
@@ -134,51 +96,15 @@ Create or retrieve a named histogram instrument.
 
 Return the active OTel meter if a real meter provider is available; otherwise return `None`. The in-process fallback lives in the `counter()`, `gauge()`, and `histogram()` wrapper APIs.
 
-## Session Context
-
-### `bind_session_context(session_id: str) -> None`
-
-Bind a session ID to all subsequent telemetry events in the current async context. The session ID is injected into every log record, trace span, and metric attribute until cleared.
-
-### `get_session_id() -> str | None`
-
-Return the current session ID from contextvars, or `None` if no session is bound.
-
-### `clear_session_context() -> None`
-
-Clear the session ID from the current async context.
-
-## Error Fingerprinting
-
-Error events automatically receive an `error_fingerprint` field — a 12-character hex digest derived from the exception type and normalized stack trace. Fingerprints are stable across deploys and process restarts, making them suitable for deduplication and alert grouping.
-
 ## Event Schema
 
-### `event(*segments: str) -> Event`
+### `event_name(*segments: str) -> str`
 
-Build a structured event from 3 or 4 segments following the DA(R)S pattern (Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that behaves as a dot-joined string and exposes typed fields.
-
-Requires exactly 3 or 4 segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase, alphanumeric + hyphens); in non-strict mode (the default), only the segment count is checked.
+Build a strict event name from 3-5 validated lowercase segments joined by dots.
 
 ```python
-# 3-segment DAS (domain.action.status)
-e = event("auth", "login", "success")    # -> "auth.login.success"
-e.domain   # "auth"
-e.action   # "login"
-e.status   # "success"
-e.resource # None
-
-# 4-segment DARS (domain.action.resource.status)
-e = event("payment", "subscription", "renewal", "success")
-e.domain   # "payment"
-e.action   # "subscription"
-e.resource # "renewal"
-e.status   # "success"
+event_name("auth", "login", "success")  # -> "auth.login.success"
 ```
-
-### `EventRecord` (TypeScript)
-
-TypeScript equivalent for structured event creation. See the [TypeScript README](../typescript/README.md) for usage.
 
 ## ASGI Integration
 
@@ -186,13 +112,9 @@ TypeScript equivalent for structured event creation. See the [TypeScript README]
 
 ASGI middleware class. Extracts `x-request-id`, `x-session-id`, and W3C trace headers from incoming requests, binds them to contextvars, and clears on response.
 
-### `bind_websocket_context(scope: dict) -> ContextToken`
+### `bind_websocket_context(scope: dict) -> dict[str, str | None]`
 
-Bind context fields from a WebSocket ASGI scope. Binds any of `request_id`, `session_id`, `actor_id` found in headers. Returns a `ContextToken` for cleanup — pass it to `clear_websocket_context()`.
-
-### `clear_websocket_context(token: ContextToken) -> None`
-
-Restore logger context to the state before `bind_websocket_context()` was called.
+Bind context fields from a WebSocket ASGI scope. Returns `{"request_id": ..., "session_id": ..., "actor_id": ...}`.
 
 ## W3C Propagation
 
@@ -209,7 +131,7 @@ Push propagation fields into structlog context and trace context. Stackable — 
 ### `SamplingPolicy`
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class SamplingPolicy:
     default_rate: float = 1.0
     overrides: dict[str, float] = field(default_factory=dict)
@@ -232,7 +154,7 @@ Probabilistic sampling check. Uses per-key override rate if `key` matches, else 
 ### `QueuePolicy`
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class QueuePolicy:
     logs_maxsize: int = 0
     traces_maxsize: int = 0
@@ -241,7 +163,7 @@ class QueuePolicy:
 
 ### `set_queue_policy(policy: QueuePolicy) -> None`
 
-Replace the active queue policy.
+Replace the active queue policy. Clears all in-flight queues.
 
 ### `get_queue_policy() -> QueuePolicy`
 
@@ -252,7 +174,7 @@ Return the current queue policy.
 ### `ExporterPolicy`
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ExporterPolicy:
     retries: int = 0
     backoff_seconds: float = 0.0
@@ -274,7 +196,7 @@ Return the current exporter policy for a signal.
 ### `PIIRule`
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class PIIRule:
     path: tuple[str, ...]
     mode: MaskMode = "redact"    # "drop" | "redact" | "hash" | "truncate"
@@ -298,7 +220,7 @@ Return the current PII rules as an immutable tuple.
 ### `CardinalityLimit`
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class CardinalityLimit:
     max_values: int
     ttl_seconds: float = 300.0
@@ -320,19 +242,17 @@ Remove all cardinality limits and reset seen-value tracking.
 
 ### `HealthSnapshot`
 
-NamedTuple with per-signal counters:
+Frozen dataclass with per-signal counters:
 
-Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, Go, and Rust:
-
-- `emitted_{logs,traces,metrics}` — events accepted and forwarded
+- `queue_depth_{logs,traces,metrics}` — current backpressure queue depth
 - `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
-- `export_failures_{logs,traces,metrics}` — failed export attempts
 - `retries_{logs,traces,metrics}` — exporter retry count
-- `export_latency_ms_{logs,traces,metrics}` — latest export latency in ms
 - `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran inside an event loop
-- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half_open"`
-- `circuit_open_count_{logs,traces,metrics}` — number of times circuit has opened
-- `setup_error` — error message from `setup_telemetry()`, or `None`
+- `export_failures_{logs,traces,metrics}` — failed export attempts
+- `exemplar_unsupported_total` — exemplar attachment attempts on unsupported instruments
+- `last_error_{logs,traces,metrics}` — most recent error message (or None)
+- `last_successful_export_{logs,traces,metrics}` — epoch timestamp of last success (or None)
+- `export_latency_ms_{logs,traces,metrics}` — last successful export latency in ms
 
 ### `get_health_snapshot() -> HealthSnapshot`
 
@@ -342,11 +262,11 @@ Return a point-in-time snapshot of all health counters. Thread-safe.
 
 ### `record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None`
 
-Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when called directly; the `PROVIDE_SLO_ENABLE_RED_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit RED (Rate/Error/Duration) metrics for an HTTP request. Only active when `UNDEF_SLO_ENABLE_RED_METRICS=true`.
 
 ### `record_use_metrics(resource: str, utilization_percent: int) -> None`
 
-Emit USE (Utilization) metrics for a resource. Always executes when called directly; the `PROVIDE_SLO_ENABLE_USE_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit USE (Utilization) metrics for a resource. Only active when `UNDEF_SLO_ENABLE_USE_METRICS=true`.
 
 ### `classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]`
 
@@ -356,7 +276,7 @@ Return `{"error_type": ..., "error_code": ..., "error_name": ...}` classificatio
 
 ### `TelemetryError`
 
-Base exception for all provide.telemetry errors.
+Base exception for all undef telemetry errors.
 
 ### `ConfigurationError`
 
@@ -379,12 +299,5 @@ All config models are `@dataclass(slots=True)` and are constructed via `Telemetr
 - **`BackpressureConfig`** — per-signal queue max sizes
 - **`ExporterPolicyConfig`** — per-signal retries, backoff, timeout, fail-open, async blocking
 - **`SLOConfig`** — RED/USE metrics toggles, error taxonomy
-- **`SecurityConfig`** — secret detection patterns, header size guards, protocol limits
 
 See [Configuration Reference](CONFIGURATION.md) for the environment variables that drive each field.
-
-## Rust Notes
-
-- `bind_context`, `unbind_context`, `clear_context`, `bind_session_context`, `clear_session_context`, `set_trace_context`, and `bind_propagation_context` return guard objects in Rust. Drop restores the previous snapshot.
-- `trace` is exposed as a wrapper function in Rust rather than a decorator.
-- `get_meter()` returns a fallback meter wrapper in Rust; fallback `counter()`, `gauge()`, and `histogram()` remain callable without OTel setup.

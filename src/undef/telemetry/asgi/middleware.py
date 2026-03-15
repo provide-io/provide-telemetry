@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context, clear_context
+from undef.telemetry.logger.context import bind_context, reset_context, save_context
 from undef.telemetry.logger.core import get_logger
 from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
 from undef.telemetry.schema.events import event_name
@@ -37,6 +37,7 @@ class TelemetryMiddleware:
 
         request_id = _extract_header(scope, b"x-request-id") or uuid.uuid4().hex
         session_id = _extract_header(scope, b"x-session-id")
+        ctx_token = save_context()
         bind_context(request_id=request_id)
         if session_id is not None:
             bind_context(session_id=session_id)
@@ -77,7 +78,29 @@ class TelemetryMiddleware:
                 method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
                 record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)
             clear_propagation_context()
-            clear_context()
+            reset_context(ctx_token)
+
+
+_DYNAMIC_SEGMENT = re.compile(
+    r"/(?:"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"  # UUID
+    r"|[0-9a-fA-F]{24,32}"  # hex object IDs
+    r"|[0-9]+"  # numeric IDs
+    r")(?=/|$)"
+)
+
+
+def _normalize_path(raw: str) -> str:
+    return _DYNAMIC_SEGMENT.sub("/{id}", raw)
+
+
+def _resolve_route(scope: Scope) -> str:
+    route = scope.get("route")
+    if route is not None:
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            return path
+    return _normalize_path(str(scope.get("path", "unknown")))
 
 
 def _extract_header(scope: Scope, key: bytes) -> str | None:
