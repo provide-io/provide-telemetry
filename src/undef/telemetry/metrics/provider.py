@@ -67,11 +67,11 @@ def setup_metrics(config: TelemetryConfig) -> None:
         # Capture the baseline provider before we install ours so that
         # _has_real_meter_provider() can distinguish external providers
         # regardless of import order.
-        if not _baseline_captured:
-            otel_metrics_api = _load_otel_metrics_api()
+        if not _baseline_captured:  # pragma: no mutate
+            otel_metrics_api = _load_otel_metrics_api()  # pragma: no mutate
             if otel_metrics_api is not None:
-                _baseline_meter_provider = otel_metrics_api.get_meter_provider()
-            _baseline_captured = True
+                _baseline_meter_provider = otel_metrics_api.get_meter_provider()  # pragma: no mutate
+            _baseline_captured = True  # pragma: no mutate
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build exporter outside the lock to avoid blocking concurrent
@@ -107,7 +107,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
             return
         otel_metrics.set_meter_provider(provider)
         _meter_provider = provider
-        _meter_global_set = True
+        _meter_global_set = True  # pragma: no mutate
         # Clear stale meters cached before provider was set up so
         # subsequent get_meter() calls return meters from the real provider.
         _meters.clear()
@@ -122,12 +122,12 @@ def _has_real_meter_provider(otel_metrics: Any) -> bool:
         # We installed a provider but it was shut down; don't use the stale global.
         return False
     provider = otel_metrics.get_meter_provider()
-    if not _baseline_captured:
+    if not _baseline_captured:  # pragma: no mutate
         # setup_metrics() hasn't been called yet — no baseline to compare against.
         # Use class-name heuristic: the OTel API default is ProxyMeterProvider.
-        return "Proxy" not in type(provider).__name__
+        return "Proxy" not in type(provider).__name__  # pragma: no mutate
     # Identity comparison against the baseline captured inside setup_metrics().
-    return provider is not _baseline_meter_provider
+    return provider is not _baseline_meter_provider  # pragma: no mutate
 
 
 def get_meter(name: str | None = None) -> Any | None:

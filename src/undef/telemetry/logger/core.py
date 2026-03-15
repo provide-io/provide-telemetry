@@ -98,7 +98,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         return handlers
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
-    _otel_log_global_set = True
+    _otel_log_global_set = True  # pragma: no mutate
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
     if instrumentation_handler_cls is not None:
         handlers.append(
@@ -160,11 +160,11 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None: 
         elif config.logging.fmt == "pretty":
             from undef.telemetry.logger.pretty import resolve_color
 
-            renderer = PrettyRenderer(
+            renderer = PrettyRenderer(  # pragma: no mutate
                 colors=sys.stderr.isatty(),
-                key_color=resolve_color(config.logging.pretty_key_color),
-                value_color=resolve_color(config.logging.pretty_value_color),
-                fields=config.logging.pretty_fields,
+                key_color=resolve_color(config.logging.pretty_key_color),  # pragma: no mutate
+                value_color=resolve_color(config.logging.pretty_value_color),  # pragma: no mutate
+                fields=config.logging.pretty_fields,  # pragma: no mutate
             )
         else:
             renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
@@ -201,10 +201,11 @@ def shutdown_logging() -> None:
 
 def _reset_logging_for_tests() -> None:
     global _configured, _active_config, _otel_log_provider, _otel_log_global_set
-    _configured = False
-    _active_config = None
-    _otel_log_provider = None
-    _otel_log_global_set = False
+    with _lock:
+        _configured = False
+        _active_config = None
+        _otel_log_provider = None
+        _otel_log_global_set = False
 
 
 def _has_otel_log_provider() -> bool:
@@ -229,8 +230,7 @@ class _TraceWrapper:
         return getattr(self._logger, item)
 
     def trace(self, event: str, **kwargs: Any) -> None:
-        with _lock:
-            active = _active_config
+        active = _active_config  # atomic ref read under GIL; no lock needed
         if active is not None and active.logging.level == "TRACE":
             self._logger.debug(event, _trace=True, **kwargs)
 

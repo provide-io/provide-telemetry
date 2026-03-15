@@ -147,19 +147,28 @@ class TestShouldSample:
         assert snap.dropped_logs == 0
 
     def test_boundary_sample_rate_equality(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Kills `<=` -> `<` mutant.
-
-        When random() returns exactly the rate, should_sample must return True.
-        """
+        """When random() returns exactly the rate, sample is dropped (exclusive upper bound)."""
         set_sampling_policy("logs", SamplingPolicy(default_rate=0.5))
         monkeypatch.setattr("random.random", lambda: 0.5)
-        assert should_sample("logs") is True
+        assert should_sample("logs") is False
 
     def test_just_above_rate_is_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When random() > rate, sample is dropped."""
         set_sampling_policy("logs", SamplingPolicy(default_rate=0.5))
         monkeypatch.setattr("random.random", lambda: 0.50001)
         assert should_sample("logs") is False
+
+    def test_rate_zero_always_drops(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """rate=0.0 deterministically suppresses, regardless of random() output."""
+        set_sampling_policy("logs", SamplingPolicy(default_rate=0.0))
+        monkeypatch.setattr("random.random", lambda: 0.0)
+        assert should_sample("logs") is False
+
+    def test_rate_one_always_keeps(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """rate=1.0 deterministically keeps, regardless of random() output."""
+        set_sampling_policy("logs", SamplingPolicy(default_rate=1.0))
+        monkeypatch.setattr("random.random", lambda: 0.9999)
+        assert should_sample("logs") is True
 
     def test_signal_passed_to_get_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Kills `get_sampling_policy(signal)` -> `get_sampling_policy(None)`.

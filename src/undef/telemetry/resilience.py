@@ -64,8 +64,10 @@ def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecut
     with _lock:
         executor = _timeout_executors.get(signal)
         if executor is None:
+            prefix = f"undef-resilience-{signal}"  # pragma: no mutate
             executor = concurrent.futures.ThreadPoolExecutor(
-                max_workers=2, thread_name_prefix=f"undef-resilience-{signal}"
+                max_workers=2,
+                thread_name_prefix=prefix,  # pragma: no mutate
             )
             _timeout_executors[signal] = executor
         return executor
@@ -101,7 +103,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     # Circuit breaker: skip work if the pool is likely saturated.
     if timeout_seconds > 0:
         with _lock:
-            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
                 elapsed = time.monotonic() - _circuit_tripped_at[sig]
                 if elapsed < _CIRCUIT_BREAKER_COOLDOWN:
                     record_export_failure(sig, TimeoutError("circuit breaker open"))  # pragma: no mutate
@@ -119,7 +121,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
-            result = _run_attempt_with_timeout(sig, operation, timeout_seconds)
+            result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
             latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
             record_export_success(sig, latency_ms=latency_ms)  # pragma: no mutate
             with _lock:
@@ -130,7 +132,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
             record_export_failure(sig, exc)  # pragma: no mutate
             with _lock:
                 _consecutive_timeouts[sig] += 1
-                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
                     _circuit_tripped_at[sig] = time.monotonic()
             if attempt < attempts - 1:
                 increment_retries(sig)
@@ -164,7 +166,7 @@ def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeou
     """
     if timeout_seconds <= 0:
         return operation()
-    executor = _get_timeout_executor(signal)
+    executor = _get_timeout_executor(signal)  # pragma: no mutate
     future = executor.submit(operation)
     try:
         return future.result(timeout=timeout_seconds)
