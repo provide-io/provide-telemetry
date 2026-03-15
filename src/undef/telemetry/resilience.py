@@ -47,7 +47,30 @@ _policies: dict[Signal, ExporterPolicy] = {
 }
 _consecutive_timeouts: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
-_async_warned_signals: set[Signal] = set()
+_async_warned_signals: set[tuple[Signal, bool]] = set()
+# Per-signal executors isolate failure domains so a timeout storm in one
+# signal (e.g. traces) cannot starve workers used by another (e.g. logs).
+_timeout_executors: dict[Signal, concurrent.futures.ThreadPoolExecutor] = {}
+
+
+def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecutor:
+    with _lock:
+        executor = _timeout_executors.get(signal)
+        if executor is None:
+            executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix=f"undef-resilience-{signal}"
+            )
+            _timeout_executors[signal] = executor
+        return executor
+
+
+_VALID_SIGNALS = frozenset({"logs", "traces", "metrics"})
+
+
+def _validate_signal(signal: Signal) -> Signal:
+    if signal not in _VALID_SIGNALS:
+        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
+    return signal
 
 
 def set_exporter_policy(signal: Signal, policy: ExporterPolicy) -> None:
@@ -89,7 +112,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
-            result = _run_attempt_with_timeout(operation, timeout_seconds)
+            result = _run_attempt_with_timeout(sig, operation, timeout_seconds)
             latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
             record_export_success(sig, latency_ms=latency_ms)  # pragma: no mutate
             with _lock:
@@ -122,28 +145,25 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover
 
 
-def _run_attempt_with_timeout(operation: Callable[[], T], timeout_seconds: float) -> T:
+def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeout_seconds: float) -> T:
+    """Run *operation* with a per-signal timeout executor.
+
+    Each signal (logs, traces, metrics) gets its own 2-thread pool so that
+    a timeout storm in one signal cannot starve workers used by another.
+
+    ``future.cancel()`` only prevents tasks that have not yet started.
+    An already-running operation will continue on a daemon thread after
+    the timeout fires.
+    """
     if timeout_seconds <= 0:
         return operation()
-    outcome: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
-
-    def _target() -> None:
-        try:
-            outcome.put((True, operation()))
-        except Exception as exc:  # pragma: no cover - exercised by caller path
-            outcome.put((False, exc))
-
-    worker = threading.Thread(target=_target, daemon=True)
-    worker.start()
-    worker.join(timeout_seconds)
-    if worker.is_alive():
-        raise TimeoutError(f"operation timed out after {timeout_seconds}s")
-    ok, payload = outcome.get_nowait()
-    if ok:
-        return cast(T, payload)
-    if isinstance(payload, Exception):
-        raise payload
-    raise RuntimeError("timeout worker returned invalid exception payload")
+    executor = _get_timeout_executor(signal)
+    future = executor.submit(operation)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
 
 
 def reset_resilience_for_tests() -> None:
@@ -153,6 +173,9 @@ def reset_resilience_for_tests() -> None:
             _consecutive_timeouts[signal] = 0
             _circuit_tripped_at[signal] = 0.0
         _async_warned_signals.clear()
+        for executor in _timeout_executors.values():
+            executor.shutdown(wait=False)
+        _timeout_executors.clear()
 
 
 def _is_running_in_event_loop() -> bool:

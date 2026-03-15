@@ -133,8 +133,8 @@ def _architecture_diagram_violations(path: Path, content: str) -> list[str]:
     if path.name != "ARCHITECTURE.md":
         return violations
     mermaid_blocks = content.count("```mermaid")
-    if mermaid_blocks < 2:
-        violations.append(f"{path}: expected at least two mermaid diagrams")
+    if mermaid_blocks < 5:
+        violations.append(f"{path}: expected at least five mermaid diagrams")
     if "flowchart" not in content:
         violations.append(f"{path}: missing flowchart diagram")
     if "sequenceDiagram" not in content:

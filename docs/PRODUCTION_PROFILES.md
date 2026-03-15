@@ -76,8 +76,17 @@ export OPENOBSERVE_PASSWORD=password
 
 If your process supports runtime policy updates, treat profile changes as an atomic policy swap:
 
-1. Update sampling and resilience settings first.
-2. Then tighten schema settings (`strict_event_name`, `strict_schema`).
+**Hot-reconfigurable** (no restart, via `update_runtime_config()`):
+sampling policies, backpressure queue limits, exporter retry/timeout policies.
+
+**Requires restart** (process restart; do not rely on `reconfigure_telemetry()` once OTel providers are installed):
+log handlers, schema strictness, tracer/meter providers, OTLP endpoints.
+
+Recommended procedure:
+
+1. Call `update_runtime_config()` to adjust sampling and resilience settings.
+2. If schema/provider changes are needed, restart the process with the new env/config and call `setup_telemetry()` during startup.
+   `reconfigure_telemetry()` only hot-applies runtime policy changes; for provider-changing config after OTel providers are installed it raises `RuntimeError` and tells the caller to restart.
 3. Monitor health snapshot counters (drops, retries, export failures).
 
 ## Async Exporter Safety
