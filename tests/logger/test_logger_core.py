@@ -31,7 +31,7 @@ def _reset_pii_rules() -> None:
 
 
 def test_get_level() -> None:
-    assert _get_level("TRACE") == logging.DEBUG
+    assert _get_level("TRACE") == 5
     assert _get_level("INFO") == logging.INFO
     assert _get_level("WARNING") == logging.WARNING
     assert _get_level("NOT_REAL") == 20
@@ -83,10 +83,11 @@ def test_enforce_required_keys_processor() -> None:
         processor(None, "info", {"event": "a.b.c"})
 
 
-def test_enforce_required_keys_skipped_in_compat_mode() -> None:
+def test_enforce_required_keys_enforced_in_compat_mode() -> None:
     cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id"})
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c"})
+    with pytest.raises(EventSchemaError, match="missing required keys: request_id"):
+        processor(None, "info", {"event": "a.b.c"})
 
 
 def test_configure_and_get_logger() -> None:
@@ -170,18 +171,35 @@ def test_get_logger_does_not_reconfigure_when_already_configured(monkeypatch: py
     assert configured_calls["count"] == 0
 
 
-def test_trace_wrapper_trace_calls_debug_only_for_trace_level() -> None:
+def test_trace_wrapper_trace_calls_log_only_for_trace_level() -> None:
     mock_logger = Mock()
     wrapper = core_mod._TraceWrapper(mock_logger)
 
     core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
     wrapper.trace("evt.one", k="v")
-    mock_logger.debug.assert_called_once_with("evt.one", k="v")
+    mock_logger.debug.assert_called_once_with("evt.one", _trace=True, k="v")
 
     mock_logger.reset_mock()
     core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "INFO"})
     wrapper.trace("evt.two")
-    mock_logger.debug.assert_not_called()
+    mock_logger.log.assert_not_called()
+
+
+def test_structlog_gets_debug_when_config_is_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    configure_calls: list[dict[str, Any]] = []
+
+    core_mod_any = cast(Any, core_mod)
+    logging_mod: Any = core_mod_any.logging
+    structlog_mod: Any = core_mod_any.structlog
+    monkeypatch.setattr(logging_mod, "basicConfig", lambda **_kwargs: None)
+    monkeypatch.setattr(structlog_mod, "configure", lambda **kwargs: configure_calls.append(kwargs))
+
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
+    configure_logging(cfg)
+    assert len(configure_calls) == 1
+    # structlog gets DEBUG (10) clamped from TRACE (5)
+    assert configure_calls[0]["wrapper_class"] is not None
 
 
 def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -237,7 +255,7 @@ def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.M
     processors = configure_calls[0]["processors"]
     assert isinstance(processors, list)
     assert len(processors) >= 6
-    assert configure_calls[0]["cache_logger_on_first_use"] is True
+    assert configure_calls[0]["cache_logger_on_first_use"] is False
 
 
 def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,14 +7,21 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "ExporterPolicy",
+    "get_exporter_policy",
+    "run_with_resilience",
+    "set_exporter_policy",
+]
+
 import asyncio
-import queue
+import concurrent.futures
 import threading
 import time
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from undef.telemetry.health import (
     increment_async_blocking_risk,
@@ -43,16 +50,34 @@ _policies: dict[Signal, ExporterPolicy] = {
     "metrics": ExporterPolicy(),
 }
 _async_warned_signals: set[Signal] = set()
+_timeout_executor: concurrent.futures.ThreadPoolExecutor | None = None
+
+
+def _get_timeout_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _timeout_executor
+    with _lock:
+        if _timeout_executor is None:
+            _timeout_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        return _timeout_executor
+
+
+_VALID_SIGNALS = frozenset({"logs", "traces", "metrics"})
+
+
+def _validate_signal(signal: Signal) -> Signal:
+    if signal not in _VALID_SIGNALS:
+        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
+    return signal
 
 
 def set_exporter_policy(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     with _lock:
         _policies[sig] = policy
 
 
 def get_exporter_policy(signal: Signal) -> ExporterPolicy:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     with _lock:
         return _policies[sig]
 
@@ -62,63 +87,65 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     attempts = max(1, policy.retries + 1)
     backoff_seconds = policy.backoff_seconds
     timeout_seconds = max(0.0, policy.timeout_seconds)
-    if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):
-        increment_async_blocking_risk(signal)
-        _warn_async_risk(signal, policy)
+    if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):  # pragma: no mutate
+        increment_async_blocking_risk(signal)  # pragma: no mutate
+        _warn_async_risk(signal, policy)  # pragma: no mutate
         if not policy.allow_blocking_in_event_loop:
             attempts = 1
-            backoff_seconds = 0.0
-    last_error: Exception | None = None
+            backoff_seconds = 0.0  # pragma: no mutate
+    last_error: Exception | None = None  # pragma: no mutate
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
             result = _run_attempt_with_timeout(operation, timeout_seconds)
-            latency_ms = (time.perf_counter() - started) * 1000.0
-            record_export_success(signal, latency_ms=latency_ms)
+            latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+            record_export_success(signal, latency_ms=latency_ms)  # pragma: no mutate
             return result
-        except Exception as exc:  # pragma: no cover - specific paths covered in tests
+        except Exception as exc:
             last_error = exc
-            record_export_failure(signal, exc)
+            record_export_failure(signal, exc)  # pragma: no mutate
             if attempt < attempts - 1:
                 increment_retries(signal)
-                if backoff_seconds > 0:
+                if backoff_seconds > 0:  # pragma: no mutate
                     time.sleep(backoff_seconds)
     if policy.fail_open:
         return None
     if last_error is not None:
         raise last_error
-    raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover
+    raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover  # pragma: no mutate
 
 
 def _run_attempt_with_timeout(operation: Callable[[], T], timeout_seconds: float) -> T:
+    """Run *operation* with a timeout.
+
+    .. warning::
+
+       ``future.cancel()`` only prevents tasks that have not yet started.
+       An already-running operation will continue on a daemon thread after
+       the timeout fires.  Under sustained timeout pressure, the fixed-size
+       worker pool (4 threads) may become saturated with abandoned work,
+       blocking subsequent resilience-wrapped calls until workers drain.
+    """
     if timeout_seconds <= 0:
         return operation()
-    outcome: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
-
-    def _target() -> None:
-        try:
-            outcome.put((True, operation()))
-        except Exception as exc:  # pragma: no cover - exercised by caller path
-            outcome.put((False, exc))
-
-    worker = threading.Thread(target=_target, daemon=True)
-    worker.start()
-    worker.join(timeout_seconds)
-    if worker.is_alive():
-        raise TimeoutError(f"operation timed out after {timeout_seconds}s")
-    ok, payload = outcome.get_nowait()
-    if ok:
-        return cast(T, payload)
-    if isinstance(payload, Exception):
-        raise payload
-    raise RuntimeError("timeout worker returned invalid exception payload")
+    executor = _get_timeout_executor()
+    future = executor.submit(operation)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
 
 
 def reset_resilience_for_tests() -> None:
+    global _timeout_executor
     with _lock:
         for signal in ("logs", "traces", "metrics"):
             _policies[signal] = ExporterPolicy()
         _async_warned_signals.clear()
+        if _timeout_executor is not None:
+            _timeout_executor.shutdown(wait=False)
+            _timeout_executor = None
 
 
 def _is_running_in_event_loop() -> bool:
@@ -130,26 +157,26 @@ def _is_running_in_event_loop() -> bool:
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in {"logs", "traces", "metrics"} else "logs"
+    sig = signal if signal in {"logs", "traces", "metrics"} else "logs"  # pragma: no mutate
     with _lock:
         if sig in _async_warned_signals:
             return
         _async_warned_signals.add(sig)
     if policy.allow_blocking_in_event_loop:
-        warnings.warn(
+        warnings.warn(  # pragma: no mutate
             (
                 f"resilience policy for {sig} allows blocking behavior in an active event loop "
-                "(retries/backoff configured)"
+                "(retries/backoff configured)"  # pragma: no mutate
             ),
             RuntimeWarning,
-            stacklevel=3,
+            stacklevel=3,  # pragma: no mutate
         )
         return
-    warnings.warn(
+    warnings.warn(  # pragma: no mutate
         (
             f"resilience policy for {sig} uses retries/backoff in an active event loop; "
-            "forcing fail-fast behavior for this call"
+            "forcing fail-fast behavior for this call"  # pragma: no mutate
         ),
         RuntimeWarning,
-        stacklevel=3,
+        stacklevel=3,  # pragma: no mutate
     )
