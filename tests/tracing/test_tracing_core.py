@@ -95,7 +95,7 @@ def test_setup_tracing_already_configured_branch(monkeypatch: pytest.MonkeyPatch
 def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_tracing_for_tests()
     provider = Mock()
-    mock_otel = SimpleNamespace(set_tracer_provider=Mock())
+    mock_otel = SimpleNamespace(set_tracer_provider=Mock(), get_tracer_provider=lambda: None)
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     provider_cls = Mock(return_value=provider)
     processor_cls = Mock(return_value="processor")
@@ -122,7 +122,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
 def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_tracing_for_tests()
     provider = Mock()
-    mock_otel = SimpleNamespace(set_tracer_provider=Mock())
+    mock_otel = SimpleNamespace(set_tracer_provider=Mock(), get_tracer_provider=lambda: None)
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     provider_cls = Mock(return_value=provider)
     processor_cls = Mock(return_value="processor")
@@ -154,7 +154,7 @@ def test_setup_tracing_with_missing_components(monkeypatch: pytest.MonkeyPatch) 
 def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_tracing_for_tests()
     provider = Mock()
-    mock_otel = SimpleNamespace(set_tracer_provider=Mock())
+    mock_otel = SimpleNamespace(set_tracer_provider=Mock(), get_tracer_provider=lambda: None)
     resource_cls = SimpleNamespace(create=Mock(return_value="res"))
     provider_cls = Mock(return_value=provider)
     processor_cls = Mock(return_value="processor")
