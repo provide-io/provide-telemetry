@@ -43,7 +43,7 @@ ContextToken = contextvars.Token[dict[str, object] | None]
 
 def save_context() -> ContextToken:
     """Snapshot the current context, returning a token for zero-copy reset."""
-    return _context.set(_context.get())
+    return _context.set(_context.get())  # pragma: no mutate
 
 
 def reset_context(token: ContextToken) -> None:

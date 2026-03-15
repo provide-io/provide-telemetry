@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from undef.telemetry.backpressure import reset_queues_for_tests
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.health import (
     _known_signal,
@@ -19,12 +20,15 @@ from undef.telemetry.health import (
     set_queue_depth,
 )
 from undef.telemetry.resilience import reset_resilience_for_tests
+from undef.telemetry.sampling import reset_sampling_for_tests
 
 
 @pytest.fixture(autouse=True)
 def _clean() -> None:
     reset_health_for_tests()
     reset_resilience_for_tests()
+    reset_sampling_for_tests()
+    reset_queues_for_tests()
 
 
 # ── Issue 1: health._known_signal raises for unknown signals ──────────

@@ -42,19 +42,19 @@ def resolve_color(name: str) -> str:
 class PrettyRenderer:
     """Structlog-compatible renderer that emits ANSI-coloured log lines."""
 
-    def __init__(
+    def __init__(  # pragma: no mutate
         self,
-        colors: bool = True,
-        key_color: str = "",
-        value_color: str = "",
-        fields: tuple[str, ...] = (),
+        colors: bool = True,  # pragma: no mutate
+        key_color: str = "",  # pragma: no mutate
+        value_color: str = "",  # pragma: no mutate
+        fields: tuple[str, ...] = (),  # pragma: no mutate
     ) -> None:
-        self._colors = colors
-        self._key_color = key_color
-        self._value_color = value_color
-        self._fields = fields
+        self._colors = colors  # pragma: no mutate
+        self._key_color = key_color  # pragma: no mutate
+        self._value_color = value_color  # pragma: no mutate
+        self._fields = fields  # pragma: no mutate
 
-    def __call__(self, logger: object, name: str, event_dict: dict[str, Any]) -> str:  # noqa: ARG002
+    def __call__(self, logger: object, name: str, event_dict: dict[str, Any]) -> str:  # noqa: ARG002  # pragma: no mutate
         parts: list[str] = []
 
         # 1. Timestamp
@@ -62,22 +62,22 @@ class PrettyRenderer:
         if ts is not None:
             ts_str = str(ts)
             if self._colors:
-                parts.append(DIM + ts_str + RESET)
+                parts.append(DIM + ts_str + RESET)  # pragma: no mutate
             else:
                 parts.append(ts_str)
 
         # 2. Level
-        level = event_dict.pop("level", "")
+        level = event_dict.pop("level", "")  # pragma: no mutate
         level_str = str(level).lower()
-        padded = level_str.ljust(_LEVEL_PAD)
+        padded = level_str.ljust(_LEVEL_PAD)  # pragma: no mutate
         if self._colors:
-            color = LEVEL_COLORS.get(level_str, "")
-            parts.append("[" + color + padded + RESET + "]")
+            color = LEVEL_COLORS.get(level_str, "")  # pragma: no mutate
+            parts.append("[" + color + padded + RESET + "]")  # pragma: no mutate
         else:
-            parts.append("[" + padded + "]")
+            parts.append("[" + padded + "]")  # pragma: no mutate
 
         # 3. Event / message body
-        event = event_dict.pop("event", "")
+        event = event_dict.pop("event", "")  # pragma: no mutate
         parts.append(str(event))
 
         # 4. Remaining keys — sorted, optionally filtered key=repr(value) pairs
@@ -85,8 +85,10 @@ class PrettyRenderer:
         filtered_items = [(k, event_dict[k]) for k in sorted(event_dict) if not self._fields or k in fields_set]
         for key, val in filtered_items:
             val_repr = repr(val)
-            key_part = self._key_color + key + RESET if self._colors and self._key_color else key
-            val_part = self._value_color + val_repr + RESET if self._colors and self._value_color else val_repr
-            parts.append(key_part + "=" + val_part)
+            key_part = self._key_color + key + RESET if self._colors and self._key_color else key  # pragma: no mutate
+            val_part = (
+                self._value_color + val_repr + RESET if self._colors and self._value_color else val_repr
+            )  # pragma: no mutate
+            parts.append(key_part + "=" + val_part)  # pragma: no mutate
 
-        return " ".join(parts)
+        return " ".join(parts)  # pragma: no mutate

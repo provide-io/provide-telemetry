@@ -29,6 +29,8 @@ from undef.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
 
+_VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
+
 
 @dataclass(slots=True)
 class LoggingConfig:
@@ -71,7 +73,7 @@ class MetricsConfig:
 
 @dataclass(slots=True)
 class SchemaConfig:
-    strict_event_name: bool = True
+    strict_event_name: bool = False
     required_keys: tuple[str, ...] = ()
 
 
@@ -180,7 +182,7 @@ class TelemetryConfig:
                 ),
             ),
             event_schema=SchemaConfig(
-                strict_event_name=_parse_bool(data.get("UNDEF_TELEMETRY_STRICT_EVENT_NAME"), True),
+                strict_event_name=_parse_bool(data.get("UNDEF_TELEMETRY_STRICT_EVENT_NAME"), False),
                 required_keys=tuple(
                     k.strip() for k in data.get("UNDEF_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
@@ -257,9 +259,7 @@ class TelemetryConfig:
 def _validate_color(value: str, field: str) -> None:
     if not value:
         return
-    from undef.telemetry.logger.pretty import NAMED_COLORS
-
-    if value not in NAMED_COLORS:
+    if value not in _VALID_COLORS:
         raise ConfigurationError(f"invalid color name for {field}: {value!r}")
 
 
@@ -314,10 +314,7 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
         if "=" not in pair:
             stripped = pair.strip()
             if stripped:
-                _logger.warning(  # pragma: no mutate
-                    "malformed OTLP header pair ignored (expected key=value): %r",  # pragma: no mutate
-                    stripped,  # pragma: no mutate
-                )
+                _logger.warning("config.otlp.header_malformed")  # pragma: no mutate
             continue
         key, raw = pair.split("=", 1)
         key = unquote(key.strip())

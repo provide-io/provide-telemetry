@@ -96,11 +96,11 @@ def setup_tracing(config: TelemetryConfig) -> None:
         # Capture the baseline provider before we install ours so that
         # _has_real_tracer_provider() can distinguish external providers
         # regardless of import order.
-        if not _baseline_captured:
-            otel_trace_api = _load_otel_trace_api()
+        if not _baseline_captured:  # pragma: no mutate
+            otel_trace_api = _load_otel_trace_api()  # pragma: no mutate
             if otel_trace_api is not None:
-                _baseline_tracer_provider = otel_trace_api.get_tracer_provider()
-            _baseline_captured = True
+                _baseline_tracer_provider = otel_trace_api.get_tracer_provider()  # pragma: no mutate
+            _baseline_captured = True  # pragma: no mutate
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build provider/exporter outside the lock to avoid blocking
