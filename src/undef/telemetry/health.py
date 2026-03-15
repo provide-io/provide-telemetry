@@ -67,10 +67,13 @@ _export_latency_ms: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics"
 _exemplar_unsupported_total = 0
 
 
+_VALID_SIGNALS_HEALTH = frozenset({"logs", "traces", "metrics"})
+
+
 def _known_signal(signal: Signal) -> Signal:
-    if signal in {"logs", "traces", "metrics"}:  # pragma: no mutate
+    if signal in _VALID_SIGNALS_HEALTH:  # pragma: no mutate
         return signal
-    return "logs"
+    raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS_HEALTH)}")
 
 
 def set_queue_depth(signal: Signal, depth: int) -> None:

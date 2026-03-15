@@ -260,11 +260,12 @@ class TestSanitizePayload:
         assert rules[0].path == ("user", "email")
         assert rules[0].mode == "hash"
 
-    def test_sanitize_disabled_returns_original_identity(self) -> None:
-        """When disabled, returns the exact same object (identity check)."""
+    def test_sanitize_disabled_returns_copy_not_original(self) -> None:
+        """When disabled, returns a shallow copy (equal content, different object)."""
         payload: dict[str, Any] = {"password": "secret"}
         result = sanitize_payload(payload, enabled=False)
-        assert result is payload
+        assert result == payload
+        assert result is not payload
 
     def test_sanitize_with_multiple_rules_applied_in_order(self) -> None:
         """Verify rules are applied sequentially."""

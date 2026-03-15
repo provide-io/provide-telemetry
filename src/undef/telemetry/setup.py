@@ -28,8 +28,6 @@ from undef.telemetry.resilience import reset_resilience_for_tests as _reset_resi
 from undef.telemetry.runtime import apply_runtime_config
 from undef.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
 from undef.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
-from undef.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
-from undef.telemetry.slo import _reset_slo_for_tests as _reset_slo
 from undef.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
 from undef.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 
@@ -58,6 +56,8 @@ def _quiet_otel_sdk_loggers() -> None:
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    from undef.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
+
     global _setup_done
     cfg = config or TelemetryConfig.from_env()
     with _lock:
@@ -93,6 +93,8 @@ def _reset_setup_state_for_tests() -> None:
 
 
 def _reset_all_for_tests() -> None:
+    from undef.telemetry.slo import _reset_slo_for_tests as _reset_slo
+
     global _setup_done
     with _lock:
         _setup_done = False

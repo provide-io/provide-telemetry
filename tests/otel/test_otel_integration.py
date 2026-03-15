@@ -245,3 +245,13 @@ class TestSetupLifecycleWithRealOTel:
         pytest.importorskip("opentelemetry")
         shutdown_telemetry()
         shutdown_telemetry()
+
+    def test_reconfigure_raises_after_real_otel_provider_install(self) -> None:
+        pytest.importorskip("opentelemetry")
+        from undef.telemetry.runtime import reconfigure_telemetry
+        from undef.telemetry.setup import setup_telemetry
+
+        _reset_tracing_for_tests()
+        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        with pytest.raises(RuntimeError, match="provider-changing reconfiguration is unsupported"):
+            reconfigure_telemetry(TelemetryConfig(service_name="new-service"))

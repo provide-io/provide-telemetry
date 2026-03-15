@@ -115,12 +115,12 @@ class Gauge:
         if ticket is None:
             return
         try:
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 self.value += amount
-            otel_gauge = self._resolve_otel()
-            if otel_gauge is not None:
-                attrs = guard_attributes(attributes or {})
-                otel_gauge.add(amount, attrs)
+                if otel_gauge is not None:
+                    otel_gauge.add(amount, attrs)
         finally:
             release(ticket)
 
@@ -131,13 +131,13 @@ class Gauge:
         if ticket is None:
             return
         try:
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 delta = value - self.value
                 self.value = value
-            otel_gauge = self._resolve_otel()
-            if otel_gauge is not None:
-                attrs = guard_attributes(attributes or {})
-                otel_gauge.add(delta, attrs)
+                if otel_gauge is not None:
+                    otel_gauge.add(delta, attrs)
         finally:
             release(ticket)
 

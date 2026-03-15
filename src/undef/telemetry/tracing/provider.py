@@ -14,7 +14,7 @@ from typing import Any, Protocol, cast
 from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.resilience import run_with_resilience
-from undef.telemetry.tracing.context import set_trace_context
+from undef.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 def _has_otel() -> bool:
@@ -25,6 +25,21 @@ _HAS_OTEL = _has_otel()
 _provider_configured: bool = False
 _provider_lock = threading.Lock()
 _provider_ref: Any | None = None
+_otel_global_set: bool = False  # True once we called set_tracer_provider()
+_setup_generation: int = 0
+
+
+# Capture the default OTel tracer provider at module load so that
+# _has_real_tracer_provider() can use identity comparison instead of
+# relying on class-name heuristics to detect placeholder providers.
+def _capture_default_tracer_provider() -> Any | None:
+    if not _HAS_OTEL:
+        return None
+    api = _otel.load_otel_trace_api()
+    return api.get_tracer_provider() if api is not None else None
+
+
+_DEFAULT_TRACER_PROVIDER: Any | None = _capture_default_tracer_provider()
 
 
 class _NoopSpan(AbstractContextManager["_NoopSpan"]):
@@ -35,13 +50,18 @@ class _NoopSpan(AbstractContextManager["_NoopSpan"]):
         self.name = name
         self.trace_id = self.NOOP_TRACE_ID
         self.span_id = self.NOOP_SPAN_ID
+        self._prev_trace_id: str | None = None
+        self._prev_span_id: str | None = None
 
     def __enter__(self) -> _NoopSpan:
+        prev = get_trace_context()
+        self._prev_trace_id = prev["trace_id"]
+        self._prev_span_id = prev["span_id"]
         set_trace_context(self.trace_id, self.span_id)
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
-        set_trace_context(None, None)
+        set_trace_context(self._prev_trace_id, self._prev_span_id)
 
 
 class _NoopTracer:
@@ -66,14 +86,21 @@ def _load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
     return _otel.load_otel_tracing_components()
 
 
+def _has_tracing_provider() -> bool:
+    """Return True if a tracing provider is installed or was ever installed (thread-safe)."""
+    with _provider_lock:
+        return _provider_ref is not None or _otel_global_set
+
+
 def setup_tracing(config: TelemetryConfig) -> None:
-    global _provider_configured, _provider_ref
+    global _provider_configured, _provider_ref, _otel_global_set
     if not config.tracing.enabled or not _HAS_OTEL:
         return
 
     with _provider_lock:
         if _provider_configured:
             return
+        gen = _setup_generation  # snapshot before releasing the lock
 
     # Build provider/exporter outside the lock to avoid blocking
     # concurrent get_tracer()/shutdown_tracing() during slow network I/O.
@@ -98,8 +125,8 @@ def setup_tracing(config: TelemetryConfig) -> None:
             provider.add_span_processor(processor_cls(exporter))
 
     with _provider_lock:
-        if _provider_configured:
-            # Another thread won the race — discard ours.
+        if _provider_configured or _setup_generation != gen:
+            # Another thread won the race OR shutdown happened mid-build — discard ours.
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 shutdown()
@@ -107,48 +134,67 @@ def setup_tracing(config: TelemetryConfig) -> None:
         otel_trace.set_tracer_provider(provider)
         _provider_ref = provider
         _provider_configured = True
+        _otel_global_set = True
 
 
 def shutdown_tracing() -> None:
-    global _provider_ref, _provider_configured
+    global _provider_ref, _provider_configured, _setup_generation
     with _provider_lock:
+        _setup_generation += 1
         provider = _provider_ref
         if provider is None:
             _provider_configured = False
             return
-        shutdown = getattr(provider, "shutdown", None)
-        if callable(shutdown):
-            shutdown()
-        _provider_ref = None
-        _provider_configured = False
+        try:
+            shutdown = getattr(provider, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+        finally:
+            _provider_ref = None
+            _provider_configured = False
 
 
 def _reset_tracing_for_tests() -> None:
-    global _provider_configured, _provider_ref
+    global _provider_configured, _provider_ref, _otel_global_set, _setup_generation
     _provider_configured = False
     _provider_ref = None
+    _otel_global_set = False
+    _setup_generation = 0
 
 
 class _TracerLike(Protocol):
     def start_as_current_span(self, name: str, **kwargs: object) -> AbstractContextManager[object]: ...
 
 
+def _has_real_tracer_provider(otel_trace: Any) -> bool:
+    """Return True if a usable (non-placeholder) OTel tracer provider is globally available."""
+    if _provider_configured:
+        return True
+    if _otel_global_set:
+        # We installed a provider but it was shut down; don't use the stale global.
+        return False
+    provider = otel_trace.get_tracer_provider()
+    # Identity comparison against the default provider captured at module load.
+    # If they differ, an external caller has installed a real provider.
+    return provider is not _DEFAULT_TRACER_PROVIDER
+
+
 def get_tracer(name: str | None = None) -> _TracerLike:
-    if not _provider_configured:
-        return _NoopTracer()
     otel_trace = _load_otel_trace_api()
-    if otel_trace is not None:
-        tracer_name = "undef.telemetry" if name is None else name
-        return cast(_TracerLike, otel_trace.get_tracer(tracer_name))  # pragma: no mutate
-    return _NoopTracer()
+    if otel_trace is None:
+        return _NoopTracer()
+    if not _has_real_tracer_provider(otel_trace):
+        return _NoopTracer()
+    tracer_name = "undef.telemetry" if name is None else name
+    return cast(_TracerLike, otel_trace.get_tracer(tracer_name))  # pragma: no mutate
 
 
 def _sync_otel_trace_context() -> None:
     """Sync the active OTel span's trace/span IDs into our contextvars."""
-    if not _provider_configured:
-        return
     otel_trace = _load_otel_trace_api()
     if otel_trace is None:
+        return
+    if not _has_real_tracer_provider(otel_trace):
         return
     span = otel_trace.get_current_span()
     ctx = span.get_span_context()

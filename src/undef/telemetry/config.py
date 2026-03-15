@@ -303,7 +303,7 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
                 )
             continue
         key, raw = pair.split("=", 1)
-        key = key.strip()
+        key = unquote(key.strip())
         if not key:
             continue
         headers[key] = unquote(raw.strip())

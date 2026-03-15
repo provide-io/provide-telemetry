@@ -71,22 +71,13 @@ class TestNormalizeRate:
 class TestSamplingPolicy:
     """Kill mutants in set/get_sampling_policy."""
 
-    def test_unknown_signal_falls_back_to_logs(self) -> None:
-        """Kills fallback `"logs"` -> `"LOGS"`, `"XXlogsXX"` mutants.
+    def test_unknown_signal_set_raises(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            set_sampling_policy("unknown_signal", SamplingPolicy(default_rate=0.42))
 
-        Unknown signal should store/retrieve from "logs" bucket.
-        """
-        policy = SamplingPolicy(default_rate=0.42)
-        set_sampling_policy("unknown_signal", policy)
-        # Should be stored under "logs"
-        result = get_sampling_policy("logs")
-        assert result.default_rate == 0.42
-
-    def test_unknown_signal_get_falls_back_to_logs(self) -> None:
-        """Get with unknown signal returns logs policy."""
-        set_sampling_policy("logs", SamplingPolicy(default_rate=0.33))
-        result = get_sampling_policy("nonexistent")
-        assert result.default_rate == 0.33
+    def test_unknown_signal_get_raises(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            get_sampling_policy("nonexistent")
 
     def test_known_signals_are_distinct(self) -> None:
         """Each known signal has its own bucket."""

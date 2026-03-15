@@ -18,8 +18,6 @@ from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
 from undef.telemetry.tracing.context import get_trace_context
 
-_SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
-
 
 def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     event_dict.update(get_context())
