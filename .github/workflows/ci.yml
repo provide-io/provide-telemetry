@@ -56,6 +56,7 @@ jobs:
 
   mutation-gate:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

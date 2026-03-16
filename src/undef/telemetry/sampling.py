@@ -50,7 +50,7 @@ def _validate_signal(signal: Signal) -> Signal:
 def _normalize_rate(rate: float) -> float:
     clamped = max(0.0, min(1.0, rate))
     if clamped != rate:
-        _logger.warning("sampling rate %r clamped to %s (must be 0.0-1.0)", rate, clamped)  # pragma: no mutate
+        _logger.warning("sampling.rate.clamped.warning")  # pragma: no mutate
     return clamped
 
 
@@ -76,7 +76,13 @@ def should_sample(signal: Signal, key: str | None = None) -> bool:
     rate = policy.default_rate
     if key is not None and key in policy.overrides:
         rate = policy.overrides[key]
-    keep = random.random() <= _normalize_rate(rate)  # noqa: S311 - non-crypto telemetry sampling.
+    rate = _normalize_rate(rate)
+    if rate <= 0.0:  # pragma: no mutate
+        keep = False
+    elif rate >= 1.0:  # pragma: no mutate
+        keep = True
+    else:
+        keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.
     if not keep:
         increment_dropped(signal)
     return keep
