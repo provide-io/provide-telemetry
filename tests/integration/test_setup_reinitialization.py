@@ -112,9 +112,10 @@ def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch
     logs_api_mod = SimpleNamespace(set_logger_provider=lambda _provider: None)
     sdk_logs_mod = SimpleNamespace(LoggerProvider=_FakeLogProvider, LoggingHandler=_FakeLoggingHandler)
     sdk_logs_export_mod = SimpleNamespace(BatchLogRecordProcessor=_FakeLogRecordProcessor)
-    otel_trace_api = SimpleNamespace(set_tracer_provider=lambda _provider: None)
+    otel_trace_api = SimpleNamespace(set_tracer_provider=lambda _provider: None, get_tracer_provider=lambda: None)
     otel_metrics_api = SimpleNamespace(
         set_meter_provider=lambda _provider: None,
+        get_meter_provider=lambda: None,
         get_meter=lambda _name: object(),
     )
 

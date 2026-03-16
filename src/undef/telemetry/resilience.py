@@ -55,15 +55,20 @@ _policies: dict[Signal, ExporterPolicy] = {
 _consecutive_timeouts: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
 _async_warned_signals: set[tuple[Signal, bool]] = set()
-_timeout_executor: concurrent.futures.ThreadPoolExecutor | None = None
+# Per-signal executors isolate failure domains so a timeout storm in one
+# signal (e.g. traces) cannot starve workers used by another (e.g. logs).
+_timeout_executors: dict[Signal, concurrent.futures.ThreadPoolExecutor] = {}
 
 
-def _get_timeout_executor() -> concurrent.futures.ThreadPoolExecutor:
-    global _timeout_executor
+def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecutor:
     with _lock:
-        if _timeout_executor is None:
-            _timeout_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        return _timeout_executor
+        executor = _timeout_executors.get(signal)
+        if executor is None:
+            executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix=f"undef-resilience-{signal}"
+            )
+            _timeout_executors[signal] = executor
+        return executor
 
 
 _VALID_SIGNALS = frozenset({"logs", "traces", "metrics"})
@@ -114,7 +119,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
-            result = _run_attempt_with_timeout(operation, timeout_seconds)
+            result = _run_attempt_with_timeout(sig, operation, timeout_seconds)
             latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
             record_export_success(sig, latency_ms=latency_ms)  # pragma: no mutate
             with _lock:
@@ -147,20 +152,19 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover  # pragma: no mutate
 
 
-def _run_attempt_with_timeout(operation: Callable[[], T], timeout_seconds: float) -> T:
-    """Run *operation* with a timeout.
+def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeout_seconds: float) -> T:
+    """Run *operation* with a per-signal timeout executor.
 
-    .. warning::
+    Each signal (logs, traces, metrics) gets its own 2-thread pool so that
+    a timeout storm in one signal cannot starve workers used by another.
 
-       ``future.cancel()`` only prevents tasks that have not yet started.
-       An already-running operation will continue on a daemon thread after
-       the timeout fires.  Under sustained timeout pressure, the fixed-size
-       worker pool (4 threads) may become saturated with abandoned work,
-       blocking subsequent resilience-wrapped calls until workers drain.
+    ``future.cancel()`` only prevents tasks that have not yet started.
+    An already-running operation will continue on a daemon thread after
+    the timeout fires.
     """
     if timeout_seconds <= 0:
         return operation()
-    executor = _get_timeout_executor()
+    executor = _get_timeout_executor(signal)
     future = executor.submit(operation)
     try:
         return future.result(timeout=timeout_seconds)
@@ -170,16 +174,15 @@ def _run_attempt_with_timeout(operation: Callable[[], T], timeout_seconds: float
 
 
 def reset_resilience_for_tests() -> None:
-    global _timeout_executor
     with _lock:
         for signal in ("logs", "traces", "metrics"):
             _policies[signal] = ExporterPolicy()
             _consecutive_timeouts[signal] = 0
             _circuit_tripped_at[signal] = 0.0
         _async_warned_signals.clear()
-        if _timeout_executor is not None:
-            _timeout_executor.shutdown(wait=False)
-            _timeout_executor = None
+        for executor in _timeout_executors.values():
+            executor.shutdown(wait=False)
+        _timeout_executors.clear()
 
 
 def _is_running_in_event_loop() -> bool:

@@ -46,22 +46,13 @@ shutdown_telemetry()
 
 ## Environment Variables
 
-- `UNDEF_TELEMETRY_SERVICE_NAME`
-- `UNDEF_TELEMETRY_ENV`
-- `UNDEF_TELEMETRY_VERSION`
-- `UNDEF_TELEMETRY_STRICT_SCHEMA`
-- `UNDEF_LOG_LEVEL`
-- `UNDEF_LOG_FORMAT`
-- `UNDEF_TRACE_ENABLED`
-- `UNDEF_METRICS_ENABLED`
-- `UNDEF_LOG_CODE_ATTRIBUTES`
-- `OTEL_EXPORTER_OTLP_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
-- `UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS`
-- `UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS`
-- `UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS`
+The most commonly set variables:
+
+- `UNDEF_TELEMETRY_SERVICE_NAME` — service identity (default: `undef-service`)
+- `UNDEF_LOG_LEVEL` — log level (default: `INFO`)
+- `UNDEF_LOG_FORMAT` — renderer: `console`, `json`, or `pretty` (default: `console`)
+
+See the [Configuration Reference](docs/CONFIGURATION.md) for all 60+ environment variables with types and defaults.
 
 ## Event Naming Rule
 
@@ -112,6 +103,9 @@ Script references:
 
 ## Docs
 
+- [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md)
+- [API Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md)
+- [Internals](https://github.com/undef-games/undef-telemetry/blob/main/docs/INTERNALS.md)
 - [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md)
 - [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md)
 - [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md)

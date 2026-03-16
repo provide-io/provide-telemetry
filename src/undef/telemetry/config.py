@@ -40,10 +40,15 @@ class LoggingConfig:
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
     log_code_attributes: bool = False
+    pretty_key_color: str = "dim"
+    pretty_value_color: str = ""
+    pretty_fields: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         self.level = _normalize_level(self.level)
         _validate_fmt(self.fmt)
+        _validate_color(self.pretty_key_color, "pretty_key_color")
+        _validate_color(self.pretty_value_color, "pretty_value_color")
 
 
 @dataclass(slots=True)
@@ -154,6 +159,9 @@ class TelemetryConfig:
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),
+                pretty_key_color=data.get("UNDEF_LOG_PRETTY_KEY_COLOR", "dim"),
+                pretty_value_color=data.get("UNDEF_LOG_PRETTY_VALUE_COLOR", ""),
+                pretty_fields=tuple(f.strip() for f in data.get("UNDEF_LOG_PRETTY_FIELDS", "").split(",") if f.strip()),
             ),
             tracing=TracingConfig(
                 enabled=_parse_bool(data.get("UNDEF_TRACE_ENABLED"), True),
@@ -246,6 +254,15 @@ class TelemetryConfig:
         )
 
 
+def _validate_color(value: str, field: str) -> None:
+    if not value:
+        return
+    from undef.telemetry.logger.pretty import NAMED_COLORS
+
+    if value not in NAMED_COLORS:
+        raise ConfigurationError(f"invalid color name for {field}: {value!r}")
+
+
 def _normalize_level(value: str) -> str:
     allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     normalized = value.upper()
@@ -255,7 +272,7 @@ def _normalize_level(value: str) -> str:
 
 
 def _validate_fmt(value: str) -> None:
-    if value not in {"console", "json"}:
+    if value not in {"console", "json", "pretty"}:
         raise ConfigurationError(f"invalid log format: {value}")
 
 

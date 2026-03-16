@@ -79,15 +79,14 @@ Profile changes involve two mechanisms with different scopes:
 **Hot-reconfigurable** (no restart, via `update_runtime_config()`):
 sampling policies, backpressure queue limits, exporter retry/timeout policies.
 
-**Requires restart** (via `reconfigure_telemetry()`):
+**Requires restart** (process restart; do not rely on `reconfigure_telemetry()` once OTel providers are installed):
 log handlers, schema strictness, tracer/meter providers, OTLP endpoints.
 
 Recommended procedure:
 
 1. Call `update_runtime_config()` to adjust sampling and resilience settings.
-2. If schema/provider changes are needed, call `reconfigure_telemetry()`.
-   Note: this performs a full shutdown+setup cycle; events may be dropped
-   during the brief restart window.
+2. If schema/provider changes are needed, restart the process with the new env/config and call `setup_telemetry()` during startup.
+   `reconfigure_telemetry()` only hot-applies runtime policy changes; for provider-changing config after OTel providers are installed it raises `RuntimeError` and tells the caller to restart.
 3. Monitor health snapshot counters (drops, retries, export failures).
 
 ## Async Exporter Safety

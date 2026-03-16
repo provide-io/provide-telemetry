@@ -60,9 +60,9 @@ def _seed_mutants_config() -> None:
             shutil.copy2(src, dst)
 
 
-def _half_cpu_count() -> int:
+def _third_cpu_count() -> int:
     count = os.cpu_count() or 1
-    return max(1, count // 2)
+    return max(1, count // 3)
 
 
 def _read_stats(path: Path) -> dict[str, int]:
@@ -131,7 +131,7 @@ def main() -> int:
         "--max-children",
         type=int,
         default=None,
-        help="Initial mutmut worker count (defaults to half CPU count).",
+        help="Initial mutmut worker count (defaults to 1/3 CPU count).",
     )
     parser.add_argument("--retries", type=int, default=1, help="Number of retries after initial failure.")
     parser.add_argument(
@@ -141,9 +141,9 @@ def main() -> int:
         help="Minimum mutation score required to pass (killed/total * 100).",
     )
     args = parser.parse_args()
-    half_cpus = _half_cpu_count()
-    requested_children = args.max_children if args.max_children is not None else half_cpus
-    max_children = min(max(1, requested_children), half_cpus)
+    max_cpus = _third_cpu_count()
+    requested_children = args.max_children if args.max_children is not None else max_cpus
+    max_children = min(max(1, requested_children), max_cpus)
 
     try:
         run_mutation_gate(args.python_version, max_children, args.retries, args.min_mutation_score)
