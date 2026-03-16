@@ -32,3 +32,7 @@ def unbind_context(*keys: str) -> None:
 
 def clear_context() -> None:
     _context.set({})
+
+
+def restore_context(snapshot: dict[str, object]) -> None:
+    _context.set(snapshot)

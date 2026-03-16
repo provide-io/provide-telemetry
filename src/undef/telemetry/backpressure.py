@@ -47,6 +47,13 @@ _queues: dict[Signal, deque[int]] = {
     "traces": deque(),
     "metrics": deque(),
 }
+_VALID_SIGNALS = frozenset(_queues)
+
+
+def _validate_signal(signal: Signal) -> Signal:
+    if signal not in _VALID_SIGNALS:
+        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
+    return signal
 
 
 def set_queue_policy(policy: QueuePolicy) -> None:
@@ -72,7 +79,7 @@ def _maxsize(signal: Signal) -> int:
 
 
 def try_acquire(signal: Signal) -> QueueTicket | None:
-    signal = signal if signal in _queues else "logs"
+    signal = _validate_signal(signal)
     with _lock:
         maxsize = _maxsize(signal)
         if maxsize <= 0:
@@ -93,7 +100,7 @@ def release(ticket: QueueTicket | None) -> None:
     if ticket.token == 0:  # pragma: no mutate
         return
     with _lock:
-        queue = _queues[ticket.signal if ticket.signal in _queues else "logs"]
+        queue = _queues[_validate_signal(ticket.signal)]
         try:
             queue.remove(ticket.token)
         except ValueError:

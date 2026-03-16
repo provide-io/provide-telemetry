@@ -183,10 +183,11 @@ def test_backpressure_queue_limits_and_release_paths() -> None:
     tokenless = backpressure_mod.try_acquire("traces")
     assert tokenless is not None
     backpressure_mod.release(tokenless)
-    unknown = backpressure_mod.try_acquire("unknown")
-    assert unknown is not None
+    with pytest.raises(ValueError, match="unknown signal"):
+        backpressure_mod.try_acquire("unknown")
     backpressure_mod.release(None)
-    backpressure_mod.release(backpressure_mod.QueueTicket(signal="unknown", token=9999))
+    with pytest.raises(ValueError, match="unknown signal"):
+        backpressure_mod.release(backpressure_mod.QueueTicket(signal="unknown", token=9999))
 
 
 def test_resilience_success_fail_open_and_fail_closed() -> None:
@@ -266,7 +267,9 @@ def test_pii_engine_default_and_rules() -> None:
     assert ruled["password"] == hashlib.sha256(b"p").hexdigest()[:12]
     pii_mod.register_pii_rule(pii_mod.PIIRule(path=("nested", "token"), mode="redact"))
     assert pii_mod.get_pii_rules()
-    assert pii_mod.sanitize_payload(payload, enabled=False) is payload
+    disabled_result = pii_mod.sanitize_payload(payload, enabled=False)
+    assert disabled_result == payload  # same content
+    assert disabled_result is not payload  # but a copy, not the same object
 
 
 def test_pii_custom_truncate_preserves_value() -> None:
@@ -337,17 +340,31 @@ def test_propagation_extra_header_parsing_branches() -> None:
 
 
 def test_health_snapshot_and_unknown_signal_branch() -> None:
-    health_mod.set_queue_depth("unknown", 2)
-    health_mod.increment_dropped("unknown", 2)
-    health_mod.increment_retries("unknown", 1)
-    health_mod.record_export_failure("unknown", RuntimeError("nope"))
-    health_mod.record_export_success("unknown", 3.4)
+    import pytest
+
+    # Unknown signals now raise ValueError instead of falling back to logs
+    with pytest.raises(ValueError, match="unknown signal"):
+        health_mod.set_queue_depth("unknown", 2)
+    with pytest.raises(ValueError, match="unknown signal"):
+        health_mod.increment_dropped("unknown", 2)
+    with pytest.raises(ValueError, match="unknown signal"):
+        health_mod.increment_retries("unknown", 1)
+    with pytest.raises(ValueError, match="unknown signal"):
+        health_mod.record_export_failure("unknown", RuntimeError("nope"))
+    with pytest.raises(ValueError, match="unknown signal"):
+        health_mod.record_export_success("unknown", 3.4)
     health_mod.increment_exemplar_unsupported(2)
+    snap = health_mod.get_health_snapshot()
+    assert snap.exemplar_unsupported_total == 2
+    # Valid signals still work
+    health_mod.set_queue_depth("logs", 2)
+    health_mod.increment_dropped("logs", 2)
+    health_mod.increment_retries("logs", 1)
+    health_mod.record_export_success("logs", 3.4)
     snap = health_mod.get_health_snapshot()
     assert snap.queue_depth_logs == 2
     assert snap.dropped_logs >= 2
     assert snap.retries_logs >= 1
-    assert snap.exemplar_unsupported_total == 2
     assert snap.export_latency_ms_logs == 3.4
 
 

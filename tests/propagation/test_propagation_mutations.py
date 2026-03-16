@@ -344,7 +344,7 @@ class TestBindPropagationContext:
         assert len(trace_calls) == 0
 
     def test_nested_bind_clear_restores_outer_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Nested bind/clear properly restores outer OTel context token."""
+        """Each bind frame owns its OTel token; clear detaches only that frame's token."""
         attach_calls: list[str] = []
         detach_calls: list[object] = []
 
@@ -367,7 +367,7 @@ class TestBindPropagationContext:
             span_id="bbbbbbbbbbbbbbbb",
         )
         propagation_mod.bind_propagation_context(outer_ctx)
-        assert propagation_mod._otel_context_token.get() == "token-0"
+        assert len(attach_calls) == 1  # outer token attached
 
         inner_ctx = propagation_mod.PropagationContext(
             traceparent="00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
@@ -377,12 +377,105 @@ class TestBindPropagationContext:
             span_id="dddddddddddddddd",
         )
         propagation_mod.bind_propagation_context(inner_ctx)
-        assert propagation_mod._otel_context_token.get() == "token-1"
+        assert len(attach_calls) == 2  # inner token attached
 
         propagation_mod.clear_propagation_context()
-        # After clearing inner, outer token should be restored
-        assert propagation_mod._otel_context_token.get() == "token-0"
+        # Inner clear detaches only the inner frame's token.
         assert detach_calls[-1] == "token-1"
+        assert len(detach_calls) == 1  # outer not yet detached
 
         propagation_mod.clear_propagation_context()
         assert detach_calls[-1] == "token-0"
+        assert len(detach_calls) == 2
+
+    def test_inner_bind_without_traceparent_does_not_detach_outer_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Clearing an inner bind that had no traceparent must not detach the outer token."""
+        attach_calls: list[str] = []
+        detach_calls: list[object] = []
+
+        def fake_attach(traceparent: str | None, tracestate: str | None) -> str:
+            token = f"token-{len(attach_calls)}"
+            attach_calls.append(token)
+            return token
+
+        def fake_detach(token: object) -> None:
+            detach_calls.append(token)
+
+        monkeypatch.setattr(propagation_mod, "attach_w3c_context", fake_attach)
+        monkeypatch.setattr(propagation_mod, "detach_w3c_context", fake_detach)
+
+        outer_ctx = propagation_mod.PropagationContext(
+            traceparent="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+            tracestate="vendor=outer",
+            baggage=None,
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            span_id="bbbbbbbbbbbbbbbb",
+        )
+        inner_ctx = propagation_mod.PropagationContext(
+            traceparent=None,  # no OTel attach for this frame
+            tracestate="vendor=inner",
+            baggage=None,
+            trace_id=None,
+            span_id=None,
+        )
+
+        propagation_mod.bind_propagation_context(outer_ctx)
+        assert len(attach_calls) == 1
+
+        propagation_mod.bind_propagation_context(inner_ctx)
+        assert len(attach_calls) == 1  # no second attach
+
+        propagation_mod.clear_propagation_context()
+        # Inner frame had no token — detach should be called with None (no-op in real OTel).
+        assert detach_calls[-1] is None
+        assert len(detach_calls) == 1
+
+        # Outer token must still be intact — clearing inner did not detach it.
+        propagation_mod.clear_propagation_context()
+        assert detach_calls[-1] == "token-0"
+        assert len(detach_calls) == 2
+
+    def test_three_nested_clears_in_reverse_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kill mutant: stack[:-1] → stack[:+1].
+
+        stack[:1] and stack[:-1] are equal for 2-element stacks, so we need 3
+        levels of nesting where they diverge.  With stack[:+1], the middle
+        snapshot is lost and the second clear restores the wrong token.
+        """
+        attach_calls: list[str] = []
+        detach_calls: list[object] = []
+
+        def fake_attach(traceparent: str | None, tracestate: str | None) -> str:
+            token = f"token-{len(attach_calls)}"
+            attach_calls.append(token)
+            return token
+
+        def fake_detach(token: object) -> None:
+            detach_calls.append(token)
+
+        monkeypatch.setattr(propagation_mod, "attach_w3c_context", fake_attach)
+        monkeypatch.setattr(propagation_mod, "detach_w3c_context", fake_detach)
+
+        for tp in [
+            "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+            "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
+            "00-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-ffffffffffffffff-01",
+        ]:
+            propagation_mod.bind_propagation_context(
+                propagation_mod.PropagationContext(
+                    traceparent=tp,
+                    tracestate=None,
+                    baggage=None,
+                    trace_id=tp[3:35],
+                    span_id=tp[36:52],
+                )
+            )
+        assert attach_calls == ["token-0", "token-1", "token-2"]
+
+        # Clear three times — tokens must detach in exact reverse order.
+        propagation_mod.clear_propagation_context()
+        assert detach_calls == ["token-2"]
+        propagation_mod.clear_propagation_context()
+        assert detach_calls == ["token-2", "token-1"]  # mutant yields token-0 here
+        propagation_mod.clear_propagation_context()
+        assert detach_calls == ["token-2", "token-1", "token-0"]

@@ -67,10 +67,10 @@ async def test_warn_async_risk_allow_blocking_message_contains_signal() -> None:
 
 
 @pytest.mark.asyncio
-async def test_warn_async_risk_unknown_signal_falls_back_to_logs() -> None:
-    """Kill the `in` -> `not in` mutant and the fallback 'logs' mutant."""
+async def test_warn_async_risk_uses_signal_name_in_warning() -> None:
+    """Warn message includes the actual signal name (no remapping to 'logs')."""
     policy = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=False)
-    with pytest.warns(RuntimeWarning, match=r"resilience policy for logs"):
+    with pytest.warns(RuntimeWarning, match=r"resilience policy for unknown_signal"):
         _warn_async_risk("unknown_signal", policy)
 
 
@@ -90,6 +90,18 @@ async def test_warn_async_risk_adds_signal_to_warned_set() -> None:
     # But a different signal should still warn
     with pytest.warns(RuntimeWarning, match=r"resilience policy for metrics"):
         _warn_async_risk("metrics", policy)
+
+
+@pytest.mark.asyncio
+async def test_warn_async_risk_policy_change_triggers_new_warning() -> None:
+    """Kill mutant: key is just signal (not tuple) so policy change doesn't warn again."""
+    policy_block = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=True)
+    policy_fail = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=False)
+    with pytest.warns(RuntimeWarning, match="allows blocking"):
+        _warn_async_risk("logs", policy_block)
+    # Same signal, different allow_blocking_in_event_loop → different key → new warning
+    with pytest.warns(RuntimeWarning, match="fail-fast"):
+        _warn_async_risk("logs", policy_fail)
 
 
 @pytest.mark.asyncio

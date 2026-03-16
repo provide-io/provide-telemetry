@@ -38,6 +38,8 @@ async def test_middleware_non_http_path() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_http_context() -> None:
+    from undef.telemetry.logger.context import restore_context
+
     events: list[dict[str, Any]] = []
 
     async def send(msg: dict[str, Any]) -> None:
@@ -46,6 +48,10 @@ async def test_middleware_http_context() -> None:
     async def receive() -> dict[str, Any]:
         return {"type": "noop"}
 
+    # Reset context to empty before test to ensure clean slate
+    restore_context({})
+    pre_ctx = get_context()
+
     middleware = TelemetryMiddleware(_dummy_app)
     scope = {
         "type": "http",
@@ -53,7 +59,8 @@ async def test_middleware_http_context() -> None:
     }
     await middleware(scope, receive, send)
     assert events[0]["scope_type"] == "http"
-    assert get_context() == {}
+    # After middleware, context should be restored to pre-request state
+    assert get_context() == pre_ctx
 
 
 @pytest.mark.asyncio
@@ -73,16 +80,20 @@ async def test_middleware_generates_request_id() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, dict[str, str | None]]] = []
+    calls: list[tuple[str, Any]] = []
 
     def _bind_context(**kwargs: str | None) -> None:
         calls.append(("bind", kwargs))
 
-    def _clear_context() -> None:
-        calls.append(("clear", {}))
+    def _get_context() -> dict[str, object]:
+        return {}
+
+    def _restore_context(snapshot: dict[str, object]) -> None:
+        calls.append(("restore", snapshot))
 
     monkeypatch.setattr(middleware_mod, "bind_context", _bind_context)
-    monkeypatch.setattr(middleware_mod, "clear_context", _clear_context)
+    monkeypatch.setattr(middleware_mod, "get_context", _get_context)
+    monkeypatch.setattr(middleware_mod, "restore_context", _restore_context)
     monkeypatch.setattr("undef.telemetry.asgi.middleware.uuid.uuid4", lambda: type("U", (), {"hex": "generated"})())
 
     sent: list[dict[str, Any]] = []
@@ -106,26 +117,26 @@ async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.
 
     assert sent == [{"type": "done", "scope_type": "http", "token": received_token}]
     assert calls[0] == ("bind", {"request_id": "generated"})
-    assert calls[-1] == ("clear", {})
+    assert calls[-1] == ("restore", {})
 
 
 @pytest.mark.asyncio
 async def test_middleware_passes_through_lifespan_without_context_binding(monkeypatch: pytest.MonkeyPatch) -> None:
     bind = pytest.MonkeyPatch()
-    clear = pytest.MonkeyPatch()
+    restore = pytest.MonkeyPatch()
     try:
         bind_spy = {"count": 0}
-        clear_spy = {"count": 0}
+        restore_spy = {"count": 0}
 
         def _bind_context(**kwargs: str | None) -> None:
             _ = kwargs
             bind_spy["count"] += 1
 
-        def _clear_context() -> None:
-            clear_spy["count"] += 1
+        def _restore_context(snapshot: dict[str, object]) -> None:
+            restore_spy["count"] += 1
 
         bind.setattr(middleware_mod, "bind_context", _bind_context)
-        clear.setattr(middleware_mod, "clear_context", _clear_context)
+        restore.setattr(middleware_mod, "restore_context", _restore_context)
 
         async def send(_: dict[str, Any]) -> None:
             return None
@@ -141,10 +152,10 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
         middleware = TelemetryMiddleware(app)
         await middleware({"type": "lifespan", "headers": []}, receive, send)
         assert bind_spy["count"] == 0
-        assert clear_spy["count"] == 0
+        assert restore_spy["count"] == 0
     finally:
         bind.undo()
-        clear.undo()
+        restore.undo()
 
 
 def test_extract_header_none() -> None:

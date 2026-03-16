@@ -57,6 +57,15 @@ class TestNoopSpanEdgeCases:
         span = _NoopSpan("my.operation")
         assert span.name == "my.operation"
 
+    def test_nested_noop_spans_restore_outer_context(self) -> None:
+        outer = _NoopSpan("outer")
+        inner = _NoopSpan("inner")
+        with outer:
+            outer_ctx = get_trace_context()
+            with inner:
+                assert get_trace_context() == {"trace_id": "0" * 32, "span_id": "0" * 16}
+            assert get_trace_context() == outer_ctx
+
 
 # ── Decorator exception propagation ───────────────────────────────────
 
@@ -225,9 +234,7 @@ class TestNestedTracing:
             with tracer.start_as_current_span("inner"):
                 ctx_inner = get_trace_context()
                 assert ctx_inner["trace_id"] is not None
-            # After inner exits, context is cleared (noop behavior)
-            ctx_after_inner = get_trace_context()
-            assert ctx_after_inner["trace_id"] is None
+            assert get_trace_context() == ctx_outer
         # After outer exits, context is cleared
         assert get_trace_context() == {"trace_id": None, "span_id": None}
 
@@ -361,8 +368,7 @@ class TestProviderShutdown:
         mock = Mock()
         mock.shutdown.side_effect = RuntimeError("shutdown failed")
         provider_mod._provider_ref = mock
-        # shutdown_tracing doesn't catch exceptions from provider.shutdown()
-        # but the code doesn't try/except around it, so let's verify behavior
         with pytest.raises(RuntimeError, match="shutdown failed"):
             provider_mod.shutdown_tracing()
-        # State should still be partially cleaned - verify the code path
+        assert provider_mod._provider_configured is False
+        assert provider_mod._provider_ref is None

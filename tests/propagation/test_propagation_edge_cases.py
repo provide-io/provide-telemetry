@@ -195,10 +195,12 @@ class TestBindClearLifecycle:
         clear_propagation_context()
 
         assert get_trace_context() == {"trace_id": None, "span_id": None}
+        assert get_context() == {}
 
     def test_clear_without_bind_is_safe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Calling clear without a prior bind should not crash."""
         monkeypatch.setattr(propagation_mod, "detach_w3c_context", lambda _t: None)
+        propagation_mod._restore_stack.set(())
         clear_propagation_context()
         assert get_trace_context() == {"trace_id": None, "span_id": None}
 
@@ -215,6 +217,40 @@ class TestBindClearLifecycle:
         )
         bind_propagation_context(ctx)
         assert len(attach_calls) == 0  # No attach since traceparent is None
+
+    def test_nested_bind_clear_restores_outer_logger_and_trace_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(propagation_mod, "attach_w3c_context", MagicMock(return_value="tok"))
+        monkeypatch.setattr(propagation_mod, "detach_w3c_context", lambda _t: None)
+
+        outer = PropagationContext(
+            traceparent="00-" + "a" * 32 + "-" + "b" * 16 + "-01",
+            tracestate="outer=1",
+            baggage="outer=yes",
+            trace_id="a" * 32,
+            span_id="b" * 16,
+        )
+        inner = PropagationContext(
+            traceparent="00-" + "c" * 32 + "-" + "d" * 16 + "-01",
+            tracestate="inner=1",
+            baggage="inner=yes",
+            trace_id="c" * 32,
+            span_id="d" * 16,
+        )
+        bind_propagation_context(outer)
+        outer_logger_ctx = get_context()
+        outer_trace_ctx = get_trace_context()
+
+        bind_propagation_context(inner)
+        assert get_context()["traceparent"] == inner.traceparent
+        assert get_trace_context()["trace_id"] == inner.trace_id
+
+        clear_propagation_context()
+        assert get_context() == outer_logger_ctx
+        assert get_trace_context() == outer_trace_ctx
+
+        clear_propagation_context()
+        assert get_context() == {}
+        assert get_trace_context() == {"trace_id": None, "span_id": None}
 
 
 # ── Async context isolation ────────────────────────────────────────────

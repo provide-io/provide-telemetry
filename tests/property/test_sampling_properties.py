@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -95,11 +96,11 @@ def test_override_rate_respected(key: str, override_rate: float) -> None:
 
 @given(signal=st.text(min_size=1, max_size=8))
 @settings(max_examples=20)
-def test_unknown_signal_falls_back_to_logs(signal: str) -> None:
+def test_unknown_signal_raises(signal: str) -> None:
     reset_sampling_for_tests()
     if signal not in {"logs", "traces", "metrics"}:
-        policy = get_sampling_policy(signal)
-        assert policy == get_sampling_policy("logs")
+        with pytest.raises(ValueError, match="unknown signal"):
+            get_sampling_policy(signal)
 
 
 # ── Backpressure properties ───────────────────────────────────────────

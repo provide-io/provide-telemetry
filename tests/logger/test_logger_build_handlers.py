@@ -371,6 +371,35 @@ def test_shutdown_logging_without_provider() -> None:
     assert core_mod._otel_log_provider is None
 
 
+def test_shutdown_logging_without_provider_clears_configured_state() -> None:
+    """shutdown_logging() with no provider must still clear _configured and _active_config."""
+    from undef.telemetry.config import TelemetryConfig
+
+    _reset_logging_for_tests()
+    core_mod._configured = True
+    core_mod._active_config = TelemetryConfig()
+    core_mod._otel_log_provider = None
+    core_mod.shutdown_logging()
+    assert core_mod._configured is False
+    assert core_mod._active_config is None
+
+
+def test_shutdown_logging_clears_state_even_when_provider_shutdown_raises() -> None:
+    """If provider.shutdown() raises, try/finally must still clear all state."""
+
+    class _BrokenProvider:
+        def shutdown(self) -> None:
+            raise RuntimeError("provider broken")
+
+    core_mod._otel_log_provider = _BrokenProvider()
+    core_mod._configured = True
+    with pytest.raises(RuntimeError, match="provider broken"):
+        core_mod.shutdown_logging()
+    assert core_mod._otel_log_provider is None
+    assert core_mod._configured is False
+    assert core_mod._active_config is None
+
+
 def test_shutdown_logging_with_provider() -> None:
     class _Provider:
         def __init__(self) -> None:
