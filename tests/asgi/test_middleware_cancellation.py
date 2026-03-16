@@ -19,13 +19,14 @@ import pytest
 from undef.telemetry.asgi import middleware as middleware_mod
 from undef.telemetry.asgi.middleware import TelemetryMiddleware
 from undef.telemetry.logger.context import clear_context, get_context
-from undef.telemetry.tracing.context import get_trace_context
+from undef.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 @pytest.fixture(autouse=True)
 def _clean_context() -> None:
     """Ensure context is clean before each test."""
     clear_context()
+    set_trace_context(None, None)
 
 
 async def _noop_receive() -> dict[str, Any]:
@@ -51,11 +52,11 @@ async def test_middleware_cleans_context_on_cancellation() -> None:
     }
 
     task = asyncio.create_task(middleware(scope, _noop_receive, _noop_send))
-    await app_entered.wait()
+    await asyncio.wait_for(app_entered.wait(), timeout=5)
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
 
     # Context must be cleared even after cancellation
     assert get_context() == {}
@@ -88,11 +89,11 @@ async def test_middleware_cleans_context_on_cancellation_with_auto_slo(
     }
 
     task = asyncio.create_task(middleware(scope, _noop_receive, _noop_send))
-    await app_entered.wait()
+    await asyncio.wait_for(app_entered.wait(), timeout=5)
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
 
     assert get_context() == {}
     # auto_slo metrics recorded in finally block before re-raising
@@ -116,11 +117,11 @@ async def test_middleware_websocket_cancellation_cleans_context() -> None:
     }
 
     task = asyncio.create_task(middleware(scope, _noop_receive, _noop_send))
-    await app_entered.wait()
+    await asyncio.wait_for(app_entered.wait(), timeout=5)
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
 
     assert get_context() == {}
     assert get_trace_context() == {"trace_id": None, "span_id": None}

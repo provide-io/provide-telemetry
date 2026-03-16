@@ -21,6 +21,7 @@ __all__ = [
 
 import copy
 import threading
+from dataclasses import asdict
 
 from undef.telemetry.backpressure import QueuePolicy, set_queue_policy
 from undef.telemetry.config import TelemetryConfig
@@ -93,11 +94,36 @@ def reload_runtime_from_env() -> TelemetryConfig:
 
 
 def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
-    """Full shutdown+setup cycle for when providers must change."""
+    """Apply hot runtime updates or fail fast when provider replacement would be required."""
+    from undef.telemetry.logger import core as logger_core
+    from undef.telemetry.metrics import provider as metrics_provider
     from undef.telemetry.setup import setup_telemetry, shutdown_telemetry
+    from undef.telemetry.tracing import provider as tracing_provider
 
-    shutdown_telemetry()
-    return setup_telemetry(config)
+    target = config or TelemetryConfig.from_env()
+    current = get_runtime_config()
+    if _provider_config_changed(current, target):
+        if (
+            logger_core._has_otel_log_provider()
+            or tracing_provider._has_tracing_provider()
+            or metrics_provider._has_meter_provider()
+        ):
+            raise RuntimeError(
+                "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
+                "restart the process and call setup_telemetry() with the new config"
+            )
+        shutdown_telemetry()
+        return setup_telemetry(target)
+    return update_runtime_config(target)
+
+
+def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) -> bool:
+    current_data = asdict(current)
+    target_data = asdict(target)
+    for hot_key in ("sampling", "backpressure", "exporter"):  # pragma: no mutate
+        current_data.pop(hot_key, None)  # pragma: no mutate
+        target_data.pop(hot_key, None)  # pragma: no mutate
+    return current_data != target_data
 
 
 def get_runtime_config() -> TelemetryConfig:
@@ -106,3 +132,10 @@ def get_runtime_config() -> TelemetryConfig:
         if _active_config is None:
             return TelemetryConfig.from_env()
         return copy.deepcopy(_active_config)
+
+
+def reset_runtime_for_tests() -> None:
+    """Clear the cached runtime config snapshot."""
+    global _active_config
+    with _lock:
+        _active_config = None

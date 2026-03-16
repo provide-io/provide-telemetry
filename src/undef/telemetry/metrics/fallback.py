@@ -16,6 +16,12 @@ from undef.telemetry.health import increment_exemplar_unsupported
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.tracing.context import get_trace_context
 
+# Lazy re-binding support: when an instrument is created before
+# setup_telemetry(), its _otel_* handle is None.  After provider
+# setup clears the meter cache, _resolve_otel re-creates the
+# OTel instrument from the real provider on first use.
+_RESOLVE_LOCK = threading.Lock()
+
 
 def _exemplar() -> dict[str, str]:
     trace_ctx = get_trace_context()
@@ -30,8 +36,27 @@ class Counter:
     def __init__(self, name: str, otel_counter: Any | None = None) -> None:
         self.name = name
         self._otel_counter = otel_counter
+        self._resolved = otel_counter is not None
         self._lock = threading.Lock()
         self.value = 0
+
+    def _resolve_otel(self) -> Any | None:
+        if self._resolved:
+            return self._otel_counter
+        from undef.telemetry.metrics.provider import get_meter
+
+        meter = get_meter()
+        if meter is None:
+            return None
+        with _RESOLVE_LOCK:
+            if self._resolved:
+                return self._otel_counter
+            try:
+                self._otel_counter = meter.create_counter(name=self.name)
+            except Exception:
+                self._otel_counter = None
+            self._resolved = True
+        return self._otel_counter
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
         if not should_sample("metrics", self.name):
@@ -42,7 +67,7 @@ class Counter:
         try:
             with self._lock:
                 self.value += amount
-            otel_counter = self._otel_counter
+            otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
                 exemplar = _exemplar()
@@ -61,8 +86,27 @@ class Gauge:
     def __init__(self, name: str, otel_gauge: Any | None = None) -> None:
         self.name = name
         self._otel_gauge = otel_gauge
+        self._resolved = otel_gauge is not None
         self._lock = threading.Lock()
         self.value = 0
+
+    def _resolve_otel(self) -> Any | None:
+        if self._resolved:
+            return self._otel_gauge
+        from undef.telemetry.metrics.provider import get_meter
+
+        meter = get_meter()
+        if meter is None:
+            return None
+        with _RESOLVE_LOCK:
+            if self._resolved:
+                return self._otel_gauge
+            try:
+                self._otel_gauge = meter.create_up_down_counter(name=self.name)
+            except Exception:
+                self._otel_gauge = None
+            self._resolved = True
+        return self._otel_gauge
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
         if not should_sample("metrics", self.name):
@@ -71,12 +115,12 @@ class Gauge:
         if ticket is None:
             return
         try:
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 self.value += amount
-            otel_gauge = self._otel_gauge
-            if otel_gauge is not None:
-                attrs = guard_attributes(attributes or {})
-                otel_gauge.add(amount, attrs)
+                if otel_gauge is not None:
+                    otel_gauge.add(amount, attrs)
         finally:
             release(ticket)
 
@@ -87,13 +131,13 @@ class Gauge:
         if ticket is None:
             return
         try:
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 delta = value - self.value
                 self.value = value
-            otel_gauge = self._otel_gauge
-            if otel_gauge is not None:
-                attrs = guard_attributes(attributes or {})
-                otel_gauge.add(delta, attrs)
+                if otel_gauge is not None:
+                    otel_gauge.add(delta, attrs)
         finally:
             release(ticket)
 
@@ -102,11 +146,30 @@ class Histogram:
     def __init__(self, name: str, otel_histogram: Any | None = None) -> None:
         self.name = name
         self._otel_histogram = otel_histogram
+        self._resolved = otel_histogram is not None
         self._lock = threading.Lock()
         self.count: int = 0
         self.total: float = 0.0
         self.min: float = float("inf")  # pragma: no mutate
         self.max: float = float("-inf")  # pragma: no mutate
+
+    def _resolve_otel(self) -> Any | None:
+        if self._resolved:
+            return self._otel_histogram
+        from undef.telemetry.metrics.provider import get_meter
+
+        meter = get_meter()
+        if meter is None:
+            return None
+        with _RESOLVE_LOCK:
+            if self._resolved:
+                return self._otel_histogram
+            try:
+                self._otel_histogram = meter.create_histogram(name=self.name)
+            except Exception:
+                self._otel_histogram = None
+            self._resolved = True
+        return self._otel_histogram
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
         if not should_sample("metrics", self.name):
@@ -122,7 +185,7 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
-            otel_histogram = self._otel_histogram
+            otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
                 exemplar = _exemplar()

@@ -56,14 +56,13 @@ def test_maxsize_returns_logs_maxsize_for_unknown_signal() -> None:
     assert _maxsize("unknown") == 10
 
 
-# ── try_acquire with unknown signal falls back to "logs" ───────────────
+# ── try_acquire with unknown signal raises ─────────────────────────────
 
 
-def test_try_acquire_unknown_signal_falls_back_to_logs() -> None:
+def test_try_acquire_unknown_signal_raises() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=1, traces_maxsize=1, metrics_maxsize=1))
-    ticket = try_acquire("bogus")
-    assert ticket is not None
-    assert ticket.signal == "logs"
+    with pytest.raises(ValueError, match="unknown signal"):
+        try_acquire("bogus")
 
 
 # ── token=0 when maxsize is 0 (unbounded) ─────────────────────────────
@@ -128,21 +127,16 @@ def test_release_none_is_noop() -> None:
     assert snap.queue_depth_logs == 0
 
 
-# ── release with unknown signal falls back to "logs" ──────────────────
+# ── release with unknown signal raises ────────────────────────────────
 
 
-def test_release_unknown_signal_falls_back_to_logs() -> None:
+def test_release_unknown_signal_raises() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=5))
-    # Acquire on logs to put something in the logs queue
     ticket = try_acquire("logs")
     assert ticket is not None
-    snap_before = get_health_snapshot()
-    assert snap_before.queue_depth_logs == 1
-    # Craft a ticket with an unknown signal but a valid token from the logs queue
     fake_ticket = QueueTicket(signal="unknown", token=ticket.token)
-    release(fake_ticket)
-    snap_after = get_health_snapshot()
-    assert snap_after.queue_depth_logs == 0
+    with pytest.raises(ValueError, match="unknown signal"):
+        release(fake_ticket)
 
 
 # ── set_queue_policy resets queue depth to 0 (not 1) ──────────────────

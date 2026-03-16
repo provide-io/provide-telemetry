@@ -43,13 +43,18 @@ class ExporterPolicy:
     allow_blocking_in_event_loop: bool = False
 
 
+_CIRCUIT_BREAKER_THRESHOLD = 3  # consecutive timeouts before tripping
+_CIRCUIT_BREAKER_COOLDOWN = 30.0  # seconds before allowing a half-open probe
+
 _lock = threading.Lock()
 _policies: dict[Signal, ExporterPolicy] = {
     "logs": ExporterPolicy(),
     "traces": ExporterPolicy(),
     "metrics": ExporterPolicy(),
 }
-_async_warned_signals: set[Signal] = set()
+_consecutive_timeouts: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
+_circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
+_async_warned_signals: set[tuple[Signal, bool]] = set()
 _timeout_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
 
@@ -83,13 +88,25 @@ def get_exporter_policy(signal: Signal) -> ExporterPolicy:
 
 
 def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
-    policy = get_exporter_policy(signal)
+    sig = _validate_signal(signal)
+    policy = get_exporter_policy(sig)
     attempts = max(1, policy.retries + 1)
     backoff_seconds = policy.backoff_seconds
     timeout_seconds = max(0.0, policy.timeout_seconds)
+    # Circuit breaker: skip work if the pool is likely saturated.
+    if timeout_seconds > 0:
+        with _lock:
+            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+                elapsed = time.monotonic() - _circuit_tripped_at[sig]
+                if elapsed < _CIRCUIT_BREAKER_COOLDOWN:
+                    record_export_failure(sig, TimeoutError("circuit breaker open"))  # pragma: no mutate
+                    if policy.fail_open:
+                        return None
+                    raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
+                # Half-open: cooldown expired, allow one probe attempt through
     if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):  # pragma: no mutate
-        increment_async_blocking_risk(signal)  # pragma: no mutate
-        _warn_async_risk(signal, policy)  # pragma: no mutate
+        increment_async_blocking_risk(sig)  # pragma: no mutate
+        _warn_async_risk(sig, policy)  # pragma: no mutate
         if not policy.allow_blocking_in_event_loop:
             attempts = 1
             backoff_seconds = 0.0  # pragma: no mutate
@@ -99,13 +116,28 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         try:
             result = _run_attempt_with_timeout(operation, timeout_seconds)
             latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
-            record_export_success(signal, latency_ms=latency_ms)  # pragma: no mutate
+            record_export_success(sig, latency_ms=latency_ms)  # pragma: no mutate
+            with _lock:
+                _consecutive_timeouts[sig] = 0
             return result
+        except TimeoutError as exc:
+            last_error = exc
+            record_export_failure(sig, exc)  # pragma: no mutate
+            with _lock:
+                _consecutive_timeouts[sig] += 1
+                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+                    _circuit_tripped_at[sig] = time.monotonic()
+            if attempt < attempts - 1:
+                increment_retries(sig)
+                if backoff_seconds > 0:  # pragma: no mutate
+                    time.sleep(backoff_seconds)
         except Exception as exc:
             last_error = exc
-            record_export_failure(signal, exc)  # pragma: no mutate
+            record_export_failure(sig, exc)  # pragma: no mutate
+            with _lock:
+                _consecutive_timeouts[sig] = 0
             if attempt < attempts - 1:
-                increment_retries(signal)
+                increment_retries(sig)
                 if backoff_seconds > 0:  # pragma: no mutate
                     time.sleep(backoff_seconds)
     if policy.fail_open:
@@ -142,6 +174,8 @@ def reset_resilience_for_tests() -> None:
     with _lock:
         for signal in ("logs", "traces", "metrics"):
             _policies[signal] = ExporterPolicy()
+            _consecutive_timeouts[signal] = 0
+            _circuit_tripped_at[signal] = 0.0
         _async_warned_signals.clear()
         if _timeout_executor is not None:
             _timeout_executor.shutdown(wait=False)
@@ -157,15 +191,15 @@ def _is_running_in_event_loop() -> bool:
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in {"logs", "traces", "metrics"} else "logs"  # pragma: no mutate
+    key = (signal, policy.allow_blocking_in_event_loop)
     with _lock:
-        if sig in _async_warned_signals:
+        if key in _async_warned_signals:
             return
-        _async_warned_signals.add(sig)
+        _async_warned_signals.add(key)
     if policy.allow_blocking_in_event_loop:
         warnings.warn(  # pragma: no mutate
             (
-                f"resilience policy for {sig} allows blocking behavior in an active event loop "
+                f"resilience policy for {signal} allows blocking behavior in an active event loop "
                 "(retries/backoff configured)"  # pragma: no mutate
             ),
             RuntimeWarning,
@@ -174,7 +208,7 @@ def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
         return
     warnings.warn(  # pragma: no mutate
         (
-            f"resilience policy for {sig} uses retries/backoff in an active event loop; "
+            f"resilience policy for {signal} uses retries/backoff in an active event loop; "
             "forcing fail-fast behavior for this call"  # pragma: no mutate
         ),
         RuntimeWarning,

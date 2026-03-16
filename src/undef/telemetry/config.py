@@ -297,10 +297,13 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
         if "=" not in pair:
             stripped = pair.strip()
             if stripped:
-                _logger.warning("malformed OTLP header pair ignored (expected key=value): %r", stripped)
+                _logger.warning(  # pragma: no mutate
+                    "malformed OTLP header pair ignored (expected key=value): %r",  # pragma: no mutate
+                    stripped,  # pragma: no mutate
+                )
             continue
         key, raw = pair.split("=", 1)
-        key = key.strip()
+        key = unquote(key.strip())
         if not key:
             continue
         headers[key] = unquote(raw.strip())

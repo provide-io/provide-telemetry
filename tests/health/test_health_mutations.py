@@ -42,11 +42,13 @@ class TestKnownSignal:
     def test_metrics_returns_metrics(self) -> None:
         assert _known_signal("metrics") == "metrics"
 
-    def test_unknown_signal_falls_back_to_logs(self) -> None:
-        assert _known_signal("unknown") == "logs"
+    def test_unknown_signal_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            _known_signal("unknown")
 
-    def test_empty_string_falls_back_to_logs(self) -> None:
-        assert _known_signal("") == "logs"
+    def test_empty_string_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            _known_signal("")
 
 
 # ── set_queue_depth ────────────────────────────────────────────
@@ -79,10 +81,9 @@ class TestSetQueueDepth:
         snap = get_health_snapshot()
         assert snap.queue_depth_logs == 0
 
-    def test_unknown_signal_maps_to_logs(self) -> None:
-        set_queue_depth("bogus", 42)
-        snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 42
+    def test_unknown_signal_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            set_queue_depth("bogus", 42)
 
 
 # ── increment_dropped ─────────────────────────────────────────
