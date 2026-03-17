@@ -141,6 +141,22 @@ class TestPrettyRendererFormat:
 
 
 class TestPrettyRendererIntegration:
+    @staticmethod
+    def _force_root_handler_stream(stream: io.StringIO) -> None:
+        """Point all root StreamHandlers at *stream*.
+
+        ``logging.basicConfig(force=True)`` removes old handlers and adds
+        the ones we pass in.  In some Python versions (notably 3.11 under
+        Docker/xdist), the handler's stream reference can desynchronise
+        from ``sys.stderr``.  Explicitly overriding the stream after
+        ``configure_logging()`` makes the test independent of that plumbing.
+        """
+        import logging as _logging
+
+        for h in _logging.root.handlers:
+            if isinstance(h, _logging.StreamHandler) and not isinstance(h, _logging.FileHandler):
+                h.stream = stream
+
     def test_configure_logging_pretty_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structlog.reset_defaults()
         _reset_logging_for_tests()
@@ -156,6 +172,7 @@ class TestPrettyRendererIntegration:
 
         cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)  # must not raise
+        self._force_root_handler_stream(fake_stderr)
 
         bound = structlog.get_logger("test_pretty")
         bound.info("auth.login.complete", user_id="u1")
@@ -177,6 +194,7 @@ class TestPrettyRendererIntegration:
 
         cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)
+        self._force_root_handler_stream(fake_stderr)
 
         bound = structlog.get_logger("test_pretty_notty")
         bound.info("auth.login.complete")
@@ -201,6 +219,7 @@ class TestPrettyRendererIntegration:
             {"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_PRETTY_KEY_COLOR": "cyan", "UNDEF_LOG_INCLUDE_CALLER": "false"}
         )
         configure_logging(cfg)
+        self._force_root_handler_stream(fake_stderr)
 
         bound = structlog.get_logger("test_pretty_key_color")
         bound.info("auth.login.complete", user_id="u1")
@@ -229,6 +248,7 @@ class TestPrettyRendererIntegration:
             }
         )
         configure_logging(cfg)
+        self._force_root_handler_stream(fake_stderr)
 
         bound = structlog.get_logger("test_pretty_fields")
         bound.info("auth.login.complete", user_id="u1", secret="s3cr3t")
