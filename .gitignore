@@ -15,4 +15,5 @@ mutants/
 .pymutant-state/
 .pymutant-ledger.json
 bf-*.txt
+.provide/
 otel_stderr.txt

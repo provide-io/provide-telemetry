@@ -117,13 +117,25 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
     return update_runtime_config(target)
 
 
+_COLD_KEYS = frozenset(
+    {
+        "service_name",
+        "environment",
+        "version",
+        "strict_schema",
+        "logging",
+        "tracing",
+        "metrics",
+        "event_schema",
+        "slo",
+    }
+)
+
+
 def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) -> bool:
     current_data = asdict(current)
     target_data = asdict(target)
-    for hot_key in ("sampling", "backpressure", "exporter"):  # pragma: no mutate
-        current_data.pop(hot_key, None)  # pragma: no mutate
-        target_data.pop(hot_key, None)  # pragma: no mutate
-    return current_data != target_data
+    return any(current_data.get(k) != target_data.get(k) for k in _COLD_KEYS)
 
 
 def get_runtime_config() -> TelemetryConfig:

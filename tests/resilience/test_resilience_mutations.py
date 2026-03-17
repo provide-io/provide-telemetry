@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -154,24 +154,22 @@ def test_reset_resilience_policies_are_exporterpolicy_not_none() -> None:
         assert isinstance(p, ExporterPolicy), f"{signal} policy is not ExporterPolicy"
 
 
-def test_reset_resilience_shuts_down_executor_with_wait_false() -> None:
+def test_reset_resilience_shuts_down_executors_with_wait_false() -> None:
     """Kill mutant: shutdown(wait=True) or shutdown(wait=None)."""
-    # Force executor creation
-    _get_timeout_executor()
+    # Force executor creation for each signal
+    for sig in ("logs", "traces", "metrics"):
+        _get_timeout_executor(sig)
 
-    with patch.object(resilience_mod, "_timeout_executor") as mock_exec:
-        mock_exec.shutdown = MagicMock()
-        mock_exec.__bool__ = lambda self: True
-        # We need to use the actual module attribute
-        pass
+    executors = list(resilience_mod._timeout_executors.values())
+    mocks = []
+    for ex in executors:
+        m = patch.object(ex, "shutdown", wraps=ex.shutdown)
+        mocks.append(m.start())
 
-    # Instead, test via the actual path: create executor, then reset
-    executor = _get_timeout_executor()
-    with patch.object(executor, "shutdown", wraps=executor.shutdown) as mock_shutdown:
-        # Store reference so reset finds it
-        resilience_mod._timeout_executor = executor
-        reset_resilience_for_tests()
+    reset_resilience_for_tests()
+    for mock_shutdown in mocks:
         mock_shutdown.assert_called_once_with(wait=False)
+    patch.stopall()
 
 
 # ---------------------------------------------------------------------------
@@ -179,11 +177,20 @@ def test_reset_resilience_shuts_down_executor_with_wait_false() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_timeout_executor_has_4_workers() -> None:
-    """Kill mutant: max_workers=None or max_workers=5."""
+def test_get_timeout_executor_has_2_workers_per_signal() -> None:
+    """Kill mutant: max_workers=None or max_workers=3."""
     reset_resilience_for_tests()
-    executor = _get_timeout_executor()
-    assert executor._max_workers == 4
+    for sig in ("logs", "traces", "metrics"):
+        executor = _get_timeout_executor(sig)
+        assert executor._max_workers == 2
+
+
+def test_get_timeout_executor_thread_name_prefix() -> None:
+    """Kill mutant: thread_name_prefix=None or removed."""
+    reset_resilience_for_tests()
+    for sig in ("logs", "traces", "metrics"):
+        executor = _get_timeout_executor(sig)
+        assert executor._thread_name_prefix == f"undef-resilience-{sig}"
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +212,7 @@ def test_run_attempt_with_timeout_zero_runs_directly() -> None:
 
     # With timeout=0, should run directly (no executor)
     with patch.object(resilience_mod, "_get_timeout_executor") as mock_get:
-        result = _run_attempt_with_timeout(_op, 0.0)
+        result = _run_attempt_with_timeout("logs", _op, 0.0)
         mock_get.assert_not_called()
     assert result == "direct"
     assert calls["direct"] == 1
@@ -214,14 +221,14 @@ def test_run_attempt_with_timeout_zero_runs_directly() -> None:
 def test_run_attempt_with_timeout_negative_runs_directly() -> None:
     """Negative timeout also runs directly."""
     with patch.object(resilience_mod, "_get_timeout_executor") as mock_get:
-        result = _run_attempt_with_timeout(lambda: "neg", -1.0)
+        result = _run_attempt_with_timeout("logs", lambda: "neg", -1.0)
         mock_get.assert_not_called()
     assert result == "neg"
 
 
 def test_run_attempt_with_timeout_positive_uses_executor() -> None:
     """Positive timeout uses the thread pool executor."""
-    result = _run_attempt_with_timeout(lambda: "pooled", 5.0)
+    result = _run_attempt_with_timeout("traces", lambda: "pooled", 5.0)
     assert result == "pooled"
 
 

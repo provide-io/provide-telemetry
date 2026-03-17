@@ -6,6 +6,6 @@
 """ASGI integration helpers."""
 
 from undef.telemetry.asgi.middleware import TelemetryMiddleware
-from undef.telemetry.asgi.websocket import bind_websocket_context
+from undef.telemetry.asgi.websocket import bind_websocket_context, clear_websocket_context
 
-__all__ = ["TelemetryMiddleware", "bind_websocket_context"]
+__all__ = ["TelemetryMiddleware", "bind_websocket_context", "clear_websocket_context"]

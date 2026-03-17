@@ -43,6 +43,7 @@ class TestEarlyGetMeterDoesNotBlockSetup:
         fake_otel = SimpleNamespace(
             get_meter=_fake_get_meter,
             set_meter_provider=Mock(),
+            get_meter_provider=lambda: None,
         )
         monkeypatch.setattr(prov_mod, "_load_otel_metrics_api", lambda: fake_otel)
 
@@ -81,6 +82,7 @@ class TestEarlyGetMeterDoesNotBlockSetup:
         fake_otel = SimpleNamespace(
             get_meter=lambda name: real_meter,
             set_meter_provider=Mock(),
+            get_meter_provider=lambda: None,
         )
         monkeypatch.setattr(prov_mod, "_load_otel_metrics_api", lambda: fake_otel)
 
@@ -111,24 +113,15 @@ class TestEarlyGetMeterDoesNotBlockSetup:
 # ── Mutation-killing tests for provider internals ──────────────────────
 
 
-class TestCaptureMeterProviderMutants:
-    """Kill mutants in _capture_default_meter_provider (negation flip, api=None, api is None)."""
+class TestBaselineMeterProviderReset:
+    """Kill mutants in _set_meter_for_test baseline reset."""
 
-    def test_returns_sentinel_when_api_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry import _otel as otel_mod
-
-        sentinel = object()
-        fake_api = SimpleNamespace(get_meter_provider=lambda: sentinel)
-        monkeypatch.setattr(prov_mod, "_HAS_OTEL_METRICS", True)
-        monkeypatch.setattr(otel_mod, "load_otel_metrics_api", lambda: fake_api)
-        assert prov_mod._capture_default_meter_provider() is sentinel
-
-    def test_returns_none_when_api_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry import _otel as otel_mod
-
-        monkeypatch.setattr(prov_mod, "_HAS_OTEL_METRICS", True)
-        monkeypatch.setattr(otel_mod, "load_otel_metrics_api", lambda: None)
-        assert prov_mod._capture_default_meter_provider() is None
+    def test_resets_baseline_captured_to_false(self) -> None:
+        prov_mod._baseline_captured = True
+        prov_mod._baseline_meter_provider = object()
+        _set_meter_for_test(None)
+        assert prov_mod._baseline_captured is False
+        assert prov_mod._baseline_meter_provider is None
 
 
 class TestSetMeterForTestMutants:
@@ -152,7 +145,8 @@ class TestGetMeterProviderPassthrough:
         _set_meter_for_test(None)
         monkeypatch.setattr(prov_mod, "_HAS_OTEL_METRICS", True)
         monkeypatch.setattr(prov_mod, "_load_otel_metrics_api", lambda: fake_api)
-        monkeypatch.setattr(prov_mod, "_DEFAULT_METER_PROVIDER", None)
+        monkeypatch.setattr(prov_mod, "_baseline_captured", True)
+        monkeypatch.setattr(prov_mod, "_baseline_meter_provider", None)
         result = get_meter()
         assert result == "live-meter"
 
@@ -188,6 +182,7 @@ class TestSetupMetricsSetsGlobalFlag:
         exporter_cls = Mock(return_value="exporter")
         fake_otel = SimpleNamespace(
             set_meter_provider=Mock(),
+            get_meter_provider=lambda: None,
             get_meter=Mock(return_value="meter"),
         )
         monkeypatch.setattr(
