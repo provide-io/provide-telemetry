@@ -15,7 +15,7 @@ from typing import Any
 
 from undef.telemetry.cardinality import register_cardinality_limit
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context, get_context, restore_context
+from undef.telemetry.logger.context import bind_context, reset_context, save_context
 from undef.telemetry.logger.core import get_logger
 from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
 from undef.telemetry.schema.events import event_name
@@ -46,7 +46,7 @@ class TelemetryMiddleware:
 
         request_id = _extract_header(scope, b"x-request-id") or uuid.uuid4().hex
         session_id = _extract_header(scope, b"x-session-id")
-        pre_request_ctx = get_context()
+        ctx_token = save_context()
         bind_context(request_id=request_id)
         if session_id is not None:
             bind_context(session_id=session_id)
@@ -87,7 +87,7 @@ class TelemetryMiddleware:
                 method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
                 record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)
             clear_propagation_context()
-            restore_context(pre_request_ctx)
+            reset_context(ctx_token)
 
 
 _DYNAMIC_SEGMENT = re.compile(

@@ -3,4 +3,3 @@
 # SPDX-Comment: Part of Undef Telemetry.
 #
 
-"""Undef namespace package."""

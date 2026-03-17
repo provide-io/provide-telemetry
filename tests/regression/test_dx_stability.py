@@ -197,7 +197,7 @@ class TestMetricCreationLogging:
 
         assert c.name == "test.counter"
         assert c._otel_counter is None
-        assert "failed to create OTel counter" in caplog.text
+        assert "metrics.counter.create_failed" in caplog.text
 
     def test_gauge_creation_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.metrics.api import gauge
@@ -213,7 +213,7 @@ class TestMetricCreationLogging:
 
         assert g.name == "test.gauge"
         assert g._otel_gauge is None
-        assert "failed to create OTel gauge" in caplog.text
+        assert "metrics.gauge.create_failed" in caplog.text
 
     def test_histogram_creation_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.metrics.api import histogram
@@ -229,7 +229,7 @@ class TestMetricCreationLogging:
 
         assert h.name == "test.histogram"
         assert h._otel_histogram is None
-        assert "failed to create OTel histogram" in caplog.text
+        assert "metrics.histogram.create_failed" in caplog.text
 
 
 # ── Setup rollback logging ──────────────────────────────────────────
@@ -245,7 +245,7 @@ class TestSetupRollbackLogging:
         ):
             _rollback(["configure_logging"])
 
-        assert "rollback failed for configure_logging" in caplog.text
+        assert "setup.rollback.step_failed" in caplog.text
 
     def test_rollback_continues_after_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.setup import _rollback
@@ -280,8 +280,7 @@ class TestSamplingRateClampingWarning:
             result = _normalize_rate(1.5)
 
         assert result == 1.0
-        assert "clamped" in caplog.text
-        assert "1.5" in caplog.text
+        assert "sampling.rate.clamped.warning" in caplog.text
 
     def test_rate_below_zero_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.sampling import _normalize_rate
@@ -290,7 +289,7 @@ class TestSamplingRateClampingWarning:
             result = _normalize_rate(-0.5)
 
         assert result == 0.0
-        assert "clamped" in caplog.text
+        assert "sampling.rate.clamped.warning" in caplog.text
 
     def test_valid_rate_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.sampling import _normalize_rate
@@ -313,8 +312,7 @@ class TestOTLPHeaderWarning:
             result = _parse_otlp_headers("good=value,bad-no-equals,another=ok")
 
         assert result == {"good": "value", "another": "ok"}
-        assert "malformed OTLP header pair" in caplog.text
-        assert "bad-no-equals" in caplog.text
+        assert "config.otlp.header_malformed" in caplog.text
 
     def test_empty_malformed_pair_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry.config import _parse_otlp_headers
@@ -349,7 +347,7 @@ class TestOTelDebugLogging:
             result = has_otel()
 
         assert result is False
-        assert "no-op fallbacks" in caplog.text
+        assert "otel.import.not_installed" in caplog.text
 
     def test_load_trace_api_logs_debug_when_missing(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry._otel import load_otel_trace_api
@@ -361,7 +359,7 @@ class TestOTelDebugLogging:
             result = load_otel_trace_api()
 
         assert result is None
-        assert "no-op fallback" in caplog.text
+        assert "otel.trace.import_unavailable" in caplog.text
 
     def test_load_metrics_api_logs_debug_when_missing(self, caplog: pytest.LogCaptureFixture) -> None:
         from undef.telemetry._otel import load_otel_metrics_api
@@ -373,7 +371,7 @@ class TestOTelDebugLogging:
             result = load_otel_metrics_api()
 
         assert result is None
-        assert "no-op fallback" in caplog.text
+        assert "otel.metrics.import_unavailable" in caplog.text
 
 
 # ── OTel SDK log noise suppression ─────────────────────────────────

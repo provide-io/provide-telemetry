@@ -22,6 +22,7 @@ from typing import Any
 from undef.telemetry import (
     TelemetryMiddleware,
     bind_websocket_context,
+    clear_websocket_context,
     extract_w3c_context,
     get_logger,
     get_trace_context,
@@ -134,10 +135,12 @@ async def _run_websocket_context() -> None:
             (b"x-actor-id", b"player-7"),
         ],
     }
-    result = bind_websocket_context(ws_scope)
-    print(f"  📋 request_id={result.get('request_id')}")
-    print(f"  📋 session_id={result.get('session_id')}")
-    print(f"  📋 actor_id={result.get('actor_id')}")
+    token = bind_websocket_context(ws_scope)
+    ctx = get_context()
+    print(f"  📋 request_id={ctx.get('request_id')}")
+    print(f"  📋 session_id={ctx.get('session_id')}")
+    print(f"  📋 actor_id={ctx.get('actor_id')}")
+    clear_websocket_context(token)
 
 
 def main() -> None:

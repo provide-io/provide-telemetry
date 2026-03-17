@@ -91,6 +91,91 @@ sequenceDiagram
   M-->>C: response
 ```
 
+## Processor Pipeline
+
+```mermaid
+flowchart LR
+    A["merge_contextvars"] --> B["merge_runtime_context"]
+    B --> C["add_log_level"]
+    C --> D{"include_timestamp?"}
+    D -->|yes| E["TimeStamper"]
+    D -->|no| F["add_standard_fields"]
+    E --> F
+    F --> G["apply_sampling"]
+    G -->|DropEvent| X["discarded"]
+    G --> H["enforce_event_schema"]
+    H --> I["sanitize_sensitive_fields"]
+    I --> J{"include_caller?"}
+    J -->|yes| K["CallsiteParameterAdder"]
+    J -->|no| L["Renderer"]
+    K --> L
+    L --> M["console / json / pretty"]
+```
+
+## Setup and Shutdown State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    Uninitialized --> Ready: setup_telemetry() [lock acquired]
+    Ready --> Uninitialized: shutdown_telemetry() [lock acquired]
+    Ready --> Ready: setup_telemetry() [idempotent no-op]
+    Ready --> Ready: update_runtime_config() [hot reload policies]
+```
+
+## Resilience Flow
+
+```mermaid
+flowchart TD
+    A["Export attempt"] --> B{"Circuit breaker open?"}
+    B -->|open, within cooldown| C{"fail_open?"}
+    B -->|closed or half-open| D["Submit to ThreadPoolExecutor"]
+    D --> E{"Completed within timeout?"}
+    E -->|yes| F["record_export_success, reset timeouts"]
+    E -->|timeout| G["Increment consecutive timeouts"]
+    G --> H{"Threshold reached (3)?"}
+    H -->|yes| I["Trip circuit breaker, record timestamp"]
+    H -->|no| J{"Retries remaining?"}
+    I --> J
+    J -->|yes| K["Backoff sleep, then retry"] --> D
+    J -->|no| C
+    D -->|other error| L["record_export_failure, reset timeouts"]
+    L --> J
+    C -->|true| M["Return None"]
+    C -->|false| N["Raise exception"]
+```
+
+## Subsystem Inventory
+
+| Module | Responsibility |
+|--------|---------------|
+| `__init__.py` | Public API facade, 53 exports |
+| `setup.py` | Lock-protected init/shutdown coordinator with rollback |
+| `config.py` | Pydantic-free dataclass config, env var parsing |
+| `runtime.py` | Hot-reload API, provider-change detection |
+| `logger/core.py` | Structlog pipeline, handler construction, OTel log export |
+| `logger/context.py` | Contextvars for request/session context |
+| `logger/processors.py` | Processor chain: schema, sampling, PII, standard fields |
+| `logger/pretty.py` | Pretty renderer with configurable colors |
+| `tracing/provider.py` | OTel TracerProvider or no-op fallback |
+| `tracing/context.py` | Contextvars for trace_id/span_id |
+| `tracing/decorators.py` | `@trace` async decorator |
+| `metrics/provider.py` | OTel MeterProvider or fallback |
+| `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
+| `metrics/instruments.py` | In-process fallback Counter/Gauge/Histogram |
+| `schema/events.py` | Event name validation, required-key enforcement |
+| `sampling.py` | Per-signal probabilistic sampling with overrides |
+| `backpressure.py` | Bounded queue ticket system |
+| `resilience.py` | Retry, timeout, circuit breaker, ThreadPoolExecutor |
+| `pii.py` | PII rule engine with nested traversal |
+| `cardinality.py` | TTL-based attribute cardinality guards |
+| `health.py` | Self-observability counters and snapshot |
+| `propagation.py` | W3C traceparent/tracestate/baggage extraction |
+| `slo.py` | RED/USE metric helpers |
+| `exceptions.py` | TelemetryError, ConfigurationError |
+| `asgi/middleware.py` | ASGI middleware for request context |
+| `asgi/websocket.py` | WebSocket context helpers |
+
 ## Testing Strategy
 
 - Unit tests with branch coverage for all local logic and fallback paths.

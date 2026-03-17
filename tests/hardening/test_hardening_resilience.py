@@ -64,7 +64,7 @@ def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
 
 
 def test_run_attempt_with_timeout_zero_delegates_directly() -> None:
-    assert resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.0) == "ok"
+    assert resilience_mod._run_attempt_with_timeout("logs", lambda: "ok", 0.0) == "ok"
 
 
 def test_run_attempt_with_timeout_cancel_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -83,20 +83,24 @@ def test_run_attempt_with_timeout_cancel_path(monkeypatch: pytest.MonkeyPatch) -
         def submit(self, fn: Any, *args: Any, **kwargs: Any) -> _FakeFuture:
             return _FakeFuture()
 
-    monkeypatch.setattr(resilience_mod, "_get_timeout_executor", lambda: _FakeExecutor())
+    monkeypatch.setattr(resilience_mod, "_get_timeout_executor", lambda _signal: _FakeExecutor())
 
     with pytest.raises(TimeoutError, match="operation timed out"):
-        resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.1)
+        resilience_mod._run_attempt_with_timeout("logs", lambda: "ok", 0.1)
     assert cancelled["count"] == 1
 
 
-def test_timeout_executor_singleton() -> None:
+def test_timeout_executor_singleton_per_signal() -> None:
     resilience_mod.reset_resilience_for_tests()
-    ex1 = resilience_mod._get_timeout_executor()
-    ex2 = resilience_mod._get_timeout_executor()
+    ex1 = resilience_mod._get_timeout_executor("logs")
+    ex2 = resilience_mod._get_timeout_executor("logs")
     assert ex1 is ex2
+    # Different signals get different executors
+    ex_traces = resilience_mod._get_timeout_executor("traces")
+    assert ex_traces is not ex1
+    # Reset clears all executors
     resilience_mod.reset_resilience_for_tests()
-    ex3 = resilience_mod._get_timeout_executor()
+    ex3 = resilience_mod._get_timeout_executor("logs")
     assert ex3 is not ex1
 
 

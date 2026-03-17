@@ -11,43 +11,9 @@ See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/com
 
 ## Core Environment Variables
 
-- `UNDEF_TELEMETRY_SERVICE_NAME`
-- `UNDEF_TELEMETRY_ENV`
-- `UNDEF_TELEMETRY_VERSION`
-- `UNDEF_TELEMETRY_STRICT_SCHEMA`
-- `UNDEF_TELEMETRY_STRICT_EVENT_NAME`
-- `UNDEF_TELEMETRY_REQUIRED_KEYS`
-- `UNDEF_LOG_LEVEL`
-- `UNDEF_LOG_FORMAT`
-- `UNDEF_LOG_INCLUDE_TIMESTAMP`
-- `UNDEF_LOG_INCLUDE_CALLER`
-- `UNDEF_LOG_CODE_ATTRIBUTES`
-- `UNDEF_LOG_SANITIZE`
-- `UNDEF_TRACE_ENABLED`
-- `UNDEF_TRACE_SAMPLE_RATE`
-- `UNDEF_METRICS_ENABLED`
-- `OTEL_EXPORTER_OTLP_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_LOGS_HEADERS`
-- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_TRACES_HEADERS`
-- `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_METRICS_HEADERS`
-- `UNDEF_EXPORTER_LOGS_RETRIES`
-- `UNDEF_EXPORTER_TRACES_RETRIES`
-- `UNDEF_EXPORTER_METRICS_RETRIES`
-- `UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS`
-- `UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS`
-- `UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS`
-- `UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS`
-- `UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS`
-- `UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS`
-- `UNDEF_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP`
-- `UNDEF_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP`
-- `UNDEF_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP`
-- `OPENOBSERVE_URL`
-- `OPENOBSERVE_USER`
-- `OPENOBSERVE_PASSWORD`
+All environment variables with types, defaults, and descriptions are documented in the
+[Configuration Reference](CONFIGURATION.md). The most commonly set variables are
+`UNDEF_TELEMETRY_SERVICE_NAME`, `UNDEF_LOG_LEVEL`, and `UNDEF_LOG_FORMAT`.
 
 ## Event Naming Policy
 
@@ -68,7 +34,7 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Call `setup_telemetry()` once during process startup.
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
 - `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
-- After `shutdown_telemetry()`, a subsequent `setup_telemetry()` call performs a full reinitialization (including logging providers).
+- After `shutdown_telemetry()`, package-local setup state is cleared. If real OTel providers had been installed, provider-changing lifecycle transitions still require a full process restart before `setup_telemetry()`.
 - `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot, not a caller-owned mutable config reference.
 
 ## Local Health Check

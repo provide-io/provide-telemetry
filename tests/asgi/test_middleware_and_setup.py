@@ -85,15 +85,19 @@ async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.
     def _bind_context(**kwargs: str | None) -> None:
         calls.append(("bind", kwargs))
 
-    def _get_context() -> dict[str, object]:
-        return {}
+    saved_tokens: list[object] = []
+    sentinel_token = object()
 
-    def _restore_context(snapshot: dict[str, object]) -> None:
-        calls.append(("restore", snapshot))
+    def _save_context() -> object:
+        saved_tokens.append(sentinel_token)
+        return sentinel_token
+
+    def _reset_context(token: object) -> None:
+        calls.append(("reset", token))
 
     monkeypatch.setattr(middleware_mod, "bind_context", _bind_context)
-    monkeypatch.setattr(middleware_mod, "get_context", _get_context)
-    monkeypatch.setattr(middleware_mod, "restore_context", _restore_context)
+    monkeypatch.setattr(middleware_mod, "save_context", _save_context)
+    monkeypatch.setattr(middleware_mod, "reset_context", _reset_context)
     monkeypatch.setattr("undef.telemetry.asgi.middleware.uuid.uuid4", lambda: type("U", (), {"hex": "generated"})())
 
     sent: list[dict[str, Any]] = []
@@ -117,7 +121,7 @@ async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.
 
     assert sent == [{"type": "done", "scope_type": "http", "token": received_token}]
     assert calls[0] == ("bind", {"request_id": "generated"})
-    assert calls[-1] == ("restore", {})
+    assert calls[-1] == ("reset", sentinel_token)
 
 
 @pytest.mark.asyncio
@@ -126,17 +130,17 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
     restore = pytest.MonkeyPatch()
     try:
         bind_spy = {"count": 0}
-        restore_spy = {"count": 0}
+        reset_spy = {"count": 0}
 
         def _bind_context(**kwargs: str | None) -> None:
             _ = kwargs
             bind_spy["count"] += 1
 
-        def _restore_context(snapshot: dict[str, object]) -> None:
-            restore_spy["count"] += 1
+        def _reset_context(token: object) -> None:
+            reset_spy["count"] += 1
 
         bind.setattr(middleware_mod, "bind_context", _bind_context)
-        restore.setattr(middleware_mod, "restore_context", _restore_context)
+        restore.setattr(middleware_mod, "reset_context", _reset_context)
 
         async def send(_: dict[str, Any]) -> None:
             return None
@@ -152,7 +156,7 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
         middleware = TelemetryMiddleware(app)
         await middleware({"type": "lifespan", "headers": []}, receive, send)
         assert bind_spy["count"] == 0
-        assert restore_spy["count"] == 0
+        assert reset_spy["count"] == 0
     finally:
         bind.undo()
         restore.undo()
@@ -192,15 +196,22 @@ async def test_middleware_ignores_malformed_header_bytes_without_crashing() -> N
 
 
 def test_websocket_context_binding() -> None:
-    result = bind_websocket_context(
+    from undef.telemetry.asgi.websocket import clear_websocket_context
+    from undef.telemetry.logger.context import get_context
+
+    token = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r2"), (b"x-session-id", b"s2"), (b"x-actor-id", b"u1")]}
     )
-    assert result == {"request_id": "r2", "session_id": "s2", "actor_id": "u1"}
+    ctx = get_context()
+    assert ctx["request_id"] == "r2" and ctx["session_id"] == "s2" and ctx["actor_id"] == "u1"
+    clear_websocket_context(token)
     assert ws_extract_header({"headers": []}, b"x-request-id") is None
-    partial = bind_websocket_context({"headers": [(b"x-request-id", b"r3")]})
-    assert partial == {"request_id": "r3", "session_id": None, "actor_id": None}
-    no_request = bind_websocket_context({"headers": [(b"x-session-id", b"s3")]})
-    assert no_request == {"request_id": None, "session_id": "s3", "actor_id": None}
+    token2 = bind_websocket_context({"headers": [(b"x-request-id", b"r3")]})
+    assert get_context()["request_id"] == "r3"
+    clear_websocket_context(token2)
+    token3 = bind_websocket_context({"headers": [(b"x-session-id", b"s3")]})
+    assert get_context()["session_id"] == "s3"
+    clear_websocket_context(token3)
 
 
 def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -211,10 +222,10 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
 
     monkeypatch.setattr("undef.telemetry.asgi.websocket.bind_context", _bind_context)
 
-    result = bind_websocket_context(
+    token = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r9"), (b"x-session-id", b"s9"), (b"x-actor-id", b"a9")]}
     )
-    assert result == {"request_id": "r9", "session_id": "s9", "actor_id": "a9"}
+    assert token is not None
     assert {"request_id": "r9"} in calls
     assert {"session_id": "s9"} in calls
     assert {"actor_id": "a9"} in calls
@@ -223,8 +234,8 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
     assert {"actor_id": None} not in calls
 
     calls.clear()
-    result = bind_websocket_context({"headers": [(b"x-session-id", b"s-only")]})
-    assert result == {"request_id": None, "session_id": "s-only", "actor_id": None}
+    token2 = bind_websocket_context({"headers": [(b"x-session-id", b"s-only")]})
+    assert token2 is not None
     assert calls == [{"session_id": "s-only"}]
 
 

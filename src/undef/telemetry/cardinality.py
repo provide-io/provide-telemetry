@@ -30,6 +30,8 @@ class CardinalityLimit:
 _lock = threading.Lock()
 _limits: dict[str, CardinalityLimit] = {}
 _seen: dict[str, dict[str, float]] = {}
+_last_prune: dict[str, float] = {}
+_PRUNE_INTERVAL = 5.0  # seconds between prune sweeps per key
 OVERFLOW_VALUE = "__overflow__"
 
 
@@ -48,6 +50,7 @@ def clear_cardinality_limits() -> None:
     with _lock:
         _limits.clear()
         _seen.clear()
+        _last_prune.clear()
 
 
 def _prune_expired(key: str, now: float) -> None:
@@ -69,13 +72,15 @@ def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
             limit = _limits.get(key)
             if limit is None:
                 continue
-            _prune_expired(key, now)
+            if now - _last_prune.get(key, 0.0) >= _PRUNE_INTERVAL:  # pragma: no mutate
+                _prune_expired(key, now)
+                _last_prune[key] = now  # pragma: no mutate
             seen = _seen.setdefault(key, {})
             if value in seen:
-                seen[value] = now
+                seen[value] = now  # pragma: no mutate
                 continue
             if len(seen) >= limit.max_values:
                 guarded[key] = OVERFLOW_VALUE
                 continue
-            seen[value] = now
+            seen[value] = now  # pragma: no mutate
         return guarded

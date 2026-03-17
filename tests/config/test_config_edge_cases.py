@@ -210,7 +210,7 @@ class TestRequiredKeysEdgeCases:
 
     def test_schema_config_defaults(self) -> None:
         s = SchemaConfig()
-        assert s.strict_event_name is True
+        assert s.strict_event_name is False
         assert s.required_keys == ()
 
 

@@ -120,12 +120,24 @@ def test_enforce_event_schema_policy_matrix() -> None:
     compat_relaxed = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
     strict = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_SCHEMA": "true"})
 
-    strict_name_compat_default = enforce_event_schema(compat_default)
-    relaxed_name_compat = enforce_event_schema(compat_relaxed)
+    relaxed_default = enforce_event_schema(compat_default)
+    relaxed_explicit = enforce_event_schema(compat_relaxed)
     strict_name_strict_schema = enforce_event_schema(strict)
 
-    with pytest.raises(EventSchemaError, match="invalid event name"):
-        strict_name_compat_default(None, "info", {"event": "bad event"})
-    relaxed_name_compat(None, "info", {"event": "bad event"})
+    # Default is now relaxed (strict_event_name=False)
+    relaxed_default(None, "info", {"event": "bad event"})
+    relaxed_explicit(None, "info", {"event": "bad event"})
     with pytest.raises(EventSchemaError, match="invalid event name"):
         strict_name_strict_schema(None, "info", {"event": "bad event"})
+
+
+def test_save_context_preserves_current_values() -> None:
+    """save_context must snapshot current context, not null it."""
+    from undef.telemetry.logger.context import bind_context, get_context, reset_context, save_context
+
+    bind_context(user="alice")
+    token = save_context()
+    bind_context(user="bob")
+    assert get_context()["user"] == "bob"
+    reset_context(token)
+    assert get_context()["user"] == "alice"

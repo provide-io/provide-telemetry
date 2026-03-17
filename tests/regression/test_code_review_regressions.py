@@ -98,13 +98,13 @@ class TestResilienceResetRace:
         """Executor shutdown must happen while holding the lock."""
         from undef.telemetry import resilience as r_mod
 
-        # Create executor
-        _get_timeout_executor()
-        assert r_mod._timeout_executor is not None
+        # Create executor for a signal
+        _get_timeout_executor("logs")
+        assert len(r_mod._timeout_executors) > 0
 
-        # Verify reset clears it atomically
+        # Verify reset clears all executors atomically
         reset_resilience_for_tests()
-        assert r_mod._timeout_executor is None
+        assert len(r_mod._timeout_executors) == 0
 
 
 # ── Issue #4: _reset_all_for_tests completeness ──────────────────────

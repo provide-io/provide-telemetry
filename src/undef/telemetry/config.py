@@ -29,6 +29,8 @@ from undef.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
 
+_VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
+
 
 @dataclass(slots=True)
 class LoggingConfig:
@@ -40,10 +42,15 @@ class LoggingConfig:
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
     log_code_attributes: bool = False
+    pretty_key_color: str = "dim"
+    pretty_value_color: str = ""
+    pretty_fields: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         self.level = _normalize_level(self.level)
         _validate_fmt(self.fmt)
+        _validate_color(self.pretty_key_color, "pretty_key_color")
+        _validate_color(self.pretty_value_color, "pretty_value_color")
 
 
 @dataclass(slots=True)
@@ -66,7 +73,7 @@ class MetricsConfig:
 
 @dataclass(slots=True)
 class SchemaConfig:
-    strict_event_name: bool = True
+    strict_event_name: bool = False
     required_keys: tuple[str, ...] = ()
 
 
@@ -154,6 +161,9 @@ class TelemetryConfig:
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),
+                pretty_key_color=data.get("UNDEF_LOG_PRETTY_KEY_COLOR", "dim"),
+                pretty_value_color=data.get("UNDEF_LOG_PRETTY_VALUE_COLOR", ""),
+                pretty_fields=tuple(f.strip() for f in data.get("UNDEF_LOG_PRETTY_FIELDS", "").split(",") if f.strip()),
             ),
             tracing=TracingConfig(
                 enabled=_parse_bool(data.get("UNDEF_TRACE_ENABLED"), True),
@@ -172,7 +182,7 @@ class TelemetryConfig:
                 ),
             ),
             event_schema=SchemaConfig(
-                strict_event_name=_parse_bool(data.get("UNDEF_TELEMETRY_STRICT_EVENT_NAME"), True),
+                strict_event_name=_parse_bool(data.get("UNDEF_TELEMETRY_STRICT_EVENT_NAME"), False),
                 required_keys=tuple(
                     k.strip() for k in data.get("UNDEF_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
@@ -246,6 +256,13 @@ class TelemetryConfig:
         )
 
 
+def _validate_color(value: str, field: str) -> None:
+    if not value:
+        return
+    if value not in _VALID_COLORS:
+        raise ConfigurationError(f"invalid color name for {field}: {value!r}")
+
+
 def _normalize_level(value: str) -> str:
     allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     normalized = value.upper()
@@ -255,7 +272,7 @@ def _normalize_level(value: str) -> str:
 
 
 def _validate_fmt(value: str) -> None:
-    if value not in {"console", "json"}:
+    if value not in {"console", "json", "pretty"}:
         raise ConfigurationError(f"invalid log format: {value}")
 
 
@@ -297,10 +314,7 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
         if "=" not in pair:
             stripped = pair.strip()
             if stripped:
-                _logger.warning(  # pragma: no mutate
-                    "malformed OTLP header pair ignored (expected key=value): %r",  # pragma: no mutate
-                    stripped,  # pragma: no mutate
-                )
+                _logger.warning("config.otlp.header_malformed")  # pragma: no mutate
             continue
         key, raw = pair.split("=", 1)
         key = unquote(key.strip())
