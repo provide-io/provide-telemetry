@@ -1,0 +1,24 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'happy-dom',
+    exclude: ['**/node_modules/**', '**/dist/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/index.ts', 'src/otel.ts', 'src/sanitize.ts'],
+      thresholds: {
+        lines: 100,
+        functions: 100,
+        branches: 100,
+        statements: 100,
+      },
+    },
+  },
+});

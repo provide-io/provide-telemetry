@@ -1,0 +1,82 @@
+{
+  "name": "@undef/telemetry",
+  "version": "0.1.0",
+  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "pino": "^9.0.0"
+  },
+  "peerDependencies": {
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.56.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.56.0",
+    "@opentelemetry/resources": "^1.27.0",
+    "@opentelemetry/sdk-metrics": "^1.27.0",
+    "@opentelemetry/sdk-trace-base": "^1.27.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/exporter-metrics-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-trace-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/resources": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-metrics": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@opentelemetry/context-async-hooks": "^2.6.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.213.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
+    "@opentelemetry/resources": "^2.6.0",
+    "@opentelemetry/sdk-metrics": "^2.6.0",
+    "@opentelemetry/sdk-trace-base": "^2.6.0",
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "eslint": "^10.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "fast-check": "^3.22.0",
+    "globals": "^16.0.0",
+    "happy-dom": "^20.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}
