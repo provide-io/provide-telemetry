@@ -1,0 +1,111 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @undef/telemetry — TypeScript structured logging + OTEL
+ *
+ * Feature parity with the Python undef.telemetry package.
+ *
+ * Quick start:
+ *   import { setupTelemetry, getLogger, bindContext } from '@undef/telemetry';
+ *
+ *   setupTelemetry({ serviceName: 'my-app', logLevel: 'debug' });
+ *   const log = getLogger('api');
+ *   log.info({ event: 'request_ok', method: 'GET', path: '/api/v1/users', status: 200 });
+ */
+
+// Config + setup
+export { setupTelemetry, getConfig, configFromEnv, version, __version__ } from './config';
+export type { TelemetryConfig } from './config';
+
+// Logger
+export { getLogger, logger } from './logger';
+export type { Logger } from './logger';
+
+// Context binding (mirrors Python bind_context / unbind_context / clear_context)
+export { bindContext, unbindContext, clearContext, getContext, runWithContext } from './context';
+
+// Metrics (mirrors Python counter / gauge / histogram)
+export { counter, gauge, histogram, getMeter } from './metrics';
+export type { Counter, Histogram, Meter, MetricOptions, UpDownCounter } from './metrics';
+
+// Tracing (mirrors Python @trace decorator)
+export {
+  withTrace,
+  traceDecorator as trace,
+  getActiveTraceIds,
+  getTracer,
+  tracer,
+  setTraceContext,
+  getTraceContext,
+} from './tracing';
+
+// Optional OTEL SDK wiring (call after setupTelemetry to activate exporters)
+export { registerOtelProviders } from './otel';
+
+// PII sanitization utilities
+export {
+  sanitize,
+  DEFAULT_SANITIZE_FIELDS,
+  sanitizePayload,
+  registerPiiRule,
+  getPiiRules,
+  replacePiiRules,
+  resetPiiRulesForTests,
+} from './pii';
+export type { MaskMode, PIIRule } from './pii';
+
+// Exceptions
+export { TelemetryError, ConfigurationError } from './exceptions';
+
+// Health
+export { getHealthSnapshot } from './health';
+export type { HealthSnapshot } from './health';
+
+// Backpressure
+export { setQueuePolicy, getQueuePolicy, tryAcquire, release } from './backpressure';
+export type { QueuePolicy, QueueTicket } from './backpressure';
+
+// Cardinality
+export {
+  OVERFLOW_VALUE,
+  registerCardinalityLimit,
+  getCardinalityLimits,
+  clearCardinalityLimits,
+  guardAttributes,
+} from './cardinality';
+export type { CardinalityLimit } from './cardinality';
+
+// Sampling
+export { setSamplingPolicy, getSamplingPolicy, shouldSample } from './sampling';
+export type { SamplingPolicy } from './sampling';
+
+// Resilience
+export { setExporterPolicy, getExporterPolicy, runWithResilience, TelemetryTimeoutError } from './resilience';
+export type { ExporterPolicy } from './resilience';
+
+// Schema
+export { EventSchemaError, eventName, validateEventName, validateRequiredKeys } from './schema';
+
+// SLO
+export { recordRedMetrics, recordUseMetrics, classifyError } from './slo';
+
+// Propagation
+export {
+  extractW3cContext,
+  bindPropagationContext,
+  clearPropagationContext,
+  getActivePropagationContext,
+} from './propagation';
+export type { PropagationContext } from './propagation';
+
+// Runtime reconfiguration
+export { getRuntimeConfig, updateRuntimeConfig, reloadRuntimeFromEnv, reconfigureTelemetry } from './runtime';
+
+// Test utilities
+export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
+
+// Shutdown (no-op until OTEL SDK is registered)
+export async function shutdownTelemetry(): Promise<void> {
+  // OTEL SDK providers call .shutdown() on their own; this is a hook for future use.
+}
