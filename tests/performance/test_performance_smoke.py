@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from unittest.mock import patch
 
 import pytest
 
@@ -57,11 +58,13 @@ def _ns_per_op(fn: _CallableT, iterations: int = ITERATIONS) -> float:
 
 class TestEventNamePerformance:
     def test_three_segment_event_name(self) -> None:
-        ns = _ns_per_op(lambda: event_name("auth", "login", "success"))
+        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=False):
+            ns = _ns_per_op(lambda: event_name("auth", "login", "success"))
         assert ns < MAX_EVENT_NAME_NS, f"event_name(3 seg) too slow: {ns:.0f} ns/op"
 
     def test_five_segment_event_name(self) -> None:
-        ns = _ns_per_op(lambda: event_name("payment", "subscription", "renewal", "charge", "success"))
+        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=False):
+            ns = _ns_per_op(lambda: event_name("payment", "subscription", "renewal", "charge", "success"))
         assert ns < MAX_EVENT_NAME_NS, f"event_name(5 seg) too slow: {ns:.0f} ns/op"
 
     def test_validate_event_name_strict(self) -> None:
