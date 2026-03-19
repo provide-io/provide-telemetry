@@ -141,3 +141,36 @@ repos:
         always_run: true
         stages: [manual]
         types: [python]
+
+      # ── TypeScript package (typescript/) ───────────────────────────────────
+      - id: ts-typecheck
+        name: typescript type check
+        entry: bash -c 'cd typescript && npm run typecheck'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/
+
+      - id: ts-lint
+        name: typescript lint (eslint)
+        entry: bash -c 'cd typescript && npm run lint'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/src/|^typescript/tests/
+
+      - id: ts-format-check
+        name: typescript format check (prettier)
+        entry: bash -c 'cd typescript && npm run format:check'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/src/|^typescript/tests/
+
+      - id: ts-test
+        name: typescript tests (vitest)
+        entry: bash -c 'cd typescript && npm run test'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/
