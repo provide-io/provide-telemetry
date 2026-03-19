@@ -3,7 +3,7 @@
 
 /**
  * Structured logger — wraps pino with:
- *   - browser.write hook (correct hook for capture; avoids the console-caching bug)
+ *   - browser.write hook in actual browsers; custom stream in Node.js/Vitest
  *   - window.__pinoLogs capture for Playwright/devtools inspection
  *   - Automatic context binding (from bindContext())
  *   - Automatic OTEL trace_id/span_id injection
@@ -29,9 +29,6 @@ const LEVEL_MAP: Record<number, string> = {
   60: 'error',
 };
 
-// Stryker disable next-line ConditionalExpression,StringLiteral
-const isBrowser = typeof window !== 'undefined';
-
 /** Public Logger interface — consumers should type against this, not pino.Logger. */
 export interface Logger {
   trace(obj: Record<string, unknown>, msg?: string): void;
@@ -46,9 +43,17 @@ export interface Logger {
 // Pino root instance — lazily created so config is read after setupTelemetry().
 let _root: pino.Logger | null = null;
 
-export function makeWriteHook(cfg: ReturnType<typeof getConfig>) {
+/**
+ * Build the write hook that enriches, sanitizes, captures, and optionally
+ * emits each log record.  Config is read dynamically on every invocation so
+ * that resetTelemetryState() + setupTelemetry() changes take effect without
+ * needing to rebuild the hook closure.
+ */
+export function makeWriteHook() {
   // pino's WriteFn signature uses `object`; we cast internally for safe property access.
   return (obj: object): void => {
+    // Read config dynamically — avoids stale-capture bug after _resetConfig().
+    const cfg = getConfig();
     const o = obj as Record<string, unknown>;
 
     // Inject OTEL trace/span IDs if an active span exists.
@@ -66,7 +71,9 @@ export function makeWriteHook(cfg: ReturnType<typeof getConfig>) {
     sanitize(o, cfg.sanitizeFields);
 
     // Capture to window.__pinoLogs for Playwright and devtools inspection.
-    if (isBrowser && cfg.captureToWindow) {
+    // Check is done inline (not at module load) so it works when loaded in Node.js
+    // test environments that later gain a jsdom window.
+    if (typeof window !== 'undefined' && cfg.captureToWindow) {
       if (!('__pinoLogs' in window)) {
         (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
       }
@@ -86,14 +93,41 @@ function getRootLogger(): pino.Logger {
   // Stryker disable next-line ConditionalExpression
   if (_root) return _root;
   const cfg = getConfig();
+  const hook = makeWriteHook();
+
+  // pino only invokes browser.write when process.version is absent (real browser).
+  // In Node.js / Vitest, we use a custom destination stream that forwards every
+  // serialised log line back through the write hook.
   // Stryker disable all
-  _root = pino({
-    base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
-    level: cfg.logLevel,
-    browser: {
-      write: makeWriteHook(cfg),
-    },
-  });
+  const isNodeEnv =
+    typeof process !== 'undefined' && typeof process.version === 'string';
+
+  if (isNodeEnv) {
+    const stream = {
+      write(msg: string) {
+        try {
+          hook(JSON.parse(msg.trimEnd()) as object);
+        } catch {
+          // Ignore malformed lines (e.g. pino flush sentinels).
+        }
+      },
+    };
+    _root = pino(
+      {
+        base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
+        level: cfg.logLevel,
+      },
+      stream as unknown as pino.DestinationStream,
+    );
+  } else {
+    _root = pino({
+      base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
+      level: cfg.logLevel,
+      browser: {
+        write: hook,
+      },
+    });
+  }
   // Stryker enable all
   return _root;
 }
