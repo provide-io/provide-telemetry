@@ -24,7 +24,7 @@ let _active: PropagationContext = {};
 function _parseTraceparent(value: string): { traceId?: string; spanId?: string } {
   const parts = value.split('-');
   if (parts.length !== 4) return {};
-  const [version, traceId, spanId, _flags] = parts;
+  const [version, traceId, spanId] = parts;
   if (version.length !== 2 || traceId.length !== 32 || spanId.length !== 16) return {};
   if (version.toLowerCase() === 'ff') return {};
   if (traceId === '0'.repeat(32) || spanId === '0'.repeat(16)) return {};

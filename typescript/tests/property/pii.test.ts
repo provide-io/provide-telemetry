@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as fc from 'fast-check';
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it } from 'vitest';
 import { registerPiiRule, resetPiiRulesForTests, sanitizePayload } from '../../src/pii';
 
 afterEach(() => resetPiiRulesForTests());
