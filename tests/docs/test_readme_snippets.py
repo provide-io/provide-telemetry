@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from undef.telemetry import event_name, get_logger, setup_telemetry, shutdown_telemetry
 from undef.telemetry.schema.events import EventSchemaError
 
@@ -23,9 +25,10 @@ def test_readme_event_name_snippet_executes() -> None:
     assert event_name("auth", "login", "failed") == "auth.login.failed"
     assert event_name("auth", "login", "password", "failed") == "auth.login.password.failed"
 
-    try:
-        event_name("auth", "login.password", "failed")
-    except EventSchemaError:
-        pass
-    else:
-        raise AssertionError("expected invalid event segment to raise EventSchemaError")
+    with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True):
+        try:
+            event_name("auth", "login.password", "failed")
+        except EventSchemaError:
+            pass
+        else:
+            raise AssertionError("expected invalid event segment to raise EventSchemaError")

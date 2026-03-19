@@ -403,22 +403,31 @@ class TestBackwardsCompatibility:
             LoggingConfig(level="INVALID_LEVEL")
 
     def test_event_schema_errors_caught_by_value_error(self) -> None:
-        """Existing code catching ValueError for schema errors still works."""
+        """Existing code catching ValueError for schema errors still works.
+
+        In strict mode, event_name("a") raises EventSchemaError (a ValueError
+        subclass).  In relaxed mode (the default), single segments are allowed.
+        """
+        from unittest.mock import patch
+
         from undef.telemetry.schema.events import EventSchemaError, event_name
 
-        with pytest.raises(ValueError):
-            event_name("a")
+        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True):
+            with pytest.raises(ValueError):
+                event_name("a")
 
-        with pytest.raises(EventSchemaError):
-            event_name("a")
+            with pytest.raises(EventSchemaError):
+                event_name("a")
 
     def test_catch_all_telemetry_errors(self) -> None:
         """TelemetryError catches both config and schema errors."""
+        from unittest.mock import patch
+
         from undef.telemetry.config import _parse_env_float
         from undef.telemetry.schema.events import event_name
 
         with pytest.raises(TelemetryError):
             _parse_env_float("nope", "FIELD")
 
-        with pytest.raises(TelemetryError):
+        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True), pytest.raises(TelemetryError):
             event_name("a")

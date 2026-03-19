@@ -146,6 +146,14 @@ def get_runtime_config() -> TelemetryConfig:
         return copy.deepcopy(_active_config)
 
 
+def _is_strict_event_name() -> bool:
+    """Check strict event-name mode without deepcopy (hot-path optimised)."""
+    with _lock:
+        if _active_config is None:
+            return False
+        return _active_config.strict_schema or _active_config.event_schema.strict_event_name
+
+
 def reset_runtime_for_tests() -> None:
     """Clear the cached runtime config snapshot."""
     global _active_config

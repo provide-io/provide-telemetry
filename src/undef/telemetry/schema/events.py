@@ -30,12 +30,23 @@ class EventSchemaError(TelemetryError, ValueError):
 
 
 def event_name(*segments: str) -> str:
-    """Build a strict event name from 3-5 validated segments."""
-    if not (_MIN_SEGMENTS <= len(segments) <= _MAX_SEGMENTS):
-        raise EventSchemaError(f"expected {_MIN_SEGMENTS}-{_MAX_SEGMENTS} segments, got {len(segments)}")
-    for i, value in enumerate(segments):
-        if not _SEGMENT_RE.match(value):
-            raise EventSchemaError(f"invalid event segment: segment[{i}]={value}")
+    """Build an event name from dot-separated segments.
+
+    In strict mode (``strict_schema`` or ``strict_event_name``): enforces 3-5
+    lowercase/underscore segments.  In relaxed mode (default): accepts 1+
+    segments with no format validation.
+    """
+    from undef.telemetry.runtime import _is_strict_event_name
+
+    strict = _is_strict_event_name()
+    if strict:
+        if not (_MIN_SEGMENTS <= len(segments) <= _MAX_SEGMENTS):
+            raise EventSchemaError(f"expected {_MIN_SEGMENTS}-{_MAX_SEGMENTS} segments, got {len(segments)}")
+        for i, value in enumerate(segments):
+            if not _SEGMENT_RE.match(value):
+                raise EventSchemaError(f"invalid event segment: segment[{i}]={value}")
+    elif len(segments) == 0:
+        raise EventSchemaError("event_name requires at least 1 segment")
     return ".".join(segments)
 
 
