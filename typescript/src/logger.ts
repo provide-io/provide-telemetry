@@ -194,6 +194,7 @@ function getRootLogger(): pino.Logger {
   const isNodeEnv =
     typeof process !== 'undefined' && typeof process.version === 'string';
 
+  /* c8 ignore else */
   if (isNodeEnv) {
     const stream = {
       write(msg: string) {
@@ -212,6 +213,7 @@ function getRootLogger(): pino.Logger {
       stream as unknown as pino.DestinationStream,
     );
   } else {
+    /* c8 ignore next 8 */
     _root = pino({
       base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
       level: cfg.logLevel,
