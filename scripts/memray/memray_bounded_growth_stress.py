@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Bounded-growth stress test: verify module-level caches do not grow unboundedly."""
@@ -12,8 +12,8 @@ import sys
 import time
 import tracemalloc
 
-from provide.telemetry import cardinality, slo
-from provide.telemetry.metrics import provider as metrics_provider
+from undef.telemetry import cardinality, slo
+from undef.telemetry.metrics import provider as metrics_provider
 
 
 def _print_table_header() -> None:
@@ -74,9 +74,7 @@ def _phase_cardinality() -> bool:
             all_ok = False
 
     status = "PASS" if all_ok else "FAIL"
-    print(
-        f"{'Cardinality _seen pruning':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}"
-    )
+    print(f"{'Cardinality _seen pruning':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}")
     return all_ok
 
 
@@ -106,9 +104,7 @@ def _phase_slo_instruments() -> bool:
     # Should be a small fixed number, not 100 (one per route)
     ok = total_instruments <= 5
     status = "PASS" if ok else "FAIL"
-    print(
-        f"{'SLO instruments (fixed names)':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}"
-    )
+    print(f"{'SLO instruments (fixed names)':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}")
     if not ok:
         print(f"  FAIL: {counter_count} counters + {histogram_count} histograms = {total_instruments} (expected <= 5)")
     return ok
@@ -136,9 +132,7 @@ def _phase_meters_cache() -> bool:
     # With a real provider, it would cache by name — still bounded by call count.
     ok = meter_count <= 100
     status = "PASS" if ok else "FAIL"
-    print(
-        f"{'Metrics provider _meters cache':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}"
-    )
+    print(f"{'Metrics provider _meters cache':40s}  {_fmt_bytes(mem_before):>12s}  {_fmt_bytes(mem_after):>12s}  {_fmt_bytes(delta):>12s}  {status:>8s}")
     if not ok:
         print(f"  FAIL: _meters has {meter_count} entries (expected <= 100)")
     return ok

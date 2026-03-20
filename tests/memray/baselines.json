@@ -1,10 +1,8 @@
 {
-  "backpressure_total_allocations": 107057,
-  "endpoint_total_allocations": 6282,
-  "logging_total_allocations": 507739,
-  "metrics_total_allocations": 9632,
+  "backpressure_total_allocations": 57467,
+  "logging_total_allocations": 7481,
+  "metrics_total_allocations": 7479,
   "pii_total_allocations": 407485,
-  "propagation_total_allocations": 406473,
   "sampling_total_allocations": 7474,
-  "tracing_total_allocations": 9411
+  "tracing_total_allocations": 7479
 }

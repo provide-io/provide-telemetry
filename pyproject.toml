@@ -72,6 +72,7 @@ dev = [
   "ty>=0.0.18",
   "vulture>=2.14",
   "xenon>=0.9.3",
+  "memray>=1.0; sys_platform != 'emscripten'",
 ]
 
 [tool.pytest.ini_options]
@@ -83,6 +84,8 @@ markers = [
   "integration: tests that require external runtime dependencies",
   "e2e: end-to-end validation against a live telemetry backend",
   "tooling: tests that validate local development scripts/tooling",
+  "memray: memory profiling stress tests (deselected by default, run with -m memray)",
+  "slow: long-running tests excluded from default runs",
 ]
 addopts = [
   "-p", "no:undef_telemetry",
@@ -90,7 +93,7 @@ addopts = [
   "--strict-markers",
   "--strict-config",
   "--tb=short",
-  "-m", "not e2e",
+  "-m", "not e2e and not memray",
   "--cov=src/undef/telemetry",
   "--cov-branch",
   "--cov-report=term-missing",

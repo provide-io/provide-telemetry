@@ -15,7 +15,7 @@ from undef.telemetry.logger.context import bind_context
 from undef.telemetry.tracing.context import set_trace_context
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PropagationContext:
     traceparent: str | None
     tracestate: str | None

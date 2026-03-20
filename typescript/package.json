@@ -59,12 +59,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
-    "test:memory": "npx tsx scripts/memory-audit.ts",
-    "bench": "tsx scripts/perf-smoke.ts",
-    "test:bench": "vitest run tests/performance/ --no-coverage",
-    "stress": "tsx scripts/stress-logging.ts && tsx scripts/stress-backpressure.ts && tsx scripts/stress-metrics.ts && tsx scripts/stress-sampling.ts && tsx scripts/stress-pii.ts && tsx scripts/stress-tracing.ts",
-    "bundle-size": "tsx scripts/bundle-size.ts",
-    "prepublishOnly": "npm run build && npm run test:coverage"
+    "test:memory": "npx tsx scripts/memory-audit.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

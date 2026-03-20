@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Bounded-growth stress test: run as subprocess and assert exit code 0."""
@@ -16,13 +16,13 @@ import pytest
 
 @pytest.mark.memray
 @pytest.mark.slow
-def test_bounded_growth_stress(project_root: Path) -> None:
+def test_bounded_growth_stress() -> None:
     """Verify module-level caches do not grow unboundedly."""
-    script_path = project_root / "scripts" / "memray" / "memray_bounded_growth_stress.py"
+    script_path = Path(__file__).parent.parent.parent / "scripts" / "memray" / "memray_bounded_growth_stress.py"
 
     result = subprocess.run(
         [sys.executable, str(script_path)],
-        cwd=str(project_root),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         timeout=60,
