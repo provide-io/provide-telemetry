@@ -35,6 +35,16 @@ evaluate_thresholds = _module.evaluate_thresholds
 _bench_ns_per_op = _module._bench_ns_per_op
 run_benchmarks_stable = _module.run_benchmarks_stable
 
+_ALL_FIELDS = {
+    "event_name_ns": 100.0,
+    "should_sample_ns": 200.0,
+    "sanitize_ns": 300.0,
+    "trace_decorator_ns": 400.0,
+    "counter_add_ns": 500.0,
+    "histogram_record_ns": 600.0,
+    "health_snapshot_ns": 700.0,
+}
+
 
 def test_bench_ns_per_op_reports_positive_value() -> None:
     value = _bench_ns_per_op(1000, lambda: 1 + 1)
@@ -42,15 +52,15 @@ def test_bench_ns_per_op_reports_positive_value() -> None:
 
 
 def test_evaluate_thresholds_returns_no_failures_when_within_limits() -> None:
-    result = PerfResult(event_name_ns=100.0, should_sample_ns=200.0, sanitize_ns=300.0)
-    failures = evaluate_thresholds(result, 1000.0, 1000.0, 1000.0)
+    result = PerfResult(**_ALL_FIELDS)
+    failures = evaluate_thresholds(result, *([10_000.0] * 7))
     assert failures == []
 
 
 def test_evaluate_thresholds_reports_each_exceeded_limit() -> None:
-    result = PerfResult(event_name_ns=1000.0, should_sample_ns=2000.0, sanitize_ns=3000.0)
-    failures = evaluate_thresholds(result, 100.0, 200.0, 300.0)
-    assert len(failures) == 3
+    result = PerfResult(**{k: 10_000.0 for k in _ALL_FIELDS})
+    failures = evaluate_thresholds(result, *([100.0] * 7))
+    assert len(failures) == 7
     assert "event_name_ns" in failures[0]
     assert "should_sample_ns" in failures[1]
     assert "sanitize_ns" in failures[2]
@@ -59,9 +69,9 @@ def test_evaluate_thresholds_reports_each_exceeded_limit() -> None:
 def test_run_benchmarks_stable_uses_median(monkeypatch: pytest.MonkeyPatch) -> None:
     values = iter(
         [
-            PerfResult(event_name_ns=100.0, should_sample_ns=300.0, sanitize_ns=500.0),
-            PerfResult(event_name_ns=200.0, should_sample_ns=100.0, sanitize_ns=700.0),
-            PerfResult(event_name_ns=900.0, should_sample_ns=200.0, sanitize_ns=600.0),
+            PerfResult(**dict(zip(_ALL_FIELDS, [100, 300, 500, 100, 100, 100, 100], strict=True))),
+            PerfResult(**dict(zip(_ALL_FIELDS, [200, 100, 700, 200, 200, 200, 200], strict=True))),
+            PerfResult(**dict(zip(_ALL_FIELDS, [900, 200, 600, 300, 300, 300, 300], strict=True))),
         ]
     )
     monkeypatch.setattr(_module, "run_benchmarks", lambda _iterations: next(values))
