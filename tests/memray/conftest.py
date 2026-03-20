@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Fixtures for memray memory profiling tests."""
@@ -14,36 +14,15 @@ from pathlib import Path
 
 import pytest
 
-
-def _find_project_root() -> Path:
-    """Walk up from this file until we find VERSION, anchoring to the real project root.
-
-    Using VERSION (not pyproject.toml) because mutmut copies pyproject.toml into its
-    mutants/ sandbox, making it an unreliable anchor.
-    """
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "VERSION").exists():
-            return parent
-    raise FileNotFoundError("Could not locate project root (no VERSION file found)")
-
-
-_PROJECT_ROOT = _find_project_root()
-
 _baseline_updates: dict[str, int] = {}
 
 _BASELINE_PATH = Path(__file__).parent / "baselines.json"
 
 
-@pytest.fixture(scope="session")
-def project_root() -> Path:
-    """Absolute path to the project root (works inside mutmut's mutants/ sandbox)."""
-    return _PROJECT_ROOT
-
-
 @pytest.fixture
 def memray_output_dir() -> Path:
     """Return path to memray output directory, creating it if needed."""
-    output_dir = _PROJECT_ROOT / "memray-output"
+    output_dir = Path(__file__).parent.parent.parent / "memray-output"
     output_dir.mkdir(exist_ok=True)
     return output_dir
 
@@ -80,7 +59,6 @@ def assert_allocation_within_threshold() -> Callable[[int | None, int, str, floa
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Save baseline updates to baselines.json if MEMRAY_UPDATE_BASELINE is set."""
-    _ = session, exitstatus  # required by pytest hook signature
     if not os.getenv("MEMRAY_UPDATE_BASELINE") or not _baseline_updates:
         return
     existing: dict[str, int] = {}

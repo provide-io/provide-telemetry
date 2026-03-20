@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Memray stress test for backpressure queue and health snapshot paths."""
 
 from __future__ import annotations
 
-from provide.telemetry.backpressure import (
+from undef.telemetry.backpressure import (
     QueuePolicy,
     release,
     set_queue_policy,
     try_acquire,
 )
-from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
+from undef.telemetry.health import get_health_snapshot, reset_health_for_tests
 
 SIGNALS = ("logs", "traces", "metrics")
 

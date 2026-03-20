@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Memray stress test for PII sanitization engine."""
@@ -21,15 +21,14 @@ def test_pii_stress(
     memray_output_dir: Path,
     memray_baseline: dict[str, int],
     assert_allocation_within_threshold: Callable[..., None],
-    project_root: Path,
 ) -> None:
     """Stress test PII sanitization with memray profiling."""
-    script_path = project_root / "scripts" / "memray" / "memray_pii_stress.py"
+    script_path = Path(__file__).parent.parent.parent / "scripts" / "memray" / "memray_pii_stress.py"
     output_bin = memray_output_dir / "memray_pii_stress.bin"
 
     result = subprocess.run(
         ["python", "-m", "memray", "run", "--force", "-o", str(output_bin), str(script_path)],
-        cwd=str(project_root),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         timeout=300,

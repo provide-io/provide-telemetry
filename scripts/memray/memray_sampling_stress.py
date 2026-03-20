@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Memray stress test for sampling decision hot path."""
 
 from __future__ import annotations
 
-from provide.telemetry.sampling import (
+from undef.telemetry.sampling import (
     SamplingPolicy,
     get_sampling_policy,
     set_sampling_policy,
