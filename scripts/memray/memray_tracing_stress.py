@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Memray stress test for @trace decorator context save/restore path."""
 
 from __future__ import annotations
 
-from provide.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
-from provide.telemetry.tracing.decorators import trace
+from undef.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
+from undef.telemetry.tracing.decorators import trace
 
 
 @trace("sync_operation")

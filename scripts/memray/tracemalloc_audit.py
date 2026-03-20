@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """tracemalloc-based audit: counts Python-level allocations per hot-path call."""
@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import tracemalloc
 
-from provide.telemetry.backpressure import QueuePolicy, release, set_queue_policy, try_acquire
-from provide.telemetry.health import get_health_snapshot
-from provide.telemetry.logger.context import bind_context, get_context
-from provide.telemetry.logger.processors import merge_runtime_context, sanitize_sensitive_fields
-from provide.telemetry.pii import sanitize_payload
-from provide.telemetry.sampling import should_sample
-from provide.telemetry.schema.events import event_name
-from provide.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
+from undef.telemetry.backpressure import QueuePolicy, release, set_queue_policy, try_acquire
+from undef.telemetry.health import get_health_snapshot
+from undef.telemetry.logger.context import bind_context, get_context
+from undef.telemetry.logger.processors import merge_runtime_context, sanitize_sensitive_fields
+from undef.telemetry.pii import sanitize_payload
+from undef.telemetry.sampling import should_sample
+from undef.telemetry.schema.events import event_name
+from undef.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
 
 
 def _measure(label: str, iterations: int, fn: object) -> None:
@@ -40,9 +40,7 @@ def _measure(label: str, iterations: int, fn: object) -> None:
     per_call_blocks = total_blocks / iterations if iterations > 0 else 0
     per_call_bytes = total_bytes / iterations if iterations > 0 else 0
 
-    print(
-        f"{label:45s}  {per_call_blocks:8.2f} allocs/call  {per_call_bytes:8.1f} bytes/call  ({total_blocks:,} total)"
-    )
+    print(f"{label:45s}  {per_call_blocks:8.2f} allocs/call  {per_call_bytes:8.1f} bytes/call  ({total_blocks:,} total)")
     if total_blocks > 0:
         top = sorted(stats, key=lambda s: s.count_diff, reverse=True)[:3]
         for s in top:

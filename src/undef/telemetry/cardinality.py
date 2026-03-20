@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CardinalityLimit:
     max_values: int
     ttl_seconds: float = 300.0
@@ -58,6 +58,8 @@ def _prune_expired(key: str, now: float) -> None:
 def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
     now = time.monotonic()
     with _lock:
+        if not _limits:
+            return attributes
         guarded = dict(attributes)
         for key, value in list(guarded.items()):
             limit = _limits.get(key)

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Memray stress test for the logging processor chain hot path."""
 
 from __future__ import annotations
 
-from provide.telemetry.logger.context import bind_context, get_context
-from provide.telemetry.logger.processors import sanitize_sensitive_fields
-from provide.telemetry.pii import sanitize_payload
-from provide.telemetry.schema.events import event_name
-from provide.telemetry.tracing.context import get_span_id, get_trace_id
+from undef.telemetry.logger.context import bind_context, get_context
+from undef.telemetry.logger.processors import sanitize_sensitive_fields
+from undef.telemetry.pii import sanitize_payload
+from undef.telemetry.schema.events import event_name
+from undef.telemetry.tracing.context import get_span_id, get_trace_id
 
 # Representative payloads
 FLAT_PAYLOAD = {
