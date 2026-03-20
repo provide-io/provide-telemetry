@@ -38,16 +38,6 @@ const LEVEL_MAP: Record<number, string> = {
   60: 'error',
 };
 
-/** Pino level number → semantic level string for consent checks. */
-const CONSENT_LEVEL_MAP: Record<number, string> = {
-  10: 'trace',
-  20: 'debug',
-  30: 'info',
-  40: 'warn',
-  50: 'error',
-  60: 'error',
-};
-
 /** Public Logger interface — consumers should type against this, not pino.Logger. */
 export interface Logger {
   trace(obj: Record<string, unknown>, msg?: string): void;
@@ -63,11 +53,6 @@ export interface Logger {
 let _root: pino.Logger | null = null;
 let _rootConfigVersion = -1;
 
-function resolveLoggerConfig() {
-  // Before setupTelemetry() runs, logger lazy-init should still honor env config.
-  return _getConfigVersion() === 0 ? configFromEnv() : getConfig();
-}
-
 /**
  * Build the write hook that enriches, sanitizes, captures, and optionally
  * emits each log record.  Config is read dynamically on every invocation so
@@ -78,7 +63,7 @@ export function makeWriteHook() {
   // pino's WriteFn signature uses `object`; we cast internally for safe property access.
   return (obj: object): void => {
     // Read config dynamically — avoids stale-capture bug after _resetConfig().
-    const cfg = resolveLoggerConfig();
+    const cfg = getConfig();
     const o = obj as Record<string, unknown>;
 
     // Consent gate: drop records the current consent level forbids.
@@ -102,32 +87,12 @@ export function makeWriteHook() {
       if (ids.trace_id) o['trace_id'] = ids.trace_id;
       if (ids.span_id) o['span_id'] = ids.span_id;
 
-      // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
-      if (!o['message']) o['message'] = o['event'] ?? '';
-
-      // Caller info injection — intentionally expensive (creates Error per call).
-      // Stryker disable all
-      if (cfg.logIncludeCaller) {
-        const err = new Error();
-        const stack = err.stack?.split('\n');
-        /* v8 ignore next -- stack is always defined in V8 */
-        if (stack) {
-          for (const frame of stack.slice(1)) {
-            if (
-              !frame.includes('logger.ts') &&
-              !frame.includes('node_modules') &&
-              !frame.includes('pino')
-            ) {
-              const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
-              /* v8 ignore next -- match always succeeds for V8 stack frames */
-              if (match) {
-                o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
-                o['caller_line'] = Number(match[2]);
-              }
-              break;
-            }
-          }
-        }
+    // Capture to window.__pinoLogs for Playwright and devtools inspection.
+    // Check is done inline (not at module load) so it works when loaded in Node.js
+    // test environments that later gain a jsdom window.
+    if (typeof window !== 'undefined' && cfg.captureToWindow) {
+      if (!('__pinoLogs' in window)) {
+        (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
       }
       // Stryker enable all
 
@@ -218,19 +183,17 @@ export function makeWriteHook() {
 function getRootLogger(): pino.Logger {
   const currentVersion = _getConfigVersion();
   // Stryker disable next-line ConditionalExpression
-  if (_root && _rootConfigVersion === currentVersion) return _root;
-  _root = null;
-  _rootConfigVersion = currentVersion;
-  const cfg = resolveLoggerConfig();
+  if (_root) return _root;
+  const cfg = getConfig();
   const hook = makeWriteHook();
 
   // pino only invokes browser.write when process.version is absent (real browser).
   // In Node.js / Vitest, we use a custom destination stream that forwards every
   // serialised log line back through the write hook.
   // Stryker disable all
-  const isNodeEnv = typeof process !== 'undefined' && typeof process.version === 'string';
+  const isNodeEnv =
+    typeof process !== 'undefined' && typeof process.version === 'string';
 
-  /* c8 ignore else */
   if (isNodeEnv) {
     const stream = {
       write(msg: string) {
@@ -245,16 +208,13 @@ function getRootLogger(): pino.Logger {
       {
         base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
         level: cfg.logLevel,
-        messageKey: 'message',
       },
       stream as unknown as pino.DestinationStream,
     );
   } else {
-    /* c8 ignore next 9 */
     _root = pino({
       base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
       level: cfg.logLevel,
-      messageKey: 'message',
       browser: {
         write: hook,
       },
