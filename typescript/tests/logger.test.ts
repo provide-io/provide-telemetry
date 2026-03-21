@@ -4,13 +4,16 @@
 /**
  * Logger tests.
  *
- * pino's browser.write hook is only triggered when pino detects a browser environment
- * (process.version absent). In Node.js/vitest, pino uses its normal transport.
- * We therefore test the write hook function directly, which is the core of our logger.
+ * makeWriteHook() now reads config dynamically on each invocation, so tests
+ * call setupTelemetry() to configure the desired options and then invoke the
+ * hook — no need to pass a cfg object.
+ *
+ * The Node.js stream path means getLogger() / logger calls now flow through
+ * the write hook too, so integration tests can assert on window.__pinoLogs.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, getConfig, setupTelemetry } from '../src/config';
+import { _resetConfig, setupTelemetry } from '../src/config';
 import { _resetContext, bindContext, clearContext } from '../src/context';
 import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
 import * as tracing from '../src/tracing';
@@ -23,7 +26,6 @@ function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
     captureToWindow: true,
     ...overrides,
   });
-  return getConfig();
 }
 
 beforeEach(() => {
@@ -45,16 +47,16 @@ afterEach(() => {
 
 describe('write hook — window.__pinoLogs capture', () => {
   it('pushes log objects to window.__pinoLogs', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     hook({ level: 30, event: 'request_ok', status: 200 });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     expect(logs.length).toBe(1);
   });
 
   it('captured object contains the passed fields', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     hook({ level: 20, event: 'test_event', code: 42 });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     const last = logs[logs.length - 1] as Record<string, unknown>;
@@ -63,8 +65,8 @@ describe('write hook — window.__pinoLogs capture', () => {
   });
 
   it('does not capture when captureToWindow is false', () => {
-    const cfg = makeCfg({ captureToWindow: false });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ captureToWindow: false });
+    const hook = makeWriteHook();
     (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
     hook({ level: 30, event: 'hidden' });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
@@ -73,32 +75,32 @@ describe('write hook — window.__pinoLogs capture', () => {
 
   it('does NOT call console by default (consoleOutput: false)', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: false });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: false });
+    const hook = makeWriteHook();
     hook({ level: 30, event: 'info_event' });
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('calls console.log for level 30 when consoleOutput: true', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 30, event: 'info_event' });
     expect(spy).toHaveBeenCalledOnce();
   });
 
   it('calls console.warn for level 40 when consoleOutput: true', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 40, event: 'warn_event' });
     expect(spy).toHaveBeenCalledOnce();
   });
 
   it('calls console.error for level 50 when consoleOutput: true', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 50, event: 'error_event' });
     expect(spy).toHaveBeenCalledOnce();
   });
@@ -106,24 +108,24 @@ describe('write hook — window.__pinoLogs capture', () => {
 
 describe('write hook — msg fallback to event', () => {
   it('sets msg to event value when msg is absent', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'my_event' };
     hook(obj);
     expect(obj['msg']).toBe('my_event');
   });
 
   it('sets msg to empty string when neither msg nor event present', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30 };
     hook(obj);
     expect(obj['msg']).toBe('');
   });
 
   it('preserves explicit non-empty msg', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'e', msg: 'explicit message' };
     hook(obj);
     expect(obj['msg']).toBe('explicit message');
@@ -134,8 +136,8 @@ describe('write hook — context binding injection', () => {
   it('injects bound context fields', () => {
     _resetContext();
     bindContext({ request_id: 'req-999', user_id: 7 });
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'action' };
     hook(obj);
     expect(obj['request_id']).toBe('req-999');
@@ -146,16 +148,16 @@ describe('write hook — context binding injection', () => {
 
 describe('write hook — PII sanitization', () => {
   it('redacts password fields', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' };
     hook(obj);
     expect(obj['password']).toBe('[REDACTED]');
   });
 
   it('does not redact non-PII fields', () => {
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'ok', user_id: 42, status: 200 };
     hook(obj);
     expect(obj['user_id']).toBe(42);
@@ -167,8 +169,8 @@ describe('write hook — PII sanitization', () => {
 
 describe('write hook — window.__pinoLogs auto-init', () => {
   it('creates window.__pinoLogs when it does not exist', () => {
-    const cfg = makeCfg({ captureToWindow: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ captureToWindow: true });
+    const hook = makeWriteHook();
     // Remove __pinoLogs so the hook must create it
     delete (window as unknown as Record<string, unknown>)['__pinoLogs'];
     hook({ level: 30, event: 'init_test' });
@@ -184,8 +186,8 @@ describe('write hook — OTEL trace_id/span_id injection', () => {
       trace_id: 'abc123def456abc123def456abc123de',
       span_id: '1234567890abcdef',
     });
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'traced' };
     hook(obj);
     expect(obj['trace_id']).toBe('abc123def456abc123def456abc123de');
@@ -194,10 +196,10 @@ describe('write hook — OTEL trace_id/span_id injection', () => {
 });
 
 describe('write hook — unknown level fallback', () => {
-  it('uses console.log for unmapped level numbers when consoleOutput: true', () => {
+  it('uses console.log for unmapped level numbers when consoleOutput=true', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 999, event: 'unknown_level' });
     expect(spy).toHaveBeenCalledOnce();
   });
@@ -255,6 +257,16 @@ describe('getLogger', () => {
     expect(log1).toBeDefined();
     expect(log2).toBeDefined();
   });
+
+  it('getLogger log flows through write hook (window.__pinoLogs populated)', async () => {
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    const log = getLogger('integration');
+    log.info({ event: 'hello' }, 'world');
+    // The Node.js stream is async (pino flushes on next tick)
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    expect(logs.length).toBeGreaterThan(0);
+  });
 });
 
 import { logger } from '../src/logger';
@@ -289,24 +301,24 @@ describe('logger singleton', () => {
 describe('write hook — LEVEL_MAP console routing', () => {
   it('level 10 (trace) routes to console.trace when consoleOutput=true', () => {
     const spy = vi.spyOn(console, 'trace').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 10, event: 'x' });
     expect(spy).toHaveBeenCalled();
   });
 
   it('level 20 (debug) routes to console.debug when consoleOutput=true', () => {
     const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 20, event: 'x' });
     expect(spy).toHaveBeenCalled();
   });
 
   it('level 60 (fatal) routes to console.error when consoleOutput=true', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const cfg = makeCfg({ consoleOutput: true });
-    const hook = makeWriteHook(cfg);
+    makeCfg({ consoleOutput: true });
+    const hook = makeWriteHook();
     hook({ level: 60, event: 'x' });
     expect(spy).toHaveBeenCalled();
   });
@@ -315,8 +327,8 @@ describe('write hook — LEVEL_MAP console routing', () => {
 describe('write hook — trace context NOT injected when no span', () => {
   it('does not add trace_id when getActiveTraceIds returns empty', () => {
     vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'test' };
     hook(obj);
     expect(obj).not.toHaveProperty('trace_id');
@@ -327,11 +339,26 @@ describe('write hook — trace context NOT injected when no span', () => {
 describe('write hook — __pinoLogs array preservation', () => {
   it('preserves existing __pinoLogs entries on subsequent writes', () => {
     (window as unknown as Record<string, unknown>)['__pinoLogs'] = [{ existing: true }];
-    const cfg = makeCfg();
-    const hook = makeWriteHook(cfg);
+    makeCfg();
+    const hook = makeWriteHook();
     hook({ level: 30, event: 'new' });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     expect(logs).toHaveLength(2);
     expect((logs[0] as Record<string, unknown>)['existing']).toBe(true);
+  });
+});
+
+describe('write hook — config read dynamically (Bug 2 regression)', () => {
+  it('reflects config change after hook is created', () => {
+    // Create hook with captureToWindow: true
+    makeCfg({ captureToWindow: true });
+    const hook = makeWriteHook();
+    // Now change config to captureToWindow: false
+    makeCfg({ captureToWindow: false });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    hook({ level: 30, event: 'after_reset' });
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    // Hook should read the NEW config — no capture
+    expect(logs.length).toBe(0);
   });
 });

@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as fc from 'fast-check';
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it } from 'vitest';
 import {
   _resetContext,
-  bindContext,
-  clearContext,
   getContext,
   runWithContext,
 } from '../../src/context';
