@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as fc from 'fast-check';
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import { EventSchemaError, eventName, validateEventName } from '../../src/schema';
 
 const validSegment = fc
