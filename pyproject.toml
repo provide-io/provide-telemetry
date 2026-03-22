@@ -182,5 +182,5 @@ do_not_mutate = []
 pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
-  "not integration and not e2e and not otel and not tooling",
+  "not integration and not e2e and not otel and not tooling and not memray",
 ]
