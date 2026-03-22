@@ -27,14 +27,9 @@ class TestMergeRuntimeContextKeys:
     def test_trace_id_key_is_exact(self) -> None:
         """Kills: 'trace_id' → 'XXtrace_idXX' in both .get() and assignment."""
         with (
-            patch(
-                "undef.telemetry.logger.processors.get_trace_context",
-                return_value={"trace_id": "abc123", "span_id": None},
-            ),
-            patch(
-                "undef.telemetry.logger.processors.get_context",
-                return_value={},
-            ),
+            patch("undef.telemetry.logger.processors.get_trace_id", return_value="abc123"),
+            patch("undef.telemetry.logger.processors.get_span_id", return_value=None),
+            patch("undef.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "trace_id" in result
@@ -44,14 +39,9 @@ class TestMergeRuntimeContextKeys:
     def test_span_id_key_is_exact(self) -> None:
         """Kills: 'span_id' → 'XXspan_idXX' in both .get() and assignment."""
         with (
-            patch(
-                "undef.telemetry.logger.processors.get_trace_context",
-                return_value={"trace_id": None, "span_id": "def456"},
-            ),
-            patch(
-                "undef.telemetry.logger.processors.get_context",
-                return_value={},
-            ),
+            patch("undef.telemetry.logger.processors.get_trace_id", return_value=None),
+            patch("undef.telemetry.logger.processors.get_span_id", return_value="def456"),
+            patch("undef.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "span_id" in result
@@ -61,14 +51,9 @@ class TestMergeRuntimeContextKeys:
     def test_both_trace_and_span_set(self) -> None:
         """Both keys present when both values are non-None."""
         with (
-            patch(
-                "undef.telemetry.logger.processors.get_trace_context",
-                return_value={"trace_id": "t1", "span_id": "s1"},
-            ),
-            patch(
-                "undef.telemetry.logger.processors.get_context",
-                return_value={},
-            ),
+            patch("undef.telemetry.logger.processors.get_trace_id", return_value="t1"),
+            patch("undef.telemetry.logger.processors.get_span_id", return_value="s1"),
+            patch("undef.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert result["trace_id"] == "t1"
@@ -77,14 +62,9 @@ class TestMergeRuntimeContextKeys:
     def test_neither_trace_nor_span_set(self) -> None:
         """Neither key present when both values are None."""
         with (
-            patch(
-                "undef.telemetry.logger.processors.get_trace_context",
-                return_value={"trace_id": None, "span_id": None},
-            ),
-            patch(
-                "undef.telemetry.logger.processors.get_context",
-                return_value={},
-            ),
+            patch("undef.telemetry.logger.processors.get_trace_id", return_value=None),
+            patch("undef.telemetry.logger.processors.get_span_id", return_value=None),
+            patch("undef.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "trace_id" not in result

@@ -16,14 +16,13 @@ from undef.telemetry.logger.context import get_context
 from undef.telemetry.pii import sanitize_payload
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
-from undef.telemetry.tracing.context import get_trace_context
+from undef.telemetry.tracing.context import get_span_id, get_trace_id
 
 
 def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     event_dict.update(get_context())
-    trace_ctx = get_trace_context()
-    trace_id = trace_ctx.get("trace_id")
-    span_id = trace_ctx.get("span_id")
+    trace_id = get_trace_id()
+    span_id = get_span_id()
     if trace_id is not None:
         event_dict["trace_id"] = trace_id
     if span_id is not None:

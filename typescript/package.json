@@ -26,7 +26,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:mutation": "stryker run"
+    "test:mutation": "stryker run",
+    "test:memory": "npx tsx scripts/memory-audit.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

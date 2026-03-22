@@ -423,10 +423,8 @@ def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.get_trace_context",
-        lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
-    )
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
     c.add(1, {"user_id": "u1"})
     h.record(1.0, {"user_id": "u2"})
     assert len(counter_impl.calls) == 2
@@ -458,10 +456,8 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.get_trace_context",
-        lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
-    )
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
     c.add(1)
     h.record(1.0)
     counter_kwargs = cast(dict[str, Any], counter_impl.calls[0][1])
@@ -471,9 +467,8 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_metric_exemplar_empty_context_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.get_trace_context", lambda: {"trace_id": None, "span_id": None}
-    )
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: None)
+    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: None)
     assert fallback_mod._exemplar() == {}
 
 

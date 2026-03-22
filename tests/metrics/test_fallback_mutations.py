@@ -144,27 +144,18 @@ class TestReleaseArgs:
 class TestExemplarOrVsAnd:
     def test_returns_empty_when_trace_id_set_but_span_id_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Kills: `trace_id is None or span_id is None` → `and`."""
-        monkeypatch.setattr(
-            fallback_mod,
-            "get_trace_context",
-            lambda: {"trace_id": "a" * 32, "span_id": None},
-        )
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: "a" * 32)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: None)
         assert _exemplar() == {}
 
     def test_returns_empty_when_span_id_set_but_trace_id_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            fallback_mod,
-            "get_trace_context",
-            lambda: {"trace_id": None, "span_id": "b" * 16},
-        )
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: None)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: "b" * 16)
         assert _exemplar() == {}
 
     def test_returns_both_when_both_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            fallback_mod,
-            "get_trace_context",
-            lambda: {"trace_id": "a" * 32, "span_id": "b" * 16},
-        )
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: "a" * 32)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: "b" * 16)
         result = _exemplar()
         assert result == {"trace_id": "a" * 32, "span_id": "b" * 16}
 
@@ -174,43 +165,40 @@ class TestExemplarOrVsAnd:
 
 class TestOtelDelegationArgs:
     def test_counter_otel_add_receives_exact_amount_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: None)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: None)
         otel_counter = Mock()
         c = Counter("c", otel_counter=otel_counter)
         c.add(7, {"env": "prod"})
         otel_counter.add.assert_called_once_with(7, {"env": "prod"})
 
     def test_counter_otel_add_with_exemplar_receives_all_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            fallback_mod,
-            "get_trace_context",
-            lambda: {"trace_id": "t1", "span_id": "s1"},
-        )
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: "t1")
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: "s1")
         otel_counter = Mock()
         c = Counter("c", otel_counter=otel_counter)
         c.add(3, {"k": "v"})
         otel_counter.add.assert_called_once_with(3, {"k": "v"}, exemplar={"trace_id": "t1", "span_id": "s1"})
 
     def test_gauge_otel_add_receives_exact_amount_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: None)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: None)
         otel_gauge = Mock()
         g = Gauge("g", otel_gauge=otel_gauge)
         g.add(5, {"region": "us"})
         otel_gauge.add.assert_called_once_with(5, {"region": "us"})
 
     def test_histogram_otel_record_receives_exact_value_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(fallback_mod, "get_trace_context", lambda: {"trace_id": None, "span_id": None})
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: None)
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: None)
         otel_hist = Mock()
         h = Histogram("h", otel_histogram=otel_hist)
         h.record(42.5, {"path": "/api"})
         otel_hist.record.assert_called_once_with(42.5, {"path": "/api"})
 
     def test_histogram_otel_record_with_exemplar_receives_all_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            fallback_mod,
-            "get_trace_context",
-            lambda: {"trace_id": "t2", "span_id": "s2"},
-        )
+        monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: "t2")
+        monkeypatch.setattr(fallback_mod, "get_span_id", lambda: "s2")
         otel_hist = Mock()
         h = Histogram("h", otel_histogram=otel_hist)
         h.record(9.9, {"k": "v"})

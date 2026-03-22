@@ -21,7 +21,6 @@ __all__ = [
 
 import copy
 import threading
-from dataclasses import asdict
 
 from undef.telemetry.backpressure import QueuePolicy, set_queue_policy
 from undef.telemetry.config import TelemetryConfig
@@ -133,9 +132,7 @@ _COLD_KEYS = frozenset(
 
 
 def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) -> bool:
-    current_data = asdict(current)
-    target_data = asdict(target)
-    return any(current_data.get(k) != target_data.get(k) for k in _COLD_KEYS)
+    return any(getattr(current, k) != getattr(target, k) for k in _COLD_KEYS)
 
 
 def get_runtime_config() -> TelemetryConfig:

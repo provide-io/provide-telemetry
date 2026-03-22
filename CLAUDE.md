@@ -36,6 +36,17 @@ uv run python scripts/check_spdx_headers.py              # All source files need
 uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 100% mutation kill required
 ```
 
+**Memory profiling:**
+```bash
+make memray                                                # Run all memray stress tests
+make memray-flamegraph                                     # Generate HTML flamegraphs
+make memray-analyze                                        # Run tracemalloc audit
+make memray-baseline                                       # Update regression baselines
+make perf-smoke                                            # Run performance timing benchmarks
+uv run pytest tests/memray/ -m memray -v --no-cov          # Run memray regression tests
+uv run python scripts/memray/memray_analysis.py            # Generate analysis report + flamegraphs
+```
+
 ## Quality Constraints
 
 - **100% branch coverage** is enforced — every new code path needs test coverage.
@@ -43,7 +54,7 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 
 - **500 LOC max per file** — split files before they exceed this limit.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
-- Pytest markers: `otel`, `integration`, `e2e`, `tooling` — tag tests appropriately.
+- Pytest markers: `otel`, `integration`, `e2e`, `tooling`, `memray`, `slow` — tag tests appropriately.
 
 ## Architecture
 
@@ -97,3 +108,5 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - Use `importlib.reload()` to reset module-level singletons between tests (see existing tests for the pattern).
 - OTel-dependent tests must use `@pytest.mark.otel` and import OTel inside the test or fixture.
 - E2E tests require `OPENOBSERVE_URL`, `OPENOBSERVE_USER`, `OPENOBSERVE_PASSWORD` env vars.
+- Memray stress tests live in `tests/memray/` with baselines in `tests/memray/baselines.json`.
+- Memray tests are excluded from default runs (`-m "not memray"`); run with `make memray-baseline`.
