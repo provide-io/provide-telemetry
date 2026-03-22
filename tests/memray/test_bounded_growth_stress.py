@@ -16,13 +16,13 @@ import pytest
 
 @pytest.mark.memray
 @pytest.mark.slow
-def test_bounded_growth_stress() -> None:
+def test_bounded_growth_stress(project_root: Path) -> None:
     """Verify module-level caches do not grow unboundedly."""
-    script_path = Path(__file__).parent.parent.parent / "scripts" / "memray" / "memray_bounded_growth_stress.py"
+    script_path = project_root / "scripts" / "memray" / "memray_bounded_growth_stress.py"
 
     result = subprocess.run(
         [sys.executable, str(script_path)],
-        cwd=str(Path(__file__).parent.parent.parent),
+        cwd=str(project_root),
         capture_output=True,
         text=True,
         timeout=60,
