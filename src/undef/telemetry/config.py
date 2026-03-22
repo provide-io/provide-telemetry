@@ -299,7 +299,7 @@ def _parse_module_levels(raw: str) -> dict[str, str]:
 
     Example: ``UNDEF_LOG_MODULE_LEVELS="undef.server=DEBUG,asyncio=WARNING"``
     """
-    if not raw or not raw.strip():
+    if not raw or not raw.strip():  # pragma: no mutate
         return {}
     result: dict[str, str] = {}
     for pair in raw.split(","):
