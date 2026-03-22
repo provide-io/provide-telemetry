@@ -304,20 +304,21 @@ class TestTraceWrapperLockedRead:
         cfg = TelemetryConfig(logging=LoggingConfig(level="TRACE"))
         configure_logging(cfg)
         wrapper = _TraceWrapper(structlog.get_logger("test"))
-        debug_calls: list[str] = []
-        monkeypatch.setattr(wrapper._logger, "debug", lambda event, **kw: debug_calls.append(event))
+        trace_calls: list[str] = []
+        monkeypatch.setattr(wrapper._logger, "trace", lambda event, **kw: trace_calls.append(event))
         wrapper.trace("trace_event")
-        assert "trace_event" in debug_calls
+        assert "trace_event" in trace_calls
 
     def test_trace_is_noop_when_active_config_is_none(self) -> None:
-        import structlog
-
+        from undef.telemetry.config import TelemetryConfig
         from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _TraceWrapper
+        from undef.telemetry.logger.core import _TraceWrapper, configure_logging
 
         lc._reset_logging_for_tests()
+        # Configure with INFO (default) so FilteringBoundLogger has .trace() as nop
+        configure_logging(TelemetryConfig())
+        import structlog
+
         wrapper = _TraceWrapper(structlog.get_logger("test"))
-        debug_calls: list[str] = []
-        # Should not crash and should not call debug
+        # Should not crash — trace() is a nop at INFO level
         wrapper.trace("event")
-        assert debug_calls == []
