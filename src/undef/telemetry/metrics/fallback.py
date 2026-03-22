@@ -14,7 +14,7 @@ from undef.telemetry.backpressure import release, try_acquire
 from undef.telemetry.cardinality import guard_attributes
 from undef.telemetry.health import increment_exemplar_unsupported
 from undef.telemetry.sampling import should_sample
-from undef.telemetry.tracing.context import get_trace_context
+from undef.telemetry.tracing.context import get_span_id, get_trace_id
 
 # Lazy re-binding support: when an instrument is created before
 # setup_telemetry(), its _otel_* handle is None.  After provider
@@ -24,9 +24,8 @@ _RESOLVE_LOCK = threading.Lock()
 
 
 def _exemplar() -> dict[str, str]:
-    trace_ctx = get_trace_context()
-    trace_id = trace_ctx.get("trace_id")
-    span_id = trace_ctx.get("span_id")
+    trace_id = get_trace_id()
+    span_id = get_span_id()
     if trace_id is None or span_id is None:
         return {}
     return {"trace_id": trace_id, "span_id": span_id}
