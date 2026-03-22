@@ -310,9 +310,9 @@ class TestTraceWrapperLockedRead:
         assert "trace_event" in trace_calls
 
     def test_trace_is_noop_when_active_config_is_none(self) -> None:
-        from provide.telemetry.config import TelemetryConfig
-        from provide.telemetry.logger import core as lc
-        from provide.telemetry.logger.core import _TraceWrapper, configure_logging
+        from undef.telemetry.config import TelemetryConfig
+        from undef.telemetry.logger import core as lc
+        from undef.telemetry.logger.core import _TraceWrapper, configure_logging
 
         lc._reset_logging_for_tests()
         # Configure with INFO (default) so FilteringBoundLogger has .trace() as nop

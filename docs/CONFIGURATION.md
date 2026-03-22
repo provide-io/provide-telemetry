@@ -31,6 +31,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 | `UNDEF_LOG_PRETTY_KEY_COLOR` | str | `dim` | ANSI color name for keys in `pretty` format (see named colors below) |
 | `UNDEF_LOG_PRETTY_VALUE_COLOR` | str | `""` | ANSI color name for values in `pretty` format (empty = default) |
 | `UNDEF_LOG_PRETTY_FIELDS` | str | `""` | Comma-separated field names to display in `pretty` format |
+| `UNDEF_LOG_MODULE_LEVELS` | str | `""` | Per-module log level overrides (e.g. `undef.server=DEBUG,asyncio=WARNING`) |
 
 ## Tracing
 
