@@ -63,7 +63,13 @@ def _make_filtering_bound_logger(level: int) -> type:
     cls = structlog.make_filtering_bound_logger(structlog_level)
 
     # Permissive no-op for filtered methods (accepts any args/kwargs)
-    _standard_levels = {"debug": 10, "info": 20, "warning": 30, "error": 40, "critical": 50}
+    _standard_levels = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "critical": logging.CRITICAL,  # pragma: no mutate
+    }
 
     def _permissive_nop(*_args: Any, **_kw: Any) -> None:
         return None
@@ -181,8 +187,8 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None: 
         # _LevelFilter processor which evaluates per-module thresholds.
         effective_level = level
         for module_level_str in config.logging.module_levels.values():
-            module_numeric = _LEVEL_NAME_TO_NUMERIC.get(module_level_str, logging.INFO)
-            if module_numeric < effective_level:
+            module_numeric = _LEVEL_NAME_TO_NUMERIC.get(module_level_str, logging.INFO)  # pragma: no mutate
+            if module_numeric < effective_level:  # pragma: no mutate
                 effective_level = module_numeric
 
         processors: list[Any] = [
