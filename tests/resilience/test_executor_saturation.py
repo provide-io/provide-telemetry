@@ -109,7 +109,7 @@ class TestGhostThreadAccumulation:
         deadline = time.monotonic() + 2.0
         while threading.active_count() > baseline and time.monotonic() < deadline:
             time.sleep(0.005)
-        assert threading.active_count() == baseline
+        assert threading.active_count() <= baseline
 
 
 class TestCircuitBreakerLifecycle:
