@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * 🔄 Runtime reconfiguration — hot-swap config without restart.
@@ -10,15 +9,13 @@
  * - getRuntimeConfig / updateRuntimeConfig for hot updates
  * - reconfigureTelemetry for provider-safe reconfiguration
  * - reloadRuntimeFromEnv to re-read environment variables
- * - provider-changing OTEL fields requiring restart after live registration
+ * - ConfigurationError when attempting to change OTEL provider fields post-init
  *
  * Run: npx tsx examples/telemetry/04_runtime_reconfigure.ts
  */
 
 import {
   ConfigurationError,
-  event,
-  getHealthSnapshot,
   getLogger,
   getRuntimeConfig,
   reconfigureTelemetry,
@@ -31,14 +28,14 @@ import {
 async function main(): Promise<void> {
   console.log('🔄 Runtime Reconfiguration Demo\n');
 
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', logLevel: 'info', consoleOutput: false });
+  setupTelemetry({ serviceName: 'undef-telemetry-examples', logLevel: 'info', consoleOutput: false });
   const log = getLogger('examples.runtime');
 
   // ── 📊 Inspect current config ────────────────────────
   const cfgBefore = getRuntimeConfig();
   console.log(`📊 Before: serviceName=${cfgBefore.serviceName}  logLevel=${cfgBefore.logLevel}`);
 
-  log.info({ ...event('example', 'runtime', 'before') });
+  log.info({ event: 'example.runtime.before' });
 
   // ── 🔧 Hot-swap log level ─────────────────────────────
   console.log('\n🔧 Hot-swapping logLevel to warn...');
@@ -46,31 +43,38 @@ async function main(): Promise<void> {
   const cfgAfter = getRuntimeConfig();
   console.log(`  ✅ After update: logLevel=${cfgAfter.logLevel}`);
 
-  log.info({ ...event('example', 'runtime', 'dropped') }); // suppressed at warn level
+  log.info({ event: 'example.runtime.dropped' }); // suppressed at warn level
 
   // ── ♻️ Non-breaking reconfigure ──────────────────────
   console.log('\n♻️  reconfigureTelemetry() — safe reconfigure (no provider change)...');
-  reconfigureTelemetry({ logLevel: 'info', serviceName: 'provide-telemetry-examples-v2' });
+  reconfigureTelemetry({ logLevel: 'info', serviceName: 'undef-telemetry-examples-v2' });
   const cfgRestarted = getRuntimeConfig();
   console.log(`  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`);
 
-  log.info({ ...event('example', 'runtime', 'reconfigured') });
-
-  const healthAfter = getHealthSnapshot();
-  console.log(`  📊 Health after reconfigure: logsDropped=${healthAfter.logsDropped} exportFailuresLogs=${healthAfter.exportFailuresLogs}`);
+  log.info({ event: 'example.runtime.reconfigured' });
 
   // ── 🌍 Reload from environment ───────────────────────
-  console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env hot fields only...');
+  console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env...');
   reloadRuntimeFromEnv();
   const cfgReloaded = getRuntimeConfig();
   console.log(`  ✅ Reloaded: logLevel=${cfgReloaded.logLevel}`);
 
-  // ── 🚫 Provider-changing fields after live registration ───────────────
-  console.log('\n🚫 Provider-changing fields are rejected after OTEL providers are live.');
-  console.log(
-    '  Reconfigure with otelEnabled / otlpEndpoint / otlpHeaders only before registerOtelProviders(),',
-  );
-  console.log('  or restart the process and call setupTelemetry() with the new provider config.');
+  // ── 🚫 ConfigurationError on provider-changing fields ──
+  console.log('\n🚫 Attempting to change otelEnabled after providers registered...');
+  // Simulate providers being registered by marking them (normally done by registerOtelProviders)
+  // This is commented out in this example since we don't want to actually register providers:
+  //   import { _markProvidersRegistered } from '../../src/runtime.js';
+  //   _markProvidersRegistered();
+  //   try { reconfigureTelemetry({ otelEnabled: true }); }
+  //   catch (err) { ... }
+  // Instead, show the error class is catchable:
+  try {
+    throw new ConfigurationError('Cannot change OTEL provider config after providers are initialized');
+  } catch (err) {
+    if (err instanceof ConfigurationError) {
+      console.log(`  💥 ConfigurationError: ${err.message}`);
+    }
+  }
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

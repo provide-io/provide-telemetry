@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * 🚀 Basic telemetry — logging, tracing, and all three metric types.
@@ -20,7 +19,6 @@ import {
   bindContext,
   clearContext,
   counter,
-  event,
   gauge,
   getConfig,
   getLogger,
@@ -32,9 +30,9 @@ import {
 } from '../../src/index.js';
 
 async function doWork(iteration: number): Promise<void> {
-  await withTrace(event('example', 'basic', 'work').event, async () => {
+  await withTrace('example.basic.work', async () => {
     const log = getLogger('examples.basic');
-    log.info({ ...event('example', 'basic', 'iteration'), iteration: String(iteration) });
+    log.info({ event: 'example.basic.iteration', iteration: String(iteration) });
     counter('example.basic.requests', { description: 'Total request count' }).add(1, {
       iteration: String(iteration),
     });
@@ -49,7 +47,7 @@ async function doWork(iteration: number): Promise<void> {
 async function main(): Promise<void> {
   console.log('🚀 Basic Telemetry Demo\n');
 
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: true });
+  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: true });
   const cfg = getConfig();
   const log = getLogger('examples.basic');
 
@@ -58,7 +56,7 @@ async function main(): Promise<void> {
   // ── 📋 Structured context binding ───────────────────────
   console.log('\n📋 Binding structured context fields...');
   bindContext({ region: 'us-east-1', tier: 'premium' });
-  log.info({ ...event('example', 'basic', 'start'), msg: 'context is bound' });
+  log.info({ event: 'example.basic.start', msg: 'context is bound' });
   console.log('  ✅ Bound: region=us-east-1, tier=premium');
 
   // ── 🔄 Traced work loop with all metric types ──────────
@@ -72,11 +70,11 @@ async function main(): Promise<void> {
   // ── 🧹 Context cleanup ─────────────────────────────────
   console.log("\n🧹 Unbinding 'region', then clearing all context...");
   unbindContext('region');
-  log.info({ ...event('example', 'basic', 'after_unbind'), msg: 'region removed' });
+  log.info({ event: 'example.basic.after_unbind', msg: 'region removed' });
   console.log('  🔸 Unbound: region');
 
   clearContext();
-  log.info({ ...event('example', 'basic', 'after_clear'), msg: 'all context cleared' });
+  log.info({ event: 'example.basic.after_clear', msg: 'all context cleared' });
   console.log('  🔸 Cleared: all context fields');
 
   console.log('\n🏁 Done!');

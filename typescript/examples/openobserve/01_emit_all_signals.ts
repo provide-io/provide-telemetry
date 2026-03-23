@@ -1,28 +1,25 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * Emit all signal types (logs, traces, metrics) to OpenObserve via OTLP HTTP.
  *
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
- *   OPENOBSERVE_USER     e.g. admin@provide.test
- *   OPENOBSERVE_PASSWORD e.g. Complexpass#123
+ *   OPENOBSERVE_USER     e.g. tim@provide.io
+ *   OPENOBSERVE_PASSWORD e.g. password
  *
  * Optional:
- *   PROVIDE_EXAMPLE_RUN_ID  defaults to Date.now()
+ *   UNDEF_EXAMPLE_RUN_ID  defaults to Date.now()
  *
  * Run:
  *   OPENOBSERVE_URL=http://localhost:5080/api/default \
- *   OPENOBSERVE_USER=admin@provide.test \
- *   OPENOBSERVE_PASSWORD=Complexpass#123 \
+ *   OPENOBSERVE_USER=tim@provide.io \
+ *   OPENOBSERVE_PASSWORD=password \
  *   npx tsx examples/openobserve/01_emit_all_signals.ts
  */
 
-import * as http from 'node:http';
-import * as https from 'node:https';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -31,18 +28,7 @@ import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk
 import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { context, metrics, trace } from '@opentelemetry/api';
 
-import {
-  bindContext,
-  counter,
-  event,
-  getConfig,
-  getLogger,
-  histogram,
-  registerOtelProviders,
-  setupTelemetry,
-  shutdownTelemetry,
-  withTrace,
-} from '../../src/index.js';
+import { bindContext, counter, getLogger, histogram, setupTelemetry, withTrace } from '../../src/index.js';
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -54,55 +40,49 @@ function authHeader(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
 }
 
-async function sendJsonLog(baseUrl: string, auth: string, runId: string): Promise<void> {
-  const parsed = new URL(`${baseUrl}/default/_json`);
-  const payload = Buffer.from(
-    JSON.stringify([{ _timestamp: Date.now() * 1000, event: 'example.openobserve.jsonlog', run_id: runId, message: 'openobserve json log ingestion' }]),
-  );
-  const mod = parsed.protocol === 'https:' ? https : http;
-  await new Promise<void>((resolve, reject) => {
-    const req = mod.request(
-      { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname, method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json', 'Content-Length': payload.length } },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => {
-          const body = Buffer.concat(chunks).toString('utf8');
-          if ((res.statusCode ?? 0) >= 400) reject(new Error(`JSON log POST failed ${res.statusCode}: ${body}`));
-          else resolve();
-        });
-      },
-    );
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
-}
-
 async function main(): Promise<void> {
   const baseUrl = requireEnv('OPENOBSERVE_URL').replace(/\/$/, '');
   const user = requireEnv('OPENOBSERVE_USER');
   const password = requireEnv('OPENOBSERVE_PASSWORD');
   const auth = authHeader(user, password);
-  const runId = process.env['PROVIDE_EXAMPLE_RUN_ID'] ?? String(Date.now());
+  const runId = process.env['UNDEF_EXAMPLE_RUN_ID'] ?? String(Date.now());
 
   const traceName = `example.openobserve.work.${runId}`;
   const metricName = `example.openobserve.requests.${runId}`;
 
-  // ── @provide-io/telemetry setup ───────────────────────────────────────────────
+  const otlpHeaders = { Authorization: auth };
+
+  // ── OTEL SDK setup ────────────────────────────────────────────────────────
+
+  const ctxMgr = new AsyncLocalStorageContextManager();
+  ctxMgr.enable();
+  context.setGlobalContextManager(ctxMgr);
+
+  const traceExporter = new OTLPTraceExporter({ url: `${baseUrl}/v1/traces`, headers: otlpHeaders });
+  const tracerProvider = new BasicTracerProvider({
+    resource: resourceFromAttributes({
+      'service.name': 'undef-telemetry-ts-examples',
+      'service.version': '0.1.0',
+      'deployment.environment': 'development',
+    }),
+    spanProcessors: [new SimpleSpanProcessor(traceExporter)],
+  });
+  trace.setGlobalTracerProvider(tracerProvider);
+
+  const metricExporter = new OTLPMetricExporter({ url: `${baseUrl}/v1/metrics`, headers: otlpHeaders });
+  const meterProvider = new MeterProvider({
+    resource: resourceFromAttributes({ 'service.name': 'undef-telemetry-ts-examples' }),
+    readers: [new PeriodicExportingMetricReader({ exporter: metricExporter, exportIntervalMillis: 1000 })],
+  });
+  metrics.setGlobalMeterProvider(meterProvider);
+
+  // ── @undef/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
-    serviceName: 'provide-telemetry-ts-examples',
+    serviceName: 'undef-telemetry-ts-examples',
     logLevel: 'debug',
     consoleOutput: false,
-    otelEnabled: true,
-    otlpEndpoint: baseUrl,
-    otlpHeaders: { Authorization: auth },
-    environment: 'development',
-    version: 'examples',
   });
-  await registerOtelProviders(getConfig());
 
   bindContext({ run_id: runId, example: 'openobserve' });
 
@@ -112,25 +92,28 @@ async function main(): Promise<void> {
 
   // ── Emit signals ─────────────────────────────────────────────────────────
 
-  log.info({ ...event('example', 'openobserve', 'start'), run_id: runId });
+  log.info({ event: 'example.openobserve.start', run_id: runId });
 
   for (let i = 0; i < 5; i++) {
     const start = Date.now();
     await withTrace(traceName, async () => {
-      log.info({ ...event('example', 'openobserve', 'log'), run_id: runId, iteration: String(i) });
+      log.info({ event: 'example.openobserve.log', iteration: String(i), run_id: runId });
       requestsCounter.add(1, { iteration: String(i) });
       await new Promise((r) => setTimeout(r, 50));
     });
     latencyHistogram.record(Date.now() - start, { iteration: String(i) });
   }
 
-  log.info({ ...event('example', 'openobserve', 'done'), run_id: runId, iterations: 5 });
+  log.info({ event: 'example.openobserve.done', run_id: runId, iterations: 5 });
 
   // ── Flush and shutdown ───────────────────────────────────────────────────
 
-  await shutdownTelemetry();
+  await tracerProvider.forceFlush();
+  await meterProvider.forceFlush();
+  await new Promise((r) => setTimeout(r, 1000));
+  await tracerProvider.shutdown();
+  await meterProvider.shutdown();
 
-  await sendJsonLog(baseUrl, auth, runId);
   console.log(`signals emitted run_id=${runId}`);
 }
 
