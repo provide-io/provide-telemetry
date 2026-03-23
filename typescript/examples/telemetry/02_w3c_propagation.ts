@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * 🌐 W3C trace-context propagation.
@@ -21,7 +20,6 @@
 import {
   bindPropagationContext,
   clearPropagationContext,
-  event,
   extractW3cContext,
   getActivePropagationContext,
   getLogger,
@@ -48,10 +46,10 @@ function runHttpRequest(): void {
 
   const log = getLogger('examples.w3c');
   const active = getActivePropagationContext();
-  log.info({ ...event('example', 'w3c', 'received'), traceId: active.traceId });
+  log.info({ event: 'example.w3c.received', traceId: active.traceId });
 
   const traceCtx = getTraceContext();
-  log.info({ ...event('example', 'w3c', 'trace'), traceCtx });
+  log.info({ event: 'example.w3c.trace', traceCtx });
 
   clearPropagationContext();
   console.log('  ✅ Response dispatched, context cleared');
@@ -114,7 +112,7 @@ function runInvalidHeader(): void {
 
 async function main(): Promise<void> {
   console.log('🌐 W3C Propagation Demo');
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
 
   runHttpRequest();
   runManualPropagation();

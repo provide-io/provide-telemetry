@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * Verify that signals emitted by 01_emit_all_signals.ts were ingested by OpenObserve.
@@ -11,16 +10,16 @@
  *
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
- *   OPENOBSERVE_USER     e.g. admin@provide.test
- *   OPENOBSERVE_PASSWORD e.g. Complexpass#123
+ *   OPENOBSERVE_USER     e.g. someuserexample@provide.test
+ *   OPENOBSERVE_PASSWORD e.g. password
  *
  * Optional:
  *   OPENOBSERVE_REQUIRED_SIGNALS  comma-separated: logs,metrics,traces (default: logs)
  *
  * Run:
  *   OPENOBSERVE_URL=http://localhost:5080/api/default \
- *   OPENOBSERVE_USER=admin@provide.test \
- *   OPENOBSERVE_PASSWORD=Complexpass#123 \
+ *   OPENOBSERVE_USER=someuserexample@provide.test \
+ *   OPENOBSERVE_PASSWORD=password \
  *   npx tsx examples/openobserve/02_verify_ingestion.ts
  */
 
@@ -74,21 +73,21 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
   });
 }
 
-async function searchHits(
-  baseUrl: string, streamType: string, auth: string,
+async function searchTotal(
+  baseUrl: string, streamType: string, auth: string, sql: string,
   startUs: number, endUs: number,
-): Promise<Record<string, unknown>[]> {
-  const sql = 'select * from "default" order by _timestamp desc limit 500';
+): Promise<number> {
   try {
     const res = await requestJson(
       `${baseUrl}/_search?type=${streamType}`, auth, 'POST',
       { query: { sql, start_time: startUs, end_time: endUs } },
     ) as Record<string, unknown>;
-    const hits = res['hits'];
-    if (!Array.isArray(hits)) return [];
-    return hits.filter((h): h is Record<string, unknown> => typeof h === 'object' && h !== null);
+    const total = res['total'];
+    if (typeof total === 'number') return total;
+    if (typeof total === 'string') return parseInt(total, 10);
+    return 0;
   } catch (err) {
-    if (String(err).includes('Search stream not found')) return [];
+    if (String(err).includes('Search stream not found')) return 0;
     throw err;
   }
 }
@@ -117,21 +116,26 @@ async function main(): Promise<void> {
   const password = requireEnv('OPENOBSERVE_PASSWORD');
   const auth = authHeader(user, password);
   const runId = String(Date.now());
-  process.env['PROVIDE_EXAMPLE_RUN_ID'] = runId;
+  process.env['UNDEF_EXAMPLE_RUN_ID'] = runId;
 
   const startUs = Date.now() * 1000 - 2 * 60 * 60 * 1_000_000;
   const traceName = `example.openobserve.work.${runId}`;
   const metricStream = `example_openobserve_requests_${runId}`;
-  // Stable OTel event name + run_id attribute — filter client-side, not by munging the name.
-  const logEvent = 'example.openobserve.jsonlog';
+  const logEvent = `example.openobserve.log`;
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
-  const beforeLogHits = await searchHits(baseUrl, 'logs', auth, startUs, endUsBefore);
-  const beforeTraceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUsBefore);
+  const beforeLogs = await searchTotal(
+    baseUrl, 'logs', auth,
+    `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`,
+    startUs, endUsBefore,
+  );
+  const beforeTraces = await searchTotal(
+    baseUrl, 'traces', auth,
+    `select count(*) from "default" where operation_name = '${traceName}'`,
+    startUs, endUsBefore,
+  );
   const beforeMetricStreams = await streamNames(baseUrl, 'metrics', auth);
-  const beforeLogs = beforeLogHits.filter((h) => h['event'] === logEvent && h['run_id'] === runId).length;
-  const beforeTraces = beforeTraceHits.filter((h) => h['operation_name'] === traceName).length;
   const before = { logs: beforeLogs, metrics_stream_present: beforeMetricStreams.has(metricStream), traces: beforeTraces };
   const requiredSignals = requiredSignalsFromEnv();
   console.log(`before=${JSON.stringify(before)}`);
@@ -146,14 +150,12 @@ async function main(): Promise<void> {
   let after = { ...before };
   while (Date.now() < deadline) {
     const endUs = Date.now() * 1000;
-    const logHits = await searchHits(baseUrl, 'logs', auth, startUs, endUs);
-    const traceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUs);
+    const logs = await searchTotal(baseUrl, 'logs', auth,
+      `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`, startUs, endUs);
+    const traces = await searchTotal(baseUrl, 'traces', auth,
+      `select count(*) from "default" where operation_name = '${traceName}'`, startUs, endUs);
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
-    after = {
-      logs: logHits.filter((h) => h['event'] === logEvent && h['run_id'] === runId).length,
-      metrics_stream_present: mStreams.has(metricStream),
-      traces: traceHits.filter((h) => h['operation_name'] === traceName).length,
-    };
+    after = { logs, metrics_stream_present: mStreams.has(metricStream), traces };
 
     const logsOk = !requiredSignals.has('logs') || after.logs > before.logs;
     const metricsOk = !requiredSignals.has('metrics') || after.metrics_stream_present;
