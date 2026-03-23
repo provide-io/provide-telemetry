@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import threading
 import time
-import types  # noqa: F401 — used in Task 3 (TestCircuitBreakerLifecycle)
+import types
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -110,3 +110,74 @@ class TestGhostThreadAccumulation:
         while threading.active_count() > baseline and time.monotonic() < deadline:
             time.sleep(0.005)
         assert threading.active_count() == baseline
+
+
+class TestCircuitBreakerLifecycle:
+    def test_full_lifecycle(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Trip → block → half-open success → reset → re-trip → half-open failure."""
+        event = threading.Event()
+        _tight_policy("logs")
+
+        # ── 1. Trip ──────────────────────────────────────────────────────────
+        _trip_circuit("logs", event)
+        assert resilience_mod._consecutive_timeouts["logs"] == resilience_mod._CIRCUIT_BREAKER_THRESHOLD
+
+        # ── 2. Block ─────────────────────────────────────────────────────────
+        not_called: list[bool] = []
+
+        def _sentinel() -> str:
+            not_called.append(True)
+            return "oops"
+
+        result = run_with_resilience("logs", _sentinel)
+        assert result is None  # circuit open → fail_open → None
+        assert not_called == []  # sentinel never ran
+        snap = health_mod.get_health_snapshot()
+        # Failures = 3 timeouts + 1 circuit-open rejection
+        assert snap.export_failures_logs == resilience_mod._CIRCUIT_BREAKER_THRESHOLD + 1
+
+        # ── 3. Advance clock past cooldown ───────────────────────────────────
+        tripped_at = resilience_mod._circuit_tripped_at["logs"]
+        fake_time = types.SimpleNamespace(
+            monotonic=lambda: tripped_at + resilience_mod._CIRCUIT_BREAKER_COOLDOWN + 1.0,
+            perf_counter=time.perf_counter,
+            sleep=time.sleep,
+        )
+        monkeypatch.setattr(resilience_mod, "time", fake_time)
+
+        # ── 4. Half-open probe — success ─────────────────────────────────────
+        # Release the stuck event so the probe completes within timeout.
+        event.set()
+        probe_result = run_with_resilience("logs", lambda: "probe-ok")
+        assert probe_result == "probe-ok"
+        assert resilience_mod._consecutive_timeouts["logs"] == 0  # reset on success
+
+        # ── 5. Re-trip ───────────────────────────────────────────────────────
+        # future.result(timeout=...) raises TimeoutError whether the task is
+        # queued or running, so this is correct even if the executor workers are
+        # still occupied by the previous batch's draining threads.
+        event.clear()
+        # Restore real time so timeouts fire normally.
+        monkeypatch.setattr(resilience_mod, "time", time)
+        _trip_circuit("logs", event)
+        assert resilience_mod._consecutive_timeouts["logs"] == resilience_mod._CIRCUIT_BREAKER_THRESHOLD
+
+        # ── 6. Half-open probe — failure ─────────────────────────────────────
+        tripped_at2 = resilience_mod._circuit_tripped_at["logs"]
+        fake_time2 = types.SimpleNamespace(
+            monotonic=lambda: tripped_at2 + resilience_mod._CIRCUIT_BREAKER_COOLDOWN + 1.0,
+            perf_counter=time.perf_counter,
+            sleep=time.sleep,
+        )
+        monkeypatch.setattr(resilience_mod, "time", fake_time2)
+
+        # Probe times out (event still closed) → circuit re-trips.
+        result2 = run_with_resilience("logs", _make_stuck_op(event))
+        assert result2 is None
+        assert (
+            resilience_mod._consecutive_timeouts["logs"]
+            >= resilience_mod._CIRCUIT_BREAKER_THRESHOLD
+        )
+
+        # Cleanup
+        event.set()
