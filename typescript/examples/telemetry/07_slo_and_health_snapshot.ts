@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * 📊 SLO metrics pack and health snapshot inspection.
@@ -17,7 +16,6 @@
 
 import {
   classifyError,
-  event,
   getHealthSnapshot,
   getLogger,
   recordRedMetrics,
@@ -29,7 +27,7 @@ import {
 async function main(): Promise<void> {
   console.log('📊 SLO Metrics & Health Snapshot Demo\n');
 
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
   const log = getLogger('examples.slo');
 
   // ── 🟢 Successful requests ──────────────────────────────
@@ -60,13 +58,13 @@ async function main(): Promise<void> {
     ['NullPointerError', 200],
   ];
   for (const [excName, code] of cases) {
-    const taxonomy = classifyError(excName, code);
-    const icon: Record<string, string> = { server: '🔴', client: '🟡', unknown: '⚫' };
+    const taxonomy = classifyError(code);
+    const icon: Record<string, string> = { server: '🔴', client: '🟡', none: '⚫' };
     console.log(
       `  ${icon[taxonomy.errorType] ?? '❓'} ${excName}(status=${code}) → type=${taxonomy.errorType}, code=${taxonomy.errorCode}`,
     );
     if (code === 503) {
-      log.error({ ...event('example', 'slo', 'error'), excName, statusCode: code, ...taxonomy });
+      log.error({ event: 'example.slo.error', excName, statusCode: code, ...taxonomy });
     }
   }
 
@@ -75,13 +73,12 @@ async function main(): Promise<void> {
   const s = getHealthSnapshot();
   console.log(`  📉 Dropped:         logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
   console.log(`  📦 Emitted:         logs=${s.logsEmitted}  traces=${s.tracesEmitted}  metrics=${s.metricsEmitted}`);
-  console.log(`  🔄 retries:         logs=${s.retriesLogs}  traces=${s.retriesTraces}  metrics=${s.retriesMetrics}`);
-  console.log(`  ❌ exportFailures:  logs=${s.exportFailuresLogs}  traces=${s.exportFailuresTraces}  metrics=${s.exportFailuresMetrics}`);
-  console.log(`  ⚠️  asyncBlockingRisk: logs=${s.asyncBlockingRiskLogs}  traces=${s.asyncBlockingRiskTraces}  metrics=${s.asyncBlockingRiskMetrics}`);
-  console.log(`  🔌 circuitState:    logs=${s.circuitStateLogs}  traces=${s.circuitStateTraces}  metrics=${s.circuitStateMetrics}`);
-  console.log(`  🔢 circuitOpenCount: logs=${s.circuitOpenCountLogs}  traces=${s.circuitOpenCountTraces}  metrics=${s.circuitOpenCountMetrics}`);
-  console.log(`  ⏱️  exportLatencyMs: logs=${s.exportLatencyMsLogs}  traces=${s.exportLatencyMsTraces}  metrics=${s.exportLatencyMsMetrics}`);
-  console.log(`  🚨 setupError:      ${s.setupError}`);
+  console.log(`  🔄 exportRetries:   ${s.exportRetries}`);
+  console.log(`  ❌ exportFailures:  ${s.exportFailures}`);
+  console.log(`  ⚠️  asyncBlockingRisk: ${s.asyncBlockingRisk}`);
+  console.log(`  🔬 exemplarUnsupported: ${s.exemplarUnsupported}`);
+  console.log(`  💬 lastExportError: ${s.lastExportError}`);
+  console.log(`  ⏱️  exportLatencyMs: ${s.exportLatencyMs}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

@@ -1,7 +1,6 @@
-#!/usr/bin/env npx tsx
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Provide Telemetry.
+// SPDX-Comment: Part of Undef Telemetry.
 
 /**
  * 🔒 PII masking and cardinality guardrails.
@@ -21,7 +20,6 @@ import {
   OVERFLOW_VALUE,
   clearCardinalityLimits,
   counter,
-  event,
   getCardinalityLimits,
   getLogger,
   getPiiRules,
@@ -37,9 +35,9 @@ import {
 async function main(): Promise<void> {
   console.log('🔒 PII & Cardinality Policy Demo\n');
 
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
   const log = getLogger('examples.policy');
-  const tokenValue = process.env['PROVIDE_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
+  const tokenValue = process.env['UNDEF_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
 
   // ── 🛡️ Register PII rules ────────────────────────────
   console.log('🛡️  Registering PII rules...');
@@ -50,7 +48,7 @@ async function main(): Promise<void> {
 
   // ── 📝 Log with PII fields ───────────────────────────
   log.warn({
-    ...event('example', 'policy', 'pii'),
+    event: 'example.policy.pii',
     user: { email: 'dev@example.com', full_name: 'Casey Developer' },
     credit_card: '4111111111111111',
     token: tokenValue,
