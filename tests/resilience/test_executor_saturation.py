@@ -14,8 +14,8 @@ Tests three failure modes under sustained export failures:
 from __future__ import annotations
 
 import threading
-import time
-import types
+import time  # noqa: F401 — used in Tasks 2-3 (test classes not yet added)
+import types  # noqa: F401 — used in Task 3 (TestCircuitBreakerLifecycle)
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -37,8 +37,10 @@ def _reset() -> Iterator[None]:
     # Tests must release their own events before this runs.
     # reset_resilience_for_tests() shuts down executors (wait=False) and clears
     # _timeout_executors so the next test gets a fresh pool.
-    resilience_mod.reset_resilience_for_tests()
-    health_mod.reset_health_for_tests()
+    try:
+        resilience_mod.reset_resilience_for_tests()
+    finally:
+        health_mod.reset_health_for_tests()
 
 
 def _make_stuck_op(event: threading.Event) -> Callable[[], str]:
@@ -64,4 +66,4 @@ def _trip_circuit(signal: str, event: threading.Event) -> None:
     threshold = resilience_mod._CIRCUIT_BREAKER_THRESHOLD
     for _ in range(threshold):
         result = run_with_resilience(signal, _make_stuck_op(event))
-        assert result is None  # fail_open returns None on timeout
+        assert result is None, f"Expected fail_open None for {signal!r}, got {result!r}"
