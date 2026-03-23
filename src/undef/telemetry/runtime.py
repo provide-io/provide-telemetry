@@ -122,7 +122,6 @@ _COLD_KEYS = frozenset(
         "environment",
         "version",
         "strict_schema",
-        "logging",
         "tracing",
         "metrics",
         "event_schema",
