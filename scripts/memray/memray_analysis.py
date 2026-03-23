@@ -42,7 +42,9 @@ def parse_memray_stats(bin_path: Path) -> dict[str, str | int]:
         info["peak_memory"] = peak_match.group(1)
 
     # Extract top allocator
-    top_match = re.search(r"Top 5 largest allocating locations \(by number of allocations\):\s*\n\s*- (.+)", result.stdout)
+    top_match = re.search(
+        r"Top 5 largest allocating locations \(by number of allocations\):\s*\n\s*- (.+)", result.stdout
+    )
     if top_match:
         info["top_allocator"] = top_match.group(1).strip()
 
@@ -105,7 +107,7 @@ def main() -> int:
     ]
     for r in results:
         name = str(r.get("file", "?")).replace("memray_", "").replace("_stress.bin", "")
-        allocs = f'{r.get("total_allocations", "?"):,}' if isinstance(r.get("total_allocations"), int) else "?"
+        allocs = f"{r.get('total_allocations', '?'):,}" if isinstance(r.get("total_allocations"), int) else "?"
         total = r.get("total_memory", "?")
         peak = r.get("peak_memory", "?")
         lines.append(f"| {name} | {allocs} | {total} | {peak} |")

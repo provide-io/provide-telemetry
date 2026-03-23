@@ -112,12 +112,12 @@ class TestTraceAndVsOr:
         wrapper.trace("test.event")
         mock_logger.debug.assert_not_called()
 
-    def test_trace_calls_debug_when_config_and_level_match(self) -> None:
+    def test_trace_calls_trace_when_config_and_level_match(self) -> None:
         mock_logger = Mock()
         wrapper = _TraceWrapper(mock_logger)
         core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
         wrapper.trace("test.event", key="val")
-        mock_logger.debug.assert_called_once_with("test.event", _trace=True, key="val")
+        mock_logger.trace.assert_called_once_with("test.event", key="val")
 
 
 # ── metrics/provider.py: get_meter caching ─────────────────────────
