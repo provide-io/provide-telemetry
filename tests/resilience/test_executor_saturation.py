@@ -14,7 +14,7 @@ Tests three failure modes under sustained export failures:
 from __future__ import annotations
 
 import threading
-import time  # noqa: F401 — used in Tasks 2-3 (test classes not yet added)
+import time
 import types  # noqa: F401 — used in Task 3 (TestCircuitBreakerLifecycle)
 from collections.abc import Callable, Iterator
 
@@ -67,3 +67,46 @@ def _trip_circuit(signal: str, event: threading.Event) -> None:
     for _ in range(threshold):
         result = run_with_resilience(signal, _make_stuck_op(event))
         assert result is None, f"Expected fail_open None for {signal!r}, got {result!r}"
+
+
+class TestGhostThreadAccumulation:
+    def test_circuit_breaker_bounds_ghost_threads(self) -> None:
+        """Circuit breaker trips after threshold timeouts; no further threads accumulate."""
+        event = threading.Event()  # held closed — ops will block and time out
+        _tight_policy("logs")
+        baseline = threading.active_count()
+
+        # Trip the circuit (threshold = 3 consecutive timeouts)
+        _trip_circuit("logs", event)
+
+        # After tripping: at most 2 ghost threads (the 2 executor workers).
+        # Further calls are rejected by the open circuit without submitting.
+        assert threading.active_count() <= baseline + 2
+
+        call_count = 0
+
+        def _counting_op() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "should not run"
+
+        # With circuit open, these must be rejected without calling the operation.
+        for _ in range(5):
+            result = run_with_resilience("logs", _counting_op)
+            assert result is None
+
+        assert call_count == 0  # operation never called
+        assert threading.active_count() <= baseline + 2  # no new threads
+
+        # Drain: release event so stuck threads can finish, then shut down executor.
+        event.set()
+        resilience_mod.reset_resilience_for_tests()
+        health_mod.reset_health_for_tests()
+
+        # executor.shutdown(wait=False) returns immediately; worker threads need a
+        # moment to finish their event.wait() call and exit.  Poll rather than
+        # assert immediately to avoid a race on loaded CI machines.
+        deadline = time.monotonic() + 2.0
+        while threading.active_count() > baseline and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert threading.active_count() == baseline
