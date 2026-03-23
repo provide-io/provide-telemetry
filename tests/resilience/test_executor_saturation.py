@@ -181,3 +181,42 @@ class TestCircuitBreakerLifecycle:
 
         # Cleanup
         event.set()
+
+
+class TestCrossSignalIsolation:
+    def test_logs_storm_does_not_starve_traces_or_metrics(self) -> None:
+        """A timeout storm on logs leaves traces and metrics unaffected."""
+        logs_event = threading.Event()  # held closed — logs ops will time out
+        _tight_policy("logs")
+        # Use a generous timeout for traces/metrics so they succeed comfortably.
+        resilience_mod.set_exporter_policy(
+            "traces",
+            ExporterPolicy(retries=0, timeout_seconds=1.0, fail_open=True),
+        )
+        resilience_mod.set_exporter_policy(
+            "metrics",
+            ExporterPolicy(retries=0, timeout_seconds=1.0, fail_open=True),
+        )
+
+        # Trip the logs circuit — 2 workers now hold stuck threads.
+        _trip_circuit("logs", logs_event)
+
+        # While logs workers are occupied, traces and metrics must still work.
+        traces_result = run_with_resilience("traces", lambda: "traces-ok")
+        metrics_result = run_with_resilience("metrics", lambda: "metrics-ok")
+
+        assert traces_result == "traces-ok"
+        assert metrics_result == "metrics-ok"
+
+        # Health counters: only logs has failures.
+        snap = health_mod.get_health_snapshot()
+        assert snap.export_failures_traces == 0
+        assert snap.export_failures_metrics == 0
+        assert snap.export_failures_logs == resilience_mod._CIRCUIT_BREAKER_THRESHOLD
+
+        # Timeout counters: only logs is non-zero.
+        assert resilience_mod._consecutive_timeouts["traces"] == 0
+        assert resilience_mod._consecutive_timeouts["metrics"] == 0
+
+        # Cleanup
+        logs_event.set()
