@@ -8,16 +8,22 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import structlog
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import core as core_mod
 from undef.telemetry.logger.core import (
+    TRACE,
     _get_level,
+    _make_filtering_bound_logger,
     _reset_logging_for_tests,
     _TraceWrapper,
+    configure_logging,
+    is_trace_enabled,
     shutdown_logging,
 )
 from undef.telemetry.metrics import provider as provider_mod
@@ -112,12 +118,12 @@ class TestTraceAndVsOr:
         wrapper.trace("test.event")
         mock_logger.debug.assert_not_called()
 
-    def test_trace_calls_debug_when_config_and_level_match(self) -> None:
+    def test_trace_calls_trace_when_config_and_level_match(self) -> None:
         mock_logger = Mock()
         wrapper = _TraceWrapper(mock_logger)
         core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
         wrapper.trace("test.event", key="val")
-        mock_logger.debug.assert_called_once_with("test.event", _trace=True, key="val")
+        mock_logger.trace.assert_called_once_with("test.event", key="val")
 
 
 # ── metrics/provider.py: get_meter caching ─────────────────────────
@@ -157,15 +163,157 @@ class TestConfigureLoggingForceDefault:
         If force defaults to True, every call re-runs structlog.configure.
         We verify the second call with same config is a no-op.
         """
-        import structlog as sl
-
-        from undef.telemetry.logger.core import configure_logging
-
         _reset_logging_for_tests()
         cfg = TelemetryConfig()
         configure_logging(cfg)  # First call — configures
 
         reconfigure_calls: list[object] = []
-        monkeypatch.setattr(sl, "configure", lambda **kw: reconfigure_calls.append(kw))
+        monkeypatch.setattr(structlog, "configure", lambda **kw: reconfigure_calls.append(kw))
         configure_logging(cfg)  # Second call without force — must be no-op
         assert reconfigure_calls == []
+
+
+# ── configure_logging effective_level computation ────────────────────────────
+
+
+class TestConfigureLoggingEffectiveLevel:
+    def test_effective_level_is_minimum_of_default_and_module_overrides(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kills: effective_level < comparison mutation.
+
+        When default=WARNING and asyncio=DEBUG, effective_level must be DEBUG so
+        the FilteringBoundLogger allows debug events to reach the _LevelFilter
+        processor, which then applies per-module thresholds.
+        """
+        _reset_logging_for_tests()
+        monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
+        configure_calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(structlog, "configure", lambda **kw: configure_calls.append(kw))
+
+        cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "WARNING", "UNDEF_LOG_MODULE_LEVELS": "asyncio=DEBUG"})
+        configure_logging(cfg)
+
+        assert len(configure_calls) == 1
+        wrapper_cls = configure_calls[0]["wrapper_class"]
+        # Effective level is DEBUG, so is_debug_enabled() must return True
+        assert wrapper_cls.is_debug_enabled(None) is True
+        _reset_logging_for_tests()  # restore clean state so structlog isn't left unconfigured
+
+
+# ── is_trace_enabled() with None config ──────────────────────────────────────
+
+
+class TestIsTraceEnabledNoneConfig:
+    def test_returns_true_when_active_config_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: return True → return False in is_trace_enabled() unconfigured branch."""
+        monkeypatch.setattr(core_mod, "_active_config", None)
+        assert is_trace_enabled() is True
+
+    def test_returns_true_at_trace_level_with_active_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Kills: active.logging.level → None; <= → < in is_trace_enabled().
+
+        At TRACE level, _get_level('TRACE') = 5. 5 <= 5 (TRACE) = True.
+        With active.logging.level→None: _get_level(None) = INFO(20). 20 <= 5 = False.
+        With <= → <: 5 < 5 = False.
+        """
+        cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
+        monkeypatch.setattr(core_mod, "_active_config", cfg)
+        assert is_trace_enabled() is True
+
+
+# ── _TraceWrapper.is_trace_enabled() delegation ──────────────────────────────
+
+
+class TestTraceWrapperIsTraceEnabled:
+    def test_delegates_true_to_inner_logger(self) -> None:
+        """Kills: is_trace_enabled delegation — True path."""
+        mock_logger = Mock()
+        mock_logger.is_trace_enabled.return_value = True
+        wrapper = _TraceWrapper(mock_logger)
+        assert wrapper.is_trace_enabled() is True
+
+    def test_delegates_false_to_inner_logger(self) -> None:
+        """Kills: is_trace_enabled delegation — False path."""
+        mock_logger = Mock()
+        mock_logger.is_trace_enabled.return_value = False
+        wrapper = _TraceWrapper(mock_logger)
+        assert wrapper.is_trace_enabled() is False
+
+
+# ── _make_filtering_bound_logger() ───────────────────────────────────────────
+
+
+class TestMakeFilteringBoundLogger:
+    @pytest.fixture(autouse=True)
+    def reset_structlog_filtering_classes(self) -> Any:
+        """Reset structlog's cached filtering bound logger classes to a clean state.
+
+        structlog.make_filtering_bound_logger() returns a shared class from a
+        module-level dict (LEVEL_TO_FILTERING_LOGGER).  Our code mutates that
+        class with setattr(), so subsequent calls in the same process see the
+        already-mutated state — masking key-name mutations in _standard_levels.
+        This fixture restores debug/info/warning/error on the affected level
+        classes to structlog's original _nop before each test.
+        """
+        import structlog._native as _native
+
+        _nop = _native._nop
+        levels_and_attrs: list[tuple[Any, str]] = [
+            (_native.BoundLoggerFilteringAtWarning, "debug"),
+            (_native.BoundLoggerFilteringAtWarning, "info"),
+            (_native.BoundLoggerFilteringAtError, "warning"),
+            (_native.BoundLoggerFilteringAtCritical, "error"),
+        ]
+        for cls, attr in levels_and_attrs:
+            setattr(cls, attr, _nop)
+        yield
+        for cls, attr in levels_and_attrs:
+            setattr(cls, attr, _nop)
+
+    def test_is_debug_enabled_true_at_debug_level(self) -> None:
+        """Kills: _debug_ok/_trace_ok swap — is_debug_enabled must be True at DEBUG."""
+        cls: Any = _make_filtering_bound_logger(logging.DEBUG)
+        assert cls.is_debug_enabled(None) is True
+
+    def test_is_trace_enabled_true_at_trace_level(self) -> None:
+        """Kills: level <= TRACE boundary — is_trace_enabled must be True at TRACE."""
+        cls: Any = _make_filtering_bound_logger(TRACE)
+        assert cls.is_trace_enabled(None) is True
+
+    def test_is_trace_enabled_false_at_debug_level(self) -> None:
+        """Kills: _debug_ok/_trace_ok swap and boundary — TRACE not enabled at DEBUG."""
+        cls: Any = _make_filtering_bound_logger(logging.DEBUG)
+        assert cls.is_trace_enabled(None) is False
+
+    def test_trace_method_calls_debug_with_trace_marker_and_kwargs(self) -> None:
+        """Kills: **kw removal from _trace() — kwargs must be forwarded to debug()."""
+        cls: Any = _make_filtering_bound_logger(TRACE)
+        mock_self = Mock()
+        cls.trace(mock_self, "event.test", key="val")
+        mock_self.debug.assert_called_once_with("event.test", _trace=True, key="val")
+
+    def test_debug_method_is_permissive_nop_at_warning_level(self) -> None:
+        """Kills: max() → min() for structlog_level; 'debug' key name mutations.
+
+        max(WARNING=30, DEBUG=10) = 30, so the permissive_nop loop replaces debug().
+        With min(), structlog_level=10 and the loop condition (10 < 10) is False,
+        so debug() is NOT replaced and would route through the pipeline.
+        """
+        cls: Any = _make_filtering_bound_logger(logging.WARNING)
+        assert cls.debug.__name__ == "_permissive_nop"
+
+    def test_info_method_is_permissive_nop_at_warning_level(self) -> None:
+        """Kills: 'info' key name mutations in _standard_levels."""
+        cls: Any = _make_filtering_bound_logger(logging.WARNING)
+        assert cls.info.__name__ == "_permissive_nop"
+
+    def test_warning_method_is_permissive_nop_at_error_level(self) -> None:
+        """Kills: 'warning' key name mutations in _standard_levels."""
+        cls: Any = _make_filtering_bound_logger(logging.ERROR)
+        assert cls.warning.__name__ == "_permissive_nop"
+
+    def test_error_method_is_permissive_nop_at_critical_level(self) -> None:
+        """Kills: 'error' key name mutations in _standard_levels."""
+        cls: Any = _make_filtering_bound_logger(logging.CRITICAL)
+        assert cls.error.__name__ == "_permissive_nop"
