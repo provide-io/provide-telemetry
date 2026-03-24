@@ -6,7 +6,7 @@
 """Logging facade."""
 
 from undef.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
-from undef.telemetry.logger.core import configure_logging, get_logger, logger
+from undef.telemetry.logger.core import configure_logging, get_logger, is_debug_enabled, is_trace_enabled, logger
 
 __all__ = [
     "bind_context",
@@ -14,6 +14,8 @@ __all__ = [
     "configure_logging",
     "get_context",
     "get_logger",
+    "is_debug_enabled",
+    "is_trace_enabled",
     "logger",
     "unbind_context",
 ]

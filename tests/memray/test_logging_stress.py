@@ -21,14 +21,15 @@ def test_logging_stress(
     memray_output_dir: Path,
     memray_baseline: dict[str, int],
     assert_allocation_within_threshold: Callable[..., None],
+    project_root: Path,
 ) -> None:
     """Stress test logging processors with memray profiling."""
-    script_path = Path(__file__).parent.parent.parent / "scripts" / "memray" / "memray_logging_stress.py"
+    script_path = project_root / "scripts" / "memray" / "memray_logging_stress.py"
     output_bin = memray_output_dir / "memray_logging_stress.bin"
 
     result = subprocess.run(
         ["python", "-m", "memray", "run", "--force", "-o", str(output_bin), str(script_path)],
-        cwd=str(Path(__file__).parent.parent.parent),
+        cwd=str(project_root),
         capture_output=True,
         text=True,
         timeout=300,

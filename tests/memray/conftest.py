@@ -14,15 +14,36 @@ from pathlib import Path
 
 import pytest
 
+
+def _find_project_root() -> Path:
+    """Walk up from this file until we find VERSION, anchoring to the real project root.
+
+    Using VERSION (not pyproject.toml) because mutmut copies pyproject.toml into its
+    mutants/ sandbox, making it an unreliable anchor.
+    """
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "VERSION").exists():
+            return parent
+    raise FileNotFoundError("Could not locate project root (no VERSION file found)")
+
+
+_PROJECT_ROOT = _find_project_root()
+
 _baseline_updates: dict[str, int] = {}
 
 _BASELINE_PATH = Path(__file__).parent / "baselines.json"
 
 
+@pytest.fixture(scope="session")
+def project_root() -> Path:
+    """Absolute path to the project root (works inside mutmut's mutants/ sandbox)."""
+    return _PROJECT_ROOT
+
+
 @pytest.fixture
 def memray_output_dir() -> Path:
     """Return path to memray output directory, creating it if needed."""
-    output_dir = Path(__file__).parent.parent.parent / "memray-output"
+    output_dir = _PROJECT_ROOT / "memray-output"
     output_dir.mkdir(exist_ok=True)
     return output_dir
 

@@ -40,7 +40,9 @@ def _measure(label: str, iterations: int, fn: object) -> None:
     per_call_blocks = total_blocks / iterations if iterations > 0 else 0
     per_call_bytes = total_bytes / iterations if iterations > 0 else 0
 
-    print(f"{label:45s}  {per_call_blocks:8.2f} allocs/call  {per_call_bytes:8.1f} bytes/call  ({total_blocks:,} total)")
+    print(
+        f"{label:45s}  {per_call_blocks:8.2f} allocs/call  {per_call_bytes:8.1f} bytes/call  ({total_blocks:,} total)"
+    )
     if total_blocks > 0:
         top = sorted(stats, key=lambda s: s.count_diff, reverse=True)[:3]
         for s in top:

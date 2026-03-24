@@ -14,7 +14,13 @@ import pytest
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger import bind_context, clear_context, get_context, get_logger, unbind_context
 from undef.telemetry.logger import core as core_mod
-from undef.telemetry.logger.core import _get_level, _reset_logging_for_tests, configure_logging
+from undef.telemetry.logger.core import (
+    _get_level,
+    _reset_logging_for_tests,
+    configure_logging,
+    is_debug_enabled,
+    is_trace_enabled,
+)
 from undef.telemetry.logger.pretty import PrettyRenderer
 from undef.telemetry.logger.processors import (
     add_standard_fields,
@@ -178,12 +184,14 @@ def test_trace_wrapper_trace_calls_log_only_for_trace_level() -> None:
 
     core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
     wrapper.trace("evt.one", k="v")
-    mock_logger.debug.assert_called_once_with("evt.one", _trace=True, k="v")
+    # _TraceWrapper.trace() delegates to the underlying logger's .trace()
+    mock_logger.trace.assert_called_once_with("evt.one", k="v")
 
     mock_logger.reset_mock()
     core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "INFO"})
     wrapper.trace("evt.two")
-    mock_logger.log.assert_not_called()
+    # At INFO level, trace() on the underlying FilteringBoundLogger is a nop
+    mock_logger.trace.assert_called_once_with("evt.two")
 
 
 def test_structlog_gets_debug_when_config_is_trace(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -356,3 +364,79 @@ def test_configure_logging_with_pretty_fmt_uses_pretty_renderer(monkeypatch: pyt
     assert len(configure_calls) == 1
     processors = configure_calls[0]["processors"]
     assert isinstance(processors[-1], PrettyRenderer)
+
+
+# ── is_debug_enabled / is_trace_enabled ──────────────────────────────────────
+
+
+def test_is_debug_enabled_returns_true_when_unconfigured() -> None:
+    _reset_logging_for_tests()
+    assert is_debug_enabled() is True
+
+
+def test_is_trace_enabled_returns_true_when_unconfigured() -> None:
+    _reset_logging_for_tests()
+    assert is_trace_enabled() is True
+
+
+def test_is_debug_and_trace_enabled_with_active_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
+    configure_logging(TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "INFO"}))
+    assert is_debug_enabled() is False
+    assert is_trace_enabled() is False
+    _reset_logging_for_tests()
+    configure_logging(TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "DEBUG"}))
+    assert is_debug_enabled() is True
+    assert is_trace_enabled() is False
+
+
+def test_trace_wrapper_is_debug_and_trace_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "DEBUG"})
+    configure_logging(cfg)
+    logger = get_logger("test")
+    assert logger.is_debug_enabled() is True
+    assert logger.is_trace_enabled() is False
+
+
+def test_lazy_logger_is_debug_and_trace_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "DEBUG"})
+    configure_logging(cfg)
+    lazy = core_mod._LazyLogger()
+    assert lazy.is_debug_enabled() is True
+    assert lazy.is_trace_enabled() is False
+
+
+def test_configure_logging_adds_level_filter_for_module_levels(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    configure_calls: list[dict[str, Any]] = []
+    core_mod_any = cast(Any, core_mod)
+    monkeypatch.setattr(cast(Any, core_mod_any.structlog), "configure", lambda **kw: configure_calls.append(kw))
+    # asyncio=DEBUG is lower than default INFO, triggering effective_level update (line 185)
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_MODULE_LEVELS": "asyncio=DEBUG"})
+    configure_logging(cfg)
+    assert len(configure_calls) == 1
+    # Verify the level filter processor was appended
+    from undef.telemetry.logger.processors import _LevelFilter
+
+    processors = configure_calls[0]["processors"]
+    assert any(isinstance(p, _LevelFilter) for p in processors)
+
+
+def test_configure_logging_module_level_higher_than_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_logging_for_tests()
+    configure_calls: list[dict[str, Any]] = []
+    core_mod_any = cast(Any, core_mod)
+    monkeypatch.setattr(cast(Any, core_mod_any.structlog), "configure", lambda **kw: configure_calls.append(kw))
+    # asyncio=ERROR is higher than default DEBUG — effective_level stays at DEBUG (line 184 False branch)
+    cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "DEBUG", "UNDEF_LOG_MODULE_LEVELS": "asyncio=ERROR"})
+    configure_logging(cfg)
+    assert len(configure_calls) == 1
+    from undef.telemetry.logger.processors import _LevelFilter
+
+    processors = configure_calls[0]["processors"]
+    assert any(isinstance(p, _LevelFilter) for p in processors)
