@@ -160,8 +160,8 @@ unsupported-operator = "ignore"
 unused-type-ignore-comment = "ignore"
 
 [tool.codespell]
-skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock"
-ignore-words-list = "ore,opps,wont,strat,nd,rade,caf"
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,./typescript/dist,./typescript/dist/*,./typescript/package-lock.json,./typescript/coverage,./typescript/coverage/*,./typescript/reports,./typescript/reports/*,./memray-output,./memray-output/*"
+ignore-words-list = "ore,opps,wont,strat,nd,rade,caf,als"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
