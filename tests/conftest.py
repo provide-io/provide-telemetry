@@ -12,6 +12,7 @@ import pytest
 import structlog
 
 from undef.telemetry.logger.core import _reset_logging_for_tests
+from undef.telemetry.sampling import reset_sampling_for_tests
 from undef.telemetry.tracing.context import set_trace_context
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +30,14 @@ def reset_logger_state() -> None:
     that runs in the same xdist worker — even though monkeypatch restores the
     *attribute* it was patched on, the already-configured processor list
     retains a reference to the local object.
+
+    Sampling policies are also reset here: a test that sets a signal's rate to
+    0.0 (e.g. test_rate_zero_never_samples) would cause apply_sampling to drop
+    all events in the next test on the same worker, producing empty log output.
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
+    reset_sampling_for_tests()
 
 
 @pytest.fixture(autouse=True)

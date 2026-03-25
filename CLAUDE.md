@@ -62,7 +62,7 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 src/undef/telemetry/
 ├── __init__.py          # Public API facade — only import from here in consumers
 ├── setup.py             # Idempotent setup()/teardown() with threading.Lock
-├── config.py            # Pydantic models, all config via env vars (UNDEF_* / OTEL_*)
+├── config.py            # stdlib @dataclass(slots=True), all config via env vars (UNDEF_* / OTEL_*)
 ├── logger/
 │   ├── core.py          # structlog pipeline: configure_logging(), build_handlers()
 │   ├── context.py       # contextvars: bind_request_context(), bind_session_context()
