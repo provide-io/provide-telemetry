@@ -262,7 +262,7 @@ class TestOtelGuardConditions:
 
     def test_load_otel_trace_api_returns_module_when_otel_present(self) -> None:
         pytest.importorskip("opentelemetry.trace")
-        from provide.telemetry.tracing import provider as pmod
+        from undef.telemetry.tracing import provider as pmod
 
         original = pmod._HAS_OTEL
         pmod._HAS_OTEL = True
@@ -275,7 +275,7 @@ class TestOtelGuardConditions:
 
     def test_load_otel_metrics_api_returns_module_when_otel_present(self) -> None:
         pytest.importorskip("opentelemetry.metrics")
-        from provide.telemetry.metrics import provider as mmod
+        from undef.telemetry.metrics import provider as mmod
 
         original = mmod._HAS_OTEL_METRICS
         mmod._HAS_OTEL_METRICS = True
