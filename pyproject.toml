@@ -11,6 +11,21 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSES/*"]
 authors = [{name = "tim", email = "code@tim.life"}]
+keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Monitoring",
+  "Topic :: System :: Logging",
+  "Typing :: Typed",
+]
 dependencies = [
   "structlog>=24.0.0",
 ]

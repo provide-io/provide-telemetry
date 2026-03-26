@@ -213,6 +213,8 @@ def test_release_decrements_queue_depth() -> None:
     t2 = try_acquire("logs")
     assert isinstance(t1, QueueTicket) and t1.signal == "logs"
     assert isinstance(t2, QueueTicket) and t2.signal == "logs"
+    snap = get_health_snapshot()
+    assert snap.queue_depth_logs == 2
     release(t1)
     release(t2)
 
@@ -222,6 +224,9 @@ def test_release_updates_correct_signal_queue_depth() -> None:
     set_queue_policy(QueuePolicy(traces_maxsize=5))
     ticket = try_acquire("traces")
     assert isinstance(ticket, QueueTicket) and ticket.signal == "traces"
+    snap = get_health_snapshot()
+    assert snap.queue_depth_traces == 1
+    assert snap.queue_depth_logs == 0
     release(ticket)
 
 

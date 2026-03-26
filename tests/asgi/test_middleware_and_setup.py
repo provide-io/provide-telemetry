@@ -218,7 +218,7 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
     token = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r9"), (b"x-session-id", b"s9"), (b"x-actor-id", b"a9")]}
     )
-    assert token is not None
+    assert hasattr(token, "var")
     assert {"request_id": "r9"} in calls
     assert {"session_id": "s9"} in calls
     assert {"actor_id": "a9"} in calls
@@ -228,7 +228,7 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
 
     calls.clear()
     token2 = bind_websocket_context({"headers": [(b"x-session-id", b"s-only")]})
-    assert token2 is not None
+    assert hasattr(token2, "var")
     assert calls == [{"session_id": "s-only"}]
 
 

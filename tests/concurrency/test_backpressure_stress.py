@@ -61,6 +61,7 @@ class TestBackpressureSaturation:
         release(tickets[0])
         t = try_acquire("logs")
         assert isinstance(t, QueueTicket) and t.signal == "logs"
+        assert snap.queue_depth_logs == 3  # snap is frozen at read time
 
     def test_rapid_saturate_drain_cycles(self) -> None:
         """Repeatedly fill and drain the queue to max capacity."""

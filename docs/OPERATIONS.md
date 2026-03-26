@@ -4,7 +4,7 @@
 
 - Python: 3.11+
 - Log format default: `console`
-- Event schema validation: enabled (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=true` by default)
+- Event schema validation: disabled by default (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=false`)
 - Strict schema mode: off by default (`UNDEF_TELEMETRY_STRICT_SCHEMA=false`)
 
 See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/compat/high-throughput presets.
