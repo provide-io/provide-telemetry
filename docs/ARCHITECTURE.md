@@ -112,10 +112,10 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     [*] --> Uninitialized
-    Uninitialized --> Ready: setup_telemetry() [lock acquired]
-    Ready --> Uninitialized: shutdown_telemetry() [lock acquired]
-    Ready --> Ready: setup_telemetry() [idempotent no-op]
-    Ready --> Ready: update_runtime_config() [hot reload policies]
+    Uninitialized --> Ready: setup_telemetry() [lock]
+    Ready --> Uninitialized: shutdown_telemetry() [lock]
+    Ready --> Ready: setup_telemetry() [idempotent, no-op]
+    Ready --> Ready: update_runtime_config() [hot reload]
 ```
 
 ## Resilience Flow
@@ -158,6 +158,7 @@ flowchart TD
 | `metrics/provider.py` | OTel MeterProvider or fallback |
 | `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
 | `metrics/instruments.py` | In-process fallback Counter/Gauge/Histogram |
+| `metrics/fallback.py` | Fallback instrument implementations with sampling, backpressure, exemplar, and cardinality guard |
 | `schema/events.py` | Event name validation, required-key enforcement |
 | `sampling.py` | Per-signal probabilistic sampling with overrides |
 | `backpressure.py` | Bounded queue ticket system |

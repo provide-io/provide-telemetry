@@ -13,7 +13,7 @@ from undef.telemetry import counter, setup_telemetry, shutdown_telemetry, trace
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.setup import _reset_all_for_tests
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.otel]
 
 
 def test_otlp_collector_smoke() -> None:
@@ -52,7 +52,7 @@ def test_otlp_collector_smoke() -> None:
         return {"trace_id": trace_id, "span_id": span_id}
 
     trace_context = _work()
-    assert trace_context["trace_id"] is not None
-    assert trace_context["span_id"] is not None
+    assert isinstance(trace_context["trace_id"], str) and len(trace_context["trace_id"]) == 32
+    assert isinstance(trace_context["span_id"], str) and len(trace_context["span_id"]) == 16
 
     shutdown_telemetry()

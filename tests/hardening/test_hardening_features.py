@@ -83,12 +83,12 @@ def test_backpressure_queue_limits_and_release_paths() -> None:
     backpressure_mod.set_queue_policy(backpressure_mod.QueuePolicy(logs_maxsize=1, traces_maxsize=0, metrics_maxsize=0))
     first = backpressure_mod.try_acquire("logs")
     second = backpressure_mod.try_acquire("logs")
-    assert first is not None
+    assert isinstance(first, backpressure_mod.QueueTicket) and first.token > 0
     assert second is None
     backpressure_mod.release(first)
     backpressure_mod.release(first)
     tokenless = backpressure_mod.try_acquire("traces")
-    assert tokenless is not None
+    assert isinstance(tokenless, backpressure_mod.QueueTicket) and tokenless.token == 0
     backpressure_mod.release(tokenless)
     unknown = backpressure_mod.try_acquire("unknown")
     assert unknown is not None

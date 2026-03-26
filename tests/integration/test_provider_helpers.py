@@ -15,6 +15,8 @@ from undef.telemetry.metrics import provider as metrics_provider
 from undef.telemetry.tracing import provider as tracing_provider
 from undef.telemetry.tracing.provider import _reset_tracing_for_tests
 
+pytestmark = pytest.mark.otel
+
 
 def test_metrics_has_otel_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))

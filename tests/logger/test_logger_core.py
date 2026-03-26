@@ -207,7 +207,7 @@ def test_structlog_gets_debug_when_config_is_trace(monkeypatch: pytest.MonkeyPat
     configure_logging(cfg)
     assert len(configure_calls) == 1
     # structlog gets DEBUG (10) clamped from TRACE (5)
-    assert configure_calls[0]["wrapper_class"] is not None
+    assert callable(configure_calls[0]["wrapper_class"])
 
 
 def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
