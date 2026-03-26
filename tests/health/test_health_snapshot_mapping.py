@@ -84,6 +84,24 @@ class TestHealthSnapshotFieldMapping:
         assert snap.export_failures_traces == 1
         assert snap.export_failures_metrics == 1
 
+    def test_last_error_maps_correctly(self) -> None:
+        record_export_failure("logs", RuntimeError("log_e"))
+        record_export_failure("traces", RuntimeError("trace_e"))
+        record_export_failure("metrics", RuntimeError("metric_e"))
+        snap = get_health_snapshot()
+        assert snap.last_error_logs == "log_e"
+        assert snap.last_error_traces == "trace_e"
+        assert snap.last_error_metrics == "metric_e"
+
+    def test_last_success_maps_correctly(self) -> None:
+        record_export_success("logs", latency_ms=1.0)
+        record_export_success("traces", latency_ms=2.0)
+        record_export_success("metrics", latency_ms=3.0)
+        snap = get_health_snapshot()
+        assert isinstance(snap.last_successful_export_logs, (int, float)) and snap.last_successful_export_logs > 0
+        assert isinstance(snap.last_successful_export_traces, (int, float)) and snap.last_successful_export_traces > 0
+        assert isinstance(snap.last_successful_export_metrics, (int, float)) and snap.last_successful_export_metrics > 0
+
     def test_export_latency_maps_correctly(self) -> None:
         record_export_latency("logs", latency_ms=100.0)
         record_export_latency("traces", latency_ms=200.0)

@@ -50,8 +50,8 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
 
     assert seen_level == [logging.WARNING]
     assert seen_sanitize == [True]
-    assert "wrapper_class" in configure_kwargs and configure_kwargs["wrapper_class"] is not None
-    assert "logger_factory" in configure_kwargs and configure_kwargs["logger_factory"] is not None
+    assert "wrapper_class" in configure_kwargs and isinstance(configure_kwargs["wrapper_class"], type)
+    assert "logger_factory" in configure_kwargs and callable(configure_kwargs["logger_factory"])
     assert core_mod._active_config == cfg
     assert core_mod._configured is True
 
