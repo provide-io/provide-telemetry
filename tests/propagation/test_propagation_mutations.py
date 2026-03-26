@@ -186,7 +186,7 @@ class TestExtractW3cContext:
         }
         ctx = propagation_mod.extract_w3c_context(scope)
         assert ctx.baggage == "foo=bar"
-        assert ctx.trace_id is not None
+        assert ctx.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
 
 
 # ---------------------------------------------------------------------------

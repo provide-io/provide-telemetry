@@ -181,7 +181,7 @@ def test_setup_tracing_creates_real_provider() -> None:
 
     # Provider should now be configured
     assert pmod._provider_configured is True
-    assert pmod._provider_ref is not None
+    assert pmod._provider_ref is not None and hasattr(pmod._provider_ref, "shutdown")
 
     # The tracer from get_tracer should produce real spans
     tracer = otel_trace.get_tracer("test.setup")

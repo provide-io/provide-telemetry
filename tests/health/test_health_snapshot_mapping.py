@@ -96,9 +96,9 @@ class TestHealthSnapshotFieldMapping:
         record_export_success("traces", latency_ms=2.0)
         record_export_success("metrics", latency_ms=3.0)
         snap = get_health_snapshot()
-        assert snap.last_successful_export_logs is not None
-        assert snap.last_successful_export_traces is not None
-        assert snap.last_successful_export_metrics is not None
+        assert isinstance(snap.last_successful_export_logs, (int, float)) and snap.last_successful_export_logs > 0
+        assert isinstance(snap.last_successful_export_traces, (int, float)) and snap.last_successful_export_traces > 0
+        assert isinstance(snap.last_successful_export_metrics, (int, float)) and snap.last_successful_export_metrics > 0
 
     def test_export_latency_maps_correctly(self) -> None:
         record_export_success("logs", latency_ms=100.0)
