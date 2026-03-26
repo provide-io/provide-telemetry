@@ -9,8 +9,7 @@ export default {
   // Source files to mutate
   mutate: [
     'src/**/*.ts',
-    '!src/index.ts',   // re-export barrel — no logic to mutate
-    '!src/otel.ts',    // OTEL SDK wiring — excluded from coverage too
+    '!src/index.ts',    // re-export barrel — no logic to mutate
     '!src/sanitize.ts', // re-export shim
   ],
 
