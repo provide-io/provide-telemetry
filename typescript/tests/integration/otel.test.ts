@@ -167,7 +167,7 @@ describe('write hook trace_id injection — real OTEL provider', () => {
   });
 
   it('injects real trace_id and span_id into log objects inside a span', () => {
-    const hook = makeWriteHook(getConfig());
+    const hook = makeWriteHook();
     const tracer = trace.getTracer('@undef/telemetry');
     let capturedObj: Record<string, unknown> = {};
 
@@ -191,7 +191,7 @@ describe('write hook trace_id injection — real OTEL provider', () => {
   });
 
   it('does not inject trace_id outside any span', () => {
-    const hook = makeWriteHook(getConfig());
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'outside_span' };
     hook(obj);
     expect(obj['trace_id']).toBeUndefined();
