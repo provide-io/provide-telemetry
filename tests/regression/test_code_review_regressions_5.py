@@ -169,6 +169,32 @@ def test_load_otel_metrics_components_passes_correct_module_names(monkeypatch: p
     assert result == ("MP", "R", "PEMR", "OME")
 
 
+# ── provider._load_otel_tracing_components: _HAS_OTEL guard ───────────────────
+
+
+def test_load_otel_tracing_components_delegates_when_has_otel_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills the mutant that returns None when _HAS_OTEL is True."""
+    from undef.telemetry.tracing import provider as pmod
+
+    sentinel = object()
+    monkeypatch.setattr(pmod, "_HAS_OTEL", True)
+    monkeypatch.setattr(pmod._otel, "load_otel_tracing_components", lambda: sentinel)
+    assert pmod._load_otel_tracing_components() is sentinel
+
+
+# ── provider._load_otel_metrics_components: _HAS_OTEL_METRICS guard ───────────
+
+
+def test_load_otel_metrics_components_delegates_when_has_otel_metrics_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills the mutant that returns None when _HAS_OTEL_METRICS is True."""
+    from undef.telemetry.metrics import provider as mmod
+
+    sentinel = object()
+    monkeypatch.setattr(mmod, "_HAS_OTEL_METRICS", True)
+    monkeypatch.setattr(mmod._otel, "load_otel_metrics_components", lambda: sentinel)
+    assert mmod._load_otel_metrics_components() is sentinel
+
+
 def test_load_otel_metrics_components_extracts_correct_attributes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills mutants that swap attribute names (.MeterProvider → None, etc.)."""
     from types import SimpleNamespace
