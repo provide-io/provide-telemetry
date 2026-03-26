@@ -41,7 +41,7 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { _resetConfig, getConfig, setupTelemetry } from '../../src/config';
-import { _areProvidersRegistered, _resetRuntimeForTests } from '../../src/runtime';
+import { _areProvidersRegistered, _getRegisteredProviders, _resetRuntimeForTests } from '../../src/runtime';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // Minimal stubs that satisfy OTel API interface checks for provider registration.
@@ -107,6 +107,7 @@ describe('registerOtelProviders', () => {
       headers: {},
     });
     expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(2);
   });
 
   it('passes provided otlpEndpoint and otlpHeaders to both exporters', async () => {
@@ -168,6 +169,7 @@ describe('registerOtelProviders', () => {
     );
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(1);
     warnSpy.mockRestore();
   });
 

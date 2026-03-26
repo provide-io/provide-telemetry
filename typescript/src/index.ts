@@ -105,7 +105,5 @@ export { getRuntimeConfig, updateRuntimeConfig, reloadRuntimeFromEnv, reconfigur
 // Test utilities
 export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
 
-// Shutdown (no-op until OTEL SDK is registered)
-export async function shutdownTelemetry(): Promise<void> {
-  // OTEL SDK providers call .shutdown() on their own; this is a hook for future use.
-}
+// Shutdown
+export { shutdownTelemetry } from './shutdown';
