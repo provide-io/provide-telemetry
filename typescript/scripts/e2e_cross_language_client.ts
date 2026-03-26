@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Cross-language distributed tracing E2E client.
  *
@@ -15,15 +15,10 @@
  * Exit code 0 on success, 1 on any error.
  */
 
-import { trace } from '@opentelemetry/api';
+import { context, trace } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 
-import {
-  getConfig,
-  registerOtelProviders,
-  setupTelemetry,
-  withTrace,
-  getActiveTraceIds,
-} from '../src/index';
+import { setupTelemetry, registerOtelProviders, withTrace, getActiveTraceIds } from '../src/index';
 
 async function main(): Promise<void> {
   const backendUrl = process.env['E2E_BACKEND_URL'];
@@ -53,14 +48,16 @@ async function main(): Promise<void> {
     consoleOutput: false,
   };
 
-  // registerOtelProviders installs the AsyncLocalStorageContextManager so
-  // startActiveSpan propagates spans through async boundaries automatically.
+  // AsyncLocalStorageContextManager must be enabled before registerOtelProviders
+  // so that startActiveSpan propagates spans through async boundaries.
+  // (registerOtelProviders only calls trace.setGlobalTracerProvider, not context setup)
+  const ctxMgr = new AsyncLocalStorageContextManager();
+  ctxMgr.enable();
+  context.setGlobalContextManager(ctxMgr);
+
   setupTelemetry(cfg);
-  // Pass the merged config (cfg above is a Partial<TelemetryConfig> overlay
-  // that lacks defaults like tracingEnabled). setupTelemetry stores the
-  // merged result; getConfig() returns it. Using cfg directly would skip
-  // provider registration entirely, leaving startActiveSpan as a no-op.
-  await registerOtelProviders(getConfig());
+  // registerOtelProviders is async — must be awaited before creating spans.
+  await registerOtelProviders(cfg);
 
   let capturedTraceId: string | undefined;
 
