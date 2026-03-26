@@ -41,16 +41,17 @@ export interface RuntimeStatus {
   setupError: string | null;
 }
 
+/** Minimal interface for providers that can be flushed and shut down cleanly. */
+export interface ShutdownableProvider {
+  forceFlush?(): Promise<void>;
+  shutdown?(): Promise<void>;
+}
+
 let _activeConfig: TelemetryConfig | null = null;
 // Stryker disable next-line BooleanLiteral: initial false is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _providersRegistered = false;
 // Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _registeredProviders: ShutdownableProvider[] = [];
-let _providerSignals = { logs: false, traces: false, metrics: false };
-
-function resolveEffectiveConfig(): TelemetryConfig {
-  return _activeConfig ?? configFromEnv();
-}
 
 /** Store the live providers so shutdownTelemetry can flush and drain them. */
 export function _storeRegisteredProviders(providers: ShutdownableProvider[]): void {
@@ -299,5 +300,4 @@ export function _resetRuntimeForTests(): void {
   _activeConfig = null;
   _providersRegistered = false;
   _registeredProviders = [];
-  _providerSignals = { logs: false, traces: false, metrics: false };
 }
