@@ -82,7 +82,7 @@ The resilience layer (`resilience.py`) wraps every export operation with retry, 
 
 ### Timeout Execution
 
-A fixed `ThreadPoolExecutor(max_workers=4)` runs export operations with `future.result(timeout=...)`. On timeout, the future is cancelled (but already-running work continues on its daemon thread). Under sustained timeout pressure, the pool can saturate — the circuit breaker exists to prevent this.
+A fixed `ThreadPoolExecutor(max_workers=2)` runs export operations with `future.result(timeout=...)`. On timeout, the future is cancelled (but already-running work continues on its daemon thread). Under sustained timeout pressure, the pool can saturate — the circuit breaker exists to prevent this.
 
 ### Circuit Breaker
 

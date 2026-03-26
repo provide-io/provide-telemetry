@@ -71,7 +71,7 @@ def test_try_acquire_unknown_signal_raises() -> None:
 def test_try_acquire_unbounded_returns_token_zero() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=0))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     assert ticket.token == 0
 
 
@@ -82,8 +82,8 @@ def test_try_acquire_at_capacity_returns_none() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=2))
     t1 = try_acquire("logs")
     t2 = try_acquire("logs")
-    assert t1 is not None
-    assert t2 is not None
+    assert isinstance(t1, QueueTicket) and t1.signal == "logs"
+    assert isinstance(t2, QueueTicket) and t2.signal == "logs"
     # Queue is now full (2/2)
     t3 = try_acquire("logs")
     assert t3 is None
@@ -92,10 +92,10 @@ def test_try_acquire_at_capacity_returns_none() -> None:
 def test_try_acquire_under_capacity_returns_ticket() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=2))
     t1 = try_acquire("logs")
-    assert t1 is not None
+    assert isinstance(t1, QueueTicket) and t1.signal == "logs"
     # Queue has 1/2 — still under capacity
     t2 = try_acquire("logs")
-    assert t2 is not None
+    assert isinstance(t2, QueueTicket) and t2.signal == "logs"
     assert t2.token > 0
 
 
@@ -103,7 +103,7 @@ def test_try_acquire_exactly_at_boundary() -> None:
     """With maxsize=1, first acquire succeeds, second fails."""
     set_queue_policy(QueuePolicy(logs_maxsize=1))
     t1 = try_acquire("logs")
-    assert t1 is not None
+    assert isinstance(t1, QueueTicket) and t1.signal == "logs"
     assert t1.token > 0
     t2 = try_acquire("logs")
     assert t2 is None
@@ -133,7 +133,7 @@ def test_release_none_is_noop() -> None:
 def test_release_unknown_signal_raises() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=5))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     fake_ticket = QueueTicket(signal="unknown", token=ticket.token)
     with pytest.raises(ValueError, match="unknown signal"):
         release(fake_ticket)
@@ -182,7 +182,7 @@ def test_cumulative_acquire_tokens_are_positive_and_unique() -> None:
     tokens: list[int] = []
     for _ in range(5):
         ticket = try_acquire("logs")
-        assert ticket is not None
+        assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
         assert ticket.token > 0
         tokens.append(ticket.token)
     assert len(set(tokens)) == 5, "All tokens must be unique"
@@ -228,8 +228,8 @@ def test_release_decrements_queue_depth() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=5))
     t1 = try_acquire("logs")
     t2 = try_acquire("logs")
-    assert t1 is not None
-    assert t2 is not None
+    assert isinstance(t1, QueueTicket) and t1.signal == "logs"
+    assert isinstance(t2, QueueTicket) and t2.signal == "logs"
     snap = get_health_snapshot()
     assert snap.queue_depth_logs == 2
     release(t1)
@@ -244,7 +244,7 @@ def test_release_updates_correct_signal_queue_depth() -> None:
     """Kills set_queue_depth(None, ...) mutant - verifies signal is passed correctly."""
     set_queue_policy(QueuePolicy(traces_maxsize=5))
     ticket = try_acquire("traces")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "traces"
     snap = get_health_snapshot()
     assert snap.queue_depth_traces == 1
     assert snap.queue_depth_logs == 0
@@ -257,7 +257,7 @@ def test_release_updates_correct_signal_queue_depth() -> None:
 def test_release_with_already_released_token_is_safe() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=5))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     release(ticket)
     # Double release should not raise
     release(ticket)
@@ -272,14 +272,14 @@ def test_maxsize_negative_still_unbounded() -> None:
     """Negative maxsize should behave the same as 0 (unbounded)."""
     set_queue_policy(QueuePolicy(logs_maxsize=-1))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     assert ticket.token == 0
 
 
 def test_maxsize_zero_is_unbounded() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=0))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     assert ticket.token == 0
 
 
@@ -294,7 +294,7 @@ def test_acquire_rejected_at_exactly_maxsize() -> None:
     set_queue_policy(QueuePolicy(metrics_maxsize=3))
     for _ in range(3):
         t = try_acquire("metrics")
-        assert t is not None
+        assert isinstance(t, QueueTicket) and t.signal == "metrics"
     # len(queue) is now exactly 3 == maxsize; must reject
     assert try_acquire("metrics") is None
 
@@ -306,7 +306,7 @@ def test_unbounded_ticket_token_is_exactly_zero() -> None:
     """Explicitly verify the token is 0, not 1."""
     set_queue_policy(QueuePolicy(logs_maxsize=0))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     assert ticket.token == 0
     assert ticket.token != 1
 
@@ -319,7 +319,7 @@ def test_release_token_one_removes_from_queue() -> None:
     unlike token=0 which is a no-op. This kills the == 0 → == 1 mutant."""
     set_queue_policy(QueuePolicy(logs_maxsize=10))
     ticket = try_acquire("logs")
-    assert ticket is not None
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
     assert ticket.token > 0
     snap = get_health_snapshot()
     assert snap.queue_depth_logs == 1
