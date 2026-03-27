@@ -169,7 +169,7 @@ describe('write hook trace_id injection — real OTEL provider', () => {
 
   it('injects real trace_id and span_id into log objects inside a span', () => {
     const hook = makeWriteHook();
-    const tracer = trace.getTracer('@provide-io/telemetry');
+    const tracer = trace.getTracer('@undef/telemetry');
     let capturedObj: Record<string, unknown> = {};
 
     tracer.startActiveSpan('hook.test', (span) => {
