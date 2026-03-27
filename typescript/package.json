@@ -23,6 +23,10 @@
     "w3c-traceparent"
   ],
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
