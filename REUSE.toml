@@ -4,6 +4,8 @@ version = 1
 path = [
   "README.md",
   "CLAUDE.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
   "docs/**",
   "examples/**",
   ".github/workflows/**",
@@ -34,6 +36,21 @@ SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
+  "Makefile",
+  "typescript/README.md",
+  "typescript/package.json",
+  "typescript/.gitignore",
+  "typescript/.npmrc",
+  "typescript/.prettierrc",
+  "typescript/tsconfig.json",
+  "typescript/tsconfig.scripts.json",
+  "typescript/tsconfig.test.json",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
   ".venv/**",
   ".hypothesis/**",
   ".mypy_cache/**",
@@ -50,6 +67,9 @@ path = [
   "VERSION",
   ".pymutant-ledger.json",
   ".pymutant-state/**",
+  "typescript/package-lock.json",
+  "tests/memray/baselines.json",
+  ".playwright-mcp/**",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
 SPDX-License-Identifier = "Apache-2.0"
