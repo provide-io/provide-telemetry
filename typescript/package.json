@@ -1,10 +1,10 @@
 {
-  "name": "@provide-io/telemetry",
-  "version": "0.3.0",
-  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
-  "license": "Apache-2.0",
-  "author": "provide.io llc",
-  "homepage": "https://github.com/provide-io/provide-telemetry#readme",
+  "name": "@undef/telemetry",
+  "version": "0.3.18",
+  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
+  "license": "AGPL-3.0-or-later",
+  "author": "MindTenet LLC",
+  "homepage": "https://github.com/undef-games/undef-telemetry#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/undef-games/undef-telemetry.git",
@@ -56,10 +56,6 @@
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "test:memory": "npx tsx scripts/memory-audit.ts",
-    "bench": "tsx scripts/perf-smoke.ts",
-    "test:bench": "vitest run tests/performance/ --no-coverage",
-    "stress": "tsx scripts/stress-logging.ts && tsx scripts/stress-backpressure.ts && tsx scripts/stress-metrics.ts && tsx scripts/stress-sampling.ts && tsx scripts/stress-pii.ts && tsx scripts/stress-tracing.ts",
-    "bundle-size": "tsx scripts/bundle-size.ts",
     "prepublishOnly": "npm run build && npm run test:coverage"
   },
   "dependencies": {
@@ -123,6 +119,7 @@
     "globals": "^17.4.0",
     "happy-dom": "^20.8.8",
     "prettier": "^3.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
     "vite": "^8.0.3",
