@@ -39,24 +39,7 @@
  */
 
 import type { TelemetryConfig } from './config';
-import { validateOtlpEndpoint } from './endpoint';
-import { setupOtelLogProvider } from './otel-logs';
-import { wrapResilientExporter } from './resilient-exporter';
-
-// No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
-// entirely (safe no-export path per docs/ARCHITECTURE.md).
-import {
-  type ShutdownableProvider,
-  _areProvidersRegistered,
-  _markProvidersRegistered,
-  _setProviderSignalInstalled,
-  _storeRegisteredProviders,
-} from './runtime';
-
-function normalizeEndpoint(endpoint: string | undefined): string | undefined {
-  const trimmed = endpoint?.trim();
-  return trimmed ? trimmed : undefined;
-}
+import { type ShutdownableProvider, _markProvidersRegistered, _storeRegisteredProviders } from './runtime';
 
 /**
  * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters.
@@ -67,41 +50,8 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   if (_areProvidersRegistered()) return;
 
   const headers = cfg.otlpHeaders ?? {};
-  const sharedEndpoint = normalizeEndpoint(cfg.otlpEndpoint);
-  const logsEndpoint =
-    normalizeEndpoint(cfg.otlpLogsEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/logs` : undefined);
-  const tracesEndpoint =
-    normalizeEndpoint(cfg.otlpTracesEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/traces` : undefined);
-  const metricsEndpoint =
-    normalizeEndpoint(cfg.otlpMetricsEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/metrics` : undefined);
-  const hasAnyEndpoint =
-    logsEndpoint !== undefined || tracesEndpoint !== undefined || metricsEndpoint !== undefined;
-  if (!hasAnyEndpoint) {
-    // No OTLP endpoint configured for any signal — skip export entirely
-    // (safe no-export path).
-    // Do NOT mark providers as registered: no real providers exist, so
-    // reconfigureTelemetry() should remain free to install them later
-    // when an endpoint is provided.
-    return;
-  }
+  const endpoint = cfg.otlpEndpoint ?? 'http://localhost:4318';
   const registered: ShutdownableProvider[] = [];
-
-  // ── Context manager ──────────────────────────────────────────────────────────
-  // Install AsyncLocalStorageContextManager so startActiveSpan propagates spans
-  // through async boundaries in Node.js. Must happen before TracerProvider setup.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctxHooks: any = await import('@opentelemetry/context-async-hooks' as string);
-    const { context } = await import('@opentelemetry/api');
-    const ctxMgr = new ctxHooks.AsyncLocalStorageContextManager();
-    ctxMgr.enable();
-    context.setGlobalContextManager(ctxMgr);
-  } catch {
-    // Not a Node.js environment or peer dep not installed — skip silently.
-  }
 
   // ── Tracing ──────────────────────────────────────────────────────────────────
   if (cfg.tracingEnabled) {
@@ -130,21 +80,18 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
         const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
-        const provider = new BasicTracerProvider({
-          resource: resourceFromAttributes({
-            'service.name': cfg.serviceName,
-            'deployment.environment': cfg.environment,
-            'service.version': cfg.version,
-          }),
-          spanProcessors: [new BatchSpanProcessor(traceExporter)],
-        });
-        trace.setGlobalTracerProvider(provider);
-        registered.push(provider as ShutdownableProvider);
-        _setProviderSignalInstalled('traces', true);
-      }
-    } catch (err) {
-      console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
-    }
+    const provider = new BasicTracerProvider({
+      resource: resourceFromAttributes({
+        'service.name': cfg.serviceName,
+        'deployment.environment': cfg.environment,
+        'service.version': cfg.version,
+      }),
+      spanProcessors: [new BatchSpanProcessor(traceExporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    registered.push(provider as ShutdownableProvider);
+  } catch (err) {
+    console.warn('[undef/telemetry] OTEL trace setup failed (missing peer deps?):', err);
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -169,30 +116,15 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
         const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
 
-        const meterProvider = new MeterProvider({
-          readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
-        });
-        metrics.setGlobalMeterProvider(meterProvider);
-        registered.push(meterProvider as ShutdownableProvider);
-        _setProviderSignalInstalled('metrics', true);
-      }
-    } catch (err) {
-      console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
-    }
-  }
-
-  // ── Logs ─────────────────────────────────────────────────────────────────────
-  if (logsEndpoint) {
-    try {
-      registered.push(await setupOtelLogProvider(cfg));
-      _setProviderSignalInstalled('logs', true);
-    } catch (err) {
-      console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
-    }
+    const meterProvider = new MeterProvider({
+      readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
+    });
+    metrics.setGlobalMeterProvider(meterProvider);
+    registered.push(meterProvider as ShutdownableProvider);
+  } catch (err) {
+    console.warn('[undef/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
   }
 
   _storeRegisteredProviders(registered);
-  if (registered.length > 0) {
-    _markProvidersRegistered();
-  }
+  _markProvidersRegistered();
 }
