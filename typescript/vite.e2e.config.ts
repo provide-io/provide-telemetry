@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Vite config for the browser E2E test.
  *
@@ -16,7 +16,6 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: 'e2e-browser',
   server: {
-    host: '127.0.0.1',
     fs: {
       // Allow Vite to serve files from typescript/ (parent of e2e-browser/).
       allow: ['..'],
