@@ -9,9 +9,27 @@
 import { ConfigurationError } from './exceptions';
 import { type TelemetryConfig, configFromEnv, setupTelemetry } from './config';
 
+/** Minimal interface for providers that can be flushed and shut down cleanly. */
+export interface ShutdownableProvider {
+  forceFlush?(): Promise<void>;
+  shutdown?(): Promise<void>;
+}
+
 let _activeConfig: TelemetryConfig | null = null;
 // Stryker disable next-line BooleanLiteral: initial false is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _providersRegistered = false;
+// Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
+let _registeredProviders: ShutdownableProvider[] = [];
+
+/** Store the live providers so shutdownTelemetry can flush and drain them. */
+export function _storeRegisteredProviders(providers: ShutdownableProvider[]): void {
+  _registeredProviders = providers;
+}
+
+/** Return the currently registered providers (snapshot). */
+export function _getRegisteredProviders(): ShutdownableProvider[] {
+  return [..._registeredProviders];
+}
 
 /** Called by registerOtelProviders once providers are live. */
 export function _markProvidersRegistered(): void {
@@ -74,4 +92,5 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 export function _resetRuntimeForTests(): void {
   _activeConfig = null;
   _providersRegistered = false;
+  _registeredProviders = [];
 }
