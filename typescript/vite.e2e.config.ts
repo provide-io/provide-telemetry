@@ -16,6 +16,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: 'e2e-browser',
   server: {
+    host: '127.0.0.1',
     fs: {
       // Allow Vite to serve files from typescript/ (parent of e2e-browser/).
       allow: ['..'],
