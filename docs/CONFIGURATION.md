@@ -15,7 +15,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `UNDEF_TELEMETRY_STRICT_EVENT_NAME` | bool | `true` | Require 3-5 dot-separated lowercase segments in event names |
+| `UNDEF_TELEMETRY_STRICT_EVENT_NAME` | bool | `false` | Require 3-5 dot-separated lowercase segments in event names |
 | `UNDEF_TELEMETRY_REQUIRED_KEYS` | str | `""` | Comma-separated list of keys every log event must contain |
 
 ## Logging
