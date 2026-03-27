@@ -1,27 +1,8 @@
 {
-  "name": "@provide-io/telemetry",
-  "version": "0.3.0",
-  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
-  "license": "Apache-2.0",
-  "author": "provide.io llc",
-  "homepage": "https://github.com/provide-io/provide-telemetry#readme",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/provide-io/provide-telemetry.git",
-    "directory": "typescript"
-  },
-  "keywords": [
-    "telemetry",
-    "observability",
-    "opentelemetry",
-    "otel",
-    "tracing",
-    "metrics",
-    "logging",
-    "structlog",
-    "pino",
-    "w3c-traceparent"
-  ],
+  "name": "@undef/telemetry",
+  "version": "0.3.18",
+  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "sideEffects": false,
   "engines": {
