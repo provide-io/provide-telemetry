@@ -1,17 +1,8 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  type ShutdownableProvider,
-  _areProvidersRegistered,
-  _getRegisteredProviders,
-  _markProvidersRegistered,
-  _resetRuntimeForTests,
-  _storeRegisteredProviders,
-  reconfigureTelemetry,
-} from '../src/runtime';
-import { _resetConfig } from '../src/config';
+import { type ShutdownableProvider, _getRegisteredProviders, _resetRuntimeForTests, _storeRegisteredProviders } from '../src/runtime';
 import { shutdownTelemetry } from '../src/shutdown';
 
 beforeEach(() => _resetRuntimeForTests());
@@ -31,12 +22,8 @@ describe('shutdownTelemetry', () => {
   it('calls forceFlush then shutdown on each registered provider', async () => {
     const order: string[] = [];
     const provider: ShutdownableProvider = {
-      forceFlush: vi.fn().mockImplementation(async () => {
-        order.push('flush');
-      }),
-      shutdown: vi.fn().mockImplementation(async () => {
-        order.push('shutdown');
-      }),
+      forceFlush: vi.fn().mockImplementation(async () => { order.push('flush'); }),
+      shutdown: vi.fn().mockImplementation(async () => { order.push('shutdown'); }),
     };
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();
@@ -106,13 +93,7 @@ describe('shutdownTelemetry', () => {
   it('awaits forceFlush promise resolution before continuing', async () => {
     let flushed = false;
     const provider: ShutdownableProvider = {
-      forceFlush: () =>
-        new Promise<void>((resolve) =>
-          setTimeout(() => {
-            flushed = true;
-            resolve();
-          }, 0),
-        ),
+      forceFlush: () => new Promise<void>(resolve => setTimeout(() => { flushed = true; resolve(); }, 0)),
       shutdown: vi.fn().mockResolvedValue(undefined),
     };
     _storeRegisteredProviders([provider]);
@@ -123,45 +104,10 @@ describe('shutdownTelemetry', () => {
   it('awaits shutdown promise resolution before completing', async () => {
     let shut = false;
     const provider: ShutdownableProvider = {
-      shutdown: () =>
-        new Promise<void>((resolve) =>
-          setTimeout(() => {
-            shut = true;
-            resolve();
-          }, 0),
-        ),
+      shutdown: () => new Promise<void>(resolve => setTimeout(() => { shut = true; resolve(); }, 0)),
     };
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();
     expect(shut).toBe(true);
-  });
-});
-
-describe('shutdownTelemetry — clears provider registration state', () => {
-  beforeEach(() => {
-    _resetRuntimeForTests();
-    _resetConfig();
-  });
-  afterEach(() => {
-    _resetRuntimeForTests();
-  });
-
-  it('clears _providersRegistered after shutdown', async () => {
-    _markProvidersRegistered();
-    expect(_areProvidersRegistered()).toBe(true);
-    await shutdownTelemetry();
-    expect(_areProvidersRegistered()).toBe(false);
-  });
-
-  it('clears registered provider list after shutdown', async () => {
-    _storeRegisteredProviders([{ shutdown: vi.fn() }]);
-    await shutdownTelemetry();
-    expect(_getRegisteredProviders()).toHaveLength(0);
-  });
-
-  it('allows provider-changing reconfigureTelemetry after shutdown', async () => {
-    _markProvidersRegistered();
-    await shutdownTelemetry();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
   });
 });

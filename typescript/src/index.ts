@@ -164,30 +164,5 @@ export type { RuntimeStatus } from './runtime';
 // Test utilities
 export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
 
-// Optional governance module — strippable: consent
-export type { ConsentLevel } from './consent';
-export {
-  setConsentLevel,
-  getConsentLevel,
-  shouldAllow,
-  loadConsentFromEnv,
-  resetConsentForTests,
-} from './consent';
-
-// Optional governance module — strippable
-export type { DataClass, ClassificationRule, ClassificationPolicy } from './classification';
-export {
-  classifyKey,
-  registerClassificationRule,
-  registerClassificationRules,
-  setClassificationPolicy,
-  getClassificationPolicy,
-  resetClassificationForTests,
-} from './classification';
-
-// Optional governance module — strippable: receipts
-export type { RedactionReceipt } from './receipts';
-export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts';
-
 // Shutdown
 export { shutdownTelemetry } from './shutdown';
