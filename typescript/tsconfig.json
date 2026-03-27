@@ -14,5 +14,5 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "tests", "src/otel.ts"]
+  "exclude": ["node_modules", "dist", "tests"]
 }
