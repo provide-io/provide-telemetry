@@ -111,5 +111,5 @@ After running `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` with
 env vars in place, verify telemetry landed:
 
 1. Browse `http://localhost:5080/web/streams?org_identifier=default` and look for `undef-telemetry` streams.
-2. Search for `e2e.openobserve.span` or the metric stream name from `tests/e2e/test_openobserve_e2e.py`.
+2. Search for `e2e.openobserve.span` or the metric stream name from `e2e/test_openobserve_e2e.py`.
 3. Rerun the examples in `examples/openobserve/` if nothing appears immediately, then refresh the UI.

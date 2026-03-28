@@ -35,8 +35,8 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-_REPO_ROOT = Path(__file__).parent.parent.parent
-_SERVER_SCRIPT = _REPO_ROOT / "tests" / "e2e" / "backends" / "cross_language_server.py"
+_REPO_ROOT = Path(__file__).parent.parent
+_SERVER_SCRIPT = _REPO_ROOT / "e2e" / "backends" / "cross_language_server.py"
 _TS_DIR = _REPO_ROOT / "typescript"
 
 
