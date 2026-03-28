@@ -100,10 +100,7 @@ def main() -> int:
             print(f"  {lang}: not present (skipped)")
             continue
         parts = version.split(".")
-        if len(parts) >= 2:
-            lang_major_minor = f"{parts[0]}.{parts[1]}"
-        else:
-            lang_major_minor = version
+        lang_major_minor = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
 
         if lang_major_minor == canonical:
             print(f"  {lang}: {version} — OK")
