@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import ast
 import re
-import sys
 from pathlib import Path
 
 try:
@@ -28,6 +27,11 @@ except ImportError:
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC_PATH = _REPO_ROOT / "spec" / "telemetry-api.yaml"
+
+
+def _identity(name: str) -> str:
+    """Return the name unchanged (identity transform for Python exports)."""
+    return name
 
 
 def _to_camel_case(snake: str) -> str:
@@ -40,9 +44,9 @@ def _to_camel_case(snake: str) -> str:
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
 
 
-def _load_spec() -> dict[str, object]:
+def _load_spec(path: Path | None = None) -> dict[str, object]:
     """Load the YAML spec. Uses PyYAML if available, else a regex-based fallback."""
-    text = _SPEC_PATH.read_text(encoding="utf-8")
+    text = (path or _SPEC_PATH).read_text(encoding="utf-8")
     if yaml is not None:
         return yaml.safe_load(text)  # type: ignore[no-any-return]
 
@@ -82,13 +86,12 @@ def _get_python_exports() -> set[str]:
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__all__":
-                    if isinstance(node.value, ast.List):
-                        return {
-                            elt.value
-                            for elt in node.value.elts
-                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-                        }
+                if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(node.value, ast.List):
+                    return {
+                        elt.value
+                        for elt in node.value.elts
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                    }
     return set()
 
 
@@ -117,7 +120,7 @@ def _check_language(
     """Check one language. Returns list of error messages."""
     if lang == "python":
         exports = _get_python_exports()
-        transform = lambda name: name  # noqa: E731
+        transform = _identity
     elif lang == "typescript":
         exports = _get_typescript_exports()
         transform = _to_camel_case
@@ -139,10 +142,10 @@ def main() -> int:
     """Run conformance checks. Returns 0 on success, 1 on failure."""
     parser = argparse.ArgumentParser(description="Validate API conformance against spec.")
     parser.add_argument("--lang", choices=["python", "typescript"], action="append", default=None)
-    parser.add_argument("--check-symbol", help="(ignored, for test compatibility)", default=None)
+    parser.add_argument("--spec", type=Path, default=None, help="Path to spec YAML (default: spec/telemetry-api.yaml)")
     args = parser.parse_args()
 
-    spec = _load_spec()
+    spec = _load_spec(args.spec)
     symbols = _collect_spec_symbols(spec)
 
     langs = args.lang or ["python", "typescript"]
