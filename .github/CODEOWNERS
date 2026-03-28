@@ -1,11 +1,8 @@
 # Default owner for everything
 * @tim
 
-# Language-specific owners (expandable as team grows)
+# Language-specific owners
 /typescript/ @tim
-/go/ @tim
-/rust/ @tim
-/csharp/ @tim
 
 # CI/infrastructure
 /.github/ @tim

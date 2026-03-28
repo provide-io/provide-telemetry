@@ -23,9 +23,9 @@ def _clean_meters() -> None:
 
 
 class TestEarlyGetMeterDoesNotBlockSetup:
-    """Regression: calling get_meter() before setup_metrics() used to cache a
-    noop meter under ``_meters["undef.telemetry"]``, causing setup_metrics() to
-    short-circuit and never install the real provider."""
+    """Verify that calling get_meter() before setup_metrics() does not cache a
+    noop meter under ``_meters["undef.telemetry"]`` that would cause
+    setup_metrics() to short-circuit and skip installing the real provider."""
 
     def test_setup_metrics_installs_provider_after_early_get_meter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(prov_mod, "_HAS_OTEL_METRICS", True)
