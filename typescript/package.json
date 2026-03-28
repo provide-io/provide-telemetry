@@ -2,7 +2,26 @@
   "name": "@undef/telemetry",
   "version": "0.3.0",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
+  "author": "MindTenet LLC",
+  "homepage": "https://github.com/undef-games/undef-telemetry#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/undef-games/undef-telemetry.git",
+    "directory": "typescript"
+  },
+  "keywords": [
+    "telemetry",
+    "observability",
+    "opentelemetry",
+    "otel",
+    "tracing",
+    "metrics",
+    "logging",
+    "structlog",
+    "pino",
+    "w3c-traceparent"
+  ],
   "type": "module",
   "sideEffects": false,
   "engines": {
