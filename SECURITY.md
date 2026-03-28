@@ -26,6 +26,6 @@ You will receive an acknowledgement within 72 hours. We aim to ship a fix within
 
 This policy covers:
 - `undef-telemetry` (PyPI) — `src/undef/telemetry/`
-- `@undef/telemetry` (npm) — `typescript/src/`
+- `@undef-games/telemetry` (npm) — `typescript/src/`
 
 Out of scope: third-party dependencies (report directly to their maintainers), example scripts, test fixtures.

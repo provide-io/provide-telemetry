@@ -19,7 +19,7 @@ pip install "undef-telemetry[otel]"      # + OpenTelemetry export
 **TypeScript:**
 
 ```bash
-npm install @undef/telemetry             # core (pino + @opentelemetry/api)
+npm install @undef-games/telemetry             # core (pino + @opentelemetry/api)
 ```
 
 **Rust:**
@@ -50,7 +50,7 @@ shutdown_telemetry()
 **TypeScript:**
 
 ```typescript
-import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef/telemetry';
+import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef-games/telemetry';
 
 setupTelemetry({ serviceName: 'my-app' });
 const log = getLogger('api');
@@ -113,11 +113,9 @@ Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blo
 ## Polyglot Architecture
 
 ```
-provide-telemetry/
-  src/provide/telemetry/    # Python package
-  typescript/             # TypeScript package (@provide-io/telemetry)
-  go/                     # Go module (github.com/provide-io/provide-telemetry/go)
-  rust/                   # Rust crate (provide-telemetry)
+undef-telemetry/
+  src/undef/telemetry/    # Python package
+  typescript/             # TypeScript package (@undef-games/telemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```

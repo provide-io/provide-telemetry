@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   setQueuePolicy({ maxLogs: 0, maxMetrics: 0, maxTraces: 64 });
   setExporterPolicy({ retries: 1, backoffMs: 0, failOpen: true, timeoutMs: 5000 });
 
-  // ── @undef/telemetry setup ───────────────────────────────────────────────
+  // ── @undef-games/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
     serviceName: 'undef-telemetry-hardening-example',
