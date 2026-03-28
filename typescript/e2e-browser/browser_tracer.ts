@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Browser-side E2E tracer page script.
  *
@@ -15,12 +15,7 @@
  *   #status   — "done" on success, "error: <msg>" on failure
  */
 
-import {
-  getConfig,
-  registerOtelProviders,
-  setupTelemetry,
-  shutdownTelemetry,
-} from '../src/index.js';
+import { registerOtelProviders, setupTelemetry, shutdownTelemetry } from '../src/index.js';
 import { trace } from '@opentelemetry/api';
 
 async function run(): Promise<void> {
@@ -44,13 +39,7 @@ async function run(): Promise<void> {
   };
 
   setupTelemetry(cfg);
-  // Pass the merged config (cfg above is a Partial<TelemetryConfig> overlay
-  // that is missing required defaults like tracingEnabled). setupTelemetry
-  // stores the merged result; getConfig() returns it. Using cfg directly
-  // here would leave tracingEnabled undefined and skip provider registration
-  // entirely, so trace.getTracer() would return a no-op ProxyTracer and the
-  // emitted traceparent would be all-zero.
-  await registerOtelProviders(getConfig());
+  await registerOtelProviders(cfg);
 
   const tracer = trace.getTracer('browser-e2e');
   let traceId = '';
