@@ -27,9 +27,7 @@ def test_conformance_passes_for_current_codebase() -> None:
         text=True,
         cwd=str(_REPO_ROOT),
     )
-    assert result.returncode == 0, (
-        f"Conformance check failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"Conformance check failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
 
 def test_conformance_detects_missing_symbol(tmp_path: Path) -> None:

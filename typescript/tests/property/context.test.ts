@@ -3,11 +3,7 @@
 
 import * as fc from 'fast-check';
 import { afterEach, describe, it } from 'vitest';
-import {
-  _resetContext,
-  getContext,
-  runWithContext,
-} from '../../src/context';
+import { _resetContext, getContext, runWithContext } from '../../src/context';
 
 afterEach(() => _resetContext());
 

@@ -69,9 +69,7 @@ def _search_total(
     req = Request(
         url=f"{base_url}/_search?type={stream_type}",
         headers={"Authorization": auth, "Content-Type": "application/json"},
-        data=json.dumps(
-            {"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}
-        ).encode("utf-8"),
+        data=json.dumps({"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}).encode("utf-8"),
         method="POST",
     )
     try:
@@ -150,9 +148,7 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
             cwd=str(_REPO_ROOT / "typescript"),
         )
         assert ts_result.returncode == 0, (
-            f"TS client failed (exit {ts_result.returncode}):\n"
-            f"stdout: {ts_result.stdout}\n"
-            f"stderr: {ts_result.stderr}"
+            f"TS client failed (exit {ts_result.returncode}):\nstdout: {ts_result.stdout}\nstderr: {ts_result.stderr}"
         )
 
         # Extract trace_id from TS client stdout.
@@ -161,9 +157,7 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
             if line.startswith("TRACE_ID="):
                 trace_id = line.split("=", 1)[1].strip()
                 break
-        assert trace_id and len(trace_id) == 32, (
-            f"Expected 32-char trace_id in TS stdout, got: {ts_result.stdout!r}"
-        )
+        assert trace_id and len(trace_id) == 32, f"Expected 32-char trace_id in TS stdout, got: {ts_result.stdout!r}"
 
         # Ask the Python backend to flush and exit cleanly.
         try:
@@ -177,7 +171,7 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
         server_proc.wait(timeout=10)
 
         # ── Poll OpenObserve for two spans sharing the same trace_id ─────────
-        sql = f'SELECT * FROM "default" WHERE trace_id = \'{trace_id}\''
+        sql = f"SELECT * FROM \"default\" WHERE trace_id = '{trace_id}'"
         deadline = time.time() + 30
         span_count = 0
 

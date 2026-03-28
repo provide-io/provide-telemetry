@@ -283,5 +283,212 @@ describe('runWithResilience — retriesLogs health counter', () => {
   });
 });
 
-// Circuit-breaker-specific tests (getCircuitState, half-open probes, exponential backoff,
-// state getter/setter functions, per-signal isolation) live in resilience.circuit.test.ts
+describe('runWithResilience — circuit breaker per signal', () => {
+  it('circuit breaker for traces signal trips independently of logs', async () => {
+    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
+    // Trip traces circuit
+    await runWithResilience('traces', timeoutFn);
+    await runWithResilience('traces', timeoutFn);
+    await runWithResilience('traces', timeoutFn); // trips traces
+    // logs should still work
+    let logsCalled = false;
+    await runWithResilience('logs', async () => {
+      logsCalled = true;
+      return 'ok';
+    });
+    expect(logsCalled).toBe(true);
+    // traces is open
+    let tracesCalled = false;
+    const result = await runWithResilience('traces', async () => {
+      tracesCalled = true;
+      return 'ok';
+    });
+    expect(result).toBeNull();
+    expect(tracesCalled).toBe(false);
+  });
+
+  it('circuit breaker cooldown boundary: still open at exactly 30000ms', async () => {
+    vi.useFakeTimers();
+    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
+    await runWithResilience('metrics', timeoutFn);
+    await runWithResilience('metrics', timeoutFn);
+    await runWithResilience('metrics', timeoutFn); // trips metrics
+    // Advance to exactly 30000ms (not past)
+    vi.advanceTimersByTime(30_000);
+    // At exactly 30000ms: elapsed < COOLDOWN (30000 < 30000 is false), probe allowed
+    let probeRan = false;
+    await runWithResilience('metrics', async () => {
+      probeRan = true;
+      return 'ok';
+    });
+    expect(probeRan).toBe(true);
+    vi.useRealTimers();
+  });
+});
+
+describe('resilience — fn called exactly once when retries=0 (kills <= vs < on attempt)', () => {
+  it('calls fn exactly once when retries=0 and fn succeeds', async () => {
+    _resetResilienceForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 100, backoffMs: 0 });
+    let calls = 0;
+    await runWithResilience('logs', async () => {
+      calls++;
+      return 'ok';
+    });
+    expect(calls).toBe(1);
+  });
+
+  it('calls fn exactly twice when retries=1 and fn always fails', async () => {
+    _resetResilienceForTests();
+    setExporterPolicy({ retries: 1, timeoutMs: 100, backoffMs: 0, failOpen: true });
+    let calls = 0;
+    await runWithResilience('logs', async () => {
+      calls++;
+      throw new Error('fail');
+    });
+    expect(calls).toBe(2);
+  });
+});
+
+describe('resilience — export latency recorded (kills ArithmeticOperator - → +)', () => {
+  it('records non-negative latency on success', async () => {
+    _resetResilienceForTests();
+    _resetHealthForTests();
+    setExporterPolicy({ timeoutMs: 1000 });
+    const { getHealthSnapshot } = await import('../src/health');
+    await runWithResilience('logs', async () => 'ok');
+    expect(getHealthSnapshot().exportLatencyMs).toBeGreaterThanOrEqual(0);
+    expect(getHealthSnapshot().exportLatencyMs).toBeLessThan(1000);
+  });
+});
+
+describe('resilience — circuit breaker reset clears all signals (kills StringLiteral in for-loop)', () => {
+  it('resets traces signal (after tripping it)', async () => {
+    _resetResilienceForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    // Trip circuit for 'traces'
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
+    await runWithResilience('traces', timeoutFn);
+    await runWithResilience('traces', timeoutFn);
+    await runWithResilience('traces', timeoutFn);
+    _resetResilienceForTests();
+    // After reset, traces circuit should be cleared (not tripped)
+    let called = false;
+    await runWithResilience('traces', async () => {
+      called = true;
+      return 'ok';
+    });
+    expect(called).toBe(true);
+  });
+
+  it('resets metrics signal (after tripping it)', async () => {
+    _resetResilienceForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
+    await runWithResilience('metrics', timeoutFn);
+    await runWithResilience('metrics', timeoutFn);
+    await runWithResilience('metrics', timeoutFn);
+    _resetResilienceForTests();
+    let called = false;
+    await runWithResilience('metrics', async () => {
+      called = true;
+      return 'ok';
+    });
+    expect(called).toBe(true);
+  });
+});
+
+describe('resilience — health increments (kills StringLiteral on exportFailures/exportRetries)', () => {
+  it('increments exportFailures when fn throws non-timeout error', async () => {
+    _resetResilienceForTests();
+    _resetHealthForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 1000, failOpen: true });
+    await runWithResilience('logs', async () => {
+      throw new Error('plain error');
+    });
+    expect(getHealthSnapshot().exportFailures).toBe(1);
+  });
+
+  it('increments exportRetries when retries > 0 and fn fails', async () => {
+    _resetResilienceForTests();
+    _resetHealthForTests();
+    setExporterPolicy({ retries: 1, timeoutMs: 1000, failOpen: true, backoffMs: 0 });
+    await runWithResilience('logs', async () => {
+      throw new Error('fail');
+    });
+    expect(getHealthSnapshot().exportRetries).toBe(1);
+  });
+
+  it('increments exportFailures specifically via circuit breaker open path (kills StringLiteral exportFailures at resilience.ts:88)', async () => {
+    // The circuit-breaker open path calls _incrementHealth('exportFailures') — verify this key
+    _resetResilienceForTests();
+    _resetHealthForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
+    // Trip the circuit (3 consecutive timeouts — each increments exportFailures)
+    await runWithResilience('cbtest', timeoutFn); // failure 1
+    await runWithResilience('cbtest', timeoutFn); // failure 2
+    await runWithResilience('cbtest', timeoutFn); // failure 3, circuit trips
+    const afterTrip = getHealthSnapshot().exportFailures;
+    // Now call while circuit is open — should increment exportFailures via circuit-open path
+    await runWithResilience('cbtest', async () => 'ok');
+    expect(getHealthSnapshot().exportFailures).toBe(afterTrip + 1);
+  });
+});
+
+describe('resilience — non-timeout error resets consecutive timeout counter (kills BlockStatement on else branch)', () => {
+  it('does not trip circuit after 2 timeouts + 1 non-timeout + 1 timeout', async () => {
+    // Without the else branch (empty block), _consecutiveTimeouts never resets to 0 on non-timeout errors.
+    // Sequence: timeout(1) → timeout(2) → normalFail(reset→0) → timeout(1) — circuit NOT open.
+    // With mutation (empty else): timeout(1) → timeout(2) → normalFail(stays 2) → timeout(3) — circuit TRIPS.
+    _resetResilienceForTests();
+    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
+    const normalFn = () => Promise.reject(new Error('non-timeout error'));
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 1
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 2
+    await runWithResilience('elsetest', normalFn); // consecutive resets to 0
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 1 (NOT 3)
+    // Circuit should NOT be open — fn must execute
+    let called = false;
+    await runWithResilience('elsetest', async () => {
+      called = true;
+      return 'ok';
+    });
+    expect(called).toBe(true);
+  });
+});
+
+describe('resilience — circuit breaker error messages (kills StringLiteral on messages)', () => {
+  it('sets lastExportError to "circuit breaker open" when circuit is tripped', async () => {
+    _resetResilienceForTests();
+    _resetHealthForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    // Trip circuit
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
+    await runWithResilience('logs', timeoutFn);
+    await runWithResilience('logs', timeoutFn);
+    await runWithResilience('logs', timeoutFn);
+    // Call while circuit open
+    await runWithResilience('logs', async () => 'ok');
+    expect(getHealthSnapshot().lastExportError).toBe('circuit breaker open');
+  });
+
+  it('throws with "circuit breaker open" message when failOpen=false', async () => {
+    _resetResilienceForTests();
+    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: false });
+    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
+    for (let i = 0; i < 3; i++) {
+      try {
+        await runWithResilience('logs', timeoutFn);
+      } catch {
+        /* expected */
+      }
+    }
+    await expect(runWithResilience('logs', async () => 'ok')).rejects.toThrow(
+      'circuit breaker open',
+    );
+  });
+});

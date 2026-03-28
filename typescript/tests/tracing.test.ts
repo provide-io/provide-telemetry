@@ -3,7 +3,6 @@
 
 import { trace } from '@opentelemetry/api';
 import { describe, expect, it, vi } from 'vitest';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import {
   _resetTraceContext,
   getActiveTraceIds,
@@ -14,7 +13,6 @@ import {
   traceDecorator,
   withTrace,
 } from '../src/tracing';
-import { _resetConfig, setupTelemetry } from '../src/config';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {
@@ -273,7 +271,64 @@ describe('getTraceContext — partial manual context', () => {
   });
 });
 
-// Advanced withTrace tests (setStatus, propagation, health counters, gates, ALS) live in tracing.manual.test.ts
+describe('withTrace — span.setStatus called on error', () => {
+  it('calls span.setStatus with ERROR code and message on sync throw', () => {
+    const mockSetStatus = vi.fn();
+    const mockSpan = {
+      end: vi.fn(),
+      recordException: vi.fn(),
+      setStatus: mockSetStatus,
+    };
+    const mockTracer = {
+      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
+        cb(mockSpan),
+      ),
+    };
+    vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
+
+    expect(() =>
+      withTrace('test.error', () => {
+        throw new Error('oops');
+      }),
+    ).toThrow('oops');
+
+    expect(mockSetStatus).toHaveBeenCalledOnce();
+    const call = mockSetStatus.mock.calls[0][0] as { code: number; message: string };
+    // SpanStatusCode.ERROR = 2
+    expect(call.code).toBe(2);
+    expect(call.message).toBe('Error: oops');
+
+    vi.restoreAllMocks();
+  });
+
+  it('calls span.setStatus with ERROR code and message on async rejection', async () => {
+    const mockSetStatus = vi.fn();
+    const mockSpan = {
+      end: vi.fn(),
+      recordException: vi.fn(),
+      setStatus: mockSetStatus,
+    };
+    const mockTracer = {
+      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
+        cb(mockSpan),
+      ),
+    };
+    vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
+
+    await expect(
+      withTrace('test.async.error', async () => {
+        throw new Error('async oops');
+      }),
+    ).rejects.toThrow('async oops');
+
+    expect(mockSetStatus).toHaveBeenCalledOnce();
+    const call = mockSetStatus.mock.calls[0][0] as { code: number; message: string };
+    expect(call.code).toBe(2);
+    expect(call.message).toBe('Error: async oops');
+
+    vi.restoreAllMocks();
+  });
+});
 
 describe('getActiveTraceIds — span with non-zero IDs', () => {
   it('returns trace_id and span_id when both are present', () => {

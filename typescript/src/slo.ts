@@ -29,13 +29,9 @@ function _lazyCounter(name: string, description: string): CounterInstrument {
   return c;
 }
 
-function _lazyHistogram(name: string, description: string, unit: string): HistogramInstrument {
-  let h = _histograms.get(name);
-  if (!h) {
-    h = histogram(name, { description, unit });
-    _histograms.set(name, h);
-  }
-  return h;
+function _lazyHistogram(name: string, description: string, unit: string): Histogram {
+  if (!_histograms.has(name)) _histograms.set(name, histogram(name, { description, unit }));
+  return _histograms.get(name)!;
 }
 
 function _lazyGauge(name: string, description: string, unit: string): GaugeInstrument {
@@ -75,9 +71,10 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
-  if (!getConfig().sloEnableUseMetrics) return;
-  const g = _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%');
-  g.set(opts.utilization, { resource: opts.resource });
+  _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%').add(
+    opts.utilization,
+    { resource: opts.resource },
+  );
 }
 
 export interface ErrorClassification {

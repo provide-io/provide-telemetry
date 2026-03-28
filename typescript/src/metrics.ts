@@ -12,19 +12,12 @@
  */
 
 import {
-  type Attributes,
   type Counter,
   type Histogram,
   type Meter,
   type UpDownCounter,
   metrics,
 } from '@opentelemetry/api';
-import { _emittedField, _incrementHealth } from './health';
-import { shouldSample } from './sampling';
-import { tryAcquire, release } from './backpressure';
-import { getActiveTraceIds } from './tracing';
-import { getConfig } from './config';
-import { shouldAllow } from './consent';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 
