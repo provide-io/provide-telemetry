@@ -1,0 +1,170 @@
+# @undef/telemetry
+
+Structured logging + OpenTelemetry traces and metrics for TypeScript — feature parity with the [`undef-telemetry`](https://pypi.org/p/undef-telemetry) Python package.
+
+## Install
+
+```bash
+npm install @undef/telemetry
+```
+
+### Optional OTEL peer dependencies
+
+To export traces and metrics to an OTLP endpoint (e.g. OpenObserve, Jaeger, Tempo):
+
+```bash
+npm install \
+  @opentelemetry/sdk-trace-base \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/resources \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http
+```
+
+All five are optional — the library degrades gracefully to no-op providers when they are absent.
+
+## Quick start
+
+```typescript
+import { setupTelemetry, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef/telemetry';
+
+// Call once at app startup.
+const cfg = setupTelemetry({
+  serviceName: 'my-app',
+  environment: 'production',
+  version: '1.0.0',
+  logLevel: 'info',
+  logFormat: 'json',
+  otelEnabled: true,
+  otlpEndpoint: 'http://localhost:4318',
+  otlpHeaders: { Authorization: 'Basic ...' },
+});
+
+// Activate OTLP exporters (requires peer deps above).
+await registerOtelProviders(cfg);
+
+const log = getLogger('api');
+log.info({ event: 'request.received.ok', method: 'GET', path: '/health', status: 200 });
+
+// On shutdown — flushes and drains all OTel providers.
+await shutdownTelemetry();
+```
+
+## API reference
+
+### Setup
+
+| Export | Description |
+|--------|-------------|
+| `setupTelemetry(config)` | Configure the library. Idempotent — safe to call multiple times. Returns the active config. |
+| `getConfig()` | Return the current `TelemetryConfig`. |
+| `configFromEnv()` | Build config from environment variables (see [Configuration](#configuration)). |
+| `registerOtelProviders(cfg)` | Wire OTLP trace + metrics exporters. Call after `setupTelemetry`. |
+| `shutdownTelemetry()` | Flush and shut down all registered OTel providers. |
+
+### Logging
+
+```typescript
+import { getLogger } from '@undef/telemetry';
+
+const log = getLogger('my-module');
+log.debug({ event: 'cache.miss.ok', key: 'user:42' });
+log.info({ event: 'request.complete.ok', status: 200, duration_ms: 14 });
+log.warn({ event: 'retry.attempt.warn', attempt: 2 });
+log.error({ event: 'db.query.error', error: err.message });
+```
+
+Event names follow the `segment.segment.status` convention (3–5 dot-separated segments).
+
+### Tracing
+
+```typescript
+import { withTrace, getActiveTraceIds, setTraceContext } from '@undef/telemetry';
+
+const result = await withTrace('my.operation.ok', async () => {
+  const { trace_id, span_id } = getActiveTraceIds();
+  // trace_id / span_id are available here and in any log emitted inside
+  return doWork();
+});
+```
+
+### Metrics
+
+```typescript
+import { counter, gauge, histogram } from '@undef/telemetry';
+
+const requests = counter('http.requests', { unit: '1', description: 'Total HTTP requests' });
+requests.add(1, { method: 'GET', status: '200' });
+
+const latency = histogram('http.duration', { unit: 'ms' });
+latency.record(42, { route: '/api/users' });
+```
+
+### Context binding
+
+```typescript
+import { bindContext, runWithContext, clearContext } from '@undef/telemetry';
+
+bindContext({ request_id: 'req-abc', user_id: 7 });
+// All log calls in this async context will include these fields automatically.
+clearContext();
+
+// Scoped — context is automatically cleaned up after fn resolves.
+await runWithContext({ trace_id: '...' }, async () => { /* ... */ });
+```
+
+### W3C trace propagation
+
+```typescript
+import { extractW3cContext, bindPropagationContext } from '@undef/telemetry';
+
+// In an HTTP handler — extract incoming traceparent/tracestate.
+const ctx = extractW3cContext(req.headers);
+bindPropagationContext(ctx);
+```
+
+### PII sanitization
+
+```typescript
+import { sanitize, registerPiiRule } from '@undef/telemetry';
+
+// Built-in: redacts password, token, secret, authorization, api_key, ...
+const safe = sanitize({ user: 'alice', password: 'hunter2' });
+// → { user: 'alice', password: '[REDACTED]' }
+
+// Custom rule
+registerPiiRule({ field: /^ssn$/, mode: 'redact' });
+```
+
+### Health snapshot
+
+```typescript
+import { getHealthSnapshot } from '@undef/telemetry';
+
+const snap = getHealthSnapshot();
+// snap.export_failures_logs, snap.queue_depth_traces, ...
+```
+
+## Configuration
+
+All options can be set programmatically via `setupTelemetry()` or via environment variables:
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
+| `UNDEF_TELEMETRY_ENV` | `development` | Deployment environment |
+| `UNDEF_TELEMETRY_VERSION` | `unknown` | Service version |
+| `UNDEF_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
+| `UNDEF_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
+| `UNDEF_OTEL_ENABLED` | `false` | Enable OTLP export |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
+
+## Requirements
+
+- Node.js ≥ 18
+- TypeScript ≥ 5 (built with TypeScript 6)
+
+## License
+
+AGPL-3.0-or-later. See [LICENSE](../LICENSES/AGPL-3.0-or-later.txt).

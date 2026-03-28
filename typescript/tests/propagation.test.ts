@@ -188,7 +188,9 @@ describe('extractW3cContext — spread conditionals for tracestate/baggage', () 
 
 describe('propagation — 5-part traceparent rejected (kills ConditionalExpression→false on parts.length!==4)', () => {
   it('rejects traceparent with 5 parts', () => {
-    const ctx = extractW3cContext({ traceparent: '00-' + 'a'.repeat(32) + '-' + 'b'.repeat(16) + '-00-extra' });
+    const ctx = extractW3cContext({
+      traceparent: '00-' + 'a'.repeat(32) + '-' + 'b'.repeat(16) + '-00-extra',
+    });
     expect(ctx).not.toHaveProperty('traceId');
     expect(ctx).not.toHaveProperty('spanId');
     expect(ctx).not.toHaveProperty('traceparent');

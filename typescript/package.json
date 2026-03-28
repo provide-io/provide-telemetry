@@ -1,9 +1,32 @@
 {
   "name": "@undef/telemetry",
-  "version": "0.3.18",
+  "version": "0.3.0",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
   "license": "AGPL-3.0-or-later",
+  "author": "MindTenet LLC",
+  "homepage": "https://github.com/undef-games/undef-telemetry#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/undef-games/undef-telemetry.git",
+    "directory": "typescript"
+  },
+  "keywords": [
+    "telemetry",
+    "observability",
+    "opentelemetry",
+    "otel",
+    "tracing",
+    "metrics",
+    "logging",
+    "structlog",
+    "pino",
+    "w3c-traceparent"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -27,7 +50,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
-    "test:memory": "npx tsx scripts/memory-audit.ts"
+    "test:memory": "npx tsx scripts/memory-audit.ts",
+    "prepublishOnly": "npm run build && npm run test:coverage"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
@@ -75,6 +99,7 @@
     "globals": "^17.4.0",
     "happy-dom": "^20.8.8",
     "prettier": "^3.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
     "vite": "^8.0.3",

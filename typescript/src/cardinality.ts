@@ -38,8 +38,10 @@ export function clearCardinalityLimits(): void {
 }
 
 function _pruneExpired(key: string, now: number): void {
-  const limit = _limits.get(key)!;
-  const seen = _seen.get(key)!;
+  const limit = _limits.get(key);
+  const seen = _seen.get(key);
+  /* v8 ignore next 2 */
+  if (!limit || !seen) return;
   const threshold = now - limit.ttlSeconds * 1000;
   for (const [value, seenAt] of seen) {
     if (seenAt < threshold) seen.delete(value);

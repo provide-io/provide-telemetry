@@ -128,7 +128,8 @@ export async function runWithResilience<T>(
   }
 
   if (policy.failOpen) return null;
-  throw lastError!;
+  /* v8 ignore next */
+  throw lastError ?? new Error('all retry attempts failed');
 }
 
 export function _resetResilienceForTests(): void {

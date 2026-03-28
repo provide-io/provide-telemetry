@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { EventSchemaError, eventName, validateEventName, validateRequiredKeys } from '../src/schema';
+import {
+  EventSchemaError,
+  eventName,
+  validateEventName,
+  validateRequiredKeys,
+} from '../src/schema';
 import { TelemetryError } from '../src/exceptions';
 
 describe('EventSchemaError', () => {
@@ -69,9 +74,7 @@ describe('validateEventName', () => {
 
 describe('validateRequiredKeys', () => {
   it('passes when all keys are present', () => {
-    expect(() =>
-      validateRequiredKeys({ a: 1, b: 2, c: 3 }, ['a', 'b']),
-    ).not.toThrow();
+    expect(() => validateRequiredKeys({ a: 1, b: 2, c: 3 }, ['a', 'b'])).not.toThrow();
   });
 
   it('throws listing missing keys (sorted)', () => {
@@ -121,14 +124,22 @@ describe('validateEventName — strict mode error message content (kills StringL
   it('error message mentions segment count when too few segments', () => {
     // Kills: StringLiteral mutation that empties validateEventName strict-mode error message
     let msg = '';
-    try { validateEventName('app.user'); } catch (e) { msg = (e as Error).message; }
+    try {
+      validateEventName('app.user');
+    } catch (e) {
+      msg = (e as Error).message;
+    }
     expect(msg).toMatch(/expected 3-5 segments/);
     expect(msg).toMatch(/got 2/);
   });
 
   it('error message mentions segment count when too many segments', () => {
     let msg = '';
-    try { validateEventName('a.b.c.d.e.f'); } catch (e) { msg = (e as Error).message; }
+    try {
+      validateEventName('a.b.c.d.e.f');
+    } catch (e) {
+      msg = (e as Error).message;
+    }
     expect(msg).toMatch(/expected 3-5 segments/);
     expect(msg).toMatch(/got 6/);
   });

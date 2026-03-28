@@ -65,29 +65,23 @@ describe('property: configFromEnv()', () => {
 
   it('otelEnabled is always boolean', () => {
     fc.assert(
-      fc.property(
-        fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')),
-        (val) => {
-          process.env['UNDEF_TRACE_ENABLED'] = val;
-          const cfg = configFromEnv();
-          delete process.env['UNDEF_TRACE_ENABLED'];
-          return typeof cfg.otelEnabled === 'boolean';
-        },
-      ),
+      fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
+        process.env['UNDEF_TRACE_ENABLED'] = val;
+        const cfg = configFromEnv();
+        delete process.env['UNDEF_TRACE_ENABLED'];
+        return typeof cfg.otelEnabled === 'boolean';
+      }),
     );
   });
 
   it('logLevel is always lowercase', () => {
     fc.assert(
-      fc.property(
-        fc.constantFrom('INFO', 'DEBUG', 'WARN', 'error', 'trace'),
-        (level) => {
-          process.env['UNDEF_LOG_LEVEL'] = level;
-          const cfg = configFromEnv();
-          delete process.env['UNDEF_LOG_LEVEL'];
-          return cfg.logLevel === cfg.logLevel.toLowerCase();
-        },
-      ),
+      fc.property(fc.constantFrom('INFO', 'DEBUG', 'WARN', 'error', 'trace'), (level) => {
+        process.env['UNDEF_LOG_LEVEL'] = level;
+        const cfg = configFromEnv();
+        delete process.env['UNDEF_LOG_LEVEL'];
+        return cfg.logLevel === cfg.logLevel.toLowerCase();
+      }),
     );
   });
 });

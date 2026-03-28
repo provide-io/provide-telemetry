@@ -132,7 +132,9 @@ describe('sanitizePayload — hash mode', () => {
   });
 
   it('falls back to [HASHED] when crypto is unavailable', () => {
-    _setHashFnForTest(() => { throw new Error('no crypto'); });
+    _setHashFnForTest(() => {
+      throw new Error('no crypto');
+    });
     registerPiiRule({ path: 'id', mode: 'hash' });
     const obj: Record<string, unknown> = { id: 'user-123' };
     sanitizePayload(obj);
@@ -145,7 +147,10 @@ describe('sanitizePayload — array values', () => {
     // Rule: 'items.*.id' targets the 'id' field inside each array element of 'items'
     registerPiiRule({ path: 'items.*.id', mode: 'drop' });
     const obj: Record<string, unknown> = {
-      items: [{ id: 'u1', name: 'Alice' }, { id: 'u2', name: 'Bob' }],
+      items: [
+        { id: 'u1', name: 'Alice' },
+        { id: 'u2', name: 'Bob' },
+      ],
     };
     sanitizePayload(obj);
     const items = obj['items'] as Array<Record<string, unknown>>;
