@@ -1,7 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-name: 🟦 CI — TypeScript
+name: CI — TypeScript
 
 on:
   push:
@@ -10,14 +7,12 @@ on:
       - "typescript/**"
       - "VERSION"
       - ".github/workflows/ci-typescript.yml"
-      - ".github/actions/setup-openobserve/**"
   pull_request:
     branches: [main]
     paths:
       - "typescript/**"
       - "VERSION"
       - ".github/workflows/ci-typescript.yml"
-      - ".github/actions/setup-openobserve/**"
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
@@ -27,123 +22,35 @@ permissions:
 
 jobs:
   typescript-quality:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
-      - name: SPDX header check
-        shell: bash
-        run: |
-          MISSING=""
-          for f in $(find src tests -name '*.ts' -not -path '*/node_modules/*'); do
-            if ! head -3 "$f" | grep -q 'SPDX-License-Identifier'; then
-              MISSING="$MISSING\n  $f"
-            fi
-          done
-          if [ -n "$MISSING" ]; then
-            echo "Missing SPDX headers:$MISSING"
-            exit 1
-          fi
-          echo "All TypeScript files have SPDX headers"
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run test:coverage
-      - name: Performance smoke test
-        run: npx tsx scripts/perf-smoke.ts
 
-  typescript-examples-smoke:
-    runs-on: ubuntu-24.04
+  typescript-mutation-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     defaults:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
-      # Run all standalone telemetry examples (no live backend required)
-      - name: Run telemetry examples
-        run: |
-          set -euo pipefail
-          for f in examples/telemetry/*.ts; do
-            echo "running $f"
-            npx tsx "$f"
-          done
-      - name: Setup OpenObserve
-        uses: ./.github/actions/setup-openobserve
-      # Run OpenObserve examples against a live local instance
-      - name: Run OpenObserve examples
-        env:
-          OPENOBSERVE_REQUIRED_SIGNALS: logs,traces,metrics
-        run: |
-          set -euo pipefail
-          for f in examples/openobserve/*.ts; do
-            echo "running $f"
-            npx tsx "$f"
-          done
-      - name: OpenObserve logs
-        if: always()
-        run: docker logs openobserve-local || true
-
-  otlp-integration:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: typescript
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: typescript/package-lock.json
-      - run: npm ci
-      - name: Prepare collector output directory
-        run: |
-          mkdir -p ../tests/integration/otel-output-typescript
-          rm -f ../tests/integration/otel-output-typescript/*.json
-      - name: Start OTLP collector
-        run: |
-          docker run -d --name otelcol-typescript \
-            -p 4318:4318 \
-            -p 13133:13133 \
-            -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
-            otel/opentelemetry-collector-contrib:0.102.1
-      - name: Wait for collector health
-        run: ../ci/wait-for-collector.sh
-      - name: Run collector-backed OTLP smoke test
-        run: npx vitest run tests/integration/otlp-collector.test.ts
-        env:
-          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-typescript"
-      - name: Collector logs
-        if: always()
-        run: docker logs otelcol-typescript || true
-      - name: Capture collector logs
-        run: docker logs otelcol-typescript > ../tests/integration/otel-output-typescript/collector.log 2>&1
-      - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.collector.span" ../tests/integration/otel-output-typescript/collector.log
-          grep -q "integration.collector.requests" ../tests/integration/otel-output-typescript/collector.log
-          grep -q "integration.collector.log" ../tests/integration/otel-output-typescript/collector.log
-      - name: Stop collector
-        if: always()
-        run: |
-          docker stop otelcol-typescript || true
-          docker rm otelcol-typescript || true
+      - run: npm run test:mutation

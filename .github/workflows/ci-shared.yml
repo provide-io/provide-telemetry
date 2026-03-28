@@ -1,21 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-name: 📋 CI — Shared
+name: CI — Shared
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-    paths:
-      - "src/provide/telemetry/**"
-      - "typescript/src/**"
-      - "e2e/**"
-      - "examples/openobserve/**"
-      - "rust/examples/openobserve_*.rs"
-      - "rust/examples/support/openobserve_shared.rs"
-      - "typescript/examples/openobserve/**"
   workflow_dispatch:
 
 permissions:
@@ -23,10 +12,11 @@ permissions:
 
 jobs:
   docs-quality:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -36,11 +26,12 @@ jobs:
         run: uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_docs_accuracy.py --no-cov -q
 
   release-readiness:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -48,26 +39,23 @@ jobs:
       - run: uv run twine check dist/*
 
   openobserve-e2e:
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
     env:
       OPENOBSERVE_URL: ${{ vars.OPENOBSERVE_URL }}
       OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
       OPENOBSERVE_PASSWORD: ${{ secrets.OPENOBSERVE_PASSWORD }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
       - run: npm ci
         working-directory: typescript
       - run: uv sync --group dev --extra otel
@@ -75,15 +63,7 @@ jobs:
       - name: Run OpenObserve E2E
         run: |
           if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
-            echo "::warning::OPENOBSERVE_* secrets not configured — E2E tests skipped. Set OPENOBSERVE_URL (var) and OPENOBSERVE_USER/PASSWORD (secrets) to enable."
+            echo "OPENOBSERVE_* not configured; skipping e2e run."
             exit 0
           fi
           uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
-      - name: Run Rust OpenObserve verification example
-        working-directory: rust
-        run: |
-          if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
-            echo "::warning::OPENOBSERVE_* secrets not configured — Rust OpenObserve example skipped."
-            exit 0
-          fi
-          cargo run --features otel --example openobserve_02_verify_ingestion

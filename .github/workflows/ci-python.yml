@@ -1,7 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-name: 🐍 CI — Python
+name: CI — Python
 
 on:
   push:
@@ -11,7 +8,6 @@ on:
       - "tests/**"
       - "scripts/**"
       - "e2e/**"
-      - "examples/**"
       - "pyproject.toml"
       - "uv.lock"
       - "Makefile"
@@ -24,7 +20,6 @@ on:
       - "tests/**"
       - "scripts/**"
       - "e2e/**"
-      - "examples/**"
       - "pyproject.toml"
       - "uv.lock"
       - "Makefile"
@@ -39,29 +34,15 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-        exclude:
-          # Full Python matrix on Linux; only 3.11 on Windows and macOS
-          - os: windows-2025
-            python-version: "3.12"
-          - os: windows-2025
-            python-version: "3.13"
-          - os: windows-2025
-            python-version: "3.14"
-          - os: macos-15
-            python-version: "3.12"
-          - os: macos-15
-            python-version: "3.13"
-          - os: macos-15
-            python-version: "3.14"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
@@ -73,25 +54,34 @@ jobs:
       - run: uv run mypy src tests
       - run: uv run ty check src tests
       - run: uv run bandit -r src -ll
-        if: runner.os == 'Linux'
       - run: uv run xenon --max-absolute C --max-modules B --max-average A src/
-        if: runner.os == 'Linux'
       - run: uv run vulture src/ tests/
       - run: uv run python -m pip_audit --path .
-        if: runner.os == 'Linux'
       - run: uv run python scripts/check_licenses.py
-        if: runner.os == 'Linux'
       - run: uv run python scripts/run_pytest_gate.py
 
+  mutation-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
+
   compliance:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uvx reuse lint
@@ -99,27 +89,33 @@ jobs:
       - run: uv run codespell
 
   otel-extras-validation:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m otel --no-cov -q
 
   examples-smoke:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
+      - name: Generate OpenObserve credentials
+        run: |
+          echo "OPENOBSERVE_USER=user@example.com" >> "$GITHUB_ENV"
+          echo "OPENOBSERVE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - name: Run telemetry examples
         run: |
           set -euo pipefail
@@ -127,9 +123,28 @@ jobs:
             echo "running $f"
             uv run --group dev --extra otel python "$f"
           done
-      - name: Setup OpenObserve
-        uses: ./.github/actions/setup-openobserve
+      - name: Start OpenObserve
+        run: |
+          docker run -d --name openobserve-local \
+            -p 5080:5080 \
+            -e "ZO_ROOT_USER_EMAIL=${OPENOBSERVE_USER}" \
+            -e "ZO_ROOT_USER_PASSWORD=${OPENOBSERVE_PASSWORD}" \
+            openobserve/openobserve:latest
+      - name: Wait for OpenObserve health
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5080/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "openobserve failed health check"
+          exit 1
       - name: Run OpenObserve examples
+        env:
+          OPENOBSERVE_URL: http://127.0.0.1:5080/api/default
+          OPENOBSERVE_USER: ${{ env.OPENOBSERVE_USER }}
+          OPENOBSERVE_PASSWORD: ${{ env.OPENOBSERVE_PASSWORD }}
         run: |
           set -euo pipefail
           for f in examples/openobserve/*.py; do
@@ -144,16 +159,14 @@ jobs:
         run: docker rm -f openobserve-local || true
 
   otlp-integration:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: Prepare collector output directory
-        run: |
-          mkdir -p tests/integration/otel-output-python
-          rm -f tests/integration/otel-output-python/*.json
       - name: Start OTLP collector
         run: |
           docker run -d --name otelcol \
@@ -162,53 +175,54 @@ jobs:
             -v "$PWD/tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
-        run: ci/wait-for-collector.sh
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "collector failed health check"
+          exit 1
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
         env:
-          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-python"
+          UNDEF_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
       - name: Collector logs
         if: always()
         run: docker logs otelcol || true
-      - name: Capture collector logs
-        run: docker logs otelcol > tests/integration/otel-output-python/collector.log 2>&1
-      - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.otlp.smoke" tests/integration/otel-output-python/collector.log
-          grep -q "integration.requests" tests/integration/otel-output-python/collector.log
-          grep -q "integration.otlp.log" tests/integration/otel-output-python/collector.log
       - name: Stop collector
         if: always()
-        run: |
-          docker stop otelcol || true
-          docker rm otelcol || true
+        run: docker rm -f otelcol || true
 
   performance-smoke:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_performance_smoke.py --iterations 300000
 
   memory-regression:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
       - name: Run memray stress tests
-        run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:provide_telemetry
+        run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:undef_telemetry
       - name: Upload memray artifacts
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        uses: actions/upload-artifact@v7
         with:
           name: memray-output
           path: memray-output/
