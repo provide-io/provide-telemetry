@@ -41,7 +41,6 @@ jobs:
 
   typescript-mutation-gate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     defaults:
       run:
         working-directory: typescript
