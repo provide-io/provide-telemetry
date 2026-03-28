@@ -79,7 +79,9 @@ export function clearPropagationContext(): void {
   // Stryker disable next-line ConditionalExpression,EqualityOperator
   if (_stack.length > 0) {
     // Stryker enable BlockStatement
-    _active = _stack.pop()!;
+    const restored = _stack.pop();
+    /* v8 ignore next */
+    _active = restored ?? {};
   } else {
     // Stryker disable BlockStatement: empty else body is equivalent — _active is always {} here because pop() restores prior state
     _active = {};

@@ -39,9 +39,11 @@ describe('setSamplingPolicy / getSamplingPolicy', () => {
     setSamplingPolicy({ defaultRate: 0.8, overrides: { a: 0.5 } });
     const p = getSamplingPolicy();
     p.defaultRate = 0.1;
-    p.overrides!['a'] = 0.0;
+    if (p.overrides) p.overrides['a'] = 0.0;
     expect(getSamplingPolicy().defaultRate).toBe(0.8);
-    expect(getSamplingPolicy().overrides!['a']).toBe(0.5);
+    const overrides = getSamplingPolicy().overrides;
+    expect(overrides).toBeDefined();
+    expect(overrides?.['a']).toBe(0.5);
   });
 });
 
