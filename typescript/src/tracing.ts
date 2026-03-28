@@ -34,9 +34,9 @@ export function getTraceContext(): { traceId?: string; spanId?: string } {
   if (_manualTraceId !== undefined || _manualSpanId !== undefined) {
     return {
       // Stryker disable next-line ConditionalExpression: _manualTraceId is always defined here (both set together)
-      ...((_manualTraceId !== undefined) && { traceId: _manualTraceId }),
+      ...(_manualTraceId !== undefined && { traceId: _manualTraceId }),
       // Stryker disable next-line ConditionalExpression: _manualSpanId is always defined here (both set together)
-      ...((_manualSpanId !== undefined) && { spanId: _manualSpanId }),
+      ...(_manualSpanId !== undefined && { spanId: _manualSpanId }),
     };
   }
   const ids = getActiveTraceIds();

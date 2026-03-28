@@ -339,8 +339,6 @@ describe('End-to-end pipeline', () => {
     bindContext({ request_id: 'req-child-001' });
     const log = getLogger('service');
     const requestLog = log.child({ component: 'db' });
-    expect(() =>
-      requestLog.info({ event: 'query_ok', table: 'users', rows: 5 }),
-    ).not.toThrow();
+    expect(() => requestLog.info({ event: 'query_ok', table: 'users', rows: 5 })).not.toThrow();
   });
 });

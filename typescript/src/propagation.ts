@@ -29,7 +29,11 @@ function _parseTraceparent(value: string): { traceId?: string; spanId?: string }
   if (version.toLowerCase() === 'ff') return {};
   if (traceId === '0'.repeat(32) || spanId === '0'.repeat(16)) return {};
   // Validate that all fields are valid hex strings.
-  if (!/^[0-9a-fA-F]+$/.test(version) || !/^[0-9a-fA-F]+$/.test(traceId) || !/^[0-9a-fA-F]+$/.test(spanId)) {
+  if (
+    !/^[0-9a-fA-F]+$/.test(version) ||
+    !/^[0-9a-fA-F]+$/.test(traceId) ||
+    !/^[0-9a-fA-F]+$/.test(spanId)
+  ) {
     return {};
   }
   return { traceId: traceId.toLowerCase(), spanId: spanId.toLowerCase() };
