@@ -44,8 +44,8 @@ describe('setSamplingPolicy / getSamplingPolicy', () => {
     const p = getSamplingPolicy('logs');
     p.defaultRate = 0.1;
     if (p.overrides) p.overrides['a'] = 0.0;
-    expect(getSamplingPolicy('logs').defaultRate).toBe(0.8);
-    const overrides = getSamplingPolicy('logs').overrides;
+    expect(getSamplingPolicy().defaultRate).toBe(0.8);
+    const overrides = getSamplingPolicy().overrides;
     expect(overrides).toBeDefined();
     expect(overrides?.['a']).toBe(0.5);
   });

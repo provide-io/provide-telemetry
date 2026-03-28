@@ -47,13 +47,9 @@ export function tryAcquire(signal: QueueTicket['signal']): QueueTicket | null {
   const max = _maxFor(signal);
   if (max <= 0) return { signal, token: 0 };
   const set = _acquired.get(signal);
-  // Stryker disable next-line ConditionalExpression: defensive guard — _acquired is initialized with all three signal keys, so get() never returns undefined
   /* v8 ignore next */
   if (!set) return null;
-  if (set.size >= max) {
-    _incrementHealth(_droppedField(signal));
-    return null;
-  }
+  if (set.size >= max) return null;
   const token = _tokenCounter++;
   set.add(token);
   return { signal, token };
