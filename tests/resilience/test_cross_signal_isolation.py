@@ -15,8 +15,6 @@ from __future__ import annotations
 import pytest
 
 from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry import health as health_mod
-from undef.telemetry import sampling as sampling_mod
 from undef.telemetry.backpressure import QueuePolicy, QueueTicket, release, set_queue_policy, try_acquire
 from undef.telemetry.health import get_health_snapshot, record_export_failure, reset_health_for_tests
 from undef.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
