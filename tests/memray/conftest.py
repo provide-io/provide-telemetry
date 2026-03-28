@@ -80,6 +80,7 @@ def assert_allocation_within_threshold() -> Callable[[int | None, int, str, floa
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Save baseline updates to baselines.json if MEMRAY_UPDATE_BASELINE is set."""
+    _ = session, exitstatus  # required by pytest hook signature
     if not os.getenv("MEMRAY_UPDATE_BASELINE") or not _baseline_updates:
         return
     existing: dict[str, int] = {}
