@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git tag:*)",
+      "Bash(git -C /Users/tim/code/gh/undef-games/undef-telemetry check-ignore -q .worktrees)",
+      "Bash(git worktree:*)",
+      "Bash(git:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh api:*)",
+      "Bash(npm ci:*)",
+      "Bash(gh run:*)",
+      "Bash(uv run:*)",
+      "Bash(npm run:*)",
+      "Bash(npm update:*)",
+      "Bash(npm outdated:*)"
+    ]
+  }
+}

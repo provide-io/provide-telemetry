@@ -6,7 +6,7 @@
 
 **Architecture:** A Python pytest e2e test spawns a minimal Python HTTP backend (stdlib `http.server`) and a Node.js TypeScript client (`tsx`) as separate subprocesses. The TS client creates a root OTel span, injects the `traceparent` header into a real HTTP request to the Python backend, and both processes export their spans to a live OpenObserve instance. The pytest test then queries OpenObserve and asserts that both spans share the same `trace_id`.
 
-**Tech Stack:** Python 3.11 stdlib `http.server`, `opentelemetry-api/sdk` (already in `otel` extra), `@undef/telemetry` + `@opentelemetry/*` peer deps, `tsx` (already in TS dev deps via npx), OpenObserve running locally.
+**Tech Stack:** Python 3.11 stdlib `http.server`, `opentelemetry-api/sdk` (already in `otel` extra), `@undef-games/telemetry` + `@opentelemetry/*` peer deps, `tsx` (already in TS dev deps via npx), OpenObserve running locally.
 
 ---
 

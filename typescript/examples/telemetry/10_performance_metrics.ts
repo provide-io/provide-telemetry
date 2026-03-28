@@ -6,7 +6,7 @@
  * ⚡ Performance characteristics of the telemetry library.
  *
  * Demonstrates:
- * - Import time of the full @undef/telemetry package (measured at startup)
+ * - Import time of the full @undef-games/telemetry package (measured at startup)
  * - setupTelemetry() cost
  * - Hot-path instrument ops: counter.add(), gauge.add(), histogram.record()
  * - Sampling decision throughput via shouldSample()
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   // ── 🔌 Import footprint check ─────────────────────────────
   console.log('\n🔌 Import Footprint\n');
   const loadedMods = Object.keys(require?.cache ?? {}).filter((k) => k.includes('undef-telemetry'));
-  console.log(`    Loaded @undef/telemetry source files: ${loadedMods.length}`);
+  console.log(`    Loaded @undef-games/telemetry source files: ${loadedMods.length}`);
   const hasOtelSdk = loadedMods.some((k) => k.includes('sdk-trace') || k.includes('sdk-metrics'));
   if (hasOtelSdk) {
     console.log('    ⚠️  OTEL SDK loaded (expected when peer deps are installed)');

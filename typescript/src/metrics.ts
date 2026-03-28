@@ -19,7 +19,7 @@ import {
 export type { Counter, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
-const METER_NAME = '@undef/telemetry';
+const METER_NAME = '@undef-games/telemetry';
 
 export interface MetricOptions {
   description?: string;

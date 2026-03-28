@@ -124,7 +124,7 @@ jobs:
       contents: read
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@undef/telemetry
+      url: https://www.npmjs.com/package/@undef-games/telemetry
     defaults:
       run:
         working-directory: typescript

@@ -11,7 +11,7 @@
 import { type Tracer, SpanStatusCode, trace } from '@opentelemetry/api';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
-const TRACER_NAME = '@undef/telemetry';
+const TRACER_NAME = '@undef-games/telemetry';
 
 // ── Manual trace context (injected without an active OTEL span) ───────────────
 let _manualTraceId: string | undefined;
