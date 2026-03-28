@@ -267,7 +267,7 @@ class TestGaugeSetMethod:
         from undef.telemetry.backpressure import try_acquire
 
         ticket = try_acquire("metrics")
-        assert ticket is not None
+        assert ticket is not None and ticket.signal == "metrics"
         # Now set should be rejected
         g.set(99)
         assert g.value == 0

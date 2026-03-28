@@ -112,9 +112,13 @@ event_name("auth", "login", "success")  # -> "auth.login.success"
 
 ASGI middleware class. Extracts `x-request-id`, `x-session-id`, and W3C trace headers from incoming requests, binds them to contextvars, and clears on response.
 
-### `bind_websocket_context(scope: dict) -> dict[str, str | None]`
+### `bind_websocket_context(scope: dict) -> ContextToken`
 
-Bind context fields from a WebSocket ASGI scope. Returns `{"request_id": ..., "session_id": ..., "actor_id": ...}`.
+Bind context fields from a WebSocket ASGI scope. Binds any of `request_id`, `session_id`, `actor_id` found in headers. Returns a `ContextToken` for cleanup — pass it to `clear_websocket_context()`.
+
+### `clear_websocket_context(token: ContextToken) -> None`
+
+Restore logger context to the state before `bind_websocket_context()` was called.
 
 ## W3C Propagation
 

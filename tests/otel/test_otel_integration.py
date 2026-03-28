@@ -117,7 +117,7 @@ class TestW3CPropagationWithRealOTel:
             "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
             "congo=lZWRzIHRoZQ",
         )
-        assert token is not None
+        assert hasattr(token, "var")
 
         detach_w3c_context(token)
         # Should not raise
@@ -255,3 +255,33 @@ class TestSetupLifecycleWithRealOTel:
         setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
         with pytest.raises(RuntimeError, match="provider-changing reconfiguration is unsupported"):
             reconfigure_telemetry(TelemetryConfig(service_name="new-service"))
+
+
+class TestOtelGuardConditions:
+    """Kills mutants that flip the _HAS_OTEL / _HAS_OTEL_METRICS guard in _load_otel_*_api()."""
+
+    def test_load_otel_trace_api_returns_module_when_otel_present(self) -> None:
+        pytest.importorskip("opentelemetry.trace")
+        from undef.telemetry.tracing import provider as pmod
+
+        original = pmod._HAS_OTEL
+        pmod._HAS_OTEL = True
+        try:
+            result = pmod._load_otel_trace_api()
+            assert result is not None
+            assert hasattr(result, "get_tracer")
+        finally:
+            pmod._HAS_OTEL = original
+
+    def test_load_otel_metrics_api_returns_module_when_otel_present(self) -> None:
+        pytest.importorskip("opentelemetry.metrics")
+        from undef.telemetry.metrics import provider as mmod
+
+        original = mmod._HAS_OTEL_METRICS
+        mmod._HAS_OTEL_METRICS = True
+        try:
+            result = mmod._load_otel_metrics_api()
+            assert result is not None
+            assert hasattr(result, "get_meter")
+        finally:
+            mmod._HAS_OTEL_METRICS = original

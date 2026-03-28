@@ -9,8 +9,7 @@ export default {
   // Source files to mutate
   mutate: [
     'src/**/*.ts',
-    '!src/index.ts',   // re-export barrel — no logic to mutate
-    '!src/otel.ts',    // OTEL SDK wiring — excluded from coverage too
+    '!src/index.ts',    // re-export barrel — no logic to mutate
     '!src/sanitize.ts', // re-export shim
   ],
 
@@ -21,9 +20,9 @@ export default {
 
   // Thresholds — fail CI if mutation score drops below these
   thresholds: {
-    high: 90,
-    low: 80,
-    break: 70,
+    high: 100,
+    low: 100,
+    break: 100,
   },
 
   // Reporters

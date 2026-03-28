@@ -12,6 +12,8 @@ import pytest
 
 from undef.telemetry import _otel
 
+pytestmark = pytest.mark.otel
+
 
 def test_has_otel_handles_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
