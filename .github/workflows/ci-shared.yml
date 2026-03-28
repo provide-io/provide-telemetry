@@ -1,4 +1,4 @@
-name: CI — Shared
+name: 3. 📋 CI — Shared
 
 on:
   push:

@@ -10,13 +10,13 @@ Apply these settings in GitHub → Settings → Branches → Branch protection r
 - **Require status checks to pass before merging**
   - Require branches to be up to date before merging: yes
   - Required checks:
-    - `quality (3.11)` (CI — Python)
-    - `typescript-quality` (CI — TypeScript)
-    - `docs-quality` (CI — Shared)
-    - `conformance` (Spec Conformance)
-    - `version-sync` (Spec Conformance)
-    - `mutation-pr` (CI — Python, PR only)
-    - `typescript-mutation-pr` (CI — TypeScript, PR only)
+    - `quality (3.11)` (1. 🐍 CI — Python)
+    - `typescript-quality` (2. 🟦 CI — TypeScript)
+    - `docs-quality` (3. 📋 CI — Shared)
+    - `conformance` (4. 📐 Spec Conformance)
+    - `version-sync` (4. 📐 Spec Conformance)
+    - `mutation-pr` (1. 🐍 CI — Python, PR only)
+    - `typescript-mutation-pr` (2. 🟦 CI — TypeScript, PR only)
 - **Do not allow bypassing the above settings**
 
 ## Apply via CLI
