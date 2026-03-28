@@ -191,6 +191,7 @@ def test_record_red_metrics_increments_request_counter() -> None:
     from provide.telemetry.slo import _counters
 
     req_counter = _counters.get("http.requests.total")
+    assert req_counter is not None
     assert hasattr(req_counter, "add")
     assert req_counter.value == 1
 
@@ -257,6 +258,7 @@ def test_record_red_metrics_error_counter_for_500() -> None:
     from provide.telemetry.slo import _counters
 
     err_counter = _counters.get("http.errors.total")
+    assert err_counter is not None
     assert hasattr(err_counter, "add")
     assert err_counter.value == 1
 
@@ -266,6 +268,7 @@ def test_record_red_metrics_error_counter_for_501() -> None:
     from provide.telemetry.slo import _counters
 
     err_counter = _counters.get("http.errors.total")
+    assert err_counter is not None
     assert hasattr(err_counter, "add")
     assert err_counter.value == 1
 
@@ -301,6 +304,7 @@ def test_record_red_metrics_records_histogram() -> None:
     from provide.telemetry.slo import _histograms
 
     hist = _histograms.get("http.request.duration_ms")
+    assert hist is not None
     assert hasattr(hist, "record")
     assert hist.count == 1
     assert hist.total == 42.5
@@ -385,6 +389,7 @@ def test_record_use_metrics_creates_gauge() -> None:
     from provide.telemetry.slo import _gauges
 
     g = _gauges.get("resource.utilization.percent")
+    assert g is not None
     assert hasattr(g, "set")
     assert g.value == 75
 
