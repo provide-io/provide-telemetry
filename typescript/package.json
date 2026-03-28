@@ -1,6 +1,6 @@
 {
   "name": "@undef/telemetry",
-  "version": "0.3.18",
+  "version": "0.3.0",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
   "license": "AGPL-3.0-or-later",
   "type": "module",
