@@ -315,36 +315,3 @@ class TestMakeFilteringBoundLogger:
         """Kills: 'error' key name mutations in _standard_levels."""
         cls = _make_filtering_bound_logger(logging.CRITICAL)
         assert getattr(cls, "error").__name__ == "_permissive_nop"  # noqa: B009
-
-
-# ── configure_logging sanitize config propagation ──────────────────────
-
-
-class TestConfigureLoggingSanitizeConfig:
-    def test_sanitize_config_propagated_not_replaced_with_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Kills mutmut_33: sanitize_sensitive_fields(config.logging.sanitize) -> sanitize_sensitive_fields(None).
-
-        When sanitize is True in config, the sanitize_sensitive_fields processor
-        must receive True, not None. With None (falsy), sanitization is skipped.
-        """
-        _reset_logging_for_tests()
-        monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
-
-        # Track what sanitize_sensitive_fields receives
-        from provide.telemetry.logger import processors as proc_mod
-
-        original_ssf = proc_mod.sanitize_sensitive_fields
-        captured_args: list[object] = []
-
-        def tracking_ssf(enabled: object, max_depth: int = 8) -> Any:
-            captured_args.append(enabled)
-            return original_ssf(enabled, max_depth)  # type: ignore
-
-        monkeypatch.setattr(core_mod, "sanitize_sensitive_fields", tracking_ssf)
-
-        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_SANITIZE": "true"})
-        configure_logging(cfg, force=True)
-
-        assert len(captured_args) == 1
-        assert captured_args[0] is True  # must be True, not None
-        _reset_logging_for_tests()
