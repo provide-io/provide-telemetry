@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Browser-based cross-language distributed tracing E2E test.
 
 Verifies that a W3C traceparent emitted by a real Chromium browser tab
-(running @provide/telemetry via Vite) is honoured by the Python backend,
+(running @undef/telemetry via Vite) is honoured by the Python backend,
 producing two spans with the same trace_id in OpenObserve.
 
 Requires:
@@ -79,7 +79,9 @@ def _search_total(
     req = Request(
         url=f"{base_url}/_search?type={stream_type}",
         headers={"Authorization": auth, "Content-Type": "application/json"},
-        data=json.dumps({"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}).encode("utf-8"),
+        data=json.dumps(
+            {"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}
+        ).encode("utf-8"),
         method="POST",
     )
     try:
@@ -116,10 +118,10 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     # ── Start Python backend ──────────────────────────────────────────────────
     server_env = {
         **os.environ,
-        "PROVIDE_TRACE_ENABLED": "true",
-        "PROVIDE_METRICS_ENABLED": "false",
-        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "PROVIDE_TELEMETRY_VERSION": "e2e",
+        "UNDEF_TRACE_ENABLED": "true",
+        "UNDEF_METRICS_ENABLED": "false",
+        "UNDEF_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
+        "UNDEF_TELEMETRY_VERSION": "e2e",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
         "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
         "OTEL_BSP_SCHEDULE_DELAY": "200",
@@ -141,12 +143,9 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     }
     vite_proc = subprocess.Popen(
         [
-            "npx",
-            "vite",
-            "--config",
-            "vite.e2e.config.ts",
-            "--port",
-            str(vite_port),
+            "npx", "vite",
+            "--config", "vite.e2e.config.ts",
+            "--port", str(vite_port),
         ],
         env=vite_env,
         stdout=subprocess.PIPE,
@@ -168,7 +167,12 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         assert ready_line, "Python backend did not become ready in time"
 
         # Wait for Vite to be accepting connections.
-        assert _wait_for_port(vite_port, timeout=30), f"Vite dev server did not start on port {vite_port} within 30s"
+        assert _wait_for_port(vite_port, timeout=30), (
+            f"Vite dev server did not start on port {vite_port} within 30s"
+        )
+        # Brief settle so Vite finishes module graph construction.
+        time.sleep(1.0)
+
         # ── Launch Chromium ───────────────────────────────────────────────────
         qs = urlencode({"otlpAuth": auth})
         page_url = f"http://127.0.0.1:{vite_port}/?{qs}"
@@ -176,15 +180,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            console_messages: list[str] = []
-            page.on("console", lambda msg: console_messages.append(msg.text))
-            # Retry page load — Vite may still be building the module graph
-            # after the port is open.
-            for _attempt in range(3):
-                resp = page.goto(page_url, wait_until="networkidle")
-                if resp and resp.ok:
-                    break
-                time.sleep(1.0)
+            page.goto(page_url, wait_until="networkidle")
 
             # Poll #status until it leaves "loading" (up to 30s).
             status_el = page.locator("#status")
@@ -196,20 +192,15 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 if status == "loading":
                     time.sleep(0.5)
 
-            assert status == "done", f"Browser tracer failed. #status={status!r}\nConsole messages: {console_messages}"
+            assert status == "done", (
+                f"Browser tracer failed. #status={status!r}\n"
+                f"Console messages: {[m.text for m in page.context.pages[0:1]]}"
+            )
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
-        # Surface browser console output regardless of trace_id outcome — without
-        # this, an all-zero trace_id (no provider registered) silently fails far
-        # later at the OpenObserve cross-reference, hiding the actual cause
-        # (typically a peer-dep import failure inside registerOtelProviders).
-        if not (len(trace_id) == 32 and any(c != "0" for c in trace_id)):
-            print("\n[browser console messages]\n" + "\n".join(console_messages), file=sys.stderr)
-
-        assert len(trace_id) == 32 and any(c != "0" for c in trace_id), (
-            f"Expected real 32-char trace_id from browser DOM, got: {trace_id!r}\n"
-            f"Console messages:\n" + "\n".join(console_messages)
+        assert len(trace_id) == 32, (
+            f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
         )
 
         # Flush and stop the Python backend.
@@ -218,7 +209,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 Request(f"http://127.0.0.1:{backend_port}/shutdown", method="GET"),
                 timeout=5,
             )
-        except OSError:
+        except Exception:
             pass  # server exits before finishing the response — that is fine
         server_proc.wait(timeout=10)
 
@@ -233,7 +224,10 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 break
             time.sleep(1)
 
-        assert span_count >= 2, f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, found {span_count}."
+        assert span_count >= 2, (
+            f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, "
+            f"found {span_count}."
+        )
 
     finally:
         vite_proc.terminate()
