@@ -154,7 +154,7 @@ Expected: two `ok` responses, process exits cleanly.
 
 ```typescript
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Cross-language distributed tracing E2E client.
  *

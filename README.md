@@ -132,4 +132,4 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## License
 
-Python: Apache-2.0. TypeScript: AGPL-3.0-or-later. See [LICENSES/](LICENSES/).
+Apache-2.0. See [LICENSES/](LICENSES/).
