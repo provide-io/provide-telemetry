@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Tests for scripts/check_version_sync.py."""
@@ -27,4 +27,6 @@ def test_version_sync_passes() -> None:
         text=True,
         cwd=str(_REPO_ROOT),
     )
-    assert result.returncode == 0, f"Version sync failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert result.returncode == 0, (
+        f"Version sync failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )

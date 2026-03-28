@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Check that all language packages share the same major.minor as VERSION.
@@ -33,7 +33,7 @@ def _python_version() -> str | None:
     if not pyproject.exists():
         return None
     text = pyproject.read_text(encoding="utf-8")
-    if re.search(r'version\s*=\s*\{\s*file\s*=\s*"VERSION"\s*\}', text):
+    if 'version = {file = "VERSION"}' in text:
         return _read_version_file()
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     return match.group(1) if match else None
@@ -56,22 +56,6 @@ def _go_version() -> str | None:
     return None
 
 
-def _go_logger_version() -> str | None:
-    """Read version from go/logger/VERSION."""
-    v = _REPO_ROOT / "go" / "logger" / "VERSION"
-    if v.exists():
-        return v.read_text(encoding="utf-8").strip()
-    return None
-
-
-def _go_tracer_version() -> str | None:
-    """Read version from go/tracer/VERSION."""
-    v = _REPO_ROOT / "go" / "tracer" / "VERSION"
-    if v.exists():
-        return v.read_text(encoding="utf-8").strip()
-    return None
-
-
 def _rust_version() -> str | None:
     """Read version from rust/Cargo.toml."""
     cargo = _REPO_ROOT / "rust" / "Cargo.toml"
@@ -82,22 +66,32 @@ def _rust_version() -> str | None:
     return match.group(1) if match else None
 
 
+def _csharp_version() -> str | None:
+    """Read version from csharp/src/Undef.Telemetry/*.csproj."""
+    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Undef.Telemetry"
+    if not csproj_dir.exists():
+        return None
+    for csproj in csproj_dir.glob("*.csproj"):
+        text = csproj.read_text(encoding="utf-8")
+        match = re.search(r"<Version>([^<]+)</Version>", text)
+        if match:
+            return match.group(1)
+    return None
+
+
 _LANG_READERS = {
     "python": _python_version,
     "typescript": _typescript_version,
     "go": _go_version,
-    "go/logger": _go_logger_version,
-    "go/tracer": _go_tracer_version,
     "rust": _rust_version,
+    "csharp": _csharp_version,
 }
 
 
 def main() -> int:
     """Check version sync. Returns 0 on success, 1 on mismatch."""
-    canonical_raw = _read_version_file()
-    canonical_parts = canonical_raw.split(".")
-    canonical = f"{canonical_parts[0]}.{canonical_parts[1]}" if len(canonical_parts) >= 2 else canonical_raw
-    print(f"VERSION file: {canonical_raw} (major.minor: {canonical})")
+    canonical = _read_version_file()
+    print(f"VERSION file: {canonical}")
 
     errors: list[str] = []
     for lang, reader in _LANG_READERS.items():
@@ -106,7 +100,10 @@ def main() -> int:
             print(f"  {lang}: not present (skipped)")
             continue
         parts = version.split(".")
-        lang_major_minor = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
+        if len(parts) >= 2:
+            lang_major_minor = f"{parts[0]}.{parts[1]}"
+        else:
+            lang_major_minor = version
 
         if lang_major_minor == canonical:
             print(f"  {lang}: {version} — OK")
