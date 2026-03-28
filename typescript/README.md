@@ -280,4 +280,4 @@ setupTelemetry({ logFormat: 'pretty' });
 
 ## License
 
-Apache-2.0. See [LICENSE](../LICENSES/Apache-2.0.txt).
+AGPL-3.0-or-later. See [LICENSE](../LICENSES/AGPL-3.0-or-later.txt).

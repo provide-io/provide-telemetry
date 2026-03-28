@@ -33,7 +33,7 @@ def _python_version() -> str | None:
     if not pyproject.exists():
         return None
     text = pyproject.read_text(encoding="utf-8")
-    if 'version = {file = "VERSION"}' in text:
+    if re.search(r'version\s*=\s*\{\s*file\s*=\s*"VERSION"\s*\}', text):
         return _read_version_file()
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     return match.group(1) if match else None
