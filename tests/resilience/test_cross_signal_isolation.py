@@ -21,6 +21,7 @@ from undef.telemetry.backpressure import QueuePolicy, QueueTicket, release, set_
 from undef.telemetry.health import get_health_snapshot, record_export_failure, reset_health_for_tests
 from undef.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
 
+
 @pytest.fixture(autouse=True)
 def _clean_state() -> None:
     backpressure_mod.reset_queues_for_tests()

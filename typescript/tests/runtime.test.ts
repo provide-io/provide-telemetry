@@ -336,3 +336,43 @@ describe('reloadRuntimeFromEnv', () => {
     );
   });
 });
+
+describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => {
+  it('clears custom serviceName after reload', () => {
+    updateRuntimeConfig({ serviceName: 'overridden-service' });
+    expect(getRuntimeConfig().serviceName).toBe('overridden-service');
+    reloadRuntimeFromEnv();
+    // After reload, should come from env (default when no env var set)
+    expect(getRuntimeConfig().serviceName).toBe('undef-service');
+  });
+
+  it('re-reads env-derived config after reload', () => {
+    updateRuntimeConfig({ logLevel: 'error', version: '99.0.0' });
+    reloadRuntimeFromEnv();
+    expect(getRuntimeConfig().logLevel).toBe('info');
+    expect(getRuntimeConfig().version).toBe('unknown');
+  });
+});
+
+describe('reconfigureTelemetry — otlpHeaders change throws after init (kills StringLiteral otlpHeaders)', () => {
+  it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
+    updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
+      ConfigurationError,
+    );
+  });
+});
+
+describe('reconfigureTelemetry — error message content (kills StringLiteral on error message)', () => {
+  it('error message contains "Cannot change"', () => {
+    _markProvidersRegistered();
+    let message = '';
+    try {
+      reconfigureTelemetry({ otelEnabled: true });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('Cannot change');
+  });
+});

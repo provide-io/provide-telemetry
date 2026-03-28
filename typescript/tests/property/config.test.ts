@@ -79,10 +79,10 @@ describe('property: configFromEnv()', () => {
   it('tracingEnabled is always boolean', () => {
     fc.assert(
       fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
-        process.env['PROVIDE_TRACE_ENABLED'] = val;
+        process.env['UNDEF_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
-        delete process.env['PROVIDE_TRACE_ENABLED'];
-        return typeof cfg.tracingEnabled === 'boolean';
+        delete process.env['UNDEF_TRACE_ENABLED'];
+        return typeof cfg.otelEnabled === 'boolean';
       }),
     );
   });
@@ -90,9 +90,9 @@ describe('property: configFromEnv()', () => {
   it('logLevel is always lowercase', () => {
     fc.assert(
       fc.property(fc.constantFrom('INFO', 'DEBUG', 'WARN', 'error', 'trace'), (level) => {
-        process.env['PROVIDE_LOG_LEVEL'] = level;
+        process.env['UNDEF_LOG_LEVEL'] = level;
         const cfg = configFromEnv();
-        delete process.env['PROVIDE_LOG_LEVEL'];
+        delete process.env['UNDEF_LOG_LEVEL'];
         return cfg.logLevel === cfg.logLevel.toLowerCase();
       }),
     );
