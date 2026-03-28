@@ -207,7 +207,6 @@ export async function runWithResilience<T>(
   }
 
   if (policy.failOpen) return null;
-  // Stryker disable next-line StringLiteral: unreachable fallback — lastError is always set by the catch block above
   /* v8 ignore next */
   throw lastError ?? new Error('all retry attempts failed');
 }
