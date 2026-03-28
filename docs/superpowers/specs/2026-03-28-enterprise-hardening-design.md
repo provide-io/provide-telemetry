@@ -144,7 +144,7 @@ jobs:
 
 ### Changelog
 
-Migrate from manual `CHANGELOG.md` to release-please managed. Keep existing entries, release-please appends new entries automatically.
+`CHANGELOG.md` is managed by release-please. Existing entries are preserved; new entries are appended automatically from conventional commits.
 
 ---
 
