@@ -208,7 +208,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 Request(f"http://127.0.0.1:{backend_port}/shutdown", method="GET"),
                 timeout=5,
             )
-        except Exception:
+        except OSError:
             pass  # server exits before finishing the response — that is fine
         server_proc.wait(timeout=10)
 
