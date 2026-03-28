@@ -1,0 +1,9 @@
+# Default owner for everything
+* @tim
+
+# Language-specific owners
+/typescript/ @tim
+
+# CI/infrastructure
+/.github/ @tim
+/spec/ @tim

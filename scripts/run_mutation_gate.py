@@ -116,6 +116,22 @@ def run_mutation_gate(
         if attempt < attempts:
             print("Mutation gate not clean; retrying in single-worker mode.")
 
+    # Log surviving mutants for debugging CI failures.
+    try:
+        result = subprocess.run(
+            _uv_mutmut_cmd(python_version, "results"),
+            capture_output=True,
+            text=True,
+            env=mutation_env,
+        )
+        survivors = [line.strip() for line in result.stdout.splitlines() if "survived" in line]
+        if survivors:
+            print("Surviving mutants:")
+            for s in survivors:
+                print(f"  {s}")
+    except Exception:
+        pass
+
     score = _mutation_score(last_stats)
     raise RuntimeError(
         "mutation gate failed: "
