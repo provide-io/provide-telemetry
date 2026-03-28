@@ -117,6 +117,6 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `spec/validate_conformance.py` — checks language exports against spec.
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
 - `VERSION` contains major.minor only (e.g. `0.3`); each language tracks patch independently.
-- `e2e/` — cross-language E2E tests (promoted from `tests/e2e/`).
-- Language directories: `typescript/`, `go/`, `rust/`, `csharp/` — each self-contained with own build config.
+- `e2e/` — cross-language E2E tests.
+- Language directories: `typescript/` (implemented), `go/`, `rust/`, `csharp/` (planned) — each self-contained with own build config.
 - Python stays at repo root (`src/`, `pyproject.toml`, `tests/`).
