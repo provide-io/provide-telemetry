@@ -103,12 +103,13 @@ def _get_typescript_exports() -> set[str]:
     text = index_path.read_text(encoding="utf-8")
     exports: set[str] = set()
     for block in re.finditer(r"export\s+(?:type\s+)?\{([^}]+)\}", text):
-        for item in block.group(1).split(","):
-            item = item.strip()
+        for item in re.split(r"\s*,\s*", block.group(1).strip()):
+            if not item:
+                continue
             if " as " in item:
                 alias = item.split(" as ")[1].strip()
                 exports.add(alias)
-            elif item:
+            else:
                 exports.add(item)
     return exports
 
