@@ -165,7 +165,7 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
                 Request(f"http://127.0.0.1:{port}/shutdown", method="GET"),
                 timeout=5,
             )
-        except Exception:
+        except OSError:
             pass  # server may exit before sending a full response — that is fine
 
         server_proc.wait(timeout=10)
