@@ -17,4 +17,5 @@ mutants/
 bf-*.txt
 .provide/
 otel_stderr.txt
+coverage.json
 memray-output/
