@@ -18,6 +18,12 @@ from undef.telemetry.logger import core as core_mod
 from undef.telemetry.logger.core import _reset_logging_for_tests
 
 
+@pytest.fixture(autouse=True)
+def _bypass_resilience(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass run_with_resilience so exporter creation is direct and deterministic."""
+    monkeypatch.setattr(core_mod, "run_with_resilience", lambda _sig, op: op())
+
+
 def test_build_handlers_without_otel_endpoint() -> None:
     cfg = TelemetryConfig.from_env({})
     handlers = core_mod._build_handlers(cfg, logging.INFO)
