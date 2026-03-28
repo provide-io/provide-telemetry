@@ -180,7 +180,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
             page.on("console", lambda msg: console_messages.append(msg.text))
             # Retry page load — Vite may still be building the module graph
             # after the port is open.
-            for attempt in range(3):
+            for _attempt in range(3):
                 resp = page.goto(page_url, wait_until="networkidle")
                 if resp and resp.ok:
                     break
