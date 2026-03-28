@@ -27,19 +27,7 @@ import { getConfig } from './config';
 export type { Counter, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
-const METER_NAME = '@provide-io/telemetry';
-
-/**
- * Return a stable, order-independent key for an attribute map.
- * Sorts attribute keys before serialising so {a:1,b:2} and {b:2,a:1}
- * produce the same string. Mirrors Python tuple(sorted(attrs.items())).
- */
-function _canonicalAttrsKey(attrs?: Attributes): string {
-  // Stryker disable next-line StringLiteral: any constant sentinel is equivalent for the no-attrs map key — functionally interchangeable with ''
-  if (!attrs) return '';
-  const keys = Object.keys(attrs).sort();
-  return JSON.stringify(keys.map((k) => [k, attrs[k]]));
-}
+const METER_NAME = '@undef-games/telemetry';
 
 export interface MetricOptions {
   description?: string;

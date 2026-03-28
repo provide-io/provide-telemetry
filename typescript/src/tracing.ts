@@ -24,7 +24,7 @@ import { tryAcquire, release } from './backpressure';
 import { getConfig } from './config';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
-const TRACER_NAME = '@provide-io/telemetry';
+const TRACER_NAME = '@undef-games/telemetry';
 
 // ── Manual trace context (injected without an active OTEL span) ───────────────
 //
