@@ -1,0 +1,5 @@
+[      47ms] [WARNING] {time: 1774230906724, level: 40, name: demo, event: rate_limit.approaching, requests_per_minute: 450} @ http://localhost:7432/undef-telemetry.js:9501
+[      47ms] [ERROR] {time: 1774230906724, level: 50, name: demo, event: upstream.timeout, upstream: db} @ http://localhost:7432/undef-telemetry.js:9501
+[      50ms] TypeError: gauge(...).set is not a function
+    at http://localhost:7432/undef-demo.html:72:38
+[      56ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:7432/favicon.ico:0

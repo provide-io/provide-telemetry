@@ -18,7 +18,7 @@ pip install "undef-telemetry[otel]"      # + OpenTelemetry export
 **TypeScript:**
 
 ```bash
-npm install @undef/telemetry             # core (pino + @opentelemetry/api)
+npm install @undef-games/telemetry             # core (pino + @opentelemetry/api)
 ```
 
 ## Quick Start
@@ -37,7 +37,7 @@ shutdown_telemetry()
 **TypeScript:**
 
 ```typescript
-import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef/telemetry';
+import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef-games/telemetry';
 
 setupTelemetry({ serviceName: 'my-app' });
 const log = getLogger('api');
@@ -100,7 +100,7 @@ Full reference: [Python API](docs/API.md) | [TypeScript API](typescript/README.m
 ```
 undef-telemetry/
   src/undef/telemetry/    # Python package
-  typescript/             # TypeScript package (@undef/telemetry)
+  typescript/             # TypeScript package (@undef-games/telemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```

@@ -363,7 +363,7 @@ Create `.release-please-config.json`:
     },
     "typescript": {
       "release-type": "node",
-      "package-name": "@undef/telemetry",
+      "package-name": "@undef-games/telemetry",
       "changelog-path": "CHANGELOG.md"
     }
   },
