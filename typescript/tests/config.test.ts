@@ -184,6 +184,12 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
+  it('empty UNDEF_LOG_FORMAT falls back to json default', () => {
+    withEnv({ UNDEF_LOG_FORMAT: '' }, () => {
+      expect(configFromEnv().logFormat).toBe('json');
+    });
+  });
+
   it('reads UNDEF_TRACE_ENABLED=true', () => {
     withEnv({ UNDEF_TRACE_ENABLED: 'true' }, () => {
       expect(configFromEnv().otelEnabled).toBe(true);
