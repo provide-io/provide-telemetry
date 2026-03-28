@@ -41,6 +41,7 @@ export function clearCardinalityLimits(): void {
 function _pruneExpired(key: string, now: number): void {
   const limit = _limits.get(key);
   const seen = _seen.get(key);
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: defensive guard — _pruneExpired is only called from guardAttributes after _limits.get(key) succeeds
   /* v8 ignore next 2 */
   if (!limit || !seen) return;
   const threshold = now - limit.ttlSeconds * 1000;
