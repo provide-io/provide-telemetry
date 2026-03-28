@@ -1,25 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Provide Telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 
-# Canonical API surface for all provide-telemetry language implementations.
+# Canonical API surface for all undef-telemetry language implementations.
 # Each language MUST export equivalents of every `required: true` symbol,
 # using its idiomatic naming convention (see naming_conventions below).
-#
-# Symbol fields:
-#   name:       snake_case canonical name (transformed per naming_conventions above)
-#   kind:       function | instance | type | decorator
-#   required:   true  → missing symbol is a conformance error for ALL languages
-#               false → symbol is optional unless capability gate applies
-#   capability: when present, specifies which capability module must be present for this
-#               symbol to be required.  validate_conformance.py checks capability-gated
-#               symbols when the language advertises that capability.
-#               Supported values: "governance"
-#               Capability rules by language:
-#                 python, typescript, go — governance always present (first-class module)
-#                 rust                  — governance present when the `governance` feature
-#                                         is enabled (it is in the default feature set)
-#   note:       human-readable description or rationale
 
 spec_version: "1"
 
@@ -28,6 +13,7 @@ naming_conventions:
   typescript: camelCase
   go: PascalCase
   rust: snake_case
+  csharp: PascalCase
 
 api:
   lifecycle:
@@ -53,15 +39,6 @@ api:
       kind: function
       required: true
     - name: clear_context
-      kind: function
-      required: true
-    - name: bind_session_context
-      kind: function
-      required: true
-    - name: get_session_id
-      kind: function
-      required: true
-    - name: clear_session_context
       kind: function
       required: true
 
@@ -143,10 +120,6 @@ api:
     - name: clear_cardinality_limits
       kind: function
       required: true
-    - name: guard_attributes
-      kind: function
-      required: true
-      note: "Enforce cardinality limits on an attribute map; over-limit values become '__overflow__'"
 
   pii:
     - name: get_pii_rules
@@ -165,22 +138,9 @@ api:
       required: true
 
   schema:
-    - name: event
-      kind: function
-      required: true
-      note: "Returns structured Event with domain/action/[resource]/status fields. DA(R)S pattern."
     - name: event_name
       kind: function
-      required: false
-      note: "Returns plain dot-joined event name string. Reads strict-schema flag from global state (set_strict_schema)."
-    - name: set_strict_schema
-      kind: function
       required: true
-      note: "Enable or disable strict segment-format validation for event(). Thread-safe."
-    - name: get_strict_schema
-      kind: function
-      required: true
-      note: "Return the current strict-schema flag value."
 
   slo:
     - name: classify_error
@@ -201,61 +161,12 @@ api:
     - name: update_runtime_config
       kind: function
       required: true
-      note: "Accepts RuntimeOverrides (hot fields only), not full TelemetryConfig"
     - name: reload_runtime_from_env
       kind: function
       required: true
     - name: reconfigure_telemetry
       kind: function
       required: true
-
-  governance:
-    - name: register_classification_rules
-      kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when classification module is installed"
-    - name: register_classification_rule
-      kind: function
-      required: false
-      capability: governance
-      note: "Convenience wrapper for single-rule registration. Equivalent to register_classification_rules([rule])."
-    - name: classify_key
-      kind: function
-      required: false
-      capability: governance
-      note: "Return the DataClass label for a key if a rule matches, else null/None/nil."
-    - name: set_classification_policy
-      kind: function
-      required: false
-      capability: governance
-    - name: get_classification_policy
-      kind: function
-      required: false
-      capability: governance
-    - name: set_consent_level
-      kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when consent module is installed"
-    - name: get_consent_level
-      kind: function
-      required: false
-      capability: governance
-    - name: should_allow
-      kind: function
-      required: false
-      capability: governance
-    - name: enable_receipts
-      kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when receipts module is installed"
-    - name: redact_config
-      kind: function
-      required: false
-      capability: governance
-      note: "Returns a safe copy of TelemetryConfig with secrets masked"
 
   errors:
     - name: TelemetryError
@@ -287,278 +198,28 @@ api:
     - name: HealthSnapshot
       kind: type
       required: true
-    - name: RuntimeOverrides
-      kind: type
-      required: true
-      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth, strict_schema"
-    - name: DataClass
-      kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
-    - name: ClassificationRule
-      kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
-    - name: ClassificationPolicy
-      kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
-    - name: ConsentLevel
-      kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
-    - name: RedactionReceipt
-      kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
 
-config_defaults:
-  core:
-    - env: PROVIDE_TELEMETRY_SERVICE_NAME
-      type: str
-      default: "provide-service"
-      description: "Service identity attached to all signals"
-    - env: PROVIDE_TELEMETRY_ENV
-      type: str
-      default: "dev"
-      description: "Deployment environment tag (e.g. dev, staging, prod)"
-    - env: PROVIDE_TELEMETRY_VERSION
-      type: str
-      default: "0.0.0"
-      description: "Application version tag"
-    - env: PROVIDE_TELEMETRY_STRICT_SCHEMA
-      type: bool
-      default: "false"
-      description: "Master switch: when true, overrides event name strictness to on"
-
-  event_schema:
-    - env: PROVIDE_TELEMETRY_STRICT_EVENT_NAME
-      type: bool
-      default: "false"
-      description: "Require 3-5 dot-separated lowercase segments in event names"
-    - env: PROVIDE_TELEMETRY_REQUIRED_KEYS
-      type: str
-      default: ""
-      description: "Comma-separated list of keys every log event must contain"
-
-  logging:
-    - env: PROVIDE_LOG_LEVEL
-      type: str
-      default: "INFO"
-      description: "Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL"
-    - env: PROVIDE_LOG_FORMAT
-      type: str
-      default: "console"
-      description: "Renderer: console, json, or pretty"
-    - env: PROVIDE_LOG_INCLUDE_TIMESTAMP
-      type: bool
-      default: "true"
-      description: "Add ISO-8601 timestamp to each log event"
-    - env: PROVIDE_LOG_INCLUDE_CALLER
-      type: bool
-      default: "true"
-      description: "Add filename and line number to each log event"
-    - env: PROVIDE_LOG_SANITIZE
-      type: bool
-      default: "true"
-      description: "Enable PII/sensitive field redaction in log output"
-    - env: PROVIDE_LOG_PII_MAX_DEPTH
-      type: int
-      default: "8"
-      description: "Maximum nesting depth for PII/sensitive field traversal during sanitization"
-    - env: PROVIDE_LOG_CODE_ATTRIBUTES
-      type: bool
-      default: "false"
-      description: "Attach code attributes to OTel log records"
-    - env: PROVIDE_LOG_PRETTY_KEY_COLOR
-      type: str
-      default: "dim"
-      description: "ANSI color name for keys in pretty format (see named colors below)"
-    - env: PROVIDE_LOG_PRETTY_VALUE_COLOR
-      type: str
-      default: ""
-      description: "ANSI color name for values in pretty format (empty = default)"
-    - env: PROVIDE_LOG_PRETTY_FIELDS
-      type: str
-      default: ""
-      description: "Comma-separated field names to display in pretty format"
-    - env: PROVIDE_LOG_MODULE_LEVELS
-      type: str
-      default: ""
-      description: "Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING)"
-
-  tracing:
-    - env: PROVIDE_TRACE_ENABLED
-      type: bool
-      default: "true"
-      description: "Enable OTel tracing provider (falls back to no-op when false)"
-    - env: PROVIDE_TRACE_SAMPLE_RATE
-      type: float
-      default: "1.0"
-      description: "Trace sampling rate (0.0-1.0)"
-
-  metrics:
-    - env: PROVIDE_METRICS_ENABLED
-      type: bool
-      default: "true"
-      description: "Enable OTel metrics provider (falls back to in-process when false)"
-
-  otlp:
-    - env: OTEL_EXPORTER_OTLP_ENDPOINT
-      type: str
-      default: "None"
-      description: "Shared OTLP endpoint (fallback for all signals)"
-    - env: OTEL_EXPORTER_OTLP_HEADERS
-      type: str
-      default: "None"
-      description: "Shared OTLP headers (fallback for all signals)"
-    - env: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
-      type: str
-      default: "None"
-      description: "Per-signal OTLP endpoint for logs"
-    - env: OTEL_EXPORTER_OTLP_LOGS_HEADERS
-      type: str
-      default: "None"
-      description: "Per-signal OTLP headers for logs"
-    - env: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-      type: str
-      default: "None"
-      description: "Per-signal OTLP endpoint for traces"
-    - env: OTEL_EXPORTER_OTLP_TRACES_HEADERS
-      type: str
-      default: "None"
-      description: "Per-signal OTLP headers for traces"
-    - env: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-      type: str
-      default: "None"
-      description: "Per-signal OTLP endpoint for metrics"
-    - env: OTEL_EXPORTER_OTLP_METRICS_HEADERS
-      type: str
-      default: "None"
-      description: "Per-signal OTLP headers for metrics"
-
-  sampling:
-    - env: PROVIDE_SAMPLING_LOGS_RATE
-      type: float
-      default: "1.0"
-      description: "Probability (0.0-1.0) of keeping a log event"
-    - env: PROVIDE_SAMPLING_TRACES_RATE
-      type: float
-      default: "1.0"
-      description: "Probability (0.0-1.0) of keeping a trace span"
-    - env: PROVIDE_SAMPLING_METRICS_RATE
-      type: float
-      default: "1.0"
-      description: "Probability (0.0-1.0) of keeping a metric observation"
-
-  backpressure:
-    - env: PROVIDE_BACKPRESSURE_LOGS_MAXSIZE
-      type: int
-      default: "0"
-      description: "Max queued log events (0 = unlimited)"
-    - env: PROVIDE_BACKPRESSURE_TRACES_MAXSIZE
-      type: int
-      default: "0"
-      description: "Max queued trace spans (0 = unlimited)"
-    - env: PROVIDE_BACKPRESSURE_METRICS_MAXSIZE
-      type: int
-      default: "0"
-      description: "Max queued metric observations (0 = unlimited)"
-
-  exporter:
-    - env: PROVIDE_EXPORTER_LOGS_RETRIES
-      type: int
-      default: "0"
-      description: "Max retry attempts for log export"
-    - env: PROVIDE_EXPORTER_TRACES_RETRIES
-      type: int
-      default: "0"
-      description: "Max retry attempts for trace export"
-    - env: PROVIDE_EXPORTER_METRICS_RETRIES
-      type: int
-      default: "0"
-      description: "Max retry attempts for metric export"
-    - env: PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS
-      type: float
-      default: "0.0"
-      description: "Delay between retry attempts for logs"
-    - env: PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS
-      type: float
-      default: "0.0"
-      description: "Delay between retry attempts for traces"
-    - env: PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS
-      type: float
-      default: "0.0"
-      description: "Delay between retry attempts for metrics"
-    - env: PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS
-      type: float
-      default: "10.0"
-      description: "Per-attempt timeout for log export"
-    - env: PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS
-      type: float
-      default: "10.0"
-      description: "Per-attempt timeout for trace export"
-    - env: PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS
-      type: float
-      default: "10.0"
-      description: "Per-attempt timeout for metric export"
-    - env: PROVIDE_EXPORTER_LOGS_FAIL_OPEN
-      type: bool
-      default: "true"
-      description: "On exhausted retries: true = drop silently, false = raise"
-    - env: PROVIDE_EXPORTER_TRACES_FAIL_OPEN
-      type: bool
-      default: "true"
-      description: "On exhausted retries: true = drop silently, false = raise"
-    - env: PROVIDE_EXPORTER_METRICS_FAIL_OPEN
-      type: bool
-      default: "true"
-      description: "On exhausted retries: true = drop silently, false = raise"
-    - env: PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP
-      type: bool
-      default: "false"
-      description: "Allow retries/backoff inside an async event loop for logs"
-    - env: PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP
-      type: bool
-      default: "false"
-      description: "Allow retries/backoff inside an async event loop for traces"
-    - env: PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP
-      type: bool
-      default: "false"
-      description: "Allow retries/backoff inside an async event loop for metrics"
-
-  slo:
-    - env: PROVIDE_SLO_ENABLE_RED_METRICS
-      type: bool
-      default: "false"
-      description: "Emit RED (Rate/Error/Duration) HTTP metrics"
-    - env: PROVIDE_SLO_ENABLE_USE_METRICS
-      type: bool
-      default: "false"
-      description: "Emit USE (Utilization/Saturation/Errors) resource metrics"
-    - env: PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY
-      type: bool
-      default: "true"
-      description: "Auto-classify errors into server/client/internal taxonomy"
-
-  security:
-    - env: PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH
-      type: int
-      default: "1024"
-      description: "Maximum string length for log attribute values (truncated beyond this)"
-    - env: PROVIDE_SECURITY_MAX_ATTR_COUNT
-      type: int
-      default: "64"
-      description: "Maximum number of attributes per log event (excess keys dropped)"
-    - env: PROVIDE_SECURITY_MAX_NESTING_DEPTH
-      type: int
-      default: "8"
-      description: "Maximum nesting depth for dict/list attribute values"
+config_env_vars:
+  - prefix: UNDEF_TELEMETRY_
+    keys:
+      - SERVICE_NAME
+      - ENVIRONMENT
+      - VERSION
+      - REQUIRED_KEYS
+      - STRICT_SCHEMA
+  - prefix: UNDEF_LOG_
+    keys:
+      - LEVEL
+      - FORMAT
+      - CALLER_INFO
+      - SANITIZE_FIELDS
+  - prefix: UNDEF_TRACE_
+    keys:
+      - ENABLED
+      - SAMPLE_RATE
+  - prefix: UNDEF_METRICS_
+    keys:
+      - ENABLED
 
 required_behaviors:
   - id: graceful_degradation
@@ -578,211 +239,8 @@ required_behaviors:
       Use language-idiomatic async context (contextvars, AsyncLocalStorage,
       context.Context, etc).
 
-behavioral_parity:
-  # Cross-language behavioral contracts validated by spec/behavioral_fixtures.yaml.
-  # All languages MUST produce identical outputs for these inputs.
-
-  sampling:
-    description: >
-      Probabilistic sampling with fast-path short-circuits.
-    rules:
-      - rate 0.0 → always false (never sample)
-      - rate 1.0 → always true (always sample)
-      - 0 < rate < 1 → uniform random < rate (full float64 precision)
-
-  pii_truncation:
-    description: >
-      Truncate mode shortens strings and appends a suffix.
-    rules:
-      - condition: "len(text) > truncate_to"
-      - output: "text[:truncate_to] + suffix"
-      - suffix: "..."
-      - non_string_values: convert to string first
-      - default_truncate_to: 8
-
-  pii_hash:
-    description: >
-      Hash mode produces a deterministic 12-char hex digest.
-    rules:
-      - algorithm: SHA-256 of string representation
-      - output: first 12 hex characters (lowercase)
-
-  propagation_guards:
-    description: >
-      Size guards on W3C context headers. Oversized headers are discarded entirely.
-    limits:
-      traceparent_max_bytes: 512
-      tracestate_max_bytes: 512
-      tracestate_max_pairs: 32
-      baggage_max_bytes: 8192
-    oversize_behavior: discard
-
-  event_dars:
-    description: >
-      Event() accepts 3 (DAS) or 4 (DARS) segments and returns a structured record.
-    fields:
-      - event: dot-joined string
-      - domain: first segment
-      - action: second segment
-      - resource: third segment (DARS only, omitted for DAS)
-      - status: last segment
-
-  config_header_parsing:
-    description: >
-      OTEL_EXPORTER_OTLP_HEADERS parsed as comma-separated key=value pairs.
-    rules:
-      - split on first '=' only (preserves '=' in values)
-      - URL-decode both key and value (percent-encoding only; '+' is literal, not space)
-      - skip pairs with empty key
-      - skip pairs with no '='
-
-  sampling_signal_validation:
-    description: >
-      Only "logs", "traces", and "metrics" are valid signal names.
-    rules:
-      - unknown signal names must raise an error (ValueError, ConfigurationError, or equivalent)
-      - validation applies to shouldSample, setSamplingPolicy, and getSamplingPolicy
-
-  cardinality_input_clamping:
-    description: >
-      Cardinality limit inputs are clamped to minimum values on registration.
-    rules:
-      - max_values clamped to max(1, input)
-      - ttl_seconds clamped to max(1.0, input)
-
-  backpressure_unlimited:
-    description: >
-      Queue size 0 (or negative) means unlimited — acquire always succeeds.
-    rules:
-      - size <= 0 treated as unlimited (no bounding)
-      - bounded queues are explicit opt-in via positive size
-
-  health_snapshot_canonical:
-    description: >
-      Health snapshots return 25 canonical fields across all languages.
-    rules:
-      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 1 global (setup_error)
-      - circuit_state values are closed, open, half-open
-      - export_latency_ms is latest per export, not cumulative
-
-  health_counters:
-    description: >
-      Health counter increment semantics — when emitted/dropped counters fire.
-    rules:
-      - emitted_* incremented once per signal event that passes sampling (in shouldSample or equivalent gate)
-      - dropped_* incremented once per signal event rejected by sampling (rate drop) OR by backpressure (queue full)
-      - a single event MUST NOT increment both emitted and dropped
-      - a single event MUST NOT increment emitted more than once (no double-counting across gates)
-      - retries_* incremented once per retry attempt in the resilience/export path
-      - export_failures_* incremented once per failed export attempt (including circuit breaker rejections)
-      - export_latency_ms_* set to elapsed milliseconds on successful export (latest value, not cumulative)
-      - async_blocking_risk_* is language-specific (Python event loop detection); may be 0 in languages without event loops
-
-  pii_depth:
-    description: >
-      PII sanitization depth defaults to 8. Configurable via PROVIDE_LOG_PII_MAX_DEPTH.
-    rules:
-      - default max_depth is 8
-      - at depth >= max_depth, return value unchanged (no redaction)
-      - depth 0 is the top-level payload
-      - applies to all sanitization (default keys, custom rules, secret detection)
-
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"
   min_segments: 3
-  max_segments: 4  # event() implementations accept 3-4 segments (DARS); event_name() remains lenient at 3-5 for backward compat
+  max_segments: 5
   separator: "."
-
-# TypeScript-only extras: framework helpers that have no polyglot equivalent.
-# These are NOT validated by validate_conformance.py and are NOT required by
-# other language implementations.
-typescript_extras:
-  react:
-    note: >
-      Exported from the `@provide-io/telemetry/react` sub-entry point
-      (typescript/src/react.ts). React-specific; not applicable to other languages.
-    exports:
-      - name: useTelemetryContext
-        kind: hook
-        signature: "useTelemetryContext(values: Record<string, unknown>): void"
-        description: >
-          React hook that binds a key/value map into the telemetry context for the
-          lifetime of the component. Automatically unbinds on unmount.
-      - name: TelemetryErrorBoundary
-        kind: class_component
-        description: >
-          React class component that catches render-time errors and records them as
-          telemetry events. Renders a fallback UI on error.
-        props:
-          - name: children
-            type: "React.ReactNode"
-            required: true
-          - name: fallback
-            type: "React.ReactNode | ((error: Error, reset: () => void) => React.ReactNode)"
-            required: true
-            description: "Static node or render-prop called with the caught error."
-          - name: onError
-            type: "(error: Error, info: React.ErrorInfo) => void"
-            required: false
-
-# ---------------------------------------------------------------------------
-# Language-specific API shape deviations from the canonical spec.
-# These are intentional idiomatic differences, not bugs.
-# The validator reads this section to decide which kind mismatches are notes
-# (documented deviations) vs. errors (unknown mismatches).
-#
-# spec_name: snake_case name as it appears in the api: section above.
-# accepted_kinds: list of actual export kinds that are acceptable for this
-#                 language even when they differ from the spec's kind field.
-# note: human-readable rationale.
-# ---------------------------------------------------------------------------
-language_overrides:
-  go:
-    - spec_name: tracer
-      accepted_kinds: [type]
-      note: "Go exports Tracer as interface type; DefaultTracer var is the instance — both are idiomatic"
-    - spec_name: trace
-      accepted_kinds: [function]
-      note: "Go uses Trace() function as decorator"
-    - spec_name: counter
-      accepted_kinds: [type]
-      note: "Go exports Counter as interface type; NewCounter() is the constructor"
-    - spec_name: gauge
-      accepted_kinds: [type]
-      note: "Go exports Gauge as interface type; NewGauge() is the constructor"
-    - spec_name: histogram
-      accepted_kinds: [type]
-      note: "Go exports Histogram as interface type; NewHistogram() is the constructor"
-    - spec_name: logger
-      accepted_kinds: [instance]
-      note: "Go exports Logger as *slog.Logger instance"
-  rust:
-    - spec_name: trace
-      accepted_kinds: [function]
-      note: "Rust exports trace as pub fn (used as attribute macro equivalent)"
-    - spec_name: tracer
-      accepted_kinds: [function, instance]
-      note: "Rust pub static LazyLock or pub fn returning Tracer"
-    - spec_name: logger
-      accepted_kinds: [instance]
-      note: "Rust pub static LazyLock<Logger>"
-  typescript:
-    - spec_name: trace
-      accepted_kinds: [function]
-      note: "TypeScript exports trace as a function used as decorator"
-    - spec_name: logger
-      accepted_kinds: [instance]
-      note: "TypeScript exports logger as const"
-    - spec_name: tracer
-      accepted_kinds: [instance]
-      note: "TypeScript exports tracer as const"
-  python:
-    - spec_name: trace
-      accepted_kinds: [function]
-      note: "Python trace() is a function used as decorator"
-    - spec_name: logger
-      accepted_kinds: [instance]
-      note: "Python exports a lazy logger instance"
-    - spec_name: tracer
-      accepted_kinds: [instance]
-      note: "Python exports a lazy tracer instance"
