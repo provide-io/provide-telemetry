@@ -154,9 +154,9 @@ def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch
     first_log_provider = logger_core._otel_log_provider
     first_trace_provider = tracing_provider._provider_ref
     first_meter_provider = metrics_provider._meter_provider
-    assert first_log_provider is not None
-    assert first_trace_provider is not None
-    assert first_meter_provider is not None
+    assert isinstance(first_log_provider, _FakeLogProvider)
+    assert isinstance(first_trace_provider, _FakeTracerProvider)
+    assert isinstance(first_meter_provider, _FakeMeterProvider)
 
     shutdown_telemetry()
     assert logger_core._otel_log_provider is None
@@ -165,10 +165,10 @@ def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch
     assert metrics_provider._meter_provider is None
 
     setup_telemetry(cfg)
-    assert logger_core._otel_log_provider is not None
-    assert tracing_provider._provider_ref is not None
+    assert isinstance(logger_core._otel_log_provider, _FakeLogProvider)
+    assert isinstance(tracing_provider._provider_ref, _FakeTracerProvider)
     assert tracing_provider._provider_configured is True
-    assert metrics_provider._meter_provider is not None
+    assert isinstance(metrics_provider._meter_provider, _FakeMeterProvider)
     assert logger_core._otel_log_provider is not first_log_provider
     assert tracing_provider._provider_ref is not first_trace_provider
     assert metrics_provider._meter_provider is not first_meter_provider

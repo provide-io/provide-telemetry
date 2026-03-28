@@ -47,7 +47,7 @@ class TestBackpressureSaturation:
         tickets = []
         for _ in range(3):
             t = try_acquire("logs")
-            assert t is not None
+            assert isinstance(t, QueueTicket)
             tickets.append(t)
 
         # All further attempts must be None
@@ -61,7 +61,7 @@ class TestBackpressureSaturation:
         # Release one — next acquire should succeed
         release(tickets[0])
         t = try_acquire("logs")
-        assert t is not None
+        assert isinstance(t, QueueTicket) and t.signal == "logs"
         assert snap.queue_depth_logs == 3  # snap is frozen at read time
 
     def test_rapid_saturate_drain_cycles(self) -> None:
@@ -73,7 +73,7 @@ class TestBackpressureSaturation:
             tickets = []
             for _ in range(maxsize):
                 t = try_acquire("metrics")
-                assert t is not None
+                assert isinstance(t, QueueTicket)
                 tickets.append(t)
             # At capacity
             assert try_acquire("metrics") is None
@@ -127,17 +127,20 @@ class TestBackpressureSaturation:
 
         # Fill logs
         for _ in range(2):
-            assert try_acquire("logs") is not None
+            _t = try_acquire("logs")
+            assert isinstance(_t, QueueTicket) and _t.signal == "logs"
         assert try_acquire("logs") is None
 
         # Traces should still work
         for _ in range(3):
-            assert try_acquire("traces") is not None
+            _t = try_acquire("traces")
+            assert isinstance(_t, QueueTicket) and _t.signal == "traces"
         assert try_acquire("traces") is None
 
         # Metrics should still work
         for _ in range(4):
-            assert try_acquire("metrics") is not None
+            _t = try_acquire("metrics")
+            assert isinstance(_t, QueueTicket) and _t.signal == "metrics"
         assert try_acquire("metrics") is None
 
         snap = get_health_snapshot()

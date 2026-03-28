@@ -119,5 +119,5 @@ export function _resetConfig(): void {
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.1.0';
+export const version = '0.3.18';
 export const __version__ = version;

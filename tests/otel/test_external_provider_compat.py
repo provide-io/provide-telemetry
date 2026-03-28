@@ -151,7 +151,7 @@ class TestExternalMeterProvider:
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter("external.test")
-        assert meter is not None
+        assert type(meter).__name__ == "FakeMeter"
 
     def test_get_meter_none_when_global_is_default_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When the OTel global is the same object as the captured baseline (identity match),

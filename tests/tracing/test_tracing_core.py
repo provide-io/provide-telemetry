@@ -31,8 +31,8 @@ def test_noop_tracer_context() -> None:
         assert span.name == "x"
         assert len(span.span_id) == 16
         ctx = get_trace_context()
-        assert ctx["trace_id"] is not None
-        assert ctx["span_id"] is not None
+        assert ctx["trace_id"] == "0" * 32
+        assert ctx["span_id"] == "0" * 16
     assert get_trace_context() == {"trace_id": None, "span_id": None}
 
 
@@ -307,8 +307,8 @@ def test_trace_async_preserves_context_across_await(monkeypatch: pytest.MonkeyPa
     import asyncio
 
     trace_id, span_id = asyncio.run(afn())
-    assert trace_id is not None
-    assert span_id is not None
+    assert trace_id == "0" * 32
+    assert span_id == "0" * 16
     assert get_trace_context() == {"trace_id": None, "span_id": None}
 
 

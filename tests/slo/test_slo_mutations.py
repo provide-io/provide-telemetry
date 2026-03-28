@@ -169,7 +169,7 @@ def test_record_red_metrics_increments_request_counter() -> None:
     from undef.telemetry.slo import _counters
 
     req_counter = _counters.get("http.requests.total")
-    assert req_counter is not None
+    assert hasattr(req_counter, "add")
     assert req_counter.value == 1
 
 
@@ -201,8 +201,8 @@ def test_record_red_metrics_error_counter_attrs_passed() -> None:
         # 2 add calls: requests.total + errors.total
         assert len(captured_error_attrs) == 2
         # Both should have attrs dict, not None
-        assert captured_error_attrs[0] is not None
-        assert captured_error_attrs[1] is not None
+        assert isinstance(captured_error_attrs[0], dict)
+        assert isinstance(captured_error_attrs[1], dict)
         assert captured_error_attrs[1]["route"] == "/err"
 
 
@@ -225,7 +225,7 @@ def test_record_red_metrics_histogram_attrs_passed() -> None:
         record_red_metrics("/api", "GET", 200, 42.5)
 
         assert len(captured_hist_attrs) == 1
-        assert captured_hist_attrs[0] is not None
+        assert isinstance(captured_hist_attrs[0], dict)
         assert captured_hist_attrs[0]["route"] == "/api"
 
 
@@ -235,7 +235,7 @@ def test_record_red_metrics_error_counter_for_500() -> None:
     from undef.telemetry.slo import _counters
 
     err_counter = _counters.get("http.errors.total")
-    assert err_counter is not None
+    assert hasattr(err_counter, "add")
     assert err_counter.value == 1
 
 
@@ -244,7 +244,7 @@ def test_record_red_metrics_error_counter_for_501() -> None:
     from undef.telemetry.slo import _counters
 
     err_counter = _counters.get("http.errors.total")
-    assert err_counter is not None
+    assert hasattr(err_counter, "add")
     assert err_counter.value == 1
 
 
@@ -279,7 +279,7 @@ def test_record_red_metrics_records_histogram() -> None:
     from undef.telemetry.slo import _histograms
 
     hist = _histograms.get("http.request.duration_ms")
-    assert hist is not None
+    assert hasattr(hist, "record")
     assert hist.count == 1
     assert hist.total == 42.5
 
@@ -363,7 +363,7 @@ def test_record_use_metrics_creates_gauge() -> None:
     from undef.telemetry.slo import _gauges
 
     g = _gauges.get("resource.utilization.percent")
-    assert g is not None
+    assert hasattr(g, "set")
     assert g.value == 75
 
 

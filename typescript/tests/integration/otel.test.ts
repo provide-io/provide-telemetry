@@ -167,7 +167,7 @@ describe('write hook trace_id injection — real OTEL provider', () => {
   });
 
   it('injects real trace_id and span_id into log objects inside a span', () => {
-    const hook = makeWriteHook(getConfig());
+    const hook = makeWriteHook();
     const tracer = trace.getTracer('@undef/telemetry');
     let capturedObj: Record<string, unknown> = {};
 
@@ -191,11 +191,21 @@ describe('write hook trace_id injection — real OTEL provider', () => {
   });
 
   it('does not inject trace_id outside any span', () => {
-    const hook = makeWriteHook(getConfig());
+    const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'outside_span' };
     hook(obj);
     expect(obj['trace_id']).toBeUndefined();
     expect(obj['span_id']).toBeUndefined();
+  });
+
+  it('skips window capture in Node.js environment when captureToWindow is true', () => {
+    // In @vitest-environment node, typeof window === 'undefined', so the captureToWindow
+    // branch must be skipped entirely. Mutants that replace the typeof-check with `true`
+    // or `typeof window !== ""` would hit `window.__pinoLogs` and throw ReferenceError.
+    setupTelemetry({ serviceName: 'hook-test', captureToWindow: true, consoleOutput: false });
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'node_env_no_window' };
+    expect(() => hook(obj)).not.toThrow();
   });
 });
 

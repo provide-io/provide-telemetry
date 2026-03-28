@@ -23,7 +23,7 @@ def test_build_handlers_without_otel_endpoint() -> None:
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
     assert isinstance(handlers[0], logging.StreamHandler)
-    assert handlers[0].stream is not None
+    assert hasattr(handlers[0].stream, "write")
     assert core_mod._otel_log_provider is None
 
 

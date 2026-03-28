@@ -230,10 +230,10 @@ class TestNestedTracing:
         tracer = _NoopTracer()
         with tracer.start_as_current_span("outer"):
             ctx_outer = get_trace_context()
-            assert ctx_outer["trace_id"] is not None
+            assert ctx_outer["trace_id"] == "0" * 32
             with tracer.start_as_current_span("inner"):
                 ctx_inner = get_trace_context()
-                assert ctx_inner["trace_id"] is not None
+                assert ctx_inner["trace_id"] == "0" * 32
             assert get_trace_context() == ctx_outer
         # After outer exits, context is cleared
         assert get_trace_context() == {"trace_id": None, "span_id": None}
@@ -284,7 +284,7 @@ class TestDecoratorWithSubsystems:
             return dict(get_trace_context())
 
         result = fn()
-        assert result["trace_id"] is not None
+        assert result["trace_id"] == "0" * 32
 
     async def test_async_sampling_accepted_creates_span(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With default sampling (rate=1.0), NoopSpan sets trace context."""
@@ -295,7 +295,7 @@ class TestDecoratorWithSubsystems:
             return dict(get_trace_context())
 
         result = await fn()
-        assert result["trace_id"] is not None
+        assert result["trace_id"] == "0" * 32
 
 
 # ── get_tracer edge cases ──────────────────────────────────────────────
