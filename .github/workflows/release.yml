@@ -24,14 +24,18 @@ jobs:
       - run: uv sync --group dev
       - run: uv run python -m build
       - run: uv run twine check dist/*
-      - name: Generate Python SBOM
-        run: |
-          uv run pip install cyclonedx-bom
-          uv run cyclonedx-py environment --output-format json -o dist/sbom-python.cdx.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: dist
           path: dist/*
+      - name: Generate Python SBOM
+        run: |
+          uv run pip install cyclonedx-bom
+          uv run cyclonedx-py environment --output-format json -o sbom-python.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-python
+          path: sbom-python.cdx.json
 
   publish-pypi:
     needs: build
@@ -67,12 +71,16 @@ jobs:
       - run: npm ci
       - run: npm run test:coverage
       - run: npm run build
-      - name: Generate TypeScript SBOM
-        run: npx @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format json --output-file dist/sbom-typescript.cdx.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: typescript-dist
           path: typescript/dist/
+      - name: Generate TypeScript SBOM
+        run: npx @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format json --output-file sbom-typescript.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-typescript
+          path: sbom-typescript.cdx.json
 
   sign-and-upload:
     needs: [build, build-typescript]
@@ -88,8 +96,12 @@ jobs:
           path: dist
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
-          name: typescript-dist
-          path: typescript-dist
+          name: sbom-python
+          path: sbom
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: sbom-typescript
+          path: sbom
       - uses: sigstore/gh-action-sigstore-python@f514d46b907ebcd5bedc05145c03b69c1edd8b46  # v3
         with:
           inputs: dist/*.whl dist/*.tar.gz
@@ -99,8 +111,8 @@ jobs:
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
-            dist/sbom-python.cdx.json \
-            typescript-dist/sbom-typescript.cdx.json \
+            sbom/sbom-python.cdx.json \
+            sbom/sbom-typescript.cdx.json \
             --clobber
 
   publish-npm:
