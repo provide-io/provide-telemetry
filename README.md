@@ -1,39 +1,29 @@
-# undef-telemetry
+# Undef Telemetry
 
-Unified telemetry package for the Undef ecosystem.
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python and TypeScript. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
+
+[![1. 🐍 CI — Python](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml)
+[![2. 🟦 CI — TypeScript](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml)
+[![5. 🔒 CodeQL](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
-```bash
-pip install undef-telemetry
-```
-
-Optional extras:
+**Python:**
 
 ```bash
-pip install "undef-telemetry[otel]"
+pip install undef-telemetry              # core (structlog)
+pip install "undef-telemetry[otel]"      # + OpenTelemetry export
 ```
 
-## API
+**TypeScript:**
 
-```python
-from undef.telemetry import (
-    setup_telemetry,
-    get_logger, logger,
-    trace, tracer, get_tracer,
-    counter, gauge, histogram, get_meter,
-    TelemetryMiddleware,
-)
+```bash
+npm install @undef/telemetry             # core (pino + @opentelemetry/api)
 ```
-
-## Runtime Config API
-
-- `update_runtime_config(config)` applies a config and returns the active runtime snapshot.
-- `reload_runtime_from_env()` reloads env config, applies it, and returns the active runtime snapshot.
-- `get_runtime_config()` returns a defensive copy of the active runtime snapshot.
-- `reconfigure_telemetry(config)` only applies hot runtime policy changes in-process; provider-changing OpenTelemetry reconfiguration requires a process restart once providers have been installed.
 
 ## Quick Start
+
+**Python:**
 
 ```python
 from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger
@@ -44,74 +34,102 @@ log.info("app.start.ok", request_id="req-1")
 shutdown_telemetry()
 ```
 
-## Environment Variables
+**TypeScript:**
 
-The most commonly set variables:
+```typescript
+import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef/telemetry';
 
-- `UNDEF_TELEMETRY_SERVICE_NAME` — service identity (default: `undef-service`)
-- `UNDEF_LOG_LEVEL` — log level (default: `INFO`)
-- `UNDEF_LOG_FORMAT` — renderer: `console`, `json`, or `pretty` (default: `console`)
+setupTelemetry({ serviceName: 'my-app' });
+const log = getLogger('api');
+log.info({ event: 'app.start.ok', requestId: 'req-1' });
+await shutdownTelemetry();
+```
 
-See the [Configuration Reference](docs/CONFIGURATION.md) for all 60+ environment variables with types and defaults.
+Both languages share the same API surface, event naming conventions, and configuration environment variables.
 
-## Event Naming Rule
+## Configuration
 
-Event names are strict: 3-5 dot-separated segments (last segment is status by convention).
-If you build names dynamically, use `undef.telemetry.event_name(*segments)`.
+All runtime config is via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
+| `UNDEF_LOG_LEVEL` | `INFO` | Log level |
+| `UNDEF_LOG_FORMAT` | `console` | Renderer: `console`, `json`, or `pretty` |
+| `UNDEF_TRACE_ENABLED` | `false` | Enable OTel tracing |
+| `UNDEF_METRICS_ENABLED` | `false` | Enable OTel metrics |
+
+See the [Configuration Reference](docs/CONFIGURATION.md) for all 60+ environment variables.
+
+## Event Naming
+
+Event names use 3-5 dot-separated lowercase segments:
 
 ```python
-from undef.telemetry import event_name, get_logger
-
-log = get_logger(__name__)
-log.info(event_name("auth", "login", "success"), user_id="u-123")
+# Python
+log.info("auth.login.success", user_id="u-123")
 log.info(event_name("auth", "login", "failed"), reason="bad_password")
 ```
 
-## OpenObserve Quick Verification
-
-```bash
-export OPENOBSERVE_URL=http://localhost:5080/api/default
-export OPENOBSERVE_USER=user@example.com
-export OPENOBSERVE_PASSWORD=password
-export OPENOBSERVE_REQUIRED_SIGNALS=logs
-uv run --group dev --extra otel python examples/openobserve/01_emit_all_signals.py
-uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.py
+```typescript
+// TypeScript
+log.info({ event: 'auth.login.success', userId: 'u-123' });
 ```
 
-Set `OPENOBSERVE_REQUIRED_SIGNALS=logs,metrics,traces` when your runtime has OTel extras and you want hard all-signal verification.
+See [Conventions](docs/CONVENTIONS.md) for full naming rules.
 
-Script references:
+## API Surface
 
-- [Emit all signals example](https://github.com/undef-games/undef-telemetry/blob/main/examples/openobserve/01_emit_all_signals.py)
-- [Verify ingestion example](https://github.com/undef-games/undef-telemetry/blob/main/examples/openobserve/02_verify_ingestion.py)
+Both languages export equivalent APIs:
 
-## Quality Guarantees
+| Category | Functions |
+|----------|-----------|
+| Lifecycle | `setup_telemetry()`, `shutdown_telemetry()` |
+| Logging | `get_logger()`, `bind_context()`, `clear_context()` |
+| Tracing | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()` |
+| Metrics | `counter()`, `gauge()`, `histogram()` |
+| Policies | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()` |
+| Safety | `register_cardinality_limit()`, `register_pii_rule()` |
+| Health | `get_health_snapshot()` |
+| Runtime | `update_runtime_config()`, `reconfigure_telemetry()` |
 
-- Baseline test gate runs at `100%` branch coverage (`--cov-branch`).
-- Mutation gate enforces `--min-mutation-score 100`.
-- Mutation policy is pinned in `.ci/pymutant-profiles.json` (`min_score: 1.0`, `max_drop_from_baseline: 0.0`) with baseline score in `.ci/pymutant-policy-baseline.json`.
-- CI validates linting, typing, security, compliance, examples, and integration slices.
-- Async-safe default exporter policy keeps retries/backoff at zero; non-zero async retry behavior is opt-in via `UNDEF_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`.
-- Exporter timeout settings are enforced both in OTLP exporter construction and per-attempt resilience execution bounds.
+Full reference: [Python API](docs/API.md) | [TypeScript API](typescript/README.md)
 
-## Documentation Ownership
+## Polyglot Architecture
 
-- README: onboarding and first successful local/backend verification.
-- Operations: full CQ matrix, troubleshooting, and environment operations.
-- Conventions: event/schema rules and naming standards.
-- Release: packaging/tagging/publishing workflow.
+```
+undef-telemetry/
+  src/undef/telemetry/    # Python package
+  typescript/             # TypeScript package (@undef/telemetry)
+  spec/                   # Canonical API spec — all languages validate against it
+  e2e/                    # Cross-language E2E tests (W3C trace propagation)
+```
 
-## Docs
+A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that both Python and TypeScript exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
 
-- [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md)
-- [API Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md)
-- [Internals](https://github.com/undef-games/undef-telemetry/blob/main/docs/INTERNALS.md)
-- [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md)
-- [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md)
-- [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md)
-- [Telemetry Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md)
-- [Compliance Notes](https://github.com/undef-games/undef-telemetry/blob/main/docs/COMPLIANCE.md)
-- [Release Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/RELEASE.md)
-- [Examples](https://github.com/undef-games/undef-telemetry/blob/main/examples/README.md)
-- [Main CI Workflow](https://github.com/undef-games/undef-telemetry/blob/main/.github/workflows/ci.yml)
-- [Release Workflow](https://github.com/undef-games/undef-telemetry/blob/main/.github/workflows/release.yml)
+## Quality
+
+- 100% branch coverage (Python + TypeScript)
+- 100% mutation kill score (mutmut + Stryker)
+- Strict type checking (mypy + ty + tsc)
+- CodeQL SAST scanning
+- SHA-pinned GitHub Actions
+- Sigstore artifact signing
+- CycloneDX SBOM on releases
+
+## Documentation
+
+- [Configuration Reference](docs/CONFIGURATION.md) — all environment variables
+- [API Reference](docs/API.md) — Python function signatures and examples
+- [Architecture](docs/ARCHITECTURE.md) — component design and data flow
+- [Internals](docs/INTERNALS.md) — implementation details
+- [Conventions](docs/CONVENTIONS.md) — event naming and schema rules
+- [Operations Runbook](docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Production Profiles](docs/PRODUCTION_PROFILES.md) — recommended configs
+- [Release Runbook](docs/RELEASE.md) — versioning and publishing
+- [TypeScript README](typescript/README.md) — TypeScript-specific docs
+- [Examples](examples/README.md) — Python and TypeScript examples
+
+## License
+
+Python: Apache-2.0. TypeScript: AGPL-3.0-or-later. See [LICENSES/](LICENSES/).
