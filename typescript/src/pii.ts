@@ -206,14 +206,7 @@ function _matches(ruleSegs: string[], valueSegs: string[]): boolean {
   return ruleSegs.every((seg, i) => seg === '*' || seg === valueSegs[i]);
 }
 
-function _applyRuleFull(
-  node: unknown,
-  rule: PIIRule,
-  currentPath: string[],
-  maxDepth: number = _DEFAULT_MAX_DEPTH,
-  depth: number = 0,
-  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null = null,
-): unknown {
+function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): unknown {
   if (typeof node !== 'object' || node === null) return node;
   // Stryker disable next-line EqualityOperator: depth == maxDepth means we already recursed maxDepth times; >= vs > only differs at the boundary which is tested but Stryker's perTest coverage misattributes
   if (depth >= maxDepth) return node;
@@ -371,7 +364,7 @@ export function sanitizePayload(
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */
   if (typeof current === 'object' && current !== null && !Array.isArray(current)) {
-    // Stryker disable next-line OptionalChaining,MethodExpression,ArrowFunction: _pathSegments always returns a non-empty array; pop() and toLowerCase() are tested via hash-rule-on-password test; ArrowFunction mutation produces Set{undefined} which misses all keys — tested but perTest misattributes
+    // Stryker disable next-line OptionalChaining: _pathSegments always returns a non-empty array (split returns at least one element)
     const ruleTargets = new Set(_rules.map((r) => _pathSegments(r.path).pop()?.toLowerCase()));
     const blocked = new Set([
       ...DEFAULT_SANITIZE_FIELDS.map((f) => f.toLowerCase()),

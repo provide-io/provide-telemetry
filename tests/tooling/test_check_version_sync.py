@@ -27,6 +27,4 @@ def test_version_sync_passes() -> None:
         text=True,
         cwd=str(_REPO_ROOT),
     )
-    assert result.returncode == 0, (
-        f"Version sync failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"Version sync failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"

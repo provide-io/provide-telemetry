@@ -79,9 +79,7 @@ def _search_total(
     req = Request(
         url=f"{base_url}/_search?type={stream_type}",
         headers={"Authorization": auth, "Content-Type": "application/json"},
-        data=json.dumps(
-            {"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}
-        ).encode("utf-8"),
+        data=json.dumps({"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}).encode("utf-8"),
         method="POST",
     )
     try:
@@ -143,9 +141,12 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     }
     vite_proc = subprocess.Popen(
         [
-            "npx", "vite",
-            "--config", "vite.e2e.config.ts",
-            "--port", str(vite_port),
+            "npx",
+            "vite",
+            "--config",
+            "vite.e2e.config.ts",
+            "--port",
+            str(vite_port),
         ],
         env=vite_env,
         stdout=subprocess.PIPE,
@@ -167,9 +168,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         assert ready_line, "Python backend did not become ready in time"
 
         # Wait for Vite to be accepting connections.
-        assert _wait_for_port(vite_port, timeout=30), (
-            f"Vite dev server did not start on port {vite_port} within 30s"
-        )
+        assert _wait_for_port(vite_port, timeout=30), f"Vite dev server did not start on port {vite_port} within 30s"
         # Brief settle so Vite finishes module graph construction.
         time.sleep(1.0)
 
@@ -199,9 +198,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
-        assert len(trace_id) == 32, (
-            f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
-        )
+        assert len(trace_id) == 32, f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
 
         # Flush and stop the Python backend.
         try:
@@ -224,10 +221,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 break
             time.sleep(1)
 
-        assert span_count >= 2, (
-            f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, "
-            f"found {span_count}."
-        )
+        assert span_count >= 2, f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, found {span_count}."
 
     finally:
         vite_proc.terminate()

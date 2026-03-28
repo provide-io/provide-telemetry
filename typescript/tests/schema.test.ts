@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { setupTelemetry, _resetConfig } from '../src/config';
+import { describe, expect, it } from 'vitest';
 import {
   EventSchemaError,
-  event,
   eventName,
-  getStrictSchema,
-  setStrictSchema,
   validateEventName,
   validateRequiredKeys,
-  _resetStrictSchemaForTests,
 } from '../src/schema';
 import { TelemetryError } from '../src/exceptions';
 

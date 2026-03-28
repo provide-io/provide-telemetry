@@ -59,18 +59,10 @@ describe('_incrementHealth', () => {
       'tracesDropped',
       'metricsEmitted',
       'metricsDropped',
-      'exportFailuresLogs',
-      'exportFailuresTraces',
-      'exportFailuresMetrics',
-      'retriesLogs',
-      'retriesTraces',
-      'retriesMetrics',
-      'exportLatencyMsLogs',
-      'exportLatencyMsTraces',
-      'exportLatencyMsMetrics',
-      'asyncBlockingRiskLogs',
-      'asyncBlockingRiskTraces',
-      'asyncBlockingRiskMetrics',
+      'exportFailures',
+      'exportRetries',
+      'asyncBlockingRisk',
+      'exemplarUnsupported',
     ] as const;
     for (const f of fields) {
       _incrementHealth(f, 2);

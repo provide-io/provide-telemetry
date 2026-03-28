@@ -263,7 +263,7 @@ describe('getLogger', () => {
     const log = getLogger('integration');
     log.info({ event: 'hello' }, 'world');
     // The Node.js stream is async (pino flushes on next tick)
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     expect(logs.length).toBeGreaterThan(0);
   });

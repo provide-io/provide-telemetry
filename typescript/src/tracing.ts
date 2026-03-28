@@ -90,10 +90,10 @@ export function getTraceContext(): { trace_id?: string; span_id?: string } {
   // Stryker disable next-line ConditionalExpression,LogicalOperator: setTraceContext always sets both; partial state not reachable via public API
   if (traceId !== undefined || spanId !== undefined) {
     return {
-      // Stryker disable next-line ConditionalExpression: traceId is always defined here (both set together)
-      ...(traceId !== undefined && { trace_id: traceId }),
-      // Stryker disable next-line ConditionalExpression: spanId is always defined here (both set together)
-      ...(spanId !== undefined && { span_id: spanId }),
+      // Stryker disable next-line ConditionalExpression: _manualTraceId is always defined here (both set together)
+      ...(_manualTraceId !== undefined && { traceId: _manualTraceId }),
+      // Stryker disable next-line ConditionalExpression: _manualSpanId is always defined here (both set together)
+      ...(_manualSpanId !== undefined && { spanId: _manualSpanId }),
     };
   }
   const ids = getActiveTraceIds();
