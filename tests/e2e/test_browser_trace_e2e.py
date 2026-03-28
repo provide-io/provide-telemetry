@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Undef Telemetry.
 #
+
 """Browser-based cross-language distributed tracing E2E test.
 
 Verifies that a W3C traceparent emitted by a real Chromium browser tab
