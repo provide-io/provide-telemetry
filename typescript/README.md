@@ -167,4 +167,4 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 
 ## License
 
-AGPL-3.0-or-later. See [LICENSE](../LICENSES/AGPL-3.0-or-later.txt).
+Apache-2.0. See [LICENSE](../LICENSES/Apache-2.0.txt).
