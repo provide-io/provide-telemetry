@@ -257,6 +257,7 @@ jobs:
       - run: npm ci
         working-directory: typescript
       - run: uv sync --group dev --extra otel
+      - run: uv run python -m playwright install --with-deps chromium
       - name: Run OpenObserve E2E
         run: |
           if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
