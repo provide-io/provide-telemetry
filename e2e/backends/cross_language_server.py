@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Minimal HTTP backend for cross-language distributed tracing E2E tests.
 
 Run standalone:
-    PROVIDE_TRACE_ENABLED=true \\
+    UNDEF_TRACE_ENABLED=true \\
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:5080/api/default/v1/traces \\
     OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic ..." \\
     python e2e/backends/cross_language_server.py --port 18765
@@ -26,13 +26,13 @@ import sys
 from opentelemetry import trace
 from opentelemetry.propagate import extract as otel_extract
 
-from provide.telemetry import setup_telemetry, shutdown_telemetry
-from provide.telemetry.config import TelemetryConfig
+from undef.telemetry import setup_telemetry, shutdown_telemetry
+from undef.telemetry.config import TelemetryConfig
 
 
 def _make_handler() -> type[http.server.BaseHTTPRequestHandler]:
     class Handler(http.server.BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: object) -> None:
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             pass  # suppress default access logs
 
         def _send(self, status: int, body: bytes = b"ok") -> None:
