@@ -1,11 +1,11 @@
-# @undef/telemetry
+# @undef-games/telemetry
 
 Structured logging + OpenTelemetry traces and metrics for TypeScript — feature parity with the [`undef-telemetry`](https://pypi.org/p/undef-telemetry) Python package.
 
 ## Install
 
 ```bash
-npm install @undef/telemetry
+npm install @undef-games/telemetry
 ```
 
 ### Optional OTEL peer dependencies
@@ -26,7 +26,7 @@ All five are optional — the library degrades gracefully to no-op providers whe
 ## Quick start
 
 ```typescript
-import { setupTelemetry, getConfig, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef-games/telemetry';
+import { setupTelemetry, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef-games/telemetry';
 
 // Call once at app startup.
 setupTelemetry({
@@ -66,7 +66,7 @@ await shutdownTelemetry();
 ### Logging
 
 ```typescript
-import { getLogger } from '@undef/telemetry';
+import { getLogger } from '@undef-games/telemetry';
 
 const log = getLogger('my-module');
 log.debug({ event: 'cache.miss.ok', key: 'user:42' });
@@ -80,7 +80,7 @@ Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 
 ### Tracing
 
 ```typescript
-import { withTrace, getActiveTraceIds, setTraceContext } from '@undef/telemetry';
+import { withTrace, getActiveTraceIds, setTraceContext } from '@undef-games/telemetry';
 
 const result = await withTrace('my.operation.ok', async () => {
   const { trace_id, span_id } = getActiveTraceIds();
@@ -92,7 +92,7 @@ const result = await withTrace('my.operation.ok', async () => {
 ### Metrics
 
 ```typescript
-import { counter, gauge, histogram } from '@undef/telemetry';
+import { counter, gauge, histogram } from '@undef-games/telemetry';
 
 const requests = counter('http.requests', { unit: '1', description: 'Total HTTP requests' });
 requests.add(1, { method: 'GET', status: '200' });
@@ -104,7 +104,7 @@ latency.record(42, { route: '/api/users' });
 ### Context binding
 
 ```typescript
-import { bindContext, runWithContext, clearContext } from '@undef/telemetry';
+import { bindContext, runWithContext, clearContext } from '@undef-games/telemetry';
 
 bindContext({ request_id: 'req-abc', user_id: 7 });
 // All log calls in this async context will include these fields automatically.
@@ -142,7 +142,7 @@ try {
 ### W3C trace propagation
 
 ```typescript
-import { extractW3cContext, bindPropagationContext } from '@undef/telemetry';
+import { extractW3cContext, bindPropagationContext } from '@undef-games/telemetry';
 
 // In an HTTP handler — extract incoming traceparent/tracestate.
 const ctx = extractW3cContext(req.headers);
@@ -152,7 +152,7 @@ bindPropagationContext(ctx);
 ### PII sanitization
 
 ```typescript
-import { sanitize, registerPiiRule } from '@undef/telemetry';
+import { sanitize, registerPiiRule } from '@undef-games/telemetry';
 
 // Built-in: redacts password, token, secret, authorization, api_key, ...
 const obj = { user: 'alice', password: 'hunter2' }; // pragma: allowlist secret
@@ -166,7 +166,7 @@ registerPiiRule({ path: 'user.ssn', mode: 'redact' });
 ### Health snapshot
 
 ```typescript
-import { getHealthSnapshot } from '@undef/telemetry';
+import { getHealthSnapshot } from '@undef-games/telemetry';
 
 const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
