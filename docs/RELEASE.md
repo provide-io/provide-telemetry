@@ -66,7 +66,32 @@ configured socket and image. Document any socket/mount issues and rerun once hos
 
 ## Publish Path
 
+### Python (PyPI)
+
 1. Push tag `vX.Y.Z`.
 2. Create GitHub release from tag.
 3. `release.yml` runs build and `twine check`.
-4. `publish-pypi` job uploads to PyPI via trusted publisher.
+4. `publish-pypi` job uploads to PyPI via trusted publisher (OIDC — no token required).
+
+### TypeScript (npm)
+
+Prerequisites (one-time setup):
+- Create an `npm` environment in GitHub repo Settings → Environments.
+- Add `NPM_TOKEN` as a repository secret (generate at npmjs.com → Access Tokens → Granular).
+
+Release steps:
+1. Same tag/release as Python — both publish jobs fire from the same `release.yml`.
+2. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
+3. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
+
+### TypeScript validation before release
+
+```bash
+cd typescript
+npm run lint
+npm run format:check
+npm run typecheck
+npm run test:coverage
+npm run build
+npm pack --dry-run   # verify tarball contents and size
+```
