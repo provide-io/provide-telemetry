@@ -196,10 +196,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 if status == "loading":
                     time.sleep(0.5)
 
-            assert status == "done", (
-                f"Browser tracer failed. #status={status!r}\n"
-                f"Console messages: {console_messages}"
-            )
+            assert status == "done", f"Browser tracer failed. #status={status!r}\nConsole messages: {console_messages}"
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
