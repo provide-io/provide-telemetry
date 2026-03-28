@@ -16,7 +16,6 @@ import pytest
 
 from undef.telemetry import _otel as otel_mod
 
-
 # ── _otel.load_otel_trace_api: exact import name ──────────────────────────────
 # Mutants: change "opentelemetry.trace" → None / garbled / uppercase.
 # The otel-marked tests for this function require OTel to be installed;
@@ -65,7 +64,7 @@ def test_load_otel_trace_api_delegates_when_has_otel_true(monkeypatch: pytest.Mo
 
     sentinel = object()
     monkeypatch.setattr(pmod, "_HAS_OTEL", True)
-    monkeypatch.setattr(pmod._otel, "load_otel_trace_api", lambda: sentinel)
+    monkeypatch.setattr(pmod._otel, "load_otel_trace_api", lambda: sentinel)  # type: ignore[attr-defined]
     assert pmod._load_otel_trace_api() is sentinel
 
 
@@ -78,7 +77,7 @@ def test_load_otel_metrics_api_delegates_when_has_otel_metrics_true(monkeypatch:
 
     sentinel = object()
     monkeypatch.setattr(mmod, "_HAS_OTEL_METRICS", True)
-    monkeypatch.setattr(mmod._otel, "load_otel_metrics_api", lambda: sentinel)
+    monkeypatch.setattr(mmod._otel, "load_otel_metrics_api", lambda: sentinel)  # type: ignore[attr-defined]
     assert mmod._load_otel_metrics_api() is sentinel
 
 
@@ -104,7 +103,7 @@ def test_load_otel_tracing_components_passes_correct_module_names(monkeypatch: p
         captured.append(name)
         if name not in modules:
             raise ImportError(name)
-        return modules[name]  # type: ignore[index]
+        return modules[name]
 
     monkeypatch.setattr(otel_mod, "_import_module", _fake_import)
     result = otel_mod.load_otel_tracing_components()
@@ -131,7 +130,7 @@ def test_load_otel_tracing_components_extracts_correct_attributes(monkeypatch: p
         "opentelemetry.sdk.trace.export": SimpleNamespace(BatchSpanProcessor=bsp),
         "opentelemetry.exporter.otlp.proto.http.trace_exporter": SimpleNamespace(OTLPSpanExporter=ose),
     }
-    monkeypatch.setattr(otel_mod, "_import_module", lambda name: modules[name])  # type: ignore[index]
+    monkeypatch.setattr(otel_mod, "_import_module", lambda name: modules[name])
     result = otel_mod.load_otel_tracing_components()
     assert result == (r, tp, bsp, ose)
 
@@ -156,7 +155,7 @@ def test_load_otel_metrics_components_passes_correct_module_names(monkeypatch: p
         captured.append(name)
         if name not in modules:
             raise ImportError(name)
-        return modules[name]  # type: ignore[index]
+        return modules[name]
 
     monkeypatch.setattr(otel_mod, "_import_module", _fake_import)
     result = otel_mod.load_otel_metrics_components()
@@ -178,7 +177,7 @@ def test_load_otel_tracing_components_delegates_when_has_otel_true(monkeypatch: 
 
     sentinel = object()
     monkeypatch.setattr(pmod, "_HAS_OTEL", True)
-    monkeypatch.setattr(pmod._otel, "load_otel_tracing_components", lambda: sentinel)
+    monkeypatch.setattr(pmod._otel, "load_otel_tracing_components", lambda: sentinel)  # type: ignore[attr-defined]
     assert pmod._load_otel_tracing_components() is sentinel
 
 
@@ -191,7 +190,7 @@ def test_load_otel_metrics_components_delegates_when_has_otel_metrics_true(monke
 
     sentinel = object()
     monkeypatch.setattr(mmod, "_HAS_OTEL_METRICS", True)
-    monkeypatch.setattr(mmod._otel, "load_otel_metrics_components", lambda: sentinel)
+    monkeypatch.setattr(mmod._otel, "load_otel_metrics_components", lambda: sentinel)  # type: ignore[attr-defined]
     assert mmod._load_otel_metrics_components() is sentinel
 
 
@@ -209,6 +208,6 @@ def test_load_otel_metrics_components_extracts_correct_attributes(monkeypatch: p
         "opentelemetry.sdk.metrics.export": SimpleNamespace(PeriodicExportingMetricReader=pemr),
         "opentelemetry.exporter.otlp.proto.http.metric_exporter": SimpleNamespace(OTLPMetricExporter=ome),
     }
-    monkeypatch.setattr(otel_mod, "_import_module", lambda name: modules[name])  # type: ignore[index]
+    monkeypatch.setattr(otel_mod, "_import_module", lambda name: modules[name])
     result = otel_mod.load_otel_metrics_components()
     assert result == (mp, r, pemr, ome)
