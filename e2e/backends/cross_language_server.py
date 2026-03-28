@@ -32,7 +32,7 @@ from undef.telemetry.config import TelemetryConfig
 
 def _make_handler() -> type[http.server.BaseHTTPRequestHandler]:
     class Handler(http.server.BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        def log_message(self, format: str, *args: object) -> None:
             pass  # suppress default access logs
 
         def _send(self, status: int, body: bytes = b"ok") -> None:
