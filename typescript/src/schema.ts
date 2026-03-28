@@ -71,10 +71,7 @@ export function validateEventName(name: string, strict: boolean = true): void {
  * Verify that all required keys are present in obj.
  * Throws EventSchemaError listing the missing keys.
  */
-export function validateRequiredKeys(
-  obj: Record<string, unknown>,
-  keys: string[],
-): void {
+export function validateRequiredKeys(obj: Record<string, unknown>, keys: string[]): void {
   const missing = keys.filter((k) => !(k in obj));
   if (missing.length > 0) {
     throw new EventSchemaError(`missing required keys: ${missing.sort().join(', ')}`);

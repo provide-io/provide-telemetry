@@ -81,7 +81,12 @@ export { setSamplingPolicy, getSamplingPolicy, shouldSample } from './sampling';
 export type { SamplingPolicy } from './sampling';
 
 // Resilience
-export { setExporterPolicy, getExporterPolicy, runWithResilience, TelemetryTimeoutError } from './resilience';
+export {
+  setExporterPolicy,
+  getExporterPolicy,
+  runWithResilience,
+  TelemetryTimeoutError,
+} from './resilience';
 export type { ExporterPolicy } from './resilience';
 
 // Schema
@@ -100,12 +105,15 @@ export {
 export type { PropagationContext } from './propagation';
 
 // Runtime reconfiguration
-export { getRuntimeConfig, updateRuntimeConfig, reloadRuntimeFromEnv, reconfigureTelemetry } from './runtime';
+export {
+  getRuntimeConfig,
+  updateRuntimeConfig,
+  reloadRuntimeFromEnv,
+  reconfigureTelemetry,
+} from './runtime';
 
 // Test utilities
 export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
 
-// Shutdown (no-op until OTEL SDK is registered)
-export async function shutdownTelemetry(): Promise<void> {
-  // OTEL SDK providers call .shutdown() on their own; this is a hook for future use.
-}
+// Shutdown
+export { shutdownTelemetry } from './shutdown';

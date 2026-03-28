@@ -1,10 +1,30 @@
-name: CI
+name: CI — Python
 
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "e2e/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "VERSION"
+      - ".github/workflows/ci-python.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "e2e/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "VERSION"
+      - ".github/workflows/ci-python.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
@@ -13,20 +33,6 @@ permissions:
   contents: read
 
 jobs:
-  docs-quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: uv sync --group dev
-      - name: Markdown lint + docs accuracy
-        run: uv run python scripts/check_docs_accuracy.py
-      - name: README snippet tests
-        run: uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_docs_accuracy.py --no-cov -q
-
   quality:
     runs-on: ubuntu-latest
     strategy:
@@ -34,9 +40,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
@@ -58,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -73,9 +79,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uvx reuse lint
@@ -89,9 +95,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev --extra otel
@@ -100,9 +106,9 @@ jobs:
   examples-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
@@ -152,26 +158,13 @@ jobs:
         if: always()
         run: docker rm -f openobserve-local || true
 
-  release-readiness:
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: uv sync --group dev
-      - run: uv run python -m build
-      - run: uv run twine check dist/*
-
   otlp-integration:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Start OTLP collector
@@ -202,35 +195,13 @@ jobs:
         if: always()
         run: docker rm -f otelcol || true
 
-  openobserve-e2e:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    env:
-      OPENOBSERVE_URL: ${{ vars.OPENOBSERVE_URL }}
-      OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
-      OPENOBSERVE_PASSWORD: ${{ secrets.OPENOBSERVE_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: uv sync --group dev --extra otel
-      - name: Run OpenObserve E2E
-        run: |
-          if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
-            echo "OPENOBSERVE_* not configured; skipping e2e run."
-            exit 0
-          fi
-          uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
-
   performance-smoke:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
@@ -241,9 +212,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -251,7 +222,7 @@ jobs:
         run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:undef_telemetry
       - name: Upload memray artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: memray-output
           path: memray-output/

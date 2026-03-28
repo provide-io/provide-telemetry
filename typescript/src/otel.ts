@@ -16,7 +16,11 @@
  */
 
 import type { TelemetryConfig } from './config';
-import { _markProvidersRegistered } from './runtime';
+import {
+  type ShutdownableProvider,
+  _markProvidersRegistered,
+  _storeRegisteredProviders,
+} from './runtime';
 
 /**
  * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters.
@@ -27,6 +31,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
 
   const headers = cfg.otlpHeaders ?? {};
   const endpoint = cfg.otlpEndpoint ?? 'http://localhost:4318';
+  const registered: ShutdownableProvider[] = [];
 
   // ── Tracing ──────────────────────────────────────────────────────────────────
   try {
@@ -57,6 +62,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       spanProcessors: [new BatchSpanProcessor(traceExporter)],
     });
     trace.setGlobalTracerProvider(provider);
+    registered.push(provider as ShutdownableProvider);
   } catch (err) {
     console.warn('[undef/telemetry] OTEL trace setup failed (missing peer deps?):', err);
   }
@@ -80,9 +86,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
     });
     metrics.setGlobalMeterProvider(meterProvider);
+    registered.push(meterProvider as ShutdownableProvider);
   } catch (err) {
     console.warn('[undef/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
   }
 
+  _storeRegisteredProviders(registered);
   _markProvidersRegistered();
 }
