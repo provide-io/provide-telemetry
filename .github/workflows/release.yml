@@ -21,6 +21,10 @@ jobs:
       - run: uv sync --group dev
       - run: uv run python -m build
       - run: uv run twine check dist/*
+      - name: Generate Python SBOM
+        run: |
+          uv run pip install cyclonedx-bom
+          uv run cyclonedx-py environment --output-format json -o dist/sbom-python.cdx.json
       - uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -60,6 +64,8 @@ jobs:
       - run: npm ci
       - run: npm run test:coverage
       - run: npm run build
+      - name: Generate TypeScript SBOM
+        run: npx @cyclonedx/cyclonedx-npm --output-format json --output-file dist/sbom-typescript.cdx.json
       - uses: actions/upload-artifact@v7
         with:
           name: typescript-dist
