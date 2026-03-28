@@ -176,10 +176,10 @@ describe('cardinality — prune interval boundary (kills >= vs > mutation)', () 
     _resetCardinalityForTests();
     registerCardinalityLimit('key', { maxValues: 2, ttlSeconds: 10 });
     const attrs = { key: 'a' };
-    guardAttributes(attrs);  // populates lastPrune at t=0
-    vi.advanceTimersByTime(5000);  // exactly at boundary
+    guardAttributes(attrs); // populates lastPrune at t=0
+    vi.advanceTimersByTime(5000); // exactly at boundary
     const attrs2 = { key: 'b' };
-    guardAttributes(attrs2);  // should trigger prune check
+    guardAttributes(attrs2); // should trigger prune check
     // If prune happened, 'a' (seenAt=0, ttl=10s, expires at 10000) is still valid
     // Just verify no throw and no overflow
     expect(guardAttributes({ key: 'a' })).toEqual({ key: 'a' });
@@ -191,8 +191,8 @@ describe('cardinality — prune interval boundary (kills >= vs > mutation)', () 
     _resetCardinalityForTests();
     registerCardinalityLimit('key2', { maxValues: 2, ttlSeconds: 10 });
     guardAttributes({ key2: 'x' });
-    vi.advanceTimersByTime(4999);  // just before boundary
-    guardAttributes({ key2: 'y' });  // no prune, but still works
+    vi.advanceTimersByTime(4999); // just before boundary
+    guardAttributes({ key2: 'y' }); // no prune, but still works
     expect(guardAttributes({ key2: 'x' })).toEqual({ key2: 'x' });
     vi.useRealTimers();
   });
@@ -208,12 +208,12 @@ describe('cardinality — TTL expiry boundary (kills < vs <= on seenAt check)', 
     registerCardinalityLimit('ttlkey', { maxValues: 2, ttlSeconds: 1 });
     guardAttributes({ ttlkey: 'old1' });
     guardAttributes({ ttlkey: 'old2' });
-    vi.advanceTimersByTime(5000);  // trigger prune
+    vi.advanceTimersByTime(5000); // trigger prune
     // This call triggers prune: both 'old1' and 'old2' are pruned
     const result1 = guardAttributes({ ttlkey: 'new1' });
     const result2 = guardAttributes({ ttlkey: 'new2' });
-    expect(result1).toEqual({ ttlkey: 'new1' });  // slot freed
-    expect(result2).toEqual({ ttlkey: 'new2' });  // both fit
+    expect(result1).toEqual({ ttlkey: 'new1' }); // slot freed
+    expect(result2).toEqual({ ttlkey: 'new2' }); // both fit
     vi.useRealTimers();
   });
 });
@@ -231,7 +231,7 @@ describe('cardinality — TTL prune boundary: < vs <= on seenAt (kills EqualityO
     _resetCardinalityForTests();
     registerCardinalityLimit('bkey', { maxValues: 1, ttlSeconds: 5 });
     guardAttributes({ bkey: 'first' }); // seenAt = 0
-    vi.advanceTimersByTime(5000);        // trigger prune; threshold = 5000 - 5000 = 0; seenAt=0 < 0 is false → NOT pruned
+    vi.advanceTimersByTime(5000); // trigger prune; threshold = 5000 - 5000 = 0; seenAt=0 < 0 is false → NOT pruned
     // 'first' should survive (seenAt=0 is not < threshold=0)
     const result = guardAttributes({ bkey: 'second' }); // should overflow (first still alive)
     expect(result.bkey).toBe(OVERFLOW_VALUE); // 'first' was NOT pruned → 'second' overflows

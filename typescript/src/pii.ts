@@ -109,11 +109,7 @@ function _matches(ruleSegs: string[], valueSegs: string[]): boolean {
   return ruleSegs.every((seg, i) => seg === '*' || seg === valueSegs[i]);
 }
 
-function _applyRuleFull(
-  node: unknown,
-  rule: PIIRule,
-  currentPath: string[],
-): unknown {
+function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): unknown {
   if (typeof node !== 'object' || node === null) return node;
   // Stryker disable next-line ConditionalExpression,BlockStatement: when array is treated as object, numeric string indices still match wildcard '*' rule segments — equivalent
   if (Array.isArray(node)) {
@@ -174,7 +170,7 @@ export function sanitizePayload(
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */
   if (typeof current === 'object' && current !== null && !Array.isArray(current)) {
-      // Stryker disable next-line OptionalChaining: _pathSegments always returns a non-empty array (split returns at least one element)
+    // Stryker disable next-line OptionalChaining: _pathSegments always returns a non-empty array (split returns at least one element)
     const ruleTargets = new Set(_rules.map((r) => _pathSegments(r.path).pop()?.toLowerCase()));
     const blocked = new Set([
       ...DEFAULT_SANITIZE_FIELDS.map((f) => f.toLowerCase()),

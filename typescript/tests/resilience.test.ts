@@ -290,11 +290,17 @@ describe('runWithResilience — circuit breaker per signal', () => {
     await runWithResilience('traces', timeoutFn); // trips traces
     // logs should still work
     let logsCalled = false;
-    await runWithResilience('logs', async () => { logsCalled = true; return 'ok'; });
+    await runWithResilience('logs', async () => {
+      logsCalled = true;
+      return 'ok';
+    });
     expect(logsCalled).toBe(true);
     // traces is open
     let tracesCalled = false;
-    const result = await runWithResilience('traces', async () => { tracesCalled = true; return 'ok'; });
+    const result = await runWithResilience('traces', async () => {
+      tracesCalled = true;
+      return 'ok';
+    });
     expect(result).toBeNull();
     expect(tracesCalled).toBe(false);
   });
@@ -310,7 +316,10 @@ describe('runWithResilience — circuit breaker per signal', () => {
     vi.advanceTimersByTime(30_000);
     // At exactly 30000ms: elapsed < COOLDOWN (30000 < 30000 is false), probe allowed
     let probeRan = false;
-    await runWithResilience('metrics', async () => { probeRan = true; return 'ok'; });
+    await runWithResilience('metrics', async () => {
+      probeRan = true;
+      return 'ok';
+    });
     expect(probeRan).toBe(true);
     vi.useRealTimers();
   });
@@ -321,7 +330,10 @@ describe('resilience — fn called exactly once when retries=0 (kills <= vs < on
     _resetResilienceForTests();
     setExporterPolicy({ retries: 0, timeoutMs: 100, backoffMs: 0 });
     let calls = 0;
-    await runWithResilience('logs', async () => { calls++; return 'ok'; });
+    await runWithResilience('logs', async () => {
+      calls++;
+      return 'ok';
+    });
     expect(calls).toBe(1);
   });
 
@@ -329,7 +341,10 @@ describe('resilience — fn called exactly once when retries=0 (kills <= vs < on
     _resetResilienceForTests();
     setExporterPolicy({ retries: 1, timeoutMs: 100, backoffMs: 0, failOpen: true });
     let calls = 0;
-    await runWithResilience('logs', async () => { calls++; throw new Error('fail'); });
+    await runWithResilience('logs', async () => {
+      calls++;
+      throw new Error('fail');
+    });
     expect(calls).toBe(2);
   });
 });
@@ -358,7 +373,10 @@ describe('resilience — circuit breaker reset clears all signals (kills StringL
     _resetResilienceForTests();
     // After reset, traces circuit should be cleared (not tripped)
     let called = false;
-    await runWithResilience('traces', async () => { called = true; return 'ok'; });
+    await runWithResilience('traces', async () => {
+      called = true;
+      return 'ok';
+    });
     expect(called).toBe(true);
   });
 
@@ -371,7 +389,10 @@ describe('resilience — circuit breaker reset clears all signals (kills StringL
     await runWithResilience('metrics', timeoutFn);
     _resetResilienceForTests();
     let called = false;
-    await runWithResilience('metrics', async () => { called = true; return 'ok'; });
+    await runWithResilience('metrics', async () => {
+      called = true;
+      return 'ok';
+    });
     expect(called).toBe(true);
   });
 });
@@ -381,7 +402,9 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy({ retries: 0, timeoutMs: 1000, failOpen: true });
-    await runWithResilience('logs', async () => { throw new Error('plain error'); });
+    await runWithResilience('logs', async () => {
+      throw new Error('plain error');
+    });
     expect(getHealthSnapshot().exportFailures).toBe(1);
   });
 
@@ -389,7 +412,9 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy({ retries: 1, timeoutMs: 1000, failOpen: true, backoffMs: 0 });
-    await runWithResilience('logs', async () => { throw new Error('fail'); });
+    await runWithResilience('logs', async () => {
+      throw new Error('fail');
+    });
     expect(getHealthSnapshot().exportRetries).toBe(1);
   });
 
@@ -419,13 +444,16 @@ describe('resilience — non-timeout error resets consecutive timeout counter (k
     setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     const normalFn = () => Promise.reject(new Error('non-timeout error'));
-    await runWithResilience('elsetest', timeoutFn);   // consecutive = 1
-    await runWithResilience('elsetest', timeoutFn);   // consecutive = 2
-    await runWithResilience('elsetest', normalFn);    // consecutive resets to 0
-    await runWithResilience('elsetest', timeoutFn);   // consecutive = 1 (NOT 3)
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 1
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 2
+    await runWithResilience('elsetest', normalFn); // consecutive resets to 0
+    await runWithResilience('elsetest', timeoutFn); // consecutive = 1 (NOT 3)
     // Circuit should NOT be open — fn must execute
     let called = false;
-    await runWithResilience('elsetest', async () => { called = true; return 'ok'; });
+    await runWithResilience('elsetest', async () => {
+      called = true;
+      return 'ok';
+    });
     expect(called).toBe(true);
   });
 });
@@ -452,8 +480,12 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
     for (let i = 0; i < 3; i++) {
       try {
         await runWithResilience('logs', timeoutFn);
-      } catch { /* expected */ }
+      } catch {
+        /* expected */
+      }
     }
-    await expect(runWithResilience('logs', async () => 'ok')).rejects.toThrow('circuit breaker open');
+    await expect(runWithResilience('logs', async () => 'ok')).rejects.toThrow(
+      'circuit breaker open',
+    );
   });
 });

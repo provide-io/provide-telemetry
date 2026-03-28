@@ -177,9 +177,7 @@ class TestConfigureLoggingForceDefault:
 
 
 class TestConfigureLoggingEffectiveLevel:
-    def test_effective_level_is_minimum_of_default_and_module_overrides(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_effective_level_is_minimum_of_default_and_module_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Kills: effective_level < comparison mutation.
 
         When default=WARNING and asyncio=DEBUG, effective_level must be DEBUG so

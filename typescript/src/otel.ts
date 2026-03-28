@@ -16,7 +16,11 @@
  */
 
 import type { TelemetryConfig } from './config';
-import { type ShutdownableProvider, _markProvidersRegistered, _storeRegisteredProviders } from './runtime';
+import {
+  type ShutdownableProvider,
+  _markProvidersRegistered,
+  _storeRegisteredProviders,
+} from './runtime';
 
 /**
  * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters.

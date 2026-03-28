@@ -31,7 +31,9 @@ describe('ConfigurationError', () => {
   });
 
   it('can be caught as TelemetryError', () => {
-    const fn = () => { throw new ConfigurationError('x'); };
+    const fn = () => {
+      throw new ConfigurationError('x');
+    };
     expect(fn).toThrow(TelemetryError);
     expect(fn).toThrow(ConfigurationError);
   });

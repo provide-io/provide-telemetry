@@ -48,9 +48,16 @@ describe('_incrementHealth', () => {
 
   it('increments all numeric fields', () => {
     const fields = [
-      'logsEmitted', 'logsDropped', 'tracesEmitted', 'tracesDropped',
-      'metricsEmitted', 'metricsDropped', 'exportFailures', 'exportRetries',
-      'asyncBlockingRisk', 'exemplarUnsupported',
+      'logsEmitted',
+      'logsDropped',
+      'tracesEmitted',
+      'tracesDropped',
+      'metricsEmitted',
+      'metricsDropped',
+      'exportFailures',
+      'exportRetries',
+      'asyncBlockingRisk',
+      'exemplarUnsupported',
     ] as const;
     for (const f of fields) {
       _incrementHealth(f, 2);

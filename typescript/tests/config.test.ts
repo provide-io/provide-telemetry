@@ -135,7 +135,9 @@ describe('configFromEnv — default values', () => {
 describe('configFromEnv — env var reads', () => {
   function withEnv(vars: Record<string, string>, fn: () => void): void {
     for (const [k, v] of Object.entries(vars)) process.env[k] = v;
-    try { fn(); } finally {
+    try {
+      fn();
+    } finally {
       for (const k of Object.keys(vars)) delete process.env[k];
     }
   }

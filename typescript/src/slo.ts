@@ -19,8 +19,7 @@ function _lazyCounter(name: string, description: string): Counter {
 }
 
 function _lazyHistogram(name: string, description: string, unit: string): Histogram {
-  if (!_histograms.has(name))
-    _histograms.set(name, histogram(name, { description, unit }));
+  if (!_histograms.has(name)) _histograms.set(name, histogram(name, { description, unit }));
   return _histograms.get(name)!;
 }
 
@@ -56,11 +55,10 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
-  _lazyGauge(
-    'resource.utilization',
-    'Resource utilization',
-    opts.unit ?? '%',
-  ).add(opts.utilization, { resource: opts.resource });
+  _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%').add(
+    opts.utilization,
+    { resource: opts.resource },
+  );
 }
 
 export function classifyError(statusCode: number): {
