@@ -185,10 +185,8 @@ unresolved-import = "ignore"
 [[tool.ty.overrides]]
 include = ["tests/**"]
 [tool.ty.overrides.rules]
-invalid-argument-type = "ignore"
 invalid-assignment = "ignore"
 call-top-callable = "ignore"
-unresolved-attribute = "ignore"
 unsupported-operator = "ignore"
 unused-type-ignore-comment = "ignore"
 

@@ -20,7 +20,7 @@ const _counters = new Map<string, CounterInstrument>();
 const _histograms = new Map<string, HistogramInstrument>();
 const _gauges = new Map<string, GaugeInstrument>();
 
-function _lazyCounter(name: string, description: string): CounterInstrument {
+function _lazyCounter(name: string, description: string): Counter {
   let c = _counters.get(name);
   if (!c) {
     c = counter(name, { description });
@@ -29,7 +29,7 @@ function _lazyCounter(name: string, description: string): CounterInstrument {
   return c;
 }
 
-function _lazyHistogram(name: string, description: string, unit: string): HistogramInstrument {
+function _lazyHistogram(name: string, description: string, unit: string): Histogram {
   let h = _histograms.get(name);
   if (!h) {
     h = histogram(name, { description, unit });
@@ -38,7 +38,7 @@ function _lazyHistogram(name: string, description: string, unit: string): Histog
   return h;
 }
 
-function _lazyGauge(name: string, description: string, unit: string): GaugeInstrument {
+function _lazyGauge(name: string, description: string, unit: string): UpDownCounter {
   let g = _gauges.get(name);
   if (!g) {
     g = gauge(name, { description, unit });
