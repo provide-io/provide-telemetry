@@ -95,7 +95,7 @@ jobs:
           fi
       - name: Run mutation testing on changed files
         if: steps.changed.outputs.skip == 'false'
-        run: uv run mutmut run ${{ steps.changed.outputs.files }} --CI
+        run: uv run mutmut run ${{ steps.changed.outputs.files }}
       - name: Check mutation score
         if: steps.changed.outputs.skip == 'false'
         run: |
