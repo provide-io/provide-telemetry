@@ -66,27 +66,21 @@ describe('registerOtelProviders', () => {
     _resetRuntimeForTests();
     vi.clearAllMocks();
     // vitest 4.x: use mockImplementation (not mockReturnValue) for class constructors.
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(BasicTracerProvider).mockImplementation(function () {
       return makeTracerStub();
     } as never);
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(BatchSpanProcessor).mockImplementation(function () {
       return {};
     } as never);
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(OTLPTraceExporter).mockImplementation(function () {
       return {};
     } as never);
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(MeterProvider).mockImplementation(function () {
       return makeMeterStub();
     } as never);
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(PeriodicExportingMetricReader).mockImplementation(function () {
       return {};
     } as never);
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(OTLPMetricExporter).mockImplementation(function () {
       return {};
     } as never);
@@ -162,7 +156,6 @@ describe('registerOtelProviders', () => {
   it('wires BatchSpanProcessor with the trace exporter', async () => {
     setupTelemetry({ serviceName: 'test', otelEnabled: true });
     const fakeExporter = { fake: 'exporter' };
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(OTLPTraceExporter).mockImplementation(function () {
       return fakeExporter;
     } as never);
@@ -173,7 +166,6 @@ describe('registerOtelProviders', () => {
   it('wires PeriodicExportingMetricReader with the metrics exporter', async () => {
     setupTelemetry({ serviceName: 'test', otelEnabled: true });
     const fakeExporter = { fake: 'metrics-exporter' };
-    // eslint-disable-next-line prefer-arrow-callback
     vi.mocked(OTLPMetricExporter).mockImplementation(function () {
       return fakeExporter;
     } as never);

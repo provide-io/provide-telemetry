@@ -110,7 +110,6 @@ describe('withTrace', () => {
   it('propagates async rejections (non-Error string)', async () => {
     await expect(
       withTrace('test.reject.string', async () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'string rejection';
       }),
     ).rejects.toBe('string rejection');
@@ -119,7 +118,6 @@ describe('withTrace', () => {
   it('propagates sync non-Error throw', () => {
     expect(() =>
       withTrace('test.throw.string', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'sync string error';
       }),
     ).toThrow('sync string error');
