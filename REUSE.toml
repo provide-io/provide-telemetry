@@ -8,11 +8,14 @@ path = [
   "SECURITY.md",
   "docs/**",
   "examples/**",
-  ".github/workflows/**",
+  ".github/**",
   ".ci/**",
   ".pre-commit-config.yaml",
   ".actrc",
   ".gitignore",
+  ".release-please-config.json",
+  ".release-please-manifest.json",
+  "commitlint.config.js",
   "pyproject.toml",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
