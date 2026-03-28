@@ -68,7 +68,7 @@ jobs:
       - run: npm run test:coverage
       - run: npm run build
       - name: Generate TypeScript SBOM
-        run: npx @cyclonedx/cyclonedx-npm --output-format json --output-file dist/sbom-typescript.cdx.json
+        run: npx @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format json --output-file dist/sbom-typescript.cdx.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: typescript-dist
