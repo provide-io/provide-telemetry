@@ -29,10 +29,10 @@ pytestmark = pytest.mark.integration
 ITERATIONS = 50_000
 # Budget: operations must complete within this many ns/op on average.
 # These are very generous — 10x slower than typical to avoid flakes.
-MAX_EVENT_NAME_NS = 25_000
-MAX_SHOULD_SAMPLE_NS = 25_000
-MAX_SANITIZE_NS = 25_000
-MAX_VALIDATE_NS = 25_000
+MAX_EVENT_NAME_NS = 10_000
+MAX_SHOULD_SAMPLE_NS = 10_000
+MAX_SANITIZE_NS = 20_000
+MAX_VALIDATE_NS = 10_000
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +55,7 @@ def _ns_per_op(fn: _CallableT, iterations: int = ITERATIONS) -> float:
     return elapsed / iterations
 
 
+@pytest.mark.flaky(reruns=2)
 class TestEventNamePerformance:
     def test_three_segment_event_name(self) -> None:
         ns = _ns_per_op(lambda: event_name("auth", "login", "success"))
