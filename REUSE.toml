@@ -41,6 +41,8 @@ SPDX-License-Identifier = "Apache-2.0"
 path = [
   "Makefile",
   "typescript/README.md",
+  "typescript/CHANGELOG.md",
+  "typescript/VERSION",
   "typescript/package.json",
   "typescript/.gitignore",
   "typescript/.npmrc",
