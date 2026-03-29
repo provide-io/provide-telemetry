@@ -169,9 +169,6 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
 
         # Wait for Vite to be accepting connections.
         assert _wait_for_port(vite_port, timeout=30), f"Vite dev server did not start on port {vite_port} within 30s"
-        # Brief settle so Vite finishes module graph construction.
-        time.sleep(1.0)
-
         # ── Launch Chromium ───────────────────────────────────────────────────
         qs = urlencode({"otlpAuth": auth})
         page_url = f"http://127.0.0.1:{vite_port}/?{qs}"
@@ -179,7 +176,15 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto(page_url, wait_until="networkidle")
+            console_messages: list[str] = []
+            page.on("console", lambda msg: console_messages.append(msg.text))
+            # Retry page load — Vite may still be building the module graph
+            # after the port is open.
+            for _attempt in range(3):
+                resp = page.goto(page_url, wait_until="networkidle")
+                if resp and resp.ok:
+                    break
+                time.sleep(1.0)
 
             # Poll #status until it leaves "loading" (up to 30s).
             status_el = page.locator("#status")
@@ -191,10 +196,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 if status == "loading":
                     time.sleep(0.5)
 
-            assert status == "done", (
-                f"Browser tracer failed. #status={status!r}\n"
-                f"Console messages: {[m.text for m in page.context.pages[0:1]]}"
-            )
+            assert status == "done", f"Browser tracer failed. #status={status!r}\nConsole messages: {console_messages}"
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
