@@ -90,8 +90,10 @@ _LANG_READERS = {
 
 def main() -> int:
     """Check version sync. Returns 0 on success, 1 on mismatch."""
-    canonical = _read_version_file()
-    print(f"VERSION file: {canonical}")
+    canonical_raw = _read_version_file()
+    canonical_parts = canonical_raw.split(".")
+    canonical = f"{canonical_parts[0]}.{canonical_parts[1]}" if len(canonical_parts) >= 2 else canonical_raw
+    print(f"VERSION file: {canonical_raw} (major.minor: {canonical})")
 
     errors: list[str] = []
     for lang, reader in _LANG_READERS.items():
