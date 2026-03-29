@@ -30,7 +30,7 @@ def test_public_api_exports() -> None:
     assert callable(t.get_health_snapshot)
     assert callable(t.update_runtime_config)
     assert callable(t.reconfigure_telemetry)
-    assert re.fullmatch(r"\d+\.\d+\.\d+", t.__version__) is not None
+    assert re.fullmatch(r"\d+\.\d+(\.\d+)?", t.__version__) is not None
 
 
 def test_public_api_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:

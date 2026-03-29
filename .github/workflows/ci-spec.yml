@@ -1,0 +1,52 @@
+name: Spec Conformance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spec/**"
+      - "src/undef/telemetry/__init__.py"
+      - "typescript/src/index.ts"
+      - "go/**"
+      - "rust/**"
+      - "csharp/**"
+      - "VERSION"
+      - "typescript/package.json"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "spec/**"
+      - "src/undef/telemetry/__init__.py"
+      - "typescript/src/index.ts"
+      - "go/**"
+      - "rust/**"
+      - "csharp/**"
+      - "VERSION"
+      - "typescript/package.json"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: API conformance check
+        run: python spec/validate_conformance.py
+
+  version-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Version sync check
+        run: python scripts/check_version_sync.py

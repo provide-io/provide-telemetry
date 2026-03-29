@@ -126,9 +126,9 @@ describe('reconfigureTelemetry — otlpHeaders change throws after init (kills S
   it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
     updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
-    expect(() =>
-      reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } }),
-    ).toThrow(ConfigurationError);
+    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
+      ConfigurationError,
+    );
   });
 });
 

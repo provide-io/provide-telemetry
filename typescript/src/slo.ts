@@ -14,19 +14,30 @@ const _histograms = new Map<string, Histogram>();
 const _gauges = new Map<string, UpDownCounter>();
 
 function _lazyCounter(name: string, description: string): Counter {
-  if (!_counters.has(name)) _counters.set(name, counter(name, { description }));
-  return _counters.get(name)!;
+  let c = _counters.get(name);
+  if (!c) {
+    c = counter(name, { description });
+    _counters.set(name, c);
+  }
+  return c;
 }
 
 function _lazyHistogram(name: string, description: string, unit: string): Histogram {
-  if (!_histograms.has(name))
-    _histograms.set(name, histogram(name, { description, unit }));
-  return _histograms.get(name)!;
+  let h = _histograms.get(name);
+  if (!h) {
+    h = histogram(name, { description, unit });
+    _histograms.set(name, h);
+  }
+  return h;
 }
 
 function _lazyGauge(name: string, description: string, unit: string): UpDownCounter {
-  if (!_gauges.has(name)) _gauges.set(name, gauge(name, { description, unit }));
-  return _gauges.get(name)!;
+  let g = _gauges.get(name);
+  if (!g) {
+    g = gauge(name, { description, unit });
+    _gauges.set(name, g);
+  }
+  return g;
 }
 
 export function recordRedMetrics(opts: {
@@ -56,11 +67,10 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
-  _lazyGauge(
-    'resource.utilization',
-    'Resource utilization',
-    opts.unit ?? '%',
-  ).add(opts.utilization, { resource: opts.resource });
+  _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%').add(
+    opts.utilization,
+    { resource: opts.resource },
+  );
 }
 
 export function classifyError(statusCode: number): {

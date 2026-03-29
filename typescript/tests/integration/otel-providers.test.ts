@@ -41,7 +41,11 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { _resetConfig, getConfig, setupTelemetry } from '../../src/config';
-import { _areProvidersRegistered, _getRegisteredProviders, _resetRuntimeForTests } from '../../src/runtime';
+import {
+  _areProvidersRegistered,
+  _getRegisteredProviders,
+  _resetRuntimeForTests,
+} from '../../src/runtime';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // Minimal stubs that satisfy OTel API interface checks for provider registration.
@@ -62,18 +66,24 @@ describe('registerOtelProviders', () => {
     _resetRuntimeForTests();
     vi.clearAllMocks();
     // vitest 4.x: use mockImplementation (not mockReturnValue) for class constructors.
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(BasicTracerProvider).mockImplementation(function () { return makeTracerStub(); } as never);
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(BatchSpanProcessor).mockImplementation(function () { return {}; } as never);
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(OTLPTraceExporter).mockImplementation(function () { return {}; } as never);
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(MeterProvider).mockImplementation(function () { return makeMeterStub(); } as never);
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(PeriodicExportingMetricReader).mockImplementation(function () { return {}; } as never);
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(OTLPMetricExporter).mockImplementation(function () { return {}; } as never);
+    vi.mocked(BasicTracerProvider).mockImplementation(function () {
+      return makeTracerStub();
+    } as never);
+    vi.mocked(BatchSpanProcessor).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(OTLPTraceExporter).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(MeterProvider).mockImplementation(function () {
+      return makeMeterStub();
+    } as never);
+    vi.mocked(PeriodicExportingMetricReader).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(OTLPMetricExporter).mockImplementation(function () {
+      return {};
+    } as never);
   });
 
   afterEach(() => {
@@ -96,7 +106,12 @@ describe('registerOtelProviders', () => {
 
   it('constructs exporters with default endpoint and empty headers when neither is configured', async () => {
     // Pass undefined explicitly so the env-derived OTEL_EXPORTER_OTLP_ENDPOINT is overridden.
-    setupTelemetry({ serviceName: 'my-svc', otelEnabled: true, otlpEndpoint: undefined, otlpHeaders: undefined });
+    setupTelemetry({
+      serviceName: 'my-svc',
+      otelEnabled: true,
+      otlpEndpoint: undefined,
+      otlpHeaders: undefined,
+    });
     await registerOtelProviders(getConfig());
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
       url: 'http://localhost:4318/v1/traces',
@@ -141,8 +156,9 @@ describe('registerOtelProviders', () => {
   it('wires BatchSpanProcessor with the trace exporter', async () => {
     setupTelemetry({ serviceName: 'test', otelEnabled: true });
     const fakeExporter = { fake: 'exporter' };
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(OTLPTraceExporter).mockImplementation(function () { return fakeExporter; } as never);
+    vi.mocked(OTLPTraceExporter).mockImplementation(function () {
+      return fakeExporter;
+    } as never);
     await registerOtelProviders(getConfig());
     expect(vi.mocked(BatchSpanProcessor)).toHaveBeenCalledWith(fakeExporter);
   });
@@ -150,10 +166,13 @@ describe('registerOtelProviders', () => {
   it('wires PeriodicExportingMetricReader with the metrics exporter', async () => {
     setupTelemetry({ serviceName: 'test', otelEnabled: true });
     const fakeExporter = { fake: 'metrics-exporter' };
-    // eslint-disable-next-line prefer-arrow-callback
-    vi.mocked(OTLPMetricExporter).mockImplementation(function () { return fakeExporter; } as never);
+    vi.mocked(OTLPMetricExporter).mockImplementation(function () {
+      return fakeExporter;
+    } as never);
     await registerOtelProviders(getConfig());
-    expect(vi.mocked(PeriodicExportingMetricReader)).toHaveBeenCalledWith({ exporter: fakeExporter });
+    expect(vi.mocked(PeriodicExportingMetricReader)).toHaveBeenCalledWith({
+      exporter: fakeExporter,
+    });
   });
 
   it('warns and continues to metrics when trace SDK throws', async () => {

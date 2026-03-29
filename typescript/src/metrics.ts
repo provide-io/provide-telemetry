@@ -8,7 +8,13 @@
  * Safe to call in any environment; instruments are always callable without setup.
  */
 
-import { type Counter, type Histogram, type Meter, type UpDownCounter, metrics } from '@opentelemetry/api';
+import {
+  type Counter,
+  type Histogram,
+  type Meter,
+  type UpDownCounter,
+  metrics,
+} from '@opentelemetry/api';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 

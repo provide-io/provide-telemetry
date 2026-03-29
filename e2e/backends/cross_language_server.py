@@ -9,7 +9,7 @@ Run standalone:
     UNDEF_TRACE_ENABLED=true \\
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:5080/api/default/v1/traces \\
     OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic ..." \\
-    python tests/e2e/backends/cross_language_server.py --port 18765
+    python e2e/backends/cross_language_server.py --port 18765
 
 Endpoints:
     GET /traced   — extracts W3C traceparent, emits child span, returns 200
@@ -32,7 +32,7 @@ from undef.telemetry.config import TelemetryConfig
 
 def _make_handler() -> type[http.server.BaseHTTPRequestHandler]:
     class Handler(http.server.BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        def log_message(self, format: str, *args: object) -> None:
             pass  # suppress default access logs
 
         def _send(self, status: int, body: bytes = b"ok") -> None:

@@ -107,8 +107,9 @@ describe('withTrace — real OTEL provider', () => {
     });
     const spans = spanExporter.getFinishedSpans();
     expect(spans).toHaveLength(2);
-    const inner = spans.find((s) => s.name === 'inner')!;
-    const outer = spans.find((s) => s.name === 'outer')!;
+    const inner = spans.find((s) => s.name === 'inner');
+    const outer = spans.find((s) => s.name === 'outer');
+    if (!inner || !outer) throw new Error('expected inner and outer spans');
     expect(inner.parentSpanContext?.spanId).toBe(outer.spanContext().spanId);
   });
 

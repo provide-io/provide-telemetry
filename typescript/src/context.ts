@@ -21,7 +21,6 @@ type ALS = {
 };
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _asyncLocalStorage: ALS | null = null;
 try {
   // Dynamic require so the import doesn't break browser bundles.
