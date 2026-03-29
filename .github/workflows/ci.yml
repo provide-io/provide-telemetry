@@ -54,6 +54,40 @@ jobs:
       - run: uv run python scripts/check_licenses.py
       - run: uv run python scripts/run_pytest_gate.py
 
+  typescript-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test:coverage
+
+  typescript-mutation-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+      - run: npm run test:mutation
+
   mutation-gate:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
@@ -215,7 +249,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+        working-directory: typescript
       - run: uv sync --group dev --extra otel
+      - run: uv run python -m playwright install --with-deps chromium
       - name: Run OpenObserve E2E
         run: |
           if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then

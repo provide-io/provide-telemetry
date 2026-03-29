@@ -13,7 +13,7 @@ license-files = ["LICENSES/*"]
 authors = [{name = "tim", email = "code@tim.life"}]
 keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -75,6 +75,7 @@ dev = [
   "mutmut>=3.3.1",
   "pip-audit>=2.7.0",
   "pip-licenses>=5.0.0",
+  "playwright>=1.50.0",
   "pre-commit>=4.0.1",
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
