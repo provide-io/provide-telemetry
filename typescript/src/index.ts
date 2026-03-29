@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
- * @undef/telemetry — TypeScript structured logging + OTEL
+ * @undef-games/telemetry — TypeScript structured logging + OTEL
  *
  * Feature parity with the Python undef.telemetry package.
  *
  * Quick start:
- *   import { setupTelemetry, getLogger, bindContext } from '@undef/telemetry';
+ *   import { setupTelemetry, getLogger, bindContext } from '@undef-games/telemetry';
  *
  *   setupTelemetry({ serviceName: 'my-app', logLevel: 'debug' });
  *   const log = getLogger('api');

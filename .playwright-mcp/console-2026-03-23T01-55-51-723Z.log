@@ -1,0 +1,2 @@
+[      27ms] [WARNING] {time: 1774230951750, level: 40, name: demo, event: rate_limit.approaching, requests_per_minute: 450} @ http://localhost:7432/undef-telemetry.js:9501
+[      27ms] [ERROR] {time: 1774230951750, level: 50, name: demo, event: upstream.timeout, upstream: db} @ http://localhost:7432/undef-telemetry.js:9501

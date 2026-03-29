@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // @vitest-environment node
 
 /**
@@ -63,7 +63,7 @@ describe('getActiveTraceIds — real OTEL provider', () => {
   afterEach(teardownTracerProvider);
 
   it('returns non-zero trace_id and span_id inside an active span', () => {
-    const tracer = trace.getTracer('@undef/telemetry');
+    const tracer = trace.getTracer('@undef-games/telemetry');
     tracer.startActiveSpan('test.op', (span) => {
       const ids = getActiveTraceIds();
       expect(ids.trace_id).toBeDefined();
@@ -169,7 +169,7 @@ describe('write hook trace_id injection — real OTEL provider', () => {
 
   it('injects real trace_id and span_id into log objects inside a span', () => {
     const hook = makeWriteHook();
-    const tracer = trace.getTracer('@undef/telemetry');
+    const tracer = trace.getTracer('@undef-games/telemetry');
     let capturedObj: Record<string, unknown> = {};
 
     tracer.startActiveSpan('hook.test', (span) => {
