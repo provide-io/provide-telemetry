@@ -10,6 +10,8 @@
 
 ---
 
+## Tasks
+
 ### Task 1: Create the API spec file
 
 **Files:**
