@@ -69,6 +69,9 @@ def add_error_fingerprint(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
         exc_type_name = type(exc_info[1]).__name__
         event_dict["error_fingerprint"] = _compute_error_fingerprint(exc_type_name, exc_info[2])
         return event_dict
+    if isinstance(exc_info, BaseException):
+        event_dict["error_fingerprint"] = _compute_error_fingerprint(type(exc_info).__name__, exc_info.__traceback__)
+        return event_dict
     exc_name = event_dict.get("exc_name") or event_dict.get("exception")
     if exc_name:
         event_dict["error_fingerprint"] = _compute_error_fingerprint(str(exc_name), None)
