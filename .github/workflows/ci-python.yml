@@ -38,15 +38,21 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-2025, macos-15]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
         exclude:
-          # Run full matrix on Linux, only 3.11 on Windows (coverage + compat check)
-          - os: windows-latest
+          # Full Python matrix on Linux; only 3.11 on Windows and macOS
+          - os: windows-2025
             python-version: "3.12"
-          - os: windows-latest
+          - os: windows-2025
             python-version: "3.13"
-          - os: windows-latest
+          - os: windows-2025
+            python-version: "3.14"
+          - os: macos-15
+            python-version: "3.12"
+          - os: macos-15
+            python-version: "3.13"
+          - os: macos-15
             python-version: "3.14"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -75,7 +81,7 @@ jobs:
 
   mutation-gate:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
@@ -86,7 +92,7 @@ jobs:
       - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 2 --max-children 1 --min-mutation-score 100
 
   compliance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -102,7 +108,7 @@ jobs:
       - run: uv run codespell
 
   otel-extras-validation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -117,7 +123,7 @@ jobs:
       - run: uv run python scripts/run_pytest_gate.py -m otel --no-cov -q
 
   examples-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
@@ -172,7 +178,7 @@ jobs:
         run: docker rm -f openobserve-local || true
 
   otlp-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
@@ -208,7 +214,7 @@ jobs:
         run: docker rm -f otelcol || true
 
   performance-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
@@ -219,7 +225,7 @@ jobs:
       - run: uv run python scripts/run_performance_smoke.py --iterations 300000
 
   memory-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     timeout-minutes: 120
     steps:
