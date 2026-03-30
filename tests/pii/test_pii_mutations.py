@@ -310,3 +310,111 @@ class TestSanitizePayload:
         result = sanitize_payload(payload, enabled=True)
         # Custom rule is a no-op; default must not overwrite with "***"
         assert result["items"][0]["token"] == "val"
+
+
+# ---------------------------------------------------------------------------
+# Additional _apply_rule mutant killers
+# ---------------------------------------------------------------------------
+
+
+class TestApplyRuleDictOutput:
+    """Kill mutants in _apply_rule dict construction."""
+
+    def test_apply_rule_dict_starts_as_empty_dict_not_none(self) -> None:
+        """Kills mutmut_1: output = {} -> output = None.
+
+        When _apply_rule processes a dict, it must build an output dict.
+        The None mutant would crash on output[key] = ... assignment.
+        """
+        rule = PIIRule(path=("nonexistent",), mode="redact")
+        node: dict[str, Any] = {"safe_key": "safe_value"}
+        result = _apply_rule(node, rule)
+        assert isinstance(result, dict)
+        assert result == {"safe_key": "safe_value"}
+
+    def test_apply_rule_dict_with_matching_rule_produces_dict(self) -> None:
+        """Complementary: when rule matches, output must still be a dict."""
+        rule = PIIRule(path=("secret",), mode="redact")
+        node: dict[str, Any] = {"secret": "hunter2", "public": "data"}
+        result = _apply_rule(node, rule)
+        assert isinstance(result, dict)
+        assert result["secret"] == "***"
+        assert result["public"] == "data"
+
+
+# ---------------------------------------------------------------------------
+# Additional _apply_default_sensitive_key_redaction mutant killers
+# ---------------------------------------------------------------------------
+
+
+class TestApplyDefaultSensitiveKeyRedactionMutants:
+    """Kill remaining mutants in _apply_default_sensitive_key_redaction."""
+
+    def test_none_rule_targeted_keys_replaced_with_frozenset(self) -> None:
+        """Kills mutmut_1: `is None` -> `is not None` and mutmut_2: frozenset() -> None.
+
+        When rule_targeted_keys is None (default), it must be replaced with
+        an empty frozenset so the `key in rule_targeted_keys` check works.
+        The `is not None` mutant would skip the replacement when keys IS None,
+        causing a TypeError on `key in None`.
+        The `frozenset() -> None` mutant would replace with None, also causing TypeError.
+        """
+        # Call with rule_targeted_keys=None (default) — must not crash
+        node: dict[str, Any] = {"password": "secret123", "name": "alice"}
+        original: dict[str, Any] = {"password": "secret123", "name": "alice"}
+        result = _apply_default_sensitive_key_redaction(node, original)
+        assert result["password"] == "***"
+        assert result["name"] == "alice"
+
+    def test_and_vs_or_dict_isinstance_with_non_dict_original(self) -> None:
+        """Kills mutmut_3: `and isinstance(original, dict)` -> `or isinstance(original, dict)`.
+
+        When node is a dict but original is a non-dict (e.g., a string),
+        the `or` mutant would enter the dict branch and crash on original.get().
+        """
+        result = _apply_default_sensitive_key_redaction(
+            {"password": "secret"}, 42
+        )
+        # Should return the node unchanged since original is not a dict
+        assert result == {"password": "secret"}
+
+    def test_and_vs_or_dict_isinstance_with_non_dict_node(self) -> None:
+        """Complementary: node is NOT a dict but original IS a dict.
+
+        The `or` mutant would enter the dict branch and crash on node.items().
+        """
+        result = _apply_default_sensitive_key_redaction(
+            "just_a_string", {"password": "secret"}
+        )
+        assert result == "just_a_string"
+
+
+# ---------------------------------------------------------------------------
+# Additional sanitize_payload mutant killers
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizePayloadEnabledFlag:
+    """Kill mutants in sanitize_payload enabled flag."""
+
+    def test_disabled_returns_payload_without_redaction(self) -> None:
+        """Kills mutmut_1: `if not enabled` -> `if enabled`.
+
+        When enabled=False, sensitive keys must NOT be redacted.
+        The mutant would invert the check, redacting when disabled.
+        """
+        payload: dict[str, Any] = {"password": "secret", "data": "public"}
+        result = sanitize_payload(payload, enabled=False)
+        assert result["password"] == "secret"  # NOT redacted
+        assert result["data"] == "public"
+
+    def test_enabled_redacts_sensitive_keys(self) -> None:
+        """Complementary: when enabled=True, sensitive keys ARE redacted.
+
+        The mutant (if not enabled -> if enabled) would skip redaction
+        when enabled=True and return a plain copy.
+        """
+        payload: dict[str, Any] = {"password": "secret", "data": "public"}
+        result = sanitize_payload(payload, enabled=True)
+        assert result["password"] == "***"  # redacted
+        assert result["data"] == "public"
