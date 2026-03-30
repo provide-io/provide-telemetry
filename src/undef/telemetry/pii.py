@@ -35,10 +35,7 @@ _SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
 
 def _detect_secret_in_value(value: str) -> bool:
     """Return True if value matches a known secret pattern."""
-    for _name, pattern in _SECRET_PATTERNS:
-        if pattern.search(value):
-            return True
-    return False
+    return any(pattern.search(value) for _name, pattern in _SECRET_PATTERNS)
 
 
 _DEFAULT_SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
