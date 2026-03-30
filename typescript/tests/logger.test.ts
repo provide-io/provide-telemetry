@@ -393,4 +393,17 @@ describe('write hook — config read dynamically (Bug 2 regression)', () => {
     hook(obj);
     expect(obj['error_fingerprint']).toBeUndefined();
   });
+
+  it('write hook uses pretty formatting when logFormat=pretty', () => {
+    makeCfg({ consoleOutput: true, logFormat: 'pretty' as 'json' | 'pretty' });
+    const hook = makeWriteHook();
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    hook({ level: 30, event: 'pretty.test', time: Date.now() });
+    expect(spy).toHaveBeenCalledOnce();
+    // Pretty output is a string, not an object
+    const output = spy.mock.calls[0][0];
+    expect(typeof output).toBe('string');
+    expect(output).toContain('pretty.test');
+    spy.mockRestore();
+  });
 });
