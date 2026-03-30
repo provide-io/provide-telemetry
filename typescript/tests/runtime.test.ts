@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig } from '../src/config';
@@ -126,9 +126,9 @@ describe('reconfigureTelemetry — otlpHeaders change throws after init (kills S
   it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
     updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
-    expect(() =>
-      reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } }),
-    ).toThrow(ConfigurationError);
+    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
+      ConfigurationError,
+    );
   });
 });
 

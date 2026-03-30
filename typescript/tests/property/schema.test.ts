@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import * as fc from 'fast-check';
 import { describe, it } from 'vitest';
@@ -36,33 +36,27 @@ describe('property: eventName()', () => {
 
   it('fewer than 3 segments always throws EventSchemaError', () => {
     fc.assert(
-      fc.property(
-        fc.array(validSegment, { minLength: 0, maxLength: 2 }),
-        (segs) => {
-          try {
-            eventName(...segs);
-            return false; // should have thrown
-          } catch (e) {
-            return e instanceof EventSchemaError;
-          }
-        },
-      ),
+      fc.property(fc.array(validSegment, { minLength: 0, maxLength: 2 }), (segs) => {
+        try {
+          eventName(...segs);
+          return false; // should have thrown
+        } catch (e) {
+          return e instanceof EventSchemaError;
+        }
+      }),
     );
   });
 
   it('more than 5 segments in strict mode always throws', () => {
     fc.assert(
-      fc.property(
-        fc.array(validSegment, { minLength: 6, maxLength: 10 }),
-        (segs) => {
-          try {
-            eventName(...segs);
-            return false;
-          } catch (e) {
-            return e instanceof EventSchemaError;
-          }
-        },
-      ),
+      fc.property(fc.array(validSegment, { minLength: 6, maxLength: 10 }), (segs) => {
+        try {
+          eventName(...segs);
+          return false;
+        } catch (e) {
+          return e instanceof EventSchemaError;
+        }
+      }),
     );
   });
 });
@@ -84,22 +78,18 @@ describe('property: validateEventName()', () => {
 
   it('segments with uppercase always fail strict validation', () => {
     fc.assert(
-      fc.property(
-        validSegment,
-        fc.string({ minLength: 1, maxLength: 10 }),
-        (seg1, badSeg) => {
-          // Create a segment with at least one uppercase letter
-          const upperSeg = badSeg.toUpperCase();
-          if (upperSeg === upperSeg.toLowerCase()) return true; // no uppercase chars, skip
-          const name = [seg1, seg1, upperSeg].join('.');
-          try {
-            validateEventName(name, true);
-            return false; // should have thrown
-          } catch (e) {
-            return e instanceof EventSchemaError;
-          }
-        },
-      ),
+      fc.property(validSegment, fc.string({ minLength: 1, maxLength: 10 }), (seg1, badSeg) => {
+        // Create a segment with at least one uppercase letter
+        const upperSeg = badSeg.toUpperCase();
+        if (upperSeg === upperSeg.toLowerCase()) return true; // no uppercase chars, skip
+        const name = [seg1, seg1, upperSeg].join('.');
+        try {
+          validateEventName(name, true);
+          return false; // should have thrown
+        } catch (e) {
+          return e instanceof EventSchemaError;
+        }
+      }),
     );
   });
 });

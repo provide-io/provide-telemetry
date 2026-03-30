@@ -76,7 +76,7 @@ async function main(): Promise<void> {
   });
   metrics.setGlobalMeterProvider(meterProvider);
 
-  // ── @undef/telemetry setup ───────────────────────────────────────────────
+  // ── @undef-games/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
     serviceName: 'undef-telemetry-ts-examples',

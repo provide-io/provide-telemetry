@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Structured logger — wraps pino with:
@@ -99,8 +99,7 @@ function getRootLogger(): pino.Logger {
   // In Node.js / Vitest, we use a custom destination stream that forwards every
   // serialised log line back through the write hook.
   // Stryker disable all
-  const isNodeEnv =
-    typeof process !== 'undefined' && typeof process.version === 'string';
+  const isNodeEnv = typeof process !== 'undefined' && typeof process.version === 'string';
 
   /* c8 ignore else */
   if (isNodeEnv) {

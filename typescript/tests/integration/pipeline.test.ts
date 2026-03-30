@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Integration tests — full pipeline: setupTelemetry → getLogger → log → capture.
@@ -339,8 +339,6 @@ describe('End-to-end pipeline', () => {
     bindContext({ request_id: 'req-child-001' });
     const log = getLogger('service');
     const requestLog = log.child({ component: 'db' });
-    expect(() =>
-      requestLog.info({ event: 'query_ok', table: 'users', rows: 5 }),
-    ).not.toThrow();
+    expect(() => requestLog.info({ event: 'query_ok', table: 'users', rows: 5 })).not.toThrow();
   });
 });

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -188,7 +188,9 @@ describe('extractW3cContext — spread conditionals for tracestate/baggage', () 
 
 describe('propagation — 5-part traceparent rejected (kills ConditionalExpression→false on parts.length!==4)', () => {
   it('rejects traceparent with 5 parts', () => {
-    const ctx = extractW3cContext({ traceparent: '00-' + 'a'.repeat(32) + '-' + 'b'.repeat(16) + '-00-extra' });
+    const ctx = extractW3cContext({
+      traceparent: '00-' + 'a'.repeat(32) + '-' + 'b'.repeat(16) + '-00-extra',
+    });
     expect(ctx).not.toHaveProperty('traceId');
     expect(ctx).not.toHaveProperty('spanId');
     expect(ctx).not.toHaveProperty('traceparent');

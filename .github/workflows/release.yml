@@ -1,11 +1,14 @@
-name: Release
+name: 7. 🚀 Release
 
 on:
   push:
     tags:
       - "v*"
+      - "undef-telemetry-v*"
+      - "telemetry-v*"
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,18 +16,26 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: "3.11"
       - run: uv sync --group dev
       - run: uv run python -m build
       - run: uv run twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: dist
           path: dist/*
+      - name: Generate Python SBOM
+        run: |
+          uv run pip install cyclonedx-bom
+          uv run cyclonedx-py environment --output-format json -o sbom-python.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-python
+          path: sbom-python.cdx.json
 
   publish-pypi:
     needs: build
@@ -37,11 +48,11 @@ jobs:
       name: pypi
       url: https://pypi.org/p/undef-telemetry
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           name: dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
 
   build-typescript:
     runs-on: ubuntu-latest
@@ -51,8 +62,8 @@ jobs:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
         with:
           node-version: "22"
           cache: npm
@@ -60,10 +71,49 @@ jobs:
       - run: npm ci
       - run: npm run test:coverage
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: typescript-dist
           path: typescript/dist/
+      - name: Generate TypeScript SBOM
+        run: npx @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format json --output-file sbom-typescript.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-typescript
+          path: sbom-typescript.cdx.json
+
+  sign-and-upload:
+    needs: [build, build-typescript]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: sbom-python
+          path: sbom
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: sbom-typescript
+          path: sbom
+      - uses: sigstore/gh-action-sigstore-python@f514d46b907ebcd5bedc05145c03b69c1edd8b46  # v3
+        with:
+          inputs: dist/*.whl dist/*.tar.gz
+      - name: Upload artifacts and signatures to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
+            sbom/sbom-python.cdx.json \
+            sbom/sbom-typescript.cdx.json \
+            --clobber
 
   publish-npm:
     needs: build-typescript
@@ -74,20 +124,20 @@ jobs:
       contents: read
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@undef/telemetry
+      url: https://www.npmjs.com/package/@undef-games/telemetry
     defaults:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           name: typescript-dist
           path: typescript/dist

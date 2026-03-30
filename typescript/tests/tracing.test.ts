@@ -1,9 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { trace } from '@opentelemetry/api';
 import { describe, expect, it, vi } from 'vitest';
-import { _resetTraceContext, getActiveTraceIds, getTraceContext, getTracer, setTraceContext, tracer, traceDecorator, withTrace } from '../src/tracing';
+import {
+  _resetTraceContext,
+  getActiveTraceIds,
+  getTraceContext,
+  getTracer,
+  setTraceContext,
+  tracer,
+  traceDecorator,
+  withTrace,
+} from '../src/tracing';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {
@@ -101,7 +110,6 @@ describe('withTrace', () => {
   it('propagates async rejections (non-Error string)', async () => {
     await expect(
       withTrace('test.reject.string', async () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'string rejection';
       }),
     ).rejects.toBe('string rejection');
@@ -110,7 +118,6 @@ describe('withTrace', () => {
   it('propagates sync non-Error throw', () => {
     expect(() =>
       withTrace('test.throw.string', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'sync string error';
       }),
     ).toThrow('sync string error');
@@ -205,11 +212,17 @@ describe('withTrace — span.setStatus called on error', () => {
       setStatus: mockSetStatus,
     };
     const mockTracer = {
-      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) => cb(mockSpan)),
+      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
+        cb(mockSpan),
+      ),
     };
     vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
 
-    expect(() => withTrace('test.error', () => { throw new Error('oops'); })).toThrow('oops');
+    expect(() =>
+      withTrace('test.error', () => {
+        throw new Error('oops');
+      }),
+    ).toThrow('oops');
 
     expect(mockSetStatus).toHaveBeenCalledOnce();
     const call = mockSetStatus.mock.calls[0][0] as { code: number; message: string };
@@ -228,12 +241,16 @@ describe('withTrace — span.setStatus called on error', () => {
       setStatus: mockSetStatus,
     };
     const mockTracer = {
-      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) => cb(mockSpan)),
+      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
+        cb(mockSpan),
+      ),
     };
     vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
 
     await expect(
-      withTrace('test.async.error', async () => { throw new Error('async oops'); })
+      withTrace('test.async.error', async () => {
+        throw new Error('async oops');
+      }),
     ).rejects.toThrow('async oops');
 
     expect(mockSetStatus).toHaveBeenCalledOnce();

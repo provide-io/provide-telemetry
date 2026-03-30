@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -132,7 +132,9 @@ describe('sanitizePayload — hash mode', () => {
   });
 
   it('falls back to [HASHED] when crypto is unavailable', () => {
-    _setHashFnForTest(() => { throw new Error('no crypto'); });
+    _setHashFnForTest(() => {
+      throw new Error('no crypto');
+    });
     registerPiiRule({ path: 'id', mode: 'hash' });
     const obj: Record<string, unknown> = { id: 'user-123' };
     sanitizePayload(obj);
@@ -145,7 +147,10 @@ describe('sanitizePayload — array values', () => {
     // Rule: 'items.*.id' targets the 'id' field inside each array element of 'items'
     registerPiiRule({ path: 'items.*.id', mode: 'drop' });
     const obj: Record<string, unknown> = {
-      items: [{ id: 'u1', name: 'Alice' }, { id: 'u2', name: 'Bob' }],
+      items: [
+        { id: 'u1', name: 'Alice' },
+        { id: 'u2', name: 'Bob' },
+      ],
     };
     sanitizePayload(obj);
     const items = obj['items'] as Array<Record<string, unknown>>;

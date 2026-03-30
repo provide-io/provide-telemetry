@@ -19,3 +19,4 @@ bf-*.txt
 otel_stderr.txt
 coverage.json
 memray-output/
+.worktrees/

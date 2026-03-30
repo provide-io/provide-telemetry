@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -39,9 +39,11 @@ describe('setSamplingPolicy / getSamplingPolicy', () => {
     setSamplingPolicy({ defaultRate: 0.8, overrides: { a: 0.5 } });
     const p = getSamplingPolicy();
     p.defaultRate = 0.1;
-    p.overrides!['a'] = 0.0;
+    if (p.overrides) p.overrides['a'] = 0.0;
     expect(getSamplingPolicy().defaultRate).toBe(0.8);
-    expect(getSamplingPolicy().overrides!['a']).toBe(0.5);
+    const overrides = getSamplingPolicy().overrides;
+    expect(overrides).toBeDefined();
+    expect(overrides?.['a']).toBe(0.5);
   });
 });
 

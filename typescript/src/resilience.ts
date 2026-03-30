@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Exporter resilience — retry, backoff, timeout, and circuit breaker.
@@ -128,7 +128,9 @@ export async function runWithResilience<T>(
   }
 
   if (policy.failOpen) return null;
-  throw lastError!;
+  // Stryker disable next-line StringLiteral: unreachable fallback — lastError is always set by the catch block above
+  /* v8 ignore next */
+  throw lastError ?? new Error('all retry attempts failed');
 }
 
 export function _resetResilienceForTests(): void {

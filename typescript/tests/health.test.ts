@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -48,9 +48,16 @@ describe('_incrementHealth', () => {
 
   it('increments all numeric fields', () => {
     const fields = [
-      'logsEmitted', 'logsDropped', 'tracesEmitted', 'tracesDropped',
-      'metricsEmitted', 'metricsDropped', 'exportFailures', 'exportRetries',
-      'asyncBlockingRisk', 'exemplarUnsupported',
+      'logsEmitted',
+      'logsDropped',
+      'tracesEmitted',
+      'tracesDropped',
+      'metricsEmitted',
+      'metricsDropped',
+      'exportFailures',
+      'exportRetries',
+      'asyncBlockingRisk',
+      'exemplarUnsupported',
     ] as const;
     for (const f of fields) {
       _incrementHealth(f, 2);

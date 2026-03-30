@@ -110,3 +110,13 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - E2E tests require `OPENOBSERVE_URL`, `OPENOBSERVE_USER`, `OPENOBSERVE_PASSWORD` env vars.
 - Memray stress tests live in `tests/memray/` with baselines in `tests/memray/baselines.json`.
 - Memray tests are excluded from default runs (`-m "not memray"`); run with `make memray-baseline`.
+
+## Polyglot Structure
+
+- `spec/telemetry-api.yaml` — canonical API surface definition; all languages validate against it.
+- `spec/validate_conformance.py` — checks language exports against spec.
+- `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
+- `VERSION` contains major.minor only (e.g. `0.3`); each language tracks patch independently.
+- `e2e/` — cross-language E2E tests.
+- Language directories: `typescript/` (implemented), `go/`, `rust/`, `csharp/` (planned) — each self-contained with own build config.
+- Python stays at repo root (`src/`, `pyproject.toml`, `tests/`).

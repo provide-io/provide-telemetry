@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Bounded queue controls for telemetry signal paths.
@@ -45,7 +45,10 @@ function _maxFor(signal: QueueTicket['signal']): number {
 export function tryAcquire(signal: QueueTicket['signal']): QueueTicket | null {
   const max = _maxFor(signal);
   if (max <= 0) return { signal, token: 0 };
-  const set = _acquired.get(signal)!;
+  const set = _acquired.get(signal);
+  // Stryker disable next-line ConditionalExpression: defensive guard — _acquired is initialized with all three signal keys, so get() never returns undefined
+  /* v8 ignore next */
+  if (!set) return null;
   if (set.size >= max) return null;
   const token = _tokenCounter++;
   set.add(token);

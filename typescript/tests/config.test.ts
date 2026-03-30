@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, configFromEnv, getConfig, setupTelemetry, version } from '../src/config';
@@ -135,7 +135,9 @@ describe('configFromEnv — default values', () => {
 describe('configFromEnv — env var reads', () => {
   function withEnv(vars: Record<string, string>, fn: () => void): void {
     for (const [k, v] of Object.entries(vars)) process.env[k] = v;
-    try { fn(); } finally {
+    try {
+      fn();
+    } finally {
       for (const k of Object.keys(vars)) delete process.env[k];
     }
   }
@@ -172,6 +174,12 @@ describe('configFromEnv — env var reads', () => {
 
   it('invalid UNDEF_LOG_FORMAT falls back to json default', () => {
     withEnv({ UNDEF_LOG_FORMAT: 'xml' }, () => {
+      expect(configFromEnv().logFormat).toBe('json');
+    });
+  });
+
+  it('empty UNDEF_LOG_FORMAT falls back to json default', () => {
+    withEnv({ UNDEF_LOG_FORMAT: '' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
