@@ -228,7 +228,7 @@ def test_pii_engine_default_and_rules() -> None:
 
 
 def test_pii_sanitize_payload_non_dict_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pii_mod, "_apply_default_sensitive_key_redaction", lambda _node: [])
+    monkeypatch.setattr(pii_mod, "_apply_default_sensitive_key_redaction", lambda _node, _orig, _keys=None, **kw: [])
     assert pii_mod.sanitize_payload({"x": "y"}, enabled=True) == {}
 
 
