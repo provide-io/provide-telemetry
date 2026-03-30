@@ -10,7 +10,6 @@ from __future__ import annotations
 import contextvars
 
 _context: contextvars.ContextVar[dict[str, object] | None] = contextvars.ContextVar("telemetry_context", default=None)
-_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("telemetry_session_id", default=None)
 
 
 def get_context() -> dict[str, object]:
@@ -41,18 +40,18 @@ def restore_context(snapshot: dict[str, object]) -> None:
 
 def bind_session_context(session_id: str) -> None:
     """Bind a session ID that propagates across all telemetry events."""
-    _session_id.set(session_id)
     bind_context(session_id=session_id)
 
 
 def get_session_id() -> str | None:
     """Return the current session ID, or None if not set."""
-    return _session_id.get()
+    ctx = _context.get()
+    val = ctx.get("session_id") if ctx else None
+    return str(val) if val is not None else None
 
 
 def clear_session_context() -> None:
     """Clear the session ID."""
-    _session_id.set(None)
     unbind_context("session_id")
 
 
