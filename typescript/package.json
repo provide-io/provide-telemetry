@@ -29,8 +29,15 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./otel": {
+      "types": "./dist/otel.d.ts",
+      "workerd": "./dist/otel-noop.js",
+      "edge-light": "./dist/otel-noop.js",
+      "browser": "./dist/otel-noop.js",
+      "default": "./dist/otel.js"
     }
   },
   "main": "./dist/index.js",
