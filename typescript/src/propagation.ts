@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * W3C trace context propagation helpers.
@@ -29,7 +29,11 @@ function _parseTraceparent(value: string): { traceId?: string; spanId?: string }
   if (version.toLowerCase() === 'ff') return {};
   if (traceId === '0'.repeat(32) || spanId === '0'.repeat(16)) return {};
   // Validate that all fields are valid hex strings.
-  if (!/^[0-9a-fA-F]+$/.test(version) || !/^[0-9a-fA-F]+$/.test(traceId) || !/^[0-9a-fA-F]+$/.test(spanId)) {
+  if (
+    !/^[0-9a-fA-F]+$/.test(version) ||
+    !/^[0-9a-fA-F]+$/.test(traceId) ||
+    !/^[0-9a-fA-F]+$/.test(spanId)
+  ) {
     return {};
   }
   return { traceId: traceId.toLowerCase(), spanId: spanId.toLowerCase() };
@@ -75,7 +79,9 @@ export function clearPropagationContext(): void {
   // Stryker disable next-line ConditionalExpression,EqualityOperator
   if (_stack.length > 0) {
     // Stryker enable BlockStatement
-    _active = _stack.pop()!;
+    const restored = _stack.pop();
+    /* v8 ignore next */
+    _active = restored ?? {};
   } else {
     // Stryker disable BlockStatement: empty else body is equivalent — _active is always {} here because pop() restores prior state
     _active = {};

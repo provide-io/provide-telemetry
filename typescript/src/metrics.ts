@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Metric instruments — mirrors Python undef.telemetry counter/gauge/histogram.
@@ -8,12 +8,18 @@
  * Safe to call in any environment; instruments are always callable without setup.
  */
 
-import { type Counter, type Histogram, type Meter, type UpDownCounter, metrics } from '@opentelemetry/api';
+import {
+  type Counter,
+  type Histogram,
+  type Meter,
+  type UpDownCounter,
+  metrics,
+} from '@opentelemetry/api';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
-const METER_NAME = '@undef/telemetry';
+const METER_NAME = '@undef-games/telemetry';
 
 export interface MetricOptions {
   description?: string;

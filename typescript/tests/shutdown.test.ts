@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ShutdownableProvider, _getRegisteredProviders, _resetRuntimeForTests, _storeRegisteredProviders } from '../src/runtime';
+import {
+  type ShutdownableProvider,
+  _getRegisteredProviders,
+  _resetRuntimeForTests,
+  _storeRegisteredProviders,
+} from '../src/runtime';
 import { shutdownTelemetry } from '../src/shutdown';
 
 beforeEach(() => _resetRuntimeForTests());
@@ -22,8 +27,12 @@ describe('shutdownTelemetry', () => {
   it('calls forceFlush then shutdown on each registered provider', async () => {
     const order: string[] = [];
     const provider: ShutdownableProvider = {
-      forceFlush: vi.fn().mockImplementation(async () => { order.push('flush'); }),
-      shutdown: vi.fn().mockImplementation(async () => { order.push('shutdown'); }),
+      forceFlush: vi.fn().mockImplementation(async () => {
+        order.push('flush');
+      }),
+      shutdown: vi.fn().mockImplementation(async () => {
+        order.push('shutdown');
+      }),
     };
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();
@@ -93,7 +102,13 @@ describe('shutdownTelemetry', () => {
   it('awaits forceFlush promise resolution before continuing', async () => {
     let flushed = false;
     const provider: ShutdownableProvider = {
-      forceFlush: () => new Promise<void>(resolve => setTimeout(() => { flushed = true; resolve(); }, 0)),
+      forceFlush: () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            flushed = true;
+            resolve();
+          }, 0),
+        ),
       shutdown: vi.fn().mockResolvedValue(undefined),
     };
     _storeRegisteredProviders([provider]);
@@ -104,7 +119,13 @@ describe('shutdownTelemetry', () => {
   it('awaits shutdown promise resolution before completing', async () => {
     let shut = false;
     const provider: ShutdownableProvider = {
-      shutdown: () => new Promise<void>(resolve => setTimeout(() => { shut = true; resolve(); }, 0)),
+      shutdown: () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            shut = true;
+            resolve();
+          }, 0),
+        ),
     };
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();

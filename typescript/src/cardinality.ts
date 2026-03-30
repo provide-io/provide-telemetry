@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Attribute cardinality guardrails with TTL pruning.
@@ -24,6 +24,7 @@ export function registerCardinalityLimit(key: string, limit: CardinalityLimit): 
     maxValues: Math.max(1, limit.maxValues),
     ttlSeconds: Math.max(1, limit.ttlSeconds),
   });
+  // Stryker disable next-line ConditionalExpression: equivalent mutant — guardAttributes line 64 has a ?? fallback that compensates if _seen entry is absent
   if (!_seen.has(key)) _seen.set(key, new Map());
 }
 
@@ -38,8 +39,11 @@ export function clearCardinalityLimits(): void {
 }
 
 function _pruneExpired(key: string, now: number): void {
-  const limit = _limits.get(key)!;
-  const seen = _seen.get(key)!;
+  const limit = _limits.get(key);
+  const seen = _seen.get(key);
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: defensive guard — _pruneExpired is only called from guardAttributes after _limits.get(key) succeeds
+  /* v8 ignore next 2 */
+  if (!limit || !seen) return;
   const threshold = now - limit.ttlSeconds * 1000;
   for (const [value, seenAt] of seen) {
     if (seenAt < threshold) seen.delete(value);

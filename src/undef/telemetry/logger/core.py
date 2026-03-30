@@ -85,13 +85,13 @@ def _make_filtering_bound_logger(level: int) -> type:
             self.debug(event, _trace=True, **kw)
     else:
         _trace = _permissive_nop
-    cls.trace = _trace  # type: ignore[attr-defined]
+    setattr(cls, "trace", _trace)  # noqa: B010  # pragma: no mutate  # API name
 
     # .is_debug_enabled() / .is_trace_enabled() — baked in at class creation
     _debug_ok = level <= logging.DEBUG
     _trace_ok = level <= TRACE
-    cls.is_debug_enabled = lambda _self: _debug_ok  # type: ignore[attr-defined]
-    cls.is_trace_enabled = lambda _self: _trace_ok  # type: ignore[attr-defined]
+    setattr(cls, "is_debug_enabled", lambda _self: _debug_ok)  # noqa: B010  # pragma: no mutate
+    setattr(cls, "is_trace_enabled", lambda _self: _trace_ok)  # noqa: B010  # pragma: no mutate
 
     return cls
 

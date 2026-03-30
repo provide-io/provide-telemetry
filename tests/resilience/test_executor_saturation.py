@@ -174,10 +174,7 @@ class TestCircuitBreakerLifecycle:
         # Probe times out (event still closed) → circuit re-trips.
         result2 = run_with_resilience("logs", _make_stuck_op(event))
         assert result2 is None
-        assert (
-            resilience_mod._consecutive_timeouts["logs"]
-            >= resilience_mod._CIRCUIT_BREAKER_THRESHOLD
-        )
+        assert resilience_mod._consecutive_timeouts["logs"] >= resilience_mod._CIRCUIT_BREAKER_THRESHOLD
 
         # Cleanup
         event.set()

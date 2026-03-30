@@ -81,6 +81,7 @@ dev = [
   "pytest-asyncio>=0.24.0",
   "pytest-cov>=6.1.1",
   "pytest-randomly>=3.15.0",
+  "pytest-rerunfailures>=14.0",
   "pytest-xdist>=3.8.0",
   "reuse>=6.2.0",
   "ruff>=0.14.5",
@@ -102,6 +103,7 @@ markers = [
   "tooling: tests that validate local development scripts/tooling",
   "memray: memory profiling stress tests (deselected by default, run with -m memray)",
   "slow: long-running tests excluded from default runs",
+  "flaky: tests that may flake on slow CI — retried automatically via pytest-rerunfailures",
 ]
 addopts = [
   "-p", "no:undef_telemetry",
@@ -136,6 +138,7 @@ ignore = ["E501", "S101"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "S", "RUF012"]
+"e2e/**/*.py" = ["ARG", "S", "SIM105", "RUF012"]
 "scripts/**/*.py" = ["S"]
 
 [tool.mypy]

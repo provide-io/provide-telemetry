@@ -31,6 +31,7 @@ EXCLUDED_DIRS = {
     "mutants",
     "dist",
     "build",
+    "node_modules",
     "__pycache__",
 }
 

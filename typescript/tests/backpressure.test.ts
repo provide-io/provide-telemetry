@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -36,8 +36,9 @@ describe('tryAcquire', () => {
   it('returns token=0 when queue is unlimited (maxLogs=0)', () => {
     const ticket = tryAcquire('logs');
     expect(ticket).not.toBeNull();
-    expect(ticket!.token).toBe(0);
-    expect(ticket!.signal).toBe('logs');
+    if (ticket === null) throw new Error('expected ticket');
+    expect(ticket.token).toBe(0);
+    expect(ticket.signal).toBe('logs');
   });
 
   it('acquires a token when capacity available', () => {
@@ -46,9 +47,10 @@ describe('tryAcquire', () => {
     const t2 = tryAcquire('logs');
     expect(t1).not.toBeNull();
     expect(t2).not.toBeNull();
-    expect(t1!.token).toBeGreaterThan(0);
-    expect(t2!.token).toBeGreaterThan(0);
-    expect(t1!.token).not.toBe(t2!.token);
+    if (t1 === null || t2 === null) throw new Error('expected tickets');
+    expect(t1.token).toBeGreaterThan(0);
+    expect(t2.token).toBeGreaterThan(0);
+    expect(t1.token).not.toBe(t2.token);
   });
 
   it('returns null when at capacity', () => {
@@ -73,22 +75,25 @@ describe('release', () => {
     setQueuePolicy({ maxLogs: 1 });
     const t1 = tryAcquire('logs');
     expect(t1).not.toBeNull();
+    if (t1 === null) throw new Error('expected ticket');
     expect(tryAcquire('logs')).toBeNull();
-    release(t1!);
+    release(t1);
     const t2 = tryAcquire('logs');
     expect(t2).not.toBeNull();
   });
 
   it('silently ignores token=0 (unlimited queue)', () => {
     const ticket = tryAcquire('logs'); // token=0
-    expect(() => release(ticket!)).not.toThrow();
+    if (ticket === null) throw new Error('expected ticket');
+    expect(() => release(ticket)).not.toThrow();
   });
 
   it('silently ignores releasing an already-released token', () => {
     setQueuePolicy({ maxLogs: 2 });
     const t = tryAcquire('logs');
-    release(t!);
-    expect(() => release(t!)).not.toThrow();
+    if (t === null) throw new Error('expected ticket');
+    release(t);
+    expect(() => release(t)).not.toThrow();
   });
 });
 

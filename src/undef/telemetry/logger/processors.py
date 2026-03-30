@@ -107,7 +107,7 @@ class _LevelFilter:
             module: _FAST_LEVEL_LOOKUP.get(lvl.lower(), logging.INFO) for module, lvl in module_levels.items()
         }
         # Longest prefix first for correct matching
-        self._sorted_prefixes = sorted(self._module_numerics, key=len, reverse=True)
+        self._sorted_prefixes = sorted(self._module_numerics.keys(), key=lambda k: len(k), reverse=True)
 
     def __call__(self, _: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         logger_name: str = event_dict.get("logger_name", event_dict.get("logger", ""))

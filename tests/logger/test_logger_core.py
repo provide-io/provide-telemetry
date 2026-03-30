@@ -415,7 +415,7 @@ def test_configure_logging_adds_level_filter_for_module_levels(monkeypatch: pyte
     _reset_logging_for_tests()
     configure_calls: list[dict[str, Any]] = []
     core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(cast(Any, core_mod_any.structlog), "configure", lambda **kw: configure_calls.append(kw))
+    monkeypatch.setattr(core_mod_any.structlog, "configure", lambda **kw: configure_calls.append(kw))
     # asyncio=DEBUG is lower than default INFO, triggering effective_level update (line 185)
     cfg = TelemetryConfig.from_env({"UNDEF_LOG_MODULE_LEVELS": "asyncio=DEBUG"})
     configure_logging(cfg)
@@ -431,7 +431,7 @@ def test_configure_logging_module_level_higher_than_default(monkeypatch: pytest.
     _reset_logging_for_tests()
     configure_calls: list[dict[str, Any]] = []
     core_mod_any = cast(Any, core_mod)
-    monkeypatch.setattr(cast(Any, core_mod_any.structlog), "configure", lambda **kw: configure_calls.append(kw))
+    monkeypatch.setattr(core_mod_any.structlog, "configure", lambda **kw: configure_calls.append(kw))
     # asyncio=ERROR is higher than default DEBUG — effective_level stays at DEBUG (line 184 False branch)
     cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "DEBUG", "UNDEF_LOG_MODULE_LEVELS": "asyncio=ERROR"})
     configure_logging(cfg)

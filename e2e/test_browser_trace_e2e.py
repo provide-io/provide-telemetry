@@ -35,8 +35,8 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-_REPO_ROOT = Path(__file__).parent.parent.parent
-_SERVER_SCRIPT = _REPO_ROOT / "tests" / "e2e" / "backends" / "cross_language_server.py"
+_REPO_ROOT = Path(__file__).parent.parent
+_SERVER_SCRIPT = _REPO_ROOT / "e2e" / "backends" / "cross_language_server.py"
 _TS_DIR = _REPO_ROOT / "typescript"
 
 
@@ -79,9 +79,7 @@ def _search_total(
     req = Request(
         url=f"{base_url}/_search?type={stream_type}",
         headers={"Authorization": auth, "Content-Type": "application/json"},
-        data=json.dumps(
-            {"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}
-        ).encode("utf-8"),
+        data=json.dumps({"query": {"sql": sql, "start_time": start_time, "end_time": end_time}}).encode("utf-8"),
         method="POST",
     )
     try:
@@ -143,9 +141,12 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     }
     vite_proc = subprocess.Popen(
         [
-            "npx", "vite",
-            "--config", "vite.e2e.config.ts",
-            "--port", str(vite_port),
+            "npx",
+            "vite",
+            "--config",
+            "vite.e2e.config.ts",
+            "--port",
+            str(vite_port),
         ],
         env=vite_env,
         stdout=subprocess.PIPE,
@@ -167,12 +168,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         assert ready_line, "Python backend did not become ready in time"
 
         # Wait for Vite to be accepting connections.
-        assert _wait_for_port(vite_port, timeout=30), (
-            f"Vite dev server did not start on port {vite_port} within 30s"
-        )
-        # Brief settle so Vite finishes module graph construction.
-        time.sleep(1.0)
-
+        assert _wait_for_port(vite_port, timeout=30), f"Vite dev server did not start on port {vite_port} within 30s"
         # ── Launch Chromium ───────────────────────────────────────────────────
         qs = urlencode({"otlpAuth": auth})
         page_url = f"http://127.0.0.1:{vite_port}/?{qs}"
@@ -180,7 +176,15 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto(page_url, wait_until="networkidle")
+            console_messages: list[str] = []
+            page.on("console", lambda msg: console_messages.append(msg.text))
+            # Retry page load — Vite may still be building the module graph
+            # after the port is open.
+            for _attempt in range(3):
+                resp = page.goto(page_url, wait_until="networkidle")
+                if resp and resp.ok:
+                    break
+                time.sleep(1.0)
 
             # Poll #status until it leaves "loading" (up to 30s).
             status_el = page.locator("#status")
@@ -192,16 +196,11 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 if status == "loading":
                     time.sleep(0.5)
 
-            assert status == "done", (
-                f"Browser tracer failed. #status={status!r}\n"
-                f"Console messages: {[m.text for m in page.context.pages[0:1]]}"
-            )
+            assert status == "done", f"Browser tracer failed. #status={status!r}\nConsole messages: {console_messages}"
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
-        assert len(trace_id) == 32, (
-            f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
-        )
+        assert len(trace_id) == 32, f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
 
         # Flush and stop the Python backend.
         try:
@@ -209,7 +208,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 Request(f"http://127.0.0.1:{backend_port}/shutdown", method="GET"),
                 timeout=5,
             )
-        except Exception:
+        except OSError:
             pass  # server exits before finishing the response — that is fine
         server_proc.wait(timeout=10)
 
@@ -224,10 +223,7 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
                 break
             time.sleep(1)
 
-        assert span_count >= 2, (
-            f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, "
-            f"found {span_count}."
-        )
+        assert span_count >= 2, f"Expected >=2 spans with trace_id={trace_id!r} in OpenObserve, found {span_count}."
 
     finally:
         vite_proc.terminate()

@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import * as fc from 'fast-check';
 import { afterEach, describe, it } from 'vitest';
-import {
-  _resetContext,
-  getContext,
-  runWithContext,
-} from '../../src/context';
+import { _resetContext, getContext, runWithContext } from '../../src/context';
 
 afterEach(() => _resetContext());
 

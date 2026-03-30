@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * Tracing helpers — mirrors Python undef.telemetry @trace decorator and tracer access.
@@ -11,7 +11,7 @@
 import { type Tracer, SpanStatusCode, trace } from '@opentelemetry/api';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
-const TRACER_NAME = '@undef/telemetry';
+const TRACER_NAME = '@undef-games/telemetry';
 
 // ── Manual trace context (injected without an active OTEL span) ───────────────
 let _manualTraceId: string | undefined;
@@ -34,9 +34,9 @@ export function getTraceContext(): { traceId?: string; spanId?: string } {
   if (_manualTraceId !== undefined || _manualSpanId !== undefined) {
     return {
       // Stryker disable next-line ConditionalExpression: _manualTraceId is always defined here (both set together)
-      ...((_manualTraceId !== undefined) && { traceId: _manualTraceId }),
+      ...(_manualTraceId !== undefined && { traceId: _manualTraceId }),
       // Stryker disable next-line ConditionalExpression: _manualSpanId is always defined here (both set together)
-      ...((_manualSpanId !== undefined) && { spanId: _manualSpanId }),
+      ...(_manualSpanId !== undefined && { spanId: _manualSpanId }),
     };
   }
   const ids = getActiveTraceIds();

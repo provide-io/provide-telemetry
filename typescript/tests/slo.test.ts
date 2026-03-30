@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { _resetSloForTests, classifyError, recordRedMetrics, recordUseMetrics } from '../src/slo';
@@ -38,9 +38,7 @@ describe('recordRedMetrics', () => {
 
 describe('recordUseMetrics', () => {
   it('does not throw', () => {
-    expect(() =>
-      recordUseMetrics({ resource: 'cpu', utilization: 65 }),
-    ).not.toThrow();
+    expect(() => recordUseMetrics({ resource: 'cpu', utilization: 65 })).not.toThrow();
   });
 
   it('accepts a custom unit', () => {
@@ -94,7 +92,10 @@ describe('recordRedMetrics — instrument naming and lazy init', () => {
   it('creates requests counter with correct name and description', () => {
     const spy = vi.spyOn(metricsModule, 'counter');
     recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 10 });
-    expect(spy).toHaveBeenCalledWith('http.requests.total', expect.objectContaining({ description: 'Total HTTP requests' }));
+    expect(spy).toHaveBeenCalledWith(
+      'http.requests.total',
+      expect.objectContaining({ description: 'Total HTTP requests' }),
+    );
     vi.restoreAllMocks();
   });
 
@@ -156,20 +157,14 @@ describe('recordUseMetrics — instrument naming', () => {
   it('defaults unit to percent when not specified', () => {
     const spy = vi.spyOn(metricsModule, 'gauge');
     recordUseMetrics({ resource: 'mem', utilization: 80 });
-    expect(spy).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ unit: '%' }),
-    );
+    expect(spy).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ unit: '%' }));
     vi.restoreAllMocks();
   });
 
   it('uses provided unit when specified', () => {
     const spy = vi.spyOn(metricsModule, 'gauge');
     recordUseMetrics({ resource: 'mem', utilization: 80, unit: 'MB' });
-    expect(spy).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ unit: 'MB' }),
-    );
+    expect(spy).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ unit: 'MB' }));
     vi.restoreAllMocks();
   });
 
@@ -217,10 +212,14 @@ describe('slo — counter.add called with route/method/status_code attrs (kills 
     recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 5 });
     // At least one counter.add was called with correct attrs
     const allCalls = counterInstances.flatMap((inst) => inst.add.mock.calls);
-    expect(allCalls.some((call) => {
-      const attrs = call[1] as Record<string, string>;
-      return attrs['route'] === '/test' && attrs['method'] === 'GET' && attrs['status_code'] === '200';
-    })).toBe(true);
+    expect(
+      allCalls.some((call) => {
+        const attrs = call[1] as Record<string, string>;
+        return (
+          attrs['route'] === '/test' && attrs['method'] === 'GET' && attrs['status_code'] === '200'
+        );
+      }),
+    ).toBe(true);
     vi.restoreAllMocks();
   });
 });
@@ -236,10 +235,12 @@ describe('slo — gauge.add called with resource attr (kills ObjectLiteral on ga
     });
     recordUseMetrics({ resource: 'cpu', utilization: 75 });
     const allCalls = gaugeInstances.flatMap((inst) => inst.add.mock.calls);
-    expect(allCalls.some((call) => {
-      const attrs = call[1] as Record<string, string>;
-      return attrs['resource'] === 'cpu';
-    })).toBe(true);
+    expect(
+      allCalls.some((call) => {
+        const attrs = call[1] as Record<string, string>;
+        return attrs['resource'] === 'cpu';
+      }),
+    ).toBe(true);
     vi.restoreAllMocks();
   });
 });
