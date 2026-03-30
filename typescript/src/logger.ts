@@ -17,6 +17,7 @@ import pino from 'pino';
 import { getConfig } from './config';
 import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
+import { formatPretty, supportsColor } from './pretty';
 import { sanitize } from './sanitize';
 import { getActiveTraceIds } from './tracing';
 
@@ -94,8 +95,13 @@ export function makeWriteHook() {
     // Emit to console only when explicitly enabled (opt-in).
     if (cfg.consoleOutput) {
       const method = LEVEL_MAP[o['level'] as number] ?? 'log';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (console as any)[method](o);
+      if (cfg.logFormat === 'pretty') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](formatPretty(o, supportsColor()));
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](o);
+      }
     }
   };
 }
