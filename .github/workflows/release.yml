@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -39,7 +39,7 @@ jobs:
 
   publish-pypi:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'release'
     permissions:
       id-token: write
@@ -55,7 +55,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
 
   build-typescript:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     defaults:
@@ -84,7 +84,7 @@ jobs:
 
   sign-and-upload:
     needs: [build, build-typescript]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'release'
     permissions:
       contents: write
@@ -117,7 +117,7 @@ jobs:
 
   publish-npm:
     needs: build-typescript
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'release'
     permissions:
       id-token: write
