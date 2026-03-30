@@ -150,7 +150,7 @@ describe('write hook — PII sanitization', () => {
   it('redacts password fields', () => {
     makeCfg();
     const hook = makeWriteHook();
-    const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' };
+    const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' }; // pragma: allowlist secret
     hook(obj);
     expect(obj['password']).toBe('[REDACTED]');
   });
@@ -360,5 +360,37 @@ describe('write hook — config read dynamically (Bug 2 regression)', () => {
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     // Hook should read the NEW config — no capture
     expect(logs.length).toBe(0);
+  });
+
+  it('write hook adds error_fingerprint when exc_name present', () => {
+    makeCfg();
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 50, event: 'error.test', exc_name: 'TypeError' };
+    hook(obj);
+    expect(obj['error_fingerprint']).toBeDefined();
+    expect(typeof obj['error_fingerprint']).toBe('string');
+    expect((obj['error_fingerprint'] as string).length).toBe(12);
+  });
+
+  it('write hook adds error_fingerprint from err object', () => {
+    makeCfg();
+    const hook = makeWriteHook();
+    const err = new Error('boom');
+    const obj: Record<string, unknown> = {
+      level: 50,
+      event: 'error.test',
+      err: { type: 'Error', name: 'Error', stack: err.stack, message: 'boom' },
+    };
+    hook(obj);
+    expect(obj['error_fingerprint']).toBeDefined();
+    expect((obj['error_fingerprint'] as string).length).toBe(12);
+  });
+
+  it('write hook does not add error_fingerprint on normal events', () => {
+    makeCfg();
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'app.start.ok' };
+    hook(obj);
+    expect(obj['error_fingerprint']).toBeUndefined();
   });
 });

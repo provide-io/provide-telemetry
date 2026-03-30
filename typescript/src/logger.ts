@@ -16,12 +16,7 @@
 import pino from 'pino';
 import { configFromEnv, getConfig, _getConfigVersion } from './config';
 import { getContext } from './context';
-import { shouldAllow } from './consent';
 import { computeErrorFingerprint } from './fingerprint';
-import { formatPretty, supportsColor } from './pretty';
-import { _emittedField, _incrementHealth } from './health';
-import { emitLogRecord } from './otel-logs';
-import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
@@ -79,13 +74,18 @@ export function makeWriteHook() {
     const ticket = tryAcquire('logs');
     if (!ticket) return;
 
-    try {
-      // Merge module-level context bindings first, then overlay trace context
-      // so real trace/span IDs always win over user-bound values.
-      Object.assign(o, getContext());
-      const ids = getTraceContext();
-      if (ids.trace_id) o['trace_id'] = ids.trace_id;
-      if (ids.span_id) o['span_id'] = ids.span_id;
+    // Error fingerprinting — stable hash from error name + stack.
+    const errObj = o['err'] as Record<string, unknown> | undefined;
+    const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
+      | string
+      | undefined;
+    if (excName) {
+      const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
+      o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
+    }
+
+    // PII sanitization.
+    sanitize(o, cfg.sanitizeFields);
 
     // Capture to window.__pinoLogs for Playwright and devtools inspection.
     // Check is done inline (not at module load) so it works when loaded in Node.js
