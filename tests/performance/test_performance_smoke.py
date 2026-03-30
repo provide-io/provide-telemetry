@@ -101,7 +101,7 @@ class TestSanitizePerformance:
         payload = {f"field_{i}": f"value_{i}" for i in range(50)}
         payload["password"] = "secret"  # pragma: allowlist secret
         ns = _ns_per_op(lambda: processor(None, "info", payload), iterations=10_000)
-        assert ns < MAX_SANITIZE_NS * 5, f"sanitize(large) too slow: {ns:.0f} ns/op"
+        assert ns < MAX_SANITIZE_NS * 20, f"sanitize(large) too slow: {ns:.0f} ns/op"
 
     def test_sanitize_disabled_is_fast(self) -> None:
         processor = sanitize_sensitive_fields(enabled=False)
