@@ -401,16 +401,16 @@ class TestApplyRuleDictOutput:
 class TestApplyDefaultSensitiveKeyRedactionMutants:
     """Kill remaining mutants in _apply_default_sensitive_key_redaction."""
 
-    def test_none_rule_targeted_paths_replaced_with_frozenset(self) -> None:
+    def test_none_rule_targeted_keys_replaced_with_frozenset(self) -> None:
         """Kills mutmut_1: `is None` -> `is not None` and mutmut_2: frozenset() -> None.
 
-        When rule_targeted_paths is None (default), it must be replaced with
-        an empty frozenset so the path-has-rule check works without crashing.
-        The `is not None` mutant would skip the replacement when paths IS None,
-        causing a TypeError. The `frozenset() -> None` mutant would replace with
-        None, also causing TypeError.
+        When rule_targeted_keys is None (default), it must be replaced with
+        an empty frozenset so the `key in rule_targeted_keys` check works.
+        The `is not None` mutant would skip the replacement when keys IS None,
+        causing a TypeError on `key in None`.
+        The `frozenset() -> None` mutant would replace with None, also causing TypeError.
         """
-        # Call with rule_targeted_paths=None (default) — must not crash
+        # Call with rule_targeted_keys=None (default) — must not crash
         node: dict[str, Any] = {"password": "secret123", "name": "alice"}
         original: dict[str, Any] = {"password": "secret123", "name": "alice"}
         result = _apply_default_sensitive_key_redaction(node, original)
@@ -423,16 +423,20 @@ class TestApplyDefaultSensitiveKeyRedactionMutants:
         When node is a dict but original is a non-dict (e.g., a string),
         the `or` mutant would enter the dict branch and crash on original.get().
         """
-        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(
+            {"password": "secret"}, 42
+        )
         # Should return the node unchanged since original is not a dict
-        assert result == {"password": "secret"}  # pragma: allowlist secret
+        assert result == {"password": "secret"}
 
     def test_and_vs_or_dict_isinstance_with_non_dict_node(self) -> None:
         """Complementary: node is NOT a dict but original IS a dict.
 
         The `or` mutant would enter the dict branch and crash on node.items().
         """
-        result = _apply_default_sensitive_key_redaction("just_a_string", {"password": "secret"})
+        result = _apply_default_sensitive_key_redaction(
+            "just_a_string", {"password": "secret"}
+        )
         assert result == "just_a_string"
 
 
@@ -450,9 +454,9 @@ class TestSanitizePayloadEnabledFlag:
         When enabled=False, sensitive keys must NOT be redacted.
         The mutant would invert the check, redacting when disabled.
         """
-        payload: dict[str, Any] = {"password": "secret", "data": "public"}  # pragma: allowlist secret
+        payload: dict[str, Any] = {"password": "secret", "data": "public"}
         result = sanitize_payload(payload, enabled=False)
-        assert result["password"] == "secret"  # NOT redacted  # pragma: allowlist secret
+        assert result["password"] == "secret"  # NOT redacted
         assert result["data"] == "public"
 
     def test_enabled_redacts_sensitive_keys(self) -> None:
