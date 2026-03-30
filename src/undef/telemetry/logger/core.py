@@ -203,7 +203,7 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:
                 add_standard_fields(config),
                 apply_sampling,
                 enforce_event_schema(config),
-                sanitize_sensitive_fields(config.logging.sanitize),
+                sanitize_sensitive_fields(config.logging.sanitize, config.security.max_nesting_depth),
             ]
         )
 
