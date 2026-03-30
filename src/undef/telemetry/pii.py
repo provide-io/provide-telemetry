@@ -42,8 +42,13 @@ _SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
 )
 
 
+_MIN_SECRET_LENGTH = 20  # shortest pattern (AKIA + 16) is 20 chars
+
+
 def _detect_secret_in_value(value: str) -> bool:
     """Return True if value matches a known secret pattern."""
+    if len(value) < _MIN_SECRET_LENGTH:
+        return False
     return any(pattern.search(value) for _name, pattern in _SECRET_PATTERNS)
 
 
