@@ -23,7 +23,19 @@ export { getLogger, logger } from './logger';
 export type { Logger } from './logger';
 
 // Context binding (mirrors Python bind_context / unbind_context / clear_context)
-export { bindContext, unbindContext, clearContext, getContext, runWithContext } from './context';
+export {
+  bindContext,
+  unbindContext,
+  clearContext,
+  getContext,
+  runWithContext,
+  bindSessionContext,
+  getSessionId,
+  clearSessionContext,
+} from './context';
+
+// Error fingerprinting (mirrors Python add_error_fingerprint processor)
+export { computeErrorFingerprint } from './fingerprint';
 
 // Metrics (mirrors Python counter / gauge / histogram)
 export { counter, gauge, histogram, getMeter } from './metrics';
