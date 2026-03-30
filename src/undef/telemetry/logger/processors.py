@@ -108,9 +108,9 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
     return _processor
 
 
-def sanitize_sensitive_fields(enabled: bool) -> Any:
+def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        return sanitize_payload(event_dict, enabled)
+        return sanitize_payload(event_dict, enabled, max_depth=max_depth)
 
     return _processor
 

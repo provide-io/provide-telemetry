@@ -12,7 +12,9 @@
       "Bash(uv run:*)",
       "Bash(npm run:*)",
       "Bash(npm update:*)",
-      "Bash(npm outdated:*)"
+      "Bash(npm outdated:*)",
+      "Bash(do echo:*)",
+      "Bash(pre-commit --version)"
     ]
   }
 }
