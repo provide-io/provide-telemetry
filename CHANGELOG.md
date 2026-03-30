@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Both packages (`undef-telemetry` / `@undef/telemetry`) share a version number.
+Both packages (`undef-telemetry` / `@undef-games/telemetry`) share a version number.
 
 ---
 
@@ -18,13 +18,13 @@ Both packages (`undef-telemetry` / `@undef/telemetry`) share a version number.
   in OpenObserve.
 - **TypeScript CI jobs** — `typescript-quality` (lint + format + typecheck + 100% coverage) runs
   on every push/PR; `typescript-mutation-gate` (Stryker 100% kill) runs on schedule/dispatch.
-- **npm publish pipeline** — `release.yml` builds and publishes `@undef/telemetry` to npm on
+- **npm publish pipeline** — `release.yml` builds and publishes `@undef-games/telemetry` to npm on
   GitHub release via `NPM_TOKEN`.
 - **TypeScript package metadata** — `author`, `homepage`, `repository`, `keywords`,
   `sideEffects: false`, `engines: { "node": ">=18" }`, `prepublishOnly` guard.
 
 ### Changed
-- **TypeScript version aligned to Python** — `@undef/telemetry` is now `0.3.18` (was `0.1.0`).
+- **TypeScript version aligned to Python** — `@undef-games/telemetry` is now `0.3.18` (was `0.1.0`).
 - **Stryker mutation threshold raised to 100** — `break: 100` enforced in CI (was 70).
 - **`src/otel.ts` included in strict type-checking** — removed from `tsconfig.json` exclude list;
   all 20 TypeScript source files are now fully type-checked under `strict: true`.
