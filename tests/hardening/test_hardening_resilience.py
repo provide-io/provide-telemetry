@@ -168,3 +168,38 @@ async def test_resilience_async_guard_warns_only_once_per_signal() -> None:
     # Warning is suppressed for same signal after first emission.
     assert resilience_mod.run_with_resilience("traces", _always_fail) is None
     assert calls["count"] == 4
+
+
+def test_executor_replaced_after_circuit_breaker_trips() -> None:
+    """Ghost thread defense: executor is replaced when circuit breaker trips.
+
+    After consecutive timeouts hit the threshold, the old executor (with
+    potentially hung threads) is abandoned and a fresh one is created for
+    the next probe attempt.
+    """
+    resilience_mod.reset_resilience_for_tests()
+    resilience_mod.set_exporter_policy(
+        "logs",
+        resilience_mod.ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+    )
+
+    # Get the initial executor.
+    executor_before = resilience_mod._get_timeout_executor("logs")
+
+    # Trigger enough timeouts to trip the circuit breaker (threshold=3).
+    for _ in range(3):
+        resilience_mod.run_with_resilience("logs", lambda: time.sleep(1.0))
+
+    # The old executor should have been replaced.
+    executor_after = resilience_mod._get_timeout_executor("logs")
+    assert executor_before is not executor_after
+
+
+def test_maybe_replace_executor_no_op_when_no_executor() -> None:
+    """_maybe_replace_executor is safe when no executor exists for the signal."""
+    resilience_mod.reset_resilience_for_tests()
+    # Force consecutive_timeouts above threshold without creating an executor.
+    with resilience_mod._lock:
+        resilience_mod._consecutive_timeouts["logs"] = 10
+    # Should not raise even though no executor exists.
+    resilience_mod._maybe_replace_executor("logs")
