@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Tests for W3C baggage session extraction in ASGI middleware."""
@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from provide.telemetry.asgi import middleware as middleware_mod
-from provide.telemetry.asgi.middleware import TelemetryMiddleware
+from undef.telemetry.asgi import middleware as middleware_mod
+from undef.telemetry.asgi.middleware import TelemetryMiddleware
 
 
 @pytest.mark.asyncio

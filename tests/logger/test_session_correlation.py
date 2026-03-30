@@ -1,13 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Tests for session correlation."""
 
 from __future__ import annotations
 
-from provide.telemetry.logger.context import (
+from undef.telemetry.logger.context import (
     bind_session_context,
     clear_context,
     clear_session_context,

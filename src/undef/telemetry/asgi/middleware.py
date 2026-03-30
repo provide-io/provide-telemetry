@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context, reset_context, save_context
+from undef.telemetry.logger.context import bind_context, bind_session_context, reset_context, save_context
 from undef.telemetry.logger.core import get_logger
 from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
 from undef.telemetry.schema.events import event_name
@@ -37,10 +37,13 @@ class TelemetryMiddleware:
 
         request_id = _extract_header(scope, b"x-request-id") or uuid.uuid4().hex
         session_id = _extract_header(scope, b"x-session-id")
+        # Also check W3C baggage for session_id propagation.
+        if session_id is None:
+            session_id = _extract_baggage_value(scope, "session_id")
         ctx_token = save_context()
         bind_context(request_id=request_id)
         if session_id is not None:
-            bind_context(session_id=session_id)
+            bind_session_context(session_id)
         bind_propagation_context(extract_w3c_context(scope))
         status_code = 500
         started = time.perf_counter()
@@ -105,3 +108,15 @@ def _resolve_route(scope: Scope) -> str:
 
 def _extract_header(scope: Scope, key: bytes) -> str | None:
     return get_header(scope, key)
+
+
+def _extract_baggage_value(scope: Scope, key: str) -> str | None:
+    """Extract a value from the W3C baggage header."""
+    raw = get_header(scope, b"baggage")
+    if raw is None:
+        return None
+    for pair in raw.split(","):
+        k, _, v = pair.strip().partition("=")
+        if k.strip() == key and v.strip():
+            return v.strip()
+    return None

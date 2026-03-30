@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Error fingerprinting and session correlation demo.
@@ -15,18 +15,15 @@ from __future__ import annotations
 
 import sys
 
-from provide.telemetry import (
+from undef.telemetry import (
     bind_session_context,
     clear_session_context,
-    event,
     get_logger,
     get_session_id,
     setup_telemetry,
     shutdown_telemetry,
 )
-
-# Private API — used here for demonstration purposes only.
-from provide.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
+from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
 
 
 def _demo_error_fingerprint() -> None:
@@ -50,14 +47,14 @@ def _demo_error_fingerprint() -> None:
         raise RuntimeError("simulated failure")
     except RuntimeError:
         exc_info = sys.exc_info()
-        evt = {"event": "app.error.simulated", "exc_info": exc_info}
-        result = add_error_fingerprint(None, "", evt)
+        event = {"event": "app.error.simulated", "exc_info": exc_info}
+        result = add_error_fingerprint(None, "", event)
         fp = result.get("error_fingerprint", "N/A")
         print(f"  RuntimeError with traceback fingerprint: {fp}")
-        log.error(event("app", "error", "simulated"), error_fingerprint=fp, exc_name="RuntimeError")
+        log.error("app.error.simulated", error_fingerprint=fp, exc_name="RuntimeError")
 
     # Normal events get no fingerprint.
-    normal = {"event": str(event("app", "start", "ok"))}
+    normal = {"event": "app.start.ok"}
     result = add_error_fingerprint(None, "", normal)
     print(f"  Normal event has fingerprint? {'error_fingerprint' in result}\n")
 
@@ -72,8 +69,8 @@ def _demo_session_correlation() -> None:
     bind_session_context("sess-demo-42")
     print(f"  Session after bind:  {get_session_id()}")
 
-    log.info(event("app", "session", "bound"), msg="session is active")
-    log.info(event("app", "session", "action"), action="page_view", path="/dashboard")
+    log.info("app.session.bound", msg="session is active")
+    log.info("app.session.action", action="page_view", path="/dashboard")
 
     clear_session_context()
     print(f"  Session after clear: {get_session_id()}\n")

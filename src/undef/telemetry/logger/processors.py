@@ -7,8 +7,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import re
+import sys
+import traceback
+import types
 from typing import Any
 
 from undef.telemetry.config import TelemetryConfig
@@ -41,6 +46,32 @@ def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
         event_dict["trace_id"] = trace_id
     if span_id is not None:
         event_dict["span_id"] = span_id
+    return event_dict
+
+
+def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) -> str:
+    """Generate a stable 12-char hex fingerprint from exception type + top 3 frames."""
+    parts = [exc_type.lower()]
+    if tb is not None:
+        for frame in traceback.extract_tb(tb)[-3:]:
+            basename = os.path.basename(frame.filename).rsplit(".", 1)[0].lower()
+            func = (frame.name or "").lower()
+            parts.append(f"{basename}:{func}")
+    return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def add_error_fingerprint(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Structlog processor: add stable error_fingerprint on error events."""
+    exc_info = event_dict.get("exc_info")
+    if exc_info is True:
+        exc_info = sys.exc_info()
+    if isinstance(exc_info, tuple) and len(exc_info) == 3 and exc_info[1] is not None:
+        exc_type_name = type(exc_info[1]).__name__
+        event_dict["error_fingerprint"] = _compute_error_fingerprint(exc_type_name, exc_info[2])
+        return event_dict
+    exc_name = event_dict.get("exc_name") or event_dict.get("exception")
+    if exc_name:
+        event_dict["error_fingerprint"] = _compute_error_fingerprint(str(exc_name), None)
     return event_dict
 
 
