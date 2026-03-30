@@ -329,7 +329,7 @@ describe('_resetConfig', () => {
 
 describe('version constant', () => {
   it('exports version as 0.4.1', () => {
-    expect(version).toBe('0.4.1');
+    expect(version).toBe('0.4.2');
   });
 });
 
