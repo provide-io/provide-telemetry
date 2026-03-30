@@ -12,9 +12,9 @@ Apply these settings in GitHub → Settings → Branches → Branch protection r
     - `docs-quality` (3. 📋 CI — Shared)
     - `conformance` (4. 📐 Spec Conformance)
     - `version-sync` (4. 📐 Spec Conformance)
-    - `mutation-pr` (1. 🐍 CI — Python, PR only)
-    - `typescript-mutation-pr` (2. 🟦 CI — TypeScript, PR only)
 - **Do not allow bypassing the above settings**
+
+Note: Full mutation gates (`mutation-gate`, `typescript-mutation-gate`) run on every PR but are not required checks — they're slow (~10min) and serve as a safety net.
 
 ## Apply via CLI
 
@@ -30,9 +30,7 @@ gh api repos/undef-games/undef-telemetry/branches/main/protection \
       "typescript-quality",
       "docs-quality",
       "conformance",
-      "version-sync",
-      "mutation-pr",
-      "typescript-mutation-pr"
+      "version-sync"
     ]
   },
   "enforce_admins": false,
