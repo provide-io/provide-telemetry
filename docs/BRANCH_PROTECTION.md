@@ -4,9 +4,6 @@ Apply these settings in GitHub → Settings → Branches → Branch protection r
 
 ## Required Settings
 
-- **Require a pull request before merging**
-  - Required approving reviews: 1
-  - Dismiss stale pull request approvals when new commits are pushed: yes
 - **Require status checks to pass before merging**
   - Require branches to be up to date before merging: yes
   - Required checks:
@@ -38,11 +35,8 @@ gh api repos/undef-games/undef-telemetry/branches/main/protection \
       "typescript-mutation-pr"
     ]
   },
-  "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "required_approving_review_count": 1
-  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
   "restrictions": null
 }
 EOF
