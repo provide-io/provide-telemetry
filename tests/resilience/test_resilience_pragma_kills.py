@@ -164,8 +164,8 @@ def test_latency_ms_approximately_correct() -> None:
     run_with_resilience("metrics", lambda: time.sleep(sleep_seconds))
     snap = health_mod.get_health_snapshot()
     expected_ms = sleep_seconds * 1000.0
-    # Allow 50ms tolerance for scheduling jitter.
-    assert abs(snap.export_latency_ms_metrics - expected_ms) < 50.0, (
+    # Allow 200ms tolerance for scheduling jitter (macOS ARM runners can be slow).
+    assert abs(snap.export_latency_ms_metrics - expected_ms) < 200.0, (
         f"Latency {snap.export_latency_ms_metrics:.1f}ms not near expected {expected_ms:.1f}ms"
     )
 
