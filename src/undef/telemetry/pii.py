@@ -130,9 +130,7 @@ def _apply_default_sensitive_key_redaction(
         return output
     if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
         return [
-            _apply_default_sensitive_key_redaction(
-                item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth
-            )
+            _apply_default_sensitive_key_redaction(item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth)
             for item, orig in zip(node, original, strict=False)  # pragma: no mutate
         ]
     return node
