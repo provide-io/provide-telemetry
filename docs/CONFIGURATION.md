@@ -107,6 +107,14 @@ Per-signal retry, backoff, timeout, and failure policy. Each variable is prefixe
 | `UNDEF_SLO_ENABLE_USE_METRICS` | bool | `false` | Emit USE (Utilization/Saturation/Errors) resource metrics |
 | `UNDEF_SLO_INCLUDE_ERROR_TAXONOMY` | bool | `true` | Auto-classify errors into server/client/internal taxonomy |
 
+## Security
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH` | int | `1024` | Maximum string length for log attribute values (truncated beyond this) |
+| `UNDEF_SECURITY_MAX_ATTR_COUNT` | int | `64` | Maximum number of attributes per log event (excess keys dropped) |
+| `UNDEF_SECURITY_MAX_NESTING_DEPTH` | int | `8` | Maximum nesting depth for dict/list attribute values |
+
 ## OpenObserve (Examples and E2E Only)
 
 These are not parsed by `TelemetryConfig.from_env()` but are used by the example scripts and E2E tests.

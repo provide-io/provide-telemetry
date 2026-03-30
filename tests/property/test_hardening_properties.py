@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Property-based tests for security hardening."""
@@ -10,8 +10,8 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from provide.telemetry.logger.processors import harden_input
-from provide.telemetry.pii import _detect_secret_in_value
+from undef.telemetry.logger.processors import harden_input
+from undef.telemetry.pii import _detect_secret_in_value
 
 
 @given(st.text(max_size=5000))
