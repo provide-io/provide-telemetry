@@ -16,6 +16,8 @@
 import pino from 'pino';
 import { getConfig } from './config';
 import { getContext } from './context';
+import { computeErrorFingerprint } from './fingerprint';
+import { formatPretty, supportsColor } from './pretty';
 import { sanitize } from './sanitize';
 import { getActiveTraceIds } from './tracing';
 
@@ -67,6 +69,16 @@ export function makeWriteHook() {
     // Ensure msg is always non-empty — pino sets msg='' when no string arg is passed.
     if (!o['msg']) o['msg'] = o['event'] ?? '';
 
+    // Error fingerprinting — stable hash from error name + stack.
+    const errObj = o['err'] as Record<string, unknown> | undefined;
+    const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
+      | string
+      | undefined;
+    if (excName) {
+      const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
+      o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
+    }
+
     // PII sanitization.
     sanitize(o, cfg.sanitizeFields);
 
@@ -83,8 +95,13 @@ export function makeWriteHook() {
     // Emit to console only when explicitly enabled (opt-in).
     if (cfg.consoleOutput) {
       const method = LEVEL_MAP[o['level'] as number] ?? 'log';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (console as any)[method](o);
+      if (cfg.logFormat === 'pretty') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](formatPretty(o, supportsColor()));
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](o);
+      }
     }
   };
 }
