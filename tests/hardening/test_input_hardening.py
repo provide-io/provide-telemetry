@@ -263,31 +263,23 @@ class TestProtocolResilience:
     def test_tracestate_too_many_pairs_returns_none(self) -> None:
         tp = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         pairs = ",".join(f"k{i}=v{i}" for i in range(33))
-        ctx = propagation_mod.extract_w3c_context(
-            self._make_scope(traceparent=tp, tracestate=pairs.encode())
-        )
+        ctx = propagation_mod.extract_w3c_context(self._make_scope(traceparent=tp, tracestate=pairs.encode()))
         assert ctx.tracestate is None
 
     def test_normal_tracestate_preserved(self) -> None:
         tp = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ctx = propagation_mod.extract_w3c_context(
-            self._make_scope(traceparent=tp, tracestate=b"vendor=value")
-        )
+        ctx = propagation_mod.extract_w3c_context(self._make_scope(traceparent=tp, tracestate=b"vendor=value"))
         assert ctx.tracestate == "vendor=value"
 
     def test_oversized_baggage_returns_none(self) -> None:
         tp = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         big_baggage = b"k=" + b"v" * 8192
-        ctx = propagation_mod.extract_w3c_context(
-            self._make_scope(traceparent=tp, baggage=big_baggage)
-        )
+        ctx = propagation_mod.extract_w3c_context(self._make_scope(traceparent=tp, baggage=big_baggage))
         assert ctx.baggage is None
 
     def test_normal_baggage_preserved(self) -> None:
         tp = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ctx = propagation_mod.extract_w3c_context(
-            self._make_scope(traceparent=tp, baggage=b"user=alice")
-        )
+        ctx = propagation_mod.extract_w3c_context(self._make_scope(traceparent=tp, baggage=b"user=alice"))
         assert ctx.baggage == "user=alice"
 
 
