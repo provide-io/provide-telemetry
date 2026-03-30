@@ -372,9 +372,7 @@ class TestApplyDefaultSensitiveKeyRedactionMutants:
         When node is a dict but original is a non-dict (e.g., a string),
         the `or` mutant would enter the dict branch and crash on original.get().
         """
-        result = _apply_default_sensitive_key_redaction(
-            {"password": "secret"}, 42
-        )
+        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)
         # Should return the node unchanged since original is not a dict
         assert result == {"password": "secret"}
 
@@ -383,9 +381,7 @@ class TestApplyDefaultSensitiveKeyRedactionMutants:
 
         The `or` mutant would enter the dict branch and crash on node.items().
         """
-        result = _apply_default_sensitive_key_redaction(
-            "just_a_string", {"password": "secret"}
-        )
+        result = _apply_default_sensitive_key_redaction("just_a_string", {"password": "secret"})
         assert result == "just_a_string"
 
 
