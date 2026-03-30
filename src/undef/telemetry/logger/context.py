@@ -38,6 +38,23 @@ def restore_context(snapshot: dict[str, object]) -> None:
     _context.set(snapshot)
 
 
+def bind_session_context(session_id: str) -> None:
+    """Bind a session ID that propagates across all telemetry events."""
+    bind_context(session_id=session_id)
+
+
+def get_session_id() -> str | None:
+    """Return the current session ID, or None if not set."""
+    ctx = _context.get()
+    val = ctx.get("session_id") if ctx else None
+    return str(val) if val is not None else None
+
+
+def clear_session_context() -> None:
+    """Clear the session ID."""
+    unbind_context("session_id")
+
+
 ContextToken = contextvars.Token[dict[str, object] | None]
 
 

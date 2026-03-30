@@ -96,6 +96,24 @@ Create or retrieve a named histogram instrument.
 
 Return the active OTel meter if a real meter provider is available; otherwise return `None`. The in-process fallback lives in the `counter()`, `gauge()`, and `histogram()` wrapper APIs.
 
+## Session Context
+
+### `bind_session_context(session_id: str) -> None`
+
+Bind a session ID to all subsequent telemetry events in the current async context. The session ID is injected into every log record, trace span, and metric attribute until cleared.
+
+### `get_session_id() -> str | None`
+
+Return the current session ID from contextvars, or `None` if no session is bound.
+
+### `clear_session_context() -> None`
+
+Clear the session ID from the current async context.
+
+## Error Fingerprinting
+
+Error events automatically receive an `error_fingerprint` field — a 12-character hex digest derived from the exception type and normalized stack trace. Fingerprints are stable across deploys and process restarts, making them suitable for deduplication and alert grouping.
+
 ## Event Schema
 
 ### `event_name(*segments: str) -> str`
