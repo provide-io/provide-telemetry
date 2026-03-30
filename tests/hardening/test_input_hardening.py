@@ -13,7 +13,8 @@ import pytest
 
 from undef.telemetry import pii as pii_mod
 from undef.telemetry import propagation as propagation_mod
-from undef.telemetry.config import ConfigurationError, SecurityConfig, TelemetryConfig
+from undef.telemetry.config import SecurityConfig, TelemetryConfig
+from undef.telemetry.exceptions import ConfigurationError
 from undef.telemetry.logger.processors import harden_input
 from undef.telemetry.pii import _detect_secret_in_value, sanitize_payload
 

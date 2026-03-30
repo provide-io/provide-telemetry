@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import structlog
@@ -18,6 +19,8 @@ from undef.telemetry.pii import sanitize_payload
 from undef.telemetry.sampling import should_sample
 from undef.telemetry.schema.events import validate_event_name, validate_required_keys
 from undef.telemetry.tracing.context import get_span_id, get_trace_id
+
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 TRACE_LEVEL = 5
 
@@ -41,6 +44,30 @@ def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
     if span_id is not None:
         event_dict["span_id"] = span_id
     return event_dict
+
+
+def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> Any:
+    """Structlog processor: truncate values, strip control chars, limit attributes."""
+
+    def _clean_value(value: object, depth: int) -> object:
+        if isinstance(value, str):
+            cleaned = _CONTROL_CHAR_RE.sub("", value)
+            if len(cleaned) > max_value_length:
+                return cleaned[:max_value_length]
+            return cleaned
+        if isinstance(value, dict) and depth < max_depth:
+            return {k: _clean_value(v, depth + 1) for k, v in value.items()}
+        if isinstance(value, list) and depth < max_depth:
+            return [_clean_value(item, depth + 1) for item in value]
+        return value
+
+    def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+        if max_attr_count > 0 and len(event_dict) > max_attr_count:
+            keys = list(event_dict)[:max_attr_count]
+            event_dict = {k: event_dict[k] for k in keys}
+        return {k: _clean_value(v, 0) for k, v in event_dict.items()}
+
+    return _processor
 
 
 def add_standard_fields(config: TelemetryConfig) -> Any:
