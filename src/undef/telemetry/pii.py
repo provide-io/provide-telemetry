@@ -25,7 +25,7 @@ class PIIRule:
 
 
 _SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
-    ("aws_key", _re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("aws_key", _re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}")),
     ("jwt", _re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
     ("github_token", _re.compile(r"gh[pos]_[A-Za-z0-9_]{36,}")),
     ("long_hex", _re.compile(r"[0-9a-fA-F]{40,}")),

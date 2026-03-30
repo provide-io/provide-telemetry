@@ -28,7 +28,7 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
         seen_level.append(level)
         return [logging.StreamHandler()]
 
-    def _sanitize_sensitive_fields(enabled: bool) -> Any:
+    def _sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:
         seen_sanitize.append(enabled)
 
         def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
