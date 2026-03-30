@@ -80,7 +80,7 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: sbom-typescript
-          path: sbom-typescript.cdx.json
+          path: typescript/sbom-typescript.cdx.json
 
   sign-and-upload:
     needs: [build, build-typescript]
