@@ -18,6 +18,7 @@ __all__ = [
 
 import copy
 import hashlib
+import re as _re
 import threading
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -30,6 +31,23 @@ class PIIRule:
     path: tuple[str, ...]
     mode: MaskMode = "redact"
     truncate_to: int = 8
+
+
+_SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
+    ("aws_key", _re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("jwt", _re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    ("github_token", _re.compile(r"gh[pos]_[A-Za-z0-9_]{36,}")),
+    ("long_hex", _re.compile(r"[0-9a-fA-F]{40,}")),
+    ("long_base64", _re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")),
+)
+
+
+def _detect_secret_in_value(value: str) -> bool:
+    """Return True if value matches a known secret pattern."""
+    for _name, pattern in _SECRET_PATTERNS:
+        if pattern.search(value):
+            return True
+    return False
 
 
 _DEFAULT_SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
@@ -77,7 +95,9 @@ def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))  # pragma: no mutate
 
 
-def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = ()) -> Any:
+def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), depth: int = 0) -> Any:
+    if depth >= 32:  # hard safety limit
+        return node
     if isinstance(node, dict):
         output: dict[str, Any] = {}
         for key, value in node.items():
@@ -87,16 +107,22 @@ def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = ()) ->
                 if masked is not None:
                     output[key] = masked
             else:
-                output[key] = _apply_rule(value, rule, child_path)
+                output[key] = _apply_rule(value, rule, child_path, depth=depth + 1)
         return output
     if isinstance(node, list):
-        return [_apply_rule(item, rule, (*current_path, "*")) for item in node]  # pragma: no mutate
+        return [_apply_rule(item, rule, (*current_path, "*"), depth=depth + 1) for item in node]  # pragma: no mutate
     return node
 
 
 def _apply_default_sensitive_key_redaction(
-    node: Any, original: Any, rule_targeted_keys: frozenset[str] | None = None
+    node: Any,
+    original: Any,
+    rule_targeted_keys: frozenset[str] | None = None,
+    depth: int = 0,
+    max_depth: int = 8,
 ) -> Any:
+    if depth >= max_depth:
+        return node
     if rule_targeted_keys is None:
         rule_targeted_keys = frozenset()
     if isinstance(node, dict) and isinstance(original, dict):
@@ -108,12 +134,18 @@ def _apply_default_sensitive_key_redaction(
                     output[key] = value
                 else:
                     output[key] = _REDACTED
+            elif isinstance(value, str) and _detect_secret_in_value(value):
+                output[key] = _REDACTED
             else:
-                output[key] = _apply_default_sensitive_key_redaction(value, orig_value, rule_targeted_keys)
+                output[key] = _apply_default_sensitive_key_redaction(
+                    value, orig_value, rule_targeted_keys, depth=depth + 1, max_depth=max_depth
+                )
         return output
     if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
         return [
-            _apply_default_sensitive_key_redaction(item, orig, rule_targeted_keys)
+            _apply_default_sensitive_key_redaction(
+                item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth
+            )
             for item, orig in zip(node, original, strict=False)  # pragma: no mutate
         ]
     return node
@@ -129,7 +161,7 @@ def _needs_deep_copy(rules: tuple[PIIRule, ...]) -> bool:  # pragma: no mutate
     return any(len(rule.path) > 1 for rule in rules)  # pragma: no mutate
 
 
-def sanitize_payload(payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
+def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:
     if not enabled:
         return dict(payload)
     rules = get_pii_rules()
@@ -137,7 +169,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
     for rule in rules:
         cleaned = _apply_rule(cleaned, rule)
     rule_targeted_keys = _collect_rule_leaf_keys(rules)
-    cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys)
+    cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys, max_depth=max_depth)
     if isinstance(cleaned, dict):
         return cleaned
     return {}
