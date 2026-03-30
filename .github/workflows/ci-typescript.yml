@@ -40,6 +40,7 @@ jobs:
       - run: npm run test:coverage
 
   typescript-mutation-gate:
+    needs: typescript-quality
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -54,32 +55,3 @@ jobs:
       - run: npm ci
       - run: npm run test:mutation
 
-  typescript-mutation-pr:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    defaults:
-      run:
-        working-directory: typescript
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: typescript/package-lock.json
-      - run: npm ci
-      - name: Find changed source files
-        id: changed
-        run: |
-          files=$(git diff --name-only origin/main...HEAD -- 'typescript/src/**/*.ts' | sed 's|^typescript/||' | tr '\n' ',')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-          if [ -z "$files" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Run mutation testing on changed files
-        if: steps.changed.outputs.skip == 'false'
-        run: npx stryker run --mutate "${{ steps.changed.outputs.files }}"
