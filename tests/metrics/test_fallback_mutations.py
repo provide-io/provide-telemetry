@@ -241,3 +241,24 @@ class TestSelfNameUsed:
         monkeypatch.setattr(fallback_mod, "should_sample", _spy)
         Histogram("specific.hist.name").record(1.0)
         assert names == ["specific.hist.name"]
+
+
+class TestGaugeSet:
+    def test_gauge_set_no_otel(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gauge.set() with no OTel provider updates value without error."""
+        monkeypatch.setattr(fallback_mod, "_resolve_otel_for_gauge", lambda _: None, raising=False)
+        g = Gauge("g")
+        g._resolved = True
+        g._otel_gauge = None
+        g.set(10)
+        assert g.value == 10
+        g.set(7)
+        assert g.value == 7
+
+    def test_gauge_set_with_otel(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gauge.set() with OTel forwards delta to otel_gauge.add."""
+        otel_gauge = Mock()
+        g = Gauge("g", otel_gauge=otel_gauge)
+        g.set(10)
+        assert g.value == 10
+        otel_gauge.add.assert_called_with(10, {})
