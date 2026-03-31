@@ -159,3 +159,94 @@ describe('supportsColor', () => {
     }
   });
 });
+
+describe('formatPretty and supportsColor — exact assertions (mutation kills)', () => {
+  it('fatal level uses bold red \\x1b[31;1m (not plain red)', () => {
+    const line = formatPretty({ level: 60, event: 'test' }, true);
+    expect(line).toContain('\x1b[31;1m');
+    // Verify it is NOT the plain (non-bold) red used by error
+    expect(line).not.toContain('\x1b[31m[');
+  });
+
+  it('error level uses plain red \\x1b[31m (not bold)', () => {
+    const line = formatPretty({ level: 50, event: 'test' }, true);
+    expect(line).toContain('\x1b[31m');
+    expect(line).not.toContain('\x1b[31;1m');
+  });
+
+  it('warn level uses yellow \\x1b[33m', () => {
+    const line = formatPretty({ level: 40, event: 'test' }, true);
+    expect(line).toContain('\x1b[33m');
+  });
+
+  it('info level uses green \\x1b[32m', () => {
+    const line = formatPretty({ level: 30, event: 'test' }, true);
+    expect(line).toContain('\x1b[32m');
+  });
+
+  it('debug level uses blue \\x1b[34m', () => {
+    const line = formatPretty({ level: 20, event: 'test' }, true);
+    expect(line).toContain('\x1b[34m');
+  });
+
+  it('trace level uses cyan \\x1b[36m', () => {
+    const line = formatPretty({ level: 10, event: 'test' }, true);
+    expect(line).toContain('\x1b[36m');
+  });
+
+  it('skips all 7 internal SKIP_KEYS: level, time, msg, event, v, pid, hostname', () => {
+    const line = formatPretty(
+      {
+        level: 30,
+        time: 123,
+        msg: 'hi',
+        event: 'test',
+        v: 1,
+        pid: 99,
+        hostname: 'box',
+        user: 'alice',
+      },
+      false,
+    );
+    expect(line).not.toContain('level=');
+    expect(line).not.toContain('time=');
+    expect(line).not.toContain('msg=');
+    expect(line).not.toContain('event=');
+    expect(line).not.toContain('v=');
+    expect(line).not.toContain('pid=');
+    expect(line).not.toContain('hostname=');
+    expect(line).toContain('user='); // non-skip key still present
+  });
+
+  it('NO_COLOR env takes precedence over isTTY=true', () => {
+    vi.stubEnv('NO_COLOR', '');
+    const orig = (process.stdout as { isTTY?: boolean }).isTTY;
+    try {
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+      expect(supportsColor()).toBe(false);
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', { value: orig, configurable: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('omits timestamp entirely when time is absent', () => {
+    // mutation: `time !== undefined` → `true` would include "undefined" in output
+    const line = formatPretty({ level: 30, event: 'test' }, false);
+    expect(line).not.toContain('undefined');
+    // Line starts directly with level bracket, not a timestamp
+    expect(line.trimStart()).toMatch(/^\[/);
+  });
+
+  it('key=value separator is = in no-color mode', () => {
+    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, false);
+    expect(line).toContain('user=');
+    expect(line).toContain('="alice"');
+  });
+
+  it('key=value separator is = in color mode (with DIM wrapping)', () => {
+    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true);
+    // DIM + key + RESET + '=' + value
+    expect(line).toContain('\x1b[2muser\x1b[0m=');
+  });
+});
