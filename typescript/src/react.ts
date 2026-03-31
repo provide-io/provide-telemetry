@@ -8,7 +8,7 @@
  * React must be installed as a peer dependency (>=18).
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { bindContext, unbindContext } from './context';
 
 // ── useTelemetryContext ──────────────────────────────────────────────────────
@@ -18,21 +18,16 @@ import { bindContext, unbindContext } from './context';
  * Cleans up on unmount. Re-runs when values change (content-compared, not by reference).
  */
 export function useTelemetryContext(values: Record<string, unknown>): void {
+  // Content-stable dep: avoids re-running when the object reference changes but values are equal.
+  // Note: key insertion order affects JSON.stringify — { b:1, a:2 } !== { a:2, b:1 }.
+  // Callers that build `values` via dynamic spread should keep key order consistent.
   const serialized = JSON.stringify(values);
-  // Store previous keys so we can unbind keys that disappear between renders.
-  const prevKeysRef = useRef<string[]>([]);
 
   useEffect(() => {
     const keys = Object.keys(values);
-    // Unbind keys that were present before but are no longer in values.
-    const removed = prevKeysRef.current.filter((k) => !keys.includes(k));
-    if (removed.length > 0) unbindContext(...removed);
-
     bindContext(values);
-    prevKeysRef.current = keys;
-
     return () => {
-      unbindContext(...Object.keys(values));
+      unbindContext(...keys);
     };
     // `serialized` is the intentional dep — avoids re-running for referentially-new-but-equal
     // objects. `values` is deliberately omitted; the serialized string is the stable proxy.

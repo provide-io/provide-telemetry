@@ -52,6 +52,8 @@ describe('useTelemetryContext', () => {
   });
 
   it('does not re-bind when reference changes but content is equal', async () => {
+    // ESM-spy test: spies on a named export via dynamic import. Works in Vitest today,
+    // but may need updating if Vitest's module interop or ESM handling changes.
     const contextModule = await import('../src/context');
     const spy = vi.spyOn(contextModule, 'bindContext');
 
