@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Stress and saturation tests for the backpressure subsystem.
@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 
-from undef.telemetry.backpressure import (
+from provide.telemetry.backpressure import (
     QueuePolicy,
     QueueTicket,
     release,
@@ -24,7 +24,7 @@ from undef.telemetry.backpressure import (
     set_queue_policy,
     try_acquire,
 )
-from undef.telemetry.health import get_health_snapshot, reset_health_for_tests
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 
 pytestmark = pytest.mark.integration
 

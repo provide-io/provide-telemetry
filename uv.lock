@@ -1472,6 +1472,100 @@ wheels = [
 ]
 
 [[package]]
+name = "provide-telemetry"
+source = { editable = "." }
+dependencies = [
+    { name = "structlog" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "fastapi" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-sdk" },
+    { name = "starlette" },
+]
+fastapi = [
+    { name = "fastapi" },
+    { name = "starlette" },
+]
+otel = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-sdk" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "bandit" },
+    { name = "build" },
+    { name = "codespell" },
+    { name = "hypothesis" },
+    { name = "memray", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "mutmut" },
+    { name = "mypy" },
+    { name = "pip-audit" },
+    { name = "pip-licenses" },
+    { name = "playwright" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-randomly" },
+    { name = "pytest-rerunfailures" },
+    { name = "pytest-xdist" },
+    { name = "reuse" },
+    { name = "ruff" },
+    { name = "twine" },
+    { name = "ty" },
+    { name = "vulture" },
+    { name = "xenon" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115.0" },
+    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.27.0" },
+    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'otel'", specifier = ">=0.61b0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.27.0" },
+    { name = "provide-telemetry", extras = ["fastapi", "otel"], marker = "extra == 'all'" },
+    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40.0" },
+    { name = "structlog", specifier = ">=24.0.0" },
+]
+provides-extras = ["otel", "fastapi", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bandit", specifier = ">=1.8.6" },
+    { name = "build", specifier = ">=1.2.2" },
+    { name = "codespell", specifier = ">=2.4.1" },
+    { name = "hypothesis", specifier = ">=6.130.0" },
+    { name = "memray", marker = "sys_platform == 'darwin' or sys_platform == 'linux'", specifier = ">=1.0" },
+    { name = "mutmut", specifier = ">=3.3.1" },
+    { name = "mypy", specifier = ">=1.18.0" },
+    { name = "pip-audit", specifier = ">=2.7.0" },
+    { name = "pip-licenses", specifier = ">=5.0.0" },
+    { name = "playwright", specifier = ">=1.50.0" },
+    { name = "pre-commit", specifier = ">=4.0.1" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=6.1.1" },
+    { name = "pytest-randomly", specifier = ">=3.15.0" },
+    { name = "pytest-rerunfailures", specifier = ">=14.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "reuse", specifier = ">=6.2.0" },
+    { name = "ruff", specifier = ">=0.14.5" },
+    { name = "twine", specifier = ">=5.1.1" },
+    { name = "ty", specifier = ">=0.0.18" },
+    { name = "vulture", specifier = ">=2.14" },
+    { name = "xenon", specifier = ">=0.9.3" },
+]
+
+[[package]]
 name = "py-serializable"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2256,100 +2350,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/78/67/9a363818028526e2d4579334460df777115bdec1bb77c08f9db88f6389f2/uc_micro_py-2.0.0.tar.gz", hash = "sha256:c53691e495c8db60e16ffc4861a35469b0ba0821fe409a8a7a0a71864d33a811", size = 6611, upload-time = "2026-03-01T06:31:27.526Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/61/73/d21edf5b204d1467e06500080a50f79d49ef2b997c79123a536d4a17d97c/uc_micro_py-2.0.0-py3-none-any.whl", hash = "sha256:3603a3859af53e5a39bc7677713c78ea6589ff188d70f4fee165db88e22b242c", size = 6383, upload-time = "2026-03-01T06:31:26.257Z" },
-]
-
-[[package]]
-name = "undef-telemetry"
-source = { editable = "." }
-dependencies = [
-    { name = "structlog" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "fastapi" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-instrumentation-logging" },
-    { name = "opentelemetry-sdk" },
-    { name = "starlette" },
-]
-fastapi = [
-    { name = "fastapi" },
-    { name = "starlette" },
-]
-otel = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-instrumentation-logging" },
-    { name = "opentelemetry-sdk" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "bandit" },
-    { name = "build" },
-    { name = "codespell" },
-    { name = "hypothesis" },
-    { name = "memray", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "mutmut" },
-    { name = "mypy" },
-    { name = "pip-audit" },
-    { name = "pip-licenses" },
-    { name = "playwright" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-randomly" },
-    { name = "pytest-rerunfailures" },
-    { name = "pytest-xdist" },
-    { name = "reuse" },
-    { name = "ruff" },
-    { name = "twine" },
-    { name = "ty" },
-    { name = "vulture" },
-    { name = "xenon" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115.0" },
-    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'otel'", specifier = ">=0.61b0" },
-    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40.0" },
-    { name = "structlog", specifier = ">=24.0.0" },
-    { name = "undef-telemetry", extras = ["fastapi", "otel"], marker = "extra == 'all'" },
-]
-provides-extras = ["otel", "fastapi", "all"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bandit", specifier = ">=1.8.6" },
-    { name = "build", specifier = ">=1.2.2" },
-    { name = "codespell", specifier = ">=2.4.1" },
-    { name = "hypothesis", specifier = ">=6.130.0" },
-    { name = "memray", marker = "sys_platform == 'darwin' or sys_platform == 'linux'", specifier = ">=1.0" },
-    { name = "mutmut", specifier = ">=3.3.1" },
-    { name = "mypy", specifier = ">=1.18.0" },
-    { name = "pip-audit", specifier = ">=2.7.0" },
-    { name = "pip-licenses", specifier = ">=5.0.0" },
-    { name = "playwright", specifier = ">=1.50.0" },
-    { name = "pre-commit", specifier = ">=4.0.1" },
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "pytest-randomly", specifier = ">=3.15.0" },
-    { name = "pytest-rerunfailures", specifier = ">=14.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "reuse", specifier = ">=6.2.0" },
-    { name = "ruff", specifier = ">=0.14.5" },
-    { name = "twine", specifier = ">=5.1.1" },
-    { name = "ty", specifier = ">=0.0.18" },
-    { name = "vulture", specifier = ">=2.14" },
-    { name = "xenon", specifier = ">=0.9.3" },
 ]
 
 [[package]]

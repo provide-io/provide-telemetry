@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Bounded-growth stress test: verify module-level caches do not grow unboundedly."""
@@ -12,8 +12,8 @@ import sys
 import time
 import tracemalloc
 
-from undef.telemetry import cardinality, slo
-from undef.telemetry.metrics import provider as metrics_provider
+from provide.telemetry import cardinality, slo
+from provide.telemetry.metrics import provider as metrics_provider
 
 
 def _print_table_header() -> None:

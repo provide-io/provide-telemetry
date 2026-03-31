@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in runtime.py.
@@ -13,18 +13,18 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry import health as health_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry import runtime as runtime_mod
-from undef.telemetry import sampling as sampling_mod
-from undef.telemetry.config import (
+from provide.telemetry import backpressure as backpressure_mod
+from provide.telemetry import health as health_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry import runtime as runtime_mod
+from provide.telemetry import sampling as sampling_mod
+from provide.telemetry.config import (
     BackpressureConfig,
     ExporterPolicyConfig,
     SamplingConfig,
     TelemetryConfig,
 )
-from undef.telemetry.resilience import ExporterPolicy
+from provide.telemetry.resilience import ExporterPolicy
 
 
 @pytest.fixture(autouse=True)

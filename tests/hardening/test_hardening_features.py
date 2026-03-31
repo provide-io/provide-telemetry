@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -9,19 +9,19 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry import cardinality as cardinality_mod
-from undef.telemetry import health as health_mod
-from undef.telemetry import pii as pii_mod
-from undef.telemetry import propagation as propagation_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry import runtime as runtime_mod
-from undef.telemetry import sampling as sampling_mod
-from undef.telemetry import slo as slo_mod
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger.context import clear_context, get_context
-from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry import backpressure as backpressure_mod
+from provide.telemetry import cardinality as cardinality_mod
+from provide.telemetry import health as health_mod
+from provide.telemetry import pii as pii_mod
+from provide.telemetry import propagation as propagation_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry import runtime as runtime_mod
+from provide.telemetry import sampling as sampling_mod
+from provide.telemetry import slo as slo_mod
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger.context import clear_context, get_context
+from provide.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 @pytest.fixture(autouse=True)
@@ -37,20 +37,20 @@ def _reset_state() -> None:
 
 
 def test_w3c_attach_returns_none_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
-    from undef.telemetry import _otel
+    from provide.telemetry import _otel
 
     monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     assert _otel.attach_w3c_context("00-abc-def-01", None) is None
 
 
 def test_w3c_detach_none_is_noop() -> None:
-    from undef.telemetry import _otel
+    from provide.telemetry import _otel
 
     _otel.detach_w3c_context(None)  # should not raise
 
 
 def test_w3c_detach_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
-    from undef.telemetry import _otel
+    from provide.telemetry import _otel
 
     monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
     _otel.detach_w3c_context("fake_token")  # should not raise
@@ -59,7 +59,7 @@ def test_w3c_detach_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_w3c_attach_with_mocked_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
 
-    from undef.telemetry import _otel
+    from provide.telemetry import _otel
 
     fake_token = object()
     extract_calls: list[dict[str, str]] = []
@@ -287,9 +287,9 @@ def test_pii_sanitize_payload_non_dict_fallback(monkeypatch: pytest.MonkeyPatch)
 def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_SAMPLING_LOGS_RATE": "0.3",
-            "UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "5",
-            "UNDEF_EXPORTER_LOGS_RETRIES": "2",
+            "PROVIDE_SAMPLING_LOGS_RATE": "0.3",
+            "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE": "5",
+            "PROVIDE_EXPORTER_LOGS_RETRIES": "2",
         }
     )
     runtime_mod.apply_runtime_config(cfg)
@@ -308,7 +308,7 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     assert updated.sampling.logs_rate == 0.9
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.9
 
-    monkeypatch.setattr("undef.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
+    monkeypatch.setattr("provide.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
     reloaded = runtime_mod.reload_runtime_from_env()
     assert reloaded is not cfg
     assert reloaded.sampling.logs_rate == cfg.sampling.logs_rate

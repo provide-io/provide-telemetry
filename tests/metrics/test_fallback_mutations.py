@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in metrics/fallback.py."""
@@ -12,8 +12,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.metrics import fallback as fallback_mod
-from undef.telemetry.metrics.fallback import Counter, Gauge, Histogram, _exemplar
+from provide.telemetry.metrics import fallback as fallback_mod
+from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram, _exemplar
 
 
 @pytest.fixture(autouse=True)

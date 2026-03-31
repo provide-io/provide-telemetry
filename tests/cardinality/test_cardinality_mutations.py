@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in cardinality.py."""
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry import cardinality as cardinality_mod
-from undef.telemetry.cardinality import (
+from provide.telemetry import cardinality as cardinality_mod
+from provide.telemetry.cardinality import (
     OVERFLOW_VALUE,
     _prune_expired,
     clear_cardinality_limits,
