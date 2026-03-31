@@ -459,5 +459,5 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.4.1';
+export const version = '0.4.2';
 export const __version__ = version;
