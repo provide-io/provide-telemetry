@@ -8,8 +8,10 @@
  * React must be installed as a peer dependency (>=18).
  */
 
-import { useEffect } from 'react';
+import { Component, useEffect } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { bindContext, unbindContext } from './context';
+import { getLogger } from './logger';
 
 // ── useTelemetryContext ──────────────────────────────────────────────────────
 
@@ -32,4 +34,65 @@ export function useTelemetryContext(values: Record<string, unknown>): void {
     // `serialized` is the intentional dep — avoids re-running for referentially-new-but-equal
     // objects. `values` is deliberately omitted; the serialized string is the stable proxy.
   }, [serialized]);
+}
+
+// ── TelemetryErrorBoundary ───────────────────────────────────────────────────
+
+interface TelemetryErrorBoundaryProps {
+  children: ReactNode;
+  fallback: ReactNode | ((error: Error, reset: () => void) => ReactNode);
+  onError?: (error: Error, info: ErrorInfo) => void;
+}
+
+interface TelemetryErrorBoundaryState {
+  error: Error | null;
+}
+
+/**
+ * React error boundary that logs caught render errors via getLogger and renders
+ * a fallback UI. Accepts a static ReactNode or a render-prop that receives the
+ * caught error and a reset callback.
+ *
+ * Auto-logs to getLogger('react.error_boundary') on every catch. Call onError
+ * for any additional handling (alerting, Sentry, etc.).
+ */
+export class TelemetryErrorBoundary extends Component<
+  TelemetryErrorBoundaryProps,
+  TelemetryErrorBoundaryState
+> {
+  constructor(props: TelemetryErrorBoundaryProps) {
+    super(props);
+    this.state = { error: null };
+    this.reset = this.reset.bind(this);
+  }
+
+  static getDerivedStateFromError(error: Error): TelemetryErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    getLogger('react.error_boundary').error({
+      event: 'react_error_caught',
+      error_message: error.message,
+      error_stack: error.stack ?? '',
+      component_stack: info.componentStack ?? '',
+    });
+    this.props.onError?.(error, info);
+  }
+
+  reset(): void {
+    this.setState({ error: null });
+  }
+
+  render(): ReactNode {
+    const { error } = this.state;
+    if (error !== null) {
+      const { fallback } = this.props;
+      if (typeof fallback === 'function') {
+        return fallback(error, this.reset);
+      }
+      return fallback;
+    }
+    return this.props.children;
+  }
 }
