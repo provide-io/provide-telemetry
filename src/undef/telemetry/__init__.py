@@ -24,6 +24,7 @@ from undef.telemetry.cardinality import (
 from undef.telemetry.exceptions import ConfigurationError, TelemetryError
 from undef.telemetry.health import HealthSnapshot, get_health_snapshot
 from undef.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
+from undef.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
 from undef.telemetry.metrics import counter, gauge, get_meter, histogram
 from undef.telemetry.pii import PIIRule, get_pii_rules, register_pii_rule, replace_pii_rules
 from undef.telemetry.propagation import bind_propagation_context, extract_w3c_context
@@ -70,10 +71,12 @@ __all__ = [
     "__version__",
     "bind_context",
     "bind_propagation_context",
+    "bind_session_context",
     "bind_websocket_context",
     "classify_error",
     "clear_cardinality_limits",
     "clear_context",
+    "clear_session_context",
     "clear_websocket_context",
     "counter",
     "event_name",
@@ -88,6 +91,7 @@ __all__ = [
     "get_queue_policy",
     "get_runtime_config",
     "get_sampling_policy",
+    "get_session_id",
     "get_trace_context",
     "get_tracer",
     "histogram",
