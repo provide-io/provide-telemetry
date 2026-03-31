@@ -1,6 +1,6 @@
 # React Helper Design — `@undef-games/telemetry/react`
 
-**Date:** 2026-03-30  
+**Date:** 2026-03-30
 **Status:** Approved
 
 ## Summary
@@ -11,7 +11,7 @@ Add a `./react` sub-export to `@undef-games/telemetry` that bridges React 18+ co
 
 ## Entry Point
 
-**File:** `typescript/src/react.ts`  
+**File:** `typescript/src/react.ts`
 **Export path:** `"./react"` in `package.json` exports map.
 
 ```json
