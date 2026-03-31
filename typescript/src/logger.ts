@@ -17,6 +17,7 @@ import pino from 'pino';
 import { configFromEnv, getConfig, _getConfigVersion } from './config';
 import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
+import { formatPretty, supportsColor } from './pretty';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
@@ -96,86 +97,16 @@ export function makeWriteHook() {
       }
       // Stryker enable all
 
-      // Error fingerprinting — stable hash from error name + stack.
-      const errObj = o['err'] as Record<string, unknown> | undefined;
-      const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
-        | string
-        | undefined;
-      if (excName) {
-        const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
-        o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
+    // Emit to console only when explicitly enabled (opt-in).
+    if (cfg.consoleOutput) {
+      const method = LEVEL_MAP[o['level'] as number] ?? 'log';
+      if (cfg.logFormat === 'pretty') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](formatPretty(o, supportsColor()));
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (console as any)[method](o);
       }
-
-      // PII sanitization: blocked keys + secret detection + custom PII rules.
-      if (cfg.logSanitize) {
-        sanitize(o, cfg.sanitizeFields);
-        sanitizePayload(o, [], { maxDepth: cfg.piiMaxDepth });
-      }
-
-      // Strip timestamp when configured off.
-      if (!cfg.logIncludeTimestamp) {
-        delete o['time'];
-      }
-
-      // Schema validation — annotate instead of dropping.
-      // Preserves telemetry while flagging violations via _schema_error.
-      // Cross-language standard (Python/Rust/Go match).
-      if (cfg.requiredLogKeys.length > 0) {
-        try {
-          validateRequiredKeys(o, cfg.requiredLogKeys);
-        } catch (e) {
-          if (e instanceof EventSchemaError) {
-            o['_schema_error'] = (e as EventSchemaError).message;
-          } else {
-            throw e;
-          }
-        }
-      }
-      /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
-      if (cfg.strictSchema || cfg.strictEventName) {
-        const event = String(o['event'] ?? o['message'] ?? '');
-        if (event) {
-          try {
-            validateEventName(event);
-          } catch (e) {
-            if (e instanceof EventSchemaError) {
-              o['_schema_error'] = (e as EventSchemaError).message;
-            } else {
-              throw e;
-            }
-          }
-        }
-      }
-
-      // Count every record that survives all filters as emitted.
-      _incrementHealth(_emittedField('logs'));
-
-      // Export to OTLP when a log provider is registered (noop otherwise).
-      emitLogRecord(o);
-
-      // Capture to window.__pinoLogs for Playwright and devtools inspection.
-      // Check is done inline (not at module load) so it works when loaded in Node.js
-      // test environments that later gain a jsdom window.
-      if (typeof window !== 'undefined' && cfg.captureToWindow) {
-        if (!('__pinoLogs' in window)) {
-          (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
-        }
-        (window as unknown as Record<string, unknown[]>)['__pinoLogs'].push(o);
-      }
-
-      // Emit to console only when explicitly enabled (opt-in).
-      if (cfg.consoleOutput) {
-        const method = LEVEL_MAP[o['level'] as number] ?? 'log';
-        if (cfg.logFormat === 'pretty' || cfg.logFormat === 'console') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (console as any)[method](formatPretty(o, supportsColor()));
-        } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (console as any)[method](JSON.stringify(o));
-        }
-      }
-    } finally {
-      release(ticket);
     }
   };
 }

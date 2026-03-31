@@ -1,10 +1,10 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * Pretty ANSI log renderer for CLI / terminal output.
  *
- * Mirrors Python provide.telemetry.logger.pretty.PrettyRenderer.
+ * Mirrors Python undef.telemetry.logger.pretty.PrettyRenderer.
  * Same color scheme, same layout: timestamp [level] event key=value pairs.
  */
 
@@ -33,19 +33,17 @@ const LEVEL_NAMES: Record<number, string> = {
 const LEVEL_PAD = 6; // "fatal" = 5, pad to 6
 
 // Keys to exclude from the key=value tail (already rendered or internal)
-const SKIP_KEYS = new Set(['level', 'time', 'message', 'event', 'v', 'pid', 'hostname']);
+const SKIP_KEYS = new Set(['level', 'time', 'msg', 'event', 'v', 'pid', 'hostname']);
 
 /**
  * Detect whether stdout supports color.
  * Returns false in browsers, CI without FORCE_COLOR, or piped output.
  */
 export function supportsColor(): boolean {
-  // Stryker disable next-line ConditionalExpression,StringLiteral,BooleanLiteral -- browser-only guard
-  /* v8 ignore next -- browser-only path, untestable in Node */
+  /* c8 ignore next -- browser-only path, untestable in Node */
   if (typeof process === 'undefined') return false;
   if (process.env['FORCE_COLOR'] === '1' || process.env['FORCE_COLOR'] === 'true') return true;
   if (process.env['NO_COLOR'] !== undefined) return false;
-  // Stryker disable next-line OptionalChaining -- process.stdout is always defined in Node/test env
   if (typeof process.stdout?.isTTY === 'boolean') return process.stdout.isTTY;
   return false;
 }
@@ -77,7 +75,7 @@ export function formatPretty(obj: Record<string, unknown>, colors: boolean): str
   }
 
   // 3. Event / message
-  const event = obj['event'] ?? obj['message'] ?? '';
+  const event = obj['event'] ?? obj['msg'] ?? '';
   parts.push(String(event));
 
   // 4. Remaining key=value pairs (sorted, skip internal keys)
