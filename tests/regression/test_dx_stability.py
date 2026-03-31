@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for DX and stability improvements.
@@ -17,10 +17,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from undef.telemetry.backpressure import reset_queues_for_tests
-from undef.telemetry.exceptions import ConfigurationError, TelemetryError
-from undef.telemetry.health import reset_health_for_tests
-from undef.telemetry.sampling import reset_sampling_for_tests
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.exceptions import ConfigurationError, TelemetryError
+from provide.telemetry.health import reset_health_for_tests
+from provide.telemetry.sampling import reset_sampling_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -44,40 +44,40 @@ class TestExceptionHierarchy:
         assert issubclass(ConfigurationError, ValueError)
 
     def test_event_schema_error_is_telemetry_error(self) -> None:
-        from undef.telemetry.schema.events import EventSchemaError
+        from provide.telemetry.schema.events import EventSchemaError
 
         assert issubclass(EventSchemaError, TelemetryError)
 
     def test_event_schema_error_is_value_error(self) -> None:
-        from undef.telemetry.schema.events import EventSchemaError
+        from provide.telemetry.schema.events import EventSchemaError
 
         assert issubclass(EventSchemaError, ValueError)
 
     def test_config_errors_raise_configuration_error(self) -> None:
-        from undef.telemetry.config import _parse_env_float
+        from provide.telemetry.config import _parse_env_float
 
         with pytest.raises(ConfigurationError):
             _parse_env_float("not-a-number", "TEST_FIELD")
 
     def test_config_errors_still_caught_by_value_error(self) -> None:
-        from undef.telemetry.config import _parse_env_int
+        from provide.telemetry.config import _parse_env_int
 
         with pytest.raises(ValueError):
             _parse_env_int("not-an-int", "TEST_FIELD")
 
     def test_exported_from_top_level(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
-        assert hasattr(undef.telemetry, "TelemetryError")
-        assert hasattr(undef.telemetry, "ConfigurationError")
-        assert hasattr(undef.telemetry, "EventSchemaError")
+        assert hasattr(provide.telemetry, "TelemetryError")
+        assert hasattr(provide.telemetry, "ConfigurationError")
+        assert hasattr(provide.telemetry, "EventSchemaError")
 
     def test_in_top_level_all(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
-        assert "TelemetryError" in undef.telemetry.__all__
-        assert "ConfigurationError" in undef.telemetry.__all__
-        assert "EventSchemaError" in undef.telemetry.__all__
+        assert "TelemetryError" in provide.telemetry.__all__
+        assert "ConfigurationError" in provide.telemetry.__all__
+        assert "EventSchemaError" in provide.telemetry.__all__
 
 
 # ── __all__ exports ──────────────────────────────────────────────────
@@ -87,26 +87,26 @@ class TestModuleAll:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "undef.telemetry",
-            "undef.telemetry.config",
-            "undef.telemetry.sampling",
-            "undef.telemetry.backpressure",
-            "undef.telemetry.health",
-            "undef.telemetry.pii",
-            "undef.telemetry.propagation",
-            "undef.telemetry.resilience",
-            "undef.telemetry.runtime",
-            "undef.telemetry.slo",
-            "undef.telemetry.cardinality",
-            "undef.telemetry.headers",
-            "undef.telemetry.schema.events",
-            "undef.telemetry._otel",
-            "undef.telemetry.setup",
-            "undef.telemetry.exceptions",
-            "undef.telemetry.metrics",
-            "undef.telemetry.metrics.api",
-            "undef.telemetry.logger",
-            "undef.telemetry.tracing",
+            "provide.telemetry",
+            "provide.telemetry.config",
+            "provide.telemetry.sampling",
+            "provide.telemetry.backpressure",
+            "provide.telemetry.health",
+            "provide.telemetry.pii",
+            "provide.telemetry.propagation",
+            "provide.telemetry.resilience",
+            "provide.telemetry.runtime",
+            "provide.telemetry.slo",
+            "provide.telemetry.cardinality",
+            "provide.telemetry.headers",
+            "provide.telemetry.schema.events",
+            "provide.telemetry._otel",
+            "provide.telemetry.setup",
+            "provide.telemetry.exceptions",
+            "provide.telemetry.metrics",
+            "provide.telemetry.metrics.api",
+            "provide.telemetry.logger",
+            "provide.telemetry.tracing",
         ],
     )
     def test_module_defines_all(self, module_path: str) -> None:
@@ -120,19 +120,19 @@ class TestModuleAll:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "undef.telemetry.config",
-            "undef.telemetry.sampling",
-            "undef.telemetry.backpressure",
-            "undef.telemetry.health",
-            "undef.telemetry.pii",
-            "undef.telemetry.propagation",
-            "undef.telemetry.resilience",
-            "undef.telemetry.runtime",
-            "undef.telemetry.slo",
-            "undef.telemetry.cardinality",
-            "undef.telemetry.headers",
-            "undef.telemetry.schema.events",
-            "undef.telemetry.exceptions",
+            "provide.telemetry.config",
+            "provide.telemetry.sampling",
+            "provide.telemetry.backpressure",
+            "provide.telemetry.health",
+            "provide.telemetry.pii",
+            "provide.telemetry.propagation",
+            "provide.telemetry.resilience",
+            "provide.telemetry.runtime",
+            "provide.telemetry.slo",
+            "provide.telemetry.cardinality",
+            "provide.telemetry.headers",
+            "provide.telemetry.schema.events",
+            "provide.telemetry.exceptions",
         ],
     )
     def test_all_entries_exist(self, module_path: str) -> None:
@@ -148,35 +148,35 @@ class TestModuleAll:
 
 class TestLazySloLoading:
     def test_classify_error_accessible_via_top_level(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
-        fn = undef.telemetry.classify_error
+        fn = provide.telemetry.classify_error
         assert callable(fn)
         result = fn("ValueError", None)
         assert "error_type" in result
 
     def test_record_red_metrics_accessible_via_top_level(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
-        assert callable(undef.telemetry.record_red_metrics)
+        assert callable(provide.telemetry.record_red_metrics)
 
     def test_record_use_metrics_accessible_via_top_level(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
-        assert callable(undef.telemetry.record_use_metrics)
+        assert callable(provide.telemetry.record_use_metrics)
 
     def test_unknown_attr_raises_attribute_error(self) -> None:
-        import undef.telemetry
+        import provide.telemetry
 
         with pytest.raises(AttributeError, match="no_such_thing"):
-            undef.telemetry.no_such_thing  # noqa: B018
+            provide.telemetry.no_such_thing  # noqa: B018
 
     def test_all_entries_accessible(self) -> None:
         """Every name in __all__ must be resolvable (including lazy ones)."""
-        import undef.telemetry
+        import provide.telemetry
 
-        for name in undef.telemetry.__all__:
-            assert hasattr(undef.telemetry, name), f"__all__ has {name!r} but it's not accessible"
+        for name in provide.telemetry.__all__:
+            assert hasattr(provide.telemetry, name), f"__all__ has {name!r} but it's not accessible"
 
 
 # ── Metric creation logging ─────────────────────────────────────────
@@ -184,14 +184,14 @@ class TestLazySloLoading:
 
 class TestMetricCreationLogging:
     def test_counter_creation_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.metrics.api import counter
+        from provide.telemetry.metrics.api import counter
 
         broken_meter = MagicMock()
         broken_meter.create_counter.side_effect = TypeError("bad counter")
 
         with (
-            patch("undef.telemetry.metrics.api.get_meter", return_value=broken_meter),
-            caplog.at_level(logging.WARNING, logger="undef.telemetry.metrics.api"),
+            patch("provide.telemetry.metrics.api.get_meter", return_value=broken_meter),
+            caplog.at_level(logging.WARNING, logger="provide.telemetry.metrics.api"),
         ):
             c = counter("test.counter")
 
@@ -200,14 +200,14 @@ class TestMetricCreationLogging:
         assert "metrics.counter.create_failed" in caplog.text
 
     def test_gauge_creation_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.metrics.api import gauge
+        from provide.telemetry.metrics.api import gauge
 
         broken_meter = MagicMock()
         broken_meter.create_up_down_counter.side_effect = TypeError("bad gauge")
 
         with (
-            patch("undef.telemetry.metrics.api.get_meter", return_value=broken_meter),
-            caplog.at_level(logging.WARNING, logger="undef.telemetry.metrics.api"),
+            patch("provide.telemetry.metrics.api.get_meter", return_value=broken_meter),
+            caplog.at_level(logging.WARNING, logger="provide.telemetry.metrics.api"),
         ):
             g = gauge("test.gauge")
 
@@ -216,14 +216,14 @@ class TestMetricCreationLogging:
         assert "metrics.gauge.create_failed" in caplog.text
 
     def test_histogram_creation_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.metrics.api import histogram
+        from provide.telemetry.metrics.api import histogram
 
         broken_meter = MagicMock()
         broken_meter.create_histogram.side_effect = TypeError("bad histogram")
 
         with (
-            patch("undef.telemetry.metrics.api.get_meter", return_value=broken_meter),
-            caplog.at_level(logging.WARNING, logger="undef.telemetry.metrics.api"),
+            patch("provide.telemetry.metrics.api.get_meter", return_value=broken_meter),
+            caplog.at_level(logging.WARNING, logger="provide.telemetry.metrics.api"),
         ):
             h = histogram("test.histogram")
 
@@ -237,18 +237,18 @@ class TestMetricCreationLogging:
 
 class TestSetupRollbackLogging:
     def test_rollback_logs_suppressed_exceptions(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.setup import _rollback
+        from provide.telemetry.setup import _rollback
 
         with (
-            patch("undef.telemetry.setup.shutdown_logging", side_effect=RuntimeError("teardown failed")),
-            caplog.at_level(logging.WARNING, logger="undef.telemetry.setup"),
+            patch("provide.telemetry.setup.shutdown_logging", side_effect=RuntimeError("teardown failed")),
+            caplog.at_level(logging.WARNING, logger="provide.telemetry.setup"),
         ):
             _rollback(["configure_logging"])
 
         assert "setup.rollback.step_failed" in caplog.text
 
     def test_rollback_continues_after_failure(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.setup import _rollback
+        from provide.telemetry.setup import _rollback
 
         call_order: list[str] = []
 
@@ -260,9 +260,9 @@ class TestSetupRollbackLogging:
             call_order.append("tracing")
 
         with (
-            patch("undef.telemetry.setup.shutdown_logging", side_effect=_fail_logging),
-            patch("undef.telemetry.setup.shutdown_tracing", side_effect=_ok_tracing),
-            caplog.at_level(logging.WARNING, logger="undef.telemetry.setup"),
+            patch("provide.telemetry.setup.shutdown_logging", side_effect=_fail_logging),
+            patch("provide.telemetry.setup.shutdown_tracing", side_effect=_ok_tracing),
+            caplog.at_level(logging.WARNING, logger="provide.telemetry.setup"),
         ):
             _rollback(["setup_tracing", "configure_logging"])
 
@@ -274,27 +274,27 @@ class TestSetupRollbackLogging:
 
 class TestSamplingRateClampingWarning:
     def test_rate_above_one_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.sampling import _normalize_rate
+        from provide.telemetry.sampling import _normalize_rate
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.sampling"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.sampling"):
             result = _normalize_rate(1.5)
 
         assert result == 1.0
         assert "sampling.rate.clamped.warning" in caplog.text
 
     def test_rate_below_zero_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.sampling import _normalize_rate
+        from provide.telemetry.sampling import _normalize_rate
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.sampling"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.sampling"):
             result = _normalize_rate(-0.5)
 
         assert result == 0.0
         assert "sampling.rate.clamped.warning" in caplog.text
 
     def test_valid_rate_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.sampling import _normalize_rate
+        from provide.telemetry.sampling import _normalize_rate
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.sampling"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.sampling"):
             result = _normalize_rate(0.5)
 
         assert result == 0.5
@@ -306,27 +306,27 @@ class TestSamplingRateClampingWarning:
 
 class TestOTLPHeaderWarning:
     def test_malformed_pair_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.config"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.config"):
             result = _parse_otlp_headers("good=value,bad-no-equals,another=ok")
 
         assert result == {"good": "value", "another": "ok"}
         assert "config.otlp.header_malformed" in caplog.text
 
     def test_empty_malformed_pair_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.config"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.config"):
             result = _parse_otlp_headers("key=val,,")
 
         assert result == {"key": "val"}
         assert "malformed" not in caplog.text
 
     def test_trailing_comma_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
-        with caplog.at_level(logging.WARNING, logger="undef.telemetry.config"):
+        with caplog.at_level(logging.WARNING, logger="provide.telemetry.config"):
             result = _parse_otlp_headers("key=val,")
 
         assert result == {"key": "val"}
@@ -338,11 +338,11 @@ class TestOTLPHeaderWarning:
 
 class TestOTelDebugLogging:
     def test_has_otel_logs_debug_when_missing(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry._otel import has_otel
+        from provide.telemetry._otel import has_otel
 
         with (
-            patch("undef.telemetry._otel._import_module", side_effect=ImportError("no otel")),
-            caplog.at_level(logging.DEBUG, logger="undef.telemetry._otel"),
+            patch("provide.telemetry._otel._import_module", side_effect=ImportError("no otel")),
+            caplog.at_level(logging.DEBUG, logger="provide.telemetry._otel"),
         ):
             result = has_otel()
 
@@ -350,11 +350,11 @@ class TestOTelDebugLogging:
         assert "otel.import.not_installed" in caplog.text
 
     def test_load_trace_api_logs_debug_when_missing(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry._otel import load_otel_trace_api
+        from provide.telemetry._otel import load_otel_trace_api
 
         with (
-            patch("undef.telemetry._otel._import_module", side_effect=ImportError("no trace")),
-            caplog.at_level(logging.DEBUG, logger="undef.telemetry._otel"),
+            patch("provide.telemetry._otel._import_module", side_effect=ImportError("no trace")),
+            caplog.at_level(logging.DEBUG, logger="provide.telemetry._otel"),
         ):
             result = load_otel_trace_api()
 
@@ -362,11 +362,11 @@ class TestOTelDebugLogging:
         assert "otel.trace.import_unavailable" in caplog.text
 
     def test_load_metrics_api_logs_debug_when_missing(self, caplog: pytest.LogCaptureFixture) -> None:
-        from undef.telemetry._otel import load_otel_metrics_api
+        from provide.telemetry._otel import load_otel_metrics_api
 
         with (
-            patch("undef.telemetry._otel._import_module", side_effect=ImportError("no metrics")),
-            caplog.at_level(logging.DEBUG, logger="undef.telemetry._otel"),
+            patch("provide.telemetry._otel._import_module", side_effect=ImportError("no metrics")),
+            caplog.at_level(logging.DEBUG, logger="provide.telemetry._otel"),
         ):
             result = load_otel_metrics_api()
 
@@ -379,13 +379,13 @@ class TestOTelDebugLogging:
 
 class TestOTelSdkLogSuppression:
     def test_setup_quiets_otel_exporter_logger(self) -> None:
-        from undef.telemetry.setup import _quiet_otel_sdk_loggers
+        from provide.telemetry.setup import _quiet_otel_sdk_loggers
 
         _quiet_otel_sdk_loggers()
         assert logging.getLogger("opentelemetry.exporter").level == logging.CRITICAL
 
     def test_setup_quiets_otel_sdk_logger(self) -> None:
-        from undef.telemetry.setup import _quiet_otel_sdk_loggers
+        from provide.telemetry.setup import _quiet_otel_sdk_loggers
 
         _quiet_otel_sdk_loggers()
         assert logging.getLogger("opentelemetry.sdk").level == logging.CRITICAL
@@ -397,7 +397,7 @@ class TestOTelSdkLogSuppression:
 class TestBackwardsCompatibility:
     def test_config_errors_caught_by_value_error(self) -> None:
         """Existing code catching ValueError still works."""
-        from undef.telemetry.config import LoggingConfig
+        from provide.telemetry.config import LoggingConfig
 
         with pytest.raises(ValueError):
             LoggingConfig(level="INVALID_LEVEL")
@@ -410,9 +410,9 @@ class TestBackwardsCompatibility:
         """
         from unittest.mock import patch
 
-        from undef.telemetry.schema.events import EventSchemaError, event_name
+        from provide.telemetry.schema.events import EventSchemaError, event_name
 
-        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True):
+        with patch("provide.telemetry.runtime._is_strict_event_name", return_value=True):
             with pytest.raises(ValueError):
                 event_name("a")
 
@@ -423,11 +423,11 @@ class TestBackwardsCompatibility:
         """TelemetryError catches both config and schema errors."""
         from unittest.mock import patch
 
-        from undef.telemetry.config import _parse_env_float
-        from undef.telemetry.schema.events import event_name
+        from provide.telemetry.config import _parse_env_float
+        from provide.telemetry.schema.events import event_name
 
         with pytest.raises(TelemetryError):
             _parse_env_float("nope", "FIELD")
 
-        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True), pytest.raises(TelemetryError):
+        with patch("provide.telemetry.runtime._is_strict_event_name", return_value=True), pytest.raises(TelemetryError):
             event_name("a")

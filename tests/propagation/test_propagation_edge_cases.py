@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Edge-case tests for W3C trace context propagation."""
@@ -13,16 +13,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from undef.telemetry import propagation as propagation_mod
-from undef.telemetry.logger.context import clear_context, get_context
-from undef.telemetry.propagation import (
+from provide.telemetry import propagation as propagation_mod
+from provide.telemetry.logger.context import clear_context, get_context
+from provide.telemetry.propagation import (
     PropagationContext,
     _parse_traceparent,
     bind_propagation_context,
     clear_propagation_context,
     extract_w3c_context,
 )
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 @pytest.fixture(autouse=True)

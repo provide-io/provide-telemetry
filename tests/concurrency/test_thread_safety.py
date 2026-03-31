@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Concurrency stress tests for thread-safe telemetry subsystems.
@@ -17,8 +17,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 
-from undef.telemetry import setup as setup_mod
-from undef.telemetry.backpressure import (
+from provide.telemetry import setup as setup_mod
+from provide.telemetry.backpressure import (
     QueuePolicy,
     QueueTicket,
     release,
@@ -26,16 +26,16 @@ from undef.telemetry.backpressure import (
     set_queue_policy,
     try_acquire,
 )
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.health import get_health_snapshot, reset_health_for_tests
-from undef.telemetry.sampling import (
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
+from provide.telemetry.sampling import (
     SamplingPolicy,
     get_sampling_policy,
     reset_sampling_for_tests,
     set_sampling_policy,
     should_sample,
 )
-from undef.telemetry.setup import _reset_all_for_tests
+from provide.telemetry.setup import _reset_all_for_tests
 
 pytestmark = pytest.mark.integration
 
@@ -354,12 +354,12 @@ class TestSetupConcurrency:
             with count_lock:
                 call_count += 1
 
-        monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", _counting_runtime)
-        monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
-        monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
-        monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
-        monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", _counting_runtime)
+        monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
+        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
 
         barrier = threading.Barrier(WORKERS)
 

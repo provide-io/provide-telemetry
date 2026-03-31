@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Real OpenTelemetry span creation tests.
@@ -16,10 +16,10 @@ from collections.abc import Generator
 
 import pytest
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.setup import shutdown_telemetry
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
-from undef.telemetry.tracing.provider import (
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.setup import shutdown_telemetry
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.provider import (
     _NoopSpan,
     _NoopTracer,
     _reset_tracing_for_tests,
@@ -161,7 +161,7 @@ def test_noop_tracer_produces_deterministic_ids() -> None:
 
 def test_get_tracer_returns_noop_when_otel_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     """When OTel is not available, get_tracer falls back to _NoopTracer."""
-    from undef.telemetry.tracing import provider as pmod
+    from provide.telemetry.tracing import provider as pmod
 
     monkeypatch.setattr(pmod, "_HAS_OTEL", False)
     tracer = get_tracer("test")
@@ -171,12 +171,12 @@ def test_get_tracer_returns_noop_when_otel_absent(monkeypatch: pytest.MonkeyPatc
 def test_setup_tracing_creates_real_provider() -> None:
     """setup_tracing with real OTel creates a configured TracerProvider."""
     otel_trace = pytest.importorskip("opentelemetry.trace")
-    from undef.telemetry.tracing import provider as pmod
+    from provide.telemetry.tracing import provider as pmod
 
     _reset_tracing_for_tests()
     pmod._refresh_otel_tracing()
 
-    cfg = TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"})
     setup_tracing(cfg)
 
     # Provider should now be configured
@@ -193,12 +193,12 @@ def test_setup_tracing_creates_real_provider() -> None:
 def test_setup_tracing_idempotent_with_real_otel() -> None:
     """Calling setup_tracing twice doesn't create a second provider."""
     pytest.importorskip("opentelemetry.trace")
-    from undef.telemetry.tracing import provider as pmod
+    from provide.telemetry.tracing import provider as pmod
 
     _reset_tracing_for_tests()
     pmod._refresh_otel_tracing()
 
-    cfg = TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"})
     setup_tracing(cfg)
     first_ref = pmod._provider_ref
 

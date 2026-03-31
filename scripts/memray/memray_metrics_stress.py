@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Memray stress test for metrics instrument recording path."""
 
 from __future__ import annotations
 
-from undef.telemetry.metrics.fallback import Counter, Gauge, Histogram
+from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram
 
 ATTRS = {"route": "/api/v1/users", "method": "GET", "status_code": "200"}
 

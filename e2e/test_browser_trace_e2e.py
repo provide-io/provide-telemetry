@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Browser-based cross-language distributed tracing E2E test.
 
 Verifies that a W3C traceparent emitted by a real Chromium browser tab
-(running @undef/telemetry via Vite) is honoured by the Python backend,
+(running @provide/telemetry via Vite) is honoured by the Python backend,
 producing two spans with the same trace_id in OpenObserve.
 
 Requires:
@@ -116,10 +116,10 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     # ── Start Python backend ──────────────────────────────────────────────────
     server_env = {
         **os.environ,
-        "UNDEF_TRACE_ENABLED": "true",
-        "UNDEF_METRICS_ENABLED": "false",
-        "UNDEF_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "UNDEF_TELEMETRY_VERSION": "e2e",
+        "PROVIDE_TRACE_ENABLED": "true",
+        "PROVIDE_METRICS_ENABLED": "false",
+        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
+        "PROVIDE_TELEMETRY_VERSION": "e2e",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
         "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
         "OTEL_BSP_SCHEDULE_DELAY": "200",

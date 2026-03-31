@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in logger/core.py and metrics/provider.py."""
@@ -14,9 +14,9 @@ from unittest.mock import Mock
 import pytest
 import structlog
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger import core as core_mod
-from undef.telemetry.logger.core import (
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger import core as core_mod
+from provide.telemetry.logger.core import (
     TRACE,
     _get_level,
     _make_filtering_bound_logger,
@@ -26,8 +26,8 @@ from undef.telemetry.logger.core import (
     is_trace_enabled,
     shutdown_logging,
 )
-from undef.telemetry.metrics import provider as provider_mod
-from undef.telemetry.metrics.provider import get_meter
+from provide.telemetry.metrics import provider as provider_mod
+from provide.telemetry.metrics.provider import get_meter
 
 # ── _get_level case sensitivity ──────────────────────────────────────
 
@@ -114,14 +114,14 @@ class TestTraceAndVsOr:
     def test_trace_does_not_call_when_level_is_not_trace(self) -> None:
         mock_logger = Mock()
         wrapper = _TraceWrapper(mock_logger)
-        core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "INFO"})
+        core_mod._active_config = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "INFO"})
         wrapper.trace("test.event")
         mock_logger.debug.assert_not_called()
 
     def test_trace_calls_trace_when_config_and_level_match(self) -> None:
         mock_logger = Mock()
         wrapper = _TraceWrapper(mock_logger)
-        core_mod._active_config = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
+        core_mod._active_config = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "TRACE"})
         wrapper.trace("test.event", key="val")
         mock_logger.trace.assert_called_once_with("test.event", key="val")
 
@@ -189,7 +189,7 @@ class TestConfigureLoggingEffectiveLevel:
         configure_calls: list[dict[str, Any]] = []
         monkeypatch.setattr(structlog, "configure", lambda **kw: configure_calls.append(kw))
 
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "WARNING", "UNDEF_LOG_MODULE_LEVELS": "asyncio=DEBUG"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "WARNING", "PROVIDE_LOG_MODULE_LEVELS": "asyncio=DEBUG"})
         configure_logging(cfg)
 
         assert len(configure_calls) == 1
@@ -215,7 +215,7 @@ class TestIsTraceEnabledNoneConfig:
         With active.logging.level→None: _get_level(None) = INFO(20). 20 <= 5 = False.
         With <= → <: 5 < 5 = False.
         """
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "TRACE"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "TRACE"})
         monkeypatch.setattr(core_mod, "_active_config", cfg)
         assert is_trace_enabled() is True
 
@@ -331,7 +331,7 @@ class TestConfigureLoggingSanitizeConfig:
         monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
 
         # Track what sanitize_sensitive_fields receives
-        from undef.telemetry.logger import processors as proc_mod
+        from provide.telemetry.logger import processors as proc_mod
 
         original_ssf = proc_mod.sanitize_sensitive_fields
         captured_args: list[object] = []
@@ -342,7 +342,7 @@ class TestConfigureLoggingSanitizeConfig:
 
         monkeypatch.setattr(core_mod, "sanitize_sensitive_fields", tracking_ssf)
 
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_SANITIZE": "true"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_SANITIZE": "true"})
         configure_logging(cfg, force=True)
 
         assert len(captured_args) == 1
