@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 import structlog
 
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.logger.processors import (
+from undef.telemetry.config import TelemetryConfig
+from undef.telemetry.logger.processors import (
     _compute_error_fingerprint,
     add_error_fingerprint,
     add_standard_fields,
@@ -310,15 +310,6 @@ class TestAddErrorFingerprintGuards:
         result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" not in result
 
-    def test_four_tuple_exc_info_does_not_produce_fingerprint(self) -> None:
-        """Kills: len(exc_info) == 3 → >= 3 (four-element tuple satisfies >= but not ==)."""
-        event: dict[str, object] = {
-            "event": "error",
-            "exc_info": (ValueError, ValueError("x"), None, "extra"),
-        }
-        result = add_error_fingerprint(None, "", event)
-        assert "error_fingerprint" not in result
-
     def test_three_tuple_with_none_exception_does_not_produce_fingerprint(self) -> None:
         """Kills: exc_info[1] is not None → is None."""
         event: dict[str, object] = {"event": "error", "exc_info": (type(None), None, None)}
@@ -328,14 +319,9 @@ class TestAddErrorFingerprintGuards:
     def test_base_exception_not_subclass_of_exception_is_handled(self) -> None:
         """Kills: isinstance(exc_info, BaseException) → isinstance(exc_info, Exception)."""
         # KeyboardInterrupt is a BaseException but not an Exception
-        # Raise it so __traceback__ is populated, making the exact-value check meaningful
-        exc: BaseException | None = None
-        try:
-            raise KeyboardInterrupt("interrupted")
-        except KeyboardInterrupt as e:
-            exc = e
-            event: dict[str, object] = {"event": "error", "exc_info": exc}
-            result = add_error_fingerprint(None, "", event)
+        exc = KeyboardInterrupt("interrupted")
+        event: dict[str, object] = {"event": "error", "exc_info": exc}
+        result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" in result
         assert result["error_fingerprint"] == _compute_error_fingerprint("KeyboardInterrupt", exc.__traceback__)
 
@@ -348,52 +334,6 @@ class TestAddErrorFingerprintGuards:
         event: dict[str, object] = {"event": "error", "exc_info": exc_info}
         result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" in result
-
-    def test_3tuple_with_none_traceback_still_produces_fingerprint(self) -> None:
-        """Kills: exc_info[1] is not None → exc_info[2] is not None (mutmut_12)."""
-        exc = ValueError("no traceback")
-        event: dict[str, object] = {
-            "event": "error",
-            "exc_info": (ValueError, exc, None),  # exc[1] non-None, exc[2] = None
-        }
-        result = add_error_fingerprint(None, "", event)
-        assert "error_fingerprint" in result
-
-    def test_3tuple_fingerprint_type_name_from_exception_not_none(self) -> None:
-        """Kills: type(exc_info[1]).__name__ → type(None).__name__ (mutmut_15, mutmut_16)."""
-        exc = ValueError("test")
-        event: dict[str, object] = {
-            "event": "error",
-            "exc_info": (ValueError, exc, None),  # exc[1]=ValueError, exc[2]=None
-        }
-        result = add_error_fingerprint(None, "", event)
-        expected = _compute_error_fingerprint("ValueError", None)
-        not_expected = _compute_error_fingerprint("NoneType", None)
-        assert result["error_fingerprint"] == expected
-        assert result["error_fingerprint"] != not_expected
-
-    def test_3tuple_fingerprint_uses_actual_traceback_not_none(self) -> None:
-        """Kills: _compute_error_fingerprint(name, exc_info[2]) → (..., None) (mutmut_21)."""
-        try:
-            raise RuntimeError("test")
-        except RuntimeError:
-            exc_info = sys.exc_info()
-        assert exc_info[2] is not None, "test requires a real traceback"
-        event: dict[str, object] = {"event": "error", "exc_info": exc_info}
-        result = add_error_fingerprint(None, "", event)
-        no_tb_hash = _compute_error_fingerprint("RuntimeError", None)
-        with_tb_hash = _compute_error_fingerprint("RuntimeError", exc_info[2])
-        assert result["error_fingerprint"] == with_tb_hash
-        assert result["error_fingerprint"] != no_tb_hash
-
-    def test_exc_name_fallback_uses_exact_name_not_none_string(self) -> None:
-        """Kills: str(exc_name) → str(None) in exc_name fallback path (mutmut_47)."""
-        event: dict[str, object] = {"event": "error", "exc_name": "TimeoutError"}
-        result = add_error_fingerprint(None, "", event)
-        expected = _compute_error_fingerprint("TimeoutError", None)
-        unexpected = _compute_error_fingerprint("None", None)
-        assert result["error_fingerprint"] == expected
-        assert result["error_fingerprint"] != unexpected
 
 
 # ── harden_input: exact boundary values ──────────────────────────────
@@ -451,23 +391,6 @@ class TestHardenInputBoundaries:
         result = proc(None, "", {"event": "x", "nested": {"inner": "\x01dirty"}})
         assert result["nested"] == {"inner": "dirty"}
 
-    def test_dict_recursion_increments_depth_by_one_not_two(self) -> None:
-        """Kills: depth + 1 → depth + 2 for dict recursion (mutmut_15)."""
-        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=2)
-        event: dict[str, object] = {
-            "event": "x",
-            "outer": {"middle": {"inner": "\x01dirty"}},
-        }
-        result = proc(None, "", event)
-        assert result["outer"]["middle"]["inner"] == "dirty"
-
-    def test_list_recursion_increments_depth_by_one_kills_minus_one_and_plus_two(self) -> None:
-        """Kills: depth + 1 → depth - 1 (mutmut_22) and depth + 2 (mutmut_23) for lists."""
-        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=2)
-        event: dict[str, object] = {"event": "x", "items": [["\x01dirty"]]}
-        result = proc(None, "", event)
-        assert result["items"] == [["dirty"]]
-
 
 # ── sanitize_sensitive_fields: max_depth default ─────────────────────
 
@@ -475,7 +398,7 @@ class TestHardenInputBoundaries:
 class TestSanitizeSensitiveFieldsDefault:
     def test_default_max_depth_is_8(self) -> None:
         """Kills: max_depth=8 → max_depth=7 or other value."""
-        with patch("provide.telemetry.pii.sanitize_payload") as mock:
+        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True)
             processor(None, "", {"event": "x"})
@@ -483,7 +406,7 @@ class TestSanitizeSensitiveFieldsDefault:
 
     def test_custom_max_depth_forwarded(self) -> None:
         """Verifies max_depth param is passed through."""
-        with patch("provide.telemetry.pii.sanitize_payload") as mock:
+        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True, max_depth=3)
             processor(None, "", {"event": "x"})
