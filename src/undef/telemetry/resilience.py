@@ -160,9 +160,12 @@ def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeou
     Each signal (logs, traces, metrics) gets its own 2-thread pool so that
     a timeout storm in one signal cannot starve workers used by another.
 
-    ``future.cancel()`` only prevents tasks that have not yet started.
-    An already-running operation will continue on a daemon thread after
-    the timeout fires.
+    On timeout, ``future.cancel()`` only prevents queued tasks — an already-
+    running operation continues on a daemon thread.  When the circuit breaker
+    trips (consecutive timeouts >= threshold), the executor is replaced so
+    ghost threads from the old pool are abandoned and the new pool starts
+    clean.  The old pool's daemon threads will be reclaimed when the process
+    exits.
     """
     if timeout_seconds <= 0:
         return operation()
@@ -172,7 +175,21 @@ def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeou
         return future.result(timeout=timeout_seconds)
     except concurrent.futures.TimeoutError:
         future.cancel()
+        _maybe_replace_executor(signal)
         raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
+
+
+def _maybe_replace_executor(signal: Signal) -> None:
+    """Replace the executor if the circuit breaker has tripped.
+
+    This abandons ghost threads stuck in the old pool and gives the next
+    half-open probe a clean executor with no hung workers.
+    """
+    with _lock:
+        if _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD:
+            old = _timeout_executors.pop(signal, None)
+            if old is not None:
+                old.shutdown(wait=False)  # non-blocking; daemon threads die with process
 
 
 def reset_resilience_for_tests() -> None:
