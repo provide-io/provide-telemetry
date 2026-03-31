@@ -93,3 +93,13 @@ class TestAddErrorFingerprint:
         event: dict[str, Any] = {"event": "info", "exc_info": False}
         result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" not in result
+
+    def test_adds_fingerprint_on_exception_instance(self) -> None:
+        """exc_info can be a direct Exception object (structlog pattern)."""
+        try:
+            raise ValueError("direct exception")
+        except ValueError as exc:
+            event: dict[str, Any] = {"event": "error", "exc_info": exc}
+            result = add_error_fingerprint(None, "", event)
+            assert "error_fingerprint" in result
+            assert len(result["error_fingerprint"]) == 12

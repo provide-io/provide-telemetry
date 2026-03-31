@@ -116,7 +116,10 @@ def _extract_baggage_value(scope: Scope, key: str) -> str | None:
     if raw is None:
         return None
     for pair in raw.split(","):
-        k, _, v = pair.strip().partition("=")
-        if k.strip() == key and v.strip():
-            return v.strip()
+        # Strip W3C baggage properties (e.g. key=value;prop=val)
+        kv = pair.strip().partition(";")[0]
+        k, _, v = kv.partition("=")
+        if k.strip() == key:
+            val = v.strip()
+            return val if val else None
     return None
