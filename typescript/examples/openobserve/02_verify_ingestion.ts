@@ -122,14 +122,15 @@ async function main(): Promise<void> {
   const startUs = Date.now() * 1000 - 2 * 60 * 60 * 1_000_000;
   const traceName = `example.openobserve.work.${runId}`;
   const metricStream = `example_openobserve_requests_${runId}`;
-  const logEvent = `example.openobserve.log.${runId}`;
+  // Stable OTel event name + run_id attribute — filter client-side, not by munging the name.
+  const logEvent = 'example.openobserve.log';
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
   const beforeLogHits = await searchHits(baseUrl, 'logs', auth, startUs, endUsBefore);
   const beforeTraceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUsBefore);
   const beforeMetricStreams = await streamNames(baseUrl, 'metrics', auth);
-  const beforeLogs = beforeLogHits.filter((h) => h['event'] === logEvent).length;
+  const beforeLogs = beforeLogHits.filter((h) => h['event'] === logEvent && h['run_id'] === runId).length;
   const beforeTraces = beforeTraceHits.filter((h) => h['operation_name'] === traceName).length;
   const before = { logs: beforeLogs, metrics_stream_present: beforeMetricStreams.has(metricStream), traces: beforeTraces };
   const requiredSignals = requiredSignalsFromEnv();
@@ -149,7 +150,7 @@ async function main(): Promise<void> {
     const traceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUs);
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
     after = {
-      logs: logHits.filter((h) => h['event'] === logEvent).length,
+      logs: logHits.filter((h) => h['event'] === logEvent && h['run_id'] === runId).length,
       metrics_stream_present: mStreams.has(metricStream),
       traces: traceHits.filter((h) => h['operation_name'] === traceName).length,
     };
