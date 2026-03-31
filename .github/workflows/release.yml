@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - "v*"
-      - "undef-telemetry-v*"
-      - "telemetry-v*"
-  release:
-    types: [published]
   workflow_dispatch:
 
 jobs:
