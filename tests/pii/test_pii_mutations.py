@@ -462,6 +462,13 @@ class TestApplyRuleMutants:
         result = _apply_rule(node, rule, depth=30)
         assert result["inner"]["password"] == "***"
 
+    def test_depth_31_stops_dict_recursion(self) -> None:
+        # depth=31 → child recurses at 32 → hits limit; kills mutmut_27/28
+        rule = PIIRule(path=("inner", "password"), mode="redact")
+        node: dict[str, Any] = {"inner": {"password": "secret"}}  # pragma: allowlist secret
+        result = _apply_rule(node, rule, depth=31)
+        assert result["inner"]["password"] == "secret"  # pragma: allowlist secret
+
 
 class TestApplyDefaultRedactionBoundaries:
     def test_depth_at_max_returns_unchanged(self) -> None:
@@ -478,3 +485,15 @@ class TestApplyDefaultRedactionBoundaries:
         node: dict[str, Any] = {"outer": {"password": "secret"}}  # pragma: allowlist secret
         result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=3)
         assert result["outer"]["password"] == "***"
+
+    def test_list_recursion_hits_depth_limit(self) -> None:
+        # depth=31 → list item at 32 → hits limit; kills mutmut_44/46
+        items = [{"password": "secret"}]  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(items, items, depth=31, max_depth=32)
+        assert result[0]["password"] == "secret"  # pragma: allowlist secret
+
+    def test_list_recursion_forwards_max_depth(self) -> None:
+        # max_depth=2 forwarded → item at depth=2 hits limit; kills mutmut_45
+        items = [{"password": "secret"}]  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(items, items, depth=1, max_depth=2)
+        assert result[0]["password"] == "secret"  # pragma: allowlist secret
