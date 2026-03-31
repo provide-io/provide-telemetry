@@ -89,7 +89,7 @@ dev = [
   "ty>=0.0.18",
   "vulture>=2.14",
   "xenon>=0.9.3",
-  "memray>=1.0; sys_platform != 'emscripten'",
+  "memray>=1.0; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 
 [tool.pytest.ini_options]
