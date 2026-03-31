@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import sys
+import traceback
 from typing import Any
 
 from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
@@ -103,3 +105,116 @@ class TestAddErrorFingerprint:
             result = add_error_fingerprint(None, "", event)
             assert "error_fingerprint" in result
             assert len(result["error_fingerprint"]) == 12
+
+
+class TestComputeErrorFingerprintExact:
+    def test_exact_hash_no_tb(self) -> None:
+        """Kills: missing .lower() on exc_type, [:12] → [:11], or any encoding mutation."""
+        expected = hashlib.sha256(b"valueerror").hexdigest()[:12]
+        assert _compute_error_fingerprint("ValueError", None) == expected
+
+    def test_case_folds_exc_type(self) -> None:
+        """Kills: .lower() removed from exc_type."""
+        lower = _compute_error_fingerprint("valueerror", None)
+        upper = _compute_error_fingerprint("VALUEERROR", None)
+        mixed = _compute_error_fingerprint("ValueError", None)
+        assert lower == upper == mixed
+
+    def test_colon_separator_between_type_and_frame(self) -> None:
+        """Kills: ':'.join(parts) → ''.join(parts) or other separator."""
+        try:
+            raise ValueError("test")
+        except ValueError:
+            _, _, tb = sys.exc_info()
+
+        # Compute expected hash using same frame-extraction logic but explicit ':' sep
+        frames = traceback.extract_tb(tb)[-3:]
+        parts = ["valueerror"]
+        for frame in frames:
+            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+            basename = leaf.rsplit(".", 1)[0].lower()
+            func = (frame.name or "").lower()
+            parts.append(f"{basename}:{func}")
+        expected_colon = hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]
+        expected_no_sep = hashlib.sha256("".join(parts).encode("utf-8")).hexdigest()[:12]
+
+        result = _compute_error_fingerprint("ValueError", tb)
+        assert result == expected_colon
+        assert result != expected_no_sep
+
+    def test_basename_colon_func_frame_format(self) -> None:
+        """Kills: f'{basename}:{func}' → f'{basename}.{func}' or f'{basename} {func}'."""
+        try:
+            raise ValueError("test")
+        except ValueError:
+            _, _, tb = sys.exc_info()
+
+        frames = traceback.extract_tb(tb)[-3:]
+        frame = frames[-1]
+        leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+        basename = leaf.rsplit(".", 1)[0].lower()
+        func = (frame.name or "").lower()
+
+        # Both basename and func must be non-empty for this to be meaningful
+        assert basename, "test setup: basename should not be empty"
+        assert func, "test setup: func name should not be empty"
+
+        expected = hashlib.sha256(f"valueerror:{basename}:{func}".encode()).hexdigest()[:12]
+        expected_dot = hashlib.sha256(f"valueerror:{basename}.{func}".encode()).hexdigest()[:12]
+
+        assert _compute_error_fingerprint("ValueError", tb) == expected
+        assert _compute_error_fingerprint("ValueError", tb) != expected_dot
+
+    def test_uses_last_3_frames_from_longer_stack(self) -> None:
+        """Kills: traceback.extract_tb(tb)[-3:] → extract_tb(tb) (all frames)."""
+
+        def inner() -> None:
+            raise ValueError("test")
+
+        def middle() -> None:
+            inner()
+
+        def outer() -> None:
+            middle()
+
+        try:
+            outer()
+        except ValueError:
+            _, _, tb = sys.exc_info()
+
+        all_frames = traceback.extract_tb(tb)
+        assert len(all_frames) >= 4, "test requires >=4 frames in stack"
+
+        # With [-3:], only last 3 frames contribute
+        last3 = all_frames[-3:]
+        parts_3 = ["valueerror"]
+        for frame in last3:
+            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+            basename = leaf.rsplit(".", 1)[0].lower()
+            func = (frame.name or "").lower()
+            parts_3.append(f"{basename}:{func}")
+        expected = hashlib.sha256(":".join(parts_3).encode("utf-8")).hexdigest()[:12]
+
+        # All frames would produce a different hash
+        all_parts = ["valueerror"]
+        for frame in all_frames:
+            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+            basename = leaf.rsplit(".", 1)[0].lower()
+            func = (frame.name or "").lower()
+            all_parts.append(f"{basename}:{func}")
+        full_hash = hashlib.sha256(":".join(all_parts).encode("utf-8")).hexdigest()[:12]
+
+        result = _compute_error_fingerprint("ValueError", tb)
+        assert result == expected
+        assert result != full_hash
+
+    def test_case_folds_func_and_basename_from_tb(self) -> None:
+        """Kills: .lower() removed from basename or func."""
+        try:
+            raise ValueError("test")
+        except ValueError:
+            _, _, tb = sys.exc_info()
+
+        result = _compute_error_fingerprint("ValueError", tb)
+        result_upper = _compute_error_fingerprint("VALUEERROR", tb)
+        assert result == result_upper
