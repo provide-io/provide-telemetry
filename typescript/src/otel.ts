@@ -16,6 +16,8 @@
  */
 
 import type { TelemetryConfig } from './config';
+
+const DEFAULT_OTLP_ENDPOINT = 'http://localhost:4318';
 import {
   type ShutdownableProvider,
   _markProvidersRegistered,
@@ -30,7 +32,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   if (!cfg.otelEnabled) return;
 
   const headers = cfg.otlpHeaders ?? {};
-  const endpoint = cfg.otlpEndpoint ?? 'http://localhost:4318';
+  const endpoint = cfg.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT;
   const registered: ShutdownableProvider[] = [];
 
   // ── Tracing ──────────────────────────────────────────────────────────────────
