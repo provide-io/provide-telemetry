@@ -41,6 +41,10 @@ Use `undef.telemetry.event_name(domain, action, status)` when composing names.
   - Counter/gauge/histogram usage with circuit breaker recovery.
 - `telemetry/11_lazy_loading_proof.py`
   - Demonstrates SLO module lazy-loading via `__getattr__` in `__init__.py`.
+- `telemetry/12_error_fingerprint_and_sessions.py`
+  - Error fingerprinting and session correlation.
+- `telemetry/13_security_hardening.py`
+  - Security hardening: input sanitization, secret detection.
 
 Run:
 
@@ -56,6 +60,8 @@ uv run --group dev --extra otel python examples/telemetry/08_full_hardening_prof
 uv run --group dev --extra otel python examples/telemetry/09_error_handling_and_degradation.py
 uv run --group dev --extra otel python examples/telemetry/10_performance_metrics.py
 uv run --group dev --extra otel python examples/telemetry/11_lazy_loading_proof.py
+uv run --group dev --extra otel python examples/telemetry/12_error_fingerprint_and_sessions.py
+uv run --group dev --extra otel python examples/telemetry/13_security_hardening.py
 ```
 
 ## OpenObserve

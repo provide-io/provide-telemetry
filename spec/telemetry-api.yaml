@@ -41,6 +41,15 @@ api:
     - name: clear_context
       kind: function
       required: true
+    - name: bind_session_context
+      kind: function
+      required: true
+    - name: get_session_id
+      kind: function
+      required: true
+    - name: clear_session_context
+      kind: function
+      required: true
 
   tracing:
     - name: get_tracer
