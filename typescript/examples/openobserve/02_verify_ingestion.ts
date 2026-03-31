@@ -100,10 +100,9 @@ async function streamNames(baseUrl: string, streamType: string, auth: string): P
 }
 
 function requiredSignalsFromEnv(): Set<string> {
-  // Default: traces only. Logs are pino → stdout only (no OTLP log exporter in TS yet).
-  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'traces';
+  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'logs';
   const requested = new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-  if (requested.size === 0) requested.add('traces');
+  if (requested.size === 0) requested.add('logs');
   const valid = new Set(['logs', 'metrics', 'traces']);
   for (const s of requested) {
     if (!valid.has(s)) throw new Error(`invalid OPENOBSERVE_REQUIRED_SIGNALS entry: ${s}`);
@@ -123,7 +122,7 @@ async function main(): Promise<void> {
   const traceName = `example.openobserve.work.${runId}`;
   const metricStream = `example_openobserve_requests_${runId}`;
   // Stable OTel event name + run_id attribute — filter client-side, not by munging the name.
-  const logEvent = 'example.openobserve.log';
+  const logEvent = 'example.openobserve.jsonlog';
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
