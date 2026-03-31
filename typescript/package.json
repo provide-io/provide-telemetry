@@ -3,7 +3,7 @@
   "version": "0.4.2",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
   "license": "Apache-2.0",
-  "author": "MindTenet LLC",
+  "author": "provide.io llc",
   "homepage": "https://github.com/provide-io/provide-telemetry#readme",
   "repository": {
     "type": "git",

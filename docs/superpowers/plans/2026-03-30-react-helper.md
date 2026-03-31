@@ -107,7 +107,7 @@ git commit -m "chore(react): add react peer dep, testing-library, jsx tsconfig"
 
 Create `typescript/tests/react.test.tsx`:
 ```tsx
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -185,7 +185,7 @@ Expected: fails with `Cannot find module '../src/react'`.
 - [ ] **Step 3: Create `typescript/src/react.ts` with `useTelemetryContext`**
 
 ```ts
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**

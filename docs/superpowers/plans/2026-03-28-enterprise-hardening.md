@@ -277,7 +277,7 @@ git commit -m "docs: add branch protection configuration guide"
 - [ ] **Step 1: Create commitlint config**
 
 ```javascript
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 
 export default {

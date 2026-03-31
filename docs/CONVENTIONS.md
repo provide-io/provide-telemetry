@@ -87,7 +87,7 @@ When adding new telemetry fields:
 
 Use the canonical SPDX block for all Python files, with optional shebang first:
 
-- `SPDX-FileCopyrightText` with `Copyright (C) 2026 MindTenet LLC`
+- `SPDX-FileCopyrightText` with `Copyright (C) 2026 provide.io llc`
 - `SPDX-License-Identifier` with `Apache-2.0`
 - `SPDX-Comment` with `Part of Provide Telemetry.`
 - `#`

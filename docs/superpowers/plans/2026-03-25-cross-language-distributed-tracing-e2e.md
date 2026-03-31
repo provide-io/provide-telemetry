@@ -36,7 +36,7 @@
 - [ ] **Step 2: Write the server script**
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -153,7 +153,7 @@ Expected: two `ok` responses, process exits cleanly.
 - [ ] **Step 1: Write the client script**
 
 ```typescript
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Cross-language distributed tracing E2E client.
@@ -298,7 +298,7 @@ Expected output from TS client: `TRACE_ID=<32 hex chars>`
 - [ ] **Step 1: Write the test**
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
