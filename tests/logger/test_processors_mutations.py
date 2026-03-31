@@ -301,6 +301,15 @@ class TestAddErrorFingerprintGuards:
         result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" not in result
 
+    def test_four_tuple_exc_info_does_not_produce_fingerprint(self) -> None:
+        """Kills: len(exc_info) == 3 → >= 3 (four-element tuple satisfies >= but not ==)."""
+        event: dict[str, object] = {
+            "event": "error",
+            "exc_info": (ValueError, ValueError("x"), None, "extra"),
+        }
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" not in result
+
     def test_three_tuple_with_none_exception_does_not_produce_fingerprint(self) -> None:
         """Kills: exc_info[1] is not None → is None."""
         event: dict[str, object] = {"event": "error", "exc_info": (type(None), None, None)}
@@ -310,9 +319,14 @@ class TestAddErrorFingerprintGuards:
     def test_base_exception_not_subclass_of_exception_is_handled(self) -> None:
         """Kills: isinstance(exc_info, BaseException) → isinstance(exc_info, Exception)."""
         # KeyboardInterrupt is a BaseException but not an Exception
-        exc = KeyboardInterrupt("interrupted")
-        event: dict[str, object] = {"event": "error", "exc_info": exc}
-        result = add_error_fingerprint(None, "", event)
+        # Raise it so __traceback__ is populated, making the exact-value check meaningful
+        exc: BaseException | None = None
+        try:
+            raise KeyboardInterrupt("interrupted")
+        except KeyboardInterrupt as e:
+            exc = e
+            event: dict[str, object] = {"event": "error", "exc_info": exc}
+            result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" in result
         assert result["error_fingerprint"] == _compute_error_fingerprint("KeyboardInterrupt", exc.__traceback__)
 
