@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import React from 'react';
+import React, { type ErrorInfo } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, renderHook } from '@testing-library/react';
 import { _resetContext, getContext } from '../src/context';
@@ -156,29 +156,33 @@ describe('TelemetryErrorBoundary', () => {
       </TelemetryErrorBoundary>,
     );
     expect(onError).toHaveBeenCalledOnce();
-    const [err] = onError.mock.calls[0] as [Error];
+    const [err, info] = onError.mock.calls[0] as [Error, ErrorInfo];
     expect(err.message).toBe('boom');
+    expect(typeof info.componentStack).toBe('string');
   });
 
   it('reset clears error state and re-renders children', async () => {
-    const { getByText, rerender } = render(
+    const throwRef = { current: true };
+    function ToggleBomb(): React.ReactElement {
+      if (throwRef.current) throw new Error('boom');
+      return <span>safe</span>;
+    }
+    const { getByText } = render(
       <TelemetryErrorBoundary
         fallback={(_, reset) => <button onClick={reset}>retry</button>}
       >
-        <Bomb shouldThrow={true} />
+        <ToggleBomb />
       </TelemetryErrorBoundary>,
     );
-    // Error boundary caught — fallback shown
-    const retryBtn = getByText('retry');
+    expect(getByText('retry')).toBeTruthy(); // fallback shown
 
-    // Clicking reset should clear error state
+    throwRef.current = false;
     await act(async () => {
-      retryBtn.click();
+      getByText('retry').click();
     });
 
-    // After reset, children re-render (Bomb still throws, so fallback shows again —
-    // but state was cleared, proving reset() fired)
-    expect(getByText('retry')).toBeTruthy();
+    // After reset with non-throwing child, children render successfully
+    expect(getByText('safe')).toBeTruthy();
   });
 
   it('handles error with no stack and no componentStack', () => {
