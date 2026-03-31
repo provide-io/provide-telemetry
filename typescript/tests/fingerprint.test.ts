@@ -142,8 +142,11 @@ describe('computeErrorFingerprint — exact value assertions (mutation kills)', 
 
   it('case-folds error name to lowercase', () => {
     // mutation: remove .toLowerCase() on errorName → 'TypeError' ≠ 'typeerror'
-    expect(computeErrorFingerprint('TypeError')).toBe(computeErrorFingerprint('typeerror'));
-    expect(computeErrorFingerprint('TypeError')).toBe(computeErrorFingerprint('TYPEERROR'));
+    // mutation: .toLowerCase() → .toUpperCase() would make all three hash to 'TYPEERROR' — exact anchor prevents this
+    const expected = createHash('sha256').update('typeerror').digest('hex').slice(0, 12);
+    expect(computeErrorFingerprint('TypeError')).toBe(expected);
+    expect(computeErrorFingerprint('typeerror')).toBe(expected);
+    expect(computeErrorFingerprint('TYPEERROR')).toBe(expected);
   });
 
   it('case-folds function names from V8 stack', () => {
