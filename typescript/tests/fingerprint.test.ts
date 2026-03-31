@@ -181,3 +181,92 @@ describe('computeErrorFingerprint — exact value assertions (mutation kills)', 
     expect(computeErrorFingerprint('Error', stack)).not.toBe(withUndefined);
   });
 });
+
+describe('computeErrorFingerprint — frame extraction edge cases (mutation kills)', () => {
+  it('empty file in V8 stack skips frame — not replaced with sentinel string', () => {
+    // Kills: `match[2] || ''` → `|| "Stryker was here!"`
+    // When match[2] is '' (empty file), basename is '' → no frame pushed.
+    // With sentinel, basename = "stryker was here" → frame pushed, different hash.
+    const stackNormal = 'at myFunc (app.js:1:1)';
+    const fpNoStack = computeErrorFingerprint('Error');
+    const fpNormal = computeErrorFingerprint('Error', stackNormal);
+    // Normal stack produces a frame; no-stack has none — ensure we can distinguish
+    expect(fpNormal).not.toBe(fpNoStack);
+    // A V8 line with empty-string file path produces no frame (same as no-stack)
+    const stackEmptyFile = 'at myFunc (:1:1)';
+    expect(computeErrorFingerprint('Error', stackEmptyFile)).toBe(fpNoStack);
+  });
+
+  it('empty last path segment skips frame — not replaced with sentinel string', () => {
+    // Kills: `parts[parts.length - 1] || ''` → sentinel
+    // file path ending with '/' → last part = '' → basename '' → skip.
+    const stackTrailingSlash = 'at myFunc (path/to/:1:1)';
+    const fpNoStack = computeErrorFingerprint('Error');
+    expect(computeErrorFingerprint('Error', stackTrailingSlash)).toBe(fpNoStack);
+  });
+
+  it('Windows path ending with backslash: leaf is empty → frame skipped', () => {
+    // Kills: `winParts[winParts.length - 1] || ''` → sentinel
+    // file = 'C:\\' (ends with backslash): split('\\') = ['C:', ''] → leaf = '' → skip.
+    // Represent as JS string: 'C:\\' in JS source is the two chars C and \
+    const stackWindowsTrailing = 'at myFunc (C:\\\\:1:1)';
+    const fpNoStack = computeErrorFingerprint('Error');
+    expect(computeErrorFingerprint('Error', stackWindowsTrailing)).toBe(fpNoStack);
+  });
+
+  it('multi-dot filename: strips only last extension ($ anchor present)', () => {
+    // Kills: `/\\.[^.]+$/` → `/\\.[^.]+/` ($ removed)
+    // `module.test.js` with $: removes `.js` → `module.test`
+    // Without $: removes `.test` → `modulejs`
+    const stack = 'at helper (module.test.js:1:1)';
+    const expectedWithDollar = createHash('sha256')
+      .update('error:module.test:helper')
+      .digest('hex')
+      .slice(0, 12);
+    const expectedWithoutDollar = createHash('sha256')
+      .update('error:modulejs:helper')
+      .digest('hex')
+      .slice(0, 12);
+    expect(computeErrorFingerprint('Error', stack)).toBe(expectedWithDollar);
+    expect(computeErrorFingerprint('Error', stack)).not.toBe(expectedWithoutDollar);
+  });
+
+  it('empty basename (dot-only leaf) produces no frame', () => {
+    // Kills: `if (basename)` → `if (true)`
+    // `.js` as a leaf: replace(/\\.[^.]+$/, '') removes the whole name → basename = '' → skip.
+    // With mutation, an empty-basename frame ':myfunc' is pushed, changing the fingerprint.
+    const stackDotLeaf = 'at myFunc (path/.js:1:1)';
+    const fpNoStack = computeErrorFingerprint('Error');
+    const fpWithMutation = createHash('sha256').update('error::myfunc').digest('hex').slice(0, 12);
+    expect(computeErrorFingerprint('Error', stackDotLeaf)).toBe(fpNoStack);
+    expect(computeErrorFingerprint('Error', stackDotLeaf)).not.toBe(fpWithMutation);
+  });
+
+  it('SpiderMonkey: full function name captured, not just last character', () => {
+    // Kills: `(.+?)@` → `(.)@` in smRe
+    // With `(.)`, only last char before '@' is captured.
+    // `myFunc@app.js:1:1` → original func = `myfunc`, mutant func = `c`.
+    const stack = 'myFunc@app.js:1:1';
+    const expectedFull = createHash('sha256').update('error:app:myfunc').digest('hex').slice(0, 12);
+    const expectedSingleChar = createHash('sha256')
+      .update('error:app:c')
+      .digest('hex')
+      .slice(0, 12);
+    expect(computeErrorFingerprint('Error', stack)).toBe(expectedFull);
+    expect(computeErrorFingerprint('Error', stack)).not.toBe(expectedSingleChar);
+  });
+
+  it('SpiderMonkey: digit-only line numbers matched (\\D+ mutation breaks simple paths)', () => {
+    // Kills: `:\\d+:\\d+` → `:\\D+:\\d+` in smRe
+    // For `myFunc@app.js:10:5`, original matches and gives frame `app:myfunc`.
+    // With \\D+, `:10` doesn't match (digits after colon) → no match → no frame.
+    const stack = 'myFunc@app.js:10:5';
+    const expectedFrame = createHash('sha256')
+      .update('error:app:myfunc')
+      .digest('hex')
+      .slice(0, 12);
+    expect(computeErrorFingerprint('Error', stack)).toBe(expectedFrame);
+    // The no-match case would give the same hash as no-stack
+    expect(computeErrorFingerprint('Error', stack)).not.toBe(computeErrorFingerprint('Error'));
+  });
+});

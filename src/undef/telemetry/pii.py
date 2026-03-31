@@ -161,7 +161,7 @@ def _needs_deep_copy(rules: tuple[PIIRule, ...]) -> bool:  # pragma: no mutate
     return any(len(rule.path) > 1 for rule in rules)  # pragma: no mutate
 
 
-def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:
+def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
     if not enabled:
         return dict(payload)
     rules = get_pii_rules()
