@@ -253,3 +253,36 @@ event_schema:
   min_segments: 3
   max_segments: 5
   separator: "."
+
+# TypeScript-only extras: framework helpers that have no polyglot equivalent.
+# These are NOT validated by validate_conformance.py and are NOT required by
+# other language implementations.
+typescript_extras:
+  react:
+    note: >
+      Exported from the `@undef-games/telemetry/react` sub-entry point
+      (typescript/src/react.ts). React-specific; not applicable to other languages.
+    exports:
+      - name: useTelemetryContext
+        kind: hook
+        signature: "useTelemetryContext(values: Record<string, unknown>): void"
+        description: >
+          React hook that binds a key/value map into the telemetry context for the
+          lifetime of the component. Automatically unbinds on unmount.
+      - name: TelemetryErrorBoundary
+        kind: class_component
+        description: >
+          React class component that catches render-time errors and records them as
+          telemetry events. Renders a fallback UI on error.
+        props:
+          - name: children
+            type: "React.ReactNode"
+            required: true
+          - name: fallback
+            type: "React.ReactNode | ((error: Error) => React.ReactNode)"
+            required: false
+            description: "Static node or render-prop called with the caught error."
+          - name: onError
+            type: "(error: Error, info: React.ErrorInfo) => void"
+            required: false
+            description: "Optional callback invoked after telemetry is recorded."
