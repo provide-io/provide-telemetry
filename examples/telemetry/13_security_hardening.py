@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Security hardening features: input sanitization, secret detection, protocol guards.
@@ -16,8 +16,8 @@ Demonstrates:
 
 from __future__ import annotations
 
-from provide.telemetry import event, get_logger, setup_telemetry, shutdown_telemetry
-from provide.telemetry.pii import sanitize_payload
+from undef.telemetry import get_logger, setup_telemetry, shutdown_telemetry
+from undef.telemetry.pii import sanitize_payload
 
 
 def main() -> None:
@@ -28,13 +28,13 @@ def main() -> None:
 
     # 1. Control characters stripped from log output
     print("1. Control character stripping:")
-    log.info(event("security", "demo", "control_chars"), data="clean\x00hidden\x01bytes\x7fremoved")
+    log.info("security.demo.control_chars", data="clean\x00hidden\x01bytes\x7fremoved")
     print("   (null bytes and control chars silently removed)\n")
 
     # 2. Oversized values truncated
     print("2. Value truncation (default 1024 chars):")
     huge_value = "x" * 2000
-    log.info(event("security", "demo", "truncation"), big_field=huge_value)
+    log.info("security.demo.truncation", big_field=huge_value)
     print(f"   Input: {len(huge_value)} chars → truncated to 1024\n")
 
     # 3. Secret detection in values
@@ -58,9 +58,9 @@ def main() -> None:
 
     # 5. Environment variable configuration
     print("5. Configurable via environment:")
-    print("   PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH=2048")
-    print("   PROVIDE_SECURITY_MAX_ATTR_COUNT=128")
-    print("   PROVIDE_SECURITY_MAX_NESTING_DEPTH=4")
+    print("   UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH=2048")
+    print("   UNDEF_SECURITY_MAX_ATTR_COUNT=128")
+    print("   UNDEF_SECURITY_MAX_NESTING_DEPTH=4")
 
     shutdown_telemetry()
     print("\n=== Done ===")
