@@ -22,7 +22,11 @@ permissions:
 
 jobs:
   typescript-quality:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
     defaults:
       run:
         working-directory: typescript
@@ -41,7 +45,7 @@ jobs:
 
   typescript-mutation-gate:
     needs: typescript-quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: typescript
