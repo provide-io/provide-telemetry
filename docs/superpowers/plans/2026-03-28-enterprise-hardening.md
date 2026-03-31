@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add enterprise governance, automated releases, supply chain security, and operational hardening to undef-telemetry.
+**Goal:** Add enterprise governance, automated releases, supply chain security, and operational hardening to provide-telemetry.
 
 **Architecture:** Four independent phases: (1) CI/PR governance with branch protection and changed-files mutation gates, (2) release-please with conventional commits, (3) Dependabot + CodeQL + SBOM + signing, (4) SHA-pinned actions + flaky test handling.
 
@@ -230,7 +230,7 @@ Apply these settings in GitHub → Settings → Branches → Branch protection r
 ## Apply via CLI
 
 ```bash
-gh api repos/undef-games/undef-telemetry/branches/main/protection \
+gh api repos/provide-io/provide-telemetry/branches/main/protection \
   --method PUT \
   --input - <<'EOF'
 {
@@ -357,13 +357,13 @@ Create `.release-please-config.json`:
   "packages": {
     ".": {
       "release-type": "python",
-      "package-name": "undef-telemetry",
+      "package-name": "provide-telemetry",
       "extra-files": ["VERSION"],
       "changelog-path": "CHANGELOG.md"
     },
     "typescript": {
       "release-type": "node",
-      "package-name": "@undef-games/telemetry",
+      "package-name": "@provide-io/telemetry",
       "changelog-path": "CHANGELOG.md"
     }
   },

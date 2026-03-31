@@ -3,7 +3,7 @@
 
 /**
  * SLO-oriented telemetry helpers (RED/USE baseline).
- * Mirrors Python undef.telemetry.slo.
+ * Mirrors Python provide.telemetry.slo.
  */
 
 import type { Counter, Histogram, UpDownCounter } from '@opentelemetry/api';

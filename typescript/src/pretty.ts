@@ -4,7 +4,7 @@
 /**
  * Pretty ANSI log renderer for CLI / terminal output.
  *
- * Mirrors Python undef.telemetry.logger.pretty.PrettyRenderer.
+ * Mirrors Python provide.telemetry.logger.pretty.PrettyRenderer.
  * Same color scheme, same layout: timestamp [level] event key=value pairs.
  */
 

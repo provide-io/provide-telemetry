@@ -328,7 +328,7 @@ def _parse_bool(value: str | None, default: bool) -> bool:
 def _parse_module_levels(raw: str) -> dict[str, str]:
     """Parse ``module=LEVEL,module2=LEVEL2`` into a dict.
 
-    Example: ``PROVIDE_LOG_MODULE_LEVELS="undef.server=DEBUG,asyncio=WARNING"``
+    Example: ``PROVIDE_LOG_MODULE_LEVELS="provide.server=DEBUG,asyncio=WARNING"``
     """
     if not raw or not raw.strip():  # pragma: no mutate
         return {}

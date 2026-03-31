@@ -3,7 +3,7 @@
 
 /**
  * Test utilities — reset all telemetry state between tests.
- * Mirrors Python undef.telemetry.testing.
+ * Mirrors Python provide.telemetry.testing.
  */
 
 import { _resetConfig } from './config';

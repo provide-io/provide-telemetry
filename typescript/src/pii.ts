@@ -3,7 +3,7 @@
 
 /**
  * PII policy engine with rule-based masking and nested traversal.
- * Mirrors Python undef.telemetry.pii.
+ * Mirrors Python provide.telemetry.pii.
  *
  * Also serves as the canonical home for sanitize() / DEFAULT_SANITIZE_FIELDS;
  * sanitize.ts re-exports these for backwards compatibility.
@@ -11,7 +11,7 @@
 
 /**
  * PII field names that are always redacted regardless of user config.
- * Matches the Python undef.telemetry default sanitize list.
+ * Matches the Python provide.telemetry default sanitize list.
  */
 export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'password',

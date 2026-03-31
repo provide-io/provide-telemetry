@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * React 18+ helpers for @undef-games/telemetry.
+ * React 18+ helpers for @provide-io/telemetry.
  *
- * Import from '@undef-games/telemetry/react'.
+ * Import from '@provide-io/telemetry/react'.
  * React must be installed as a peer dependency (>=18).
  */
 

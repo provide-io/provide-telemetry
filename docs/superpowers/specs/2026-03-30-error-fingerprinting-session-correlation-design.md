@@ -5,7 +5,7 @@
 
 ## Context
 
-undef-telemetry has strong observability foundations but lacks two features that differentiate it from raw structlog + OTel: automatic error grouping and cross-service session tracking. Both are small additions (~60 lines total) that build on existing infrastructure.
+provide-telemetry has strong observability foundations but lacks two features that differentiate it from raw structlog + OTel: automatic error grouping and cross-service session tracking. Both are small additions (~60 lines total) that build on existing infrastructure.
 
 ## Feature 1: Structured Error Fingerprinting
 
@@ -37,8 +37,8 @@ A new structlog processor `add_error_fingerprint` generates a stable `error_fing
 
 ### Files
 
-- **Modify:** `src/undef/telemetry/logger/processors.py` — add `add_error_fingerprint` processor (~25 lines)
-- **Modify:** `src/undef/telemetry/logger/core.py` — wire into processor chain after `add_standard_fields`, before `sanitize_sensitive_fields`
+- **Modify:** `src/provide/telemetry/logger/processors.py` — add `add_error_fingerprint` processor (~25 lines)
+- **Modify:** `src/provide/telemetry/logger/core.py` — wire into processor chain after `add_standard_fields`, before `sanitize_sensitive_fields`
 - **Add to spec:** `spec/telemetry-api.yaml` — `error_fingerprint` as an automatically-added field
 
 ### TypeScript parity
@@ -66,7 +66,7 @@ Standardize `session_id` as a first-class context field that propagates via W3C 
 
 **Python API:**
 ```python
-from undef.telemetry import bind_session_context, get_session_id
+from provide.telemetry import bind_session_context, get_session_id
 
 bind_session_context("user-session-abc123")
 log.info("auth.login.success")  # automatically includes session_id
@@ -74,7 +74,7 @@ log.info("auth.login.success")  # automatically includes session_id
 
 **TypeScript API:**
 ```typescript
-import { bindSessionContext, getSessionId } from '@undef-games/telemetry';
+import { bindSessionContext, getSessionId } from '@provide-io/telemetry';
 
 bindSessionContext('user-session-abc123');
 log.info({ event: 'auth.login.success' });  // automatically includes session_id
@@ -90,9 +90,9 @@ log.info({ event: 'auth.login.success' });  // automatically includes session_id
 ### Files
 
 **Python:**
-- **Modify:** `src/undef/telemetry/logger/context.py` — add `bind_session_context(session_id)`, `get_session_id()`, `clear_session_context()` using existing `_context_var` pattern (~15 lines)
-- **Modify:** `src/undef/telemetry/asgi/middleware.py` — extract `session_id` from baggage header, call `bind_session_context` (~10 lines)
-- **Modify:** `src/undef/telemetry/__init__.py` — export new functions
+- **Modify:** `src/provide/telemetry/logger/context.py` — add `bind_session_context(session_id)`, `get_session_id()`, `clear_session_context()` using existing `_context_var` pattern (~15 lines)
+- **Modify:** `src/provide/telemetry/asgi/middleware.py` — extract `session_id` from baggage header, call `bind_session_context` (~10 lines)
+- **Modify:** `src/provide/telemetry/__init__.py` — export new functions
 
 **TypeScript:**
 - **Modify:** `typescript/src/context.ts` — add `bindSessionContext`, `getSessionId`, `clearSessionContext` (~15 lines)

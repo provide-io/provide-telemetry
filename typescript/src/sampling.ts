@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Runtime sampling policy — mirrors Python undef.telemetry.sampling.
+ * Runtime sampling policy — mirrors Python provide.telemetry.sampling.
  */
 
 export interface SamplingPolicy {

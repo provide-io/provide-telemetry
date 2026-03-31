@@ -60,8 +60,8 @@ function main(): void {
 
   // 4. Environment variable configuration
   console.log('4. Configurable via environment:');
-  console.log('   UNDEF_LOG_SANITIZE=true (default)');
-  console.log('   UNDEF_LOG_SANITIZE_FIELDS=password,token,authorization,api_key,secret');
+  console.log('   PROVIDE_LOG_SANITIZE=true (default)');
+  console.log('   PROVIDE_LOG_SANITIZE_FIELDS=password,token,authorization,api_key,secret');
 
   shutdownTelemetry();
   console.log('\n=== Done ===');

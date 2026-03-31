@@ -19,7 +19,7 @@ Note: Full mutation gates (`mutation-gate`, `typescript-mutation-gate`) run on e
 ## Apply via CLI
 
 ```bash
-gh api repos/undef-games/undef-telemetry/branches/main/protection \
+gh api repos/provide-io/provide-telemetry/branches/main/protection \
   --method PUT \
   --input - <<'EOF'
 {

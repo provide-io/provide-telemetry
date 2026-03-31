@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the full `undef-telemetry` API surface in Rust, passing `spec/validate_conformance.py` and sharing major.minor from `VERSION`.
+**Goal:** Implement the full `provide-telemetry` API surface in Rust, passing `spec/validate_conformance.py` and sharing major.minor from `VERSION`.
 
 **Architecture:** Built on the `tracing` ecosystem (Tokio team) with composable `Layer`s for the processor chain. OTel integration via Cargo features (`#[cfg(feature = "otel")]`) for zero-cost when disabled. All 56 required API symbols from `spec/telemetry-api.yaml` exported from the crate root.
 
@@ -64,7 +64,7 @@
 
 ```
 rust/
-├── Cargo.toml                # Package: undef-telemetry, version = "0.4.2"
+├── Cargo.toml                # Package: provide-telemetry, version = "0.4.2"
 ├── Cargo.lock
 ├── src/
 │   ├── lib.rs                # Public API facade — re-exports all symbols
@@ -232,11 +232,11 @@ impl CircuitBreaker {
 
 **Files:** Create: `rust/Cargo.toml`, `rust/src/lib.rs`, `rust/src/config.rs`, `rust/src/errors.rs`
 
-- [ ] Initialize `Cargo.toml` with package name `undef-telemetry`, version `"0.4.2"`, edition 2021, MSRV 1.75
+- [ ] Initialize `Cargo.toml` with package name `provide-telemetry`, version `"0.4.2"`, edition 2021, MSRV 1.75
 - [ ] Add core dependencies (tracing, serde, serde_json, regex, thiserror, dashmap, tokio, sha2, secrecy, moka, backon)
 - [ ] Add optional OTel dependencies behind `otel` feature
 - [ ] Implement `TelemetryConfig` struct with `#[derive(Clone, Debug, serde::Deserialize)]`
-- [ ] Implement `TelemetryConfig::from_env()` reading all `UNDEF_*` and `OTEL_*` vars
+- [ ] Implement `TelemetryConfig::from_env()` reading all `PROVIDE_*` and `OTEL_*` vars
 - [ ] Implement error types: `TelemetryError`, `ConfigurationError`, `EventSchemaError`
 - [ ] Create `lib.rs` with initial module declarations
 - [ ] Write tests for config parsing, defaults, validation, error type conversions

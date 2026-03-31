@@ -5,9 +5,9 @@
 
 ## Context
 
-undef-telemetry provides a unified telemetry API (logging, tracing, metrics) with Python and TypeScript implementations that already have full feature parity. The project needs to expand to Go, Rust, and C#/.NET while maintaining API consistency, shared conventions, and cross-language distributed tracing.
+provide-telemetry provides a unified telemetry API (logging, tracing, metrics) with Python and TypeScript implementations that already have full feature parity. The project needs to expand to Go, Rust, and C#/.NET while maintaining API consistency, shared conventions, and cross-language distributed tracing.
 
-The current layout has Python at the repo root (`src/undef/telemetry/`, `pyproject.toml`) and TypeScript in `typescript/`. Both share a `VERSION` file and release from a single git tag. This design preserves that structure and extends it for additional languages.
+The current layout has Python at the repo root (`src/provide/telemetry/`, `pyproject.toml`) and TypeScript in `typescript/`. Both share a `VERSION` file and release from a single git tag. This design preserves that structure and extends it for additional languages.
 
 ## Decisions
 
@@ -21,30 +21,30 @@ The current layout has Python at the repo root (`src/undef/telemetry/`, `pyproje
 ## Directory Structure
 
 ```
-undef-telemetry/
+provide-telemetry/
   VERSION                           # contains major.minor only (e.g. "0.4")
   spec/
     telemetry-api.yaml              # canonical API surface definition
     validate_conformance.py         # reads spec, checks each language's exports
   pyproject.toml                    # Python — unchanged
-  src/undef/telemetry/              # Python — unchanged
+  src/provide/telemetry/              # Python — unchanged
   tests/                            # Python unit/integration tests — unchanged
   scripts/                          # Python tooling scripts — unchanged
   Makefile                          # Python — unchanged
   typescript/                       # TypeScript — unchanged
   go/
-    go.mod                          # module github.com/undef-games/undef-telemetry/go
+    go.mod                          # module github.com/provide-io/provide-telemetry/go
     telemetry/                      # package telemetry
     telemetry_test.go
   rust/
-    Cargo.toml                      # undef-telemetry crate
+    Cargo.toml                      # provide-telemetry crate
     src/
       lib.rs
   csharp/
-    Undef.Telemetry.sln
-    src/Undef.Telemetry/
-      Undef.Telemetry.csproj
-    tests/Undef.Telemetry.Tests/
+    Provide.Telemetry.sln
+    src/Provide.Telemetry/
+      Provide.Telemetry.csproj
+    tests/Provide.Telemetry.Tests/
   e2e/                              # cross-language E2E tests (promoted from tests/e2e/)
     conftest.py
     test_cross_language_trace.py
@@ -76,7 +76,7 @@ Machine-readable definition of the canonical API surface. Each language implemen
 
 - **Functions**: Language-neutral names mapping to idiomatic forms per language
   - `setup_telemetry` → Python `setup_telemetry()`, TS `setupTelemetry()`, Go `Setup()`, Rust `setup()`, C# `Telemetry.Setup()`
-- **Config env vars**: All `UNDEF_*` and `OTEL_*` variables that must be recognized
+- **Config env vars**: All `PROVIDE_*` and `OTEL_*` variables that must be recognized
 - **Error types**: `TelemetryError`, `ConfigurationError`, `EventSchemaError`
 - **Event schema rules**: Segment regex, min/max segments, naming conventions
 - **Required behaviors**: Graceful OTel degradation, idempotent init, W3C propagation support
@@ -146,13 +146,13 @@ naming_conventions:
   csharp: PascalCase
 
 config_env_vars:
-  - prefix: UNDEF_TELEMETRY_
+  - prefix: PROVIDE_TELEMETRY_
     keys: [SERVICE_NAME, ENVIRONMENT, VERSION, REQUIRED_KEYS, STRICT_SCHEMA]
-  - prefix: UNDEF_LOG_
+  - prefix: PROVIDE_LOG_
     keys: [LEVEL, FORMAT, CALLER_INFO, SANITIZE_FIELDS]
-  - prefix: UNDEF_TRACE_
+  - prefix: PROVIDE_TRACE_
     keys: [ENABLED, SAMPLE_RATE]
-  - prefix: UNDEF_METRICS_
+  - prefix: PROVIDE_METRICS_
     keys: [ENABLED]
   # OTEL_* vars are pass-through to OTel SDK
 
@@ -171,7 +171,7 @@ required_behaviors:
 
 `spec/validate_conformance.py` reads the spec and checks each language:
 
-- **Python**: Introspects `__all__` from `undef.telemetry.__init__`
+- **Python**: Introspects `__all__` from `provide.telemetry.__init__`
 - **TypeScript**: Parses `index.ts` exports
 - **Go**: Parses exported symbols via `go doc` or AST
 - **Rust**: Parses `pub` items from `lib.rs`
@@ -281,7 +281,7 @@ All languages use Apache-2.0.
 
 ### Go (`go/`)
 
-- Module path: `github.com/undef-games/undef-telemetry/go`
+- Module path: `github.com/provide-io/provide-telemetry/go`
 - Use `slog` for structured logging (stdlib, Go 1.21+)
 - OTel Go SDK for tracing/metrics, with no-op fallback
 - `context.Context` for async safety (idiomatic Go)
@@ -289,7 +289,7 @@ All languages use Apache-2.0.
 
 ### Rust (`rust/`)
 
-- Crate name: `undef-telemetry`
+- Crate name: `provide-telemetry`
 - Use `tracing` crate for structured logging + spans
 - OTel Rust SDK (`opentelemetry` crate) for export, with no-op fallback
 - Feature flags: `otel` (mirrors Python extras)
@@ -297,7 +297,7 @@ All languages use Apache-2.0.
 
 ### C# (`csharp/`)
 
-- Package: `Undef.Telemetry` on NuGet
+- Package: `Provide.Telemetry` on NuGet
 - Use `Microsoft.Extensions.Logging` + `System.Diagnostics.Activity` for tracing
 - OTel .NET SDK optional, with no-op fallback
 - `AsyncLocal<T>` for context propagation

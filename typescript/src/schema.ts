@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Event schema validation — mirrors Python undef.telemetry.schema.events.
+ * Event schema validation — mirrors Python provide.telemetry.schema.events.
  */
 
 import { TelemetryError } from './exceptions';

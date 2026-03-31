@@ -5,7 +5,7 @@
 
 ## Context
 
-undef-telemetry has strong quality foundations (100% branch coverage, 100% mutation kill, comprehensive pre-commit, strict type checking) but lacks enterprise governance, release automation, and supply chain security. During a recent polyglot infrastructure PR, several pre-existing quality issues on main were discovered — lint errors, type checker failures, formatting drift — despite pre-commit hooks being configured. This indicates gaps between local enforcement and CI enforcement.
+provide-telemetry has strong quality foundations (100% branch coverage, 100% mutation kill, comprehensive pre-commit, strict type checking) but lacks enterprise governance, release automation, and supply chain security. During a recent polyglot infrastructure PR, several pre-existing quality issues on main were discovered — lint errors, type checker failures, formatting drift — despite pre-commit hooks being configured. This indicates gaps between local enforcement and CI enforcement.
 
 ## Goals
 

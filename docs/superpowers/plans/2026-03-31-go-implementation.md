@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the full `undef-telemetry` API surface in Go, passing `spec/validate_conformance.py` and sharing major.minor from `VERSION`.
+**Goal:** Implement the full `provide-telemetry` API surface in Go, passing `spec/validate_conformance.py` and sharing major.minor from `VERSION`.
 
 **Architecture:** stdlib-first (`log/slog`, `context.Context`), stable Go OTel SDK (1.x) as optional dependency via interfaces. Each subsystem in its own file mirroring the Python/TypeScript structure. All 56 required API symbols from `spec/telemetry-api.yaml` must be exported.
 
@@ -41,7 +41,7 @@
 
 ```
 go/
-├── go.mod                    # module github.com/undef-games/undef-telemetry/go
+├── go.mod                    # module github.com/provide-io/provide-telemetry/go
 ├── go.sum
 ├── VERSION                   # "0.4.2" — synced with root VERSION
 ├── telemetry.go              # Public API facade (all exported symbols)
@@ -162,10 +162,10 @@ func (e *ConfigurationError) Unwrap() error { return e.cause }
 
 **Files:** Create: `go/go.mod`, `go/VERSION`, `go/config.go`, `go/config_test.go`, `go/errors.go`, `go/errors_test.go`
 
-- [ ] Initialize `go.mod` with `module github.com/undef-games/undef-telemetry/go`, Go 1.22
+- [ ] Initialize `go.mod` with `module github.com/provide-io/provide-telemetry/go`, Go 1.22
 - [ ] Create `VERSION` file with `0.4.2`
 - [ ] Implement `TelemetryConfig` struct with all fields from `config_env_vars` in spec
-- [ ] Implement `ConfigFromEnv()` parsing all `UNDEF_*` and `OTEL_*` env vars
+- [ ] Implement `ConfigFromEnv()` parsing all `PROVIDE_*` and `OTEL_*` env vars
 - [ ] Implement error types: `TelemetryError`, `ConfigurationError`, `EventSchemaError`
 - [ ] Write tests for config parsing, defaults, validation
 - [ ] Commit

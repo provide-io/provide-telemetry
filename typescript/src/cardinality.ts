@@ -3,7 +3,7 @@
 
 /**
  * Attribute cardinality guardrails with TTL pruning.
- * Mirrors Python undef.telemetry.cardinality.
+ * Mirrors Python provide.telemetry.cardinality.
  */
 
 export interface CardinalityLimit {

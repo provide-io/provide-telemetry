@@ -16,7 +16,7 @@
  *   @opentelemetry/exporter-trace-otlp-http   — OTLPTraceExporter
  *   @opentelemetry/exporter-metrics-otlp-http — OTLPMetricExporter
  *
- * Mirrors Python undef.telemetry _otel.py lazy-load approach.
+ * Mirrors Python provide.telemetry _otel.py lazy-load approach.
  */
 
 import type { TelemetryConfig } from './config';
@@ -70,7 +70,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     trace.setGlobalTracerProvider(provider);
     registered.push(provider as ShutdownableProvider);
   } catch (err) {
-    console.warn('[undef/telemetry] OTEL trace setup failed (missing peer deps?):', err);
+    console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     metrics.setGlobalMeterProvider(meterProvider);
     registered.push(meterProvider as ShutdownableProvider);
   } catch (err) {
-    console.warn('[undef/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+    console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
   }
 
   _storeRegisteredProviders(registered);

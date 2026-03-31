@@ -554,7 +554,7 @@ class TestHardenInputBoundaries:
 class TestSanitizeSensitiveFieldsDefault:
     def test_default_max_depth_is_8(self) -> None:
         """Kills: max_depth=8 → max_depth=7 or other value."""
-        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True)
             processor(None, "", {"event": "x"})
@@ -562,7 +562,7 @@ class TestSanitizeSensitiveFieldsDefault:
 
     def test_custom_max_depth_forwarded(self) -> None:
         """Verifies max_depth param is passed through."""
-        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True, max_depth=3)
             processor(None, "", {"event": "x"})
@@ -574,7 +574,7 @@ Add the necessary imports to `test_processors_mutations.py` — the existing imp
 ```python
 import sys
 
-from undef.telemetry.logger.processors import (
+from provide.telemetry.logger.processors import (
     _compute_error_fingerprint,
     add_error_fingerprint,
     add_standard_fields,
@@ -627,7 +627,7 @@ Additional mutations that may survive: `partition(";")[0]` → wrong partition c
 Add the following import and class at the end of `tests/asgi/test_middleware_mutations.py`:
 
 ```python
-from undef.telemetry.asgi.middleware import _extract_baggage_value
+from provide.telemetry.asgi.middleware import _extract_baggage_value
 
 
 # ── _extract_baggage_value: key stripping and value handling ──────────

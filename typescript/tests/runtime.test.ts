@@ -111,7 +111,7 @@ describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => 
     expect(getRuntimeConfig().serviceName).toBe('overridden-service');
     reloadRuntimeFromEnv();
     // After reload, should come from env (default when no env var set)
-    expect(getRuntimeConfig().serviceName).toBe('undef-service');
+    expect(getRuntimeConfig().serviceName).toBe('provide-service');
   });
 
   it('re-reads env-derived config after reload', () => {

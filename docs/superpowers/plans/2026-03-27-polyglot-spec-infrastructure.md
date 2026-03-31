@@ -24,9 +24,9 @@ Write `spec/telemetry-api.yaml` with the canonical API surface derived from the 
 ```yaml
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 
-# Canonical API surface for all undef-telemetry language implementations.
+# Canonical API surface for all provide-telemetry language implementations.
 # Each language MUST export equivalents of every `required: true` symbol,
 # using its idiomatic naming convention (see naming_conventions below).
 
@@ -224,24 +224,24 @@ api:
       required: true
 
 config_env_vars:
-  - prefix: UNDEF_TELEMETRY_
+  - prefix: PROVIDE_TELEMETRY_
     keys:
       - SERVICE_NAME
       - ENVIRONMENT
       - VERSION
       - REQUIRED_KEYS
       - STRICT_SCHEMA
-  - prefix: UNDEF_LOG_
+  - prefix: PROVIDE_LOG_
     keys:
       - LEVEL
       - FORMAT
       - CALLER_INFO
       - SANITIZE_FIELDS
-  - prefix: UNDEF_TRACE_
+  - prefix: PROVIDE_TRACE_
     keys:
       - ENABLED
       - SAMPLE_RATE
-  - prefix: UNDEF_METRICS_
+  - prefix: PROVIDE_METRICS_
     keys:
       - ENABLED
 
@@ -283,7 +283,7 @@ git commit -m "feat(spec): add canonical API surface definition for polyglot con
 
 **Files:**
 - Create: `spec/validate_conformance.py`
-- Reference: `src/undef/telemetry/__init__.py` (Python exports via `__all__`)
+- Reference: `src/provide/telemetry/__init__.py` (Python exports via `__all__`)
 - Reference: `typescript/src/index.ts` (TypeScript exports)
 
 - [ ] **Step 1: Write the failing test for the validation script**
@@ -293,7 +293,7 @@ Create `tests/tooling/test_validate_conformance.py`:
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 
 """Tests for spec/validate_conformance.py."""
@@ -357,7 +357,7 @@ Create `spec/validate_conformance.py`:
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 
 """Validate language implementations against spec/telemetry-api.yaml.
@@ -446,7 +446,7 @@ def _collect_spec_symbols(spec: dict[str, object]) -> list[dict[str, object]]:
 
 def _get_python_exports() -> set[str]:
     """Parse Python __all__ from __init__.py without importing."""
-    init_path = _REPO_ROOT / "src" / "undef" / "telemetry" / "__init__.py"
+    init_path = _REPO_ROOT / "src" / "provide" / "telemetry" / "__init__.py"
     if not init_path.exists():
         return set()
     tree = ast.parse(init_path.read_text(encoding="utf-8"))
@@ -596,7 +596,7 @@ Create `tests/tooling/test_check_version_sync.py`:
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 
 """Tests for scripts/check_version_sync.py."""
@@ -644,7 +644,7 @@ Create `scripts/check_version_sync.py`:
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 
 """Check that all language packages share the same major.minor as VERSION.
@@ -715,8 +715,8 @@ def _rust_version() -> str | None:
 
 
 def _csharp_version() -> str | None:
-    """Read version from csharp/src/Undef.Telemetry/Undef.Telemetry.csproj."""
-    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Undef.Telemetry"
+    """Read version from csharp/src/Provide.Telemetry/Provide.Telemetry.csproj."""
+    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry"
     if not csproj_dir.exists():
         return None
     for csproj in csproj_dir.glob("*.csproj"):
@@ -857,7 +857,7 @@ Create `e2e/__init__.py`:
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 ```
 
@@ -866,7 +866,7 @@ Create `e2e/conftest.py`:
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 
 """Shared fixtures for cross-language E2E tests."""
@@ -997,7 +997,7 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
+      - "src/provide/telemetry/__init__.py"
       - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"
@@ -1009,7 +1009,7 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
+      - "src/provide/telemetry/__init__.py"
       - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"

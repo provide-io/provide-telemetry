@@ -1,11 +1,11 @@
-# React Helper Design — `@undef-games/telemetry/react`
+# React Helper Design — `@provide-io/telemetry/react`
 
 **Date:** 2026-03-30
 **Status:** Approved
 
 ## Summary
 
-Add a `./react` sub-export to `@undef-games/telemetry` that bridges React 18+ component lifecycle with the existing imperative telemetry API. Two exports only: `useTelemetryContext` and `TelemetryErrorBoundary`. React is a peer dependency — never bundled.
+Add a `./react` sub-export to `@provide-io/telemetry` that bridges React 18+ component lifecycle with the existing imperative telemetry API. Two exports only: `useTelemetryContext` and `TelemetryErrorBoundary`. React is a peer dependency — never bundled.
 
 ---
 

@@ -31,7 +31,7 @@ SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
-  "src/undef/telemetry/py.typed",
+  "src/provide/telemetry/py.typed",
   ".secrets.baseline",
   ".claude/**",
 ]
