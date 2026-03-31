@@ -113,6 +113,26 @@ clearContext();
 await runWithContext({ trace_id: '...' }, async () => { /* ... */ });
 ```
 
+### Session correlation
+
+```typescript
+import { bindSessionContext, getSessionId, clearSessionContext } from '@undef-games/telemetry';
+
+bindSessionContext('sess-abc-123');
+// All logs and traces now include session_id automatically.
+const sid = getSessionId(); // 'sess-abc-123'
+clearSessionContext();
+```
+
+### Error fingerprinting
+
+```typescript
+import { computeErrorFingerprint } from '@undef-games/telemetry';
+
+const fp = computeErrorFingerprint(new Error('connection refused'));
+// 12-char hex digest, stable across deploys — use for dedup and alert grouping.
+```
+
 ### W3C trace propagation
 
 ```typescript
@@ -159,6 +179,14 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `UNDEF_OTEL_ENABLED` | `false` | Enable OTLP export |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
+
+### Pretty renderer
+
+Set `logFormat: 'pretty'` (or `UNDEF_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR` and `NO_COLOR` environment variables.
+
+```typescript
+setupTelemetry({ logFormat: 'pretty' });
+```
 
 ## Requirements
 
