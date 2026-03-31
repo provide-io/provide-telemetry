@@ -14,8 +14,8 @@ from collections.abc import Callable
 from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import quote, urlparse
 
-from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry.config import TelemetryConfig
 
 
 def _require_env(name: str) -> str:
@@ -81,7 +81,7 @@ def main() -> None:
     user = _require_env("OPENOBSERVE_USER")
     password = _require_env("OPENOBSERVE_PASSWORD")
     auth = _auth_header(user, password)
-    run_id = os.getenv("UNDEF_EXAMPLE_RUN_ID", str(int(time.time())))
+    run_id = os.getenv("PROVIDE_EXAMPLE_RUN_ID", str(int(time.time())))
     trace_name = f"example.openobserve.work.{run_id}"
     metric_name = f"example.openobserve.requests.{run_id}"
 
@@ -90,10 +90,10 @@ def main() -> None:
 
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "undef-telemetry-examples",
-            "UNDEF_TELEMETRY_VERSION": "examples",
-            "UNDEF_TRACE_ENABLED": "true",
-            "UNDEF_METRICS_ENABLED": "true",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-examples",
+            "PROVIDE_TELEMETRY_VERSION": "examples",
+            "PROVIDE_TRACE_ENABLED": "true",
+            "PROVIDE_METRICS_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{base_url}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{base_url}/v1/logs",

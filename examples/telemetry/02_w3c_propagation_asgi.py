@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from undef.telemetry import (
+from provide.telemetry import (
     TelemetryMiddleware,
     bind_websocket_context,
     clear_websocket_context,
@@ -29,8 +29,8 @@ from undef.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
-from undef.telemetry.logger.context import get_context
-from undef.telemetry.propagation import bind_propagation_context, clear_propagation_context
+from provide.telemetry.logger.context import get_context
+from provide.telemetry.propagation import bind_propagation_context, clear_propagation_context
 
 
 async def _app(scope: dict[str, Any], _receive: Any, send: Any) -> None:

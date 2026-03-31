@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 
-from undef.telemetry import (
+from provide.telemetry import (
     bind_context,
     clear_context,
     counter,

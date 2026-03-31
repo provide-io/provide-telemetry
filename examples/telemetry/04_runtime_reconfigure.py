@@ -14,7 +14,7 @@ Demonstrates:
 
 from __future__ import annotations
 
-from undef.telemetry import (
+from provide.telemetry import (
     get_health_snapshot,
     get_logger,
     get_runtime_config,
@@ -24,7 +24,7 @@ from undef.telemetry import (
     shutdown_telemetry,
     update_runtime_config,
 )
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry.config import TelemetryConfig
 
 
 def main() -> None:
@@ -41,7 +41,7 @@ def main() -> None:
 
     # ── 🔧 Hot-swap sampling rate to 0% ──────────────────
     print("\n🔧 Hot-swapping sampling rate to 0%...")
-    cfg_after = TelemetryConfig.from_env({"UNDEF_SAMPLING_LOGS_RATE": "0.0"})
+    cfg_after = TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "0.0"})
     updated = update_runtime_config(cfg_after)
     print(f"  ✅ After update: logs_rate={updated.sampling.logs_rate}")
 
@@ -52,7 +52,7 @@ def main() -> None:
 
     # ── ♻️ Full provider restart via reconfigure ─────────
     print("\n♻️  reconfigure_telemetry() — full shutdown+setup cycle...")
-    cfg_restarted = reconfigure_telemetry(TelemetryConfig.from_env({"UNDEF_SAMPLING_LOGS_RATE": "1.0"}))
+    cfg_restarted = reconfigure_telemetry(TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "1.0"}))
     print(f"  ✅ Restarted: logs_rate={cfg_restarted.sampling.logs_rate}")
 
     log.info("example.runtime.restarted")
