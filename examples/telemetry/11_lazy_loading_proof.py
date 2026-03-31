@@ -28,20 +28,20 @@ _ROUNDS = 5
 _EAGER_SCRIPT = """\
 import time, sys
 t0 = time.perf_counter_ns()
-from undef.telemetry.slo import classify_error  # simulate old eager import
-from undef.telemetry.logger.processors import add_standard_fields
+from provide.telemetry.slo import classify_error  # simulate old eager import
+from provide.telemetry.logger.processors import add_standard_fields
 t1 = time.perf_counter_ns()
-mods = [k for k in sys.modules if k.startswith("undef")]
+mods = [k for k in sys.modules if k.startswith("provide")]
 print(f"{t1 - t0} {len(mods)}")
 """
 
 _LAZY_SCRIPT = """\
 import time, sys
 t0 = time.perf_counter_ns()
-from undef.telemetry.logger.processors import add_standard_fields
+from provide.telemetry.logger.processors import add_standard_fields
 t1 = time.perf_counter_ns()
-slo = "undef.telemetry.slo" in sys.modules
-mods = [k for k in sys.modules if k.startswith("undef")]
+slo = "provide.telemetry.slo" in sys.modules
+mods = [k for k in sys.modules if k.startswith("provide")]
 print(f"{t1 - t0} {len(mods)} {'yes' if slo else 'no'}")
 """
 

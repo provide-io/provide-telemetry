@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 
-from undef.telemetry import (
+from provide.telemetry import (
     ConfigurationError,
     EventSchemaError,
     TelemetryError,
@@ -33,7 +33,7 @@ from undef.telemetry import (
     shutdown_telemetry,
     trace,
 )
-from undef.telemetry.config import SchemaConfig, TelemetryConfig, TracingConfig
+from provide.telemetry.config import SchemaConfig, TelemetryConfig, TracingConfig
 
 
 def main() -> None:
@@ -126,7 +126,7 @@ def main() -> None:
 
     # Sampling rate clamping
     print("  1️⃣  Sampling rate clamping (check WARNING logs above):")
-    from undef.telemetry.sampling import SamplingPolicy, set_sampling_policy
+    from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
     set_sampling_policy("logs", SamplingPolicy(default_rate=1.5))
     print("     Set rate=1.5 → clamped to 1.0 with WARNING")
@@ -136,7 +136,7 @@ def main() -> None:
 
     # Malformed OTLP headers
     print("\n  2️⃣  Malformed OTLP headers (check WARNING logs above):")
-    from undef.telemetry.config import _parse_otlp_headers
+    from provide.telemetry.config import _parse_otlp_headers
 
     headers = _parse_otlp_headers("good=value,bad-no-equals,another=ok")
     print(f"     Parsed: {headers}")

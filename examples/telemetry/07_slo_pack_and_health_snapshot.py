@@ -16,7 +16,7 @@ Demonstrates:
 
 from __future__ import annotations
 
-from undef.telemetry import (
+from provide.telemetry import (
     classify_error,
     get_health_snapshot,
     get_logger,
@@ -25,7 +25,7 @@ from undef.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry.config import TelemetryConfig
 
 
 def main() -> None:
@@ -33,9 +33,9 @@ def main() -> None:
 
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
-            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
-            "UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "true",
+            "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
+            "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
+            "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "true",
         }
     )
     setup_telemetry(cfg)

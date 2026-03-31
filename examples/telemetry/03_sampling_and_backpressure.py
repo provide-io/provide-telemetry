@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 
-from undef.telemetry import (
+from provide.telemetry import (
     QueuePolicy,
     SamplingPolicy,
     counter,
