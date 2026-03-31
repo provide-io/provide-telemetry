@@ -5,7 +5,13 @@
 
 """Public API for undef telemetry."""
 
+from __future__ import annotations
+
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 
 from undef.telemetry.asgi import TelemetryMiddleware, bind_websocket_context, clear_websocket_context
 from undef.telemetry.backpressure import QueuePolicy, get_queue_policy, set_queue_policy
