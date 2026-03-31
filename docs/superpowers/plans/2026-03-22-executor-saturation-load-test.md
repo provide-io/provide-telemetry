@@ -28,7 +28,7 @@ No source changes required — this is a pure test addition.
 - [ ] **Step 1: Create the file with SPDX header, imports, fixtures, and helper**
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #

@@ -22,7 +22,7 @@
 Write `spec/telemetry-api.yaml` with the canonical API surface derived from the Python `__all__` and TypeScript `index.ts` exports. Group by category. Use language-neutral snake_case names.
 
 ```yaml
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 
@@ -291,7 +291,7 @@ git commit -m "feat(spec): add canonical API surface definition for polyglot con
 Create `tests/tooling/test_validate_conformance.py`:
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -355,7 +355,7 @@ Create `spec/validate_conformance.py`:
 
 ```python
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -594,7 +594,7 @@ git commit -m "feat(spec): add conformance validation script for Python and Type
 Create `tests/tooling/test_check_version_sync.py`:
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -642,7 +642,7 @@ Create `scripts/check_version_sync.py`:
 
 ```python
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -855,7 +855,7 @@ git commit -m "feat(version): transition to shared major.minor versioning with p
 Create `e2e/__init__.py`:
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
@@ -864,7 +864,7 @@ Create `e2e/__init__.py`:
 Create `e2e/conftest.py`:
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #

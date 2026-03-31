@@ -36,7 +36,7 @@
 - [ ] **Step 1: Create the HTML entry point**
 
 ```html
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved. -->
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -57,7 +57,7 @@ Save to: `typescript/e2e-browser/index.html`
 - [ ] **Step 2: Create the browser tracer script**
 
 ```typescript
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Browser-side E2E tracer page script.
@@ -143,7 +143,7 @@ Save to: `typescript/e2e-browser/browser_tracer.ts`
 - [ ] **Step 3: Create the Vite E2E config**
 
 ```typescript
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Vite config for the browser E2E test.
@@ -323,7 +323,7 @@ git commit -m "chore: add playwright dev dep; fix REUSE annotations for CHANGELO
 - [ ] **Step 1: Write the test**
 
 ```python
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of Provide Telemetry.
 #
