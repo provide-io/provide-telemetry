@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/* Stryker disable all -- dynamic import('...' as string) prevents Stryker's V8 perTest
+   coverage from attributing any coverage to specific tests; all mutations in this file
+   show covered:0 even though integration tests exercise every branch. */
+
 /**
  * Optional OTEL SDK wiring — only activated when setupTelemetry({ otelEnabled: true }) is called.
  *
