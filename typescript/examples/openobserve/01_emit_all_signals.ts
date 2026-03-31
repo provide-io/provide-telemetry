@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     const start = Date.now();
     await withTrace(traceName, async () => {
-      log.info({ event: 'example.openobserve.log', iteration: String(i), run_id: runId });
+      log.info({ event: `example.openobserve.log.${runId}`, iteration: String(i) });
       requestsCounter.add(1, { iteration: String(i) });
       await new Promise((r) => setTimeout(r, 50));
     });
