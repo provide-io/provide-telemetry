@@ -59,7 +59,7 @@ All runtime config is via environment variables:
 | `UNDEF_TRACE_ENABLED` | `false` | Enable OTel tracing |
 | `UNDEF_METRICS_ENABLED` | `false` | Enable OTel metrics |
 
-See the [Configuration Reference](docs/CONFIGURATION.md) for all 60+ environment variables.
+See the [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
 
 ## Event Naming
 
@@ -76,7 +76,7 @@ log.info(event_name("auth", "login", "failed"), reason="bad_password")
 log.info({ event: 'auth.login.success', userId: 'u-123' });
 ```
 
-See [Conventions](docs/CONVENTIONS.md) for full naming rules.
+See [Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md) for full naming rules.
 
 ## API Surface
 
@@ -93,7 +93,7 @@ Both languages export equivalent APIs:
 | Health | `get_health_snapshot()` |
 | Runtime | `update_runtime_config()`, `reconfigure_telemetry()` |
 
-Full reference: [Python API](docs/API.md) | [TypeScript API](typescript/README.md)
+Full reference: [Python API](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md)
 
 ## Polyglot Architecture
 
@@ -119,17 +119,17 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Documentation
 
-- [Configuration Reference](docs/CONFIGURATION.md) — all environment variables
-- [API Reference](docs/API.md) — Python function signatures and examples
-- [Architecture](docs/ARCHITECTURE.md) — component design and data flow
-- [Internals](docs/INTERNALS.md) — implementation details
-- [Conventions](docs/CONVENTIONS.md) — event naming and schema rules
-- [Operations Runbook](docs/OPERATIONS.md) — troubleshooting and CQ matrix
-- [Production Profiles](docs/PRODUCTION_PROFILES.md) — recommended configs
-- [Release Runbook](docs/RELEASE.md) — versioning and publishing
-- [TypeScript README](typescript/README.md) — TypeScript-specific docs
-- [Examples](examples/README.md) — Python and TypeScript examples
+- [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
+- [API Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) — Python function signatures and examples
+- [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
+- [Internals](https://github.com/undef-games/undef-telemetry/blob/main/docs/INTERNALS.md) — implementation details
+- [Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
+- [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
+- [Release Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
+- [TypeScript README](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
+- [Examples](https://github.com/undef-games/undef-telemetry/blob/main/examples/README.md) — Python and TypeScript examples
 
 ## License
 
-Apache-2.0. See [LICENSES/](LICENSES/).
+Apache-2.0. See [LICENSES/](https://github.com/undef-games/undef-telemetry/tree/main/LICENSES).
