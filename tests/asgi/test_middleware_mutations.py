@@ -389,3 +389,14 @@ class TestExtractBaggageValue:
         scope: dict[str, object] = {"headers": [(b"baggage", b"other=x,session_id=target_val,more=y")]}
         result = _extract_baggage_value(scope, "session_id")
         assert result == "target_val"
+
+    def test_value_with_equals_sign_uses_partition_not_rpartition(self) -> None:
+        """Kills: partition('=') → rpartition('=') (mutmut_18).
+
+        When a baggage value itself contains '=', partition (left-to-right) correctly
+        returns the key before the FIRST '='. rpartition (right-to-left) would return
+        the part before the LAST '=', making k='session_id=abc' which doesn't match.
+        """
+        scope: dict[str, object] = {"headers": [(b"baggage", b"session_id=abc=def")]}
+        result = _extract_baggage_value(scope, "session_id")
+        assert result == "abc=def"
