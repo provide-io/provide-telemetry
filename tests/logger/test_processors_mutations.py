@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 import structlog
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger.processors import (
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger.processors import (
     _compute_error_fingerprint,
     add_error_fingerprint,
     add_standard_fields,
@@ -41,9 +41,9 @@ class TestMergeRuntimeContextKeys:
     def test_trace_id_key_is_exact(self) -> None:
         """Kills: 'trace_id' → 'XXtrace_idXX' in both .get() and assignment."""
         with (
-            patch("undef.telemetry.logger.processors.get_trace_id", return_value="abc123"),
-            patch("undef.telemetry.logger.processors.get_span_id", return_value=None),
-            patch("undef.telemetry.logger.processors.get_context", return_value={}),
+            patch("provide.telemetry.logger.processors.get_trace_id", return_value="abc123"),
+            patch("provide.telemetry.logger.processors.get_span_id", return_value=None),
+            patch("provide.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "trace_id" in result
@@ -53,9 +53,9 @@ class TestMergeRuntimeContextKeys:
     def test_span_id_key_is_exact(self) -> None:
         """Kills: 'span_id' → 'XXspan_idXX' in both .get() and assignment."""
         with (
-            patch("undef.telemetry.logger.processors.get_trace_id", return_value=None),
-            patch("undef.telemetry.logger.processors.get_span_id", return_value="def456"),
-            patch("undef.telemetry.logger.processors.get_context", return_value={}),
+            patch("provide.telemetry.logger.processors.get_trace_id", return_value=None),
+            patch("provide.telemetry.logger.processors.get_span_id", return_value="def456"),
+            patch("provide.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "span_id" in result
@@ -65,9 +65,9 @@ class TestMergeRuntimeContextKeys:
     def test_both_trace_and_span_set(self) -> None:
         """Both keys present when both values are non-None."""
         with (
-            patch("undef.telemetry.logger.processors.get_trace_id", return_value="t1"),
-            patch("undef.telemetry.logger.processors.get_span_id", return_value="s1"),
-            patch("undef.telemetry.logger.processors.get_context", return_value={}),
+            patch("provide.telemetry.logger.processors.get_trace_id", return_value="t1"),
+            patch("provide.telemetry.logger.processors.get_span_id", return_value="s1"),
+            patch("provide.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert result["trace_id"] == "t1"
@@ -76,9 +76,9 @@ class TestMergeRuntimeContextKeys:
     def test_neither_trace_nor_span_set(self) -> None:
         """Neither key present when both values are None."""
         with (
-            patch("undef.telemetry.logger.processors.get_trace_id", return_value=None),
-            patch("undef.telemetry.logger.processors.get_span_id", return_value=None),
-            patch("undef.telemetry.logger.processors.get_context", return_value={}),
+            patch("provide.telemetry.logger.processors.get_trace_id", return_value=None),
+            patch("provide.telemetry.logger.processors.get_span_id", return_value=None),
+            patch("provide.telemetry.logger.processors.get_context", return_value={}),
         ):
             result = merge_runtime_context(None, "", {"event": "x"})
         assert "trace_id" not in result
@@ -159,7 +159,7 @@ class TestAddStandardFieldsErrorTaxonomy:
             "exc_name": "KeyError",
         }
         with patch(
-            "undef.telemetry.slo.classify_error",
+            "provide.telemetry.slo.classify_error",
             wraps=lambda exc, _sc=None: {"error_type": "internal", "error_code": "0", "error_name": exc},
         ) as mock_classify:
             result = processor(None, "", event_dict)
@@ -185,7 +185,7 @@ class TestApplySamplingMutants:
     def test_signal_is_logs(self) -> None:
         """Kills: 'logs' → 'XXlogsXX' in should_sample call."""
         with patch(
-            "provide.telemetry.sampling.should_sample",
+            "provide.telemetry.logger.processors.should_sample",
             return_value=True,
         ) as mock_sample:
             apply_sampling(None, "", {"event": "app.test.ok"})
@@ -194,7 +194,7 @@ class TestApplySamplingMutants:
     def test_event_key_read_correctly(self) -> None:
         """Kills: 'event' key → 'XXeventXX'."""
         with patch(
-            "provide.telemetry.sampling.should_sample",
+            "provide.telemetry.logger.processors.should_sample",
             return_value=True,
         ) as mock_sample:
             apply_sampling(None, "", {"event": "my.specific.event"})
@@ -204,7 +204,7 @@ class TestApplySamplingMutants:
         """When sampling rejects, DropEvent is raised to suppress the log."""
         with (
             patch(
-                "provide.telemetry.sampling.should_sample",
+                "provide.telemetry.logger.processors.should_sample",
                 return_value=False,
             ),
             pytest.raises(structlog.DropEvent),
@@ -215,7 +215,7 @@ class TestApplySamplingMutants:
         """When sampled, original event_dict is returned unchanged."""
         original: dict[str, object] = {"event": "app.test.ok", "extra": "data"}
         with patch(
-            "provide.telemetry.sampling.should_sample",
+            "provide.telemetry.logger.processors.should_sample",
             return_value=True,
         ):
             result = apply_sampling(None, "", original)
@@ -475,7 +475,7 @@ class TestHardenInputBoundaries:
 class TestSanitizeSensitiveFieldsDefault:
     def test_default_max_depth_is_8(self) -> None:
         """Kills: max_depth=8 → max_depth=7 or other value."""
-        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True)
             processor(None, "", {"event": "x"})
@@ -483,7 +483,7 @@ class TestSanitizeSensitiveFieldsDefault:
 
     def test_custom_max_depth_forwarded(self) -> None:
         """Verifies max_depth param is passed through."""
-        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True, max_depth=3)
             processor(None, "", {"event": "x"})

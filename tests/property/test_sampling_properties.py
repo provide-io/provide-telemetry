@@ -149,7 +149,10 @@ def test_acquire_release_cycles_leave_zero_depth(maxsize: int, n_cycles: int) ->
         for t in tickets:
             release(t)
 
-    # queue_depth removed from canonical health snapshot
+    from provide.telemetry.health import get_health_snapshot
+
+    snap = get_health_snapshot()
+    assert snap.queue_depth_logs == 0
 
 
 @given(

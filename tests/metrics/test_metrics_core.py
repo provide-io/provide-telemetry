@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -11,15 +11,16 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.metrics import api as api_mod
-from undef.telemetry.metrics import counter, gauge, histogram
-from undef.telemetry.metrics import fallback as fallback_mod
-from undef.telemetry.metrics import instruments as instruments_mod
-from undef.telemetry.metrics import provider as provider_mod
-from undef.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics, shutdown_metrics
-from undef.telemetry.sampling import reset_sampling_for_tests
-from undef.telemetry.tracing.context import set_trace_context
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.metrics import api as api_mod
+from provide.telemetry.metrics import counter, gauge, histogram
+from provide.telemetry.metrics import fallback as fallback_mod
+from provide.telemetry.metrics import instruments as instruments_mod
+from provide.telemetry.metrics import provider as provider_mod
+from provide.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics, shutdown_metrics
+from provide.telemetry.sampling import reset_sampling_for_tests
+from provide.telemetry.tracing.context import set_trace_context
 
 
 def _fake_otel_api(**kw: Any) -> SimpleNamespace:
@@ -133,7 +134,7 @@ def test_metric_wrapper_no_meter_fallback(monkeypatch: pytest.MonkeyPatch) -> No
 def test_setup_metrics_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
     provider_mod._HAS_OTEL_METRICS = True
-    cfg = TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "false"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "false"})
     setup_metrics(cfg)  # disabled
 
     _set_meter_for_test(None)
@@ -142,9 +143,9 @@ def test_setup_metrics_branches(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _set_meter_for_test(None)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", False)
-    enabled_cfg = TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"})
+    enabled_cfg = TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "true"})
     setup_metrics(enabled_cfg)
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("provide.telemetry") is None
 
 
 def test_setup_metrics_short_circuits_when_otel_missing_even_if_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,7 +160,7 @@ def test_setup_metrics_short_circuits_when_otel_missing_even_if_enabled(monkeypa
 
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_components", _boom_components)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", _boom_api)
-    setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
+    setup_metrics(TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "true"}))
 
 
 def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,12 +177,12 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"})
     setup_metrics(cfg)
-    resource_cls.create.assert_called_once_with({"service.name": "undef-service", "service.version": "0.0.0"})
+    resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
     provider_cls.assert_called_once_with(resource="res", metric_readers=["reader"])
     exporter_cls.assert_called_once_with(endpoint="http://metrics", headers={}, timeout=10.0)
     reader_cls.assert_called_once_with("exporter")
     mock_otel.set_meter_provider.assert_called_once_with("provider")
-    mock_otel.get_meter.assert_called_once_with("undef.telemetry")
+    mock_otel.get_meter.assert_called_once_with("provide.telemetry")
     assert get_meter() == "meter"
     assert provider_mod._meter_provider == "provider"
     setup_metrics(cfg)  # already configured branch
@@ -209,7 +210,7 @@ def test_get_meter_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     assert get_meter("x") == "dynamic"
     get_meter()
-    mock_otel.get_meter.assert_any_call("undef.telemetry")
+    mock_otel.get_meter.assert_any_call("provide.telemetry")
     get_meter("x")
     mock_otel.get_meter.assert_any_call("x")
     assert None not in [args[0][0] for args in mock_otel.get_meter.call_args_list]
@@ -240,15 +241,15 @@ def test_setup_metrics_with_only_one_otel_dependency_available(monkeypatch: pyte
         "_load_otel_metrics_api",
         lambda: _fake_otel_api(get_meter=Mock()),
     )
-    setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
-    assert provider_mod._meter is None
+    setup_metrics(TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "true"}))
+    assert provider_mod._meters.get("provide.telemetry") is None
 
     _set_meter_for_test(None)
     components = (Mock(), SimpleNamespace(create=Mock(return_value="res")), Mock(), Mock())
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_components", lambda: components)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: None)
-    setup_metrics(TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"}))
-    assert provider_mod._meter is None
+    setup_metrics(TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "true"}))
+    assert provider_mod._meters.get("provide.telemetry") is None
 
 
 def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -271,10 +272,10 @@ def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkey
 def test_shutdown_metrics_calls_provider_shutdown() -> None:
     provider = Mock()
     provider_mod._meter_provider = provider
-    provider_mod._meter = "meter"
+    provider_mod._meters["provide.telemetry"] = "meter"
     shutdown_metrics()
     provider.shutdown.assert_called_once()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("provide.telemetry") is None
     assert provider_mod._meter_provider is None
 
 
@@ -282,20 +283,29 @@ def test_shutdown_metrics_provider_absent_and_noncallable() -> None:
     provider_mod._meter_provider = None
     provider_mod._meter = None
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("provide.telemetry") is None
     assert provider_mod._meter_provider is None
 
     provider_mod._meter_provider = SimpleNamespace(shutdown="nope")
-    provider_mod._meter = "meter"
+    provider_mod._meters["provide.telemetry"] = "meter"
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("provide.telemetry") is None
     assert provider_mod._meter_provider is None
 
     provider_mod._meter_provider = SimpleNamespace()
-    provider_mod._meter = "meter"
+    provider_mod._meters["provide.telemetry"] = "meter"
     shutdown_metrics()
-    assert provider_mod._meter is None
+    assert provider_mod._meters.get("provide.telemetry") is None
     assert provider_mod._meter_provider is None
+
+
+def test_invalid_backpressure_signal_raises() -> None:
+    from provide.telemetry.backpressure import QueueTicket, release, try_acquire
+
+    with pytest.raises(ValueError, match="unknown signal"):
+        try_acquire("trace")
+    with pytest.raises(ValueError, match="unknown signal"):
+        release(QueueTicket(signal="trace", token=1))
 
 
 def test_set_meter_for_test_resets_provider_exactly_to_none() -> None:
@@ -313,7 +323,7 @@ def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: mock_otel)
     # Default meter
     m1 = get_meter()
-    assert m1 == "meter-undef.telemetry"
+    assert m1 == "meter-provide.telemetry"
     # Custom meter is different
     m2 = get_meter("custom")
     assert m2 == "meter-custom"
@@ -357,13 +367,13 @@ def test_metric_exception_fallback_preserves_name() -> None:
 
 def test_metric_sampling_and_backpressure_drop_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: False)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: False)
     c = counter("c")
     c.add(5)
     assert c.value == 0
 
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.try_acquire", lambda _signal: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.try_acquire", lambda _signal: None)
     g = gauge("g")
     g.add(3)
     assert g.value == 0
@@ -395,14 +405,14 @@ def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -
     hist_impl = _Histogram()
     c = instruments_mod.Counter("ctr", counter_impl)
     h = instruments_mod.Histogram("hist", hist_impl)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
     monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback.try_acquire",
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda _ticket: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
     c.add(1, {"user_id": "u1"})
     h.record(1.0, {"user_id": "u2"})
     assert len(counter_impl.calls) == 2
@@ -428,14 +438,14 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
     hist_impl = _Histogram()
     c = instruments_mod.Counter("ctr", counter_impl)
     h = instruments_mod.Histogram("hist", hist_impl)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
     monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback.try_acquire",
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda _ticket: None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda _ticket: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_trace_id", lambda: "a" * 32)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_span_id", lambda: "b" * 16)
     c.add(1)
     h.record(1.0)
     counter_kwargs = cast(dict[str, Any], counter_impl.calls[0][1])
@@ -445,15 +455,15 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_metric_exemplar_empty_context_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_trace_id", lambda: None)
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.get_span_id", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_trace_id", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.get_span_id", lambda: None)
     assert fallback_mod._exemplar() == {}
 
 
 def test_metric_early_return_branches_for_sampling_and_queue(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", lambda _signal, name: name != "no-sample")
+    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, name: name != "no-sample")
     monkeypatch.setattr(
-        "undef.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback.try_acquire",
         lambda _signal: None,
     )
 
