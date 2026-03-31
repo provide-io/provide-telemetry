@@ -279,8 +279,8 @@ typescript_extras:
             type: "React.ReactNode"
             required: true
           - name: fallback
-            type: "React.ReactNode | ((error: Error) => React.ReactNode)"
-            required: false
+            type: "React.ReactNode | ((error: Error, reset: () => void) => React.ReactNode)"
+            required: true
             description: "Static node or render-prop called with the caught error."
           - name: onError
             type: "(error: Error, info: React.ErrorInfo) => void"
