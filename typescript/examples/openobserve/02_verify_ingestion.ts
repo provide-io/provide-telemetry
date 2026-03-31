@@ -73,21 +73,21 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
   });
 }
 
-async function searchTotal(
-  baseUrl: string, streamType: string, auth: string, sql: string,
+async function searchHits(
+  baseUrl: string, streamType: string, auth: string,
   startUs: number, endUs: number,
-): Promise<number> {
+): Promise<Record<string, unknown>[]> {
+  const sql = 'select * from "default" order by _timestamp desc limit 500';
   try {
     const res = await requestJson(
       `${baseUrl}/_search?type=${streamType}`, auth, 'POST',
       { query: { sql, start_time: startUs, end_time: endUs } },
     ) as Record<string, unknown>;
-    const total = res['total'];
-    if (typeof total === 'number') return total;
-    if (typeof total === 'string') return parseInt(total, 10);
-    return 0;
+    const hits = res['hits'];
+    if (!Array.isArray(hits)) return [];
+    return hits.filter((h): h is Record<string, unknown> => typeof h === 'object' && h !== null);
   } catch (err) {
-    if (String(err).includes('Search stream not found')) return 0;
+    if (String(err).includes('Search stream not found')) return [];
     throw err;
   }
 }
@@ -100,9 +100,10 @@ async function streamNames(baseUrl: string, streamType: string, auth: string): P
 }
 
 function requiredSignalsFromEnv(): Set<string> {
-  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'logs';
+  // Default: traces only. Logs are pino → stdout only (no OTLP log exporter in TS yet).
+  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'traces';
   const requested = new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-  if (requested.size === 0) requested.add('logs');
+  if (requested.size === 0) requested.add('traces');
   const valid = new Set(['logs', 'metrics', 'traces']);
   for (const s of requested) {
     if (!valid.has(s)) throw new Error(`invalid OPENOBSERVE_REQUIRED_SIGNALS entry: ${s}`);
@@ -121,21 +122,15 @@ async function main(): Promise<void> {
   const startUs = Date.now() * 1000 - 2 * 60 * 60 * 1_000_000;
   const traceName = `example.openobserve.work.${runId}`;
   const metricStream = `example_openobserve_requests_${runId}`;
-  const logEvent = `example.openobserve.log`;
+  const logEvent = `example.openobserve.log.${runId}`;
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
-  const beforeLogs = await searchTotal(
-    baseUrl, 'logs', auth,
-    `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`,
-    startUs, endUsBefore,
-  );
-  const beforeTraces = await searchTotal(
-    baseUrl, 'traces', auth,
-    `select count(*) from "default" where operation_name = '${traceName}'`,
-    startUs, endUsBefore,
-  );
+  const beforeLogHits = await searchHits(baseUrl, 'logs', auth, startUs, endUsBefore);
+  const beforeTraceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUsBefore);
   const beforeMetricStreams = await streamNames(baseUrl, 'metrics', auth);
+  const beforeLogs = beforeLogHits.filter((h) => h['event'] === logEvent).length;
+  const beforeTraces = beforeTraceHits.filter((h) => h['operation_name'] === traceName).length;
   const before = { logs: beforeLogs, metrics_stream_present: beforeMetricStreams.has(metricStream), traces: beforeTraces };
   const requiredSignals = requiredSignalsFromEnv();
   console.log(`before=${JSON.stringify(before)}`);
@@ -150,12 +145,14 @@ async function main(): Promise<void> {
   let after = { ...before };
   while (Date.now() < deadline) {
     const endUs = Date.now() * 1000;
-    const logs = await searchTotal(baseUrl, 'logs', auth,
-      `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`, startUs, endUs);
-    const traces = await searchTotal(baseUrl, 'traces', auth,
-      `select count(*) from "default" where operation_name = '${traceName}'`, startUs, endUs);
+    const logHits = await searchHits(baseUrl, 'logs', auth, startUs, endUs);
+    const traceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUs);
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
-    after = { logs, metrics_stream_present: mStreams.has(metricStream), traces };
+    after = {
+      logs: logHits.filter((h) => h['event'] === logEvent).length,
+      metrics_stream_present: mStreams.has(metricStream),
+      traces: traceHits.filter((h) => h['operation_name'] === traceName).length,
+    };
 
     const logsOk = !requiredSignals.has('logs') || after.logs > before.logs;
     const metricsOk = !requiredSignals.has('metrics') || after.metrics_stream_present;

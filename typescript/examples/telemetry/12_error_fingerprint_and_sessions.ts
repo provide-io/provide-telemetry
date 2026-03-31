@@ -19,7 +19,7 @@ import {
   bindSessionContext,
   getSessionId,
   clearSessionContext,
-} from '../src/index';
+} from '../../src/index.js';
 
 function demoErrorFingerprint(): void {
   console.log('--- Error Fingerprinting ---\n');
