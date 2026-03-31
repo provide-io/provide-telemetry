@@ -40,6 +40,7 @@ jobs:
       - run: npm run test:coverage
 
   typescript-mutation-gate:
+    needs: typescript-quality
     runs-on: ubuntu-latest
     defaults:
       run:
