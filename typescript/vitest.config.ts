@@ -12,7 +12,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.ts'],
-      exclude: ['src/index.ts', 'src/sanitize.ts', '**/.stryker-tmp/**'],
+      exclude: ['src/index.ts', 'src/sanitize.ts', 'src/otel-noop.ts', '**/.stryker-tmp/**'],
       thresholds: {
         lines: 100,
         functions: 100,

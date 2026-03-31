@@ -10,9 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from undef.telemetry.headers import get_header
-from undef.telemetry.logger.context import bind_context, reset_context, save_context
-
-ContextToken = object
+from undef.telemetry.logger.context import ContextToken, bind_context, reset_context, save_context
 
 
 def bind_websocket_context(scope: dict[str, Any]) -> ContextToken:
@@ -32,7 +30,7 @@ def bind_websocket_context(scope: dict[str, Any]) -> ContextToken:
 
 def clear_websocket_context(token: ContextToken) -> None:
     """Restore context to the state before bind_websocket_context() was called."""
-    reset_context(token)  # type: ignore[arg-type]
+    reset_context(token)
 
 
 def _extract_header(scope: dict[str, Any], key: bytes) -> str | None:
