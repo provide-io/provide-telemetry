@@ -243,10 +243,13 @@ class TestSecretDetection:
     """Test _detect_secret_in_value from pii.py."""
 
     def test_detects_aws_access_key(self) -> None:
-        assert _detect_secret_in_value("AKIAIOSFODNN7EXAMPLE") is True
+        assert _detect_secret_in_value("AKIAIOSFODNN7EXAMPLE") is True  # pragma: allowlist secret
+
+    def test_detects_aws_sts_temporary_key(self) -> None:
+        assert _detect_secret_in_value("ASIAJEXAMPLEKEYHERE1") is True  # pragma: allowlist secret
 
     def test_detects_jwt_token(self) -> None:
-        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"  # pragma: allowlist secret
         assert _detect_secret_in_value(jwt) is True
 
     def test_detects_github_token_ghp(self) -> None:
@@ -297,7 +300,7 @@ class TestSecretRedaction:
         assert result["data"] == "***"
 
     def test_jwt_value_redacted(self) -> None:
-        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"  # pragma: allowlist secret
         payload: dict[str, Any] = {"auth": jwt}
         result = sanitize_payload(payload, enabled=True)
         assert result["auth"] == "***"
@@ -346,12 +349,12 @@ class TestDepthGuard:
         node: dict[str, Any] = {"secret": "hunter2"}
         # At depth >= 32, the rule is not applied
         result = _apply_rule(node, rule, current_path=(), depth=32)
-        assert result == {"secret": "hunter2"}
+        assert result == {"secret": "hunter2"}  # pragma: allowlist secret
 
     def test_normal_depth_values_sanitized(self) -> None:
         payload: dict[str, Any] = {
             "level1": {
-                "secret": "ghp_" + "Y" * 36,
+                "secret": "ghp_" + "Y" * 36,  # pragma: allowlist secret
             }
         }
         result = sanitize_payload(payload, enabled=True, max_depth=8)

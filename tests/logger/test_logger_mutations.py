@@ -336,9 +336,9 @@ class TestConfigureLoggingSanitizeConfig:
         original_ssf = proc_mod.sanitize_sensitive_fields
         captured_args: list[object] = []
 
-        def tracking_ssf(enabled: object) -> Any:
+        def tracking_ssf(enabled: object, max_depth: int = 8) -> Any:
             captured_args.append(enabled)
-            return original_ssf(enabled)  # type: ignore[arg-type]
+            return original_ssf(enabled, max_depth)  # type: ignore[arg-type]
 
         monkeypatch.setattr(core_mod, "sanitize_sensitive_fields", tracking_ssf)
 
