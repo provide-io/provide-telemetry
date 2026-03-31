@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import re
 import sys
 import traceback
@@ -56,7 +55,8 @@ def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) ->
     parts = [exc_type.lower()]
     if tb is not None:
         for frame in traceback.extract_tb(tb)[-3:]:
-            basename = os.path.basename(frame.filename).rsplit(".", 1)[0].lower()
+            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+            basename = leaf.rsplit(".", 1)[0].lower()
             func = (frame.name or "").lower()
             parts.append(f"{basename}:{func}")
     return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]
