@@ -96,16 +96,16 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     # Circuit breaker: skip work if the pool is likely saturated.
     if timeout_seconds > 0:
         with _lock:
-            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
+            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
                 elapsed = time.monotonic() - _circuit_tripped_at[sig]
                 if elapsed < _CIRCUIT_BREAKER_COOLDOWN:
-                    record_export_failure(sig, TimeoutError("circuit breaker open"))  # pragma: no mutate
+                    record_export_failure(sig, TimeoutError("circuit breaker open"))
                     if policy.fail_open:
                         return None
                     raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
                 # Half-open: cooldown expired, allow one probe attempt through
-    if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):  # pragma: no mutate
-        increment_async_blocking_risk(sig)  # pragma: no mutate
+    if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):
+        increment_async_blocking_risk(sig)
         _warn_async_risk(sig, policy)  # pragma: no mutate
         if not policy.allow_blocking_in_event_loop:
             attempts = 1
@@ -115,30 +115,30 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         started = time.perf_counter()
         try:
             result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
-            latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
-            record_export_success(sig, latency_ms=latency_ms)  # pragma: no mutate
+            latency_ms = (time.perf_counter() - started) * 1000.0
+            record_export_success(sig, latency_ms=latency_ms)
             with _lock:
                 _consecutive_timeouts[sig] = 0
             return result
         except TimeoutError as exc:
             last_error = exc
-            record_export_failure(sig, exc)  # pragma: no mutate
+            record_export_failure(sig, exc)
             with _lock:
                 _consecutive_timeouts[sig] += 1
-                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
+                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
                     _circuit_tripped_at[sig] = time.monotonic()
             if attempt < attempts - 1:
                 increment_retries(sig)
-                if backoff_seconds > 0:  # pragma: no mutate
+                if backoff_seconds > 0:
                     time.sleep(backoff_seconds)
         except Exception as exc:
             last_error = exc
-            record_export_failure(sig, exc)  # pragma: no mutate
+            record_export_failure(sig, exc)
             with _lock:
                 _consecutive_timeouts[sig] = 0
             if attempt < attempts - 1:
                 increment_retries(sig)
-                if backoff_seconds > 0:  # pragma: no mutate
+                if backoff_seconds > 0:
                     time.sleep(backoff_seconds)
     if policy.fail_open:
         return None

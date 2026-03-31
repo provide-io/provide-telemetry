@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of provide-telemetry.
+# SPDX-Comment: Part of Undef Telemetry.
 #
 
 """Tests that replace pragma: no mutate shortcuts with real mutation kills.
@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 import pytest
 
-from provide.telemetry import health as health_mod
-from provide.telemetry import resilience as resilience_mod
-from provide.telemetry.resilience import (
+from undef.telemetry import health as health_mod
+from undef.telemetry import resilience as resilience_mod
+from undef.telemetry.resilience import (
     ExporterPolicy,
     reset_resilience_for_tests,
     run_with_resilience,
@@ -164,8 +164,8 @@ def test_latency_ms_approximately_correct() -> None:
     run_with_resilience("metrics", lambda: time.sleep(sleep_seconds))
     snap = health_mod.get_health_snapshot()
     expected_ms = sleep_seconds * 1000.0
-    # Allow 200ms tolerance for scheduling jitter (macOS ARM runners can be slow).
-    assert abs(snap.export_latency_ms_metrics - expected_ms) < 200.0, (
+    # Allow 50ms tolerance for scheduling jitter.
+    assert abs(snap.export_latency_ms_metrics - expected_ms) < 50.0, (
         f"Latency {snap.export_latency_ms_metrics:.1f}ms not near expected {expected_ms:.1f}ms"
     )
 
@@ -191,7 +191,7 @@ def test_zero_backoff_does_not_sleep() -> None:
         calls["count"] += 1
         raise RuntimeError("boom")
 
-    with patch("provide.telemetry.resilience.time.sleep") as mock_sleep:
+    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
         run_with_resilience("logs", _fail)
     mock_sleep.assert_not_called()
     assert calls["count"] == 3  # 1 initial + 2 retries
@@ -335,51 +335,3 @@ async def test_async_blocking_risk_incremented_in_event_loop() -> None:
     run_with_resilience("metrics", lambda: "ok2")
     snap = health_mod.get_health_snapshot()
     assert snap.async_blocking_risk_metrics == 2
-
-
-# ---------------------------------------------------------------------------
-# Half-open success: _record_attempt_success resets timeouts to 0
-# ---------------------------------------------------------------------------
-
-
-def test_half_open_success_resets_consecutive_timeouts_to_zero() -> None:
-    """Kill mutant: _consecutive_timeouts[sig] = 0 -> = 1 in half-open success path.
-
-    After the circuit trips (3 timeouts), wait for cooldown to expire so the
-    circuit enters half-open state, then succeed. The consecutive_timeouts must
-    be reset to exactly 0.
-    """
-    import time as _time
-
-    set_exporter_policy(
-        "logs",
-        ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
-    )
-
-    # Trip the circuit breaker
-    for _ in range(3):
-        run_with_resilience("logs", lambda: _time.sleep(1.0))
-
-    with resilience_mod._lock:
-        assert resilience_mod._consecutive_timeouts["logs"] >= 3
-        # Force cooldown to have expired
-        resilience_mod._circuit_tripped_at["logs"] = _time.monotonic() - 999.0
-
-    # Verify half-open probing is armed before the success call
-    with resilience_mod._lock:
-        assert resilience_mod._half_open_probing["logs"] is False  # not yet probing
-
-    # Next call enters half-open (cooldown expired) and succeeds
-    set_exporter_policy(
-        "logs",
-        ExporterPolicy(timeout_seconds=0, retries=0, fail_open=True),
-    )
-    result = run_with_resilience("logs", lambda: "ok")
-    assert result == "ok"
-
-    # After half-open success, consecutive_timeouts must be exactly 0
-    # (mutant changes this to 1 on the half-open branch at line 122)
-    with resilience_mod._lock:
-        assert resilience_mod._consecutive_timeouts["logs"] == 0
-        # Also verify half-open probing was consumed (proves we hit the right branch)
-        assert resilience_mod._half_open_probing["logs"] is False
