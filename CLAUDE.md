@@ -62,20 +62,36 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 src/undef/telemetry/
 ├── __init__.py          # Public API facade — only import from here in consumers
 ├── setup.py             # Idempotent setup()/teardown() with threading.Lock
-├── config.py            # Pydantic models, all config via env vars (UNDEF_* / OTEL_*)
+├── config.py            # stdlib @dataclass(slots=True), all config via env vars (UNDEF_* / OTEL_*)
+├── _otel.py             # OTel introspection utilities (lazy import helpers)
+├── exceptions.py        # TelemetryError, ConfigurationError
+├── health.py            # Self-observability snapshots
+├── runtime.py           # Hot-reload API
+├── pii.py               # PII rule engine with secret detection and nested traversal
+├── propagation.py       # W3C traceparent/tracestate extraction with size guards
+├── sampling.py          # Per-signal probabilistic sampling
+├── backpressure.py      # Bounded queue ticket system
+├── resilience.py        # Retry, timeout, circuit breaker, executor pool
+├── cardinality.py       # TTL-based attribute cardinality guards
+├── slo.py               # RED/USE metric helpers
+├── headers.py           # Safe ASGI header extraction
+├── testing.py           # pytest plugin for test isolation
 ├── logger/
 │   ├── core.py          # structlog pipeline: configure_logging(), build_handlers()
-│   ├── context.py       # contextvars: bind_request_context(), bind_session_context()
-│   └── processors.py    # structlog processors: schema validation, sanitize, merge ctx
+│   ├── context.py       # contextvars: bind_context(), bind_session_context()
+│   ├── processors.py    # structlog processors: harden_input, error fingerprint, sanitize
+│   └── pretty.py        # Pretty ANSI renderer with configurable colors
 ├── tracing/
 │   ├── provider.py      # OTel TracerProvider or no-op fallback
 │   ├── context.py       # contextvars: trace_id, span_id
 │   └── decorators.py    # @trace async decorator
 ├── metrics/
 │   ├── provider.py      # OTel MeterProvider or no-op fallback
-│   └── instruments.py   # Counter, Gauge, Histogram wrappers
+│   ├── api.py           # counter(), gauge(), histogram()
+│   ├── instruments.py   # Instrument wrappers
+│   └── fallback.py      # In-process fallback implementations
 ├── asgi/
-│   ├── middleware.py    # TelemetryMiddleware — binds request context per HTTP/WS request
+│   ├── middleware.py     # TelemetryMiddleware — binds request/session context, baggage extraction
 │   └── websocket.py     # WebSocket context helpers
 └── schema/
     └── events.py        # Event name validation, required-key enforcement

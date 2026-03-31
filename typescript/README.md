@@ -129,8 +129,13 @@ clearSessionContext();
 ```typescript
 import { computeErrorFingerprint } from '@undef-games/telemetry';
 
-const fp = computeErrorFingerprint(new Error('connection refused'));
-// 12-char hex digest, stable across deploys — use for dedup and alert grouping.
+try {
+  throw new Error('connection refused');
+} catch (e) {
+  const err = e as Error;
+  const fp = computeErrorFingerprint(err.constructor.name, err.stack);
+  // fp: 12-char hex digest, stable across deploys — use for dedup and alert grouping.
+}
 ```
 
 ### W3C trace propagation
@@ -172,11 +177,11 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
-| `UNDEF_TELEMETRY_ENV` | `development` | Deployment environment |
-| `UNDEF_TELEMETRY_VERSION` | `unknown` | Service version |
+| `UNDEF_ENV` | `development` | Deployment environment |
+| `UNDEF_VERSION` | `unknown` | Service version |
 | `UNDEF_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
 | `UNDEF_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
-| `UNDEF_OTEL_ENABLED` | `false` | Enable OTLP export |
+| `UNDEF_TRACE_ENABLED` | `false` | Enable OTLP export |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
 
