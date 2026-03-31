@@ -15,6 +15,7 @@ __all__ = [
     "SLOConfig",
     "SamplingConfig",
     "SchemaConfig",
+    "SecurityConfig",
     "TelemetryConfig",
     "TracingConfig",
 ]
@@ -129,6 +130,18 @@ class SLOConfig:
 
 
 @dataclass(slots=True)
+class SecurityConfig:
+    max_attr_value_length: int = 1024
+    max_attr_count: int = 64
+    max_nesting_depth: int = 8
+
+    def __post_init__(self) -> None:
+        _validate_non_negative(self.max_attr_value_length, "max_attr_value_length must be >= 0")
+        _validate_non_negative(self.max_attr_count, "max_attr_count must be >= 0")
+        _validate_non_negative(self.max_nesting_depth, "max_nesting_depth must be >= 0")
+
+
+@dataclass(slots=True)
 class TelemetryConfig:
     service_name: str = "undef-service"
     environment: str = "dev"
@@ -142,6 +155,7 @@ class TelemetryConfig:
     backpressure: BackpressureConfig = field(default_factory=BackpressureConfig)
     exporter: ExporterPolicyConfig = field(default_factory=ExporterPolicyConfig)
     slo: SLOConfig = field(default_factory=SLOConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
@@ -254,6 +268,17 @@ class TelemetryConfig:
                 enable_red_metrics=_parse_bool(data.get("UNDEF_SLO_ENABLE_RED_METRICS"), False),
                 enable_use_metrics=_parse_bool(data.get("UNDEF_SLO_ENABLE_USE_METRICS"), False),
                 include_error_taxonomy=_parse_bool(data.get("UNDEF_SLO_INCLUDE_ERROR_TAXONOMY"), True),
+            ),
+            security=SecurityConfig(
+                max_attr_value_length=_parse_env_int(
+                    data.get("UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH", "1024"), "UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH"
+                ),
+                max_attr_count=_parse_env_int(
+                    data.get("UNDEF_SECURITY_MAX_ATTR_COUNT", "64"), "UNDEF_SECURITY_MAX_ATTR_COUNT"
+                ),
+                max_nesting_depth=_parse_env_int(
+                    data.get("UNDEF_SECURITY_MAX_NESTING_DEPTH", "8"), "UNDEF_SECURITY_MAX_NESTING_DEPTH"
+                ),
             ),
         )
 

@@ -22,6 +22,7 @@ from undef.telemetry.logger.processors import (
     add_standard_fields,
     apply_sampling,
     enforce_event_schema,
+    harden_input,
     make_level_filter,
     merge_runtime_context,
     sanitize_sensitive_fields,
@@ -201,6 +202,11 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None: 
 
         processors.extend(
             [
+                harden_input(
+                    config.security.max_attr_value_length,
+                    config.security.max_attr_count,
+                    config.security.max_nesting_depth,
+                ),
                 add_standard_fields(config),
                 apply_sampling,
                 enforce_event_schema(config),

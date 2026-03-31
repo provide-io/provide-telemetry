@@ -23,6 +23,10 @@ from undef.telemetry.headers import get_header
 from undef.telemetry.logger.context import bind_context, get_context, unbind_context
 from undef.telemetry.tracing.context import get_trace_context, set_trace_context
 
+_MAX_HEADER_LENGTH = 512
+_MAX_TRACESTATE_PAIRS = 32
+_MAX_BAGGAGE_LENGTH = 8192
+
 _MISSING = object()
 _restore_stack: contextvars.ContextVar[tuple[dict[str, object], ...]] = contextvars.ContextVar(
     "_propagation_restore_stack", default=()
@@ -69,6 +73,14 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
+    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:
+        raw_traceparent = None
+    if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
+        tracestate = None
+    if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
+        tracestate = None
+    if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
+        baggage = None
     trace_id, span_id = _parse_traceparent(raw_traceparent)
     traceparent = raw_traceparent if trace_id is not None and span_id is not None else None  # pragma: no mutate
     return PropagationContext(
