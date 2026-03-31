@@ -1,0 +1,47 @@
+name: 8. 🧬 Mutation Testing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "typescript/src/**"
+      - "typescript/tests/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "typescript/src/**"
+      - "typescript/tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-mutation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev
+      - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 2 --max-children 1 --min-mutation-score 100
+
+  typescript-mutation:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+      - run: npm run test:mutation
