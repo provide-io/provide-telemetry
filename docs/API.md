@@ -36,9 +36,9 @@ Apply hot runtime policy changes. Raises `RuntimeError` if provider-changing con
 
 ## Logging
 
-### `get_logger(name: str | None = None) -> BoundLogger`
+### `get_logger(name: str | None = None) -> structlog-compatible logger`
 
-Return a structlog logger. Auto-configures on first call if `setup_telemetry()` hasn't been called.
+Return a structlog-compatible wrapped logger (internally a `_TraceWrapper` around a `FilteringBoundLogger`). Auto-configures on first call if `setup_telemetry()` hasn't been called.
 
 ### `logger`
 
@@ -118,7 +118,7 @@ Error events automatically receive an `error_fingerprint` field — a 12-charact
 
 ### `event_name(*segments: str) -> str`
 
-Build a strict event name from 3-5 validated lowercase segments joined by dots.
+Build a dot-separated event name from segments. In strict mode (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=true`), validates 3-5 lowercase segments; in non-strict mode (the default), accepts 1+ segments with no format validation.
 
 ```python
 event_name("auth", "login", "success")  # -> "auth.login.success"
@@ -153,7 +153,7 @@ Push propagation fields into structlog context and trace context. Stackable — 
 ### `SamplingPolicy`
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SamplingPolicy:
     default_rate: float = 1.0
     overrides: dict[str, float] = field(default_factory=dict)
@@ -176,7 +176,7 @@ Probabilistic sampling check. Uses per-key override rate if `key` matches, else 
 ### `QueuePolicy`
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class QueuePolicy:
     logs_maxsize: int = 0
     traces_maxsize: int = 0
@@ -196,7 +196,7 @@ Return the current queue policy.
 ### `ExporterPolicy`
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExporterPolicy:
     retries: int = 0
     backoff_seconds: float = 0.0
@@ -218,7 +218,7 @@ Return the current exporter policy for a signal.
 ### `PIIRule`
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PIIRule:
     path: tuple[str, ...]
     mode: MaskMode = "redact"    # "drop" | "redact" | "hash" | "truncate"
@@ -242,7 +242,7 @@ Return the current PII rules as an immutable tuple.
 ### `CardinalityLimit`
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CardinalityLimit:
     max_values: int
     ttl_seconds: float = 300.0
@@ -284,11 +284,11 @@ Return a point-in-time snapshot of all health counters. Thread-safe.
 
 ### `record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None`
 
-Emit RED (Rate/Error/Duration) metrics for an HTTP request. Only active when `UNDEF_SLO_ENABLE_RED_METRICS=true`.
+Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when called directly; the `UNDEF_SLO_ENABLE_RED_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
 
 ### `record_use_metrics(resource: str, utilization_percent: int) -> None`
 
-Emit USE (Utilization) metrics for a resource. Only active when `UNDEF_SLO_ENABLE_USE_METRICS=true`.
+Emit USE (Utilization) metrics for a resource. Always executes when called directly; the `UNDEF_SLO_ENABLE_USE_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
 
 ### `classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]`
 
@@ -321,5 +321,6 @@ All config models are `@dataclass(slots=True)` and are constructed via `Telemetr
 - **`BackpressureConfig`** — per-signal queue max sizes
 - **`ExporterPolicyConfig`** — per-signal retries, backoff, timeout, fail-open, async blocking
 - **`SLOConfig`** — RED/USE metrics toggles, error taxonomy
+- **`SecurityConfig`** — secret detection patterns, header size guards, protocol limits
 
 See [Configuration Reference](CONFIGURATION.md) for the environment variables that drive each field.

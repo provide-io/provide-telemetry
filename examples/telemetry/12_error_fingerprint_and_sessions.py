@@ -23,6 +23,8 @@ from undef.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
+
+# Private API — used here for demonstration purposes only.
 from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
 
 
