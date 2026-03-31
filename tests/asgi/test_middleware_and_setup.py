@@ -158,6 +158,7 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
 def test_extract_header_none() -> None:
     assert _extract_header({"headers": []}, b"x-request-id") is None
     assert _extract_header({}, b"x-request-id") is None
+    assert ws_extract_header({}, b"x-request-id") is None
 
 
 def test_extract_header_positive_and_case_insensitive_name() -> None:
@@ -232,8 +233,39 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
     assert calls == [{"session_id": "s-only"}]
 
 
-def test_websocket_extract_header_missing_headers_key() -> None:
-    assert ws_extract_header({}, b"x-request-id") is None
+def test_resolve_route_with_starlette_route() -> None:
+    route = type("Route", (), {"path": "/users/{user_id}"})()
+    scope: dict[str, Any] = {"path": "/users/12345", "route": route}
+    assert _resolve_route(scope) == "/users/{user_id}"
+
+
+def test_resolve_route_without_route_key() -> None:
+    scope: dict[str, Any] = {"path": "/users/12345"}
+    assert _resolve_route(scope) == "/users/{id}"
+
+
+def test_resolve_route_with_route_no_path_attr() -> None:
+    scope: dict[str, Any] = {"path": "/users/12345", "route": object()}
+    assert _resolve_route(scope) == "/users/{id}"
+
+
+def test_cardinality_limit_registered_on_auto_slo() -> None:
+    from undef.telemetry import cardinality as cardinality_mod
+
+    cardinality_mod.clear_cardinality_limits()
+    TelemetryMiddleware(_dummy_app, auto_slo=True)
+    limits = cardinality_mod.get_cardinality_limits()
+    assert "route" in limits
+    assert limits["route"].max_values == 200
+    cardinality_mod.clear_cardinality_limits()
+
+
+def test_cardinality_limit_not_registered_without_auto_slo() -> None:
+    from undef.telemetry import cardinality as cardinality_mod
+
+    cardinality_mod.clear_cardinality_limits()
+    TelemetryMiddleware(_dummy_app, auto_slo=False)
+    assert "route" not in cardinality_mod.get_cardinality_limits()
 
 
 @pytest.mark.asyncio
@@ -244,6 +276,7 @@ async def test_middleware_websocket_path(monkeypatch: pytest.MonkeyPatch) -> Non
         bound.append(kwargs)
 
     monkeypatch.setattr(middleware_mod, "bind_context", _bind_context)
+    monkeypatch.setattr(middleware_mod, "bind_session_context", lambda sid: bound.append({"session_id": sid}))
 
     async def send(_: dict[str, Any]) -> None:
         return None
