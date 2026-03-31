@@ -15,7 +15,7 @@ from undef.telemetry import pii as pii_mod
 from undef.telemetry import propagation as propagation_mod
 from undef.telemetry.config import SecurityConfig, TelemetryConfig
 from undef.telemetry.exceptions import ConfigurationError
-from undef.telemetry.logger.processors import harden_input
+from undef.telemetry.logger.processors import harden_input, sanitize_sensitive_fields
 from undef.telemetry.pii import _detect_secret_in_value, sanitize_payload
 
 
@@ -461,3 +461,39 @@ class TestSecurityConfig:
     def test_negative_max_nesting_depth_raises(self) -> None:
         with pytest.raises(ConfigurationError, match="max_nesting_depth"):
             SecurityConfig(max_nesting_depth=-1)
+
+
+# ---------------------------------------------------------------------------
+# TestSanitizeSensitiveFieldsProcessor
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeSensitiveFieldsProcessor:
+    """Test the sanitize_sensitive_fields structlog processor."""
+
+    def test_processor_passes_event_dict_through(self) -> None:
+        """Verify the processor passes the actual event_dict, not None."""
+        processor = sanitize_sensitive_fields(enabled=False)
+        event = {"event": "test.ok", "user": "alice"}
+        result = processor(None, "", event)
+        assert result == {"event": "test.ok", "user": "alice"}
+
+    def test_processor_redacts_when_enabled(self) -> None:
+        processor = sanitize_sensitive_fields(enabled=True)
+        event: dict[str, Any] = {"event": "test.ok", "password": "secret123"}
+        result = processor(None, "", event)
+        assert result["password"] == "***"
+        assert result["event"] == "test.ok"
+
+    def test_processor_respects_max_depth(self) -> None:
+        processor = sanitize_sensitive_fields(enabled=True, max_depth=1)
+        event: dict[str, Any] = {"level1": {"password": "deep_secret"}}
+        result = processor(None, "", event)
+        # At max_depth=1, the nested dict should not be traversed
+        assert result["level1"]["password"] == "deep_secret"  # pragma: allowlist secret
+
+    def test_processor_with_max_depth_default_traverses(self) -> None:
+        processor = sanitize_sensitive_fields(enabled=True, max_depth=8)
+        event: dict[str, Any] = {"level1": {"password": "deep_secret"}}  # pragma: allowlist secret
+        result = processor(None, "", event)
+        assert result["level1"]["password"] == "***"
