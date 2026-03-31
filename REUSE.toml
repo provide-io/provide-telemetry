@@ -12,6 +12,7 @@ path = [
   ".ci/**",
   ".pre-commit-config.yaml",
   ".actrc",
+  ".gitattributes",
   ".gitignore",
   ".release-please-config.json",
   ".release-please-manifest.json",
