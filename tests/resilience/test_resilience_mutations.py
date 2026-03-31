@@ -281,3 +281,161 @@ def test_run_with_resilience_success_records_latency() -> None:
     assert result == 42
     snap = health_mod.get_health_snapshot()
     assert snap.export_latency_ms_metrics >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker: exact error message recorded in health
+# ---------------------------------------------------------------------------
+
+
+def test_circuit_breaker_records_exact_timeout_error_message() -> None:
+    """Kill mutmut_27/30/31/32: health snapshot stores 'circuit breaker open', not None."""
+    import time
+
+    with resilience_mod._lock:
+        resilience_mod._consecutive_timeouts["logs"] = resilience_mod._CIRCUIT_BREAKER_THRESHOLD
+        resilience_mod._circuit_tripped_at["logs"] = time.monotonic()
+
+    set_exporter_policy("logs", ExporterPolicy(timeout_seconds=1.0, retries=0, fail_open=True))
+    run_with_resilience("logs", lambda: None)
+    snap = health_mod.get_health_snapshot()
+    assert snap.last_error_logs == "circuit breaker open"
+
+
+def test_timeout_failure_records_actual_timeout_message() -> None:
+    """Kill mutmut_60: record_export_failure(sig, exc) not (sig, None) on TimeoutError."""
+    set_exporter_policy("traces", ExporterPolicy(timeout_seconds=1.0, retries=0, fail_open=True))
+    with patch.object(
+        resilience_mod,
+        "_run_attempt_with_timeout",
+        side_effect=TimeoutError("operation timed out after 1.0s"),
+    ):
+        run_with_resilience("traces", lambda: None)
+
+    snap = health_mod.get_health_snapshot()
+    assert snap.last_error_traces is not None
+    assert snap.last_error_traces != "None"
+    assert "timed out" in snap.last_error_traces
+
+
+def test_general_exception_failure_records_actual_error_message() -> None:
+    """Kill mutmut_77: record_export_failure(sig, exc) not (sig, None) on Exception."""
+    set_exporter_policy("metrics", ExporterPolicy(retries=0, fail_open=True))
+
+    def _raise_value_error() -> None:
+        raise ValueError("boom from test")
+
+    run_with_resilience("metrics", _raise_value_error)
+    snap = health_mod.get_health_snapshot()
+    assert snap.last_error_metrics == "boom from test"
+
+
+@pytest.mark.asyncio
+async def test_async_warning_not_raised_when_retries_zero_backoff_zero() -> None:
+    """Kill mutmut_35 (retries>0→>=0) and mutmut_37 (backoff>0→>=0): no warning with retries=0, backoff=0."""
+    import warnings
+
+    from undef.telemetry.resilience import _is_running_in_event_loop
+
+    assert _is_running_in_event_loop()
+    set_exporter_policy("logs", ExporterPolicy(retries=0, backoff_seconds=0.0, timeout_seconds=0.0, fail_open=True))
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        run_with_resilience("logs", lambda: None)
+
+    assert len(w) == 0, f"Expected no async warning but got: {[str(x.message) for x in w]}"
+
+
+@pytest.mark.asyncio
+async def test_async_warning_raised_when_backoff_is_nonzero() -> None:
+    """Kill mutmut_38: backoff>0→>1. backoff=0.5 must trigger warning."""
+    from undef.telemetry.resilience import _is_running_in_event_loop
+
+    assert _is_running_in_event_loop()
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=1, backoff_seconds=0.5, timeout_seconds=0.0, allow_blocking_in_event_loop=False, fail_open=True
+        ),
+    )
+
+    with pytest.warns(RuntimeWarning, match=r"fail-fast"):
+        run_with_resilience("logs", lambda: None)
+
+
+@pytest.mark.asyncio
+async def test_in_event_loop_not_allow_blocking_no_sleep() -> None:
+    """Kill mutmut_43 (backoff→None) and mutmut_44 (backoff→1.0): backoff forced to 0.0 in event loop."""
+    import warnings
+
+    from undef.telemetry.resilience import _is_running_in_event_loop
+
+    assert _is_running_in_event_loop()
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=2, backoff_seconds=5.0, timeout_seconds=0.0, allow_blocking_in_event_loop=False, fail_open=True
+        ),
+    )
+
+    def _always_fail() -> None:
+        raise ValueError("fail")
+
+    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep, warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        run_with_resilience("logs", _always_fail)
+
+    mock_sleep.assert_not_called()
+
+
+def test_no_sleep_when_backoff_zero_after_timeout() -> None:
+    """Kill mutmut_72: backoff>0→>=0 in timeout retry branch."""
+    set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.0, timeout_seconds=1.0, fail_open=True))
+    with (
+        patch.object(resilience_mod, "_run_attempt_with_timeout", side_effect=TimeoutError("timed out")),
+        patch("undef.telemetry.resilience.time.sleep") as mock_sleep,
+    ):
+        run_with_resilience("logs", lambda: None)
+
+    mock_sleep.assert_not_called()
+
+
+def test_sleep_called_when_backoff_half_second_after_timeout() -> None:
+    """Kill mutmut_73: backoff>0→>1. backoff=0.5 must call sleep."""
+    set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.5, timeout_seconds=1.0, fail_open=True))
+    with (
+        patch.object(resilience_mod, "_run_attempt_with_timeout", side_effect=TimeoutError("timed out")),
+        patch("undef.telemetry.resilience.time.sleep") as mock_sleep,
+    ):
+        run_with_resilience("logs", lambda: None)
+
+    mock_sleep.assert_called_once_with(0.5)
+
+
+def test_sleep_called_when_backoff_half_second_after_exception() -> None:
+    """Kill mutmut_87: backoff>0→>1 in general exception retry branch."""
+    set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.5, timeout_seconds=0.0, fail_open=True))
+
+    def _always_fail() -> None:
+        raise ValueError("fail")
+
+    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
+        run_with_resilience("logs", _always_fail)
+
+    mock_sleep.assert_called_once_with(0.5)
+
+
+def test_maybe_replace_executor_shuts_down_with_wait_false() -> None:
+    """Kill mutmut_14 (wait=None) and mutmut_15 (wait=True): executor must shut down with wait=False."""
+    from undef.telemetry.resilience import _maybe_replace_executor
+
+    _get_timeout_executor("logs")
+    executor = resilience_mod._timeout_executors["logs"]
+
+    with resilience_mod._lock:
+        resilience_mod._consecutive_timeouts["logs"] = resilience_mod._CIRCUIT_BREAKER_THRESHOLD - 1
+
+    with patch.object(executor, "shutdown", wraps=executor.shutdown) as mock_shutdown:
+        _maybe_replace_executor("logs")
+        mock_shutdown.assert_called_once_with(wait=False)
