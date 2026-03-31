@@ -19,6 +19,7 @@ from undef.telemetry import _otel
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.pretty import PrettyRenderer
 from undef.telemetry.logger.processors import (
+    add_error_fingerprint,
     add_standard_fields,
     apply_sampling,
     enforce_event_schema,
@@ -201,6 +202,7 @@ def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:
                     config.security.max_nesting_depth,
                 ),
                 add_standard_fields(config),
+                add_error_fingerprint,
                 apply_sampling,
                 enforce_event_schema(config),
                 sanitize_sensitive_fields(config.logging.sanitize, config.security.max_nesting_depth),
