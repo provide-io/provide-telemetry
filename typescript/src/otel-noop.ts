@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * No-op OTEL provider registration for browser and edge runtimes.
+ * No-op OTEL provider registration for browser environments.
  *
- * In browser/Cloudflare Workers/Vercel Edge environments, the Node.js OTel SDKs
- * are not available. This stub prevents bundlers from pulling in the heavy
- * SDK dependencies while still allowing registerOtelProviders() to be called
- * without error.
+ * In browser builds, the Node.js OTel SDKs are not available. This stub
+ * prevents bundlers from pulling in the heavy SDK dependencies while still
+ * allowing registerOtelProviders() to be called without error.
+ *
+ * Note: Cloudflare Workers and Vercel Edge have their own OTel support and
+ * should use the default export, not this stub.
  */
 
 import type { TelemetryConfig } from './config';
