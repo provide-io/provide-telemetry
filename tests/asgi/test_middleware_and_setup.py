@@ -165,6 +165,7 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
 def test_extract_header_none() -> None:
     assert _extract_header({"headers": []}, b"x-request-id") is None
     assert _extract_header({}, b"x-request-id") is None
+    assert ws_extract_header({}, b"x-request-id") is None
 
 
 def test_extract_header_positive_and_case_insensitive_name() -> None:
@@ -274,10 +275,6 @@ def test_cardinality_limit_not_registered_without_auto_slo() -> None:
     assert "route" not in cardinality_mod.get_cardinality_limits()
 
 
-def test_websocket_extract_header_missing_headers_key() -> None:
-    assert ws_extract_header({}, b"x-request-id") is None
-
-
 @pytest.mark.asyncio
 async def test_middleware_websocket_path(monkeypatch: pytest.MonkeyPatch) -> None:
     bound: list[dict[str, str | None]] = []
@@ -286,6 +283,7 @@ async def test_middleware_websocket_path(monkeypatch: pytest.MonkeyPatch) -> Non
         bound.append(kwargs)
 
     monkeypatch.setattr(middleware_mod, "bind_context", _bind_context)
+    monkeypatch.setattr(middleware_mod, "bind_session_context", lambda sid: bound.append({"session_id": sid}))
 
     async def send(_: dict[str, Any]) -> None:
         return None
