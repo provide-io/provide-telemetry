@@ -6,7 +6,7 @@ SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 ## Telemetry
 
 Event naming in examples follows strict 3-5 segment format (last segment is status).
-Use `undef.telemetry.event_name(*segments)` when composing names.
+Use `provide.telemetry.event_name(*segments)` when composing names.
 
 - `telemetry/01_basic_telemetry.py`
   - Local console/json logging.

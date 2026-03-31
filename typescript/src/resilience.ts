@@ -3,7 +3,7 @@
 
 /**
  * Exporter resilience — retry, backoff, timeout, and circuit breaker.
- * Mirrors Python undef.telemetry.resilience.
+ * Mirrors Python provide.telemetry.resilience.
  */
 
 import { _incrementHealth, _recordExportLatency, _setLastExportError } from './health';

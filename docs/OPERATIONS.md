@@ -4,8 +4,8 @@
 
 - Python: 3.11+
 - Log format default: `console`
-- Event schema validation: disabled by default (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=false`)
-- Strict schema mode: off by default (`UNDEF_TELEMETRY_STRICT_SCHEMA=false`)
+- Event schema validation: disabled by default (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=false`)
+- Strict schema mode: off by default (`PROVIDE_TELEMETRY_STRICT_SCHEMA=false`)
 
 See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/compat/high-throughput presets.
 
@@ -13,7 +13,7 @@ See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/com
 
 All environment variables with types, defaults, and descriptions are documented in the
 [Configuration Reference](CONFIGURATION.md). The most commonly set variables are
-`UNDEF_TELEMETRY_SERVICE_NAME`, `UNDEF_LOG_LEVEL`, and `UNDEF_LOG_FORMAT`.
+`PROVIDE_TELEMETRY_SERVICE_NAME`, `PROVIDE_LOG_LEVEL`, and `PROVIDE_LOG_FORMAT`.
 
 ## Event Naming Policy
 
@@ -24,9 +24,9 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 
 - Missing OTel dependencies: tracing falls back to no-op tracer objects and metrics use in-process fallback wrappers.
 - Invalid event names with strict event mode enabled: raises `EventSchemaError`.
-- Missing required keys: raises `EventSchemaError` whenever `UNDEF_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode).
+- Missing required keys: raises `EventSchemaError` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode).
 - Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`.
-- Exporter timeouts: `UNDEF_EXPORTER_*_TIMEOUT_SECONDS` are enforced for OTLP exporter setup and for each resilience attempt; timed-out attempts count as failures and follow retry/fail-open policy.
+- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced for OTLP exporter setup and for each resilience attempt; timed-out attempts count as failures and follow retry/fail-open policy.
 - Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
 
 ## Lifecycle
@@ -110,6 +110,6 @@ Add the above to `.actrc` for quieter commands and document any socket/mount err
 After running `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` with the `OPENOBSERVE_*`
 env vars in place, verify telemetry landed:
 
-1. Browse `http://localhost:5080/web/streams?org_identifier=default` and look for `undef-telemetry` streams.
+1. Browse `http://localhost:5080/web/streams?org_identifier=default` and look for `provide-telemetry` streams.
 2. Search for `e2e.openobserve.span` or the metric stream name from `e2e/test_openobserve_e2e.py`.
 3. Rerun the examples in `examples/openobserve/` if nothing appears immediately, then refresh the UI.

@@ -6,7 +6,7 @@
 
 **Architecture:** A Python pytest e2e test spawns a minimal Python HTTP backend (stdlib `http.server`) and a Node.js TypeScript client (`tsx`) as separate subprocesses. The TS client creates a root OTel span, injects the `traceparent` header into a real HTTP request to the Python backend, and both processes export their spans to a live OpenObserve instance. The pytest test then queries OpenObserve and asserts that both spans share the same `trace_id`.
 
-**Tech Stack:** Python 3.11 stdlib `http.server`, `opentelemetry-api/sdk` (already in `otel` extra), `@undef-games/telemetry` + `@opentelemetry/*` peer deps, `tsx` (already in TS dev deps via npx), OpenObserve running locally.
+**Tech Stack:** Python 3.11 stdlib `http.server`, `opentelemetry-api/sdk` (already in `otel` extra), `@provide-io/telemetry` + `@opentelemetry/*` peer deps, `tsx` (already in TS dev deps via npx), OpenObserve running locally.
 
 ---
 
@@ -38,12 +38,12 @@
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 """Minimal HTTP backend for cross-language distributed tracing E2E tests.
 
 Run standalone:
-    UNDEF_TRACE_ENABLED=true \\
+    PROVIDE_TRACE_ENABLED=true \\
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:5080/api/default/v1/traces \\
     OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic ..." \\
     python tests/e2e/backends/cross_language_server.py --port 18765
@@ -63,8 +63,8 @@ import sys
 from opentelemetry import trace
 from opentelemetry.propagate import extract as otel_extract
 
-from undef.telemetry import setup_telemetry, shutdown_telemetry
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry import setup_telemetry, shutdown_telemetry
+from provide.telemetry.config import TelemetryConfig
 
 
 def _make_handler() -> type[http.server.BaseHTTPRequestHandler]:
@@ -134,8 +134,8 @@ if __name__ == "__main__":
 - [ ] **Step 3: Smoke-test the server manually**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
-UNDEF_TRACE_ENABLED=false uv run python tests/e2e/backends/cross_language_server.py --port 18765 &
+cd /Users/tim/code/gh/provide-io/provide-telemetry
+PROVIDE_TRACE_ENABLED=false uv run python tests/e2e/backends/cross_language_server.py --port 18765 &
 sleep 0.5
 curl -s http://127.0.0.1:18765/health  # should print: ok
 curl -s http://127.0.0.1:18765/shutdown
@@ -251,7 +251,7 @@ main().catch((err: unknown) => {
 - [ ] **Step 2: Verify the script parses without type errors**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry/typescript
+cd /Users/tim/code/gh/provide-io/provide-telemetry/typescript
 npx tsc --noEmit --project tsconfig.json 2>&1 | head -20
 ```
 
@@ -269,10 +269,10 @@ Then re-run: `npx tsc --noEmit --project tsconfig.scripts.json`
 - [ ] **Step 3: Smoke-test the script (requires a running Python backend and OpenObserve)**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry/typescript
+cd /Users/tim/code/gh/provide-io/provide-telemetry/typescript
 # Terminal 1 — backend
-UNDEF_TRACE_ENABLED=true \
-UNDEF_TELEMETRY_SERVICE_NAME=py-e2e-backend \
+PROVIDE_TRACE_ENABLED=true \
+PROVIDE_TELEMETRY_SERVICE_NAME=py-e2e-backend \
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:5080/api/default/v1/traces \
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=$(python3 -c "import base64; print('Basic ' + base64.b64encode(b'tim@provide.io:password').decode())")" \
 OTEL_BSP_SCHEDULE_DELAY=200 \
@@ -300,7 +300,7 @@ Expected output from TS client: `TRACE_ID=<32 hex chars>`
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 """Cross-language distributed tracing E2E test.
 
@@ -311,7 +311,7 @@ trace_id in OpenObserve.
 Requires:
     OPENOBSERVE_USER, OPENOBSERVE_PASSWORD, OPENOBSERVE_URL env vars.
     OpenObserve running at OPENOBSERVE_URL.
-    undef-telemetry installed with [otel] extra.
+    provide-telemetry installed with [otel] extra.
     tsx available via npx (already a TS dev dep).
 """
 
@@ -402,10 +402,10 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
     # ── Start Python backend subprocess ──────────────────────────────────────
     server_env = {
         **os.environ,
-        "UNDEF_TRACE_ENABLED": "true",
-        "UNDEF_METRICS_ENABLED": "false",
-        "UNDEF_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "UNDEF_TELEMETRY_VERSION": "e2e",
+        "PROVIDE_TRACE_ENABLED": "true",
+        "PROVIDE_METRICS_ENABLED": "false",
+        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
+        "PROVIDE_TELEMETRY_VERSION": "e2e",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
         "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
         # Fast batch export so spans flush well within the 30-second deadline.
@@ -503,12 +503,12 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
 - [ ] **Step 2: Run the test**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 OPENOBSERVE_USER=tim@provide.io \
 OPENOBSERVE_PASSWORD=password \
 OPENOBSERVE_URL=http://localhost:5080/api/default \
 uv run pytest tests/e2e/test_cross_language_trace_e2e.py \
-  --no-cov -v -p no:undef_telemetry -o "addopts="
+  --no-cov -v -p no:provide_telemetry -o "addopts="
 ```
 
 Expected output:
@@ -527,7 +527,7 @@ Open `http://localhost:5080` → Traces → filter by `service_name = ts-e2e-cli
 - [ ] **Step 1: Confirm the default test suite is unaffected**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 uv run python scripts/run_pytest_gate.py 2>&1 | grep -E "passed|failed|TOTAL"
 ```
 

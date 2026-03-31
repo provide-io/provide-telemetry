@@ -3,7 +3,7 @@
 
 /**
  * Runtime reconfiguration helpers.
- * Mirrors Python undef.telemetry.runtime.
+ * Mirrors Python provide.telemetry.runtime.
  */
 
 import { ConfigurationError } from './exceptions';

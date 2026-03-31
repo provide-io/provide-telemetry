@@ -3,7 +3,7 @@
 
 /**
  * Bounded queue controls for telemetry signal paths.
- * Mirrors Python undef.telemetry.backpressure.
+ * Mirrors Python provide.telemetry.backpressure.
  */
 
 export interface QueuePolicy {

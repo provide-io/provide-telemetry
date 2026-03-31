@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Module-level context binding — mirrors Python undef.telemetry bind_context/unbind_context.
+ * Module-level context binding — mirrors Python provide.telemetry bind_context/unbind_context.
  *
  * In browser environments, context is stored in a module-level object. All log calls
  * in the same JS execution context share the same bindings.

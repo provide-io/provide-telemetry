@@ -1,13 +1,13 @@
 {
-  "name": "@undef-games/telemetry",
+  "name": "@provide-io/telemetry",
   "version": "0.4.2",
-  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with undef.telemetry Python package",
+  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
   "license": "Apache-2.0",
   "author": "MindTenet LLC",
-  "homepage": "https://github.com/undef-games/undef-telemetry#readme",
+  "homepage": "https://github.com/provide-io/provide-telemetry#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/undef-games/undef-telemetry.git",
+    "url": "https://github.com/provide-io/provide-telemetry.git",
     "directory": "typescript"
   },
   "keywords": [

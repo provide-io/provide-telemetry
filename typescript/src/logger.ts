@@ -10,7 +10,7 @@
  *   - PII sanitization
  *   - msg fallback: if msg is empty, defaults to obj.event
  *
- * Mirrors Python undef.telemetry get_logger().
+ * Mirrors Python provide.telemetry get_logger().
  */
 
 import pino from 'pino';

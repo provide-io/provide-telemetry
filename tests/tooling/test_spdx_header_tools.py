@@ -39,7 +39,7 @@ def test_normalize_python_text_without_shebang() -> None:
     text = (
         "# SPDX-License-Identifier" + ": Apache-2.0\n"
         "# Copyright (C) 2026 MindTenet LLC\n"
-        "# This file is part of Undef Telemetry.\n\n"
+        "# This file is part of Provide Telemetry.\n\n"
         "x = 1\n"
     )
     normalized = _SPDX_MODULE.normalize_python_text(text)

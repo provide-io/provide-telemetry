@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * Emit all signal types (logs, traces, metrics) to OpenObserve via OTLP HTTP.
@@ -11,7 +11,7 @@
  *   OPENOBSERVE_PASSWORD e.g. password
  *
  * Optional:
- *   UNDEF_EXAMPLE_RUN_ID  defaults to Date.now()
+ *   PROVIDE_EXAMPLE_RUN_ID  defaults to Date.now()
  *
  * Run:
  *   OPENOBSERVE_URL=http://localhost:5080/api/default \
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   const user = requireEnv('OPENOBSERVE_USER');
   const password = requireEnv('OPENOBSERVE_PASSWORD');
   const auth = authHeader(user, password);
-  const runId = process.env['UNDEF_EXAMPLE_RUN_ID'] ?? String(Date.now());
+  const runId = process.env['PROVIDE_EXAMPLE_RUN_ID'] ?? String(Date.now());
 
   const traceName = `example.openobserve.work.${runId}`;
   const metricName = `example.openobserve.requests.${runId}`;
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   const traceExporter = new OTLPTraceExporter({ url: `${baseUrl}/v1/traces`, headers: otlpHeaders });
   const tracerProvider = new BasicTracerProvider({
     resource: resourceFromAttributes({
-      'service.name': 'undef-telemetry-ts-examples',
+      'service.name': 'provide-telemetry-ts-examples',
       'service.version': '0.1.0',
       'deployment.environment': 'development',
     }),
@@ -71,15 +71,15 @@ async function main(): Promise<void> {
 
   const metricExporter = new OTLPMetricExporter({ url: `${baseUrl}/v1/metrics`, headers: otlpHeaders });
   const meterProvider = new MeterProvider({
-    resource: resourceFromAttributes({ 'service.name': 'undef-telemetry-ts-examples' }),
+    resource: resourceFromAttributes({ 'service.name': 'provide-telemetry-ts-examples' }),
     readers: [new PeriodicExportingMetricReader({ exporter: metricExporter, exportIntervalMillis: 1000 })],
   });
   metrics.setGlobalMeterProvider(meterProvider);
 
-  // ── @undef-games/telemetry setup ───────────────────────────────────────────────
+  // ── @provide-io/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
-    serviceName: 'undef-telemetry-ts-examples',
+    serviceName: 'provide-telemetry-ts-examples',
     logLevel: 'debug',
     consoleOutput: false,
   });

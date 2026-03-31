@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Internal self-observability counters — mirrors Python undef.telemetry.health.
+ * Internal self-observability counters — mirrors Python provide.telemetry.health.
  */
 
 export interface HealthSnapshot {

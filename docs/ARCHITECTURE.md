@@ -2,14 +2,14 @@
 
 ## Goals
 
-- Unified telemetry facade for all Undef Python packages.
+- Unified telemetry facade for all provide.telemetry Python packages.
 - Safe defaults with optional OpenTelemetry runtime integration.
 - Strict event naming and schema validation for consistent analytics.
 - Predictable behavior under async workloads.
 
 ## High-Level Layers
 
-1. Public facade (`undef.telemetry`): stable imports and setup lifecycle.
+1. Public facade (`provide.telemetry`): stable imports and setup lifecycle.
 2. Configuration (`TelemetryConfig`): env-driven, strongly typed runtime config.
 3. Logging: structlog processors with contextvars-backed request/session propagation and optional OTLP log export.
 4. Tracing: OTel provider if available, no-op tracer fallback otherwise.
@@ -20,7 +20,7 @@
 
 ```mermaid
 flowchart TD
-  A["Client Code"] --> B["undef.telemetry facade"]
+  A["Client Code"] --> B["provide.telemetry facade"]
   B --> C["setup/runtime config"]
   B --> D["logger pipeline"]
   B --> E["tracing provider"]

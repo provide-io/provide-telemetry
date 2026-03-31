@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Metric instruments — mirrors Python undef.telemetry counter/gauge/histogram.
+ * Metric instruments — mirrors Python provide.telemetry counter/gauge/histogram.
  *
  * Backed by @opentelemetry/api which provides no-op instruments when no SDK is registered.
  * Safe to call in any environment; instruments are always callable without setup.
@@ -19,7 +19,7 @@ import {
 export type { Counter, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
-const METER_NAME = '@undef-games/telemetry';
+const METER_NAME = '@provide-io/telemetry';
 
 export interface MetricOptions {
   description?: string;

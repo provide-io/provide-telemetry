@@ -3,7 +3,7 @@
 
 /**
  * W3C trace context propagation helpers.
- * Mirrors Python undef.telemetry.propagation.
+ * Mirrors Python provide.telemetry.propagation.
  */
 
 export interface PropagationContext {

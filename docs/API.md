@@ -1,9 +1,9 @@
 # API Reference
 
-All public symbols are exported from `undef.telemetry`. Import everything from the top-level package:
+All public symbols are exported from `provide.telemetry`. Import everything from the top-level package:
 
 ```python
-from undef.telemetry import setup_telemetry, get_logger, trace
+from provide.telemetry import setup_telemetry, get_logger, trace
 ```
 
 ## Setup and Lifecycle
@@ -118,7 +118,7 @@ Error events automatically receive an `error_fingerprint` field — a 12-charact
 
 ### `event_name(*segments: str) -> str`
 
-Build a dot-separated event name from segments. In strict mode (`UNDEF_TELEMETRY_STRICT_EVENT_NAME=true`), validates 3-5 lowercase segments; in non-strict mode (the default), accepts 1+ segments with no format validation.
+Build a dot-separated event name from segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), validates 3-5 lowercase segments; in non-strict mode (the default), accepts 1+ segments with no format validation.
 
 ```python
 event_name("auth", "login", "success")  # -> "auth.login.success"
@@ -284,11 +284,11 @@ Return a point-in-time snapshot of all health counters. Thread-safe.
 
 ### `record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None`
 
-Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when called directly; the `UNDEF_SLO_ENABLE_RED_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when called directly; the `PROVIDE_SLO_ENABLE_RED_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
 
 ### `record_use_metrics(resource: str, utilization_percent: int) -> None`
 
-Emit USE (Utilization) metrics for a resource. Always executes when called directly; the `UNDEF_SLO_ENABLE_USE_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit USE (Utilization) metrics for a resource. Always executes when called directly; the `PROVIDE_SLO_ENABLE_USE_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
 
 ### `classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]`
 
@@ -298,7 +298,7 @@ Return `{"error_type": ..., "error_code": ..., "error_name": ...}` classificatio
 
 ### `TelemetryError`
 
-Base exception for all undef telemetry errors.
+Base exception for all provide.telemetry errors.
 
 ### `ConfigurationError`
 

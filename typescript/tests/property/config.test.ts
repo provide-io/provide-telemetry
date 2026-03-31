@@ -12,14 +12,14 @@ describe('property: configFromEnv()', () => {
     fc.assert(
       fc.property(
         fc.record({
-          UNDEF_LOG_LEVEL: fc.oneof(fc.constant(undefined), fc.string({ maxLength: 20 })),
-          UNDEF_LOG_FORMAT: fc.oneof(
+          PROVIDE_LOG_LEVEL: fc.oneof(fc.constant(undefined), fc.string({ maxLength: 20 })),
+          PROVIDE_LOG_FORMAT: fc.oneof(
             fc.constant(undefined),
             fc.constant('json'),
             fc.constant('pretty'),
             fc.string({ maxLength: 10 }),
           ),
-          UNDEF_TRACE_ENABLED: fc.oneof(
+          PROVIDE_TRACE_ENABLED: fc.oneof(
             fc.constant(undefined),
             fc.constant('true'),
             fc.constant('false'),
@@ -55,9 +55,9 @@ describe('property: configFromEnv()', () => {
   it('logFormat is always json or pretty', () => {
     fc.assert(
       fc.property(fc.boolean(), (useJson) => {
-        process.env['UNDEF_LOG_FORMAT'] = useJson ? 'json' : 'pretty';
+        process.env['PROVIDE_LOG_FORMAT'] = useJson ? 'json' : 'pretty';
         const cfg = configFromEnv();
-        delete process.env['UNDEF_LOG_FORMAT'];
+        delete process.env['PROVIDE_LOG_FORMAT'];
         return cfg.logFormat === 'json' || cfg.logFormat === 'pretty';
       }),
     );
@@ -66,9 +66,9 @@ describe('property: configFromEnv()', () => {
   it('otelEnabled is always boolean', () => {
     fc.assert(
       fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
-        process.env['UNDEF_TRACE_ENABLED'] = val;
+        process.env['PROVIDE_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
-        delete process.env['UNDEF_TRACE_ENABLED'];
+        delete process.env['PROVIDE_TRACE_ENABLED'];
         return typeof cfg.otelEnabled === 'boolean';
       }),
     );
@@ -77,9 +77,9 @@ describe('property: configFromEnv()', () => {
   it('logLevel is always lowercase', () => {
     fc.assert(
       fc.property(fc.constantFrom('INFO', 'DEBUG', 'WARN', 'error', 'trace'), (level) => {
-        process.env['UNDEF_LOG_LEVEL'] = level;
+        process.env['PROVIDE_LOG_LEVEL'] = level;
         const cfg = configFromEnv();
-        delete process.env['UNDEF_LOG_LEVEL'];
+        delete process.env['PROVIDE_LOG_LEVEL'];
         return cfg.logLevel === cfg.logLevel.toLowerCase();
       }),
     );

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Prove `@undef-games/telemetry` works in a real Chromium browser by loading a Vite-served page that emits an OTel span, injects W3C `traceparent` into a fetch call to the Python backend, and verifying both spans share a `trace_id` in OpenObserve.
+**Goal:** Prove `@provide-io/telemetry` works in a real Chromium browser by loading a Vite-served page that emits an OTel span, injects W3C `traceparent` into a fetch call to the Python backend, and verifying both spans share a `trace_id` in OpenObserve.
 
-**Architecture:** A Vite dev server (`vite.e2e.config.ts`) serves the browser page and acts as a proxy — `/v1` routes to OpenObserve (avoiding CORS on OTLP export) and `/backend` routes to the Python backend (avoiding CORS on the traced fetch). The browser page (`e2e-browser/browser_tracer.ts`) imports `@undef-games/telemetry` as live TypeScript, uses `startActiveSpan` callback to get span context directly (no async context manager needed), exports via the Vite proxy, and writes `trace_id` to the DOM. A pytest test orchestrates the three processes (Python backend, Vite server, Playwright Chromium), reads the DOM result, and polls OpenObserve.
+**Architecture:** A Vite dev server (`vite.e2e.config.ts`) serves the browser page and acts as a proxy — `/v1` routes to OpenObserve (avoiding CORS on OTLP export) and `/backend` routes to the Python backend (avoiding CORS on the traced fetch). The browser page (`e2e-browser/browser_tracer.ts`) imports `@provide-io/telemetry` as live TypeScript, uses `startActiveSpan` callback to get span context directly (no async context manager needed), exports via the Vite proxy, and writes `trace_id` to the DOM. A pytest test orchestrates the three processes (Python backend, Vite server, Playwright Chromium), reads the DOM result, and polls OpenObserve.
 
 **Tech Stack:** Python `playwright` package (sync API), Vite 8 (already in devDeps), `@opentelemetry/api` + peer deps (already in devDeps), `pytest`, `subprocess`.
 
@@ -196,7 +196,7 @@ to:
 - [ ] **Step 5: Verify TypeScript type-checks**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry/typescript
+cd /Users/tim/code/gh/provide-io/provide-telemetry/typescript
 npx tsc --noEmit -p tsconfig.scripts.json 2>&1; echo "exit: $?"
 ```
 
@@ -205,7 +205,7 @@ Expected: `exit: 0` — no type errors.
 - [ ] **Step 6: Smoke-test Vite server starts**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry/typescript
+cd /Users/tim/code/gh/provide-io/provide-telemetry/typescript
 E2E_OTLP_ENDPOINT=http://localhost:5080/api/default \
 E2E_BACKEND_PORT=18765 \
 npx vite --config vite.e2e.config.ts --port 19877 &
@@ -272,7 +272,7 @@ path = [
 - [ ] **Step 3: Sync and install Chromium**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 uv sync --group dev
 uv run python -m playwright install chromium
 ```
@@ -298,7 +298,7 @@ Expected: `title: ''` — Chromium launched successfully.
 - [ ] **Step 5: Verify reuse lint passes**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 uvx reuse lint 2>&1 | tail -5
 ```
 
@@ -325,12 +325,12 @@ git commit -m "chore: add playwright dev dep; fix REUSE annotations for CHANGELO
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of Provide Telemetry.
 #
 """Browser-based cross-language distributed tracing E2E test.
 
 Verifies that a W3C traceparent emitted by a real Chromium browser tab
-(running @undef-games/telemetry via Vite) is honoured by the Python backend,
+(running @provide-io/telemetry via Vite) is honoured by the Python backend,
 producing two spans with the same trace_id in OpenObserve.
 
 Requires:
@@ -442,10 +442,10 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
     # ── Start Python backend ──────────────────────────────────────────────────
     server_env = {
         **os.environ,
-        "UNDEF_TRACE_ENABLED": "true",
-        "UNDEF_METRICS_ENABLED": "false",
-        "UNDEF_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "UNDEF_TELEMETRY_VERSION": "e2e",
+        "PROVIDE_TRACE_ENABLED": "true",
+        "PROVIDE_METRICS_ENABLED": "false",
+        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
+        "PROVIDE_TELEMETRY_VERSION": "e2e",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
         "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
         "OTEL_BSP_SCHEDULE_DELAY": "200",
@@ -566,12 +566,12 @@ Save to: `tests/e2e/test_browser_trace_e2e.py`
 - [ ] **Step 2: Run the test**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 OPENOBSERVE_USER=tim@provide.io \
 OPENOBSERVE_PASSWORD=password \
 OPENOBSERVE_URL=http://localhost:5080/api/default \
 uv run --extra otel pytest tests/e2e/test_browser_trace_e2e.py \
-  --no-cov -v -p no:undef_telemetry -o "addopts=" -s 2>&1
+  --no-cov -v -p no:provide_telemetry -o "addopts=" -s 2>&1
 ```
 
 Expected:
@@ -637,7 +637,7 @@ Full updated steps sequence for the openobserve-e2e job:
 - [ ] **Step 2: Confirm the default test suite is unaffected**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry
+cd /Users/tim/code/gh/provide-io/provide-telemetry
 uv run python scripts/run_pytest_gate.py 2>&1 | tail -3
 ```
 
@@ -674,7 +674,7 @@ path = [
 - [ ] **Step 5: Confirm TypeScript gates unaffected**
 
 ```bash
-cd /Users/tim/code/gh/undef-games/undef-telemetry/typescript
+cd /Users/tim/code/gh/provide-io/provide-telemetry/typescript
 npm run test:coverage 2>&1 | grep -E "Tests |All files"
 ```
 
@@ -694,7 +694,7 @@ git commit -m "ci: add playwright chromium install to openobserve-e2e job"
 **Spec coverage:**
 - ✅ Real Chromium browser (not Node.js) — `p.chromium.launch(headless=True)` in Task 3
 - ✅ Vite dev server serves the page — `vite.e2e.config.ts` with `root: 'e2e-browser'` in Task 1
-- ✅ Imports `@undef-games/telemetry` as live TypeScript — `browser_tracer.ts` imports from `../src/index.js` in Task 1
+- ✅ Imports `@provide-io/telemetry` as live TypeScript — `browser_tracer.ts` imports from `../src/index.js` in Task 1
 - ✅ Creates a root OTel span — `tracer.startActiveSpan('browser.e2e.cross_language_request', ...)` in Task 1
 - ✅ Injects W3C traceparent into fetch — `traceparent = \`00-${traceId}-${spanId}-01\`` in Task 1
 - ✅ Fetch call to Python backend — `/backend/traced` (proxied via Vite) in Task 1
