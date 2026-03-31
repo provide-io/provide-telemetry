@@ -5,10 +5,8 @@
  * TelemetryConfig — mirrors Python provide.telemetry TelemetryConfig.
  *
  * Env vars (same names as Python package):
- *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_TELEMETRY_ENV (fallback: PROVIDE_ENV),
- *   PROVIDE_TELEMETRY_VERSION (fallback: PROVIDE_VERSION),
+ *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_ENV, PROVIDE_VERSION,
  *   PROVIDE_LOG_LEVEL, PROVIDE_LOG_FORMAT, PROVIDE_TRACE_ENABLED,
- *   PROVIDE_TELEMETRY_STRICT_SCHEMA,
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
 
@@ -143,54 +141,10 @@ export interface TelemetryConfig {
   securityMaxAttrCount: number;
 }
 
-/**
- * Hot-reloadable config subset. Only fields that can be changed at runtime
- * without restarting providers. All fields are optional.
- */
-export interface RuntimeOverrides {
-  // Sampling
-  samplingLogsRate?: number;
-  samplingTracesRate?: number;
-  samplingMetricsRate?: number;
-
-  // Backpressure
-  backpressureLogsMaxsize?: number;
-  backpressureTracesMaxsize?: number;
-  backpressureMetricsMaxsize?: number;
-
-  // Exporter resilience
-  exporterLogsRetries?: number;
-  exporterLogsBackoffMs?: number;
-  exporterLogsTimeoutMs?: number;
-  exporterLogsFailOpen?: boolean;
-  exporterTracesRetries?: number;
-  exporterTracesBackoffMs?: number;
-  exporterTracesTimeoutMs?: number;
-  exporterTracesFailOpen?: boolean;
-  exporterMetricsRetries?: number;
-  exporterMetricsBackoffMs?: number;
-  exporterMetricsTimeoutMs?: number;
-  exporterMetricsFailOpen?: boolean;
-
-  // Security
-  securityMaxAttrValueLength?: number;
-  securityMaxAttrCount?: number;
-
-  // SLO
-  sloEnableRedMetrics?: boolean;
-  sloEnableUseMetrics?: boolean;
-
-  // PII
-  piiMaxDepth?: number;
-
-  // Schema
-  strictSchema?: boolean;
-}
-
-export const DEFAULTS: TelemetryConfig = {
+const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
-  environment: 'dev',
-  version: '0.0.0',
+  environment: 'development',
+  version: 'unknown',
   logLevel: 'info',
   logFormat: 'console',
   otelEnabled: true,
@@ -238,9 +192,38 @@ let _config: TelemetryConfig = { ...DEFAULTS };
 /** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
 let _configVersion = 0;
 
-/** Return the current config version (used by logger to detect stale root). */
-export function _getConfigVersion(): number {
-  return _configVersion;
+/**
+ * Build a TelemetryConfig from environment variables.
+ * Uses the same env var names as the Python package.
+ * Explicit values passed to setupTelemetry() override env vars.
+ */
+export function configFromEnv(): TelemetryConfig {
+  const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
+  const parsedHeaders: Record<string, string> | undefined = otelHeader
+    ? Object.fromEntries(
+        otelHeader
+          .split(',')
+          .map((pair) => pair.split('=').map((s) => s.trim()) as [string, string]),
+      )
+    : undefined;
+
+  return {
+    serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
+    environment: nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
+    version: nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
+    logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
+    logFormat: (() => {
+      const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
+      // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
+      return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
+    })(),
+    otelEnabled: nodeEnv('PROVIDE_TRACE_ENABLED') === 'true',
+    otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
+    otlpHeaders: parsedHeaders,
+    sanitizeFields: DEFAULTS.sanitizeFields,
+    captureToWindow: true,
+    consoleOutput: false,
+  };
 }
 
 /** Return the active TelemetryConfig. */

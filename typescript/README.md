@@ -1,11 +1,11 @@
-# @undef-games/telemetry
+# @provide-io/telemetry
 
-Structured logging + OpenTelemetry traces and metrics for TypeScript — feature parity with the [`undef-telemetry`](https://pypi.org/p/undef-telemetry) Python package.
+Structured logging + OpenTelemetry traces and metrics for TypeScript — feature parity with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry) Python package.
 
 ## Install
 
 ```bash
-npm install @undef-games/telemetry
+npm install @provide-io/telemetry
 ```
 
 ### Optional OTEL peer dependencies
@@ -26,7 +26,7 @@ All five are optional — the library degrades gracefully to no-op providers whe
 ## Quick start
 
 ```typescript
-import { setupTelemetry, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef-games/telemetry';
+import { setupTelemetry, getConfig, getLogger, registerOtelProviders, shutdownTelemetry } from '@provide-io/telemetry';
 
 // Call once at app startup.
 setupTelemetry({
@@ -66,7 +66,7 @@ await shutdownTelemetry();
 ### Logging
 
 ```typescript
-import { getLogger } from '@undef-games/telemetry';
+import { getLogger } from '@provide-io/telemetry';
 
 const log = getLogger('my-module');
 log.debug({ event: 'cache.miss.ok', key: 'user:42' });
@@ -80,7 +80,7 @@ Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 
 ### Tracing
 
 ```typescript
-import { withTrace, getActiveTraceIds, setTraceContext } from '@undef-games/telemetry';
+import { withTrace, getActiveTraceIds, setTraceContext } from '@provide-io/telemetry';
 
 const result = await withTrace('my.operation.ok', async () => {
   const { trace_id, span_id } = getActiveTraceIds();
@@ -92,7 +92,7 @@ const result = await withTrace('my.operation.ok', async () => {
 ### Metrics
 
 ```typescript
-import { counter, gauge, histogram } from '@undef-games/telemetry';
+import { counter, gauge, histogram } from '@provide-io/telemetry';
 
 const requests = counter('http.requests', { unit: '1', description: 'Total HTTP requests' });
 requests.add(1, { method: 'GET', status: '200' });
@@ -104,7 +104,7 @@ latency.record(42, { route: '/api/users' });
 ### Context binding
 
 ```typescript
-import { bindContext, runWithContext, clearContext } from '@undef-games/telemetry';
+import { bindContext, runWithContext, clearContext } from '@provide-io/telemetry';
 
 bindContext({ request_id: 'req-abc', user_id: 7 });
 // All log calls in this async context will include these fields automatically.
@@ -117,7 +117,7 @@ await runWithContext({ trace_id: '...' }, async () => { /* ... */ });
 ### Session correlation
 
 ```typescript
-import { bindSessionContext, getSessionId, clearSessionContext } from '@undef-games/telemetry';
+import { bindSessionContext, getSessionId, clearSessionContext } from '@provide-io/telemetry';
 
 bindSessionContext('sess-abc-123');
 // All logs and traces now include session_id automatically.
@@ -128,7 +128,7 @@ clearSessionContext();
 ### Error fingerprinting
 
 ```typescript
-import { computeErrorFingerprint } from '@undef-games/telemetry';
+import { computeErrorFingerprint } from '@provide-io/telemetry';
 
 try {
   throw new Error('connection refused');
@@ -142,7 +142,7 @@ try {
 ### W3C trace propagation
 
 ```typescript
-import { extractW3cContext, bindPropagationContext } from '@undef-games/telemetry';
+import { extractW3cContext, bindPropagationContext } from '@provide-io/telemetry';
 
 // In an HTTP handler — extract incoming traceparent/tracestate.
 const ctx = extractW3cContext(req.headers);
@@ -152,7 +152,7 @@ bindPropagationContext(ctx);
 ### PII sanitization
 
 ```typescript
-import { sanitize, registerPiiRule } from '@undef-games/telemetry';
+import { sanitize, registerPiiRule } from '@provide-io/telemetry';
 
 // Built-in: redacts password, token, secret, authorization, api_key, ...
 const obj = { user: 'alice', password: 'hunter2' }; // pragma: allowlist secret
@@ -166,7 +166,7 @@ registerPiiRule({ path: 'user.ssn', mode: 'redact' });
 ### Health snapshot
 
 ```typescript
-import { getHealthSnapshot } from '@undef-games/telemetry';
+import { getHealthSnapshot } from '@provide-io/telemetry';
 
 const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
@@ -238,36 +238,18 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity attached to all signals |
-| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
-| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Application version tag |
-| `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Master switch: when true, overrides event name strictness to on |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `PROVIDE_LOG_FORMAT` | `console` | Renderer: console, json, or pretty |
-| `PROVIDE_LOG_INCLUDE_TIMESTAMP` | `true` | Add ISO-8601 timestamp to each log event |
-| `PROVIDE_LOG_INCLUDE_CALLER` | `true` | Add filename and line number to each log event |
-| `PROVIDE_LOG_SANITIZE` | `true` | Enable PII/sensitive field redaction in log output |
-| `PROVIDE_LOG_PII_MAX_DEPTH` | `8` | Maximum nesting depth for PII/sensitive field traversal during sanitization |
-| `PROVIDE_LOG_CODE_ATTRIBUTES` | `false` | Attach code attributes to OTel log records |
-| `PROVIDE_LOG_PRETTY_KEY_COLOR` | `dim` | ANSI color name for keys in pretty format (see named colors below) |
-| `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format (empty = default) |
-| `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
-| `PROVIDE_LOG_MODULE_LEVELS` | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable the tracing signal and trace-provider setup (logs remain enabled) |
-| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP endpoint for logs |
-| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal OTLP headers for logs |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP endpoint for traces |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal OTLP headers for traces |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP endpoint for metrics |
-| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal OTLP headers for metrics |
-<!-- END GENERATED CONFIG: typescript_summary -->
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
+| `PROVIDE_ENV` | `development` | Deployment environment |
+| `PROVIDE_VERSION` | `unknown` | Service version |
+| `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
+| `PROVIDE_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
+| `PROVIDE_TRACE_ENABLED` | `false` | Enable OTLP export |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
 
 ### Pretty renderer
 
-Set `logFormat: 'pretty'` (or `UNDEF_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR` and `NO_COLOR` environment variables.
+Set `logFormat: 'pretty'` (or `PROVIDE_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR` and `NO_COLOR` environment variables.
 
 ```typescript
 setupTelemetry({ logFormat: 'pretty' });

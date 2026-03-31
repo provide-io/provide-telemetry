@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * @undef-games/telemetry — TypeScript structured logging + OTEL
+ * @provide-io/telemetry — TypeScript structured logging + OTEL
  *
  * Feature parity with the Python provide.telemetry package.
  *
  * Quick start:
- *   import { setupTelemetry, getLogger, bindContext } from '@undef-games/telemetry';
+ *   import { setupTelemetry, getLogger, bindContext } from '@provide-io/telemetry';
  *
  *   setupTelemetry({ serviceName: 'my-app', logLevel: 'debug' });
  *   const log = getLogger('api');

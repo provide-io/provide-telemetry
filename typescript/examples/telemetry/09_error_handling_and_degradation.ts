@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🛡️ Error handling, graceful degradation, and diagnostic logging.
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   // ── ⚙️  Normal setup — works with or without OTEL ────────
   console.log('⚙️  Setting up telemetry (works with or without OTEL SDK)...');
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
   const log = getLogger('examples.errors');
   console.log('  ✅ Setup complete\n');
 
