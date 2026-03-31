@@ -8,8 +8,7 @@
  * React must be installed as a peer dependency (>=18).
  */
 
-import { Component, useEffect } from 'react';
-import type { ErrorInfo, ReactNode } from 'react';
+import { useEffect } from 'react';
 import { bindContext, unbindContext } from './context';
 import { getLogger } from './logger';
 
