@@ -20,6 +20,8 @@
  *   npx tsx examples/openobserve/01_emit_all_signals.ts
  */
 
+import * as http from 'node:http';
+import * as https from 'node:https';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -38,6 +40,32 @@ function requireEnv(name: string): string {
 
 function authHeader(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+}
+
+async function sendJsonLog(baseUrl: string, auth: string, runId: string): Promise<void> {
+  const parsed = new URL(`${baseUrl}/default/_json`);
+  const payload = Buffer.from(
+    JSON.stringify([{ _timestamp: Date.now() * 1000, event: 'example.openobserve.jsonlog', run_id: runId, message: 'openobserve json log ingestion' }]),
+  );
+  const mod = parsed.protocol === 'https:' ? https : http;
+  await new Promise<void>((resolve, reject) => {
+    const req = mod.request(
+      { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname, method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json', 'Content-Length': payload.length } },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          if ((res.statusCode ?? 0) >= 400) reject(new Error(`JSON log POST failed ${res.statusCode}: ${body}`));
+          else resolve();
+        });
+      },
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 async function main(): Promise<void> {
@@ -114,6 +142,7 @@ async function main(): Promise<void> {
   await tracerProvider.shutdown();
   await meterProvider.shutdown();
 
+  await sendJsonLog(baseUrl, auth, runId);
   console.log(`signals emitted run_id=${runId}`);
 }
 
