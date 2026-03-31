@@ -99,17 +99,22 @@ flowchart LR
     B --> C["add_log_level"]
     C --> D{"include_timestamp?"}
     D -->|yes| E["TimeStamper"]
-    D -->|no| F["add_standard_fields"]
+    D -->|no| F["harden_input"]
     E --> F
-    F --> G["apply_sampling"]
-    G -->|DropEvent| X["discarded"]
-    G --> H["enforce_event_schema"]
-    H --> I["sanitize_sensitive_fields"]
-    I --> J{"include_caller?"}
-    J -->|yes| K["CallsiteParameterAdder"]
-    J -->|no| L["Renderer"]
-    K --> L
-    L --> M["console / json / pretty"]
+    F --> G["add_standard_fields"]
+    G --> G2["add_error_fingerprint"]
+    G2 --> H["apply_sampling"]
+    H -->|DropEvent| X["discarded"]
+    H --> I["enforce_event_schema"]
+    I --> J["sanitize_sensitive_fields"]
+    J --> J2{"module_levels?"}
+    J2 -->|yes| J3["make_level_filter"]
+    J2 -->|no| K{"include_caller?"}
+    J3 --> K
+    K -->|yes| L["CallsiteParameterAdder"]
+    K -->|no| M["Renderer"]
+    L --> M
+    M --> N["console / json / pretty"]
 ```
 
 ## Setup and Shutdown State Machine
@@ -149,7 +154,7 @@ flowchart TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `__init__.py` | Public API facade, 53 exports |
+| `__init__.py` | Public API facade, 56 exports |
 | `setup.py` | Lock-protected init/shutdown coordinator with rollback |
 | `config.py` | Pydantic-free dataclass config, env var parsing |
 | `runtime.py` | Hot-reload API, provider-change detection |
@@ -162,8 +167,8 @@ flowchart TD
 | `tracing/decorators.py` | `@trace` async decorator |
 | `metrics/provider.py` | OTel MeterProvider or fallback |
 | `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
-| `metrics/instruments.py` | In-process fallback Counter/Gauge/Histogram |
-| `metrics/fallback.py` | Fallback instrument implementations with sampling, backpressure, exemplar, and cardinality guard |
+| `metrics/instruments.py` | Re-export shim for Counter/Gauge/Histogram (delegates to `fallback.py`) |
+| `metrics/fallback.py` | In-process fallback Counter/Gauge/Histogram with sampling, backpressure, exemplar, and cardinality guard |
 | `schema/events.py` | Event name validation, required-key enforcement |
 | `sampling.py` | Per-signal probabilistic sampling with overrides |
 | `backpressure.py` | Bounded queue ticket system |

@@ -6,6 +6,57 @@ Both packages (`undef-telemetry` / `@undef-games/telemetry`) share a version num
 
 ---
 
+## [0.4.2] — 2026-03-29
+
+### Features
+
+* **react:** add `useTelemetryContext` hook and `TelemetryErrorBoundary` with render-prop fallback and reset ([c824108](https://github.com/undef-games/undef-telemetry/commit/c824108))
+
+### Bug Fixes
+
+* fix: use absolute GitHub URLs in README for PyPI/TestPyPI rendering ([bc8196b](https://github.com/undef-games/undef-telemetry/commit/bc8196b))
+* fix: move pragma: no mutate to depth parameter line in `_apply_rule` signature ([ea7400d](https://github.com/undef-games/undef-telemetry/commit/ea7400d))
+
+### CI/CD
+
+* gate production PyPI behind release event, tag only triggers TestPyPI ([9b8e05e](https://github.com/undef-games/undef-telemetry/commit/9b8e05e))
+* decouple mutation testing into separate non-blocking workflow ([d72564d](https://github.com/undef-games/undef-telemetry/commit/d72564d))
+* upgrade setup-uv v7→v8, remove redundant setup-python, update codeql + sigstore SHAs ([ea10928](https://github.com/undef-games/undef-telemetry/commit/ea10928))
+
+### Tests
+
+* kill remaining pii/propagation mutation survivors ([b9de97f](https://github.com/undef-games/undef-telemetry/commit/b9de97f))
+* kill all surviving Python and TypeScript mutations ([3d89ed2](https://github.com/undef-games/undef-telemetry/commit/3d89ed2))
+
+---
+
+## [0.4.1] — 2026-03-28
+
+### Features
+
+* **typescript:** add error fingerprinting and session correlation with 100% coverage ([6769ed7](https://github.com/undef-games/undef-telemetry/commit/6769ed7))
+* **typescript:** add pretty ANSI log renderer with color support and TTY detection ([add0cc2](https://github.com/undef-games/undef-telemetry/commit/add0cc2))
+* **typescript:** add conditional exports for browser/edge OTel no-op stub ([c0f0879](https://github.com/undef-games/undef-telemetry/commit/c0f0879))
+* add SecurityConfig dataclass with attr/depth limits ([1cd3677](https://github.com/undef-games/undef-telemetry/commit/1cd3677))
+* add secret pattern detection and depth guards to PII sanitizer ([78565e1](https://github.com/undef-games/undef-telemetry/commit/78565e1))
+* add protocol size guards to W3C context extraction ([96661c4](https://github.com/undef-games/undef-telemetry/commit/96661c4))
+
+### Bug Fixes
+
+* W3C baggage property stripping, BaseException fingerprinting, session context leak prevention ([f3d4eed](https://github.com/undef-games/undef-telemetry/commit/f3d4eed))
+* replace executor after circuit breaker trips to prevent ghost thread accumulation ([3dc405d](https://github.com/undef-games/undef-telemetry/commit/3dc405d))
+* add ASIA prefix to AWS key detection, wire max_depth through sanitize processor ([72a59ca](https://github.com/undef-games/undef-telemetry/commit/72a59ca))
+* add TYPE_CHECKING imports for lazy SLO exports (IDE autocomplete) ([a7632b2](https://github.com/undef-games/undef-telemetry/commit/a7632b2))
+* **deps:** upgrade cryptography 46.0.5→46.0.6, requests 2.32.5→2.33.0 (security) ([1b826f7](https://github.com/undef-games/undef-telemetry/commit/1b826f7))
+
+### CI/CD
+
+* add TestPyPI staging + verification before production PyPI publish ([40676f1](https://github.com/undef-games/undef-telemetry/commit/40676f1))
+* add Windows testing to Python and TypeScript quality jobs ([86272ab](https://github.com/undef-games/undef-telemetry/commit/86272ab))
+* pin all runners to specific versions, add macOS ARM64 (Apple Silicon) testing ([859ceb9](https://github.com/undef-games/undef-telemetry/commit/859ceb9))
+
+---
+
 ## [0.4.0](https://github.com/undef-games/undef-telemetry/compare/undef-telemetry-v0.3.0...undef-telemetry-v0.4.0) (2026-03-28)
 
 
