@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - "v*"
-      - "undef-telemetry-v*"
-      - "telemetry-v*"
   release:
     types: [published]
   workflow_dispatch:
@@ -89,6 +87,7 @@ jobs:
   publish-pypi:
     needs: [build, verify-testpypi]
     runs-on: ubuntu-24.04
+    if: github.event_name == 'release'
     permissions:
       id-token: write
       contents: read
