@@ -46,9 +46,6 @@ export {
 // Error fingerprinting (mirrors Python add_error_fingerprint processor)
 export { computeErrorFingerprint } from './fingerprint';
 
-// Pretty ANSI renderer (mirrors Python PrettyRenderer)
-export { formatPretty, supportsColor } from './pretty';
-
 // Metrics (mirrors Python counter / gauge / histogram)
 export {
   counter,
