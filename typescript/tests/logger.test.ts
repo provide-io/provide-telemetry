@@ -104,6 +104,16 @@ describe('write hook — window.__pinoLogs capture', () => {
     hook({ level: 50, event: 'error_event' });
     expect(spy).toHaveBeenCalledOnce();
   });
+
+  it('msg defaults to empty string when both msg and event are absent', () => {
+    // mutation: `o['event'] ?? ''` → `o['event'] ?? null` or similar
+    makeCfg();
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30 }; // no msg, no event
+    hook(obj as object);
+    // After hook runs, obj['msg'] should be '' not undefined or null
+    expect(obj['msg']).toBe('');
+  });
 });
 
 describe('write hook — msg fallback to event', () => {
