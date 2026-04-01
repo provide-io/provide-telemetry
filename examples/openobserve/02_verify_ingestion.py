@@ -150,13 +150,13 @@ def main() -> None:
     start_us = int(time.time() * 1_000_000) - (2 * 60 * 60 * 1_000_000)
     trace_name = f"example.openobserve.work.{run_id}"
     metric_stream = f"example_openobserve_requests_{run_id}"
-    log_event = f"example.openobserve.jsonlog.{run_id}"
+    log_event = "example.openobserve.jsonlog"
 
     before_logs = len(
         [
             hit
             for hit in _search_hits(base_url, "logs", auth, start_us, int(time.time() * 1_000_000))
-            if hit.get("event") == log_event
+            if hit.get("event") == log_event and hit.get("run_id") == run_id
         ]
     )
     before_traces = len(
@@ -186,7 +186,7 @@ def main() -> None:
         trace_hits = _search_hits(base_url, "traces", auth, start_us, end_us)
         metric_streams = _stream_names(base_url, "metrics", auth)
         after = {
-            "logs": len([hit for hit in log_hits if hit.get("event") == log_event]),
+            "logs": len([hit for hit in log_hits if hit.get("event") == log_event and hit.get("run_id") == run_id]),
             "metrics_stream_present": metric_stream in metric_streams,
             "traces": len([hit for hit in trace_hits if hit.get("operation_name") == trace_name]),
         }
