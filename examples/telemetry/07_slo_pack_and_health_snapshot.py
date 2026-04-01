@@ -36,7 +36,9 @@ def main() -> None:
     taxonomy = classify_error("UpstreamTimeout", 503)
     log.error("example.slo.error", exc_name="UpstreamTimeout", status_code=503, **taxonomy)
 
-    snapshot = get_health_snapshot()
+    # ── 🩺 Full health snapshot ──────────────────────────────
+    print("\n🩺 Full HealthSnapshot (all 25 fields):")
+    s = get_health_snapshot()
     print(
         {
             "taxonomy": taxonomy,

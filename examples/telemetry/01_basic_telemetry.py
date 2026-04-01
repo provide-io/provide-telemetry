@@ -13,8 +13,13 @@ from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telem
 
 @trace("example.basic.work")
 def do_work(iteration: int) -> None:
-    get_logger("examples.basic").info("example.basic.iteration", iteration=str(iteration))
-    counter("example.basic.requests").add(1, {"iteration": str(iteration)})
+    log = get_logger("examples.basic")
+    log.info("example.basic.iteration", iteration=str(iteration))
+    counter("example.basic.requests", "Total request count").add(1, {"iteration": str(iteration)})
+    histogram("example.basic.latency_ms", "Simulated latency", "ms").record(
+        iteration * 12.5, {"iteration": str(iteration)}
+    )
+    gauge("example.basic.active_tasks", "Active task gauge", "1").set(1)
 
 
 def main() -> None:
