@@ -22,6 +22,13 @@
 
 import * as http from 'node:http';
 import * as https from 'node:https';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { context, metrics, trace } from '@opentelemetry/api';
 
 import {
   bindContext,
