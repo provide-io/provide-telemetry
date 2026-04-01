@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger import core as logger_core
-from undef.telemetry.metrics import provider as metrics_provider
-from undef.telemetry.setup import _reset_all_for_tests, setup_telemetry, shutdown_telemetry
-from undef.telemetry.tracing import provider as tracing_provider
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger import core as logger_core
+from provide.telemetry.metrics import provider as metrics_provider
+from provide.telemetry.setup import _reset_all_for_tests, setup_telemetry, shutdown_telemetry
+from provide.telemetry.tracing import provider as tracing_provider
 
 pytestmark = pytest.mark.integration
 

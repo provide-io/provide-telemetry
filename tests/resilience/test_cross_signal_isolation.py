@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Cross-signal isolation tests: queue, sampling, and health counters.
@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry.backpressure import QueuePolicy, QueueTicket, release, set_queue_policy, try_acquire
-from undef.telemetry.health import get_health_snapshot, record_export_failure, reset_health_for_tests
-from undef.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
+from provide.telemetry import backpressure as backpressure_mod
+from provide.telemetry.backpressure import QueuePolicy, QueueTicket, release, set_queue_policy, try_acquire
+from provide.telemetry.health import get_health_snapshot, record_export_failure, reset_health_for_tests
+from provide.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
 
 
 @pytest.fixture(autouse=True)

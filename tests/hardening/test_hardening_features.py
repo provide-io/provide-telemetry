@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -12,18 +12,19 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry import cardinality as cardinality_mod
-from undef.telemetry import health as health_mod
-from undef.telemetry import pii as pii_mod
-from undef.telemetry import propagation as propagation_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry import runtime as runtime_mod
-from undef.telemetry import sampling as sampling_mod
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger.context import clear_context, get_context
-from undef.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry import backpressure as backpressure_mod
+from provide.telemetry import cardinality as cardinality_mod
+from provide.telemetry import health as health_mod
+from provide.telemetry import pii as pii_mod
+from provide.telemetry import propagation as propagation_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry import runtime as runtime_mod
+from provide.telemetry import sampling as sampling_mod
+from provide.telemetry import slo as slo_mod
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger.context import clear_context, get_context
+from provide.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +37,101 @@ def _reset_state() -> None:
     pii_mod.reset_pii_rules_for_tests()
     clear_context()
     set_trace_context(None, None)
+
+
+def test_w3c_attach_returns_none_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry import _otel
+
+    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    assert _otel.attach_w3c_context("00-abc-def-01", None) is None
+
+
+def test_w3c_detach_none_is_noop() -> None:
+    from provide.telemetry import _otel
+
+    _otel.detach_w3c_context(None)  # should not raise
+
+
+def test_w3c_detach_without_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry import _otel
+
+    monkeypatch.setattr(_otel, "_import_module", lambda _: (_ for _ in ()).throw(ImportError()))
+    _otel.detach_w3c_context("fake_token")  # should not raise
+
+
+def test_w3c_attach_with_mocked_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from provide.telemetry import _otel
+
+    fake_token = object()
+    extract_calls: list[dict[str, str]] = []
+    attach_calls: list[object] = []
+    detach_calls: list[object] = []
+
+    def _fake_extract(*, carrier: dict[str, str]) -> dict[str, bool]:
+        extract_calls.append(dict(carrier))
+        return {"ctx": True}
+
+    def _fake_attach(ctx: object) -> object:
+        attach_calls.append(ctx)
+        return fake_token
+
+    def _fake_detach(t: object) -> None:
+        detach_calls.append(t)
+
+    propagator_mod = SimpleNamespace(TraceContextTextMapPropagator=lambda: SimpleNamespace(extract=_fake_extract))
+    context_mod = SimpleNamespace(attach=_fake_attach, detach=_fake_detach)
+
+    import_calls: list[str] = []
+
+    def _import(name: str) -> object:
+        import_calls.append(name)
+        if name == "opentelemetry.trace.propagation.tracecontext":
+            return propagator_mod
+        if name == "opentelemetry.context":
+            return context_mod
+        raise ImportError(name)
+
+    monkeypatch.setattr(_otel, "_import_module", _import)
+
+    # With tracestate
+    token = _otel.attach_w3c_context("00-abc-def-01", "vendor=v")
+    assert token is fake_token
+    assert extract_calls[-1] == {"traceparent": "00-abc-def-01", "tracestate": "vendor=v"}
+    assert attach_calls[-1] == {"ctx": True}
+
+    # Detach with valid token
+    _otel.detach_w3c_context(token)
+    assert detach_calls[-1] is fake_token
+
+    # With tracestate=None to cover the None branch
+    token2 = _otel.attach_w3c_context("00-abc-def-01", None)
+    assert token2 is fake_token
+    assert extract_calls[-1] == {"traceparent": "00-abc-def-01"}
+    assert "tracestate" not in extract_calls[-1]
+
+
+def test_bind_clear_round_trip_calls_attach_detach(monkeypatch: pytest.MonkeyPatch) -> None:
+    attach_calls: list[tuple[str, str | None]] = []
+    detach_calls: list[object] = []
+
+    def _fake_attach(tp: str, ts: str | None) -> str:
+        attach_calls.append((tp, ts))
+        return "tok"
+
+    monkeypatch.setattr(propagation_mod, "attach_w3c_context", _fake_attach)
+    monkeypatch.setattr(propagation_mod, "detach_w3c_context", lambda t: detach_calls.append(t))
+    scope = {
+        "headers": [
+            (b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+        ]
+    }
+    ctx = propagation_mod.extract_w3c_context(scope)
+    propagation_mod.bind_propagation_context(ctx)
+    assert len(attach_calls) == 1
+    propagation_mod.clear_propagation_context()
+    assert detach_calls == ["tok"]
 
 
 def test_propagation_extract_bind_and_clear() -> None:
@@ -235,9 +331,9 @@ def test_pii_sanitize_payload_non_dict_fallback(monkeypatch: pytest.MonkeyPatch)
 def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_SAMPLING_LOGS_RATE": "0.3",
-            "UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "5",
-            "UNDEF_EXPORTER_LOGS_RETRIES": "2",
+            "PROVIDE_SAMPLING_LOGS_RATE": "0.3",
+            "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE": "5",
+            "PROVIDE_EXPORTER_LOGS_RETRIES": "2",
         }
     )
     runtime_mod.apply_runtime_config(cfg)
@@ -248,7 +344,7 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     updated = runtime_mod.update_runtime_config(cfg)
     assert updated is cfg
 
-    monkeypatch.setattr("undef.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
+    monkeypatch.setattr("provide.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
     reloaded = runtime_mod.reload_runtime_from_env()
     assert reloaded is cfg
 

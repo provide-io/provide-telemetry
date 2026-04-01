@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -11,14 +11,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from undef.telemetry import event_name
-from undef.telemetry.backpressure import QueuePolicy, set_queue_policy
-from undef.telemetry.health import get_health_snapshot
-from undef.telemetry.logger.processors import sanitize_sensitive_fields
-from undef.telemetry.metrics.fallback import Counter, Histogram
-from undef.telemetry.sampling import SamplingPolicy, should_sample
-from undef.telemetry.tracing.context import set_trace_context
-from undef.telemetry.tracing.decorators import trace
+from provide.telemetry import event_name
+from provide.telemetry.backpressure import QueuePolicy, set_queue_policy
+from provide.telemetry.health import get_health_snapshot
+from provide.telemetry.logger.processors import sanitize_sensitive_fields
+from provide.telemetry.metrics.fallback import Counter, Histogram
+from provide.telemetry.sampling import SamplingPolicy, should_sample
+from provide.telemetry.tracing.context import set_trace_context
+from provide.telemetry.tracing.decorators import trace
 
 
 @dataclass(frozen=True)

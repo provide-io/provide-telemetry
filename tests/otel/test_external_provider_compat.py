@@ -68,7 +68,7 @@ class TestExternalTracerProvider:
     def test_get_tracer_noop_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Before setup_tracing() captures a baseline, a ProxyTracerProvider
         should be treated as a placeholder (returns NoopTracer)."""
-        from undef.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import provider as pmod
 
         class ProxyTracerProvider:
             pass
@@ -85,7 +85,7 @@ class TestExternalTracerProvider:
     def test_get_tracer_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Before setup_tracing() is called, if an external caller installed a real
         (non-Proxy) provider, get_tracer() returns a real tracer."""
-        from undef.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import provider as pmod
 
         class FakeTracer:
             def start_as_current_span(self, name: str, **kw: object) -> object:
@@ -172,7 +172,7 @@ class TestExternalMeterProvider:
     def test_get_meter_none_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Before setup_metrics() captures a baseline, a ProxyMeterProvider
         should be treated as a placeholder (returns None)."""
-        from undef.telemetry.metrics import provider as mpmod
+        from provide.telemetry.metrics import provider as mpmod
 
         class ProxyMeterProvider:
             pass
@@ -189,7 +189,7 @@ class TestExternalMeterProvider:
     def test_get_meter_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Before setup_metrics() is called, if an external caller installed a real
         (non-Proxy) provider, get_meter() returns a real meter."""
-        from undef.telemetry.metrics import provider as mpmod
+        from provide.telemetry.metrics import provider as mpmod
 
         class RealMeterProvider:  # no "Proxy" in name
             pass

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Cross-language distributed tracing E2E test.
@@ -12,7 +12,7 @@ trace_id in OpenObserve.
 Requires:
     OPENOBSERVE_USER, OPENOBSERVE_PASSWORD, OPENOBSERVE_URL env vars.
     OpenObserve running at OPENOBSERVE_URL.
-    undef-telemetry installed with [otel] extra.
+    provide-telemetry installed with [otel] extra.
     tsx available via npx (already a TS dev dep).
 """
 
@@ -101,10 +101,10 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
     # ── Start Python backend subprocess ──────────────────────────────────────
     server_env = {
         **os.environ,
-        "UNDEF_TRACE_ENABLED": "true",
-        "UNDEF_METRICS_ENABLED": "false",
-        "UNDEF_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "UNDEF_TELEMETRY_VERSION": "e2e",
+        "PROVIDE_TRACE_ENABLED": "true",
+        "PROVIDE_METRICS_ENABLED": "false",
+        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
+        "PROVIDE_TELEMETRY_VERSION": "e2e",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
         "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
         # Fast batch export so spans flush well within the 30-second deadline.

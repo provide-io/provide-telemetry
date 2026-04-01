@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,17 +7,13 @@
 
 from __future__ import annotations
 
-import threading
 from typing import Any
 
-from provide.telemetry.backpressure import _try_acquire_unchecked, release
+from provide.telemetry.backpressure import release, try_acquire
 from provide.telemetry.cardinality import guard_attributes
-from provide.telemetry.health import increment_emitted
-from provide.telemetry.sampling import _should_sample_unchecked
+from provide.telemetry.health import increment_exemplar_unsupported
+from provide.telemetry.sampling import should_sample
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
-
-_SIGNAL = "metrics"
-_ATTR_VALUES_MAX = 1000
 
 # Lazy re-binding support: when an instrument is created before
 # setup_telemetry(), its _otel_* handle is None.  After provider
@@ -49,9 +45,6 @@ class Counter:
 
         meter = get_meter()
         if meter is None:
-            # Leave _resolved False so a later call retries after setup_telemetry()
-            # installs a real provider.  Otherwise instruments used pre-setup get
-            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -64,24 +57,14 @@ class Counter:
         return self._otel_counter
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        try:
-            from provide.telemetry.consent import should_allow
-        except ImportError:  # pragma: no cover — governance module stripped
-
-            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                return True
-
-        if not should_allow("metrics"):
+        if not should_sample("metrics", self.name):
             return
-        if not _should_sample_unchecked(_SIGNAL, self.name):
-            return
-        ticket = _try_acquire_unchecked(_SIGNAL)
+        ticket = try_acquire("metrics")
         if ticket is None:
             return
         try:
             with self._lock:
                 self.value += amount
-            increment_emitted("metrics")
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -91,7 +74,7 @@ class Counter:
                         otel_counter.add(amount, attrs, exemplar=exemplar)
                         return
                     except TypeError:
-                        pass  # exemplar unsupported; fall through to plain add
+                        increment_exemplar_unsupported()
                 otel_counter.add(amount, attrs)
         finally:
             release(ticket)
@@ -104,10 +87,6 @@ class Gauge:
         self._resolved = otel_gauge is not None
         self._lock = threading.Lock()
         self.value = 0
-        # Per-attribute last-seen value for set() delta computation.
-        # Without this, set() with different attribute sets computes deltas against
-        # a shared scalar, sending incorrect deltas to the OTel UpDownCounter.
-        self._attr_values: dict[tuple[tuple[str, str], ...], int] = {}
 
     def _resolve_otel(self) -> Any | None:
         if self._resolved:
@@ -116,9 +95,6 @@ class Gauge:
 
         meter = get_meter()
         if meter is None:
-            # Leave _resolved False so a later call retries after setup_telemetry()
-            # installs a real provider.  Otherwise instruments used pre-setup get
-            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -131,62 +107,35 @@ class Gauge:
         return self._otel_gauge
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        try:
-            from provide.telemetry.consent import should_allow
-        except ImportError:  # pragma: no cover — governance module stripped
-
-            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                return True
-
-        if not should_allow("metrics"):
+        if not should_sample("metrics", self.name):
             return
-        if not _should_sample_unchecked(_SIGNAL, self.name):
-            return
-        ticket = _try_acquire_unchecked(_SIGNAL)
+        ticket = try_acquire("metrics")
         if ticket is None:
             return
         try:
-            otel_gauge = self._resolve_otel()
-            attrs = guard_attributes(attributes or {})
             with self._lock:
                 self.value += amount
-                if otel_gauge is not None:
-                    otel_gauge.add(amount, attrs)
-            increment_emitted("metrics")
+            otel_gauge = self._resolve_otel()
+            if otel_gauge is not None:
+                attrs = guard_attributes(attributes or {})
+                otel_gauge.add(amount, attrs)
         finally:
             release(ticket)
 
     def set(self, value: int, attributes: dict[str, str] | None = None) -> None:
-        try:
-            from provide.telemetry.consent import should_allow
-        except ImportError:  # pragma: no cover — governance module stripped
-
-            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                return True
-
-        if not should_allow("metrics"):
+        if not should_sample("metrics", self.name):
             return
-        if not _should_sample_unchecked(_SIGNAL, self.name):
-            return
-        ticket = _try_acquire_unchecked(_SIGNAL)
+        ticket = try_acquire("metrics")
         if ticket is None:
             return
         try:
-            otel_gauge = self._resolve_otel()
-            attrs = guard_attributes(attributes or {})
-            attrs_key = tuple(sorted(attrs.items()))
             with self._lock:
-                prev = self._attr_values.get(attrs_key, 0)
-                delta = value - prev
-                self._attr_values[attrs_key] = value
-                if len(self._attr_values) > _ATTR_VALUES_MAX:
-                    # Evict oldest half — dict preserves insertion order (Python 3.7+)
-                    to_keep = list(self._attr_values.items())[_ATTR_VALUES_MAX // 2 :]
-                    self._attr_values = dict(to_keep)
-                self.value += delta
-                if otel_gauge is not None:
-                    otel_gauge.add(delta, attrs)
-            increment_emitted("metrics")
+                delta = value - self.value
+                self.value = value
+            otel_gauge = self._resolve_otel()
+            if otel_gauge is not None:
+                attrs = guard_attributes(attributes or {})
+                otel_gauge.add(delta, attrs)
         finally:
             release(ticket)
 
@@ -209,9 +158,6 @@ class Histogram:
 
         meter = get_meter()
         if meter is None:
-            # Leave _resolved False so a later call retries after setup_telemetry()
-            # installs a real provider.  Otherwise instruments used pre-setup get
-            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -224,18 +170,9 @@ class Histogram:
         return self._otel_histogram
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
-        try:
-            from provide.telemetry.consent import should_allow
-        except ImportError:  # pragma: no cover — governance module stripped
-
-            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                return True
-
-        if not should_allow("metrics"):
+        if not should_sample("metrics", self.name):
             return
-        if not _should_sample_unchecked(_SIGNAL, self.name):
-            return
-        ticket = _try_acquire_unchecked(_SIGNAL)
+        ticket = try_acquire("metrics")
         if ticket is None:
             return
         try:
@@ -246,7 +183,6 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
-            increment_emitted("metrics")
             otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
@@ -256,7 +192,7 @@ class Histogram:
                         otel_histogram.record(value, attrs, exemplar=exemplar)
                         return
                     except TypeError:
-                        pass  # exemplar unsupported; fall through to plain record
+                        increment_exemplar_unsupported()
                 otel_histogram.record(value, attrs)
         finally:
             release(ticket)

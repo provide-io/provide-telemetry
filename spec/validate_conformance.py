@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Validate language implementations against spec/telemetry-api.yaml.
@@ -79,7 +79,7 @@ def _collect_spec_symbols(spec: dict[str, object]) -> list[dict[str, object]]:
 
 def _get_python_exports() -> set[str]:
     """Parse Python __all__ from __init__.py without importing."""
-    init_path = _REPO_ROOT / "src" / "undef" / "telemetry" / "__init__.py"
+    init_path = _REPO_ROOT / "src" / "provide" / "telemetry" / "__init__.py"
     if not init_path.exists():
         return set()
     tree = ast.parse(init_path.read_text(encoding="utf-8"))

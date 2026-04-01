@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,15 +7,6 @@
 
 from __future__ import annotations
 
-__all__ = [
-    "PropagationContext",
-    "bind_propagation_context",
-    "clear_propagation_context",
-    "extract_w3c_context",
-    "parse_baggage",
-]
-
-import contextvars
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,21 +52,21 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     if version.lower() == "ff":
         return (None, None)
     try:
-        int(version, 16)  # pragma: no mutate
-        int(trace_id, 16)  # pragma: no mutate
-        int(span_id, 16)  # pragma: no mutate
-        int(trace_flags, 16)  # pragma: no mutate
+        int(version, 16)
+        int(trace_id, 16)
+        int(span_id, 16)
+        int(trace_flags, 16)
     except ValueError:
         return (None, None)
-    return (trace_id.lower(), span_id.lower())
+    return (trace_id, span_id)
 
 
 def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:  # pragma: no mutate
-        raw_traceparent = None  # pragma: no mutate
+    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:
+        raw_traceparent = None
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
@@ -83,7 +74,7 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
         baggage = None
     trace_id, span_id = _parse_traceparent(raw_traceparent)
-    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None  # pragma: no mutate
+    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None
     return PropagationContext(
         traceparent=traceparent,
         tracestate=tracestate,
@@ -93,98 +84,16 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     )
 
 
-def parse_baggage(raw: str) -> dict[str, str]:
-    """Parse a W3C baggage header into key-value pairs.
-
-    Format: ``key1=value1,key2=value2;property1=p1``
-    Properties after ``;`` are stripped (metadata, not propagated values).
-    Keys and values are stripped of whitespace. Empty keys are skipped.
-    """
-    result: dict[str, str] = {}
-    for member in raw.split(","):
-        kv = member.split(";", 1)[0]  # strip properties  # pragma: no mutate
-        if "=" not in kv:
-            continue
-        key, _, value = kv.partition("=")
-        key = key.strip()
-        if key:
-            result[key] = value.strip()
-    return result
-
-
 def bind_propagation_context(context: PropagationContext) -> None:
-    logger_ctx = get_context()
-    trace_ctx = get_trace_context()
-    # Attach OTel context before snapshotting so the token is owned by this frame.
-    otel_token: object | None = None
-    if context.traceparent is not None:
-        otel_token = attach_w3c_context(context.traceparent, context.tracestate)
-    snapshot: dict[str, object] = {
-        "traceparent": logger_ctx.get("traceparent", _MISSING),
-        "tracestate": logger_ctx.get("tracestate", _MISSING),
-        "baggage": logger_ctx.get("baggage", _MISSING),
-        "trace_id": trace_ctx["trace_id"],
-        "span_id": trace_ctx["span_id"],
-        "otel_token": otel_token,
-        # Maps each injected baggage.* key to its prior logger-context value, or
-        # _MISSING if the key was unbound before this frame. Using a dict (vs. a
-        # plain list of keys) lets clear_propagation_context() restore outer
-        # frames when an inner frame overwrites the same baggage key.
-        "_baggage_prior": {},  # pragma: no mutate — line 149 always sets the entries when baggage present
-    }
-    stack = _restore_stack.get()
-    _restore_stack.set((*stack, snapshot))
     if context.traceparent is not None:
         bind_context(traceparent=context.traceparent)
     if context.tracestate is not None:
         bind_context(tracestate=context.tracestate)
     if context.baggage is not None:
         bind_context(baggage=context.baggage)
-        # Auto-inject parsed baggage entries as baggage.* context fields
-        prior: dict[str, object] = {}
-        for key, value in parse_baggage(context.baggage).items():
-            ctx_key = f"baggage.{key}"
-            prior[ctx_key] = logger_ctx.get(ctx_key, _MISSING)
-            bind_context(**{ctx_key: value})
-        snapshot["_baggage_prior"] = prior
     if context.trace_id is not None or context.span_id is not None:
         set_trace_context(context.trace_id, context.span_id)
 
 
 def clear_propagation_context() -> None:
-    stack = _restore_stack.get()
-    if stack:
-        previous = stack[-1]
-        _restore_stack.set(stack[:-1])
-    else:
-        previous = {
-            "traceparent": _MISSING,
-            "tracestate": _MISSING,
-            "baggage": _MISSING,
-            "trace_id": None,
-            "span_id": None,
-            "otel_token": None,  # pragma: no mutate
-        }
-    # Detach only the OTel token introduced by this specific bind frame.
-    detach_w3c_context(previous.get("otel_token"))
-    for key in ("traceparent", "tracestate", "baggage"):
-        value = previous[key]
-        if value is _MISSING:
-            unbind_context(key)
-        else:
-            bind_context(**{key: value})
-    # Restore prior values for auto-injected baggage.* keys so that an outer
-    # frame's value isn't clobbered when an inner frame binds the same key.
-    raw_prior = previous.get("_baggage_prior", {})  # pragma: no mutate
-    prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}  # ty: ignore[invalid-assignment]
-    for bkey, prev_value in prior_map.items():
-        if prev_value is _MISSING:
-            unbind_context(str(bkey))
-        else:
-            bind_context(**{str(bkey): prev_value})
-    prev_trace_id = previous["trace_id"]
-    prev_span_id = previous["span_id"]
-    set_trace_context(
-        prev_trace_id if isinstance(prev_trace_id, str) or prev_trace_id is None else None,  # pragma: no mutate
-        prev_span_id if isinstance(prev_span_id, str) or prev_span_id is None else None,  # pragma: no mutate
-    )
+    set_trace_context(None, None)

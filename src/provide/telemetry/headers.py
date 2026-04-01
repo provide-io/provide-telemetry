@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -6,8 +6,6 @@
 """Shared header extraction helpers."""
 
 from __future__ import annotations
-
-__all__ = ["get_header"]
 
 from typing import Any
 
@@ -37,7 +35,7 @@ def _decode_header_value(value: object) -> str | None:
         return value
     if isinstance(value, bytes):
         try:
-            return value.decode("utf-8")  # pragma: no mutate
+            return value.decode()
         except UnicodeDecodeError:
-            return value.decode("latin-1")  # pragma: no mutate
+            return None
     return None

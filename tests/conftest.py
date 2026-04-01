@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 import structlog
 
-from undef.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.sampling import reset_sampling_for_tests
+from provide.telemetry.tracing.context import set_trace_context
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:

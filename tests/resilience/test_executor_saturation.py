@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Executor saturation load tests for resilience.py.
@@ -20,9 +20,9 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-from undef.telemetry import health as health_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry.resilience import ExporterPolicy, run_with_resilience
+from provide.telemetry import health as health_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry.resilience import ExporterPolicy, run_with_resilience
 
 pytestmark = pytest.mark.integration
 

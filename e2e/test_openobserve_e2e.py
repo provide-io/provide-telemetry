@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.setup import _reset_all_for_tests
+from provide.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.setup import _reset_all_for_tests
 
 pytestmark = pytest.mark.e2e
 
@@ -103,10 +103,10 @@ def test_openobserve_trace_and_metric_ingestion_e2e(monkeypatch: pytest.MonkeyPa
 
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "undef-telemetry-e2e",
-            "UNDEF_TELEMETRY_VERSION": "e2e",
-            "UNDEF_TRACE_ENABLED": "true",
-            "UNDEF_METRICS_ENABLED": "true",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-e2e",
+            "PROVIDE_TELEMETRY_VERSION": "e2e",
+            "PROVIDE_TRACE_ENABLED": "true",
+            "PROVIDE_METRICS_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{base_url}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{base_url}/v1/logs",

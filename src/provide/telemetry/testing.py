@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 import structlog
 
+from provide.telemetry.logger.core import _reset_logging_for_tests
 from provide.telemetry.tracing.context import set_trace_context
 
 
@@ -55,27 +56,12 @@ def configure_caplog_for_structlog(**overrides: Any) -> None:
 
 
 def reset_telemetry_state() -> None:
-    """Reset all telemetry subsystems for test isolation.
-
-    Resets: structlog, logging, setup flag, health, sampling, backpressure,
-    resilience, PII, cardinality, SLO, runtime, tracing, metrics, logger
-    context, and trace context.
+    """Reset structlog and internal logger state.
 
     Call this in teardown to ensure no cross-test pollution.
     """
-    # Full multi-subsystem reset (health, sampling, queues, PII, cardinality,
-    # SLO, resilience, runtime, tracing, metrics, setup flag, logging)
-    from provide.telemetry.setup import _reset_all_for_tests as _full_reset
-
-    _full_reset()
-    # structlog defaults are not covered by _full_reset
     structlog.reset_defaults()
-    # Clear per-request log context and trace context
-    from provide.telemetry.logger.context import clear_context
-    from provide.telemetry.tracing.context import set_trace_context as _set_trace_ctx
-
-    clear_context()
-    _set_trace_ctx(None, None)
+    _reset_logging_for_tests()
 
 
 def reset_trace_context() -> None:

@@ -1,16 +1,23 @@
+#
+# provide-telemetry/pyproject.toml
+#
+# Unified telemetry library for the provide.io ecosystem
+#
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "undef-telemetry"
+name = "provide-telemetry"
 dynamic = ["version"]
-description = "Unified telemetry library for the Undef ecosystem"
+description = "Unified telemetry library for the provide.io ecosystem — structured logging, distributed tracing, and metrics"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSES/*"]
-authors = [{name = "tim", email = "code@tim.life"}]
+authors = [{name = "Tim Perkins", email = "code@tim.life"}]
+maintainers = [{name = "provide.io", email = "code@provide.io"}]
 keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -31,9 +38,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/undef-games/undef-telemetry"
-Repository = "https://github.com/undef-games/undef-telemetry"
-Issues = "https://github.com/undef-games/undef-telemetry/issues"
+Homepage = "https://github.com/provide-io/provide-telemetry"
+Documentation = "https://foundry.provide.io/telemetry/"
+Repository = "https://github.com/provide-io/provide-telemetry"
+Issues = "https://github.com/provide-io/provide-telemetry/issues"
 
 [project.optional-dependencies]
 otel = [
@@ -47,7 +55,7 @@ fastapi = [
   "starlette>=0.40.0",
 ]
 all = [
-  "undef-telemetry[otel,fastapi]",
+  "provide-telemetry[otel,fastapi]",
 ]
 
 [tool.setuptools.dynamic]
@@ -60,10 +68,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [project.entry-points.pytest11]
-undef_telemetry = "undef.telemetry.testing"
+provide_telemetry = "provide.telemetry.testing"
 
 [tool.setuptools.package-data]
-"undef.telemetry" = ["py.typed"]
+"provide.telemetry" = ["py.typed"]
 
 [dependency-groups]
 dev = [
@@ -94,6 +102,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 norecursedirs = [".*", "build", "dist", "mutants"]
 markers = [
@@ -106,20 +115,20 @@ markers = [
   "flaky: tests that may flake on slow CI — retried automatically via pytest-rerunfailures",
 ]
 addopts = [
-  "-p", "no:undef_telemetry",
+  "-p", "no:provide_telemetry",
   "-q",
   "--strict-markers",
   "--strict-config",
   "--tb=short",
   "-m", "not e2e and not memray",
-  "--cov=src/undef/telemetry",
+  "--cov=src/provide/telemetry",
   "--cov-branch",
   "--cov-report=term-missing",
   "--cov-fail-under=100",
 ]
 
 [tool.coverage.run]
-source = ["src/undef/telemetry"]
+source = ["src/provide/telemetry"]
 branch = true
 
 [tool.coverage.report]
@@ -197,7 +206,7 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/undef/telemetry/"]
+paths_to_mutate = ["src/provide/telemetry/"]
 tests_dir = ["tests/"]
 do_not_mutate = [
   "src/undef/telemetry/backpressure.py",

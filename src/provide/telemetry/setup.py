@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,29 +7,29 @@
 
 from __future__ import annotations
 
-__all__ = [
-    "setup_telemetry",
-    "shutdown_telemetry",
-]
-
-import logging
 import threading
-import warnings
 
+from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
+from provide.telemetry.cardinality import clear_cardinality_limits as _reset_cardinality
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.health import reset_health_for_tests as _reset_health
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from provide.telemetry.logger.core import configure_logging, shutdown_logging
+from provide.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics, shutdown_metrics
+from provide.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
+from provide.telemetry.pii import reset_pii_rules_for_tests as _reset_pii
+from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
+from provide.telemetry.runtime import apply_runtime_config
+from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
+from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
 from provide.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
 from provide.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 
-_logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _setup_done = False
 
 
 def _rollback(completed: list[str]) -> None:
-    from provide.telemetry.metrics.provider import shutdown_metrics
-
     teardowns = {
         "configure_logging": shutdown_logging,
         "setup_tracing": shutdown_tracing,
@@ -49,8 +49,6 @@ def _quiet_otel_sdk_loggers() -> None:
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
-    from provide.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics
-    from provide.telemetry.runtime import apply_runtime_config
     from provide.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
 
     global _setup_done
@@ -59,8 +57,6 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
         if not _setup_done:
             _quiet_otel_sdk_loggers()
             apply_runtime_config(cfg)
-            from provide.telemetry.health import set_setup_error
-
             completed: list[str] = []
             try:
                 configure_logging(cfg, force=True)
@@ -72,46 +68,28 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 setup_metrics(cfg)
                 completed.append("setup_metrics")
                 _rebind_slo_instruments()
-            except Exception as exc:
+            except Exception:
                 _rollback(completed)
-                set_setup_error(str(exc))
-                warnings.warn(  # pragma: no mutate
-                    f"telemetry setup failed, running in degraded mode: {exc}",
-                    RuntimeWarning,
-                    stacklevel=2,  # pragma: no mutate
-                )
-                # Always restore logging — rollback may have torn it down above.
-                configure_logging(cfg, force=True)
-            else:
-                set_setup_error(None)  # clear any stale error from a prior failed attempt
-                _setup_done = True
+                raise
+            _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)
             if cfg.slo.enable_use_metrics:
                 record_use_metrics("startup", 0)
+            _setup_done = True
     return cfg
 
 
 def _reset_setup_state_for_tests() -> None:
     global _setup_done
-    with _lock:
-        _setup_done = False
+    _setup_done = False
 
 
 def _reset_all_for_tests() -> None:
-    from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
-    from provide.telemetry.cardinality import clear_cardinality_limits as _reset_cardinality
-    from provide.telemetry.health import reset_health_for_tests as _reset_health
-    from provide.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
-    from provide.telemetry.pii import reset_pii_rules_for_tests as _reset_pii
-    from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
-    from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
-    from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
     from provide.telemetry.slo import _reset_slo_for_tests as _reset_slo
 
     global _setup_done
-    with _lock:
-        _setup_done = False
+    _setup_done = False
     _reset_logging()
     _reset_tracing()
     _reset_metrics(None)
@@ -127,10 +105,6 @@ def _reset_all_for_tests() -> None:
 
 def shutdown_telemetry() -> None:
     """Flush and tear down telemetry providers and reset runtime policies."""
-    from provide.telemetry.metrics.provider import shutdown_metrics
-    from provide.telemetry.resilience import shutdown_timeout_executors as _shutdown_executors
-    from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
-
     global _setup_done
     with _lock:
         _setup_done = False
@@ -138,4 +112,3 @@ def shutdown_telemetry() -> None:
         shutdown_metrics()
         shutdown_logging()
         _reset_runtime()
-        _shutdown_executors()

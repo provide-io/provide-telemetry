@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for security hardening: input poisoning, secret detection, protocol resilience."""
@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry import pii as pii_mod
-from undef.telemetry import propagation as propagation_mod
-from undef.telemetry.config import SecurityConfig, TelemetryConfig
-from undef.telemetry.exceptions import ConfigurationError
-from undef.telemetry.logger.processors import harden_input
-from undef.telemetry.pii import _detect_secret_in_value, sanitize_payload
+from provide.telemetry import pii as pii_mod
+from provide.telemetry import propagation as propagation_mod
+from provide.telemetry.config import SecurityConfig, TelemetryConfig
+from provide.telemetry.exceptions import ConfigurationError
+from provide.telemetry.logger.processors import harden_input, sanitize_sensitive_fields
+from provide.telemetry.pii import _detect_secret_in_value, sanitize_payload
 
 
 @pytest.fixture(autouse=True)
@@ -343,7 +343,7 @@ class TestDepthGuard:
 
     def test_apply_rule_depth_32_safety_limit(self) -> None:
         """_apply_rule hard safety limit at depth >= 32 returns node as-is."""
-        from undef.telemetry.pii import PIIRule, _apply_rule
+        from provide.telemetry.pii import PIIRule, _apply_rule
 
         rule = PIIRule(path=("secret",), mode="redact")
         node: dict[str, Any] = {"secret": "hunter2"}
@@ -441,9 +441,9 @@ class TestSecurityConfig:
 
     def test_env_var_parsing(self) -> None:
         env = {
-            "UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH": "2048",
-            "UNDEF_SECURITY_MAX_ATTR_COUNT": "128",
-            "UNDEF_SECURITY_MAX_NESTING_DEPTH": "4",
+            "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH": "2048",
+            "PROVIDE_SECURITY_MAX_ATTR_COUNT": "128",
+            "PROVIDE_SECURITY_MAX_NESTING_DEPTH": "4",
         }
         cfg = TelemetryConfig.from_env(env)
         assert cfg.security.max_attr_value_length == 2048

@@ -24,11 +24,11 @@ from provide.telemetry.resilience import (
     run_with_resilience,
     set_exporter_policy,
 )
-from undef.telemetry.sampling import reset_sampling_for_tests, should_sample
-from undef.telemetry.schema.events import EventSchemaError
-from undef.telemetry.setup import _reset_all_for_tests
-from undef.telemetry.slo import _reset_slo_for_tests, record_use_metrics
-from undef.telemetry.tracing import provider as provider_mod
+from provide.telemetry.sampling import reset_sampling_for_tests, should_sample
+from provide.telemetry.schema.events import EventSchemaError
+from provide.telemetry.setup import _reset_all_for_tests
+from provide.telemetry.slo import _reset_slo_for_tests, record_use_metrics
+from provide.telemetry.tracing import provider as provider_mod
 
 
 @pytest.fixture(autouse=True)
@@ -47,14 +47,14 @@ class TestApplySamplingDropEvent:
     def test_dropped_event_raises_structlog_drop_event(self) -> None:
         """Sampling rejection must suppress the log, not emit a replacement."""
         with (
-            patch("provide.telemetry.sampling.should_sample", return_value=False),
+            patch("provide.telemetry.logger.processors.should_sample", return_value=False),
             pytest.raises(structlog.DropEvent),
         ):
             apply_sampling(None, "", {"event": "auth.login.success"})
 
     def test_sampled_event_passes_through_unchanged(self) -> None:
         original: dict[str, object] = {"event": "auth.login.success", "user": "u1"}
-        with patch("provide.telemetry.sampling.should_sample", return_value=True):
+        with patch("provide.telemetry.logger.processors.should_sample", return_value=True):
             result = apply_sampling(None, "", original)
         assert result is original
 
@@ -70,13 +70,13 @@ class TestSetupDoneOrdering:
         from provide.telemetry.setup import _reset_setup_state_for_tests, setup_telemetry
 
         _reset_setup_state_for_tests()
-        monkeypatch.setattr("undef.telemetry.setup.apply_runtime_config", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
-        monkeypatch.setattr("undef.telemetry.setup._refresh_otel_tracing", lambda: None)
-        monkeypatch.setattr("undef.telemetry.setup._refresh_otel_metrics", lambda: None)
-        monkeypatch.setattr("undef.telemetry.setup.setup_tracing", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup.setup_metrics", lambda _cfg: None)
-        monkeypatch.setattr("undef.telemetry.setup._rebind_slo_instruments", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
+        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+        monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
 
         def _boom_red(*_args: object) -> None:
             # _setup_done should already be True at this point
@@ -285,7 +285,7 @@ class TestGaugeSetMethod:
             sampled_keys.append(key)
             return original_should_sample(signal, key)
 
-        monkeypatch.setattr("undef.telemetry.metrics.fallback.should_sample", _spy_sample)
+        monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", _spy_sample)
         g = Gauge("my.gauge.name")
         g.set(42)
         assert "my.gauge.name" in sampled_keys
@@ -295,8 +295,8 @@ class TestGaugeSetMethod:
         released: list[object] = []
         sentinel = object()
 
-        monkeypatch.setattr("undef.telemetry.metrics.fallback.try_acquire", lambda _s: sentinel)
-        monkeypatch.setattr("undef.telemetry.metrics.fallback.release", lambda t: released.append(t))
+        monkeypatch.setattr("provide.telemetry.metrics.fallback.try_acquire", lambda _s: sentinel)
+        monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda t: released.append(t))
 
         g = Gauge("test.gauge")
         g.set(10)

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -9,11 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from undef.telemetry import _otel
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.metrics import provider as metrics_provider
-from undef.telemetry.tracing import provider as tracing_provider
-from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+from provide.telemetry import _otel
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.metrics import provider as metrics_provider
+from provide.telemetry.tracing import provider as tracing_provider
+from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
 pytestmark = pytest.mark.otel
 

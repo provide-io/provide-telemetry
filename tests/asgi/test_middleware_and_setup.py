@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry.asgi import middleware as middleware_mod
-from undef.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header
-from undef.telemetry.asgi.websocket import _extract_header as ws_extract_header
-from undef.telemetry.asgi.websocket import bind_websocket_context
-from undef.telemetry.logger import get_context
-from undef.telemetry.tracing import get_trace_context
+from provide.telemetry.asgi import middleware as middleware_mod
+from provide.telemetry.asgi.middleware import TelemetryMiddleware, _extract_header, _resolve_route
+from provide.telemetry.asgi.websocket import _extract_header as ws_extract_header
+from provide.telemetry.asgi.websocket import bind_websocket_context
+from provide.telemetry.logger import get_context
+from provide.telemetry.tracing import get_trace_context
 
 
 async def _dummy_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -38,6 +38,8 @@ async def test_middleware_non_http_path() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_http_context() -> None:
+    from provide.telemetry.logger.context import restore_context
+
     events: list[dict[str, Any]] = []
 
     async def send(msg: dict[str, Any]) -> None:
@@ -91,7 +93,7 @@ async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.
     monkeypatch.setattr(middleware_mod, "bind_context", _bind_context)
     monkeypatch.setattr(middleware_mod, "save_context", _save_context)
     monkeypatch.setattr(middleware_mod, "reset_context", _reset_context)
-    monkeypatch.setattr("undef.telemetry.asgi.middleware.uuid.uuid4", lambda: type("U", (), {"hex": "generated"})())
+    monkeypatch.setattr("provide.telemetry.asgi.middleware.uuid.uuid4", lambda: type("U", (), {"hex": "generated"})())
 
     sent: list[dict[str, Any]] = []
     received_token = object()
@@ -190,8 +192,8 @@ async def test_middleware_ignores_malformed_header_bytes_without_crashing() -> N
 
 
 def test_websocket_context_binding() -> None:
-    from undef.telemetry.asgi.websocket import clear_websocket_context
-    from undef.telemetry.logger.context import get_context
+    from provide.telemetry.asgi.websocket import clear_websocket_context
+    from provide.telemetry.logger.context import get_context
 
     token = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r2"), (b"x-session-id", b"s2"), (b"x-actor-id", b"u1")]}
@@ -214,7 +216,7 @@ def test_websocket_bind_context_invokes_only_present_headers(monkeypatch: pytest
     def _bind_context(**kwargs: str | None) -> None:
         calls.append(kwargs)
 
-    monkeypatch.setattr("undef.telemetry.asgi.websocket.bind_context", _bind_context)
+    monkeypatch.setattr("provide.telemetry.asgi.websocket.bind_context", _bind_context)
 
     token = bind_websocket_context(
         {"headers": [(b"x-request-id", b"r9"), (b"x-session-id", b"s9"), (b"x-actor-id", b"a9")]}
@@ -250,7 +252,7 @@ def test_resolve_route_with_route_no_path_attr() -> None:
 
 
 def test_cardinality_limit_registered_on_auto_slo() -> None:
-    from undef.telemetry import cardinality as cardinality_mod
+    from provide.telemetry import cardinality as cardinality_mod
 
     cardinality_mod.clear_cardinality_limits()
     TelemetryMiddleware(_dummy_app, auto_slo=True)
@@ -261,7 +263,7 @@ def test_cardinality_limit_registered_on_auto_slo() -> None:
 
 
 def test_cardinality_limit_not_registered_without_auto_slo() -> None:
-    from undef.telemetry import cardinality as cardinality_mod
+    from provide.telemetry import cardinality as cardinality_mod
 
     cardinality_mod.clear_cardinality_limits()
     TelemetryMiddleware(_dummy_app, auto_slo=False)

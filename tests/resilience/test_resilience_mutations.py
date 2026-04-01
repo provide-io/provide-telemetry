@@ -191,7 +191,7 @@ def test_get_timeout_executor_thread_name_prefix() -> None:
     reset_resilience_for_tests()
     for sig in ("logs", "traces", "metrics"):
         executor = _get_timeout_executor(sig)
-        assert executor._thread_name_prefix == f"undef-resilience-{sig}"
+        assert executor._thread_name_prefix == f"provide-resilience-{sig}"
 
 
 # ---------------------------------------------------------------------------

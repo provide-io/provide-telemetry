@@ -331,7 +331,7 @@ class TestConfigureLoggingSanitizeConfig:
         monkeypatch.setattr(core_mod, "_build_handlers", lambda _cfg, _lvl: [])
 
         # Track what sanitize_sensitive_fields receives
-        from undef.telemetry.logger import processors as proc_mod
+        from provide.telemetry.logger import processors as proc_mod
 
         original_ssf = proc_mod.sanitize_sensitive_fields
         captured_args: list[object] = []
@@ -342,7 +342,7 @@ class TestConfigureLoggingSanitizeConfig:
 
         monkeypatch.setattr(core_mod, "sanitize_sensitive_fields", tracking_ssf)
 
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_SANITIZE": "true"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_SANITIZE": "true"})
         configure_logging(cfg, force=True)
 
         assert len(captured_args) == 1
