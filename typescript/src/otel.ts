@@ -71,31 +71,18 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { OTLPTraceExporter } = otlpTrace;
       const { resourceFromAttributes } = res;
 
-      if (tracesEndpoint) {
-        validateOtlpEndpoint(tracesEndpoint);
-        const traceHeaders = cfg.otlpTracesHeaders ?? headers;
-        const rawTraceExporter = new OTLPTraceExporter({
-          url: tracesEndpoint,
-          headers: traceHeaders,
-          timeoutMillis: cfg.exporterTracesTimeoutMs,
-        });
-        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
-        const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
-
-      const provider = new BasicTracerProvider({
-        resource: resourceFromAttributes({
-          'service.name': cfg.serviceName,
-          'deployment.environment': cfg.environment,
-          'service.version': cfg.version,
-        }),
-        spanProcessors: [new BatchSpanProcessor(traceExporter)],
-      });
-      trace.setGlobalTracerProvider(provider);
-      registered.push(provider as ShutdownableProvider);
-      _setProviderSignalInstalled('traces', true);
-    } catch (err) {
-      console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
-    }
+    const provider = new BasicTracerProvider({
+      resource: resourceFromAttributes({
+        'service.name': cfg.serviceName,
+        'deployment.environment': cfg.environment,
+        'service.version': cfg.version,
+      }),
+      spanProcessors: [new BatchSpanProcessor(traceExporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    registered.push(provider as ShutdownableProvider);
+  } catch (err) {
+    console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -136,7 +123,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     registered.push(await setupOtelLogProvider(cfg));
     _setProviderSignalInstalled('logs', true);
   } catch (err) {
-    console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
+    console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
   }
 
   _storeRegisteredProviders(registered);

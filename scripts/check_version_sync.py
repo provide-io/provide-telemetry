@@ -83,8 +83,8 @@ def _rust_version() -> str | None:
 
 
 def _csharp_version() -> str | None:
-    """Read version from csharp/src/Undef.Telemetry/*.csproj."""
-    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Undef.Telemetry"
+    """Read version from csharp/src/Provide.Telemetry/*.csproj."""
+    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry"
     if not csproj_dir.exists():
         return None
     for csproj in csproj_dir.glob("*.csproj"):

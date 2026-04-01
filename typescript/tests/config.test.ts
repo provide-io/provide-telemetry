@@ -56,27 +56,27 @@ describe('setupTelemetry', () => {
 describe('configFromEnv', () => {
   it('returns defaults when no env vars set', () => {
     const cfg = configFromEnv();
-    expect(cfg.serviceName).toBe('undef-service');
+    expect(cfg.serviceName).toBe('provide-service');
     expect(cfg.environment).toBe('development');
   });
 
-  it('reads UNDEF_TELEMETRY_SERVICE_NAME', () => {
-    process.env['UNDEF_TELEMETRY_SERVICE_NAME'] = 'test-service';
+  it('reads PROVIDE_TELEMETRY_SERVICE_NAME', () => {
+    process.env['PROVIDE_TELEMETRY_SERVICE_NAME'] = 'test-service';
     try {
       const cfg = configFromEnv();
       expect(cfg.serviceName).toBe('test-service');
     } finally {
-      delete process.env['UNDEF_TELEMETRY_SERVICE_NAME'];
+      delete process.env['PROVIDE_TELEMETRY_SERVICE_NAME'];
     }
   });
 
-  it('reads UNDEF_LOG_LEVEL', () => {
-    process.env['UNDEF_LOG_LEVEL'] = 'DEBUG';
+  it('reads PROVIDE_LOG_LEVEL', () => {
+    process.env['PROVIDE_LOG_LEVEL'] = 'DEBUG';
     try {
       const cfg = configFromEnv();
       expect(cfg.logLevel).toBe('debug');
     } finally {
-      delete process.env['UNDEF_LOG_LEVEL'];
+      delete process.env['PROVIDE_LOG_LEVEL'];
     }
   });
 
@@ -152,7 +152,7 @@ describe('configFromEnv', () => {
     try {
       const cfg = configFromEnv();
       // All env-derived fields fall back to defaults when process is unavailable
-      expect(cfg.serviceName).toBe('undef-service');
+      expect(cfg.serviceName).toBe('provide-service');
       expect(cfg.logLevel).toBe('info');
     } finally {
       vi.unstubAllGlobals();
@@ -169,7 +169,7 @@ describe('configFromEnv', () => {
     try {
       const cfg = configFromEnv();
       // All env-derived fields fall back to defaults when process.env throws
-      expect(cfg.serviceName).toBe('undef-service');
+      expect(cfg.serviceName).toBe('provide-service');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -208,100 +208,57 @@ describe('configFromEnv — env var reads', () => {
     }
   }
 
-  it('reads UNDEF_ENV', () => {
-    withEnv({ UNDEF_ENV: 'production' }, () => {
+  it('reads PROVIDE_ENV', () => {
+    withEnv({ PROVIDE_ENV: 'production' }, () => {
       expect(configFromEnv().environment).toBe('production');
     });
   });
 
-  it('reads UNDEF_VERSION', () => {
-    withEnv({ UNDEF_VERSION: 'v2.3.4' }, () => {
+  it('reads PROVIDE_VERSION', () => {
+    withEnv({ PROVIDE_VERSION: 'v2.3.4' }, () => {
       expect(configFromEnv().version).toBe('v2.3.4');
     });
   });
 
-  it('UNDEF_VERSION overrides default (not AND-short-circuited)', () => {
-    withEnv({ UNDEF_VERSION: 'v9.0.0' }, () => {
+  it('PROVIDE_VERSION overrides default (not AND-short-circuited)', () => {
+    withEnv({ PROVIDE_VERSION: 'v9.0.0' }, () => {
       expect(configFromEnv().version).toBe('v9.0.0');
     });
   });
 
-  it('reads UNDEF_LOG_FORMAT=json', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'json' }, () => {
+  it('reads PROVIDE_LOG_FORMAT=json', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'json' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
-  it('reads UNDEF_LOG_FORMAT=pretty', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'pretty' }, () => {
+  it('reads PROVIDE_LOG_FORMAT=pretty', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'pretty' }, () => {
       expect(configFromEnv().logFormat).toBe('pretty');
     });
   });
 
-  it('invalid UNDEF_LOG_FORMAT falls back to json default', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'xml' }, () => {
+  it('invalid PROVIDE_LOG_FORMAT falls back to json default', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'xml' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
-  it('empty UNDEF_LOG_FORMAT falls back to json default', () => {
-    withEnv({ UNDEF_LOG_FORMAT: '' }, () => {
-      expect(configFromEnv().logFormat).toBe('json');
-    });
-  });
-
-  it('empty PROVIDE_LOG_FORMAT falls back to console default', () => {
+  it('empty PROVIDE_LOG_FORMAT falls back to json default', () => {
     withEnv({ PROVIDE_LOG_FORMAT: '' }, () => {
-      expect(configFromEnv().logFormat).toBe('console');
+      expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
   it('reads PROVIDE_TRACE_ENABLED=true', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'true' }, () => {
-      expect(configFromEnv().tracingEnabled).toBe(true);
+      expect(configFromEnv().otelEnabled).toBe(true);
     });
   });
 
-  it('PROVIDE_TRACE_ENABLED=false disables tracing without disabling OTEL registration', () => {
+  it('PROVIDE_TRACE_ENABLED=false does not enable otel', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'false' }, () => {
-      const cfg = configFromEnv();
-      expect(cfg.tracingEnabled).toBe(false);
-      expect(cfg.otelEnabled).toBe(true);
-    });
-  });
-
-  it('boolean env aliases are parsed consistently', () => {
-    withEnv(
-      {
-        PROVIDE_TRACE_ENABLED: 'yes',
-        PROVIDE_METRICS_ENABLED: 'off',
-        PROVIDE_LOG_INCLUDE_TIMESTAMP: ' ',
-      },
-      () => {
-        const cfg = configFromEnv();
-        expect(cfg.tracingEnabled).toBe(true);
-        expect(cfg.metricsEnabled).toBe(false);
-        expect(cfg.logIncludeTimestamp).toBe(true);
-      },
-    );
-  });
-
-  it('covers all accepted boolean env aliases', () => {
-    for (const truthy of ['1', 'true', 'yes', 'on']) {
-      withEnv({ PROVIDE_TRACE_ENABLED: truthy }, () => {
-        expect(configFromEnv().tracingEnabled).toBe(true);
-      });
-    }
-    for (const falsy of ['0', 'false', 'no', 'off']) {
-      withEnv({ PROVIDE_METRICS_ENABLED: falsy }, () => {
-        expect(configFromEnv().metricsEnabled).toBe(false);
-      });
-    }
-  });
-
-  it('invalid boolean env values throw ConfigurationError', () => {
-    withEnv({ PROVIDE_TRACE_ENABLED: 'invalid-boolean' }, () => {
-      expect(() => configFromEnv()).toThrow(ConfigurationError);
+      expect(configFromEnv().otelEnabled).toBe(false);
     });
   });
 

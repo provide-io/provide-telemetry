@@ -5,9 +5,8 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "ci/**"
-      - "src/provide/telemetry/**"
-      - "typescript/src/**"
+      - "src/provide/telemetry/__init__.py"
+      - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"
       - "csharp/**"
@@ -19,9 +18,8 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "ci/**"
-      - "src/provide/telemetry/**"
-      - "typescript/src/**"
+      - "src/provide/telemetry/__init__.py"
+      - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"
       - "csharp/**"

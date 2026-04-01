@@ -12,10 +12,8 @@
 import { shortHash12 } from './hash';
 
 /**
- * Default fields redacted from log records. Canonical 17-key list shared across
- * Python, TypeScript, and Go implementations.
- * Note: 'email' is intentionally excluded — it is commonly used for user identification
- * in logs. Users who want email redaction should register a custom PII rule.
+ * PII field names that are always redacted regardless of user config.
+ * Matches the Python provide.telemetry default sanitize list.
  */
 export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'password',

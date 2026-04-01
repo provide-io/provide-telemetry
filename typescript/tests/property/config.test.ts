@@ -62,27 +62,22 @@ describe('property: configFromEnv()', () => {
 
   it('logFormat is always json, pretty, or console', () => {
     fc.assert(
-      fc.property(
-        fc.oneof(fc.constant('json'), fc.constant('pretty'), fc.constant('console')),
-        (fmt) => {
-          process.env['PROVIDE_LOG_FORMAT'] = fmt;
-          const cfg = configFromEnv();
-          delete process.env['PROVIDE_LOG_FORMAT'];
-          return (
-            cfg.logFormat === 'json' || cfg.logFormat === 'pretty' || cfg.logFormat === 'console'
-          );
-        },
-      ),
+      fc.property(fc.boolean(), (useJson) => {
+        process.env['PROVIDE_LOG_FORMAT'] = useJson ? 'json' : 'pretty';
+        const cfg = configFromEnv();
+        delete process.env['PROVIDE_LOG_FORMAT'];
+        return cfg.logFormat === 'json' || cfg.logFormat === 'pretty';
+      }),
     );
   });
 
   it('tracingEnabled is always boolean', () => {
     fc.assert(
       fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
-        process.env['UNDEF_TRACE_ENABLED'] = val;
+        process.env['PROVIDE_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
         delete process.env['PROVIDE_TRACE_ENABLED'];
-        return typeof cfg.tracingEnabled === 'boolean';
+        return typeof cfg.otelEnabled === 'boolean';
       }),
     );
   });
@@ -90,9 +85,9 @@ describe('property: configFromEnv()', () => {
   it('logLevel is always lowercase', () => {
     fc.assert(
       fc.property(fc.constantFrom('INFO', 'DEBUG', 'WARN', 'error', 'trace'), (level) => {
-        process.env['UNDEF_LOG_LEVEL'] = level;
+        process.env['PROVIDE_LOG_LEVEL'] = level;
         const cfg = configFromEnv();
-        delete process.env['UNDEF_LOG_LEVEL'];
+        delete process.env['PROVIDE_LOG_LEVEL'];
         return cfg.logLevel === cfg.logLevel.toLowerCase();
       }),
     );

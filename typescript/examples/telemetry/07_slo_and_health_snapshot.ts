@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 📊 SLO metrics pack and health snapshot inspection.
@@ -27,7 +27,7 @@ import {
 async function main(): Promise<void> {
   console.log('📊 SLO Metrics & Health Snapshot Demo\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
   const log = getLogger('examples.slo');
 
   // ── 🟢 Successful requests ──────────────────────────────

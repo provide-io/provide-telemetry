@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * OpenObserve hardening profile — PII masking, cardinality, sampling,
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 
   const tracerProvider = new BasicTracerProvider({
     resource: resourceFromAttributes({
-      'service.name': 'undef-telemetry-hardening-example',
+      'service.name': 'provide-telemetry-hardening-example',
       'service.version': 'hardening',
     }),
     spanProcessors: [new SimpleSpanProcessor(
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   trace.setGlobalTracerProvider(tracerProvider);
 
   const meterProvider = new MeterProvider({
-    resource: resourceFromAttributes({ 'service.name': 'undef-telemetry-hardening-example' }),
+    resource: resourceFromAttributes({ 'service.name': 'provide-telemetry-hardening-example' }),
     readers: [new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({ url: `${baseUrl}/v1/metrics`, headers: otlpHeaders }),
       exportIntervalMillis: 1000,
@@ -94,15 +94,15 @@ async function main(): Promise<void> {
   setQueuePolicy({ maxLogs: 0, maxMetrics: 0, maxTraces: 64 });
   setExporterPolicy({ retries: 1, backoffMs: 0, failOpen: true, timeoutMs: 5000 });
 
-  // ── @undef-games/telemetry setup ───────────────────────────────────────────────
+  // ── @provide-io/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
-    serviceName: 'undef-telemetry-hardening-example',
+    serviceName: 'provide-telemetry-hardening-example',
     consoleOutput: false,
   });
 
   const log = getLogger('examples.openobserve.hardening');
-  const tokenValue = process.env['UNDEF_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
+  const tokenValue = process.env['PROVIDE_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
 
   // ── Emit with hardening active ───────────────────────────────────────────
 

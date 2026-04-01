@@ -497,9 +497,26 @@ describe('reconfigureTelemetry', () => {
   });
 });
 
-describe('reconfigureTelemetry — otlpHeaders change after init triggers restart (kills StringLiteral otlpHeaders)', () => {
-  it('rejects otlpHeaders changes after providers initialized', () => {
-    reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'old' } });
+describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => {
+  it('clears custom serviceName after reload', () => {
+    updateRuntimeConfig({ serviceName: 'overridden-service' });
+    expect(getRuntimeConfig().serviceName).toBe('overridden-service');
+    reloadRuntimeFromEnv();
+    // After reload, should come from env (default when no env var set)
+    expect(getRuntimeConfig().serviceName).toBe('provide-service');
+  });
+
+  it('re-reads env-derived config after reload', () => {
+    updateRuntimeConfig({ logLevel: 'error', version: '99.0.0' });
+    reloadRuntimeFromEnv();
+    expect(getRuntimeConfig().logLevel).toBe('info');
+    expect(getRuntimeConfig().version).toBe('unknown');
+  });
+});
+
+describe('reconfigureTelemetry — otlpHeaders change throws after init (kills StringLiteral otlpHeaders)', () => {
+  it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
+    updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
     expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
       /provider-changing reconfiguration is unsupported/,

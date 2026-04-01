@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🌐 W3C trace-context propagation.
@@ -112,7 +112,7 @@ function runInvalidHeader(): void {
 
 async function main(): Promise<void> {
   console.log('🌐 W3C Propagation Demo');
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
 
   runHttpRequest();
   runManualPropagation();

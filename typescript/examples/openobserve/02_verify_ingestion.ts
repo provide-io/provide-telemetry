@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * Verify that signals emitted by 01_emit_all_signals.ts were ingested by OpenObserve.
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   const password = requireEnv('OPENOBSERVE_PASSWORD');
   const auth = authHeader(user, password);
   const runId = String(Date.now());
-  process.env['UNDEF_EXAMPLE_RUN_ID'] = runId;
+  process.env['PROVIDE_EXAMPLE_RUN_ID'] = runId;
 
   const startUs = Date.now() * 1000 - 2 * 60 * 60 * 1_000_000;
   const traceName = `example.openobserve.work.${runId}`;

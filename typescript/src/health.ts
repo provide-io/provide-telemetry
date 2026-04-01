@@ -3,7 +3,6 @@
 
 /**
  * Internal self-observability counters — mirrors Python provide.telemetry.health.
- * Canonical 25-field layout: 8 per signal (logs, traces, metrics) + 1 global.
  */
 
 export interface HealthSnapshot {

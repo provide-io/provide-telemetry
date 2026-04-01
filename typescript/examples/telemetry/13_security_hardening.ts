@@ -67,11 +67,10 @@ async function main(): Promise<void> {
   sanitizePayload(deep, [], { maxDepth: 4 });
   console.log(`   Sanitized with maxDepth=4: ${JSON.stringify(deep)}\n`);
 
-  // 5. Environment variable configuration
-  console.log('5. Configurable via environment:');
-  console.log('   PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH=2048  (OTLP export layer)');
-  console.log('   PROVIDE_SECURITY_MAX_ATTR_COUNT=128          (OTLP export layer)');
-  console.log('   PROVIDE_SECURITY_MAX_NESTING_DEPTH=4');
+  // 4. Environment variable configuration
+  console.log('4. Configurable via environment:');
+  console.log('   PROVIDE_LOG_SANITIZE=true (default)');
+  console.log('   PROVIDE_LOG_SANITIZE_FIELDS=password,token,authorization,api_key,secret');
 
   await shutdownTelemetry();
   console.log('\n=== Done ===');

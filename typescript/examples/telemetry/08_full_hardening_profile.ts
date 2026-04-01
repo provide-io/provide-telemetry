@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🏰 Full production hardening profile — all guardrails active.
@@ -40,7 +40,7 @@ import {
 async function main(): Promise<void> {
   console.log('🏰 Full Production Hardening Profile\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-hardening', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-hardening', consoleOutput: false });
   const log = getLogger('examples.hardening');
 
   // ── 🔒 PII masking ─────────────────────────────────────
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   console.log('\n🔧 Hot-swapping serviceName mid-flight...');
   const current = getRuntimeConfig();
   console.log(`  📋 Before: serviceName=${current.serviceName}`);
-  updateRuntimeConfig({ serviceName: 'undef-telemetry-hardening-v2' });
+  updateRuntimeConfig({ serviceName: 'provide-telemetry-hardening-v2' });
   const updated = getRuntimeConfig();
   console.log(`  ✅ After:  serviceName=${updated.serviceName}`);
 

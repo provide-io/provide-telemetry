@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🔒 PII masking and cardinality guardrails.
@@ -35,9 +35,9 @@ import {
 async function main(): Promise<void> {
   console.log('🔒 PII & Cardinality Policy Demo\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
   const log = getLogger('examples.policy');
-  const tokenValue = process.env['UNDEF_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
+  const tokenValue = process.env['PROVIDE_EXAMPLE_TOKEN'] ?? 'example-token-from-env';
 
   // ── 🛡️ Register PII rules ────────────────────────────
   console.log('🛡️  Registering PII rules...');
