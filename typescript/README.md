@@ -26,10 +26,10 @@ All five are optional — the library degrades gracefully to no-op providers whe
 ## Quick start
 
 ```typescript
-import { setupTelemetry, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef/telemetry';
+import { setupTelemetry, getConfig, getLogger, registerOtelProviders, shutdownTelemetry } from '@undef-games/telemetry';
 
 // Call once at app startup.
-const cfg = setupTelemetry({
+setupTelemetry({
   serviceName: 'my-app',
   environment: 'production',
   version: '1.0.0',
@@ -41,7 +41,7 @@ const cfg = setupTelemetry({
 });
 
 // Activate OTLP exporters (requires peer deps above).
-await registerOtelProviders(cfg);
+await registerOtelProviders(getConfig());
 
 const log = getLogger('api');
 log.info({ event: 'request.received.ok', method: 'GET', path: '/health', status: 200 });
@@ -56,7 +56,7 @@ await shutdownTelemetry();
 
 | Export | Description |
 |--------|-------------|
-| `setupTelemetry(config)` | Configure the library. Idempotent — safe to call multiple times. Returns the active config. |
+| `setupTelemetry(config)` | Configure the library. Idempotent — safe to call multiple times. |
 | `getConfig()` | Return the current `TelemetryConfig`. |
 | `configFromEnv()` | Build config from environment variables (see [Configuration](#configuration)). |
 | `registerOtelProviders(cfg)` | Wire OTLP trace + metrics exporters. Call after `setupTelemetry`. |
@@ -154,11 +154,12 @@ bindPropagationContext(ctx);
 import { sanitize, registerPiiRule } from '@undef/telemetry';
 
 // Built-in: redacts password, token, secret, authorization, api_key, ...
-const safe = sanitize({ user: 'alice', password: 'hunter2' });
-// → { user: 'alice', password: '[REDACTED]' }
+const obj = { user: 'alice', password: 'hunter2' }; // pragma: allowlist secret
+sanitize(obj);
+// obj is now { user: 'alice', password: '[REDACTED]' }
 
-// Custom rule
-registerPiiRule({ field: /^ssn$/, mode: 'redact' });
+// Custom rule (dot-separated path; '*' as wildcard segment)
+registerPiiRule({ path: 'user.ssn', mode: 'redact' });
 ```
 
 ### Health snapshot

@@ -26,7 +26,7 @@ npm install @undef/telemetry             # core (pino + @opentelemetry/api)
 **Python:**
 
 ```python
-from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger
+from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event_name
 
 setup_telemetry()
 log = get_logger(__name__)
@@ -56,8 +56,10 @@ All runtime config is via environment variables:
 | `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
 | `UNDEF_LOG_LEVEL` | `INFO` | Log level |
 | `UNDEF_LOG_FORMAT` | `console` | Renderer: `console`, `json`, or `pretty` |
-| `UNDEF_TRACE_ENABLED` | `false` | Enable OTel tracing |
-| `UNDEF_METRICS_ENABLED` | `false` | Enable OTel metrics |
+| `UNDEF_TELEMETRY_ENV` | `dev` | Deployment environment |
+| `UNDEF_TELEMETRY_VERSION` | `0.0.0` | Service version |
+| `UNDEF_TRACE_ENABLED` | `true` | Enable OTel tracing |
+| `UNDEF_METRICS_ENABLED` | `true` | Enable OTel metrics |
 
 See the [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
 
@@ -89,9 +91,9 @@ Both languages export equivalent APIs:
 | Tracing | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()` |
 | Metrics | `counter()`, `gauge()`, `histogram()` |
 | Policies | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()` |
-| Safety | `register_cardinality_limit()`, `register_pii_rule()` |
+| Safety | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()` |
 | Health | `get_health_snapshot()` |
-| Runtime | `update_runtime_config()`, `reconfigure_telemetry()` |
+| Runtime | `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
 Full reference: [Python API](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md)
 
