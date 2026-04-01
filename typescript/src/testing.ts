@@ -17,6 +17,7 @@ import { resetPiiRulesForTests } from './pii';
 import { _resetSloForTests } from './slo';
 import { _resetPropagationForTests } from './propagation';
 import { _resetRootLogger } from './logger';
+import { _resetOtelLogProviderForTests } from './otel-logs';
 import { _resetTraceContext } from './tracing';
 import { _resetRuntimeForTests } from './runtime';
 
@@ -33,6 +34,7 @@ export function resetTelemetryState(): void {
   _resetSloForTests();
   _resetPropagationForTests();
   _resetRootLogger();
+  _resetOtelLogProviderForTests();
   _resetRuntimeForTests();
 }
 

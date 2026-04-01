@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { trace } from '@opentelemetry/api';
-import { describe, expect, it, vi } from 'vitest';
+import { trace, propagation } from '@opentelemetry/api';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   _resetTraceContext,
   getActiveTraceIds,
@@ -13,6 +13,7 @@ import {
   traceDecorator,
   withTrace,
 } from '../src/tracing';
+import { _resetPropagationForTests, bindPropagationContext } from '../src/propagation';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {
@@ -140,8 +141,8 @@ describe('getTraceContext', () => {
   it('returns manual context when set', () => {
     setTraceContext('manual-trace', 'manual-span');
     const ctx = getTraceContext();
-    expect(ctx.traceId).toBe('manual-trace');
-    expect(ctx.spanId).toBe('manual-span');
+    expect(ctx.trace_id).toBe('manual-trace');
+    expect(ctx.span_id).toBe('manual-span');
     _resetTraceContext();
   });
 
@@ -155,16 +156,16 @@ describe('getTraceContext', () => {
     };
     vi.spyOn(trace, 'getActiveSpan').mockReturnValueOnce(fakeSpan as never);
     const ctx = getTraceContext();
-    expect(ctx.traceId).toBe('abc123def456abc123def456abc123de');
-    expect(ctx.spanId).toBe('1234567890abcdef');
+    expect(ctx.trace_id).toBe('abc123def456abc123def456abc123de');
+    expect(ctx.span_id).toBe('1234567890abcdef');
     vi.restoreAllMocks();
   });
 
   it('returns empty when no manual context and no active span', () => {
     _resetTraceContext();
     const ctx = getTraceContext();
-    expect(ctx.traceId).toBeUndefined();
-    expect(ctx.spanId).toBeUndefined();
+    expect(ctx.trace_id).toBeUndefined();
+    expect(ctx.span_id).toBeUndefined();
   });
 });
 
@@ -187,8 +188,8 @@ describe('getTraceContext — partial manual context', () => {
     setTraceContext('trace-only', 'span-only');
     const ctx = getTraceContext();
     // Both are always set together by setTraceContext, verify both present
-    expect(ctx.traceId).toBe('trace-only');
-    expect(ctx.spanId).toBe('span-only');
+    expect(ctx.trace_id).toBe('trace-only');
+    expect(ctx.span_id).toBe('span-only');
     _resetTraceContext();
   });
 
@@ -196,10 +197,10 @@ describe('getTraceContext — partial manual context', () => {
     setTraceContext('t', 's');
     _resetTraceContext();
     const ctx = getTraceContext();
-    expect(ctx.traceId).toBeUndefined();
-    expect(ctx.spanId).toBeUndefined();
-    expect('traceId' in ctx).toBe(false);
-    expect('spanId' in ctx).toBe(false);
+    expect(ctx.trace_id).toBeUndefined();
+    expect(ctx.span_id).toBeUndefined();
+    expect('trace_id' in ctx).toBe(false);
+    expect('span_id' in ctx).toBe(false);
   });
 });
 
@@ -277,5 +278,54 @@ describe('getActiveTraceIds — span with non-zero IDs', () => {
     expect('trace_id' in ids).toBe(true);
     expect('span_id' in ids).toBe(true);
     vi.restoreAllMocks();
+  });
+});
+
+describe('withTrace — OTel propagation context wiring', () => {
+  const VALID_TRACEPARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'; // pragma: allowlist secret
+
+  beforeAll(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { W3CTraceContextPropagator } = require('@opentelemetry/core') as {
+      W3CTraceContextPropagator: new () => import('@opentelemetry/api').TextMapPropagator;
+    };
+    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+  });
+
+  afterAll(() => {
+    propagation.disable();
+  });
+
+  afterEach(() => {
+    _resetPropagationForTests();
+  });
+
+  it('uses propagated OTel context as parent when available', () => {
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
+      spanId: '00f067aa0ba902b7',
+    });
+
+    // withTrace should execute normally and return the result
+    const result = withTrace('test.propagated', () => 42);
+    expect(result).toBe(42);
+  });
+
+  it('works with async fn when propagation context is bound', async () => {
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
+      spanId: '00f067aa0ba902b7',
+    });
+
+    const result = await withTrace('test.propagated.async', async () => 'hello');
+    expect(result).toBe('hello');
+  });
+
+  it('falls back to default when no propagation context is bound', () => {
+    // No bindPropagationContext called — getActiveOtelContext() returns undefined
+    const result = withTrace('test.no-propagation', () => 'ok');
+    expect(result).toBe('ok');
   });
 });

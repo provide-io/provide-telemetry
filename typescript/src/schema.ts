@@ -5,6 +5,7 @@
  * Event schema validation — mirrors Python provide.telemetry.schema.events.
  */
 
+import { getConfig } from './config';
 import { TelemetryError } from './exceptions';
 
 export class EventSchemaError extends TelemetryError {
@@ -19,20 +20,27 @@ const MIN_SEGMENTS = 3;
 const MAX_SEGMENTS = 5;
 
 /**
- * Build and validate a strict event name from 3–5 segments.
- * Each segment must match /^[a-z][a-z0-9_]*$/.
+ * Build and validate an event name from dot-separated segments.
+ * In strict mode (default): enforces 3–5 segments, each matching /^[a-z][a-z0-9_]*$/.
+ * In relaxed mode: requires at least 1 segment, skips count and format checks.
  */
 export function eventName(...segments: string[]): string {
-  if (segments.length < MIN_SEGMENTS || segments.length > MAX_SEGMENTS) {
-    throw new EventSchemaError(
-      `expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got ${segments.length}`,
-    );
+  if (segments.length === 0) {
+    throw new EventSchemaError(`expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got 0`);
   }
-  // Stryker disable next-line EqualityOperator: segments[length] is undefined; SEGMENT_RE.test('undefined') returns true so no extra throw — equivalent
-  for (let i = 0; i < segments.length; i++) {
-    if (!SEGMENT_RE.test(segments[i])) {
-      // Stryker disable next-line StringLiteral
-      throw new EventSchemaError(`invalid event segment: segment[${i}]=${segments[i]}`);
+  const strict = getConfig().strictSchema;
+  if (strict) {
+    if (segments.length < MIN_SEGMENTS || segments.length > MAX_SEGMENTS) {
+      throw new EventSchemaError(
+        `expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got ${segments.length}`,
+      );
+    }
+    // Stryker disable next-line EqualityOperator: segments[length] is undefined; SEGMENT_RE.test('undefined') returns true so no extra throw — equivalent
+    for (let i = 0; i < segments.length; i++) {
+      if (!SEGMENT_RE.test(segments[i])) {
+        // Stryker disable next-line StringLiteral
+        throw new EventSchemaError(`invalid event segment: segment[${i}]=${segments[i]}`);
+      }
     }
   }
   return segments.join('.');
