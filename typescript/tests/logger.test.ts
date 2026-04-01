@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config';
 import { _resetContext, bindContext, clearContext } from '../src/context';
 import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
+import * as otelLogs from '../src/otel-logs';
+import * as schema from '../src/schema';
 import * as tracing from '../src/tracing';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
@@ -429,5 +431,123 @@ describe('write hook — config read dynamically (Bug 2 regression)', () => {
     // JSON path passes the raw log object (type 'object'), not a string
     expect(typeof output).toBe('object');
     spy.mockRestore();
+  });
+});
+
+describe('write hook — OTLP log export', () => {
+  it('calls emitLogRecord on every log line', () => {
+    makeCfg();
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'export.test' });
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('calls emitLogRecord after PII sanitization (enriched record)', () => {
+    makeCfg({ sanitizeFields: ['secret'] });
+    const captured: Record<string, unknown>[] = [];
+    vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation((o) => {
+      captured.push({ ...o });
+    });
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'pii.test', secret: 'tok123' }); // pragma: allowlist secret
+    expect(captured[0]['secret']).not.toBe('tok123');
+    vi.restoreAllMocks();
+  });
+});
+
+describe('write hook — schema validation (strictSchema)', () => {
+  it('emits normally when strictSchema=true and event is a valid 3-part name', () => {
+    makeCfg({ strictSchema: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'app.user.created' });
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('drops log when strictSchema=true and event name violates schema', () => {
+    makeCfg({ strictSchema: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'x' });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('passes any event through when strictSchema=false (default)', () => {
+    makeCfg({ strictSchema: false });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'x' });
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('drops log when strictSchema=true and requiredLogKeys missing', () => {
+    makeCfg({ strictSchema: true, requiredLogKeys: ['action'] });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'app.user.created' });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('emits when strictSchema=true, requiredLogKeys present, and event valid', () => {
+    makeCfg({ strictSchema: true, requiredLogKeys: ['action'] });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'app.user.created', action: 'signup' });
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('does not drop log when event is empty and strictSchema=true', () => {
+    makeCfg({ strictSchema: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30 });
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('validates msg field when event is absent', () => {
+    makeCfg({ strictSchema: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, msg: 'x' });
+    // 'x' is not a valid 3-part event name, so the record should be dropped.
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('rethrows non-EventSchemaError from validateEventName', () => {
+    makeCfg({ strictSchema: true });
+    const spy = vi.spyOn(schema, 'validateEventName').mockImplementation(() => {
+      throw new TypeError('unexpected');
+    });
+    const hook = makeWriteHook();
+    expect(() => hook({ level: 30, event: 'app.user.created' })).toThrow(TypeError);
+    spy.mockRestore();
+  });
+
+  it('rethrows non-EventSchemaError from validateRequiredKeys', () => {
+    makeCfg({ strictSchema: true, requiredLogKeys: ['action'] });
+    const spy = vi.spyOn(schema, 'validateRequiredKeys').mockImplementation(() => {
+      throw new RangeError('unexpected');
+    });
+    const hook = makeWriteHook();
+    expect(() => hook({ level: 30, event: 'app.user.created' })).toThrow(RangeError);
+    spy.mockRestore();
+  });
+
+  it('does not capture dropped record to window.__pinoLogs', () => {
+    makeCfg({ strictSchema: true, captureToWindow: true });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'x' });
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    expect(logs.length).toBe(0);
   });
 });

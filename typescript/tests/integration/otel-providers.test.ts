@@ -34,18 +34,35 @@ vi.mock('@opentelemetry/sdk-metrics', () => ({
 vi.mock('@opentelemetry/exporter-metrics-otlp-http', () => ({
   OTLPMetricExporter: vi.fn(),
 }));
+vi.mock('@opentelemetry/sdk-logs', () => ({
+  LoggerProvider: vi.fn(),
+  BatchLogRecordProcessor: vi.fn(),
+}));
+vi.mock('@opentelemetry/exporter-logs-otlp-http', () => ({
+  OTLPLogExporter: vi.fn(),
+}));
+vi.mock('@opentelemetry/api-logs', () => ({
+  logs: {
+    setGlobalLoggerProvider: vi.fn(),
+    getLogger: vi.fn(),
+  },
+}));
 
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { LoggerProvider, BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import { logs } from '@opentelemetry/api-logs';
 import { _resetConfig, getConfig, setupTelemetry } from '../../src/config';
 import {
   _areProvidersRegistered,
   _getRegisteredProviders,
   _resetRuntimeForTests,
 } from '../../src/runtime';
+import { _resetOtelLogProviderForTests } from '../../src/otel-logs';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // Minimal stubs that satisfy OTel API interface checks for provider registration.
@@ -59,11 +76,16 @@ const makeMeterStub = () => ({
   shutdown: vi.fn().mockResolvedValue(undefined),
   forceFlush: vi.fn().mockResolvedValue(undefined),
 });
+const makeLogProviderStub = () => ({
+  shutdown: vi.fn().mockResolvedValue(undefined),
+  forceFlush: vi.fn().mockResolvedValue(undefined),
+});
 
 describe('registerOtelProviders', () => {
   beforeEach(() => {
     _resetConfig();
     _resetRuntimeForTests();
+    _resetOtelLogProviderForTests();
     vi.clearAllMocks();
     // vitest 4.x: use mockImplementation (not mockReturnValue) for class constructors.
     vi.mocked(BasicTracerProvider).mockImplementation(function () {
@@ -84,6 +106,16 @@ describe('registerOtelProviders', () => {
     vi.mocked(OTLPMetricExporter).mockImplementation(function () {
       return {};
     } as never);
+    vi.mocked(LoggerProvider).mockImplementation(function () {
+      return makeLogProviderStub();
+    } as never);
+    vi.mocked(BatchLogRecordProcessor).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(logs.getLogger).mockReturnValue({ emit: vi.fn() } as never);
   });
 
   afterEach(() => {
@@ -94,6 +126,7 @@ describe('registerOtelProviders', () => {
     context.disable();
     _resetConfig();
     _resetRuntimeForTests();
+    _resetOtelLogProviderForTests();
   });
 
   it('is a no-op when otelEnabled is false', async () => {
@@ -122,7 +155,7 @@ describe('registerOtelProviders', () => {
       headers: {},
     });
     expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(2);
+    expect(_getRegisteredProviders()).toHaveLength(3);
   });
 
   it('passes provided otlpEndpoint and otlpHeaders to both exporters', async () => {
@@ -188,7 +221,7 @@ describe('registerOtelProviders', () => {
     );
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(1);
+    expect(_getRegisteredProviders()).toHaveLength(2); // metrics + logs (trace threw)
     warnSpy.mockRestore();
   });
 
@@ -205,6 +238,64 @@ describe('registerOtelProviders', () => {
     );
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('constructs OTLPLogExporter with /v1/logs path', async () => {
+    setupTelemetry({
+      serviceName: 'log-svc',
+      otelEnabled: true,
+      otlpEndpoint: 'http://otel-collector:4318',
+      otlpHeaders: { Authorization: 'Bearer tok' },
+    });
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
+      url: 'http://otel-collector:4318/v1/logs',
+      headers: { Authorization: 'Bearer tok' },
+    });
+  });
+
+  it('wires BatchLogRecordProcessor with the log exporter', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    const fakeExporter = { fake: 'log-exporter' };
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      return fakeExporter;
+    } as never);
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(fakeExporter);
+  });
+
+  it('registers all three providers (trace + metrics + logs)', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(_getRegisteredProviders()).toHaveLength(3);
+  });
+
+  it('is idempotent — second call is a no-op when providers are already registered', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    const callCount = vi.mocked(OTLPTraceExporter).mock.calls.length;
+    expect(callCount).toBeGreaterThan(0);
+    // Second call should be a no-op.
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPTraceExporter).mock.calls.length).toBe(callCount);
+  });
+
+  it('warns and continues when logs SDK throws — other providers still register', async () => {
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      throw new Error('logs peer dep missing');
+    } as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('OTEL logs setup failed'),
+      expect.any(Error),
+    );
+    expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalled();
+    expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(2);
     warnSpy.mockRestore();
   });
 });

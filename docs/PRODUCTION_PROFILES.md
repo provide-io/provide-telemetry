@@ -68,8 +68,8 @@ Add these on top of any profile when shipping to OpenObserve:
 
 ```bash
 export OPENOBSERVE_URL=http://localhost:5080/api/default
-export OPENOBSERVE_USER=user@example.com
-export OPENOBSERVE_PASSWORD=password
+export OPENOBSERVE_USER=admin@provide.test
+export OPENOBSERVE_PASSWORD=Complexpass#123
 ```
 
 ## Runtime Updates

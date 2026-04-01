@@ -175,6 +175,25 @@ describe('recordUseMetrics — instrument naming', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
   });
+
+  it('uses set semantics — second call with same value produces delta=0', () => {
+    const addSpy = vi.fn();
+    vi.spyOn(metricsModule, 'gauge').mockReturnValue({ add: addSpy } as never);
+    recordUseMetrics({ resource: 'cpu', utilization: 65 });
+    expect(addSpy).toHaveBeenLastCalledWith(65, { resource: 'cpu' });
+    recordUseMetrics({ resource: 'cpu', utilization: 65 });
+    expect(addSpy).toHaveBeenLastCalledWith(0, { resource: 'cpu' });
+    vi.restoreAllMocks();
+  });
+
+  it('uses set semantics — increasing value produces correct delta', () => {
+    const addSpy = vi.fn();
+    vi.spyOn(metricsModule, 'gauge').mockReturnValue({ add: addSpy } as never);
+    recordUseMetrics({ resource: 'mem', utilization: 60 });
+    recordUseMetrics({ resource: 'mem', utilization: 80 });
+    expect(addSpy).toHaveBeenLastCalledWith(20, { resource: 'mem' });
+    vi.restoreAllMocks();
+  });
 });
 
 describe('_resetSloForTests', () => {

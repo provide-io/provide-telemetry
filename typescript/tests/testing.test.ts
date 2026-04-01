@@ -32,9 +32,9 @@ describe('resetTelemetryState', () => {
 describe('resetTraceContext', () => {
   it('clears manually set trace context', () => {
     setTraceContext('abc123', 'def456');
-    expect(getTraceContext().traceId).toBe('abc123');
+    expect(getTraceContext().trace_id).toBe('abc123');
     resetTraceContext();
-    expect(getTraceContext().traceId).toBeUndefined();
+    expect(getTraceContext().trace_id).toBeUndefined();
   });
 
   it('does not throw when nothing is set', () => {

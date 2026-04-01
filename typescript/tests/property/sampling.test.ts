@@ -12,7 +12,7 @@ describe('property: shouldSample()', () => {
     fc.assert(
       fc.property(fc.float({ min: 0, max: 1 }), fc.string({ minLength: 1 }), (rate, signal) => {
         _resetSamplingForTests();
-        setSamplingPolicy({ defaultRate: rate });
+        setSamplingPolicy(signal, { defaultRate: rate });
         return typeof shouldSample(signal) === 'boolean';
       }),
     );
@@ -22,7 +22,7 @@ describe('property: shouldSample()', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (signal) => {
         _resetSamplingForTests();
-        setSamplingPolicy({ defaultRate: 0.0 });
+        setSamplingPolicy(signal, { defaultRate: 0.0 });
         for (let i = 0; i < 100; i++) {
           if (shouldSample(signal)) return false;
         }
@@ -35,7 +35,7 @@ describe('property: shouldSample()', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (signal) => {
         _resetSamplingForTests();
-        setSamplingPolicy({ defaultRate: 1.0 });
+        setSamplingPolicy(signal, { defaultRate: 1.0 });
         for (let i = 0; i < 100; i++) {
           if (!shouldSample(signal)) return false;
         }
@@ -48,7 +48,7 @@ describe('property: shouldSample()', () => {
     fc.assert(
       fc.property(fc.float({ noNaN: true }), (rate) => {
         _resetSamplingForTests();
-        setSamplingPolicy({ defaultRate: rate });
+        setSamplingPolicy('logs', { defaultRate: rate });
         const result = shouldSample('logs');
         return typeof result === 'boolean';
       }),

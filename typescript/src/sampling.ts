@@ -11,14 +11,14 @@ export interface SamplingPolicy {
 }
 
 const DEFAULT_POLICY: SamplingPolicy = { defaultRate: 1.0 };
-let _policy: SamplingPolicy = { ...DEFAULT_POLICY };
+let _policies: Record<string, SamplingPolicy> = {};
 
 function _clamp(rate: number): number {
   return Math.max(0, Math.min(1, rate));
 }
 
-export function setSamplingPolicy(policy: SamplingPolicy): void {
-  _policy = {
+export function setSamplingPolicy(signal: string, policy: SamplingPolicy): void {
+  _policies[signal] = {
     defaultRate: _clamp(policy.defaultRate),
     overrides: policy.overrides
       ? Object.fromEntries(Object.entries(policy.overrides).map(([k, v]) => [k, _clamp(v)]))
@@ -26,16 +26,19 @@ export function setSamplingPolicy(policy: SamplingPolicy): void {
   };
 }
 
-export function getSamplingPolicy(): SamplingPolicy {
+export function getSamplingPolicy(signal: string): SamplingPolicy {
+  const _policy = _policies[signal] ?? DEFAULT_POLICY;
   return {
     defaultRate: _policy.defaultRate,
     overrides: _policy.overrides ? { ..._policy.overrides } : undefined,
   };
 }
 
-export function shouldSample(signal: string): boolean {
+export function shouldSample(signal: string, key?: string): boolean {
+  const _policy = _policies[signal] ?? DEFAULT_POLICY;
   const overrides = _policy.overrides;
-  const rate = overrides && signal in overrides ? overrides[signal] : _policy.defaultRate;
+  const lookupKey = key ?? signal;
+  const rate = overrides && lookupKey in overrides ? overrides[lookupKey] : _policy.defaultRate;
   const clamped = _clamp(rate);
   // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutant — Math.random() in [0,1) so boundary is not observable
   if (clamped <= 0) return false;
@@ -46,5 +49,5 @@ export function shouldSample(signal: string): boolean {
 }
 
 export function _resetSamplingForTests(): void {
-  _policy = { ...DEFAULT_POLICY };
+  _policies = {};
 }
