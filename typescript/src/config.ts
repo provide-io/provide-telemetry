@@ -42,6 +42,80 @@ export interface TelemetryConfig {
   strictSchema: boolean;
   /** Keys required on every log record when strictSchema is enabled. */
   requiredLogKeys: string[];
+
+  // — Logging extras —
+  /** Include timestamp in log output. */
+  logIncludeTimestamp: boolean;
+  /** Include caller info in log output. */
+  logIncludeCaller: boolean;
+  /** Enable PII/secret sanitization in logs. */
+  logSanitize: boolean;
+  /** Attach code.filepath / code.lineno attributes to log records. */
+  logCodeAttributes: boolean;
+  /** Per-module log level overrides (e.g. {"provide.server": "DEBUG"}). */
+  logModuleLevels: Record<string, string>;
+
+  // — Tracing —
+  /** Trace sampling rate (0.0–1.0). */
+  traceSampleRate: number;
+
+  // — Metrics —
+  /** Enable metrics collection. */
+  metricsEnabled: boolean;
+
+  // — Per-signal sampling —
+  /** Probabilistic sampling rate for logs (0.0–1.0). */
+  samplingLogsRate: number;
+  /** Probabilistic sampling rate for traces (0.0–1.0). */
+  samplingTracesRate: number;
+  /** Probabilistic sampling rate for metrics (0.0–1.0). */
+  samplingMetricsRate: number;
+
+  // — Per-signal backpressure —
+  /** Max queue size for log export (0 = unbounded). */
+  backpressureLogsMaxsize: number;
+  /** Max queue size for trace export (0 = unbounded). */
+  backpressureTracesMaxsize: number;
+  /** Max queue size for metric export (0 = unbounded). */
+  backpressureMetricsMaxsize: number;
+
+  // — Per-signal exporter resilience —
+  /** Max retries for log export. */
+  exporterLogsRetries: number;
+  /** Backoff between log export retries (ms). */
+  exporterLogsBackoffMs: number;
+  /** Timeout for log export (ms). */
+  exporterLogsTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterLogsFailOpen: boolean;
+  /** Max retries for trace export. */
+  exporterTracesRetries: number;
+  /** Backoff between trace export retries (ms). */
+  exporterTracesBackoffMs: number;
+  /** Timeout for trace export (ms). */
+  exporterTracesTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterTracesFailOpen: boolean;
+  /** Max retries for metric export. */
+  exporterMetricsRetries: number;
+  /** Backoff between metric export retries (ms). */
+  exporterMetricsBackoffMs: number;
+  /** Timeout for metric export (ms). */
+  exporterMetricsTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterMetricsFailOpen: boolean;
+
+  // — SLO —
+  /** Enable RED (Rate/Error/Duration) metrics. */
+  sloEnableRedMetrics: boolean;
+  /** Enable USE (Utilization/Saturation/Errors) metrics. */
+  sloEnableUseMetrics: boolean;
+
+  // — Security —
+  /** Max length for any single attribute value. */
+  securityMaxAttrValueLength: number;
+  /** Max number of attributes on a single span/log/metric point. */
+  securityMaxAttrCount: number;
 }
 
 const DEFAULTS: TelemetryConfig = {
@@ -56,6 +130,35 @@ const DEFAULTS: TelemetryConfig = {
   consoleOutput: false,
   strictSchema: false,
   requiredLogKeys: [],
+  logIncludeTimestamp: true,
+  logIncludeCaller: true,
+  logSanitize: true,
+  logCodeAttributes: false,
+  logModuleLevels: {},
+  traceSampleRate: 1.0,
+  metricsEnabled: true,
+  samplingLogsRate: 1.0,
+  samplingTracesRate: 1.0,
+  samplingMetricsRate: 1.0,
+  backpressureLogsMaxsize: 0,
+  backpressureTracesMaxsize: 0,
+  backpressureMetricsMaxsize: 0,
+  exporterLogsRetries: 0,
+  exporterLogsBackoffMs: 0,
+  exporterLogsTimeoutMs: 10000,
+  exporterLogsFailOpen: true,
+  exporterTracesRetries: 0,
+  exporterTracesBackoffMs: 0,
+  exporterTracesTimeoutMs: 10000,
+  exporterTracesFailOpen: true,
+  exporterMetricsRetries: 0,
+  exporterMetricsBackoffMs: 0,
+  exporterMetricsTimeoutMs: 10000,
+  exporterMetricsFailOpen: true,
+  sloEnableRedMetrics: false,
+  sloEnableUseMetrics: false,
+  securityMaxAttrValueLength: 1024,
+  securityMaxAttrCount: 64,
 };
 
 let _config: TelemetryConfig = { ...DEFAULTS };
@@ -73,6 +176,35 @@ function nodeEnv(key: string): string | undefined {
   }
 }
 // Stryker enable BlockStatement
+
+/** Parse an env var as a number, falling back to `fallback` on missing or NaN. */
+function envNumber(key: string, fallback: number): number {
+  const raw = nodeEnv(key);
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+/** Parse an env var expressed in seconds and return milliseconds. */
+function envSecondsToMs(key: string, fallbackMs: number): number {
+  const raw = nodeEnv(key);
+  if (raw === undefined) return fallbackMs;
+  const n = Number(raw);
+  return Number.isNaN(n) ? fallbackMs : n * 1000;
+}
+
+/** Parse a module_levels string like "mod1=DEBUG,mod2=WARN" into a Record. */
+function parseModuleLevels(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  const result: Record<string, string> = {};
+  for (const pair of raw.split(',')) {
+    const trimmed = pair.trim();
+    if (!trimmed.includes('=')) continue;
+    const [mod, level] = trimmed.split('=', 2).map((s) => s.trim());
+    if (mod && level) result[mod] = level;
+  }
+  return result;
+}
 
 /**
  * Build a TelemetryConfig from environment variables.
@@ -115,6 +247,90 @@ export function configFromEnv(): TelemetryConfig {
             .filter(Boolean)
         : [];
     })(),
+
+    // Logging extras
+    logIncludeTimestamp: nodeEnv('PROVIDE_LOG_INCLUDE_TIMESTAMP') !== 'false',
+    logIncludeCaller: nodeEnv('PROVIDE_LOG_INCLUDE_CALLER') !== 'false',
+    logSanitize: nodeEnv('PROVIDE_LOG_SANITIZE') !== 'false',
+    logCodeAttributes: nodeEnv('PROVIDE_LOG_CODE_ATTRIBUTES') === 'true',
+    logModuleLevels: parseModuleLevels(nodeEnv('PROVIDE_LOG_MODULE_LEVELS')),
+
+    // Tracing
+    traceSampleRate: envNumber('PROVIDE_TRACE_SAMPLE_RATE', DEFAULTS.traceSampleRate),
+
+    // Metrics
+    metricsEnabled: nodeEnv('PROVIDE_METRICS_ENABLED') !== 'false',
+
+    // Per-signal sampling
+    samplingLogsRate: envNumber('PROVIDE_SAMPLING_LOGS_RATE', DEFAULTS.samplingLogsRate),
+    samplingTracesRate: envNumber('PROVIDE_SAMPLING_TRACES_RATE', DEFAULTS.samplingTracesRate),
+    samplingMetricsRate: envNumber('PROVIDE_SAMPLING_METRICS_RATE', DEFAULTS.samplingMetricsRate),
+
+    // Per-signal backpressure
+    backpressureLogsMaxsize: envNumber(
+      'PROVIDE_BACKPRESSURE_LOGS_MAXSIZE',
+      DEFAULTS.backpressureLogsMaxsize,
+    ),
+    backpressureTracesMaxsize: envNumber(
+      'PROVIDE_BACKPRESSURE_TRACES_MAXSIZE',
+      DEFAULTS.backpressureTracesMaxsize,
+    ),
+    backpressureMetricsMaxsize: envNumber(
+      'PROVIDE_BACKPRESSURE_METRICS_MAXSIZE',
+      DEFAULTS.backpressureMetricsMaxsize,
+    ),
+
+    // Per-signal exporter resilience
+    exporterLogsRetries: envNumber('PROVIDE_EXPORTER_LOGS_RETRIES', DEFAULTS.exporterLogsRetries),
+    exporterLogsBackoffMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS',
+      DEFAULTS.exporterLogsBackoffMs,
+    ),
+    exporterLogsTimeoutMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS',
+      DEFAULTS.exporterLogsTimeoutMs,
+    ),
+    exporterLogsFailOpen: nodeEnv('PROVIDE_EXPORTER_LOGS_FAIL_OPEN') !== 'false',
+    exporterTracesRetries: envNumber(
+      'PROVIDE_EXPORTER_TRACES_RETRIES',
+      DEFAULTS.exporterTracesRetries,
+    ),
+    exporterTracesBackoffMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS',
+      DEFAULTS.exporterTracesBackoffMs,
+    ),
+    exporterTracesTimeoutMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS',
+      DEFAULTS.exporterTracesTimeoutMs,
+    ),
+    exporterTracesFailOpen: nodeEnv('PROVIDE_EXPORTER_TRACES_FAIL_OPEN') !== 'false',
+    exporterMetricsRetries: envNumber(
+      'PROVIDE_EXPORTER_METRICS_RETRIES',
+      DEFAULTS.exporterMetricsRetries,
+    ),
+    exporterMetricsBackoffMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS',
+      DEFAULTS.exporterMetricsBackoffMs,
+    ),
+    exporterMetricsTimeoutMs: envSecondsToMs(
+      'PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS',
+      DEFAULTS.exporterMetricsTimeoutMs,
+    ),
+    exporterMetricsFailOpen: nodeEnv('PROVIDE_EXPORTER_METRICS_FAIL_OPEN') !== 'false',
+
+    // SLO
+    sloEnableRedMetrics: nodeEnv('PROVIDE_SLO_ENABLE_RED_METRICS') === 'true',
+    sloEnableUseMetrics: nodeEnv('PROVIDE_SLO_ENABLE_USE_METRICS') === 'true',
+
+    // Security
+    securityMaxAttrValueLength: envNumber(
+      'PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH',
+      DEFAULTS.securityMaxAttrValueLength,
+    ),
+    securityMaxAttrCount: envNumber(
+      'PROVIDE_SECURITY_MAX_ATTR_COUNT',
+      DEFAULTS.securityMaxAttrCount,
+    ),
   };
 }
 
