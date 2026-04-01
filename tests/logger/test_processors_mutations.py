@@ -340,6 +340,52 @@ class TestAddErrorFingerprintGuards:
         result = add_error_fingerprint(None, "", event)
         assert "error_fingerprint" in result
 
+    def test_3tuple_with_none_traceback_still_produces_fingerprint(self) -> None:
+        """Kills: exc_info[1] is not None → exc_info[2] is not None (mutmut_12)."""
+        exc = ValueError("no traceback")
+        event: dict[str, object] = {
+            "event": "error",
+            "exc_info": (ValueError, exc, None),  # exc[1] non-None, exc[2] = None
+        }
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" in result
+
+    def test_3tuple_fingerprint_type_name_from_exception_not_none(self) -> None:
+        """Kills: type(exc_info[1]).__name__ → type(None).__name__ (mutmut_15, mutmut_16)."""
+        exc = ValueError("test")
+        event: dict[str, object] = {
+            "event": "error",
+            "exc_info": (ValueError, exc, None),  # exc[1]=ValueError, exc[2]=None
+        }
+        result = add_error_fingerprint(None, "", event)
+        expected = _compute_error_fingerprint("ValueError", None)
+        not_expected = _compute_error_fingerprint("NoneType", None)
+        assert result["error_fingerprint"] == expected
+        assert result["error_fingerprint"] != not_expected
+
+    def test_3tuple_fingerprint_uses_actual_traceback_not_none(self) -> None:
+        """Kills: _compute_error_fingerprint(name, exc_info[2]) → (..., None) (mutmut_21)."""
+        try:
+            raise RuntimeError("test")
+        except RuntimeError:
+            exc_info = sys.exc_info()
+        assert exc_info[2] is not None, "test requires a real traceback"
+        event: dict[str, object] = {"event": "error", "exc_info": exc_info}
+        result = add_error_fingerprint(None, "", event)
+        no_tb_hash = _compute_error_fingerprint("RuntimeError", None)
+        with_tb_hash = _compute_error_fingerprint("RuntimeError", exc_info[2])
+        assert result["error_fingerprint"] == with_tb_hash
+        assert result["error_fingerprint"] != no_tb_hash
+
+    def test_exc_name_fallback_uses_exact_name_not_none_string(self) -> None:
+        """Kills: str(exc_name) → str(None) in exc_name fallback path (mutmut_47)."""
+        event: dict[str, object] = {"event": "error", "exc_name": "TimeoutError"}
+        result = add_error_fingerprint(None, "", event)
+        expected = _compute_error_fingerprint("TimeoutError", None)
+        unexpected = _compute_error_fingerprint("None", None)
+        assert result["error_fingerprint"] == expected
+        assert result["error_fingerprint"] != unexpected
+
 
 # ── harden_input: exact boundary values ──────────────────────────────
 
@@ -395,6 +441,23 @@ class TestHardenInputBoundaries:
         proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=1)
         result = proc(None, "", {"event": "x", "nested": {"inner": "\x01dirty"}})
         assert result["nested"] == {"inner": "dirty"}
+
+    def test_dict_recursion_increments_depth_by_one_not_two(self) -> None:
+        """Kills: depth + 1 → depth + 2 for dict recursion (mutmut_15)."""
+        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=2)
+        event: dict[str, object] = {
+            "event": "x",
+            "outer": {"middle": {"inner": "\x01dirty"}},
+        }
+        result = proc(None, "", event)
+        assert result["outer"]["middle"]["inner"] == "dirty"
+
+    def test_list_recursion_increments_depth_by_one_kills_minus_one_and_plus_two(self) -> None:
+        """Kills: depth + 1 → depth - 1 (mutmut_22) and depth + 2 (mutmut_23) for lists."""
+        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=2)
+        event: dict[str, object] = {"event": "x", "items": [["\x01dirty"]]}
+        result = proc(None, "", event)
+        assert result["items"] == [["dirty"]]
 
 
 # ── sanitize_sensitive_fields: max_depth default ─────────────────────
