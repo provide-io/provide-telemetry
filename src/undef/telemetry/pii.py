@@ -98,8 +98,11 @@ def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
 
 
 def _apply_rule(
-    node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), depth: int = 0
-) -> Any:  # pragma: no mutate
+    node: Any,
+    rule: PIIRule,
+    current_path: tuple[str, ...] = (),
+    depth: int = 0,  # pragma: no mutate
+) -> Any:
     if depth >= 32:  # hard safety limit
         return node
     if isinstance(node, dict):
