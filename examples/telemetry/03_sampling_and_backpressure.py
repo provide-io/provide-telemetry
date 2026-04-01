@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """🎲 Sampling policies and backpressure queue controls.
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 
-from undef.telemetry import (
+from provide.telemetry import (
     QueuePolicy,
     SamplingPolicy,
     counter,

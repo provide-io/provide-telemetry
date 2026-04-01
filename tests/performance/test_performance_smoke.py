@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """In-process performance smoke tests for hot-path telemetry operations.
@@ -18,12 +18,12 @@ from unittest.mock import patch
 
 import pytest
 
-from undef.telemetry.backpressure import reset_queues_for_tests
-from undef.telemetry.health import reset_health_for_tests
-from undef.telemetry.logger.processors import sanitize_sensitive_fields
-from undef.telemetry.pii import reset_pii_rules_for_tests
-from undef.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
-from undef.telemetry.schema.events import event_name, validate_event_name
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.health import reset_health_for_tests
+from provide.telemetry.logger.processors import sanitize_sensitive_fields
+from provide.telemetry.pii import reset_pii_rules_for_tests
+from provide.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy, should_sample
+from provide.telemetry.schema.events import event_name, validate_event_name
 
 pytestmark = pytest.mark.integration
 
@@ -58,12 +58,12 @@ def _ns_per_op(fn: _CallableT, iterations: int = ITERATIONS) -> float:
 
 class TestEventNamePerformance:
     def test_three_segment_event_name(self) -> None:
-        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=False):
+        with patch("provide.telemetry.runtime._is_strict_event_name", return_value=False):
             ns = _ns_per_op(lambda: event_name("auth", "login", "success"))
         assert ns < MAX_EVENT_NAME_NS, f"event_name(3 seg) too slow: {ns:.0f} ns/op"
 
     def test_five_segment_event_name(self) -> None:
-        with patch("undef.telemetry.runtime._is_strict_event_name", return_value=False):
+        with patch("provide.telemetry.runtime._is_strict_event_name", return_value=False):
             ns = _ns_per_op(lambda: event_name("payment", "subscription", "renewal", "charge", "success"))
         assert ns < MAX_EVENT_NAME_NS, f"event_name(5 seg) too slow: {ns:.0f} ns/op"
 

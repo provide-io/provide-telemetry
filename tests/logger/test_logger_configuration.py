@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -10,10 +10,10 @@ from typing import Any, cast
 
 import pytest
 
-from undef.telemetry.config import LoggingConfig, TelemetryConfig
-from undef.telemetry.exceptions import ConfigurationError
-from undef.telemetry.logger import core as core_mod
-from undef.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.config import LoggingConfig, TelemetryConfig
+from provide.telemetry.exceptions import ConfigurationError
+from provide.telemetry.logger import core as core_mod
+from provide.telemetry.logger.core import _reset_logging_for_tests
 
 
 def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -45,7 +45,7 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
     structlog_mod: Any = core_mod_any.structlog
     monkeypatch.setattr(structlog_mod, "configure", _configure)
 
-    cfg = TelemetryConfig.from_env({"UNDEF_LOG_LEVEL": "WARNING", "UNDEF_LOG_SANITIZE": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "WARNING", "PROVIDE_LOG_SANITIZE": "true"})
     core_mod.configure_logging(cfg)
 
     assert seen_level == [logging.WARNING]
@@ -67,7 +67,7 @@ def test_configure_logging_console_renderer_respects_tty(monkeypatch: pytest.Mon
     core_mod_any = cast(Any, core_mod)
     structlog_mod: Any = core_mod_any.structlog
     monkeypatch.setattr(structlog_mod.dev, "ConsoleRenderer", _ConsoleRenderer)
-    cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "console"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "console"})
     core_mod.configure_logging(cfg)
     # In test environments, stderr is not a TTY so colors=False
     import sys
@@ -86,7 +86,7 @@ def test_fmt_invalid_still_rejects() -> None:
 
 
 def test_from_env_pretty_format() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "pretty"})
     assert cfg.logging.fmt == "pretty"
 
 
@@ -113,9 +113,9 @@ def test_pretty_key_color_empty_is_valid() -> None:
 def test_from_env_pretty_colors_and_fields() -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_LOG_PRETTY_KEY_COLOR": "cyan",
-            "UNDEF_LOG_PRETTY_VALUE_COLOR": "blue",
-            "UNDEF_LOG_PRETTY_FIELDS": "user_id, session_id",
+            "PROVIDE_LOG_PRETTY_KEY_COLOR": "cyan",
+            "PROVIDE_LOG_PRETTY_VALUE_COLOR": "blue",
+            "PROVIDE_LOG_PRETTY_FIELDS": "user_id, session_id",
         }
     )
     assert cfg.logging.pretty_key_color == "cyan"

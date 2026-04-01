@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Integration tests: library + real OTel SDK.
@@ -16,12 +16,12 @@ from collections.abc import Generator
 
 import pytest
 
-from undef.telemetry.backpressure import reset_queues_for_tests
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.sampling import reset_sampling_for_tests
-from undef.telemetry.setup import shutdown_telemetry
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
-from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.sampling import reset_sampling_for_tests
+from provide.telemetry.setup import shutdown_telemetry
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
 pytestmark = pytest.mark.otel
 
@@ -48,8 +48,8 @@ class TestTraceDecoratorWithRealOTel:
         sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
         sdk_resources = pytest.importorskip("opentelemetry.sdk.resources")
 
-        from undef.telemetry.tracing import provider as pmod
-        from undef.telemetry.tracing import trace
+        from provide.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import trace
 
         resource = sdk_resources.Resource.create({"service.name": "test-decorator"})
         provider = sdk_trace.TracerProvider(resource=resource)
@@ -78,8 +78,8 @@ class TestTraceDecoratorWithRealOTel:
         sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
         sdk_resources = pytest.importorskip("opentelemetry.sdk.resources")
 
-        from undef.telemetry.tracing import provider as pmod
-        from undef.telemetry.tracing import trace
+        from provide.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import trace
 
         resource = sdk_resources.Resource.create({"service.name": "test-async-decorator"})
         provider = sdk_trace.TracerProvider(resource=resource)
@@ -111,7 +111,7 @@ class TestW3CPropagationWithRealOTel:
         pytest.importorskip("opentelemetry.trace.propagation.tracecontext")
         pytest.importorskip("opentelemetry.context")
 
-        from undef.telemetry._otel import attach_w3c_context, detach_w3c_context
+        from provide.telemetry._otel import attach_w3c_context, detach_w3c_context
 
         token = attach_w3c_context(
             "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -126,7 +126,7 @@ class TestW3CPropagationWithRealOTel:
         """Full propagation cycle: extract W3C from scope, bind, verify, clear."""
         pytest.importorskip("opentelemetry.trace.propagation.tracecontext")
 
-        from undef.telemetry.propagation import (
+        from provide.telemetry.propagation import (
             bind_propagation_context,
             clear_propagation_context,
             extract_w3c_context,
@@ -154,7 +154,7 @@ class TestW3CPropagationWithRealOTel:
     def test_detach_none_token_is_noop(self) -> None:
         """Detaching None should be safe."""
         pytest.importorskip("opentelemetry.context")
-        from undef.telemetry._otel import detach_w3c_context
+        from provide.telemetry._otel import detach_w3c_context
 
         detach_w3c_context(None)  # Should not raise
 
@@ -166,19 +166,19 @@ class TestMetricsWithRealOTel:
     def test_setup_metrics_creates_meter(self) -> None:
         """setup_metrics with real OTel creates a configured MeterProvider."""
         pytest.importorskip("opentelemetry.metrics")
-        from undef.telemetry.metrics import provider as mmod
+        from provide.telemetry.metrics import provider as mmod
 
         mmod._set_meter_for_test(None)
         mmod._refresh_otel_metrics()
 
-        cfg = TelemetryConfig.from_env({"UNDEF_METRICS_ENABLED": "true"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_METRICS_ENABLED": "true"})
         mmod.setup_metrics(cfg)
 
         assert mmod._HAS_OTEL_METRICS is True
 
     def test_shutdown_metrics_is_safe(self) -> None:
         """Shutting down metrics when no provider is set should not crash."""
-        from undef.telemetry.metrics.provider import shutdown_metrics
+        from provide.telemetry.metrics.provider import shutdown_metrics
 
         shutdown_metrics()  # Should not raise
 
@@ -190,10 +190,10 @@ class TestSetupLifecycleWithRealOTel:
     def test_full_setup_and_shutdown(self) -> None:
         """Full setup_telemetry + shutdown_telemetry cycle with real OTel."""
         pytest.importorskip("opentelemetry")
-        from undef.telemetry.setup import setup_telemetry
+        from provide.telemetry.setup import setup_telemetry
 
         _reset_tracing_for_tests()
-        cfg = setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        cfg = setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
         assert cfg.tracing.enabled is True
         shutdown_telemetry()
 
@@ -202,16 +202,16 @@ class TestSetupLifecycleWithRealOTel:
         otel_trace = pytest.importorskip("opentelemetry.trace")
         pytest.importorskip("opentelemetry.sdk.trace")
 
-        from undef.telemetry.metrics.provider import _set_meter_for_test
-        from undef.telemetry.setup import setup_telemetry
-        from undef.telemetry.tracing import provider as pmod
-        from undef.telemetry.tracing import trace
+        from provide.telemetry.metrics.provider import _set_meter_for_test
+        from provide.telemetry.setup import setup_telemetry
+        from provide.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import trace
 
         _reset_tracing_for_tests()
         _set_meter_for_test(None)
 
         # Cycle 1: setup, create a span, verify it works
-        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
         assert pmod._provider_configured is True
 
         @trace("reinit.cycle1")
@@ -228,7 +228,7 @@ class TestSetupLifecycleWithRealOTel:
         # Cycle 2: re-setup, create another span, verify it works
         _reset_tracing_for_tests()
         _set_meter_for_test(None)
-        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
         assert pmod._provider_configured is True
 
         @trace("reinit.cycle2")
@@ -248,11 +248,11 @@ class TestSetupLifecycleWithRealOTel:
 
     def test_reconfigure_raises_after_real_otel_provider_install(self) -> None:
         pytest.importorskip("opentelemetry")
-        from undef.telemetry.runtime import reconfigure_telemetry
-        from undef.telemetry.setup import setup_telemetry
+        from provide.telemetry.runtime import reconfigure_telemetry
+        from provide.telemetry.setup import setup_telemetry
 
         _reset_tracing_for_tests()
-        setup_telemetry(TelemetryConfig.from_env({"UNDEF_TRACE_ENABLED": "true"}))
+        setup_telemetry(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
         with pytest.raises(RuntimeError, match="provider-changing reconfiguration is unsupported"):
             reconfigure_telemetry(TelemetryConfig(service_name="new-service"))
 
@@ -262,7 +262,7 @@ class TestOtelGuardConditions:
 
     def test_load_otel_trace_api_returns_module_when_otel_present(self) -> None:
         pytest.importorskip("opentelemetry.trace")
-        from undef.telemetry.tracing import provider as pmod
+        from provide.telemetry.tracing import provider as pmod
 
         original = pmod._HAS_OTEL
         pmod._HAS_OTEL = True
@@ -275,7 +275,7 @@ class TestOtelGuardConditions:
 
     def test_load_otel_metrics_api_returns_module_when_otel_present(self) -> None:
         pytest.importorskip("opentelemetry.metrics")
-        from undef.telemetry.metrics import provider as mmod
+        from provide.telemetry.metrics import provider as mmod
 
         original = mmod._HAS_OTEL_METRICS
         mmod._HAS_OTEL_METRICS = True

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Memray stress test for PII sanitization engine."""
 
 from __future__ import annotations
 
-from undef.telemetry.pii import PIIRule, register_pii_rule, replace_pii_rules, sanitize_payload
+from provide.telemetry.pii import PIIRule, register_pii_rule, replace_pii_rules, sanitize_payload
 
 FLAT_PAYLOAD = {
     "user_id": "u-1234",

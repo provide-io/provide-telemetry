@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-import undef.telemetry as t
+import provide.telemetry as t
 
 
 def test_public_api_exports() -> None:
@@ -58,7 +58,7 @@ def test_import_has_no_root_logging_side_effect() -> None:
         [
             sys.executable,
             "-c",
-            "import logging; before=len(logging.getLogger().handlers); import undef.telemetry; "
+            "import logging; before=len(logging.getLogger().handlers); import provide.telemetry; "
             "after=len(logging.getLogger().handlers); print(before, after)",
         ],
         check=True,

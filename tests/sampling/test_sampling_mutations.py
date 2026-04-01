@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting mutation-testing survivors in sampling.py."""
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry import health as health_mod
-from undef.telemetry import sampling as sampling_mod
-from undef.telemetry.sampling import (
+from provide.telemetry import health as health_mod
+from provide.telemetry import sampling as sampling_mod
+from provide.telemetry.sampling import (
     SamplingPolicy,
     _normalize_rate,
     get_sampling_policy,

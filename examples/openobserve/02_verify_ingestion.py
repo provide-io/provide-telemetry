@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def main() -> None:
     password = _require_env("OPENOBSERVE_PASSWORD")
     auth = _auth_header(user, password)
     run_id = str(int(time.time()))
-    os.environ["UNDEF_EXAMPLE_RUN_ID"] = run_id
+    os.environ["PROVIDE_EXAMPLE_RUN_ID"] = run_id
 
     start_us = int(time.time() * 1_000_000) - (2 * 60 * 60 * 1_000_000)
     trace_name = f"example.openobserve.work.{run_id}"
