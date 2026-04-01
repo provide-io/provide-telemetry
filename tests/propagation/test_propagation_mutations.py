@@ -479,3 +479,20 @@ class TestBindPropagationContext:
         assert detach_calls == ["token-2", "token-1"]  # mutant yields token-0 here
         propagation_mod.clear_propagation_context()
         assert detach_calls == ["token-2", "token-1", "token-0"]
+
+
+class TestExtractW3cContextSizeGuards:
+    def test_tracestate_512_accepted(self) -> None:
+        ts = "v" * 512
+        scope: dict[str, Any] = {"headers": [(b"tracestate", ts.encode())]}
+        assert propagation_mod.extract_w3c_context(scope).tracestate == ts
+
+    def test_tracestate_32_pairs_accepted(self) -> None:
+        ts = ",".join(f"v{i}=x" for i in range(32))
+        scope: dict[str, Any] = {"headers": [(b"tracestate", ts.encode())]}
+        assert propagation_mod.extract_w3c_context(scope).tracestate == ts
+
+    def test_baggage_8192_accepted(self) -> None:
+        bg = "k=" + "v" * 8190
+        scope: dict[str, Any] = {"headers": [(b"baggage", bg.encode())]}
+        assert propagation_mod.extract_w3c_context(scope).baggage == bg
