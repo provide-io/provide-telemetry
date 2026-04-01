@@ -28,11 +28,12 @@ from undef.telemetry import (
     event_name,
     get_health_snapshot,
     get_logger,
+    reconfigure_telemetry,
     setup_telemetry,
     shutdown_telemetry,
     trace,
 )
-from undef.telemetry.config import TelemetryConfig, TracingConfig
+from undef.telemetry.config import SchemaConfig, TelemetryConfig, TracingConfig
 
 
 def main() -> None:
@@ -61,7 +62,10 @@ def main() -> None:
         print(f"     Is TelemetryError? {isinstance(exc, TelemetryError)}")
         print(f"     Is ValueError?     {isinstance(exc, ValueError)}")
 
-    # EventSchemaError — bad event names
+    # Enable strict event naming so malformed names raise EventSchemaError.
+    reconfigure_telemetry(TelemetryConfig(event_schema=SchemaConfig(strict_event_name=True)))
+
+    # EventSchemaError — bad event names (requires strict mode)
     print("\n  2️⃣  EventSchemaError (invalid event name):")
     try:
         event_name("only_one_segment")

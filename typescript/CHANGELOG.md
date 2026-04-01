@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.4.2] — 2026-03-29
+
+### Tests
+
+* **ts:** assert exact ANSI codes, SKIP_KEYS completeness, and msg fallback ([8c135eb](https://github.com/undef-games/undef-telemetry/commit/8c135eb))
+* **ts:** anchor case-fold test with exact hash to kill toUpperCase mutation ([19affde](https://github.com/undef-games/undef-telemetry/commit/19affde))
+* **ts:** assert exact fingerprint values to kill mutation survivors ([9ef4d82](https://github.com/undef-games/undef-telemetry/commit/9ef4d82))
+* **ts:** add Stryker disable pragma for otel covered-0 survivors ([d979aba](https://github.com/undef-games/undef-telemetry/commit/d979aba))
+
+---
+
+## [0.4.1] — 2026-03-28
+
+### Features
+
+* **typescript:** add error fingerprinting and session correlation with 100% coverage ([6769ed7](https://github.com/undef-games/undef-telemetry/commit/6769ed7))
+* **typescript:** add pretty ANSI log renderer with color support and TTY detection ([add0cc2](https://github.com/undef-games/undef-telemetry/commit/add0cc2))
+* **typescript:** add conditional exports for browser/edge OTel no-op stub ([c0f0879](https://github.com/undef-games/undef-telemetry/commit/c0f0879))
+
+### Bug Fixes
+
+* **typescript:** remove workerd/edge-light from otel no-op (Cloudflare/Vercel support OTel natively) ([880bfee](https://github.com/undef-games/undef-telemetry/commit/880bfee))
+
+### Tests
+
+* **typescript:** add otel-noop coverage test ([2f93d6b](https://github.com/undef-games/undef-telemetry/commit/2f93d6b))
+* **typescript:** kill surviving mutants in backpressure, cardinality, resilience ([eb8ee9b](https://github.com/undef-games/undef-telemetry/commit/eb8ee9b))
+
+---
+
 ## [0.4.0](https://github.com/undef-games/undef-telemetry/compare/telemetry-v0.3.0...telemetry-v0.4.0) (2026-03-28)
 
 

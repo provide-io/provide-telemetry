@@ -76,7 +76,7 @@ def main() -> None:
             log.error("example.slo.error", exc_name=exc_name, status_code=code, **taxonomy)
 
     # ── 🩺 Full health snapshot ──────────────────────────────
-    print("\n🩺 Full HealthSnapshot (all 24 fields):")
+    print("\n🩺 Full HealthSnapshot (all 25 fields):")
     s = get_health_snapshot()
     print(
         f"  📦 Queue depths:       logs={s.queue_depth_logs}  traces={s.queue_depth_traces}  metrics={s.queue_depth_metrics}"
