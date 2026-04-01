@@ -40,7 +40,7 @@ def do_work(iteration: int) -> None:
     histogram("example.basic.latency_ms", "Simulated latency", "ms").record(
         iteration * 12.5, {"iteration": str(iteration)}
     )
-    gauge("example.basic.active_tasks", "Active task gauge", "1").add(1)
+    gauge("example.basic.active_tasks", "Active task gauge", "1").set(1)
 
 
 def main() -> None:
