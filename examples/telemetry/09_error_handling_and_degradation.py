@@ -33,7 +33,7 @@ from provide.telemetry import (
     shutdown_telemetry,
     trace,
 )
-from undef.telemetry.config import SchemaConfig, TelemetryConfig, TracingConfig
+from provide.telemetry.config import SchemaConfig, TelemetryConfig, TracingConfig
 
 
 def main() -> None:

@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
-from undef.telemetry import ExporterPolicy, get_exporter_policy, get_health_snapshot, set_exporter_policy
-from undef.telemetry.resilience import run_with_resilience
+import time
+
+from provide.telemetry import ExporterPolicy, get_exporter_policy, get_health_snapshot, set_exporter_policy
+from provide.telemetry.resilience import run_with_resilience
 
 
 def main() -> None:

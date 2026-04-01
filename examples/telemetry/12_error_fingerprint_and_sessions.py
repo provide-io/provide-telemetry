@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 
-from undef.telemetry import (
+from provide.telemetry import (
     bind_session_context,
     clear_session_context,
     get_logger,
@@ -25,7 +25,7 @@ from undef.telemetry import (
 )
 
 # Private API — used here for demonstration purposes only.
-from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
+from provide.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
 
 
 def _demo_error_fingerprint() -> None:

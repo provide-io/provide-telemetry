@@ -8,7 +8,18 @@ from __future__ import annotations
 
 import time
 
-from undef.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry import (
+    bind_context,
+    clear_context,
+    counter,
+    gauge,
+    get_logger,
+    histogram,
+    setup_telemetry,
+    shutdown_telemetry,
+    trace,
+    unbind_context,
+)
 
 
 @trace("example.basic.work")

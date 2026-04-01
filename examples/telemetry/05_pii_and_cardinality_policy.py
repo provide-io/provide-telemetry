@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from undef.telemetry import (
+from provide.telemetry import (
     PIIRule,
     counter,
     get_logger,
@@ -17,13 +17,19 @@ from undef.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
-from undef.telemetry.cardinality import guard_attributes
+from provide.telemetry.cardinality import (
+    OVERFLOW_VALUE,
+    clear_cardinality_limits,
+    get_cardinality_limits,
+    guard_attributes,
+)
+from provide.telemetry.pii import get_pii_rules, replace_pii_rules, sanitize_payload
 
 
 def main() -> None:
     setup_telemetry()
     log = get_logger("examples.policy")
-    token_value = os.getenv("UNDEF_EXAMPLE_TOKEN", "example-token-from-env")
+    token_value = os.getenv("PROVIDE_EXAMPLE_TOKEN", "example-token-from-env")
 
     register_pii_rule(PIIRule(path=("user", "email"), mode="hash"))
     register_pii_rule(PIIRule(path=("user", "full_name"), mode="truncate", truncate_to=3))

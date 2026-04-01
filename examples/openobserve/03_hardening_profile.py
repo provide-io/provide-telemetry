@@ -11,7 +11,7 @@ import time
 from base64 import b64encode
 from urllib.parse import quote
 
-from undef.telemetry import (
+from provide.telemetry import (
     PIIRule,
     event_name,
     get_health_snapshot,
@@ -22,7 +22,7 @@ from undef.telemetry import (
     shutdown_telemetry,
     trace,
 )
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry.config import TelemetryConfig
 
 
 def _require_env(name: str) -> str:
@@ -35,7 +35,7 @@ def _require_env(name: str) -> str:
 
 @trace(event_name("example", "openobserve", "work"))
 def _emit(iteration: int) -> None:
-    token_value = os.getenv("UNDEF_EXAMPLE_TOKEN", "example-token-from-env")
+    token_value = os.getenv("PROVIDE_EXAMPLE_TOKEN", "example-token-from-env")
     get_logger("examples.openobserve.hardening").info(
         event_name("example", "openobserve", "log"),
         iteration=iteration,
@@ -52,21 +52,21 @@ def main() -> None:
     auth = f"Basic {b64encode(f'{user}:{password}'.encode()).decode('ascii')}"
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "undef-telemetry-hardening-example",
-            "UNDEF_TELEMETRY_VERSION": "hardening",
-            "UNDEF_SAMPLING_LOGS_RATE": "1.0",
-            "UNDEF_SAMPLING_TRACES_RATE": "1.0",
-            "UNDEF_SAMPLING_METRICS_RATE": "1.0",
-            "UNDEF_BACKPRESSURE_TRACES_MAXSIZE": "64",
-            "UNDEF_EXPORTER_LOGS_RETRIES": "1",
-            "UNDEF_EXPORTER_TRACES_RETRIES": "1",
-            "UNDEF_EXPORTER_METRICS_RETRIES": "1",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-hardening-example",
+            "PROVIDE_TELEMETRY_VERSION": "hardening",
+            "PROVIDE_SAMPLING_LOGS_RATE": "1.0",
+            "PROVIDE_SAMPLING_TRACES_RATE": "1.0",
+            "PROVIDE_SAMPLING_METRICS_RATE": "1.0",
+            "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE": "64",
+            "PROVIDE_EXPORTER_LOGS_RETRIES": "1",
+            "PROVIDE_EXPORTER_TRACES_RETRIES": "1",
+            "PROVIDE_EXPORTER_METRICS_RETRIES": "1",
             "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={quote(auth, safe='')}",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{base_url}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{base_url}/v1/logs",
-            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
-            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
+            "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
+            "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
         }
     )
 
