@@ -442,3 +442,39 @@ class TestApplyDefaultRedactionListDepthIncrement:
         result = sanitize_payload(payload, enabled=True, max_depth=3)
         # With original depth+1, password inside the list is processed and redacted
         assert result["data"][0]["password"] == "***"
+
+
+class TestApplyRuleMutants:
+    def test_depth_32_returns_node_unchanged(self) -> None:
+        rule = PIIRule(path=("password",), mode="redact")
+        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
+        result = _apply_rule(node, rule, depth=32)
+        assert result is node
+
+    def test_redact_mode_value_in_output(self) -> None:
+        rule = PIIRule(path=("password",), mode="redact")
+        result = _apply_rule({"password": "secret"}, rule)  # pragma: allowlist secret
+        assert result["password"] == "***"
+
+    def test_dict_recursion_depth_30(self) -> None:
+        rule = PIIRule(path=("inner", "password"), mode="redact")
+        node: dict[str, Any] = {"inner": {"password": "secret"}}  # pragma: allowlist secret
+        result = _apply_rule(node, rule, depth=30)
+        assert result["inner"]["password"] == "***"
+
+
+class TestApplyDefaultRedactionBoundaries:
+    def test_depth_at_max_returns_unchanged(self) -> None:
+        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=1)
+        assert result["password"] == "secret"  # pragma: allowlist secret
+
+    def test_none_rule_targeted_keys(self) -> None:
+        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(node, node, rule_targeted_keys=None)
+        assert result["password"] == "***"
+
+    def test_dict_recursion_depth_1_max_3(self) -> None:
+        node: dict[str, Any] = {"outer": {"password": "secret"}}  # pragma: allowlist secret
+        result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=3)
+        assert result["outer"]["password"] == "***"

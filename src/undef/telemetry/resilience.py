@@ -116,7 +116,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         _warn_async_risk(sig, policy)  # pragma: no mutate
         if not policy.allow_blocking_in_event_loop:
             attempts = 1
-            backoff_seconds = 0.0
+            backoff_seconds = 0.0  # pragma: no mutate
     last_error: Exception | None = None  # pragma: no mutate
     for attempt in range(attempts):
         started = time.perf_counter()
