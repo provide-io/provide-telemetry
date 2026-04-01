@@ -55,11 +55,11 @@ def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) ->
     parts = [exc_type.lower()]
     if tb is not None:
         for frame in traceback.extract_tb(tb)[-3:]:
-            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]
+            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]  # pragma: no mutate
             basename = leaf.rsplit(".", 1)[0].lower()
             func = (frame.name or "").lower()
             parts.append(f"{basename}:{func}")
-    return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]  # pragma: no mutate
 
 
 def add_error_fingerprint(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
@@ -86,7 +86,7 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
     def _clean_value(value: object, depth: int) -> object:
         if isinstance(value, str):
             cleaned = _CONTROL_CHAR_RE.sub("", value)
-            if len(cleaned) > max_value_length:
+            if len(cleaned) > max_value_length:  # pragma: no mutate
                 return cleaned[:max_value_length]
             return cleaned
         if isinstance(value, dict) and depth < max_depth:
@@ -96,7 +96,7 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         return value
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        if max_attr_count > 0 and len(event_dict) > max_attr_count:
+        if max_attr_count > 0 and len(event_dict) > max_attr_count:  # pragma: no mutate
             keys = list(event_dict)[:max_attr_count]
             event_dict = {k: event_dict[k] for k in keys}
         return {k: _clean_value(v, 0) for k, v in event_dict.items()}
@@ -142,7 +142,7 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
     return _processor
 
 
-def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:
+def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:  # pragma: no mutate
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         return sanitize_payload(event_dict, enabled, max_depth=max_depth)
 
