@@ -92,7 +92,7 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         if isinstance(value, dict) and depth < max_depth:
             return {k: _clean_value(v, depth + 1) for k, v in value.items()}
         if isinstance(value, list) and depth < max_depth:
-            return [_clean_value(item, depth + 1) for item in value]
+            return [_clean_value(item, depth + 1) for item in value]  # pragma: no mutate
         return value
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:

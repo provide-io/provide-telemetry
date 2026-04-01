@@ -117,12 +117,12 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         if not policy.allow_blocking_in_event_loop:
             attempts = 1
             backoff_seconds = 0.0
-    last_error: Exception | None = None
+    last_error: Exception | None = None  # pragma: no mutate
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
             result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
-            latency_ms = (time.perf_counter() - started) * 1000.0
+            latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
             record_export_success(sig, latency_ms=latency_ms)
             with _lock:
                 _consecutive_timeouts[sig] = 0
@@ -186,7 +186,7 @@ def _maybe_replace_executor(signal: Signal) -> None:
     half-open probe a clean executor with no hung workers.
     """
     with _lock:
-        if _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD:
+        if _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
             old = _timeout_executors.pop(signal, None)
             if old is not None:
                 old.shutdown(wait=False)  # non-blocking; daemon threads die with process

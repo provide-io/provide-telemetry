@@ -136,8 +136,8 @@ class TestApplyRuleList:
         """
         node: dict[str, Any] = {
             "items": [
-                {"secret": "value1", "ok": "data1"},
-                {"secret": "value2", "ok": "data2"},
+                {"secret": "value1", "ok": "data1"},  # pragma: allowlist secret
+                {"secret": "value2", "ok": "data2"},  # pragma: allowlist secret
             ]
         }
         rule = PIIRule(path=("items", "*", "secret"), mode="redact")
@@ -161,8 +161,11 @@ class TestApplyDefaultSensitiveKeyRedaction:
 
         If node is dict but original is not dict, should return node unchanged.
         """
-        result = _apply_default_sensitive_key_redaction({"password": "secret"}, "not_a_dict")
-        assert result == {"password": "secret"}
+        result = _apply_default_sensitive_key_redaction(
+            {"password": "secret"},
+            "not_a_dict",  # pragma: allowlist secret
+        )
+        assert result == {"password": "secret"}  # pragma: allowlist secret
 
     def test_orig_value_fallback_uses_value_not_none(self) -> None:
         """Kills `original.get(key, value)` -> `get(key, None)` or `get(key,)`.
@@ -186,7 +189,7 @@ class TestApplyDefaultSensitiveKeyRedaction:
         original: dict[str, Any] = {"password": "original_password"}
         result = _apply_default_sensitive_key_redaction(node, original)
         # value != orig_value, so keep the already-masked value
-        assert result["password"] == "already_masked"
+        assert result["password"] == "already_masked"  # pragma: allowlist secret
 
     def test_nested_dict_recursion(self) -> None:
         """Kills various mutants by testing nested dict traversal."""
@@ -242,9 +245,9 @@ class TestSanitizePayload:
         inner: dict[str, Any] = {"secret": "value", "safe": "data"}
         payload: dict[str, Any] = {"nested": inner}
         replace_pii_rules([PIIRule(path=("nested", "secret"), mode="drop")])
-        result = sanitize_payload(payload, enabled=True)
+        result = sanitize_payload(payload, enabled=True)  # pragma: allowlist secret
         # Original must be unmodified
-        assert payload["nested"]["secret"] == "value"
+        assert payload["nested"]["secret"] == "value"  # pragma: allowlist secret
         # Result should have secret removed
         assert "secret" not in result["nested"]
         # Verify they are different objects
@@ -262,7 +265,7 @@ class TestSanitizePayload:
 
     def test_sanitize_disabled_returns_copy_not_original(self) -> None:
         """When disabled, returns a shallow copy (equal content, different object)."""
-        payload: dict[str, Any] = {"password": "secret"}
+        payload: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
         result = sanitize_payload(payload, enabled=False)
         assert result == payload
         assert result is not payload
@@ -301,7 +304,7 @@ class TestSanitizePayload:
         result = sanitize_payload(payload, enabled=True)
         # Custom rule is a no-op (value shorter than truncate_to), but the key
         # is tracked as rule-targeted so default redaction must NOT apply "***"
-        assert result["outer"]["password"] == "short"
+        assert result["outer"]["password"] == "short"  # pragma: allowlist secret
 
     def test_rule_targeted_keys_propagates_through_list(self) -> None:
         """Kills mutant replacing rule_targeted_keys with None in list recursion."""
@@ -372,9 +375,9 @@ class TestApplyDefaultSensitiveKeyRedactionMutants:
         When node is a dict but original is a non-dict (e.g., a string),
         the `or` mutant would enter the dict branch and crash on original.get().
         """
-        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)
+        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)  # pragma: allowlist secret
         # Should return the node unchanged since original is not a dict
-        assert result == {"password": "secret"}
+        assert result == {"password": "secret"}  # pragma: allowlist secret
 
     def test_and_vs_or_dict_isinstance_with_non_dict_node(self) -> None:
         """Complementary: node is NOT a dict but original IS a dict.
@@ -399,9 +402,9 @@ class TestSanitizePayloadEnabledFlag:
         When enabled=False, sensitive keys must NOT be redacted.
         The mutant would invert the check, redacting when disabled.
         """
-        payload: dict[str, Any] = {"password": "secret", "data": "public"}
+        payload: dict[str, Any] = {"password": "secret", "data": "public"}  # pragma: allowlist secret
         result = sanitize_payload(payload, enabled=False)
-        assert result["password"] == "secret"  # NOT redacted
+        assert result["password"] == "secret"  # NOT redacted  # pragma: allowlist secret
         assert result["data"] == "public"
 
     def test_enabled_redacts_sensitive_keys(self) -> None:
@@ -414,3 +417,28 @@ class TestSanitizePayloadEnabledFlag:
         result = sanitize_payload(payload, enabled=True)
         assert result["password"] == "***"  # redacted
         assert result["data"] == "public"
+
+
+class TestApplyDefaultRedactionListDepthIncrement:
+    """Kill pii.x__apply_default_sensitive_key_redaction__mutmut_47: depth+1 → depth+2."""
+
+    def test_list_depth_increment_is_one_not_two(self) -> None:
+        """Kills mutmut_47: depth+1 → depth+2 in the list recursion branch.
+
+        Trace with max_depth=3 and payload {"data": [{"password": "secret"}]}:
+
+        Original (depth+1):
+          depth=0: outer dict → "data" value (list) → call list at depth=0+1=1
+          depth=1: list → call items at depth=1+1=2
+          depth=2 < 3: process dict → "password" → redact → "***" ✓
+
+        Mutation (depth+2):
+          depth=0: outer dict → "data" value (list) → call list at depth=0+1=1
+          depth=1: list → call items at depth=1+2=3
+          depth=3 >= 3: return node unchanged → "secret" ✗
+        """
+        replace_pii_rules([])
+        payload: dict[str, Any] = {"data": [{"password": "secret"}]}
+        result = sanitize_payload(payload, enabled=True, max_depth=3)
+        # With original depth+1, password inside the list is processed and redacted
+        assert result["data"][0]["password"] == "***"

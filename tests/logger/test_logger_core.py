@@ -440,3 +440,53 @@ def test_configure_logging_module_level_higher_than_default(monkeypatch: pytest.
 
     processors = configure_calls[0]["processors"]
     assert any(isinstance(p, _LevelFilter) for p in processors)
+
+
+def test_configure_logging_passes_max_nesting_depth_to_harden_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Kills mutmut_33: harden_input receives None instead of config.security.max_nesting_depth.
+    # With None, `depth < max_depth` raises TypeError when processing a nested dict.
+    _reset_logging_for_tests()
+    core_mod_any = cast(Any, core_mod)
+    captured: list[tuple[Any, ...]] = []
+    original = core_mod_any.harden_input
+
+    def _spy_harden(*args: Any) -> Any:
+        captured.append(args)
+        return original(*args)
+
+    monkeypatch.setattr(core_mod_any, "harden_input", _spy_harden)
+    monkeypatch.setattr(core_mod_any.structlog, "configure", lambda **kw: None)
+
+    cfg = TelemetryConfig.from_env({"UNDEF_SECURITY_MAX_NESTING_DEPTH": "3"})
+    configure_logging(cfg)
+
+    assert len(captured) == 1
+    _max_attr_value_length, _max_attr_count, max_nesting_depth = captured[0]
+    assert max_nesting_depth == 3
+
+
+def test_configure_logging_passes_max_nesting_depth_to_sanitize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Kills mutmut_42: sanitize_sensitive_fields called without max_nesting_depth → uses default 8.
+    # Spy on sanitize_sensitive_fields to assert it receives the configured depth.
+    _reset_logging_for_tests()
+    core_mod_any = cast(Any, core_mod)
+    captured: list[tuple[Any, ...]] = []
+    original_ssf = core_mod_any.sanitize_sensitive_fields
+
+    def _spy_sanitize(*args: Any) -> Any:
+        captured.append(args)
+        return original_ssf(*args)
+
+    monkeypatch.setattr(core_mod_any, "sanitize_sensitive_fields", _spy_sanitize)
+    monkeypatch.setattr(core_mod_any.structlog, "configure", lambda **kw: None)
+
+    cfg = TelemetryConfig.from_env({"UNDEF_SECURITY_MAX_NESTING_DEPTH": "3", "UNDEF_LOG_SANITIZE": "true"})
+    configure_logging(cfg)
+
+    assert len(captured) == 1
+    _enabled, max_nesting_depth = captured[0]
+    assert max_nesting_depth == 3
