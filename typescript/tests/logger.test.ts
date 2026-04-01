@@ -652,3 +652,44 @@ describe('getLogger — logModuleLevels', () => {
     expect(() => log.info({ event: 'ok' })).not.toThrow();
   });
 });
+
+// ── logSanitize toggle tests ─────────────────────────────────────────────────
+
+describe('write hook — logSanitize toggle', () => {
+  it('does NOT redact password fields when logSanitize is false', () => {
+    makeCfg({ logSanitize: false });
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' }; // pragma: allowlist secret
+    hook(obj);
+    expect(obj['password']).toBe('hunter2');
+  });
+
+  it('redacts password fields when logSanitize is true (default)', () => {
+    makeCfg({ logSanitize: true });
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' }; // pragma: allowlist secret
+    hook(obj);
+    expect(obj['password']).toBe('***');
+  });
+});
+
+// ── logIncludeTimestamp toggle tests ─────────────────────────────────────────
+
+describe('write hook — logIncludeTimestamp toggle', () => {
+  it('removes time field when logIncludeTimestamp is false', () => {
+    makeCfg({ logIncludeTimestamp: false });
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'test', time: Date.now() };
+    hook(obj);
+    expect(obj).not.toHaveProperty('time');
+  });
+
+  it('retains time field when logIncludeTimestamp is true (default)', () => {
+    makeCfg({ logIncludeTimestamp: true });
+    const hook = makeWriteHook();
+    const ts = Date.now();
+    const obj: Record<string, unknown> = { level: 30, event: 'test', time: ts };
+    hook(obj);
+    expect(obj['time']).toBe(ts);
+  });
+});
