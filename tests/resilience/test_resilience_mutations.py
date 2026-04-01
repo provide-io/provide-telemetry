@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import warnings
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,7 @@ from undef.telemetry import resilience as resilience_mod
 from undef.telemetry.resilience import (
     ExporterPolicy,
     _get_timeout_executor,
+    _is_running_in_event_loop,
     _run_attempt_with_timeout,
     _warn_async_risk,
     get_exporter_policy,
@@ -439,3 +441,60 @@ def test_maybe_replace_executor_shuts_down_with_wait_false() -> None:
     with patch.object(executor, "shutdown", wraps=executor.shutdown) as mock_shutdown:
         _maybe_replace_executor("logs")
         mock_shutdown.assert_called_once_with(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_async_warning_retries_zero_backoff_nonzero() -> None:
+    """Kill mutmut_38: backoff > 0 → > 1; retries=0 so `or` depends solely on backoff."""
+    assert _is_running_in_event_loop()
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=0,
+            backoff_seconds=0.5,
+            timeout_seconds=0.0,
+            allow_blocking_in_event_loop=False,
+            fail_open=True,
+        ),
+    )
+    with pytest.warns(RuntimeWarning, match=r"fail-fast"):
+        run_with_resilience("logs", lambda: None)
+
+
+@pytest.mark.asyncio
+async def test_allow_blocking_false_forces_single_attempt() -> None:
+    assert _is_running_in_event_loop()
+    call_count = {"n": 0}
+
+    def _count_and_fail() -> None:
+        call_count["n"] += 1
+        raise ValueError("fail")
+
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=3,
+            backoff_seconds=0.0,
+            timeout_seconds=0.0,
+            allow_blocking_in_event_loop=False,
+            fail_open=True,
+        ),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        run_with_resilience("logs", _count_and_fail)
+    assert call_count["n"] == 1
+
+
+def test_no_sleep_when_backoff_zero_after_exception() -> None:
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(retries=1, backoff_seconds=0.0, timeout_seconds=0.0, fail_open=True),
+    )
+
+    def _fail() -> None:
+        raise ValueError("fail")
+
+    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
+        run_with_resilience("logs", _fail)
+    mock_sleep.assert_not_called()
