@@ -121,11 +121,8 @@ _COLD_KEYS = frozenset(
         "service_name",
         "environment",
         "version",
-        "strict_schema",
         "tracing",
         "metrics",
-        "event_schema",
-        "slo",
     }
 )
 

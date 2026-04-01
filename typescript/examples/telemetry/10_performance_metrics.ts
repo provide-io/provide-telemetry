@@ -86,9 +86,10 @@ async function main(): Promise<void> {
 
   // ── 🔌 Import footprint check ─────────────────────────────
   console.log('\n🔌 Import Footprint\n');
-  const loadedMods = Object.keys(require?.cache ?? {}).filter((k) => k.includes('provide-telemetry'));
+  // ESM: use process.moduleLoadList as a proxy for loaded modules
+  const loadedMods = (process.moduleLoadList ?? []).filter((k: string) => k.includes('provide-telemetry') || k.includes('@provide-io'));
   console.log(`    Loaded @provide-io/telemetry source files: ${loadedMods.length}`);
-  const hasOtelSdk = loadedMods.some((k) => k.includes('sdk-trace') || k.includes('sdk-metrics'));
+  const hasOtelSdk = loadedMods.some((k: string) => k.includes('sdk-trace') || k.includes('sdk-metrics'));
   if (hasOtelSdk) {
     console.log('    ⚠️  OTEL SDK loaded (expected when peer deps are installed)');
   } else {

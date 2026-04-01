@@ -35,7 +35,7 @@ def _send_openobserve_json_log(base_url: str, auth: str, run_id: str) -> None:
     payload = [
         {
             "_timestamp": int(time.time() * 1_000_000),
-            "event": f"example.openobserve.jsonlog.{run_id}",
+            "event": "example.openobserve.jsonlog",
             "run_id": run_id,
             "message": "openobserve json log ingestion",
         }
