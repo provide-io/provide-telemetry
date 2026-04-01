@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -14,10 +15,14 @@ import structlog
 
 from undef.telemetry.config import TelemetryConfig
 from undef.telemetry.logger.processors import (
+    _compute_error_fingerprint,
+    add_error_fingerprint,
     add_standard_fields,
     apply_sampling,
     enforce_event_schema,
+    harden_input,
     merge_runtime_context,
+    sanitize_sensitive_fields,
 )
 
 # ── merge_runtime_context: trace_id / span_id key names ─────────────
@@ -283,3 +288,131 @@ class TestEnforceEventSchemaMutants:
         actual_keys = mock_req.call_args[0][1]
         assert "service" in actual_keys
         assert "env" in actual_keys
+
+
+# ── add_error_fingerprint: tuple shape and type guards ────────────────
+
+
+class TestAddErrorFingerprintGuards:
+    def test_two_tuple_exc_info_does_not_produce_fingerprint(self) -> None:
+        """Kills: len(exc_info) == 3 → == 2 or != 3."""
+        # A 2-tuple is not a valid exc_info — should not trigger fingerprinting
+        event: dict[str, object] = {"event": "error", "exc_info": (ValueError, ValueError("x"))}
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" not in result
+
+    def test_four_tuple_exc_info_does_not_produce_fingerprint(self) -> None:
+        """Kills: len(exc_info) == 3 → >= 3 (four-element tuple satisfies >= but not ==)."""
+        event: dict[str, object] = {
+            "event": "error",
+            "exc_info": (ValueError, ValueError("x"), None, "extra"),
+        }
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" not in result
+
+    def test_three_tuple_with_none_exception_does_not_produce_fingerprint(self) -> None:
+        """Kills: exc_info[1] is not None → is None."""
+        event: dict[str, object] = {"event": "error", "exc_info": (type(None), None, None)}
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" not in result
+
+    def test_base_exception_not_subclass_of_exception_is_handled(self) -> None:
+        """Kills: isinstance(exc_info, BaseException) → isinstance(exc_info, Exception)."""
+        # KeyboardInterrupt is a BaseException but not an Exception
+        # Raise it so __traceback__ is populated, making the exact-value check meaningful
+        exc: BaseException | None = None
+        try:
+            raise KeyboardInterrupt("interrupted")
+        except KeyboardInterrupt as e:
+            exc = e
+            event: dict[str, object] = {"event": "error", "exc_info": exc}
+            result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" in result
+        assert result["error_fingerprint"] == _compute_error_fingerprint("KeyboardInterrupt", exc.__traceback__)
+
+    def test_three_tuple_with_valid_exception_does_produce_fingerprint(self) -> None:
+        """Verifies the len==3 and is-not-None fast path."""
+        try:
+            raise RuntimeError("test")
+        except RuntimeError:
+            exc_info = sys.exc_info()
+        event: dict[str, object] = {"event": "error", "exc_info": exc_info}
+        result = add_error_fingerprint(None, "", event)
+        assert "error_fingerprint" in result
+
+
+# ── harden_input: exact boundary values ──────────────────────────────
+
+
+class TestHardenInputBoundaries:
+    def test_string_at_exact_max_length_not_truncated(self) -> None:
+        """Kills: len(cleaned) > max_value_length → >=."""
+        proc = harden_input(max_value_length=5, max_attr_count=0, max_depth=5)
+        result = proc(None, "", {"event": "x", "key": "hello"})  # exactly 5 chars
+        assert result["key"] == "hello"  # not truncated
+
+    def test_string_one_over_max_length_truncated(self) -> None:
+        """Companion to above — confirms truncation does fire at len+1."""
+        proc = harden_input(max_value_length=5, max_attr_count=0, max_depth=5)
+        result = proc(None, "", {"event": "x", "key": "hello!"})  # 6 chars
+        assert result["key"] == "hello"
+
+    def test_max_attr_count_zero_keeps_all_attributes(self) -> None:
+        """Kills: max_attr_count > 0 → >= 0 (would truncate even with count=0)."""
+        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=5)
+        event: dict[str, object] = {"event": "x", "a": 1, "b": 2, "c": 3}
+        result = proc(None, "", event)
+        assert len(result) == 4  # all keys preserved
+
+    def test_attrs_at_exact_max_count_not_dropped(self) -> None:
+        """Kills: len(event_dict) > max_attr_count → >=."""
+        proc = harden_input(max_value_length=100, max_attr_count=3, max_depth=5)
+        event: dict[str, object] = {"event": "x", "a": 1, "b": 2}  # exactly 3 keys
+        result = proc(None, "", event)
+        assert len(result) == 3  # not truncated
+
+    def test_attrs_one_over_max_count_truncated(self) -> None:
+        """Companion — confirms attr dropping fires at count+1."""
+        proc = harden_input(max_value_length=100, max_attr_count=3, max_depth=5)
+        event: dict[str, object] = {"event": "x", "a": 1, "b": 2, "c": 3}  # 4 keys
+        result = proc(None, "", event)
+        assert len(result) == 3
+
+    def test_depth_zero_does_not_recurse_into_nested_dict(self) -> None:
+        """Kills: depth < max_depth → depth <= max_depth.
+
+        At max_depth=0: depth=0 < 0 is False → dict not recursed, control chars survive.
+        At max_depth=0 with mutation <=: depth=0 <= 0 is True → dict IS recursed.
+        """
+        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=0)
+        event: dict[str, object] = {"event": "x", "nested": {"inner": "\x01dirty"}}
+        result = proc(None, "", event)
+        # Nested dict should be returned as-is (no recursion at depth=0 with max_depth=0)
+        assert result["nested"] == {"inner": "\x01dirty"}
+
+    def test_depth_one_recurses_one_level(self) -> None:
+        """Companion — with max_depth=1, depth=0 < 1 is True → recurse and clean."""
+        proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=1)
+        result = proc(None, "", {"event": "x", "nested": {"inner": "\x01dirty"}})
+        assert result["nested"] == {"inner": "dirty"}
+
+
+# ── sanitize_sensitive_fields: max_depth default ─────────────────────
+
+
+class TestSanitizeSensitiveFieldsDefault:
+    def test_default_max_depth_is_8(self) -> None:
+        """Kills: max_depth=8 → max_depth=7 or other value."""
+        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+            mock.return_value = {}
+            processor = sanitize_sensitive_fields(enabled=True)
+            processor(None, "", {"event": "x"})
+        mock.assert_called_once_with({"event": "x"}, True, max_depth=8)
+
+    def test_custom_max_depth_forwarded(self) -> None:
+        """Verifies max_depth param is passed through."""
+        with patch("undef.telemetry.logger.processors.sanitize_payload") as mock:
+            mock.return_value = {}
+            processor = sanitize_sensitive_fields(enabled=True, max_depth=3)
+            processor(None, "", {"event": "x"})
+        mock.assert_called_once_with({"event": "x"}, True, max_depth=3)

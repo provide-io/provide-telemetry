@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { computeErrorFingerprint } from '../src/fingerprint';
 
 describe('computeErrorFingerprint', () => {
@@ -95,5 +96,88 @@ handler@http://example.com/routes.js:20:10`;
     const fp = computeErrorFingerprint('Error', stack);
     expect(fp).toHaveLength(12);
     expect(fp).not.toBe(computeErrorFingerprint('Error'));
+  });
+});
+
+describe('computeErrorFingerprint — exact value assertions (mutation kills)', () => {
+  it('uses last 3 frames from a 4-frame stack, not all 4', () => {
+    // frames from 4-line stack: ['a:func1', 'b:func2', 'c:func3', 'd:func4']
+    // slice(-3) → ['b:func2', 'c:func3', 'd:func4']
+    // parts = ['error', 'b:func2', 'c:func3', 'd:func4']
+    const stack4 = `Error: boom
+    at func1 (a.js:1:1)
+    at func2 (b.js:1:1)
+    at func3 (c.js:1:1)
+    at func4 (d.js:1:1)`;
+
+    // Expected: exact hash of the 3-frame version
+    const expected = createHash('sha256')
+      .update('error:b:func2:c:func3:d:func4')
+      .digest('hex')
+      .slice(0, 12);
+
+    expect(computeErrorFingerprint('Error', stack4)).toBe(expected);
+  });
+
+  it('uses colon as separator between error name and frame parts', () => {
+    // parts = ['typeerror', 'script:myfunc']
+    // ':'.join → 'typeerror:script:myfunc'
+    // ''.join → 'typeerrorscrip:myfunc' (different hash)
+    const stack = 'at myFunc (script.js:1:1)';
+    const expected = createHash('sha256')
+      .update('typeerror:script:myfunc')
+      .digest('hex')
+      .slice(0, 12);
+    expect(computeErrorFingerprint('TypeError', stack)).toBe(expected);
+  });
+
+  it('uses colon as separator inside each frame (basename:func)', () => {
+    // frame format is "basename:func" — colon between basename and func
+    // mutation might change to "basename.func" or "basename func"
+    const stack = 'at handler (src/utils/helper.js:1:1)';
+    // basename = 'helper', func = 'handler'
+    const expected = createHash('sha256').update('error:helper:handler').digest('hex').slice(0, 12);
+    expect(computeErrorFingerprint('Error', stack)).toBe(expected);
+  });
+
+  it('case-folds error name to lowercase', () => {
+    // mutation: remove .toLowerCase() on errorName → 'TypeError' ≠ 'typeerror'
+    // mutation: .toLowerCase() → .toUpperCase() would make all three hash to 'TYPEERROR' — exact anchor prevents this
+    const expected = createHash('sha256').update('typeerror').digest('hex').slice(0, 12);
+    expect(computeErrorFingerprint('TypeError')).toBe(expected);
+    expect(computeErrorFingerprint('typeerror')).toBe(expected);
+    expect(computeErrorFingerprint('TYPEERROR')).toBe(expected);
+  });
+
+  it('case-folds function names from V8 stack', () => {
+    // mutation: remove .toLowerCase() on func
+    const lowerStack = 'at myFunc (script.js:1:1)';
+    const upperStack = 'at MYFUNC (script.js:1:1)';
+    expect(computeErrorFingerprint('Error', lowerStack)).toBe(
+      computeErrorFingerprint('Error', upperStack),
+    );
+  });
+
+  it('case-folds file basenames from V8 stack', () => {
+    // mutation: remove .toLowerCase() on basename
+    const lowerStack = 'at handler (MyFile.js:1:1)';
+    const upperStack = 'at handler (MYFILE.js:1:1)';
+    expect(computeErrorFingerprint('Error', lowerStack)).toBe(
+      computeErrorFingerprint('Error', upperStack),
+    );
+  });
+
+  it('anonymous function (no name) produces empty func string, not "undefined"', () => {
+    // stack line without function name: match[1] is undefined
+    // `String(match[1] || '')` should produce '' not 'undefined'
+    const stack = 'at /app/src/index.js:10:5';
+    // parts = ['error', 'index:']  (empty func)
+    const expected = createHash('sha256').update('error:index:').digest('hex').slice(0, 12);
+    const withUndefined = createHash('sha256')
+      .update('error:index:undefined')
+      .digest('hex')
+      .slice(0, 12);
+    expect(computeErrorFingerprint('Error', stack)).toBe(expected);
+    expect(computeErrorFingerprint('Error', stack)).not.toBe(withUndefined);
   });
 });
