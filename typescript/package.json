@@ -67,20 +67,16 @@
     "pino": "^10.3.1"
   },
   "peerDependencies": {
+    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
     "@opentelemetry/resources": "^2.6.1",
+    "@opentelemetry/sdk-logs": "^0.214.0",
     "@opentelemetry/sdk-metrics": "^2.6.1",
     "@opentelemetry/sdk-trace-base": "^2.6.1",
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "@opentelemetry/api-logs": {
-      "optional": true
-    },
-    "@opentelemetry/context-async-hooks": {
-      "optional": true
-    },
     "@opentelemetry/exporter-logs-otlp-http": {
       "optional": true
     },
@@ -109,6 +105,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@opentelemetry/context-async-hooks": "^2.6.1",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
     "@opentelemetry/resources": "^2.6.1",

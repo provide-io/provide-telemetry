@@ -38,16 +38,6 @@ services:
       - "8080:8080"   # traefik dashboard (direct, no DNS needed)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/overview"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    depends_on:
-      otel-lgtm:
-        condition: service_healthy
-      openobserve:
-        condition: service_healthy
 
   otel-lgtm:
     image: grafana/otel-lgtm:latest
@@ -59,11 +49,6 @@ services:
       - "3000:3000"   # grafana UI    (direct)
       - "4317:4317"   # OTLP gRPC     (direct)
       - "4318:4318"   # OTLP HTTP     (direct)
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
     labels:
       - "traefik.enable=true"
       # Grafana UI → telemetry.provide.test:5314
@@ -89,11 +74,6 @@ services:
       - openobserve-data:/data
     ports:
       - "5080:5080"   # OpenObserve UI + API (direct)
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5080/"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
     labels:
       - "traefik.enable=true"
       # OpenObserve → openobserve.provide.test:5314

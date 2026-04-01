@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as fc from 'fast-check';
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
+import { setupTelemetry, _resetConfig } from '../../src/config';
 import { EventSchemaError, eventName, validateEventName } from '../../src/schema';
 
 const validSegment = fc
