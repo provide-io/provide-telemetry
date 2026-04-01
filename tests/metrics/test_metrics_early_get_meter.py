@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Regression: early get_meter() before setup_metrics() must not block provider installation."""
@@ -12,9 +12,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.metrics import provider as prov_mod
-from undef.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.metrics import provider as prov_mod
+from provide.telemetry.metrics.provider import _set_meter_for_test, get_meter, setup_metrics
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +24,7 @@ def _clean_meters() -> None:
 
 class TestEarlyGetMeterDoesNotBlockSetup:
     """Verify that calling get_meter() before setup_metrics() does not cache a
-    noop meter under ``_meters["undef.telemetry"]`` that would cause
+    noop meter under ``_meters["provide.telemetry"]`` that would cause
     setup_metrics() to short-circuit and skip installing the real provider."""
 
     def test_setup_metrics_installs_provider_after_early_get_meter(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,7 +107,7 @@ class TestEarlyGetMeterDoesNotBlockSetup:
         # Stale custom meter must have been cleared
         assert "custom.service" not in prov_mod._meters
         # Only the canonical meter should exist
-        assert "undef.telemetry" in prov_mod._meters
+        assert "provide.telemetry" in prov_mod._meters
 
 
 # ── Mutation-killing tests for provider internals ──────────────────────
@@ -192,8 +192,8 @@ class TestSetupMetricsSetsGlobalFlag:
         )
         monkeypatch.setattr(prov_mod, "_load_otel_metrics_api", lambda: fake_otel)
 
-        from undef.telemetry.config import TelemetryConfig as TC
-        from undef.telemetry.metrics.provider import setup_metrics
+        from provide.telemetry.config import TelemetryConfig as TC
+        from provide.telemetry.metrics.provider import setup_metrics
 
         setup_metrics(TC.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"}))
 

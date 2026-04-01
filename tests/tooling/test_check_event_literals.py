@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def test_event_literal_check_ignores_non_literal_dynamic_event(tmp_path: Path) -
     root.mkdir()
     file_path = root / "dynamic.py"
     file_path.write_text(
-        "from undef.telemetry import event_name\ndef run(log):\n    log.info(event_name('auth', 'login', 'success'))\n",
+        "from provide.telemetry import event_name\ndef run(log):\n    log.info(event_name('auth', 'login', 'success'))\n",
         encoding="utf-8",
     )
 

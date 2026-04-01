@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -12,51 +12,23 @@ __all__ = [
     "ExporterPolicyConfig",
     "LoggingConfig",
     "MetricsConfig",
-    "RuntimeOverrides",
     "SLOConfig",
     "SamplingConfig",
     "SchemaConfig",
     "SecurityConfig",
     "TelemetryConfig",
     "TracingConfig",
-    "redact_config",
 ]
 
-import dataclasses
 import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
-from provide.telemetry._masking import (
-    _mask_endpoint_url as _mask_endpoint_url,
-)
-from provide.telemetry._masking import (
-    _mask_header_value as _mask_header_value,
-)
-from provide.telemetry._masking import (
-    _mask_headers as _mask_headers,
-)
-from provide.telemetry._masking import (
-    _masked_dataclass_repr as _masked_dataclass_repr,
-)
 from provide.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
-
-
-def redact_config(config: TelemetryConfig) -> dict[str, object]:
-    """Return config fields as a dict with OTLP secrets masked."""
-    raw = dataclasses.asdict(config)
-    for v in raw.values():
-        if isinstance(v, dict):
-            if "otlp_headers" in v:
-                v["otlp_headers"] = _mask_headers(v["otlp_headers"])
-            if "otlp_endpoint" in v and v["otlp_endpoint"] is not None:
-                v["otlp_endpoint"] = _mask_endpoint_url(v["otlp_endpoint"])
-    return raw
-
 
 _VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
 
@@ -82,9 +54,6 @@ class LoggingConfig:
         _validate_color(self.pretty_key_color, "pretty_key_color")
         _validate_color(self.pretty_value_color, "pretty_value_color")
 
-    def __repr__(self) -> str:
-        return _masked_dataclass_repr(self)
-
 
 @dataclass(slots=True)
 class TracingConfig:
@@ -96,18 +65,12 @@ class TracingConfig:
     def __post_init__(self) -> None:
         _validate_rate(self.sample_rate, "sample_rate must be between 0 and 1")
 
-    def __repr__(self) -> str:
-        return _masked_dataclass_repr(self)
-
 
 @dataclass(slots=True)
 class MetricsConfig:
     enabled: bool = True
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
-
-    def __repr__(self) -> str:
-        return _masked_dataclass_repr(self)
 
 
 @dataclass(slots=True)
@@ -179,35 +142,11 @@ class SecurityConfig:
 
 
 @dataclass(slots=True)
-class RuntimeOverrides:
-    """Hot-reloadable config subset.
-
-    Only fields that can be changed at runtime without restarting providers.
-    All fields are optional (None = keep current value).
-    """
-
-    sampling: SamplingConfig | None = None
-    backpressure: BackpressureConfig | None = None
-    exporter: ExporterPolicyConfig | None = None
-    security: SecurityConfig | None = None
-    slo: SLOConfig | None = None
-    pii_max_depth: int | None = None
-    strict_schema: bool | None = None
-    logging: LoggingConfig | None = None
-    event_schema: SchemaConfig | None = None
-
-    def __post_init__(self) -> None:
-        if self.pii_max_depth is not None:
-            _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
-
-
-@dataclass(slots=True)
 class TelemetryConfig:
     service_name: str = "provide-service"
     environment: str = "dev"
     version: str = "0.0.0"
     strict_schema: bool = False
-    pii_max_depth: int = 8
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     tracing: TracingConfig = field(default_factory=TracingConfig)
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
@@ -218,20 +157,6 @@ class TelemetryConfig:
     slo: SLOConfig = field(default_factory=SLOConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
-    def __post_init__(self) -> None:
-        _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
-
-    def redacted_repr(self) -> str:
-        """Return a string representation with secrets masked."""
-        return repr(self)  # sub-configs mask themselves
-
-    def __repr__(self) -> str:
-        fields_repr = []
-        for f in dataclasses.fields(self):
-            val = getattr(self, f.name)
-            fields_repr.append(f"{f.name}={val!r}")
-        return f"{self.__class__.__name__}({', '.join(fields_repr)})"
-
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
         data = env if env is not None else os.environ
@@ -239,23 +164,14 @@ class TelemetryConfig:
             service_name=data.get("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-service"),
             environment=data.get("PROVIDE_TELEMETRY_ENV", "dev"),
             version=data.get("PROVIDE_TELEMETRY_VERSION", "0.0.0"),
-            strict_schema=_parse_env_bool(
-                data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False, "PROVIDE_TELEMETRY_STRICT_SCHEMA"
-            ),
-            pii_max_depth=_parse_env_int(data.get("PROVIDE_LOG_PII_MAX_DEPTH", "8"), "PROVIDE_LOG_PII_MAX_DEPTH"),
+            strict_schema=_parse_bool(data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False),
             logging=LoggingConfig(
                 level=data.get("PROVIDE_LOG_LEVEL", "INFO"),
                 fmt=data.get("PROVIDE_LOG_FORMAT", "console"),
-                include_timestamp=_parse_env_bool(
-                    data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True, "PROVIDE_LOG_INCLUDE_TIMESTAMP"
-                ),
-                include_caller=_parse_env_bool(
-                    data.get("PROVIDE_LOG_INCLUDE_CALLER"), True, "PROVIDE_LOG_INCLUDE_CALLER"
-                ),
-                sanitize=_parse_env_bool(data.get("PROVIDE_LOG_SANITIZE"), True, "PROVIDE_LOG_SANITIZE"),
-                log_code_attributes=_parse_env_bool(
-                    data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False, "PROVIDE_LOG_CODE_ATTRIBUTES"
-                ),
+                include_timestamp=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True),
+                include_caller=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_CALLER"), True),
+                sanitize=_parse_bool(data.get("PROVIDE_LOG_SANITIZE"), True),
+                log_code_attributes=_parse_bool(data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
@@ -268,7 +184,7 @@ class TelemetryConfig:
                 module_levels=_parse_module_levels(data.get("PROVIDE_LOG_MODULE_LEVELS", "")),
             ),
             tracing=TracingConfig(
-                enabled=_parse_env_bool(data.get("PROVIDE_TRACE_ENABLED"), True, "PROVIDE_TRACE_ENABLED"),
+                enabled=_parse_bool(data.get("PROVIDE_TRACE_ENABLED"), True),
                 sample_rate=_parse_env_float(data.get("PROVIDE_TRACE_SAMPLE_RATE", "1.0"), "PROVIDE_TRACE_SAMPLE_RATE"),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -276,7 +192,7 @@ class TelemetryConfig:
                 ),
             ),
             metrics=MetricsConfig(
-                enabled=_parse_env_bool(data.get("PROVIDE_METRICS_ENABLED"), True, "PROVIDE_METRICS_ENABLED"),
+                enabled=_parse_bool(data.get("PROVIDE_METRICS_ENABLED"), True),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
                 or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -284,9 +200,7 @@ class TelemetryConfig:
                 ),
             ),
             event_schema=SchemaConfig(
-                strict_event_name=_parse_env_bool(
-                    data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False, "PROVIDE_TELEMETRY_STRICT_EVENT_NAME"
-                ),
+                strict_event_name=_parse_bool(data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False),
                 required_keys=tuple(
                     k.strip() for k in data.get("PROVIDE_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
@@ -343,41 +257,23 @@ class TelemetryConfig:
                     data.get("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
                 ),
-                logs_fail_open=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_LOGS_FAIL_OPEN"
+                logs_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True),
+                traces_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True),
+                metrics_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True),
+                logs_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), False
                 ),
-                traces_fail_open=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True, "PROVIDE_EXPORTER_TRACES_FAIL_OPEN"
+                traces_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), False
                 ),
-                metrics_fail_open=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_METRICS_FAIL_OPEN"
-                ),
-                logs_allow_blocking_in_event_loop=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"),
-                    False,
-                    "PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP",
-                ),
-                traces_allow_blocking_in_event_loop=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"),
-                    False,
-                    "PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP",
-                ),
-                metrics_allow_blocking_in_event_loop=_parse_env_bool(
-                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"),
-                    False,
-                    "PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP",
+                metrics_allow_blocking_in_event_loop=_parse_bool(
+                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), False
                 ),
             ),
             slo=SLOConfig(
-                enable_red_metrics=_parse_env_bool(
-                    data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False, "PROVIDE_SLO_ENABLE_RED_METRICS"
-                ),
-                enable_use_metrics=_parse_env_bool(
-                    data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False, "PROVIDE_SLO_ENABLE_USE_METRICS"
-                ),
-                include_error_taxonomy=_parse_env_bool(
-                    data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True, "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"
-                ),
+                enable_red_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False),
+                enable_use_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False),
+                include_error_taxonomy=_parse_bool(data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True),
             ),
             security=SecurityConfig(
                 max_attr_value_length=_parse_env_int(
@@ -404,7 +300,7 @@ def _normalize_level(value: str) -> str:
     allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     normalized = value.upper()
     if normalized not in allowed:
-        raise ConfigurationError(f"invalid log level: {value}")
+        raise ValueError(f"invalid log level: {value}")
     return normalized
 
 
@@ -415,12 +311,12 @@ def _validate_fmt(value: str) -> None:
 
 def _validate_rate(value: float, message: str) -> None:
     if not 0.0 <= value <= 1.0:
-        raise ConfigurationError(message)
+        raise ValueError(message)
 
 
 def _validate_non_negative(value: int, message: str) -> None:
     if value < 0:
-        raise ConfigurationError(message)
+        raise ValueError(message)
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -429,23 +325,12 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _parse_env_bool(value: str | None, default: bool, field: str) -> bool:
-    if value is None or not value.strip():
-        return default
-    lowered = value.strip().lower()
-    if lowered in {"1", "true", "yes", "on"}:
-        return True
-    if lowered in {"0", "false", "no", "off"}:
-        return False
-    raise ConfigurationError(f"invalid boolean for {field}: {value!r} (expected one of: 1,true,yes,on,0,false,no,off)")
-
-
 def _parse_module_levels(raw: str) -> dict[str, str]:
     """Parse ``module=LEVEL,module2=LEVEL2`` into a dict.
 
-    Example: ``PROVIDE_LOG_MODULE_LEVELS="provide.server=DEBUG,asyncio=WARNING"``
+    Example: ``PROVIDE_LOG_MODULE_LEVELS="undef.server=DEBUG,asyncio=WARNING"``
     """
-    if not raw or not raw.strip():  # pragma: no mutate
+    if not raw or not raw.strip():
         return {}
     result: dict[str, str] = {}
     for pair in raw.split(","):
@@ -485,7 +370,7 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
                 _logger.warning("config.otlp.header_malformed")  # pragma: no mutate
             continue
         key, raw = pair.split("=", 1)
-        key = unquote(key.strip())
+        key = key.strip()
         if not key:
             continue
         headers[key] = unquote(raw.strip())

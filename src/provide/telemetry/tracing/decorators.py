@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -12,6 +12,8 @@ import inspect
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
+from provide.telemetry.backpressure import release, try_acquire
+from provide.telemetry.sampling import should_sample
 from provide.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
 from provide.telemetry.tracing.provider import _sync_otel_trace_context, get_tracer
 
@@ -27,25 +29,11 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
 
             @functools.wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                from provide.telemetry.backpressure import release, try_acquire
-                from provide.telemetry.health import increment_emitted
-                from provide.telemetry.sampling import should_sample
-
-                try:
-                    from provide.telemetry.consent import should_allow
-                except ImportError:  # pragma: no cover — governance module stripped
-
-                    def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                        return True
-
-                if not should_allow("traces"):
-                    return await fn(*args, **kwargs)
                 if not should_sample("traces", span_name):
                     return await fn(*args, **kwargs)
                 ticket = try_acquire("traces")
                 if ticket is None:
                     return await fn(*args, **kwargs)
-                increment_emitted("traces")
                 prev_trace = get_trace_id()
                 prev_span = get_span_id()
                 with get_tracer(fn.__module__).start_as_current_span(span_name):
@@ -60,25 +48,11 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
 
         @functools.wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            from provide.telemetry.backpressure import release, try_acquire
-            from provide.telemetry.health import increment_emitted
-            from provide.telemetry.sampling import should_sample
-
-            try:
-                from provide.telemetry.consent import should_allow
-            except ImportError:  # pragma: no cover — governance module stripped
-
-                def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-                    return True
-
-            if not should_allow("traces"):
-                return fn(*args, **kwargs)
             if not should_sample("traces", span_name):
                 return fn(*args, **kwargs)
             ticket = try_acquire("traces")
             if ticket is None:
                 return fn(*args, **kwargs)
-            increment_emitted("traces")
             prev_trace = get_trace_id()
             prev_span = get_span_id()
             with get_tracer(fn.__module__).start_as_current_span(span_name):

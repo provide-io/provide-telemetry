@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,22 +7,9 @@
 
 from __future__ import annotations
 
-__all__ = [
-    "attach_w3c_context",
-    "detach_w3c_context",
-    "has_otel",
-    "load_otel_logs_components",
-    "load_otel_metrics_api",
-    "load_otel_metrics_components",
-    "load_otel_trace_api",
-    "load_otel_tracing_components",
-]
-
 import importlib
 import logging
 from typing import Any, Protocol, cast
-
-_logger = logging.getLogger(__name__)
 
 
 class InstrumentationLoggingHandlerFactory(Protocol):
@@ -135,7 +122,7 @@ def attach_w3c_context(traceparent: str, tracestate: str | None) -> object | Non
 
 
 def detach_w3c_context(token: object | None) -> None:
-    """Detach an OTEL context token."""
+    """Detach a previously attached OTEL context token."""
     if token is None:
         return
     try:

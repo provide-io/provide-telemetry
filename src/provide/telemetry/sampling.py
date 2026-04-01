@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,21 +7,11 @@
 
 from __future__ import annotations
 
-__all__ = [
-    "SamplingPolicy",
-    "get_sampling_policy",
-    "set_sampling_policy",
-    "should_sample",
-]
-
-import logging
 import random
 import threading
 from dataclasses import dataclass, field
 
 from provide.telemetry.health import increment_dropped
-
-_logger = logging.getLogger(__name__)
 
 Signal = str
 
@@ -38,13 +28,6 @@ _policies: dict[Signal, SamplingPolicy] = {
     "traces": SamplingPolicy(),
     "metrics": SamplingPolicy(),
 }
-_VALID_SIGNALS = frozenset(_policies)
-
-
-def _validate_signal(signal: Signal) -> Signal:
-    if signal not in _VALID_SIGNALS:
-        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
-    return signal
 
 
 def _normalize_rate(rate: float) -> float:
@@ -55,7 +38,7 @@ def _normalize_rate(rate: float) -> float:
 
 
 def set_sampling_policy(signal: Signal, policy: SamplingPolicy) -> None:
-    sig = _validate_signal(signal)
+    sig = signal if signal in _policies else "logs"
     normalized = SamplingPolicy(
         default_rate=_normalize_rate(policy.default_rate),
         overrides={k: _normalize_rate(v) for k, v in policy.overrides.items()},
@@ -65,35 +48,27 @@ def set_sampling_policy(signal: Signal, policy: SamplingPolicy) -> None:
 
 
 def get_sampling_policy(signal: Signal) -> SamplingPolicy:
-    sig = _validate_signal(signal)
+    sig = signal if signal in _policies else "logs"
     with _lock:
-        stored = _policies[sig]
-        return SamplingPolicy(default_rate=stored.default_rate, overrides=dict(stored.overrides))
+        return _policies[sig]
 
 
 def should_sample(signal: Signal, key: str | None = None) -> bool:
     sig = _validate_signal(signal)
-    return _should_sample_unchecked(sig, key)
-
-
-def _should_sample_unchecked(sig: Signal, key: str | None = None) -> bool:
-    """Hot-path sampling check — caller must pass a validated signal."""
-    # No lock needed: CPython's GIL makes dict reads atomic, and
-    # SamplingPolicy is a frozen dataclass (immutable after creation).
-    policy = _policies[sig]
+    with _lock:
+        policy = _policies[sig]
     rate = policy.default_rate
     if key is not None and key in policy.overrides:
         rate = policy.overrides[key]
-    # Fast path: rates stored via set_sampling_policy are already normalized,
-    # so skip _normalize_rate and test the common 1.0/0.0 cases first.
-    if rate >= 1.0:  # pragma: no mutate
-        return True
+    rate = _normalize_rate(rate)
     if rate <= 0.0:  # pragma: no mutate
-        increment_dropped(sig)
-        return False
-    keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.
+        keep = False
+    elif rate >= 1.0:  # pragma: no mutate
+        keep = True
+    else:
+        keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.
     if not keep:
-        increment_dropped(sig)
+        increment_dropped(signal)
     return keep
 
 

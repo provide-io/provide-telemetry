@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from undef.telemetry import _otel
+from provide.telemetry import _otel
 
 pytestmark = pytest.mark.otel
 

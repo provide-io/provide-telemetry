@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -11,10 +11,6 @@ import logging
 
 from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram
 from provide.telemetry.metrics.provider import get_meter
-
-__all__ = ["counter", "gauge", "histogram"]
-
-_logger = logging.getLogger(__name__)
 
 
 def counter(name: str, description: str | None = None, unit: str | None = None) -> Counter:

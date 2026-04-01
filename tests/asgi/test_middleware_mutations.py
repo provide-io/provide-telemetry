@@ -13,8 +13,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.asgi import middleware as middleware_mod
-from undef.telemetry.asgi.middleware import (
+from provide.telemetry.asgi import middleware as middleware_mod
+from provide.telemetry.asgi.middleware import (
     TelemetryMiddleware,
     _extract_baggage_value,
     _resolve_route,

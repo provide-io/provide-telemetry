@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from typing import Any
 import pytest
 import structlog
 
-from undef.telemetry.logger.core import _reset_logging_for_tests, configure_logging
-from undef.telemetry.logger.pretty import (
+from provide.telemetry.logger.core import _reset_logging_for_tests, configure_logging
+from provide.telemetry.logger.pretty import (
     _LEVEL_PAD,
     DIM,
     LEVEL_COLORS,
@@ -152,9 +152,9 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from undef.telemetry.config import TelemetryConfig
+        from provide.telemetry.config import TelemetryConfig
 
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "pretty", "PROVIDE_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)  # must not raise
 
         bound = structlog.get_logger("test_pretty")
@@ -173,9 +173,9 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeNonTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from undef.telemetry.config import TelemetryConfig
+        from provide.telemetry.config import TelemetryConfig
 
-        cfg = TelemetryConfig.from_env({"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_INCLUDE_CALLER": "false"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "pretty", "PROVIDE_LOG_INCLUDE_CALLER": "false"})
         configure_logging(cfg)
 
         bound = structlog.get_logger("test_pretty_notty")
@@ -195,10 +195,14 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from undef.telemetry.config import TelemetryConfig
+        from provide.telemetry.config import TelemetryConfig
 
         cfg = TelemetryConfig.from_env(
-            {"UNDEF_LOG_FORMAT": "pretty", "UNDEF_LOG_PRETTY_KEY_COLOR": "cyan", "UNDEF_LOG_INCLUDE_CALLER": "false"}
+            {
+                "PROVIDE_LOG_FORMAT": "pretty",
+                "PROVIDE_LOG_PRETTY_KEY_COLOR": "cyan",
+                "PROVIDE_LOG_INCLUDE_CALLER": "false",
+            }
         )
         configure_logging(cfg)
 
@@ -219,13 +223,13 @@ class TestPrettyRendererIntegration:
         fake_stderr = _FakeTTY()
         monkeypatch.setattr(sys, "stderr", fake_stderr)
 
-        from undef.telemetry.config import TelemetryConfig
+        from provide.telemetry.config import TelemetryConfig
 
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_LOG_FORMAT": "pretty",
-                "UNDEF_LOG_PRETTY_FIELDS": "user_id",
-                "UNDEF_LOG_INCLUDE_CALLER": "false",
+                "PROVIDE_LOG_FORMAT": "pretty",
+                "PROVIDE_LOG_PRETTY_FIELDS": "user_id",
+                "PROVIDE_LOG_INCLUDE_CALLER": "false",
             }
         )
         configure_logging(cfg)

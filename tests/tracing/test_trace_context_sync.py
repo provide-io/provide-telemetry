@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for OTel trace context synchronization into contextvars."""
@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from undef.telemetry.tracing import get_trace_context, set_trace_context, trace
-from undef.telemetry.tracing import provider as provider_mod
+from provide.telemetry.tracing import get_trace_context, set_trace_context, trace
+from provide.telemetry.tracing import provider as provider_mod
 
 
 def test_sync_otel_trace_context_with_real_span(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,10 +127,10 @@ def test_trace_decorator_syncs_otel_context(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
     monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
-    monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _name: _OtelTracer())
-    monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-    monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-    monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _t: None)
+    monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _name: _OtelTracer())
+    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
 
     captured: dict[str, str | None] = {}
 
@@ -152,14 +152,14 @@ class TestResetTracingForTestsMutants:
     """Kill mutants in _reset_tracing_for_tests (_otel_global_set = False → None/True)."""
 
     def test_resets_otel_global_set_to_false(self) -> None:
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
         provider_mod._otel_global_set = True
         _reset_tracing_for_tests()
         assert provider_mod._otel_global_set is False
 
     def test_resets_baseline_captured_to_false(self) -> None:
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
         provider_mod._baseline_captured = True
         provider_mod._baseline_tracer_provider = object()
@@ -214,7 +214,7 @@ class TestGetTracerProviderPassthrough:
     """Kill get_tracer mutant that replaces otel_trace with None in provider check."""
 
     def test_get_tracer_passes_api_object_to_provider_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry.tracing.provider import _NoopTracer, _reset_tracing_for_tests
+        from provide.telemetry.tracing.provider import _NoopTracer, _reset_tracing_for_tests
 
         sentinel = object()
 
@@ -266,7 +266,7 @@ class TestNoopSpanInitMutants:
     """Kill _NoopSpan.__init__ mutants (_prev_trace_id/span_id = None → '')."""
 
     def test_prev_ids_initialized_to_none(self) -> None:
-        from undef.telemetry.tracing.provider import _NoopSpan
+        from provide.telemetry.tracing.provider import _NoopSpan
 
         span = _NoopSpan("test")
         assert span._prev_trace_id is None
@@ -280,8 +280,8 @@ class TestSetupTracingSetsGlobalFlag:
         from types import SimpleNamespace
         from unittest.mock import Mock
 
-        from undef.telemetry.config import TelemetryConfig
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests, setup_tracing
+        from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests, setup_tracing
 
         _reset_tracing_for_tests()
         monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
