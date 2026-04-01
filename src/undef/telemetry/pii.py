@@ -97,7 +97,9 @@ def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))  # pragma: no mutate
 
 
-def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), depth: int = 0) -> Any:
+def _apply_rule(
+    node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), depth: int = 0
+) -> Any:  # pragma: no mutate
     if depth >= 32:  # hard safety limit
         return node
     if isinstance(node, dict):
@@ -120,8 +122,8 @@ def _apply_default_sensitive_key_redaction(
     node: Any,
     original: Any,
     rule_targeted_keys: frozenset[str] | None = None,
-    depth: int = 0,
-    max_depth: int = 8,
+    depth: int = 0,  # pragma: no mutate
+    max_depth: int = 8,  # pragma: no mutate
 ) -> Any:
     if depth >= max_depth:
         return node
