@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Check that installed runtime and optional dependencies use permissive licenses.

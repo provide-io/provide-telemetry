@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting mutation-testing survivors in pii.py."""
@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry import pii as pii_mod
-from undef.telemetry.pii import (
+from provide.telemetry import pii as pii_mod
+from provide.telemetry.pii import (
     PIIRule,
     _apply_default_sensitive_key_redaction,
     _apply_rule,

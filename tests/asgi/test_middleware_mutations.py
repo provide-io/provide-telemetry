@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in asgi/middleware.py."""
@@ -13,8 +13,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.asgi import middleware as middleware_mod
-from undef.telemetry.asgi.middleware import (
+from provide.telemetry.asgi import middleware as middleware_mod
+from provide.telemetry.asgi.middleware import (
     TelemetryMiddleware,
     _extract_baggage_value,
     _resolve_route,
@@ -53,7 +53,7 @@ class TestInitDefaults:
         monkeypatch.setattr(middleware_mod, "register_cardinality_limit", lambda *a, **kw: None)
         mw = TelemetryMiddleware(_noop_app, auto_slo=True)
         assert mw.auto_slo is True
-        assert logger_names == ["undef.asgi"]
+        assert logger_names == ["provide.asgi"]
 
     def test_auto_slo_false_has_no_logger(self) -> None:
         mw = TelemetryMiddleware(_noop_app)

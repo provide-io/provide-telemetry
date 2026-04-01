@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Regression tests for mutation survivors found in the 2026-03-25 mutation gate run.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry import _otel as otel_mod
+from provide.telemetry import _otel as otel_mod
 
 # ── _otel.load_otel_trace_api: exact import name ──────────────────────────────
 # Mutants: change "opentelemetry.trace" → None / garbled / uppercase.
@@ -60,7 +60,7 @@ def test_load_otel_metrics_api_passes_exact_module_name(monkeypatch: pytest.Monk
 
 def test_load_otel_trace_api_delegates_when_has_otel_true(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills the mutant that returns None when _HAS_OTEL is True."""
-    from undef.telemetry.tracing import provider as pmod
+    from provide.telemetry.tracing import provider as pmod
 
     sentinel = object()
     monkeypatch.setattr(pmod, "_HAS_OTEL", True)
@@ -73,7 +73,7 @@ def test_load_otel_trace_api_delegates_when_has_otel_true(monkeypatch: pytest.Mo
 
 def test_load_otel_metrics_api_delegates_when_has_otel_metrics_true(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills the mutant that returns None when _HAS_OTEL_METRICS is True."""
-    from undef.telemetry.metrics import provider as mmod
+    from provide.telemetry.metrics import provider as mmod
 
     sentinel = object()
     monkeypatch.setattr(mmod, "_HAS_OTEL_METRICS", True)
@@ -173,7 +173,7 @@ def test_load_otel_metrics_components_passes_correct_module_names(monkeypatch: p
 
 def test_load_otel_tracing_components_delegates_when_has_otel_true(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills the mutant that returns None when _HAS_OTEL is True."""
-    from undef.telemetry.tracing import provider as pmod
+    from provide.telemetry.tracing import provider as pmod
 
     sentinel = object()
     monkeypatch.setattr(pmod, "_HAS_OTEL", True)
@@ -186,7 +186,7 @@ def test_load_otel_tracing_components_delegates_when_has_otel_true(monkeypatch: 
 
 def test_load_otel_metrics_components_delegates_when_has_otel_metrics_true(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills the mutant that returns None when _HAS_OTEL_METRICS is True."""
-    from undef.telemetry.metrics import provider as mmod
+    from provide.telemetry.metrics import provider as mmod
 
     sentinel = object()
     monkeypatch.setattr(mmod, "_HAS_OTEL_METRICS", True)

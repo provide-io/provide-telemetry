@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """⚡ Performance characteristics of the telemetry library.
 
 Demonstrates:
-- Import time of the full undef.telemetry package
+- Import time of the full provide.telemetry package
 - configure_logging() cost
 - Hot-path instrument ops: counter.add(), gauge.set(), histogram.record()
 - Sampling decision throughput via should_sample()
@@ -50,14 +50,14 @@ def main() -> None:
     # ── 📦 Full package import ───────────────────────────────────────
     print("📦 Full Package Import\n")
     t0 = time.perf_counter_ns()
-    __import__("undef.telemetry")
+    __import__("provide.telemetry")
     t1 = time.perf_counter_ns()
-    rows.append(("import undef.telemetry", _fmt(t1 - t0)))
+    rows.append(("import provide.telemetry", _fmt(t1 - t0)))
 
     # ── ⚙️  configure_logging ────────────────────────────────────────
     print("⚙️  Logging Configuration\n")
-    from undef.telemetry.config import TelemetryConfig
-    from undef.telemetry.logger.core import configure_logging
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.logger.core import configure_logging
 
     cfg = TelemetryConfig()
 
@@ -68,8 +68,8 @@ def main() -> None:
 
     # ── 🔥 Hot-path ops ──────────────────────────────────────────────
     print("🔥 Hot-Path Instrument Operations\n")
-    from undef.telemetry import counter, event_name, gauge, histogram
-    from undef.telemetry.sampling import should_sample
+    from provide.telemetry import counter, event_name, gauge, histogram
+    from provide.telemetry.sampling import should_sample
 
     c = counter("perf.example.requests", "bench counter")
     g = gauge("perf.example.active", "bench gauge")
@@ -93,7 +93,7 @@ def main() -> None:
 
     # ── 🔄 Full lifecycle ────────────────────────────────────────────
     print("🔄 Setup / Shutdown Lifecycle\n")
-    from undef.telemetry import setup_telemetry, shutdown_telemetry
+    from provide.telemetry import setup_telemetry, shutdown_telemetry
 
     shutdown_telemetry()
 
@@ -115,7 +115,7 @@ def main() -> None:
     print("    so it has no direct module-level dependency on the metrics subsystem.")
     print("    Verifying via AST analysis...\n")
 
-    from undef.telemetry.logger import processors as proc_mod
+    from provide.telemetry.logger import processors as proc_mod
 
     src = Path(str(proc_mod.__file__)).read_text()
     tree = ast.parse(src)

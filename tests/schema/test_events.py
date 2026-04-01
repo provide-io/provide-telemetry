@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from undef.telemetry.schema.events import (
+from provide.telemetry.schema.events import (
     EventSchemaError,
     event_name,
     validate_event_name,
@@ -64,14 +64,14 @@ def test_validate_required_keys_error_message_uses_comma_separator() -> None:
 @contextmanager
 def _strict_config() -> Iterator[None]:
     """Patch runtime to report strict event-name mode."""
-    with patch("undef.telemetry.runtime._is_strict_event_name", return_value=True):
+    with patch("provide.telemetry.runtime._is_strict_event_name", return_value=True):
         yield
 
 
 @contextmanager
 def _relaxed_config() -> Iterator[None]:
     """Patch runtime to report relaxed event-name mode (default)."""
-    with patch("undef.telemetry.runtime._is_strict_event_name", return_value=False):
+    with patch("provide.telemetry.runtime._is_strict_event_name", return_value=False):
         yield
 
 
@@ -156,7 +156,7 @@ def test_event_name_strict_rejects_zero_segments() -> None:
 
 def test_event_name_defaults_to_relaxed_without_active_config() -> None:
     """When no config has been applied, _is_strict_event_name returns False (relaxed)."""
-    from undef.telemetry.runtime import reset_runtime_for_tests
+    from provide.telemetry.runtime import reset_runtime_for_tests
 
     reset_runtime_for_tests()
     # With no active config, single-segment names should work (relaxed mode)
@@ -165,8 +165,8 @@ def test_event_name_defaults_to_relaxed_without_active_config() -> None:
 
 def test_event_name_uses_real_runtime_config_relaxed() -> None:
     """Exercises _is_strict_event_name with a real active config (non-strict)."""
-    from undef.telemetry.config import TelemetryConfig
-    from undef.telemetry.runtime import apply_runtime_config, reset_runtime_for_tests
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.runtime import apply_runtime_config, reset_runtime_for_tests
 
     try:
         apply_runtime_config(TelemetryConfig(strict_schema=False))
@@ -177,8 +177,8 @@ def test_event_name_uses_real_runtime_config_relaxed() -> None:
 
 def test_event_name_uses_real_runtime_config_strict() -> None:
     """Exercises _is_strict_event_name with a real active config (strict)."""
-    from undef.telemetry.config import TelemetryConfig
-    from undef.telemetry.runtime import apply_runtime_config, reset_runtime_for_tests
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.runtime import apply_runtime_config, reset_runtime_for_tests
 
     try:
         apply_runtime_config(TelemetryConfig(strict_schema=True))

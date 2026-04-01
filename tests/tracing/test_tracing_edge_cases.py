@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Edge-case and stress tests for tracing subsystem."""
@@ -13,11 +13,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from undef.telemetry.backpressure import QueuePolicy, reset_queues_for_tests, set_queue_policy
-from undef.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy
-from undef.telemetry.tracing import get_trace_context, set_trace_context, trace
-from undef.telemetry.tracing import provider as provider_mod
-from undef.telemetry.tracing.provider import _NoopSpan, _NoopTracer, _reset_tracing_for_tests
+from provide.telemetry.backpressure import QueuePolicy, reset_queues_for_tests, set_queue_policy
+from provide.telemetry.sampling import SamplingPolicy, reset_sampling_for_tests, set_sampling_policy
+from provide.telemetry.tracing import get_trace_context, set_trace_context, trace
+from provide.telemetry.tracing import provider as provider_mod
+from provide.telemetry.tracing.provider import _NoopSpan, _NoopTracer, _reset_tracing_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -85,10 +85,10 @@ class TestTraceDecoratorExceptions:
             def start_as_current_span(self, _name: str, **_: object) -> _Span:
                 return _Span()
 
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda t: releases.append(t))
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("fail.sync")
         def boom() -> None:
@@ -112,10 +112,10 @@ class TestTraceDecoratorExceptions:
             def start_as_current_span(self, _name: str, **_: object) -> _Span:
                 return _Span()
 
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda t: releases.append(t))
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("fail.async")
         async def boom() -> None:
@@ -156,10 +156,10 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _t: None)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         fn = trace()(lambda: 42)
         fn()
@@ -180,10 +180,10 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _t: None)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         def add(a: int, b: int) -> int:
             return a + b
@@ -208,10 +208,10 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.release", lambda _t: None)
-        monkeypatch.setattr("undef.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("custom.span.name")
         def my_function() -> int:

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Concurrency tests for resilience, PII, and cardinality subsystems.
@@ -15,10 +15,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 
-from undef.telemetry.cardinality import clear_cardinality_limits, get_cardinality_limits, register_cardinality_limit
-from undef.telemetry.health import reset_health_for_tests
-from undef.telemetry.pii import PIIRule, get_pii_rules, register_pii_rule, reset_pii_rules_for_tests, sanitize_payload
-from undef.telemetry.resilience import (
+from provide.telemetry.cardinality import clear_cardinality_limits, get_cardinality_limits, register_cardinality_limit
+from provide.telemetry.health import reset_health_for_tests
+from provide.telemetry.pii import PIIRule, get_pii_rules, register_pii_rule, reset_pii_rules_for_tests, sanitize_payload
+from provide.telemetry.resilience import (
     ExporterPolicy,
     get_exporter_policy,
     reset_resilience_for_tests,

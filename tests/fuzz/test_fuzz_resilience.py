@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import re
 from hypothesis import given
 from hypothesis import strategies as st
 
-from undef.telemetry.config import _parse_bool, _parse_otlp_headers
-from undef.telemetry.logger.processors import sanitize_sensitive_fields
-from undef.telemetry.schema.events import EventSchemaError, validate_event_name
+from provide.telemetry.config import _parse_bool, _parse_otlp_headers
+from provide.telemetry.logger.processors import sanitize_sensitive_fields
+from provide.telemetry.schema.events import EventSchemaError, validate_event_name
 
 _SEG = r"[a-z][a-z0-9_]*"
 _EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG}){{2,4}}$")

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests that replace pragma: no mutate shortcuts with real mutation kills.
@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 import pytest
 
-from undef.telemetry import health as health_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry.resilience import (
+from provide.telemetry import health as health_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry.resilience import (
     ExporterPolicy,
     reset_resilience_for_tests,
     run_with_resilience,
@@ -191,7 +191,7 @@ def test_zero_backoff_does_not_sleep() -> None:
         calls["count"] += 1
         raise RuntimeError("boom")
 
-    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
+    with patch("provide.telemetry.resilience.time.sleep") as mock_sleep:
         run_with_resilience("logs", _fail)
     mock_sleep.assert_not_called()
     assert calls["count"] == 3  # 1 initial + 2 retries

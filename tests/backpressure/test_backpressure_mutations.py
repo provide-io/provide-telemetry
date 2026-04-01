@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutants in backpressure.py."""
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.backpressure import (
+from provide.telemetry.backpressure import (
     QueuePolicy,
     QueueTicket,
     _maxsize,
@@ -19,7 +19,7 @@ from undef.telemetry.backpressure import (
     set_queue_policy,
     try_acquire,
 )
-from undef.telemetry.health import get_health_snapshot, reset_health_for_tests
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 
 
 @pytest.fixture(autouse=True)

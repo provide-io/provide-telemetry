@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting surviving mutation-testing mutants in resilience.py."""
@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 import pytest
 
-from undef.telemetry import health as health_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry.resilience import (
+from provide.telemetry import health as health_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry.resilience import (
     ExporterPolicy,
     _get_timeout_executor,
     _is_running_in_event_loop,
@@ -110,7 +110,7 @@ async def test_warn_async_risk_policy_change_triggers_new_warning() -> None:
 async def test_warn_async_risk_stacklevel_is_3() -> None:
     """Kill mutants changing stacklevel=3 to stacklevel=4 or removing it."""
     policy = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=False)
-    with patch("undef.telemetry.resilience.warnings.warn") as mock_warn:
+    with patch("provide.telemetry.resilience.warnings.warn") as mock_warn:
         _warn_async_risk("logs", policy)
         mock_warn.assert_called_once()
         _, kwargs = mock_warn.call_args
@@ -192,7 +192,7 @@ def test_get_timeout_executor_thread_name_prefix() -> None:
     reset_resilience_for_tests()
     for sig in ("logs", "traces", "metrics"):
         executor = _get_timeout_executor(sig)
-        assert executor._thread_name_prefix == f"undef-resilience-{sig}"
+        assert executor._thread_name_prefix == f"provide-resilience-{sig}"
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +337,7 @@ async def test_async_warning_not_raised_when_retries_zero_backoff_zero() -> None
     """Kill mutmut_35 (retries>0→>=0) and mutmut_37 (backoff>0→>=0): no warning with retries=0, backoff=0."""
     import warnings
 
-    from undef.telemetry.resilience import _is_running_in_event_loop
+    from provide.telemetry.resilience import _is_running_in_event_loop
 
     assert _is_running_in_event_loop()
     set_exporter_policy("logs", ExporterPolicy(retries=0, backoff_seconds=0.0, timeout_seconds=0.0, fail_open=True))
@@ -352,7 +352,7 @@ async def test_async_warning_not_raised_when_retries_zero_backoff_zero() -> None
 @pytest.mark.asyncio
 async def test_async_warning_raised_when_backoff_is_nonzero() -> None:
     """Kill mutmut_38: backoff>0→>1. backoff=0.5 must trigger warning."""
-    from undef.telemetry.resilience import _is_running_in_event_loop
+    from provide.telemetry.resilience import _is_running_in_event_loop
 
     assert _is_running_in_event_loop()
     set_exporter_policy(
@@ -371,7 +371,7 @@ async def test_in_event_loop_not_allow_blocking_no_sleep() -> None:
     """Kill mutmut_43 (backoff→None) and mutmut_44 (backoff→1.0): backoff forced to 0.0 in event loop."""
     import warnings
 
-    from undef.telemetry.resilience import _is_running_in_event_loop
+    from provide.telemetry.resilience import _is_running_in_event_loop
 
     assert _is_running_in_event_loop()
     set_exporter_policy(
@@ -384,7 +384,7 @@ async def test_in_event_loop_not_allow_blocking_no_sleep() -> None:
     def _always_fail() -> None:
         raise ValueError("fail")
 
-    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep, warnings.catch_warnings():
+    with patch("provide.telemetry.resilience.time.sleep") as mock_sleep, warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         run_with_resilience("logs", _always_fail)
 
@@ -396,7 +396,7 @@ def test_no_sleep_when_backoff_zero_after_timeout() -> None:
     set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.0, timeout_seconds=1.0, fail_open=True))
     with (
         patch.object(resilience_mod, "_run_attempt_with_timeout", side_effect=TimeoutError("timed out")),
-        patch("undef.telemetry.resilience.time.sleep") as mock_sleep,
+        patch("provide.telemetry.resilience.time.sleep") as mock_sleep,
     ):
         run_with_resilience("logs", lambda: None)
 
@@ -408,7 +408,7 @@ def test_sleep_called_when_backoff_half_second_after_timeout() -> None:
     set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.5, timeout_seconds=1.0, fail_open=True))
     with (
         patch.object(resilience_mod, "_run_attempt_with_timeout", side_effect=TimeoutError("timed out")),
-        patch("undef.telemetry.resilience.time.sleep") as mock_sleep,
+        patch("provide.telemetry.resilience.time.sleep") as mock_sleep,
     ):
         run_with_resilience("logs", lambda: None)
 
@@ -422,7 +422,7 @@ def test_sleep_called_when_backoff_half_second_after_exception() -> None:
     def _always_fail() -> None:
         raise ValueError("fail")
 
-    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
+    with patch("provide.telemetry.resilience.time.sleep") as mock_sleep:
         run_with_resilience("logs", _always_fail)
 
     mock_sleep.assert_called_once_with(0.5)
@@ -430,7 +430,7 @@ def test_sleep_called_when_backoff_half_second_after_exception() -> None:
 
 def test_maybe_replace_executor_shuts_down_with_wait_false() -> None:
     """Kill mutmut_14 (wait=None) and mutmut_15 (wait=True): executor must shut down with wait=False."""
-    from undef.telemetry.resilience import _maybe_replace_executor
+    from provide.telemetry.resilience import _maybe_replace_executor
 
     _get_timeout_executor("logs")
     executor = resilience_mod._timeout_executors["logs"]
@@ -495,6 +495,6 @@ def test_no_sleep_when_backoff_zero_after_exception() -> None:
     def _fail() -> None:
         raise ValueError("fail")
 
-    with patch("undef.telemetry.resilience.time.sleep") as mock_sleep:
+    with patch("provide.telemetry.resilience.time.sleep") as mock_sleep:
         run_with_resilience("logs", _fail)
     mock_sleep.assert_not_called()

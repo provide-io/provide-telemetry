@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Property-based tests for sampling, backpressure, and PII subsystems."""
@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from undef.telemetry.backpressure import (
+from provide.telemetry.backpressure import (
     QueuePolicy,
     get_queue_policy,
     release,
@@ -19,8 +19,8 @@ from undef.telemetry.backpressure import (
     set_queue_policy,
     try_acquire,
 )
-from undef.telemetry.health import reset_health_for_tests
-from undef.telemetry.pii import (
+from provide.telemetry.health import reset_health_for_tests
+from provide.telemetry.pii import (
     PIIRule,
     _mask,
     get_pii_rules,
@@ -28,7 +28,7 @@ from undef.telemetry.pii import (
     reset_pii_rules_for_tests,
     sanitize_payload,
 )
-from undef.telemetry.sampling import (
+from provide.telemetry.sampling import (
     SamplingPolicy,
     _normalize_rate,
     get_sampling_policy,
@@ -149,7 +149,7 @@ def test_acquire_release_cycles_leave_zero_depth(maxsize: int, n_cycles: int) ->
         for t in tickets:
             release(t)
 
-    from undef.telemetry.health import get_health_snapshot
+    from provide.telemetry.health import get_health_snapshot
 
     snap = get_health_snapshot()
     assert snap.queue_depth_logs == 0
@@ -264,7 +264,7 @@ def test_custom_pii_rule_applied(key: str, mode: str) -> None:
 )
 @settings(max_examples=100)
 def test_valid_traceparent_always_parses(trace_id: str, span_id: str, flags: str) -> None:
-    from undef.telemetry.propagation import _parse_traceparent
+    from provide.telemetry.propagation import _parse_traceparent
 
     # Skip all-zero IDs
     if trace_id == "0" * 32 or span_id == "0" * 16:
@@ -283,7 +283,7 @@ def test_valid_traceparent_always_parses(trace_id: str, span_id: str, flags: str
 )
 @settings(max_examples=100)
 def test_traceparent_with_various_versions_parses(version: str, trace_id: str, span_id: str, flags: str) -> None:
-    from undef.telemetry.propagation import _parse_traceparent
+    from provide.telemetry.propagation import _parse_traceparent
 
     value = f"{version}-{trace_id}-{span_id}-{flags}"
     result_tid, result_sid = _parse_traceparent(value)
@@ -294,7 +294,7 @@ def test_traceparent_with_various_versions_parses(version: str, trace_id: str, s
 @given(garbage=st.text(max_size=256))
 @settings(max_examples=100)
 def test_traceparent_fuzz_never_crashes(garbage: str) -> None:
-    from undef.telemetry.propagation import _parse_traceparent
+    from provide.telemetry.propagation import _parse_traceparent
 
     result = _parse_traceparent(garbage)
     assert isinstance(result, tuple)

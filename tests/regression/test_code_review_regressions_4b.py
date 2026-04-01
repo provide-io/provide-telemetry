@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Regression tests for code review batch 4 (issues 7-12): slo lazy import,
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.health import reset_health_for_tests
-from undef.telemetry.resilience import reset_resilience_for_tests
+from provide.telemetry.health import reset_health_for_tests
+from provide.telemetry.resilience import reset_resilience_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -25,10 +25,10 @@ def _clean() -> None:
 
 class TestLazySloImport:
     def test_importing_package_does_not_load_slo(self) -> None:
-        """Importing undef.telemetry must not eagerly load undef.telemetry.slo."""
+        """Importing provide.telemetry must not eagerly load provide.telemetry.slo."""
         import sys
 
-        slo_key = "undef.telemetry.slo"
+        slo_key = "provide.telemetry.slo"
         # Remove slo from cache to test fresh import
         slo_was_loaded = slo_key in sys.modules
         was_cached = sys.modules.pop(slo_key, None)
@@ -36,9 +36,9 @@ class TestLazySloImport:
             # Re-importing the package should NOT re-load slo
             import importlib
 
-            import undef.telemetry
+            import provide.telemetry
 
-            importlib.reload(undef.telemetry.setup)
+            importlib.reload(provide.telemetry.setup)
             # slo should not be in sys.modules unless it was already there before
             if not slo_was_loaded:
                 assert slo_key not in sys.modules, "slo was eagerly loaded during package import"
@@ -52,7 +52,7 @@ class TestLazySloImport:
 
 class TestSamplingPolicyReturnsCopy:
     def test_mutating_returned_overrides_does_not_affect_stored_policy(self) -> None:
-        from undef.telemetry.sampling import (
+        from provide.telemetry.sampling import (
             SamplingPolicy,
             get_sampling_policy,
             reset_sampling_for_tests,
@@ -67,7 +67,7 @@ class TestSamplingPolicyReturnsCopy:
         assert "injected" not in fresh.overrides, "Mutation of returned overrides affected stored policy"
 
     def test_returned_policy_is_not_same_object(self) -> None:
-        from undef.telemetry.sampling import (
+        from provide.telemetry.sampling import (
             SamplingPolicy,
             get_sampling_policy,
             reset_sampling_for_tests,
@@ -86,7 +86,7 @@ class TestSamplingPolicyReturnsCopy:
 
 class TestPiiDisabledReturnsCopy:
     def test_disabled_returns_copy_not_original(self) -> None:
-        from undef.telemetry.pii import sanitize_payload
+        from provide.telemetry.pii import sanitize_payload
 
         original = {"key": "value", "other": 123}
         result = sanitize_payload(original, enabled=False)
@@ -94,7 +94,7 @@ class TestPiiDisabledReturnsCopy:
         assert result is not original
 
     def test_mutating_disabled_result_does_not_affect_original(self) -> None:
-        from undef.telemetry.pii import sanitize_payload
+        from provide.telemetry.pii import sanitize_payload
 
         original = {"key": "value"}
         result = sanitize_payload(original, enabled=False)
@@ -107,7 +107,7 @@ class TestPiiDisabledReturnsCopy:
 
 class TestResilienceWarnDedup:
     def test_policy_change_triggers_new_warning(self) -> None:
-        from undef.telemetry.resilience import ExporterPolicy, _warn_async_risk
+        from provide.telemetry.resilience import ExporterPolicy, _warn_async_risk
 
         policy_block = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=True)
         policy_fail = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=False)
@@ -120,7 +120,7 @@ class TestResilienceWarnDedup:
     def test_same_policy_same_signal_no_repeat_warning(self) -> None:
         import warnings
 
-        from undef.telemetry.resilience import ExporterPolicy, _warn_async_risk
+        from provide.telemetry.resilience import ExporterPolicy, _warn_async_risk
 
         policy = ExporterPolicy(retries=1, backoff_seconds=0.1, allow_blocking_in_event_loop=False)
         with pytest.warns(RuntimeWarning):
@@ -131,8 +131,8 @@ class TestResilienceWarnDedup:
         assert len(w) == 0
 
     def test_warned_key_is_tuple_of_signal_and_bool(self) -> None:
-        from undef.telemetry import resilience as r_mod
-        from undef.telemetry.resilience import ExporterPolicy, _warn_async_risk
+        from provide.telemetry import resilience as r_mod
+        from provide.telemetry.resilience import ExporterPolicy, _warn_async_risk
 
         policy = ExporterPolicy(retries=1, backoff_seconds=0.0, allow_blocking_in_event_loop=True)
         with pytest.warns(RuntimeWarning):
@@ -146,20 +146,20 @@ class TestResilienceWarnDedup:
 
 class TestOtlpHeaderKeyUrlDecode:
     def test_url_encoded_key_is_decoded(self) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
         result = _parse_otlp_headers("my%20key=some_value")
         assert "my key" in result
         assert result["my key"] == "some_value"
 
     def test_url_encoded_value_is_decoded(self) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
         result = _parse_otlp_headers("key=my%20value")
         assert result["key"] == "my value"
 
     def test_plain_key_value_unchanged(self) -> None:
-        from undef.telemetry.config import _parse_otlp_headers
+        from provide.telemetry.config import _parse_otlp_headers
 
         result = _parse_otlp_headers("Authorization=Bearer%20token123")
         assert "Authorization" in result
@@ -172,8 +172,8 @@ class TestOtlpHeaderKeyUrlDecode:
 class TestMiddlewareRestoresContext:
     @pytest.mark.asyncio
     async def test_pre_request_context_is_restored_after_request(self) -> None:
-        from undef.telemetry.asgi.middleware import TelemetryMiddleware
-        from undef.telemetry.logger.context import bind_context, get_context, restore_context
+        from provide.telemetry.asgi.middleware import TelemetryMiddleware
+        from provide.telemetry.logger.context import bind_context, get_context, restore_context
 
         # Set pre-existing context
         restore_context({})
@@ -201,8 +201,8 @@ class TestMiddlewareRestoresContext:
 
     @pytest.mark.asyncio
     async def test_empty_pre_request_context_is_restored(self) -> None:
-        from undef.telemetry.asgi.middleware import TelemetryMiddleware
-        from undef.telemetry.logger.context import get_context, restore_context
+        from provide.telemetry.asgi.middleware import TelemetryMiddleware
+        from provide.telemetry.logger.context import get_context, restore_context
 
         restore_context({})
 
@@ -227,14 +227,14 @@ class TestMiddlewareRestoresContext:
 
 class TestRestoreContext:
     def test_restore_context_sets_exact_snapshot(self) -> None:
-        from undef.telemetry.logger.context import get_context, restore_context
+        from provide.telemetry.logger.context import get_context, restore_context
 
         restore_context({"x": 1, "y": "hello"})
         ctx = get_context()
         assert ctx == {"x": 1, "y": "hello"}
 
     def test_restore_context_empty_dict_clears(self) -> None:
-        from undef.telemetry.logger.context import bind_context, get_context, restore_context
+        from provide.telemetry.logger.context import bind_context, get_context, restore_context
 
         bind_context(foo="bar")
         restore_context({})
@@ -242,7 +242,7 @@ class TestRestoreContext:
         assert ctx == {}
 
     def test_restore_context_returns_copy(self) -> None:
-        from undef.telemetry.logger.context import bind_context, restore_context
+        from provide.telemetry.logger.context import bind_context, restore_context
 
         snapshot: dict[str, object] = {"a": 1}
         restore_context(snapshot)
@@ -256,14 +256,14 @@ class TestRestoreContext:
 
 class TestHasOtelLogProvider:
     def test_returns_false_when_none(self) -> None:
-        from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
+        from provide.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
 
         _reset_logging_for_tests()
         assert _has_otel_log_provider() is False
 
     def test_returns_true_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
 
         _reset_logging_for_tests()
         monkeypatch.setattr(lc, "_otel_log_provider", object())
@@ -277,9 +277,9 @@ class TestTraceWrapperLockedRead:
     def test_trace_does_not_log_when_level_not_trace(self) -> None:
         import structlog
 
-        from undef.telemetry.config import TelemetryConfig
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _TraceWrapper, configure_logging
+        from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _TraceWrapper, configure_logging
 
         lc._reset_logging_for_tests()
         cfg = TelemetryConfig()  # INFO level
@@ -296,9 +296,9 @@ class TestTraceWrapperLockedRead:
     def test_trace_logs_when_level_is_trace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import structlog
 
-        from undef.telemetry.config import LoggingConfig, TelemetryConfig
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _TraceWrapper, configure_logging
+        from provide.telemetry.config import LoggingConfig, TelemetryConfig
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _TraceWrapper, configure_logging
 
         lc._reset_logging_for_tests()
         cfg = TelemetryConfig(logging=LoggingConfig(level="TRACE"))
@@ -310,9 +310,9 @@ class TestTraceWrapperLockedRead:
         assert "trace_event" in trace_calls
 
     def test_trace_is_noop_when_active_config_is_none(self) -> None:
-        from undef.telemetry.config import TelemetryConfig
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _TraceWrapper, configure_logging
+        from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _TraceWrapper, configure_logging
 
         lc._reset_logging_for_tests()
         # Configure with INFO (default) so FilteringBoundLogger has .trace() as nop

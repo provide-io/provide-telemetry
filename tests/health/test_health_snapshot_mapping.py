@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for health snapshot field mapping and reset behaviour.
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.health import (
+from provide.telemetry.health import (
     get_health_snapshot,
     increment_async_blocking_risk,
     increment_dropped,

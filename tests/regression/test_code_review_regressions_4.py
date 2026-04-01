@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Regression tests for code review batch 4 (issues 1-6): health validation,
@@ -10,17 +10,17 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.backpressure import reset_queues_for_tests
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.health import (
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.health import (
     _known_signal,
     get_health_snapshot,
     increment_dropped,
     reset_health_for_tests,
     set_queue_depth,
 )
-from undef.telemetry.resilience import reset_resilience_for_tests
-from undef.telemetry.sampling import reset_sampling_for_tests
+from provide.telemetry.resilience import reset_resilience_for_tests
+from provide.telemetry.sampling import reset_sampling_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -71,8 +71,8 @@ class TestHealthKnownSignalRaises:
 
 class TestSetupGenerationPreventsOrphanedProvider:
     def test_shutdown_increments_setup_generation_tracing(self) -> None:
-        from undef.telemetry.tracing import provider as tracing_provider
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
+        from provide.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
 
         _reset_tracing_for_tests()
         gen_before = tracing_provider._setup_generation
@@ -81,8 +81,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
 
     def test_shutdown_tracing_twice_increments_by_two(self) -> None:
         """Kill mutant: _setup_generation = 1 instead of += 1 (= 1 and += 1 are equal for first call from 0)."""
-        from undef.telemetry.tracing import provider as tracing_provider
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
+        from provide.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
 
         _reset_tracing_for_tests()
         shutdown_tracing()
@@ -90,8 +90,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
         assert tracing_provider._setup_generation == 2
 
     def test_shutdown_increments_setup_generation_metrics(self) -> None:
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
 
         _set_meter_for_test(None)
         gen_before = metrics_provider._setup_generation
@@ -100,8 +100,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
 
     def test_shutdown_metrics_twice_increments_by_two(self) -> None:
         """Kill mutant: _setup_generation = 1 instead of += 1 (= 1 and += 1 are equal for first call from 0)."""
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
 
         _set_meter_for_test(None)
         shutdown_metrics()
@@ -109,8 +109,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
         assert metrics_provider._setup_generation == 2
 
     def test_reset_tracing_resets_generation(self) -> None:
-        from undef.telemetry.tracing import provider as tracing_provider
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
+        from provide.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests, shutdown_tracing
 
         shutdown_tracing()
         shutdown_tracing()
@@ -118,8 +118,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
         assert tracing_provider._setup_generation == 0
 
     def test_reset_metrics_resets_generation(self) -> None:
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.metrics.provider import _set_meter_for_test, shutdown_metrics
 
         shutdown_metrics()
         _set_meter_for_test(None)
@@ -127,8 +127,8 @@ class TestSetupGenerationPreventsOrphanedProvider:
 
     def test_tracing_setup_discards_provider_if_generation_changed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """If _setup_generation changes between lock releases, provider is discarded."""
-        from undef.telemetry.tracing import provider as tracing_provider
-        from undef.telemetry.tracing.provider import _reset_tracing_for_tests
+        from provide.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
         _reset_tracing_for_tests()
         monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
@@ -200,42 +200,42 @@ class TestSetupGenerationPreventsOrphanedProvider:
 
 class TestLockedProviderAccessors:
     def test_has_tracing_provider_false_when_none(self) -> None:
-        from undef.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
+        from provide.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
 
         _reset_tracing_for_tests()
         assert _has_tracing_provider() is False
 
     def test_has_meter_provider_false_when_none(self) -> None:
-        from undef.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
+        from provide.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
 
         _set_meter_for_test(None)
         assert _has_meter_provider() is False
 
     def test_has_otel_log_provider_false_when_none(self) -> None:
-        from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
+        from provide.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
 
         _reset_logging_for_tests()
         assert _has_otel_log_provider() is False
 
     def test_has_tracing_provider_true_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry.tracing import provider as tp
-        from undef.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
+        from provide.telemetry.tracing import provider as tp
+        from provide.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
 
         _reset_tracing_for_tests()
         monkeypatch.setattr(tp, "_provider_ref", object())
         assert _has_tracing_provider() is True
 
     def test_has_meter_provider_true_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry.metrics import provider as mp
-        from undef.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
+        from provide.telemetry.metrics import provider as mp
+        from provide.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
 
         _set_meter_for_test(None)
         monkeypatch.setattr(mp, "_meter_provider", object())
         assert _has_meter_provider() is True
 
     def test_has_otel_log_provider_true_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
 
         _reset_logging_for_tests()
         monkeypatch.setattr(lc, "_otel_log_provider", object())
@@ -245,8 +245,8 @@ class TestLockedProviderAccessors:
 
     def test_has_tracing_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _provider_ref is None but _otel_global_set stays True — guard must fire."""
-        from undef.telemetry.tracing import provider as tp
-        from undef.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
+        from provide.telemetry.tracing import provider as tp
+        from provide.telemetry.tracing.provider import _has_tracing_provider, _reset_tracing_for_tests
 
         _reset_tracing_for_tests()
         monkeypatch.setattr(tp, "_provider_ref", None)
@@ -255,8 +255,8 @@ class TestLockedProviderAccessors:
 
     def test_has_meter_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _meter_provider is None but _meter_global_set stays True — guard must fire."""
-        from undef.telemetry.metrics import provider as mp
-        from undef.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
+        from provide.telemetry.metrics import provider as mp
+        from provide.telemetry.metrics.provider import _has_meter_provider, _set_meter_for_test
 
         _set_meter_for_test(None)
         monkeypatch.setattr(mp, "_meter_provider", None)
@@ -265,8 +265,8 @@ class TestLockedProviderAccessors:
 
     def test_has_otel_log_provider_true_after_shutdown_via_global_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """After shutdown _otel_log_provider is None but _otel_log_global_set stays True — guard must fire."""
-        from undef.telemetry.logger import core as lc
-        from undef.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
+        from provide.telemetry.logger import core as lc
+        from provide.telemetry.logger.core import _has_otel_log_provider, _reset_logging_for_tests
 
         _reset_logging_for_tests()
         monkeypatch.setattr(lc, "_otel_log_provider", None)
@@ -280,10 +280,10 @@ class TestLockedProviderAccessors:
 class TestReconfigureGuardAfterShutdown:
     def test_reconfigure_raises_when_tracing_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """reconfigure_telemetry() must raise even after shutdown when _otel_global_set is True."""
-        from undef.telemetry import runtime as runtime_mod
-        from undef.telemetry.logger import core as logger_core
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry import runtime as runtime_mod
+        from provide.telemetry.logger import core as logger_core
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.tracing import provider as tracing_provider
 
         runtime_mod.reset_runtime_for_tests()
         runtime_mod.apply_runtime_config(TelemetryConfig(service_name="svc-a"))
@@ -301,10 +301,10 @@ class TestReconfigureGuardAfterShutdown:
 
     def test_reconfigure_raises_when_metrics_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """reconfigure_telemetry() must raise even after metrics shutdown when _meter_global_set is True."""
-        from undef.telemetry import runtime as runtime_mod
-        from undef.telemetry.logger import core as logger_core
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry import runtime as runtime_mod
+        from provide.telemetry.logger import core as logger_core
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.tracing import provider as tracing_provider
 
         runtime_mod.reset_runtime_for_tests()
         runtime_mod.apply_runtime_config(TelemetryConfig(service_name="svc-a"))
@@ -321,10 +321,10 @@ class TestReconfigureGuardAfterShutdown:
 
     def test_reconfigure_raises_when_log_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """reconfigure_telemetry() must raise even after logging shutdown when _otel_log_global_set is True."""
-        from undef.telemetry import runtime as runtime_mod
-        from undef.telemetry.logger import core as logger_core
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry import runtime as runtime_mod
+        from provide.telemetry.logger import core as logger_core
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.tracing import provider as tracing_provider
 
         runtime_mod.reset_runtime_for_tests()
         runtime_mod.apply_runtime_config(TelemetryConfig(service_name="svc-a"))
@@ -346,10 +346,10 @@ class TestReconfigureGuardAfterShutdown:
 class TestReconfigureUsesLockedAccessors:
     def test_reconfigure_calls_locked_accessors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Kills mutant that reads _otel_log_provider directly instead of _has_otel_log_provider."""
-        from undef.telemetry import runtime as runtime_mod
-        from undef.telemetry.logger import core as logger_core
-        from undef.telemetry.metrics import provider as metrics_provider
-        from undef.telemetry.tracing import provider as tracing_provider
+        from provide.telemetry import runtime as runtime_mod
+        from provide.telemetry.logger import core as logger_core
+        from provide.telemetry.metrics import provider as metrics_provider
+        from provide.telemetry.tracing import provider as tracing_provider
 
         runtime_mod.reset_runtime_for_tests()
         runtime_mod.apply_runtime_config(TelemetryConfig(service_name="svc"))
@@ -371,8 +371,8 @@ class TestReconfigureUsesLockedAccessors:
         monkeypatch.setattr(logger_core, "_has_otel_log_provider", _fake_log_check)
         monkeypatch.setattr(tracing_provider, "_has_tracing_provider", _fake_trace_check)
         monkeypatch.setattr(metrics_provider, "_has_meter_provider", _fake_meter_check)
-        monkeypatch.setattr("undef.telemetry.setup.shutdown_telemetry", lambda: None)
-        monkeypatch.setattr("undef.telemetry.setup.setup_telemetry", lambda cfg: TelemetryConfig())
+        monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", lambda cfg: TelemetryConfig())
 
         runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="renamed"))
         assert called.get("log") is True
@@ -387,7 +387,7 @@ class TestGaugeDeltaAtomicity:
     def test_gauge_set_calls_otel_add_with_correct_delta(self) -> None:
         from unittest.mock import MagicMock
 
-        from undef.telemetry.metrics.fallback import Gauge
+        from provide.telemetry.metrics.fallback import Gauge
 
         mock_otel = MagicMock()
         g = Gauge("test.gauge", otel_gauge=mock_otel)
@@ -399,7 +399,7 @@ class TestGaugeDeltaAtomicity:
     def test_gauge_add_calls_otel_add_under_lock(self) -> None:
         from unittest.mock import MagicMock
 
-        from undef.telemetry.metrics.fallback import Gauge
+        from provide.telemetry.metrics.fallback import Gauge
 
         mock_otel = MagicMock()
         g = Gauge("test.gauge.add", otel_gauge=mock_otel)
@@ -411,7 +411,7 @@ class TestGaugeDeltaAtomicity:
         import threading
         from unittest.mock import MagicMock
 
-        from undef.telemetry.metrics.fallback import Gauge
+        from provide.telemetry.metrics.fallback import Gauge
 
         add_calls: list[int] = []
         mock_otel = MagicMock()

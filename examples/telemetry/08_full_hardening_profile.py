@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """🏰 Full production hardening profile — all guardrails active.
@@ -19,7 +19,7 @@ Demonstrates a complete hardening setup combining:
 
 from __future__ import annotations
 
-from undef.telemetry import (
+from provide.telemetry import (
     ExporterPolicy,
     PIIRule,
     QueuePolicy,
@@ -40,8 +40,8 @@ from undef.telemetry import (
     shutdown_telemetry,
     update_runtime_config,
 )
-from undef.telemetry.cardinality import guard_attributes
-from undef.telemetry.config import TelemetryConfig
+from provide.telemetry.cardinality import guard_attributes
+from provide.telemetry.config import TelemetryConfig
 
 
 def main() -> None:
@@ -49,9 +49,9 @@ def main() -> None:
 
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
-            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
-            "UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "true",
+            "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
+            "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
+            "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "true",
         }
     )
     setup_telemetry(cfg)
@@ -110,7 +110,7 @@ def main() -> None:
     print("\n🔧 Hot-swapping log sampling to 100%...")
     current = get_runtime_config()
     print(f"  📋 Before: logs_rate={current.sampling.logs_rate}")
-    new_cfg = TelemetryConfig.from_env({"UNDEF_SAMPLING_LOGS_RATE": "1.0"})
+    new_cfg = TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "1.0"})
     updated = update_runtime_config(new_cfg)
     print(f"  ✅ After:  logs_rate={updated.sampling.logs_rate}")
 

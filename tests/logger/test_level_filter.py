@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for _parse_module_levels() and _LevelFilter / make_level_filter()."""
@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 import structlog
 
-from undef.telemetry.config import _parse_module_levels
-from undef.telemetry.exceptions import ConfigurationError
-from undef.telemetry.logger.processors import _LevelFilter, make_level_filter
+from provide.telemetry.config import _parse_module_levels
+from provide.telemetry.exceptions import ConfigurationError
+from provide.telemetry.logger.processors import _LevelFilter, make_level_filter
 
 # ── _parse_module_levels ─────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Hardening integration tests for resilience async guard paths.
@@ -16,14 +16,14 @@ from typing import Any
 
 import pytest
 
-from undef.telemetry import backpressure as backpressure_mod
-from undef.telemetry import cardinality as cardinality_mod
-from undef.telemetry import health as health_mod
-from undef.telemetry import pii as pii_mod
-from undef.telemetry import resilience as resilience_mod
-from undef.telemetry import sampling as sampling_mod
-from undef.telemetry.logger.context import clear_context
-from undef.telemetry.tracing.context import set_trace_context
+from provide.telemetry import backpressure as backpressure_mod
+from provide.telemetry import cardinality as cardinality_mod
+from provide.telemetry import health as health_mod
+from provide.telemetry import pii as pii_mod
+from provide.telemetry import resilience as resilience_mod
+from provide.telemetry import sampling as sampling_mod
+from provide.telemetry.logger.context import clear_context
+from provide.telemetry.tracing.context import set_trace_context
 
 
 @pytest.fixture(autouse=True)

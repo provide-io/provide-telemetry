@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """🛡️ Exporter resilience — retries, timeouts, and failure policies.
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import time
 
-from undef.telemetry import ExporterPolicy, get_exporter_policy, get_health_snapshot, set_exporter_policy
-from undef.telemetry.resilience import run_with_resilience
+from provide.telemetry import ExporterPolicy, get_exporter_policy, get_health_snapshot, set_exporter_policy
+from provide.telemetry.resilience import run_with_resilience
 
 
 def main() -> None:

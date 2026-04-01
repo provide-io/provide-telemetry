@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests to kill all surviving mutants in health.py."""
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.health import (
+from provide.telemetry.health import (
     _known_signal,
     get_health_snapshot,
     increment_async_blocking_risk,

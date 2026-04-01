@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Property-based tests for tracing context, NoopSpan, and resilience."""
@@ -10,14 +10,14 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from undef.telemetry.resilience import (
+from provide.telemetry.resilience import (
     ExporterPolicy,
     get_exporter_policy,
     reset_resilience_for_tests,
     set_exporter_policy,
 )
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
-from undef.telemetry.tracing.provider import _NoopSpan, _NoopTracer
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.provider import _NoopSpan, _NoopTracer
 
 # ── Trace context properties ──────────────────────────────────────────
 

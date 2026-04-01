@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """🔒 PII masking and cardinality guardrails.
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 
-from undef.telemetry import (
+from provide.telemetry import (
     PIIRule,
     counter,
     get_logger,
@@ -28,13 +28,13 @@ from undef.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
-from undef.telemetry.cardinality import (
+from provide.telemetry.cardinality import (
     OVERFLOW_VALUE,
     clear_cardinality_limits,
     get_cardinality_limits,
     guard_attributes,
 )
-from undef.telemetry.pii import get_pii_rules, replace_pii_rules, sanitize_payload
+from provide.telemetry.pii import get_pii_rules, replace_pii_rules, sanitize_payload
 
 
 def main() -> None:
@@ -42,7 +42,7 @@ def main() -> None:
 
     setup_telemetry()
     log = get_logger("examples.policy")
-    token_value = os.getenv("UNDEF_EXAMPLE_TOKEN", "example-token-from-env")
+    token_value = os.getenv("PROVIDE_EXAMPLE_TOKEN", "example-token-from-env")
 
     # ── 🛡️ Register PII rules ────────────────────────────
     print("🛡️  Registering PII rules...")

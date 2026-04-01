@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -12,10 +12,10 @@ from typing import Any, cast
 
 import pytest
 
-from undef.telemetry import _otel
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger import core as core_mod
-from undef.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry import _otel
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger import core as core_mod
+from provide.telemetry.logger.core import _reset_logging_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -138,8 +138,8 @@ def test_build_handlers_with_otel_endpoint_when_components_missing(monkeypatch: 
 def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "svc",
-            "UNDEF_TELEMETRY_VERSION": "1.0.0",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "svc",
+            "PROVIDE_TELEMETRY_VERSION": "1.0.0",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
             "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "Authorization=Basic%20abc",
         }
@@ -218,9 +218,9 @@ def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> N
 def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "svc",
-            "UNDEF_TELEMETRY_VERSION": "1.0.0",
-            "UNDEF_LOG_CODE_ATTRIBUTES": "true",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "svc",
+            "PROVIDE_TELEMETRY_VERSION": "1.0.0",
+            "PROVIDE_LOG_CODE_ATTRIBUTES": "true",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
         }
     )
@@ -299,8 +299,8 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
 def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "svc",
-            "UNDEF_TELEMETRY_VERSION": "1.0.0",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "svc",
+            "PROVIDE_TELEMETRY_VERSION": "1.0.0",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
         }
     )
@@ -384,7 +384,7 @@ def test_shutdown_logging_without_provider() -> None:
 
 def test_shutdown_logging_without_provider_clears_configured_state() -> None:
     """shutdown_logging() with no provider must still clear _configured and _active_config."""
-    from undef.telemetry.config import TelemetryConfig
+    from provide.telemetry.config import TelemetryConfig
 
     _reset_logging_for_tests()
     core_mod._configured = True

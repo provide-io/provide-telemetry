@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -8,13 +8,13 @@ from __future__ import annotations
 import pytest
 import structlog
 
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.logger import context as context_mod
-from undef.telemetry.logger import processors as processors_mod
-from undef.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
-from undef.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
-from undef.telemetry.schema.events import EventSchemaError
-from undef.telemetry.tracing.context import set_trace_context
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger import context as context_mod
+from provide.telemetry.logger import processors as processors_mod
+from provide.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
+from provide.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
+from provide.telemetry.schema.events import EventSchemaError
+from provide.telemetry.tracing.context import set_trace_context
 
 
 def test_context_unbind_missing_key_is_noop_and_keeps_dict_state() -> None:
@@ -46,7 +46,7 @@ def test_add_standard_fields_sets_exact_expected_keys() -> None:
 
 
 def test_add_standard_fields_error_taxonomy_when_exc_name_present() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "true"})
     processor = add_standard_fields(cfg)
     out = processor(None, "error", {"event": "auth.login.error", "exc_name": "ValueError"})
     assert out["error_type"] == "internal"
@@ -87,7 +87,7 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 
     monkeypatch.setattr(processors_mod, "validate_event_name", _validate_event_name)
     monkeypatch.setattr(processors_mod, "validate_required_keys", _validate_required_keys)
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "false"})
     processor = enforce_event_schema(cfg)
     payload: dict[str, object] = {"request_id": "r1"}
     out = processor(None, "info", payload)
@@ -99,8 +99,8 @@ def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: p
 def test_enforce_event_schema_required_keys_error_message() -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
-            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id",
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
+            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id,session_id",
         }
     )
     processor = enforce_event_schema(cfg)
@@ -109,7 +109,7 @@ def test_enforce_event_schema_required_keys_error_message() -> None:
 
 
 def test_enforce_event_schema_enforces_required_keys_in_compat_mode() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
     processor = enforce_event_schema(cfg)
     with pytest.raises(EventSchemaError, match="missing required keys"):
         processor(None, "info", {"event": "auth.login.success"})
@@ -117,8 +117,8 @@ def test_enforce_event_schema_enforces_required_keys_in_compat_mode() -> None:
 
 def test_enforce_event_schema_policy_matrix() -> None:
     compat_default = TelemetryConfig.from_env({})
-    compat_relaxed = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false"})
-    strict = TelemetryConfig.from_env({"UNDEF_TELEMETRY_STRICT_SCHEMA": "true"})
+    compat_relaxed = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "false"})
+    strict = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_SCHEMA": "true"})
 
     relaxed_default = enforce_event_schema(compat_default)
     relaxed_explicit = enforce_event_schema(compat_relaxed)
@@ -133,7 +133,7 @@ def test_enforce_event_schema_policy_matrix() -> None:
 
 def test_save_context_preserves_current_values() -> None:
     """save_context must snapshot current context, not null it."""
-    from undef.telemetry.logger.context import bind_context, get_context, reset_context, save_context
+    from provide.telemetry.logger.context import bind_context, get_context, reset_context, save_context
 
     bind_context(user="alice")
     token = save_context()

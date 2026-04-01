@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.config import (
+from provide.telemetry.config import (
     BackpressureConfig,
     LoggingConfig,
     SamplingConfig,
@@ -86,14 +86,14 @@ def test_backpressure_config_validation_boundaries() -> None:
 
 def test_new_config_validation_guards() -> None:
     with pytest.raises(ValueError, match="sampling rate must be between 0 and 1"):
-        TelemetryConfig.from_env({"UNDEF_SAMPLING_LOGS_RATE": "1.1"})
+        TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "1.1"})
     with pytest.raises(ValueError, match="queue maxsize must be >= 0"):
-        TelemetryConfig.from_env({"UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "-1"})
+        TelemetryConfig.from_env({"PROVIDE_BACKPRESSURE_LOGS_MAXSIZE": "-1"})
 
 
 def test_telemetry_from_env_defaults() -> None:
     cfg = TelemetryConfig.from_env({})
-    assert cfg.service_name == "undef-service"
+    assert cfg.service_name == "provide-service"
     assert cfg.environment == "dev"
     assert cfg.strict_schema is False
     assert cfg.event_schema.required_keys == ()
@@ -102,50 +102,50 @@ def test_telemetry_from_env_defaults() -> None:
 def test_telemetry_from_env_values() -> None:
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "svc",
-            "UNDEF_TELEMETRY_ENV": "prod",
-            "UNDEF_TELEMETRY_VERSION": "1.2.3",
-            "UNDEF_TELEMETRY_STRICT_SCHEMA": "true",
-            "UNDEF_LOG_LEVEL": "TRACE",
-            "UNDEF_LOG_FORMAT": "json",
-            "UNDEF_LOG_INCLUDE_TIMESTAMP": "false",
-            "UNDEF_LOG_INCLUDE_CALLER": "false",
-            "UNDEF_LOG_SANITIZE": "false",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "svc",
+            "PROVIDE_TELEMETRY_ENV": "prod",
+            "PROVIDE_TELEMETRY_VERSION": "1.2.3",
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
+            "PROVIDE_LOG_LEVEL": "TRACE",
+            "PROVIDE_LOG_FORMAT": "json",
+            "PROVIDE_LOG_INCLUDE_TIMESTAMP": "false",
+            "PROVIDE_LOG_INCLUDE_CALLER": "false",
+            "PROVIDE_LOG_SANITIZE": "false",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
             "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "Authorization=Basic%20logs",
-            "UNDEF_TRACE_ENABLED": "false",
-            "UNDEF_TRACE_SAMPLE_RATE": "0.5",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_TRACE_SAMPLE_RATE": "0.5",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://trace",
             "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Basic%20trace",
-            "UNDEF_METRICS_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://metrics",
             "OTEL_EXPORTER_OTLP_METRICS_HEADERS": "Authorization=Basic%20metrics",
-            "UNDEF_TELEMETRY_STRICT_EVENT_NAME": "false",
-            "UNDEF_TELEMETRY_REQUIRED_KEYS": "request_id, session_id",
-            "UNDEF_SAMPLING_LOGS_RATE": "0.9",
-            "UNDEF_SAMPLING_TRACES_RATE": "0.8",
-            "UNDEF_SAMPLING_METRICS_RATE": "0.7",
-            "UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "10",
-            "UNDEF_BACKPRESSURE_TRACES_MAXSIZE": "11",
-            "UNDEF_BACKPRESSURE_METRICS_MAXSIZE": "12",
-            "UNDEF_EXPORTER_LOGS_RETRIES": "1",
-            "UNDEF_EXPORTER_TRACES_RETRIES": "2",
-            "UNDEF_EXPORTER_METRICS_RETRIES": "3",
-            "UNDEF_EXPORTER_LOGS_BACKOFF_SECONDS": "0.1",
-            "UNDEF_EXPORTER_TRACES_BACKOFF_SECONDS": "0.2",
-            "UNDEF_EXPORTER_METRICS_BACKOFF_SECONDS": "0.3",
-            "UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS": "5.0",
-            "UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS": "6.0",
-            "UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS": "7.0",
-            "UNDEF_EXPORTER_LOGS_FAIL_OPEN": "false",
-            "UNDEF_EXPORTER_TRACES_FAIL_OPEN": "false",
-            "UNDEF_EXPORTER_METRICS_FAIL_OPEN": "false",
-            "UNDEF_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP": "true",
-            "UNDEF_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP": "true",
-            "UNDEF_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP": "true",
-            "UNDEF_SLO_ENABLE_RED_METRICS": "true",
-            "UNDEF_SLO_ENABLE_USE_METRICS": "true",
-            "UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "false",
+            "PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "false",
+            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id, session_id",
+            "PROVIDE_SAMPLING_LOGS_RATE": "0.9",
+            "PROVIDE_SAMPLING_TRACES_RATE": "0.8",
+            "PROVIDE_SAMPLING_METRICS_RATE": "0.7",
+            "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE": "10",
+            "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE": "11",
+            "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE": "12",
+            "PROVIDE_EXPORTER_LOGS_RETRIES": "1",
+            "PROVIDE_EXPORTER_TRACES_RETRIES": "2",
+            "PROVIDE_EXPORTER_METRICS_RETRIES": "3",
+            "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS": "0.1",
+            "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS": "0.2",
+            "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS": "0.3",
+            "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS": "5.0",
+            "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS": "6.0",
+            "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS": "7.0",
+            "PROVIDE_EXPORTER_LOGS_FAIL_OPEN": "false",
+            "PROVIDE_EXPORTER_TRACES_FAIL_OPEN": "false",
+            "PROVIDE_EXPORTER_METRICS_FAIL_OPEN": "false",
+            "PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP": "true",
+            "PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP": "true",
+            "PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP": "true",
+            "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
+            "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
+            "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "false",
         }
     )
     assert cfg.service_name == "svc"
@@ -210,5 +210,5 @@ def test_telemetry_otlp_fallback_endpoint() -> None:
 
 
 def test_logging_code_attributes_flag() -> None:
-    cfg = TelemetryConfig.from_env({"UNDEF_LOG_CODE_ATTRIBUTES": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_LOG_CODE_ATTRIBUTES": "true"})
     assert cfg.logging.log_code_attributes is True

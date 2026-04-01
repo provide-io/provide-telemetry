@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
 
-from undef.telemetry.headers import _decode_header_value, _normalize_header_name, get_header
+from provide.telemetry.headers import _decode_header_value, _normalize_header_name, get_header
 
 
 def test_get_header_handles_missing_and_unsupported_entries() -> None:

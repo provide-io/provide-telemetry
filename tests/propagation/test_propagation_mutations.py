@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting mutation-testing survivors in propagation.py."""
@@ -12,11 +12,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from undef.telemetry import propagation as propagation_mod
-from undef.telemetry.logger import context as logger_context_mod
-from undef.telemetry.logger.context import clear_context
-from undef.telemetry.tracing import context as tracing_context_mod
-from undef.telemetry.tracing.context import set_trace_context
+from provide.telemetry import propagation as propagation_mod
+from provide.telemetry.logger import context as logger_context_mod
+from provide.telemetry.logger.context import clear_context
+from provide.telemetry.tracing import context as tracing_context_mod
+from provide.telemetry.tracing.context import set_trace_context
 
 
 @pytest.fixture(autouse=True)
@@ -228,7 +228,7 @@ class TestBindPropagationContext:
             bind_calls.append(kwargs)
             original_bind(**kwargs)
 
-        monkeypatch.setattr("undef.telemetry.propagation.bind_context", _tracking_bind)
+        monkeypatch.setattr("provide.telemetry.propagation.bind_context", _tracking_bind)
 
         ctx = propagation_mod.PropagationContext(
             traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -256,7 +256,7 @@ class TestBindPropagationContext:
             bind_calls.append(kwargs)
             original_bind(**kwargs)
 
-        monkeypatch.setattr("undef.telemetry.propagation.bind_context", _tracking_bind)
+        monkeypatch.setattr("provide.telemetry.propagation.bind_context", _tracking_bind)
 
         ctx = propagation_mod.PropagationContext(
             traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -286,7 +286,7 @@ class TestBindPropagationContext:
             trace_calls.append((tid, sid))
             original_set(tid, sid)
 
-        monkeypatch.setattr("undef.telemetry.propagation.set_trace_context", _tracking_set)
+        monkeypatch.setattr("provide.telemetry.propagation.set_trace_context", _tracking_set)
 
         ctx = propagation_mod.PropagationContext(
             traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -309,7 +309,7 @@ class TestBindPropagationContext:
             trace_calls.append((tid, sid))
             original_set(tid, sid)
 
-        monkeypatch.setattr("undef.telemetry.propagation.set_trace_context", _tracking_set)
+        monkeypatch.setattr("provide.telemetry.propagation.set_trace_context", _tracking_set)
 
         ctx = propagation_mod.PropagationContext(
             traceparent=None,
@@ -330,7 +330,7 @@ class TestBindPropagationContext:
         def _tracking_set(tid: str | None, sid: str | None) -> None:
             trace_calls.append((tid, sid))
 
-        monkeypatch.setattr("undef.telemetry.propagation.set_trace_context", _tracking_set)
+        monkeypatch.setattr("provide.telemetry.propagation.set_trace_context", _tracking_set)
 
         ctx = propagation_mod.PropagationContext(
             traceparent=None,

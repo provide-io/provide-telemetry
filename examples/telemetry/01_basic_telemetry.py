@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """🚀 Basic telemetry — logging, tracing, and all three metric types.
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 
-from undef.telemetry import (
+from provide.telemetry import (
     bind_context,
     clear_context,
     counter,

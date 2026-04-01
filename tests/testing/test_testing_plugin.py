@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Tests for the undef.telemetry.testing module."""
+"""Tests for the provide.telemetry.testing module."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from undef.telemetry.testing import (
+from provide.telemetry.testing import (
     configure_caplog_for_structlog,
     reset_telemetry_state,
     reset_trace_context,
 )
-from undef.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
 if TYPE_CHECKING:
     import pytest
