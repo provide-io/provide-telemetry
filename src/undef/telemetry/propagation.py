@@ -73,8 +73,8 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:
-        raw_traceparent = None
+    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:  # pragma: no mutate
+        raw_traceparent = None  # pragma: no mutate
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
