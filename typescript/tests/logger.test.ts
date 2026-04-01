@@ -444,6 +444,23 @@ describe('write hook — OTLP log export', () => {
     spy.mockRestore();
   });
 
+  it('applies custom PII rules via sanitizePayload in write hook', async () => {
+    const { registerPiiRule, resetPiiRulesForTests } = await import('../src/pii');
+    registerPiiRule({ path: 'user.email', mode: 'hash' });
+    makeCfg({});
+    const captured: Record<string, unknown>[] = [];
+    vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation((o) => {
+      captured.push(JSON.parse(JSON.stringify(o)));
+    });
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'pii.custom', user: { email: 'ops@example.com', name: 'Op' } });
+    const user = captured[0]['user'] as Record<string, unknown>;
+    expect(user['email']).not.toBe('ops@example.com');
+    expect(user['name']).toBe('Op'); // not affected by the rule
+    vi.restoreAllMocks();
+    resetPiiRulesForTests();
+  });
+
   it('calls emitLogRecord after PII sanitization (enriched record)', () => {
     makeCfg({ sanitizeFields: ['secret'] });
     const captured: Record<string, unknown>[] = [];
