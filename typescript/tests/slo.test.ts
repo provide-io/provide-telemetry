@@ -279,3 +279,43 @@ describe('slo — histogram reuse (kills ConditionalExpression→true in _lazyHi
     vi.restoreAllMocks();
   });
 });
+
+describe('sloEnableRedMetrics toggle', () => {
+  it('is a no-op when sloEnableRedMetrics is false', () => {
+    setupTelemetry({ sloEnableRedMetrics: false });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 10 });
+    expect(spy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('records metrics when sloEnableRedMetrics is true', () => {
+    setupTelemetry({ sloEnableRedMetrics: true });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 10 });
+    expect(spy).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+});
+
+describe('sloEnableUseMetrics toggle', () => {
+  it('is a no-op when sloEnableUseMetrics is false', () => {
+    setupTelemetry({ sloEnableUseMetrics: false });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'gauge');
+    recordUseMetrics({ resource: 'cpu', utilization: 50 });
+    expect(spy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('records metrics when sloEnableUseMetrics is true', () => {
+    setupTelemetry({ sloEnableUseMetrics: true });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'gauge');
+    recordUseMetrics({ resource: 'cpu', utilization: 50 });
+    expect(spy).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+});
