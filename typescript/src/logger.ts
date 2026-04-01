@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
@@ -10,7 +10,7 @@
  *   - PII sanitization
  *   - msg fallback: if msg is empty, defaults to obj.event
  *
- * Mirrors Python undef.telemetry get_logger().
+ * Mirrors Python provide.telemetry get_logger().
  */
 
 import pino from 'pino';

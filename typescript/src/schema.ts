@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Event schema validation — mirrors Python undef.telemetry.schema.events.
+ * Event schema validation — mirrors Python provide.telemetry.schema.events.
  */
 
 import { TelemetryError } from './exceptions';

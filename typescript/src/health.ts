@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Internal self-observability counters — mirrors Python undef.telemetry.health.
+ * Internal self-observability counters — mirrors Python provide.telemetry.health.
  */
 
 export interface HealthSnapshot {
