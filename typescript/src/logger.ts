@@ -109,8 +109,15 @@ export function makeWriteHook() {
     }
 
     // PII sanitization: blocked keys + secret detection + custom PII rules.
-    sanitize(o, cfg.sanitizeFields);
-    sanitizePayload(o);
+    if (cfg.logSanitize) {
+      sanitize(o, cfg.sanitizeFields);
+      sanitizePayload(o);
+    }
+
+    // Strip timestamp when configured off.
+    if (!cfg.logIncludeTimestamp) {
+      delete o['time'];
+    }
 
     // Schema validation — drop records that violate strict schema rules.
     /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
