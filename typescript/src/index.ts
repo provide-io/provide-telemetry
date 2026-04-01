@@ -15,7 +15,14 @@
  */
 
 // Config + setup
-export { setupTelemetry, getConfig, configFromEnv, version, __version__ } from './config';
+export {
+  setupTelemetry,
+  applyConfigPolicies,
+  getConfig,
+  configFromEnv,
+  version,
+  __version__,
+} from './config';
 export type { TelemetryConfig } from './config';
 
 // Logger
