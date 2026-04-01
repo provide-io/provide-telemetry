@@ -16,8 +16,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSES/*"]
-authors = [{name = "Tim Perkins", email = "code@tim.life"}]
-maintainers = [{name = "provide.io", email = "code@provide.io"}]
+authors = [
+    {name = "Tim Perkins", email = "code@tim.life"},
+    {name = "provide.io llc", email = "code@provide.io"},
+]
+maintainers = [{name = "provide.io llc", email = "code@provide.io"}]
 keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
 classifiers = [
   "Development Status :: 4 - Beta",
