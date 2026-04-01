@@ -100,9 +100,10 @@ async function streamNames(baseUrl: string, streamType: string, auth: string): P
 }
 
 function requiredSignalsFromEnv(): Set<string> {
-  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'logs';
+  // Default: traces only. Logs are pino → stdout only (no OTLP log exporter in TS yet).
+  const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'traces';
   const requested = new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-  if (requested.size === 0) requested.add('logs');
+  if (requested.size === 0) requested.add('traces');
   const valid = new Set(['logs', 'metrics', 'traces']);
   for (const s of requested) {
     if (!valid.has(s)) throw new Error(`invalid OPENOBSERVE_REQUIRED_SIGNALS entry: ${s}`);
@@ -121,20 +122,14 @@ async function main(): Promise<void> {
   const startUs = Date.now() * 1000 - 2 * 60 * 60 * 1_000_000;
   const traceName = `example.openobserve.work.${runId}`;
   const metricStream = `example_openobserve_requests_${runId}`;
-  // Two log signals per run:
-  //   otlpLogEvent  — pino logs emitted via OTLP (registerOtelProviders → OTLPLogExporter)
-  //   jsonLogEvent  — direct _json POST for baseline verification
-  const otlpLogEvent = 'example.openobserve.log';
-  const jsonLogEvent = 'example.openobserve.jsonlog';
+  const logEvent = `example.openobserve.log.${runId}`;
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
   const beforeLogHits = await searchHits(baseUrl, 'logs', auth, startUs, endUsBefore);
   const beforeTraceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUsBefore);
   const beforeMetricStreams = await streamNames(baseUrl, 'metrics', auth);
-  const beforeLogs = beforeLogHits.filter(
-    (h) => (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
-  ).length;
+  const beforeLogs = beforeLogHits.filter((h) => h['event'] === logEvent).length;
   const beforeTraces = beforeTraceHits.filter((h) => h['operation_name'] === traceName).length;
   const before = { logs: beforeLogs, metrics_stream_present: beforeMetricStreams.has(metricStream), traces: beforeTraces };
   const requiredSignals = requiredSignalsFromEnv();
@@ -154,9 +149,7 @@ async function main(): Promise<void> {
     const traceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUs);
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
     after = {
-      logs: logHits.filter(
-        (h) => (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
-      ).length,
+      logs: logHits.filter((h) => h['event'] === logEvent).length,
       metrics_stream_present: mStreams.has(metricStream),
       traces: traceHits.filter((h) => h['operation_name'] === traceName).length,
     };

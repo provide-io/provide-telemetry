@@ -19,7 +19,7 @@ import {
   sanitize,
   registerPiiRule,
   getPiiRules,
-} from '../src/index';
+} from '../../src/index.js';
 
 function main(): void {
   console.log('=== Security Hardening Demo (TypeScript) ===\n');
