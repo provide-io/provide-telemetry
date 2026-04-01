@@ -41,9 +41,11 @@ const SKIP_KEYS = new Set(['level', 'time', 'msg', 'event', 'v', 'pid', 'hostnam
  */
 export function supportsColor(): boolean {
   /* c8 ignore next -- browser-only path, untestable in Node */
+  // Stryker disable next-line ConditionalExpression,StringLiteral,BooleanLiteral -- browser-only guard
   if (typeof process === 'undefined') return false;
   if (process.env['FORCE_COLOR'] === '1' || process.env['FORCE_COLOR'] === 'true') return true;
   if (process.env['NO_COLOR'] !== undefined) return false;
+  // Stryker disable next-line OptionalChaining -- process.stdout is always defined in Node/test env
   if (typeof process.stdout?.isTTY === 'boolean') return process.stdout.isTTY;
   return false;
 }
