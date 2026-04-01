@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -31,8 +31,8 @@ class TestParseModuleLevels:
         assert _parse_module_levels("asyncio=WARNING") == {"asyncio": "WARNING"}
 
     def test_multiple_pairs(self) -> None:
-        result = _parse_module_levels("asyncio=WARNING,undef.server=DEBUG")
-        assert result == {"asyncio": "WARNING", "undef.server": "DEBUG"}
+        result = _parse_module_levels("asyncio=WARNING,provide.server=DEBUG")
+        assert result == {"asyncio": "WARNING", "provide.server": "DEBUG"}
 
     def test_pair_missing_equals_is_skipped(self) -> None:
         assert _parse_module_levels("asyncioWARNING") == {}
@@ -45,12 +45,12 @@ class TestParseModuleLevels:
         assert result == {"asyncio": "WARNING"}
 
     def test_whitespace_around_pairs_is_stripped(self) -> None:
-        result = _parse_module_levels("  asyncio = WARNING  ,  undef = DEBUG  ")
-        assert result == {"asyncio": "WARNING", "undef": "DEBUG"}
+        result = _parse_module_levels("  asyncio = WARNING  ,  provide = DEBUG  ")
+        assert result == {"asyncio": "WARNING", "provide": "DEBUG"}
 
     def test_mixed_valid_and_invalid_pairs(self) -> None:
-        result = _parse_module_levels("asyncio=WARNING,bad_pair,undef=DEBUG")
-        assert result == {"asyncio": "WARNING", "undef": "DEBUG"}
+        result = _parse_module_levels("asyncio=WARNING,bad_pair,provide=DEBUG")
+        assert result == {"asyncio": "WARNING", "provide": "DEBUG"}
 
     def test_extra_equals_in_value_raises_config_error_not_value_error(self) -> None:
         """Kills: split('=', 1) maxsplit removal AND rsplit mutation.
@@ -106,9 +106,9 @@ class TestLevelFilter:
         assert flt(None, "warning", event) is event
 
     def test_longest_prefix_wins(self) -> None:
-        flt = make_level_filter("DEBUG", {"undef": "WARNING", "undef.server": "DEBUG"})
-        # "undef.server.api" matches "undef.server" (longer prefix) — DEBUG allowed
-        event: dict[str, Any] = {"event": "x", "level": "debug", "logger_name": "undef.server.api"}
+        flt = make_level_filter("DEBUG", {"provide": "WARNING", "provide.server": "DEBUG"})
+        # "provide.server.api" matches "provide.server" (longer prefix) — DEBUG allowed
+        event: dict[str, Any] = {"event": "x", "level": "debug", "logger_name": "provide.server.api"}
         assert flt(None, "debug", event) is event
 
     def test_no_matching_prefix_uses_default(self) -> None:
@@ -173,13 +173,13 @@ class TestLevelFilterInternals:
     def test_break_stops_at_first_matching_prefix(self) -> None:
         """Kills: break removal — must use the longest-prefix match only.
 
-        'undef.server' (longer) maps to ERROR; 'undef' (shorter) maps to DEBUG.
-        'undef.server.api' must match 'undef.server' first → ERROR threshold → debug dropped.
-        Without break the loop would continue to 'undef' → DEBUG → debug passes.
+        'provide.server' (longer) maps to ERROR; 'provide' (shorter) maps to DEBUG.
+        'provide.server.api' must match 'provide.server' first → ERROR threshold → debug dropped.
+        Without break the loop would continue to 'provide' → DEBUG → debug passes.
         """
-        flt = make_level_filter("INFO", {"undef": "DEBUG", "undef.server": "ERROR"})
+        flt = make_level_filter("INFO", {"provide": "DEBUG", "provide.server": "ERROR"})
         with pytest.raises(structlog.DropEvent):
-            flt(None, "debug", {"event": "x", "level": "debug", "logger_name": "undef.server.api"})
+            flt(None, "debug", {"event": "x", "level": "debug", "logger_name": "provide.server.api"})
 
     def test_no_logger_name_or_logger_key_uses_default_threshold(self) -> None:
         """Kills: logger_name/logger fallback — absent keys mean default threshold applies."""

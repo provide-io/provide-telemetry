@@ -1,6 +1,6 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🔄 Runtime reconfiguration — hot-swap config without restart.
@@ -28,7 +28,7 @@ import {
 async function main(): Promise<void> {
   console.log('🔄 Runtime Reconfiguration Demo\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', logLevel: 'info', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', logLevel: 'info', consoleOutput: false });
   const log = getLogger('examples.runtime');
 
   // ── 📊 Inspect current config ────────────────────────
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 
   // ── ♻️ Non-breaking reconfigure ──────────────────────
   console.log('\n♻️  reconfigureTelemetry() — safe reconfigure (no provider change)...');
-  reconfigureTelemetry({ logLevel: 'info', serviceName: 'undef-telemetry-examples-v2' });
+  reconfigureTelemetry({ logLevel: 'info', serviceName: 'provide-telemetry-examples-v2' });
   const cfgRestarted = getRuntimeConfig();
   console.log(`  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`);
 

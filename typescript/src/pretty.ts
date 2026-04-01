@@ -1,10 +1,10 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * Pretty ANSI log renderer for CLI / terminal output.
  *
- * Mirrors Python undef.telemetry.logger.pretty.PrettyRenderer.
+ * Mirrors Python provide.telemetry.logger.pretty.PrettyRenderer.
  * Same color scheme, same layout: timestamp [level] event key=value pairs.
  */
 
@@ -40,8 +40,8 @@ const SKIP_KEYS = new Set(['level', 'time', 'msg', 'event', 'v', 'pid', 'hostnam
  * Returns false in browsers, CI without FORCE_COLOR, or piped output.
  */
 export function supportsColor(): boolean {
-  /* c8 ignore next -- browser-only path, untestable in Node */
   // Stryker disable next-line ConditionalExpression,StringLiteral,BooleanLiteral -- browser-only guard
+  /* v8 ignore next -- browser-only path, untestable in Node */
   if (typeof process === 'undefined') return false;
   if (process.env['FORCE_COLOR'] === '1' || process.env['FORCE_COLOR'] === 'true') return true;
   if (process.env['NO_COLOR'] !== undefined) return false;

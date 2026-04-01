@@ -1,6 +1,6 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🛡️ Exporter resilience — retries, timeouts, and failure policies.
@@ -27,7 +27,7 @@ import {
 async function main(): Promise<void> {
   console.log('🛡️  Exporter Resilience Demo\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
 
   // ── 🟢 Fail-open: returns null on failure ────────────
   console.log('🟢 Fail-open mode (retries=1, backoffMs=0)');

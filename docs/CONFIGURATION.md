@@ -6,7 +6,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | str | `undef-service` | Service identity attached to all signals |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | str | `provide-service` | Service identity attached to all signals |
 | `PROVIDE_TELEMETRY_ENV` | str | `dev` | Deployment environment tag (e.g. `dev`, `staging`, `prod`) |
 | `PROVIDE_TELEMETRY_VERSION` | str | `0.0.0` | Application version tag |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | bool | `false` | Master switch: when true, overrides event name strictness to on |
@@ -31,7 +31,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 | `PROVIDE_LOG_PRETTY_KEY_COLOR` | str | `dim` | ANSI color name for keys in `pretty` format (see named colors below) |
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | str | `""` | ANSI color name for values in `pretty` format (empty = default) |
 | `PROVIDE_LOG_PRETTY_FIELDS` | str | `""` | Comma-separated field names to display in `pretty` format |
-| `PROVIDE_LOG_MODULE_LEVELS` | str | `""` | Per-module log level overrides (e.g. `undef.server=DEBUG,asyncio=WARNING`) |
+| `PROVIDE_LOG_MODULE_LEVELS` | str | `""` | Per-module log level overrides (e.g. `provide.server=DEBUG,asyncio=WARNING`) |
 
 ## Tracing
 

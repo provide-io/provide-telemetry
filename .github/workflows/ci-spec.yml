@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
+      - "src/provide/telemetry/__init__.py"
       - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"
@@ -17,7 +17,7 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
+      - "src/provide/telemetry/__init__.py"
       - "typescript/src/index.ts"
       - "go/**"
       - "rust/**"

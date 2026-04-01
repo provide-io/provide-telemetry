@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * Exporter resilience — retry, backoff, timeout, and circuit breaker.
- * Mirrors Python undef.telemetry.resilience.
+ * Mirrors Python provide.telemetry.resilience.
  */
 
 import { _incrementHealth, _recordExportLatency, _setLastExportError } from './health';

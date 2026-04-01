@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Runtime sampling policy — mirrors Python undef.telemetry.sampling.
+ * Runtime sampling policy — mirrors Python provide.telemetry.sampling.
  */
 
 export interface SamplingPolicy {

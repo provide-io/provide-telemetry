@@ -1,6 +1,6 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🎲 Sampling policies and backpressure queue controls.
@@ -98,7 +98,7 @@ async function run(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log('🎲 Sampling & Backpressure Demo\n');
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: false });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: false });
   await run();
   await shutdownTelemetry();
 }
