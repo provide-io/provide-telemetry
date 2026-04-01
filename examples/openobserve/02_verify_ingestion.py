@@ -88,18 +88,23 @@ def _search_total(base_url: str, stream_type: str, auth: str, sql: str, start_us
 
 def _search_hits(base_url: str, stream_type: str, auth: str, start_us: int, end_us: int) -> list[dict[str, object]]:
     sql = 'select * from "default" order by _timestamp desc limit 500'
-    response = _request_json(
-        f"{base_url}/_search?type={stream_type}",
-        auth,
-        method="POST",
-        body={
-            "query": {
-                "sql": sql,
-                "start_time": start_us,
-                "end_time": end_us,
-            }
-        },
-    )
+    try:
+        response = _request_json(
+            f"{base_url}/_search?type={stream_type}",
+            auth,
+            method="POST",
+            body={
+                "query": {
+                    "sql": sql,
+                    "start_time": start_us,
+                    "end_time": end_us,
+                }
+            },
+        )
+    except RuntimeError as exc:
+        if "Search stream not found" in str(exc):
+            return []
+        raise
     raw_hits = response.get("hits", [])
     if isinstance(raw_hits, list):
         return [cast(dict[str, object], hit) for hit in raw_hits if isinstance(hit, dict)]
