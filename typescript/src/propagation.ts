@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * W3C trace context propagation helpers.
- * Mirrors Python undef.telemetry.propagation.
+ * Mirrors Python provide.telemetry.propagation.
  */
 
 export interface PropagationContext {

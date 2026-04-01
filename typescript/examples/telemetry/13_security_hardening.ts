@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
@@ -60,8 +60,8 @@ function main(): void {
 
   // 4. Environment variable configuration
   console.log('4. Configurable via environment:');
-  console.log('   UNDEF_LOG_SANITIZE=true (default)');
-  console.log('   UNDEF_LOG_SANITIZE_FIELDS=password,token,authorization,api_key,secret');
+  console.log('   PROVIDE_LOG_SANITIZE=true (default)');
+  console.log('   PROVIDE_LOG_SANITIZE_FIELDS=password,token,authorization,api_key,secret');
 
   shutdownTelemetry();
   console.log('\n=== Done ===');

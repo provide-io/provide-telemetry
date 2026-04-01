@@ -188,7 +188,7 @@ jobs:
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
         env:
-          UNDEF_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
       - name: Collector logs
         if: always()
         run: docker logs otelcol || true
@@ -217,7 +217,7 @@ jobs:
           python-version: "3.11"
       - run: uv sync --group dev
       - name: Run memray stress tests
-        run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:undef_telemetry
+        run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:provide_telemetry
       - name: Upload memray artifacts
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7

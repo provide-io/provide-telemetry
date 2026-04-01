@@ -19,23 +19,23 @@ path = [
   "commitlint.config.js",
   "pyproject.toml",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
   "LICENSES/**",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
-  "src/undef/telemetry/py.typed",
+  "src/provide/telemetry/py.typed",
   ".secrets.baseline",
   ".claude/**",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
@@ -52,7 +52,7 @@ path = [
   "typescript/tsconfig.scripts.json",
   "typescript/tsconfig.test.json",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
@@ -77,5 +77,5 @@ path = [
   "tests/memray/baselines.json",
   ".playwright-mcp/**",
 ]
-SPDX-FileCopyrightText = "Copyright (C) 2026 MindTenet LLC"
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"

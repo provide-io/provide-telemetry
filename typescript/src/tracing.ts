@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Tracing helpers — mirrors Python undef.telemetry @trace decorator and tracer access.
+ * Tracing helpers — mirrors Python provide.telemetry @trace decorator and tracer access.
  *
  * Uses @opentelemetry/api which provides no-op implementations when no SDK is registered.
  * withTrace() / @trace work safely without any OTEL setup; they just don't export spans.
@@ -11,7 +11,7 @@
 import { type Tracer, SpanStatusCode, trace } from '@opentelemetry/api';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
-const TRACER_NAME = '@undef-games/telemetry';
+const TRACER_NAME = '@provide-io/telemetry';
 
 // ── Manual trace context (injected without an active OTEL span) ───────────────
 let _manualTraceId: string | undefined;

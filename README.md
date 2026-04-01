@@ -1,24 +1,24 @@
-# Undef Telemetry
+# Provide Telemetry
 
 Unified telemetry library for structured logging, distributed tracing, and metrics across Python and TypeScript. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
 
-[![1. 🐍 CI — Python](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml)
-[![2. 🟦 CI — TypeScript](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml)
-[![5. 🔒 CodeQL](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml)
+[![1. 🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
+[![2. 🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
+[![5. 🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
 **Python:**
 
 ```bash
-pip install undef-telemetry              # core (structlog)
-pip install "undef-telemetry[otel]"      # + OpenTelemetry export
+pip install provide-telemetry              # core (structlog)
+pip install "provide-telemetry[otel]"      # + OpenTelemetry export
 ```
 
 **TypeScript:**
 
 ```bash
-npm install @undef-games/telemetry             # core (pino + @opentelemetry/api)
+npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
 ```
 
 ## Quick Start
@@ -26,7 +26,7 @@ npm install @undef-games/telemetry             # core (pino + @opentelemetry/api
 **Python:**
 
 ```python
-from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event_name
+from provide.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event_name
 
 setup_telemetry()
 log = get_logger(__name__)
@@ -37,7 +37,7 @@ shutdown_telemetry()
 **TypeScript:**
 
 ```typescript
-import { setupTelemetry, getLogger, shutdownTelemetry } from '@undef-games/telemetry';
+import { setupTelemetry, getLogger, shutdownTelemetry } from '@provide-io/telemetry';
 
 setupTelemetry({ serviceName: 'my-app' });
 const log = getLogger('api');
@@ -53,15 +53,15 @@ All runtime config is via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
-| `UNDEF_LOG_LEVEL` | `INFO` | Log level |
-| `UNDEF_LOG_FORMAT` | `console` | Renderer: `console`, `json`, or `pretty` |
-| `UNDEF_TELEMETRY_ENV` | `dev` | Deployment environment |
-| `UNDEF_TELEMETRY_VERSION` | `0.0.0` | Service version |
-| `UNDEF_TRACE_ENABLED` | `true` | Enable OTel tracing |
-| `UNDEF_METRICS_ENABLED` | `true` | Enable OTel metrics |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
+| `PROVIDE_LOG_LEVEL` | `INFO` | Log level |
+| `PROVIDE_LOG_FORMAT` | `console` | Renderer: `console`, `json`, or `pretty` |
+| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment |
+| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
+| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing |
+| `PROVIDE_METRICS_ENABLED` | `true` | Enable OTel metrics |
 
-See the [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
+See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
 
 ## Event Naming
 
@@ -78,7 +78,7 @@ log.info(event_name("auth", "login", "failed"), reason="bad_password")
 log.info({ event: 'auth.login.success', userId: 'u-123' });
 ```
 
-See [Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md) for full naming rules.
+See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) for full naming rules.
 
 ## API Surface
 
@@ -95,14 +95,14 @@ Both languages export equivalent APIs:
 | Health | `get_health_snapshot()` |
 | Runtime | `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md)
 
 ## Polyglot Architecture
 
 ```
-undef-telemetry/
-  src/undef/telemetry/    # Python package
-  typescript/             # TypeScript package (@undef-games/telemetry)
+provide-telemetry/
+  src/provide/telemetry/    # Python package
+  typescript/             # TypeScript package (@provide-io/telemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```
@@ -121,17 +121,17 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Documentation
 
-- [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) — Python function signatures and examples
-- [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
-- [Internals](https://github.com/undef-games/undef-telemetry/blob/main/docs/INTERNALS.md) — implementation details
-- [Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
-- [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
-- [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
-- [Release Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
-- [TypeScript README](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
-- [Examples](https://github.com/undef-games/undef-telemetry/blob/main/examples/README.md) — Python and TypeScript examples
+- [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
+- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — Python function signatures and examples
+- [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
+- [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
+- [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
+- [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
+- [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
+- [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
+- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — Python and TypeScript examples
 
 ## License
 
-Apache-2.0. See [LICENSES/](https://github.com/undef-games/undef-telemetry/tree/main/LICENSES).
+Apache-2.0. See [LICENSES/](https://github.com/provide-io/provide-telemetry/tree/main/LICENSES).

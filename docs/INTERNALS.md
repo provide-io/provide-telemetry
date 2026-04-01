@@ -1,6 +1,6 @@
 # Internals
 
-How undef-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
+How provide-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
 
 ## Structlog Processor Pipeline
 

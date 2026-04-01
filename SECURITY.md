@@ -12,7 +12,7 @@
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report security issues via [GitHub private vulnerability reporting](https://github.com/undef-games/undef-telemetry/security/advisories/new).
+Report security issues via [GitHub private vulnerability reporting](https://github.com/provide-io/provide-telemetry/security/advisories/new).
 
 Include:
 - A description of the vulnerability and its potential impact
@@ -25,7 +25,7 @@ You will receive an acknowledgement within 72 hours. We aim to ship a fix within
 ## Scope
 
 This policy covers:
-- `undef-telemetry` (PyPI) — `src/undef/telemetry/`
-- `@undef-games/telemetry` (npm) — `typescript/src/`
+- `provide-telemetry` (PyPI) — `src/provide/telemetry/`
+- `@provide-io/telemetry` (npm) — `typescript/src/`
 
 Out of scope: third-party dependencies (report directly to their maintainers), example scripts, test fixtures.

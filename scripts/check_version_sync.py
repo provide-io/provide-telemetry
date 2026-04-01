@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -67,8 +67,8 @@ def _rust_version() -> str | None:
 
 
 def _csharp_version() -> str | None:
-    """Read version from csharp/src/Undef.Telemetry/*.csproj."""
-    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Undef.Telemetry"
+    """Read version from csharp/src/Provide.Telemetry/*.csproj."""
+    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry"
     if not csproj_dir.exists():
         return None
     for csproj in csproj_dir.glob("*.csproj"):

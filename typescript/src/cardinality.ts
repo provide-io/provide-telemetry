@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * Attribute cardinality guardrails with TTL pruning.
- * Mirrors Python undef.telemetry.cardinality.
+ * Mirrors Python provide.telemetry.cardinality.
  */
 
 export interface CardinalityLimit {

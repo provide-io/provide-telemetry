@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -111,7 +111,7 @@ describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => 
     expect(getRuntimeConfig().serviceName).toBe('overridden-service');
     reloadRuntimeFromEnv();
     // After reload, should come from env (default when no env var set)
-    expect(getRuntimeConfig().serviceName).toBe('undef-service');
+    expect(getRuntimeConfig().serviceName).toBe('provide-service');
   });
 
   it('re-reads env-derived config after reload', () => {

@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * TelemetryConfig — mirrors Python undef.telemetry TelemetryConfig.
+ * TelemetryConfig — mirrors Python provide.telemetry TelemetryConfig.
  *
  * Env vars (same names as Python package):
- *   UNDEF_TELEMETRY_SERVICE_NAME, UNDEF_ENV, UNDEF_VERSION,
- *   UNDEF_LOG_LEVEL, UNDEF_LOG_FORMAT, UNDEF_TRACE_ENABLED,
+ *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_ENV, PROVIDE_VERSION,
+ *   PROVIDE_LOG_LEVEL, PROVIDE_LOG_FORMAT, PROVIDE_TRACE_ENABLED,
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
 export interface TelemetryConfig {
@@ -39,7 +39,7 @@ export interface TelemetryConfig {
 }
 
 const DEFAULTS: TelemetryConfig = {
-  serviceName: 'undef-service',
+  serviceName: 'provide-service',
   environment: 'development',
   version: 'unknown',
   logLevel: 'info',
@@ -82,16 +82,16 @@ export function configFromEnv(): TelemetryConfig {
     : undefined;
 
   return {
-    serviceName: nodeEnv('UNDEF_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
-    environment: nodeEnv('UNDEF_ENV') ?? DEFAULTS.environment,
-    version: nodeEnv('UNDEF_VERSION') ?? DEFAULTS.version,
-    logLevel: nodeEnv('UNDEF_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
+    serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
+    environment: nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
+    version: nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
+    logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
     logFormat: (() => {
-      const fmt = nodeEnv('UNDEF_LOG_FORMAT');
+      const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
       // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
       return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
     })(),
-    otelEnabled: nodeEnv('UNDEF_TRACE_ENABLED') === 'true',
+    otelEnabled: nodeEnv('PROVIDE_TRACE_ENABLED') === 'true',
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
     sanitizeFields: DEFAULTS.sanitizeFields,

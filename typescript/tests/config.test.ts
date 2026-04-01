@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe('getConfig defaults', () => {
   it('returns default service name', () => {
-    expect(getConfig().serviceName).toBe('undef-service');
+    expect(getConfig().serviceName).toBe('provide-service');
   });
 
   it('returns default log level', () => {
@@ -50,27 +50,27 @@ describe('setupTelemetry', () => {
 describe('configFromEnv', () => {
   it('returns defaults when no env vars set', () => {
     const cfg = configFromEnv();
-    expect(cfg.serviceName).toBe('undef-service');
+    expect(cfg.serviceName).toBe('provide-service');
     expect(cfg.environment).toBe('development');
   });
 
-  it('reads UNDEF_TELEMETRY_SERVICE_NAME', () => {
-    process.env['UNDEF_TELEMETRY_SERVICE_NAME'] = 'test-service';
+  it('reads PROVIDE_TELEMETRY_SERVICE_NAME', () => {
+    process.env['PROVIDE_TELEMETRY_SERVICE_NAME'] = 'test-service';
     try {
       const cfg = configFromEnv();
       expect(cfg.serviceName).toBe('test-service');
     } finally {
-      delete process.env['UNDEF_TELEMETRY_SERVICE_NAME'];
+      delete process.env['PROVIDE_TELEMETRY_SERVICE_NAME'];
     }
   });
 
-  it('reads UNDEF_LOG_LEVEL', () => {
-    process.env['UNDEF_LOG_LEVEL'] = 'DEBUG';
+  it('reads PROVIDE_LOG_LEVEL', () => {
+    process.env['PROVIDE_LOG_LEVEL'] = 'DEBUG';
     try {
       const cfg = configFromEnv();
       expect(cfg.logLevel).toBe('debug');
     } finally {
-      delete process.env['UNDEF_LOG_LEVEL'];
+      delete process.env['PROVIDE_LOG_LEVEL'];
     }
   });
 
@@ -90,7 +90,7 @@ describe('configFromEnv', () => {
     try {
       const cfg = configFromEnv();
       // All env-derived fields fall back to defaults when process is unavailable
-      expect(cfg.serviceName).toBe('undef-service');
+      expect(cfg.serviceName).toBe('provide-service');
       expect(cfg.logLevel).toBe('info');
     } finally {
       vi.unstubAllGlobals();
@@ -107,7 +107,7 @@ describe('configFromEnv', () => {
     try {
       const cfg = configFromEnv();
       // All env-derived fields fall back to defaults when process.env throws
-      expect(cfg.serviceName).toBe('undef-service');
+      expect(cfg.serviceName).toBe('provide-service');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -142,56 +142,56 @@ describe('configFromEnv — env var reads', () => {
     }
   }
 
-  it('reads UNDEF_ENV', () => {
-    withEnv({ UNDEF_ENV: 'production' }, () => {
+  it('reads PROVIDE_ENV', () => {
+    withEnv({ PROVIDE_ENV: 'production' }, () => {
       expect(configFromEnv().environment).toBe('production');
     });
   });
 
-  it('reads UNDEF_VERSION', () => {
-    withEnv({ UNDEF_VERSION: 'v2.3.4' }, () => {
+  it('reads PROVIDE_VERSION', () => {
+    withEnv({ PROVIDE_VERSION: 'v2.3.4' }, () => {
       expect(configFromEnv().version).toBe('v2.3.4');
     });
   });
 
-  it('UNDEF_VERSION overrides default (not AND-short-circuited)', () => {
-    withEnv({ UNDEF_VERSION: 'v9.0.0' }, () => {
+  it('PROVIDE_VERSION overrides default (not AND-short-circuited)', () => {
+    withEnv({ PROVIDE_VERSION: 'v9.0.0' }, () => {
       expect(configFromEnv().version).toBe('v9.0.0');
     });
   });
 
-  it('reads UNDEF_LOG_FORMAT=json', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'json' }, () => {
+  it('reads PROVIDE_LOG_FORMAT=json', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'json' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
-  it('reads UNDEF_LOG_FORMAT=pretty', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'pretty' }, () => {
+  it('reads PROVIDE_LOG_FORMAT=pretty', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'pretty' }, () => {
       expect(configFromEnv().logFormat).toBe('pretty');
     });
   });
 
-  it('invalid UNDEF_LOG_FORMAT falls back to json default', () => {
-    withEnv({ UNDEF_LOG_FORMAT: 'xml' }, () => {
+  it('invalid PROVIDE_LOG_FORMAT falls back to json default', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'xml' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
-  it('empty UNDEF_LOG_FORMAT falls back to json default', () => {
-    withEnv({ UNDEF_LOG_FORMAT: '' }, () => {
+  it('empty PROVIDE_LOG_FORMAT falls back to json default', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: '' }, () => {
       expect(configFromEnv().logFormat).toBe('json');
     });
   });
 
-  it('reads UNDEF_TRACE_ENABLED=true', () => {
-    withEnv({ UNDEF_TRACE_ENABLED: 'true' }, () => {
+  it('reads PROVIDE_TRACE_ENABLED=true', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'true' }, () => {
       expect(configFromEnv().otelEnabled).toBe(true);
     });
   });
 
-  it('UNDEF_TRACE_ENABLED=false does not enable otel', () => {
-    withEnv({ UNDEF_TRACE_ENABLED: 'false' }, () => {
+  it('PROVIDE_TRACE_ENABLED=false does not enable otel', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'false' }, () => {
       expect(configFromEnv().otelEnabled).toBe(false);
     });
   });
@@ -208,7 +208,7 @@ describe('_resetConfig', () => {
     setupTelemetry({ serviceName: 'custom-svc' });
     expect(getConfig().serviceName).toBe('custom-svc');
     _resetConfig();
-    expect(getConfig().serviceName).toBe('undef-service');
+    expect(getConfig().serviceName).toBe('provide-service');
   });
 
   it('restores logLevel to default', () => {

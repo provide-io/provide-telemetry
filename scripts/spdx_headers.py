@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SPDX_COPYRIGHT = "# SPDX-FileCopyrightText" + ": Copyright (C) 2026 MindTenet LLC\n"
+SPDX_COPYRIGHT = "# SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
 SPDX_LICENSE = "# SPDX-License-Identifier" + ": Apache-2.0\n"
 SPDX_COMMENT = "# SPDX-Comment" + ": Part of provide-telemetry.\n"
 SPDX_SEPARATOR = "#\n"
