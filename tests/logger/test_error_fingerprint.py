@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests for error fingerprinting processor."""
@@ -13,7 +13,7 @@ import traceback
 from typing import Any
 from unittest.mock import Mock, patch
 
-from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
+from provide.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
 
 
 class TestComputeErrorFingerprint:
@@ -232,7 +232,7 @@ class TestComputeErrorFingerprintFrameExtraction:
         the backslash is not removed and rsplit('/') finds no separator, leaving
         the full Windows path as the 'leaf' (wrong basename, different hash).
         """
-        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+        with patch("provide.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
             mock_extract.return_value = [traceback.FrameSummary("C:\\Users\\user\\project\\app.py", 1, "my_func")]
             result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
         expected = hashlib.sha256(b"valueerror:app:my_func").hexdigest()[:12]
@@ -247,7 +247,7 @@ class TestComputeErrorFingerprintFrameExtraction:
         - rsplit('.', 2)[0] = 'module'       (wrong: strip two extensions)
         - rsplit('.', )[0]  = 'module'       (wrong: strip all after first dot)
         """
-        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+        with patch("provide.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
             mock_extract.return_value = [traceback.FrameSummary("/path/to/module.test.py", 1, "helper")]
             result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
         expected = hashlib.sha256(b"valueerror:module.test:helper").hexdigest()[:12]
@@ -260,7 +260,7 @@ class TestComputeErrorFingerprintFrameExtraction:
         must be '' (empty), not a sentinel string. Changing '' to 'XXXX' would
         produce a different hash.
         """
-        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+        with patch("provide.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
             frame = Mock()
             frame.filename = "/path/to/app.py"
             frame.name = ""  # falsy — triggers the `or` branch

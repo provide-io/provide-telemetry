@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Security hardening features: input sanitization, secret detection, protocol guards.
@@ -16,8 +16,8 @@ Demonstrates:
 
 from __future__ import annotations
 
-from undef.telemetry import get_logger, setup_telemetry, shutdown_telemetry
-from undef.telemetry.pii import sanitize_payload
+from provide.telemetry import get_logger, setup_telemetry, shutdown_telemetry
+from provide.telemetry.pii import sanitize_payload
 
 
 def main() -> None:
@@ -58,9 +58,9 @@ def main() -> None:
 
     # 5. Environment variable configuration
     print("5. Configurable via environment:")
-    print("   UNDEF_SECURITY_MAX_ATTR_VALUE_LENGTH=2048")
-    print("   UNDEF_SECURITY_MAX_ATTR_COUNT=128")
-    print("   UNDEF_SECURITY_MAX_NESTING_DEPTH=4")
+    print("   PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH=2048")
+    print("   PROVIDE_SECURITY_MAX_ATTR_COUNT=128")
+    print("   PROVIDE_SECURITY_MAX_NESTING_DEPTH=4")
 
     shutdown_telemetry()
     print("\n=== Done ===")

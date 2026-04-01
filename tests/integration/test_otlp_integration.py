@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 from __future__ import annotations
@@ -9,22 +9,22 @@ import os
 
 import pytest
 
-from undef.telemetry import counter, setup_telemetry, shutdown_telemetry, trace
-from undef.telemetry.config import TelemetryConfig
-from undef.telemetry.setup import _reset_all_for_tests
+from provide.telemetry import counter, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.setup import _reset_all_for_tests
 
 pytestmark = [pytest.mark.integration, pytest.mark.otel]
 
 
 def test_otlp_collector_smoke() -> None:
     pytest.importorskip("opentelemetry")
-    endpoint = os.getenv("UNDEF_TEST_OTLP_ENDPOINT")
-    traces_endpoint = os.getenv("UNDEF_TEST_OTLP_TRACES_ENDPOINT") or endpoint
-    metrics_endpoint = os.getenv("UNDEF_TEST_OTLP_METRICS_ENDPOINT") or endpoint
-    otlp_headers = os.getenv("UNDEF_TEST_OTLP_HEADERS")
+    endpoint = os.getenv("PROVIDE_TEST_OTLP_ENDPOINT")
+    traces_endpoint = os.getenv("PROVIDE_TEST_OTLP_TRACES_ENDPOINT") or endpoint
+    metrics_endpoint = os.getenv("PROVIDE_TEST_OTLP_METRICS_ENDPOINT") or endpoint
+    otlp_headers = os.getenv("PROVIDE_TEST_OTLP_HEADERS")
     if not traces_endpoint or not metrics_endpoint:
         pytest.skip(
-            "UNDEF_TEST_OTLP_ENDPOINT (or UNDEF_TEST_OTLP_TRACES_ENDPOINT and UNDEF_TEST_OTLP_METRICS_ENDPOINT) "
+            "PROVIDE_TEST_OTLP_ENDPOINT (or PROVIDE_TEST_OTLP_TRACES_ENDPOINT and PROVIDE_TEST_OTLP_METRICS_ENDPOINT) "
             "is not set"
         )
 
@@ -32,9 +32,9 @@ def test_otlp_collector_smoke() -> None:
 
     cfg = TelemetryConfig.from_env(
         {
-            "UNDEF_TELEMETRY_SERVICE_NAME": "undef-telemetry-integration",
-            "UNDEF_TRACE_ENABLED": "true",
-            "UNDEF_METRICS_ENABLED": "true",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-integration",
+            "PROVIDE_TRACE_ENABLED": "true",
+            "PROVIDE_METRICS_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": traces_endpoint,
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": metrics_endpoint,
             **({"OTEL_EXPORTER_OTLP_HEADERS": otlp_headers} if otlp_headers else {}),

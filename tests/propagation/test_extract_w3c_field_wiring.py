@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Tests targeting extract_w3c_context field-wiring mutants (23, 24, 26, 32, 33)."""
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from undef.telemetry import propagation as propagation_mod
+from provide.telemetry import propagation as propagation_mod
 
 
 class TestExtractW3cContextFieldWiring:

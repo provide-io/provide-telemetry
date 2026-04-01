@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-Comment: Part of Undef Telemetry.
+# SPDX-Comment: Part of provide-telemetry.
 #
 
 """Edge-case and boundary tests for config parsing and validation."""
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from undef.telemetry.config import (
+from provide.telemetry.config import (
     BackpressureConfig,
     ExporterPolicyConfig,
     LoggingConfig,
@@ -71,8 +71,8 @@ class TestParseEnvFloatEdgeCases:
             _parse_env_float("", "X")
 
     def test_field_name_in_error(self) -> None:
-        with pytest.raises(ValueError, match="UNDEF_TRACE_SAMPLE_RATE"):
-            _parse_env_float("nope", "UNDEF_TRACE_SAMPLE_RATE")
+        with pytest.raises(ValueError, match="PROVIDE_TRACE_SAMPLE_RATE"):
+            _parse_env_float("nope", "PROVIDE_TRACE_SAMPLE_RATE")
 
 
 # ── _parse_env_int edge cases ──────────────────────────────────────────
@@ -102,8 +102,8 @@ class TestParseEnvIntEdgeCases:
             _parse_env_int("", "X")
 
     def test_field_name_in_error(self) -> None:
-        with pytest.raises(ValueError, match="UNDEF_BACKPRESSURE_LOGS_MAXSIZE"):
-            _parse_env_int("abc", "UNDEF_BACKPRESSURE_LOGS_MAXSIZE")
+        with pytest.raises(ValueError, match="PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"):
+            _parse_env_int("abc", "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE")
 
 
 # ── _parse_otlp_headers edge cases ─────────────────────────────────────
@@ -164,11 +164,11 @@ class TestValidationBoundaries:
     def test_inf_sample_rate_rejected(self) -> None:
         """inf parses as float but fails rate validation."""
         with pytest.raises(ValueError, match="sample_rate must be between 0 and 1"):
-            TelemetryConfig.from_env({"UNDEF_TRACE_SAMPLE_RATE": "inf"})
+            TelemetryConfig.from_env({"PROVIDE_TRACE_SAMPLE_RATE": "inf"})
 
     def test_negative_sample_rate_from_env(self) -> None:
         with pytest.raises(ValueError, match="sample_rate must be between 0 and 1"):
-            TelemetryConfig.from_env({"UNDEF_TRACE_SAMPLE_RATE": "-0.5"})
+            TelemetryConfig.from_env({"PROVIDE_TRACE_SAMPLE_RATE": "-0.5"})
 
 
 # ── Log level / format edge cases ──────────────────────────────────────
@@ -193,19 +193,19 @@ class TestLogLevelFormatEdgeCases:
 
 class TestRequiredKeysEdgeCases:
     def test_empty_string_produces_empty_tuple(self) -> None:
-        cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": ""})
+        cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": ""})
         assert cfg.event_schema.required_keys == ()
 
     def test_whitespace_only_produces_empty_tuple(self) -> None:
-        cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "  ,  ,  "})
+        cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "  ,  ,  "})
         assert cfg.event_schema.required_keys == ()
 
     def test_duplicate_keys_preserved(self) -> None:
-        cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "a,a,b"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "a,a,b"})
         assert cfg.event_schema.required_keys == ("a", "a", "b")
 
     def test_keys_with_special_chars(self) -> None:
-        cfg = TelemetryConfig.from_env({"UNDEF_TELEMETRY_REQUIRED_KEYS": "request-id,user.id"})
+        cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request-id,user.id"})
         assert cfg.event_schema.required_keys == ("request-id", "user.id")
 
     def test_schema_config_defaults(self) -> None:
@@ -253,9 +253,9 @@ class TestCrossFieldInteractions:
     def test_all_sampling_rates_at_different_values(self) -> None:
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_SAMPLING_LOGS_RATE": "0.0",
-                "UNDEF_SAMPLING_TRACES_RATE": "1.0",
-                "UNDEF_SAMPLING_METRICS_RATE": "0.5",
+                "PROVIDE_SAMPLING_LOGS_RATE": "0.0",
+                "PROVIDE_SAMPLING_TRACES_RATE": "1.0",
+                "PROVIDE_SAMPLING_METRICS_RATE": "0.5",
             }
         )
         assert cfg.sampling.logs_rate == 0.0
@@ -265,9 +265,9 @@ class TestCrossFieldInteractions:
     def test_all_backpressure_at_different_sizes(self) -> None:
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_BACKPRESSURE_LOGS_MAXSIZE": "10",
-                "UNDEF_BACKPRESSURE_TRACES_MAXSIZE": "20",
-                "UNDEF_BACKPRESSURE_METRICS_MAXSIZE": "30",
+                "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE": "10",
+                "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE": "20",
+                "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE": "30",
             }
         )
         assert cfg.backpressure.logs_maxsize == 10
@@ -285,12 +285,12 @@ class TestCrossFieldInteractions:
     def test_exporter_all_fail_closed_no_retries(self) -> None:
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_EXPORTER_LOGS_FAIL_OPEN": "false",
-                "UNDEF_EXPORTER_TRACES_FAIL_OPEN": "false",
-                "UNDEF_EXPORTER_METRICS_FAIL_OPEN": "false",
-                "UNDEF_EXPORTER_LOGS_RETRIES": "0",
-                "UNDEF_EXPORTER_TRACES_RETRIES": "0",
-                "UNDEF_EXPORTER_METRICS_RETRIES": "0",
+                "PROVIDE_EXPORTER_LOGS_FAIL_OPEN": "false",
+                "PROVIDE_EXPORTER_TRACES_FAIL_OPEN": "false",
+                "PROVIDE_EXPORTER_METRICS_FAIL_OPEN": "false",
+                "PROVIDE_EXPORTER_LOGS_RETRIES": "0",
+                "PROVIDE_EXPORTER_TRACES_RETRIES": "0",
+                "PROVIDE_EXPORTER_METRICS_RETRIES": "0",
             }
         )
         assert cfg.exporter.logs_fail_open is False
@@ -300,9 +300,9 @@ class TestCrossFieldInteractions:
     def test_exporter_custom_timeouts(self) -> None:
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_EXPORTER_LOGS_TIMEOUT_SECONDS": "0.1",
-                "UNDEF_EXPORTER_TRACES_TIMEOUT_SECONDS": "30.0",
-                "UNDEF_EXPORTER_METRICS_TIMEOUT_SECONDS": "0.0",
+                "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS": "0.1",
+                "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS": "30.0",
+                "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS": "0.0",
             }
         )
         assert cfg.exporter.logs_timeout_seconds == pytest.approx(0.1)
@@ -312,9 +312,9 @@ class TestCrossFieldInteractions:
     def test_slo_all_enabled(self) -> None:
         cfg = TelemetryConfig.from_env(
             {
-                "UNDEF_SLO_ENABLE_RED_METRICS": "true",
-                "UNDEF_SLO_ENABLE_USE_METRICS": "true",
-                "UNDEF_SLO_INCLUDE_ERROR_TAXONOMY": "false",
+                "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
+                "PROVIDE_SLO_ENABLE_USE_METRICS": "true",
+                "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY": "false",
             }
         )
         assert cfg.slo.enable_red_metrics is True
@@ -322,6 +322,6 @@ class TestCrossFieldInteractions:
         assert cfg.slo.include_error_taxonomy is False
 
     def test_from_env_with_none_uses_os_environ(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("UNDEF_TELEMETRY_SERVICE_NAME", "from-os")
+        monkeypatch.setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "from-os")
         cfg = TelemetryConfig.from_env()
         assert cfg.service_name == "from-os"
