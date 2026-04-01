@@ -29,7 +29,7 @@ memray-analyze: ## Run tracemalloc audit for Python-level allocations
 	uv run python scripts/memray/tracemalloc_audit.py
 
 memray-baseline: ## Update memray regression baselines
-	MEMRAY_UPDATE_BASELINE=1 uv run pytest tests/memray/ -m memray -v --no-cov -p no:undef_telemetry
+	MEMRAY_UPDATE_BASELINE=1 uv run pytest tests/memray/ -m memray -v --no-cov -p no:provide_telemetry
 
 perf-smoke: ## Run performance smoke benchmarks
 	uv run python scripts/run_performance_smoke.py --iterations 200000 --runs 3
