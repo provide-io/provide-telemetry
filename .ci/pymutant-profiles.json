@@ -2,7 +2,7 @@
   "profiles": {
     "default": {
       "mutation_roots": [
-        "src/undef/telemetry/"
+        "src/provide/telemetry/"
       ],
       "policy": {
         "min_score": 1.0,

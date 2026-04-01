@@ -21,7 +21,7 @@ Examples:
 - `matchmaking.queue.joined` (DAS)
 - `inventory.item.removed` (DAS)
 
-Use `provide.telemetry.event(*segments)` when event names are composed dynamically.
+Use `provide.telemetry.event_name(*segments)` when event names are composed dynamically.
 
 ### `event()` Cookbook
 
@@ -57,7 +57,7 @@ Recommended base keys across services:
 - `service`
 - `env`
 
-Use `UNDEF_TELEMETRY_REQUIRED_KEYS` to enforce package-specific requirements.
+Use `PROVIDE_TELEMETRY_REQUIRED_KEYS` to enforce package-specific requirements.
 
 ## Attribute Naming
 
@@ -92,6 +92,6 @@ Use the canonical SPDX block for all Python files, with optional shebang first:
 
 - `SPDX-FileCopyrightText` with `Copyright (C) 2026 provide.io llc`
 - `SPDX-License-Identifier` with `Apache-2.0`
-- `SPDX-Comment` with `Part of Undef Telemetry.`
+- `SPDX-Comment` with `Part of Provide Telemetry.`
 - `#`
 - blank line

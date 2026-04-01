@@ -32,7 +32,7 @@ SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = [
-  "src/undef/telemetry/py.typed",
+  "src/provide/telemetry/py.typed",
   ".secrets.baseline",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"

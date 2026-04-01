@@ -59,10 +59,10 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 ## Architecture
 
 ```
-src/undef/telemetry/
+src/provide/telemetry/
 ├── __init__.py          # Public API facade — only import from here in consumers
 ├── setup.py             # Idempotent setup()/teardown() with threading.Lock
-├── config.py            # stdlib @dataclass(slots=True), all config via env vars (UNDEF_* / OTEL_*)
+├── config.py            # stdlib @dataclass(slots=True), all config via env vars (PROVIDE_* / OTEL_*)
 ├── _otel.py             # OTel introspection utilities (lazy import helpers)
 ├── exceptions.py        # TelemetryError, ConfigurationError
 ├── health.py            # Self-observability snapshots
@@ -111,15 +111,15 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 
 | Prefix | Controls |
 |--------|----------|
-| `UNDEF_TELEMETRY_*` | Service name, env, version, schema strictness |
-| `UNDEF_LOG_*` | Log level, format, caller info, sanitization |
-| `UNDEF_TRACE_*` | Tracing enabled, sample rate |
-| `UNDEF_METRICS_*` | Metrics enabled |
+| `PROVIDE_TELEMETRY_*` | Service name, env, version, schema strictness |
+| `PROVIDE_LOG_*` | Log level, format, caller info, sanitization |
+| `PROVIDE_TRACE_*` | Tracing enabled, sample rate |
+| `PROVIDE_METRICS_*` | Metrics enabled |
 | `OTEL_EXPORTER_OTLP_*` | OTLP endpoint/headers (standard OTel env vars) |
 
 ## Testing Conventions
 
-- Tests live in `tests/` mirroring the `src/undef/telemetry/` structure.
+- Tests live in `tests/` mirroring the `src/provide/telemetry/` structure.
 - `asyncio_mode = "auto"` — async test functions work without decorators.
 - Use `importlib.reload()` to reset module-level singletons between tests (see existing tests for the pattern).
 - OTel-dependent tests must use `@pytest.mark.otel` and import OTel inside the test or fixture.

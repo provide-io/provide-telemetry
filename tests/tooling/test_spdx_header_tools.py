@@ -38,7 +38,7 @@ _CHECK_MODULE = _load(_CHECK_PATH, "check_spdx_headers")
 def test_normalize_python_text_without_shebang() -> None:
     text = (
         "# SPDX-License-Identifier" + ": Apache-2.0\n"
-        "# Copyright (C) 2026 provide.io llc\n"
+        "# Copyright (C) 2026 MindTenet LLC\n"
         "# This file is part of Provide Telemetry.\n\n"
         "x = 1\n"
     )

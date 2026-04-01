@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of Undef Telemetry.
+// SPDX-Comment: Part of Provide Telemetry.
 
 /**
  * 🚀 Basic telemetry — logging, tracing, and all three metric types.
@@ -47,7 +47,7 @@ async function doWork(iteration: number): Promise<void> {
 async function main(): Promise<void> {
   console.log('🚀 Basic Telemetry Demo\n');
 
-  setupTelemetry({ serviceName: 'undef-telemetry-examples', consoleOutput: true });
+  setupTelemetry({ serviceName: 'provide-telemetry-examples', consoleOutput: true });
   const cfg = getConfig();
   const log = getLogger('examples.basic');
 
