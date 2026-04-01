@@ -11,6 +11,7 @@ import hashlib
 import sys
 import traceback
 from typing import Any
+from unittest.mock import Mock, patch
 
 from undef.telemetry.logger.processors import _compute_error_fingerprint, add_error_fingerprint
 
@@ -218,3 +219,52 @@ class TestComputeErrorFingerprintExact:
         result = _compute_error_fingerprint("ValueError", tb)
         result_upper = _compute_error_fingerprint("VALUEERROR", tb)
         assert result == result_upper
+
+
+class TestComputeErrorFingerprintFrameExtraction:
+    """Kills mutations in the filename/funcname extraction logic."""
+
+    def test_windows_path_backslashes_normalized_to_forward(self) -> None:
+        """Kills: replace('\\\\', '/') string literal mutations (mutmut_17, mutmut_18).
+
+        Backslashes in Windows paths must be normalized to forward slashes before
+        rsplit('/') can extract the basename. If either string literal is mutated,
+        the backslash is not removed and rsplit('/') finds no separator, leaving
+        the full Windows path as the 'leaf' (wrong basename, different hash).
+        """
+        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+            mock_extract.return_value = [traceback.FrameSummary("C:\\Users\\user\\project\\app.py", 1, "my_func")]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+        expected = hashlib.sha256(b"valueerror:app:my_func").hexdigest()[:12]
+        assert result == expected
+
+    def test_basename_uses_last_dot_to_strip_extension(self) -> None:
+        """Kills: rsplit('.', 1) mutations — split('.', 1), rsplit('.', 2), rsplit('.', ) (mutmut_28/29/31).
+
+        For a filename like 'module.test.py' with multiple dots:
+        - rsplit('.', 1)[0] = 'module.test'  (correct: strip only extension)
+        - split('.', 1)[0]  = 'module'       (wrong: split from left)
+        - rsplit('.', 2)[0] = 'module'       (wrong: strip two extensions)
+        - rsplit('.', )[0]  = 'module'       (wrong: strip all after first dot)
+        """
+        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+            mock_extract.return_value = [traceback.FrameSummary("/path/to/module.test.py", 1, "helper")]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+        expected = hashlib.sha256(b"valueerror:module.test:helper").hexdigest()[:12]
+        assert result == expected
+
+    def test_anonymous_function_uses_empty_string_not_sentinel(self) -> None:
+        """Kills: (frame.name or '') → (frame.name or 'XXXX') (mutmut_36).
+
+        When frame.name is falsy (empty string or None), the function component
+        must be '' (empty), not a sentinel string. Changing '' to 'XXXX' would
+        produce a different hash.
+        """
+        with patch("undef.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
+            frame = Mock()
+            frame.filename = "/path/to/app.py"
+            frame.name = ""  # falsy — triggers the `or` branch
+            mock_extract.return_value = [frame]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+        expected = hashlib.sha256(b"valueerror:app:").hexdigest()[:12]
+        assert result == expected
