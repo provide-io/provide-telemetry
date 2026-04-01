@@ -72,6 +72,32 @@ export function makeWriteHook() {
     // Ensure msg is always non-empty — pino sets msg='' when no string arg is passed.
     if (!o['msg']) o['msg'] = o['event'] ?? '';
 
+    // Caller info injection — intentionally expensive (creates Error per call).
+    // Stryker disable all
+    if (cfg.logIncludeCaller) {
+      const err = new Error();
+      const stack = err.stack?.split('\n');
+      /* v8 ignore next -- stack is always defined in V8 */
+      if (stack) {
+        for (const frame of stack.slice(1)) {
+          if (
+            !frame.includes('logger.ts') &&
+            !frame.includes('node_modules') &&
+            !frame.includes('pino')
+          ) {
+            const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
+            /* v8 ignore next -- match always succeeds for V8 stack frames */
+            if (match) {
+              o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
+              o['caller_line'] = Number(match[2]);
+            }
+            break;
+          }
+        }
+      }
+    }
+    // Stryker enable all
+
     // Error fingerprinting — stable hash from error name + stack.
     const errObj = o['err'] as Record<string, unknown> | undefined;
     const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
@@ -193,6 +219,23 @@ function adaptPino(pinoLogger: pino.Logger): Logger {
 }
 
 /**
+ * Find the longest-prefix match in logModuleLevels for the given logger name.
+ * Returns the matched level string, or undefined if no match.
+ * Mirrors Python _LevelFilter longest-prefix matching.
+ */
+function findModuleLevel(name: string, moduleLevels: Record<string, string>): string | undefined {
+  let bestMatch: string | undefined;
+  let bestLen = 0;
+  for (const prefix of Object.keys(moduleLevels)) {
+    if (name.startsWith(prefix) && prefix.length > bestLen) {
+      bestMatch = prefix;
+      bestLen = prefix.length;
+    }
+  }
+  return bestMatch !== undefined ? moduleLevels[bestMatch] : undefined;
+}
+
+/**
  * Return a logger for the given name.
  * Name appears as the `name` field in every log record.
  * Mirrors Python: get_logger(name)
@@ -201,6 +244,17 @@ export function getLogger(name?: string): Logger {
   const root = getRootLogger();
   // Stryker disable next-line ObjectLiteral
   const pinoLogger = name ? root.child({ name }) : root;
+  // Apply per-module level overrides (longest-prefix match).
+  if (name) {
+    const cfg = getConfig();
+    const moduleLevels = cfg.logModuleLevels;
+    if (Object.keys(moduleLevels).length > 0) {
+      const level = findModuleLevel(name, moduleLevels);
+      if (level) {
+        pinoLogger.level = level.toLowerCase();
+      }
+    }
+  }
   return adaptPino(pinoLogger);
 }
 
