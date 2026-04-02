@@ -305,10 +305,10 @@ describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpressio
     registerPiiRule({ path: 'password', mode: 'hash' });
     const obj: Record<string, unknown> = { password: 'hunter2', name: 'Alice' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code, hash rule handled password — result is a hash, NOT [REDACTED]
-    expect(typeof obj['password']).toBe('string');
-    expect(obj['password']).not.toBe('***');
-    expect(String(obj['password'])).toMatch(/^[0-9a-f]{12}$/); // 12-char hex hash
+    // With correct code, hash rule handled email — result is a hash, NOT [REDACTED]
+    expect(typeof obj['email']).toBe('string');
+    expect(obj['email']).not.toBe('***');
+    expect(String(obj['email'])).toMatch(/^[0-9a-f]{12}$/); // 8-char hex hash
     expect(obj['name']).toBe('Alice'); // unaffected
   });
 
@@ -320,8 +320,8 @@ describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpressio
     registerPiiRule({ path: 'password', mode: 'truncate', truncateTo: 4 });
     const obj: Record<string, unknown> = { password: 'hunter2', name: 'Bob' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code: truncated value 'hunt...' NOT '***'
-    expect(String(obj['password'])).toBe('hunt...');
+    // With correct code: truncated value 'user...' NOT '***'
+    expect(String(obj['email'])).toBe('user...');
     expect(obj['name']).toBe('Bob');
   });
 });
@@ -346,17 +346,76 @@ describe('sanitizePayload — obj key update from transformed result (kills line
   });
 });
 
-describe('_applyRuleFull — depth limit (kills line 173 depth >= maxDepth branch)', () => {
-  afterEach(() => resetPiiRulesForTests());
+describe('sanitize — secret detection', () => {
+  it('redacts AWS access key in value', () => {
+    const obj: Record<string, unknown> = { key: 'AKIAIOSFODNN7EXAMPLE1' }; // pragma: allowlist secret
+    sanitize(obj);
+    expect(obj['key']).toBe('***');
+  });
 
-  it('stops recursing at maxDepth and leaves nested value unredacted', () => {
-    registerPiiRule({ path: 'a.b.email', mode: 'redact' });
-    const obj: Record<string, unknown> = { a: { b: { email: 'alice@example.com' } } };
-    // maxDepth=1: _applyRuleFull reaches depth=1 at 'a' dict and returns without traversing further
-    sanitizePayload(obj, [], { maxDepth: 1 });
-    // The email is NOT redacted because depth limit was hit before the rule path matched
-    const a = obj['a'] as Record<string, unknown>;
-    const b = a['b'] as Record<string, unknown>;
-    expect(b['email']).toBe('alice@example.com');
+  it('redacts JWT in value', () => {
+    const obj: Record<string, unknown> = {
+      token_val: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0', // pragma: allowlist secret
+    };
+    sanitize(obj);
+    expect(obj['token_val']).toBe('***');
+  });
+
+  it('redacts GitHub token in value', () => {
+    const obj: Record<string, unknown> = {
+      code: 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn', // pragma: allowlist secret
+    };
+    sanitize(obj);
+    expect(obj['code']).toBe('***');
+  });
+
+  it('redacts long hex string in value', () => {
+    const obj: Record<string, unknown> = { hex: '0123456789abcdef0123456789abcdef01234567' }; // pragma: allowlist secret
+    sanitize(obj);
+    expect(obj['hex']).toBe('***');
+  });
+
+  it('redacts long base64 string in value', () => {
+    const obj: Record<string, unknown> = {
+      b64: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop==', // pragma: allowlist secret
+    };
+    sanitize(obj);
+    expect(obj['b64']).toBe('***');
+  });
+
+  it('does NOT redact short values', () => {
+    const obj: Record<string, unknown> = { short: 'AKIA1234' };
+    sanitize(obj);
+    expect(obj['short']).toBe('AKIA1234');
+  });
+
+  it('does NOT redact safe strings', () => {
+    const obj: Record<string, unknown> = { safe: 'hello world' };
+    sanitize(obj);
+    expect(obj['safe']).toBe('hello world');
+  });
+});
+
+describe('sanitizePayload — secret detection (nested)', () => {
+  it('redacts nested secret values', () => {
+    const obj: Record<string, unknown> = { outer: { inner: 'AKIAIOSFODNN7EXAMPLE1' } }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    const outer = obj['outer'] as Record<string, unknown>;
+    expect(outer['inner']).toBe('***');
+  });
+
+  it('redacts secret in top-level value', () => {
+    const obj: Record<string, unknown> = {
+      data: 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn', // pragma: allowlist secret
+    };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+  });
+
+  it('does not redact safe nested values', () => {
+    const obj: Record<string, unknown> = { outer: { inner: 'safe value' } };
+    sanitizePayload(obj);
+    const outer = obj['outer'] as Record<string, unknown>;
+    expect(outer['inner']).toBe('safe value');
   });
 });

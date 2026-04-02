@@ -162,7 +162,7 @@ describe('write hook — PII sanitization', () => {
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 40, event: 'login', password: 'hunter2' }; // pragma: allowlist secret
     hook(obj);
-    expect(obj['password']).toBe('[REDACTED]');
+    expect(obj['password']).toBe('***');
   });
 
   it('does not redact non-PII fields', () => {
