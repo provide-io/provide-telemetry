@@ -18,6 +18,8 @@ import { configFromEnv, getConfig, _getConfigVersion } from './config';
 import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
+import { emitLogRecord } from './otel-logs';
+import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
@@ -85,8 +87,9 @@ export function makeWriteHook() {
       o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
     }
 
-    // PII sanitization.
+    // PII sanitization: blocked keys + secret detection + custom PII rules.
     sanitize(o, cfg.sanitizeFields);
+    sanitizePayload(o);
 
     // Capture to window.__pinoLogs for Playwright and devtools inspection.
     // Check is done inline (not at module load) so it works when loaded in Node.js
