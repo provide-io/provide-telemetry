@@ -176,22 +176,68 @@ describe('recordUseMetrics — instrument naming', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses set semantics — second call with same value produces delta=0', () => {
-    const addSpy = vi.fn();
-    vi.spyOn(metricsModule, 'gauge').mockReturnValue({ add: addSpy } as never);
+  it('calls gauge.set() (not gauge.add()) for utilization', () => {
+    const setSpy = vi.fn();
+    vi.spyOn(metricsModule, 'gauge').mockReturnValue({
+      add: vi.fn(),
+      set: setSpy,
+      name: 'resource.utilization',
+    } as never);
     recordUseMetrics({ resource: 'cpu', utilization: 65 });
-    expect(addSpy).toHaveBeenLastCalledWith(65, { resource: 'cpu' });
-    recordUseMetrics({ resource: 'cpu', utilization: 65 });
-    expect(addSpy).toHaveBeenLastCalledWith(0, { resource: 'cpu' });
+    expect(setSpy).toHaveBeenCalledWith(65, { resource: 'cpu' });
     vi.restoreAllMocks();
   });
 
-  it('uses set semantics — increasing value produces correct delta', () => {
-    const addSpy = vi.fn();
-    vi.spyOn(metricsModule, 'gauge').mockReturnValue({ add: addSpy } as never);
-    recordUseMetrics({ resource: 'mem', utilization: 60 });
-    recordUseMetrics({ resource: 'mem', utilization: 80 });
-    expect(addSpy).toHaveBeenLastCalledWith(20, { resource: 'mem' });
+  it('calls gauge.set() with correct value on repeated calls', () => {
+    const setSpy = vi.fn();
+    vi.spyOn(metricsModule, 'gauge').mockReturnValue({
+      add: vi.fn(),
+      set: setSpy,
+      name: 'resource.utilization',
+    } as never);
+    recordUseMetrics({ resource: 'cpu', utilization: 65 });
+    recordUseMetrics({ resource: 'cpu', utilization: 80 });
+    expect(setSpy).toHaveBeenNthCalledWith(1, 65, { resource: 'cpu' });
+    expect(setSpy).toHaveBeenNthCalledWith(2, 80, { resource: 'cpu' });
+    vi.restoreAllMocks();
+  });
+});
+
+describe('recordUseMetrics — gauge.add called with resource attr (kills ObjectLiteral on gauge attrs)', () => {
+  it('passes resource attribute to gauge set', () => {
+    _resetSloForTests();
+    const setSpy = vi.fn();
+    vi.spyOn(metricsModule, 'gauge').mockReturnValue({
+      add: vi.fn(),
+      set: setSpy,
+      name: 'resource.utilization',
+    } as never);
+    recordUseMetrics({ resource: 'cpu', utilization: 75 });
+    expect(setSpy).toHaveBeenCalledWith(75, { resource: 'cpu' });
+    vi.restoreAllMocks();
+  });
+});
+
+describe('slo — counter.add called with route/method/status_code attrs (kills ObjectLiteral on attrs)', () => {
+  it('passes route, method, and status_code attributes to counter.add', () => {
+    _resetSloForTests();
+    const counterInstances: Array<{ add: ReturnType<typeof vi.fn> }> = [];
+    vi.spyOn(metricsModule, 'counter').mockImplementation((_name, _opts) => {
+      const inst = { add: vi.fn(), name: _name };
+      counterInstances.push(inst);
+      return inst as unknown as ReturnType<typeof metricsModule.counter>;
+    });
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 5 });
+    // At least one counter.add was called with correct attrs
+    const allCalls = counterInstances.flatMap((inst) => inst.add.mock.calls);
+    expect(
+      allCalls.some((call) => {
+        const attrs = call[1] as Record<string, string>;
+        return (
+          attrs['route'] === '/test' && attrs['method'] === 'GET' && attrs['status_code'] === '200'
+        );
+      }),
+    ).toBe(true);
     vi.restoreAllMocks();
   });
 });
@@ -215,51 +261,6 @@ describe('slo — histogram reuse (kills ConditionalExpression→true in _lazyHi
     recordRedMetrics({ route: '/b', method: 'POST', statusCode: 200, durationMs: 2 });
     const durationCalls = spy.mock.calls.filter((c) => c[0] === 'http.request.duration_ms');
     expect(durationCalls).toHaveLength(1);
-    vi.restoreAllMocks();
-  });
-});
-
-describe('slo — counter.add called with route/method/status_code attrs (kills ObjectLiteral on attrs)', () => {
-  it('passes route, method, and status_code attributes to counter.add', () => {
-    _resetSloForTests();
-    const counterInstances: Array<{ add: ReturnType<typeof vi.fn> }> = [];
-    vi.spyOn(metricsModule, 'counter').mockImplementation((_name, _opts) => {
-      const inst = { add: vi.fn() };
-      counterInstances.push(inst);
-      return inst as unknown as ReturnType<typeof metricsModule.counter>;
-    });
-    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 5 });
-    // At least one counter.add was called with correct attrs
-    const allCalls = counterInstances.flatMap((inst) => inst.add.mock.calls);
-    expect(
-      allCalls.some((call) => {
-        const attrs = call[1] as Record<string, string>;
-        return (
-          attrs['route'] === '/test' && attrs['method'] === 'GET' && attrs['status_code'] === '200'
-        );
-      }),
-    ).toBe(true);
-    vi.restoreAllMocks();
-  });
-});
-
-describe('slo — gauge.add called with resource attr (kills ObjectLiteral on gauge attrs)', () => {
-  it('passes resource attribute to gauge add', () => {
-    _resetSloForTests();
-    const gaugeInstances: Array<{ add: ReturnType<typeof vi.fn> }> = [];
-    vi.spyOn(metricsModule, 'gauge').mockImplementation((_name, _opts) => {
-      const inst = { add: vi.fn() };
-      gaugeInstances.push(inst);
-      return inst as unknown as ReturnType<typeof metricsModule.gauge>;
-    });
-    recordUseMetrics({ resource: 'cpu', utilization: 75 });
-    const allCalls = gaugeInstances.flatMap((inst) => inst.add.mock.calls);
-    expect(
-      allCalls.some((call) => {
-        const attrs = call[1] as Record<string, string>;
-        return attrs['resource'] === 'cpu';
-      }),
-    ).toBe(true);
     vi.restoreAllMocks();
   });
 });
