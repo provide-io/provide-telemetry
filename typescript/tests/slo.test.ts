@@ -1,11 +1,22 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetSloForTests, classifyError, recordRedMetrics, recordUseMetrics } from '../src/slo';
+import { _resetConfig, setupTelemetry } from '../src/config';
 import * as metricsModule from '../src/metrics';
 
-afterEach(() => _resetSloForTests());
+beforeEach(() => {
+  _resetConfig();
+  _resetSloForTests();
+  // Enable SLO metrics by default so existing tests continue to work.
+  setupTelemetry({ sloEnableRedMetrics: true, sloEnableUseMetrics: true });
+});
+
+afterEach(() => {
+  _resetSloForTests();
+  _resetConfig();
+});
 
 describe('recordRedMetrics', () => {
   it('does not throw for a 200 response', () => {
@@ -261,6 +272,46 @@ describe('slo — histogram reuse (kills ConditionalExpression→true in _lazyHi
     recordRedMetrics({ route: '/b', method: 'POST', statusCode: 200, durationMs: 2 });
     const durationCalls = spy.mock.calls.filter((c) => c[0] === 'http.request.duration_ms');
     expect(durationCalls).toHaveLength(1);
+    vi.restoreAllMocks();
+  });
+});
+
+describe('sloEnableRedMetrics toggle', () => {
+  it('is a no-op when sloEnableRedMetrics is false', () => {
+    setupTelemetry({ sloEnableRedMetrics: false });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 10 });
+    expect(spy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('records metrics when sloEnableRedMetrics is true', () => {
+    setupTelemetry({ sloEnableRedMetrics: true });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 200, durationMs: 10 });
+    expect(spy).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+});
+
+describe('sloEnableUseMetrics toggle', () => {
+  it('is a no-op when sloEnableUseMetrics is false', () => {
+    setupTelemetry({ sloEnableUseMetrics: false });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'gauge');
+    recordUseMetrics({ resource: 'cpu', utilization: 50 });
+    expect(spy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('records metrics when sloEnableUseMetrics is true', () => {
+    setupTelemetry({ sloEnableUseMetrics: true });
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'gauge');
+    recordUseMetrics({ resource: 'cpu', utilization: 50 });
+    expect(spy).toHaveBeenCalled();
     vi.restoreAllMocks();
   });
 });

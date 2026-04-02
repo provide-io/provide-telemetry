@@ -8,7 +8,7 @@
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
  *   OPENOBSERVE_USER     e.g. admin@provide.test
- *   OPENOBSERVE_PASSWORD e.g. password
+ *   OPENOBSERVE_PASSWORD e.g. Complexpass#123
  *
  * Optional:
  *   PROVIDE_EXAMPLE_RUN_ID  defaults to Date.now()

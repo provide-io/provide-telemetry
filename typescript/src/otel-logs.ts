@@ -17,6 +17,7 @@
  */
 
 import type { TelemetryConfig } from './config';
+import { getConfig } from './config';
 import type { ShutdownableProvider } from './runtime';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
@@ -105,6 +106,37 @@ export function emitLogRecord(o: Record<string, unknown>): void {
   const attributes: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) {
     if (!SKIP.has(k) && v !== undefined) attributes[k] = v;
+  }
+
+  // — Security: truncate long attribute values —
+  const cfg = getConfig();
+  const maxLen = cfg.securityMaxAttrValueLength;
+  for (const [k, v] of Object.entries(attributes)) {
+    if (typeof v === 'string' && v.length > maxLen) {
+      attributes[k] = v.slice(0, maxLen) + '...';
+    }
+  }
+
+  // — Security: limit attribute count —
+  const maxCount = cfg.securityMaxAttrCount;
+  const keys = Object.keys(attributes);
+  if (keys.length > maxCount) {
+    for (const k of keys.slice(maxCount)) {
+      delete attributes[k];
+    }
+  }
+
+  // — Code attributes: map provide-telemetry fields to OTel semantic conventions —
+  if (cfg.logCodeAttributes) {
+    if (attributes['caller_file']) {
+      attributes['code.filepath'] = attributes['caller_file'];
+    }
+    if (attributes['caller_line']) {
+      attributes['code.lineno'] = attributes['caller_line'];
+    }
+    if (attributes['name']) {
+      attributes['code.namespace'] = attributes['name'];
+    }
   }
 
   _otelLogger.emit({
