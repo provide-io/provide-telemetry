@@ -8,7 +8,7 @@ describe('sanitize', () => {
   it('redacts default PII fields', () => {
     const obj: Record<string, unknown> = { password: 'secret123', status: 200 };
     sanitize(obj);
-    expect(obj['password']).toBe('[REDACTED]');
+    expect(obj['password']).toBe('***');
     expect(obj['status']).toBe(200);
   });
 
@@ -19,22 +19,22 @@ describe('sanitize', () => {
     }
     sanitize(obj);
     for (const field of DEFAULT_SANITIZE_FIELDS) {
-      expect(obj[field]).toBe('[REDACTED]');
+      expect(obj[field]).toBe('***');
     }
   });
 
   it('redacts extra fields from config', () => {
     const obj: Record<string, unknown> = { my_secret_field: 'value', other: 'ok' };
     sanitize(obj, ['my_secret_field']);
-    expect(obj['my_secret_field']).toBe('[REDACTED]');
+    expect(obj['my_secret_field']).toBe('***');
     expect(obj['other']).toBe('ok');
   });
 
   it('is case-insensitive on key names', () => {
     const obj: Record<string, unknown> = { PASSWORD: 'abc', Token: 'xyz' };
     sanitize(obj);
-    expect(obj['PASSWORD']).toBe('[REDACTED]');
-    expect(obj['Token']).toBe('[REDACTED]');
+    expect(obj['PASSWORD']).toBe('***');
+    expect(obj['Token']).toBe('***');
   });
 
   it('leaves clean objects untouched', () => {
@@ -51,6 +51,6 @@ describe('sanitize', () => {
   it('redacts token field', () => {
     const obj: Record<string, unknown> = { token: 'jwt.abc.def' };
     sanitize(obj);
-    expect(obj['token']).toBe('[REDACTED]');
+    expect(obj['token']).toBe('***');
   });
 });

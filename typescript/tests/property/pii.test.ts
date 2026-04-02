@@ -19,7 +19,7 @@ describe('property: PII mask modes', () => {
         registerPiiRule({ path: key, mode: 'redact' });
         const obj: Record<string, unknown> = { [key]: value };
         sanitizePayload(obj);
-        return obj[key] === '[REDACTED]';
+        return obj[key] === '***';
       }),
     );
   });

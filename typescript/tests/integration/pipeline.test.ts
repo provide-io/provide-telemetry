@@ -180,18 +180,18 @@ describe('PII sanitization pipeline', () => {
     };
     sanitize(obj, SENSITIVE_FIELDS);
     expect(obj['username']).toBe('alice');
-    expect(obj['password']).toBe('[REDACTED]');
-    expect(obj['token']).toBe('[REDACTED]');
-    expect(obj['secret']).toBe('[REDACTED]');
-    expect(obj['authorization']).toBe('[REDACTED]');
-    expect(obj['cookie']).toBe('[REDACTED]');
+    expect(obj['password']).toBe('***');
+    expect(obj['token']).toBe('***');
+    expect(obj['secret']).toBe('***');
+    expect(obj['authorization']).toBe('***');
+    expect(obj['cookie']).toBe('***');
   });
 
   it('sanitize is case-insensitive', () => {
     const obj: Record<string, unknown> = { PASSWORD: 'exposed', Token: 'exposed2' };
     sanitize(obj, SENSITIVE_FIELDS);
-    expect(obj['PASSWORD']).toBe('[REDACTED]');
-    expect(obj['Token']).toBe('[REDACTED]');
+    expect(obj['PASSWORD']).toBe('***');
+    expect(obj['Token']).toBe('***');
   });
 
   it('non-PII fields pass through unchanged', () => {
