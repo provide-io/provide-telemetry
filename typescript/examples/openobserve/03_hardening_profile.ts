@@ -19,7 +19,7 @@
  */
 
 import {
-  event,
+  eventName,
   getConfig,
   getHealthSnapshot,
   getLogger,
