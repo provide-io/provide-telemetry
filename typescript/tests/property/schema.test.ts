@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as fc from 'fast-check';
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
+import { setupTelemetry, _resetConfig } from '../../src/config';
 import { EventSchemaError, eventName, validateEventName } from '../../src/schema';
 
 const validSegment = fc
@@ -17,6 +18,14 @@ const validEventArgs = fc
   .chain((n) => fc.array(validSegment, { minLength: n, maxLength: n }));
 
 describe('property: eventName()', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
   it('valid 3-5 segment event names always pass strict validation', () => {
     fc.assert(
       fc.property(validEventArgs, (segs) => {

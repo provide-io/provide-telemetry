@@ -33,18 +33,18 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
 
 // Stryker disable next-line ObjectLiteral
-let _policy: ExporterPolicy = { ...DEFAULT_POLICY };
+let _policies: Record<string, ExporterPolicy> = {};
 // Stryker disable next-line ObjectLiteral
 const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
 const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 
-export function setExporterPolicy(policy: Partial<ExporterPolicy>): void {
-  _policy = { ..._policy, ...policy };
+export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
+  _policies[signal] = { ...DEFAULT_POLICY, ...policy };
 }
 
-export function getExporterPolicy(): ExporterPolicy {
-  return { ..._policy };
+export function getExporterPolicy(signal: string): ExporterPolicy {
+  return { ...(_policies[signal] ?? DEFAULT_POLICY) };
 }
 
 // Stryker disable next-line BlockStatement
@@ -77,7 +77,7 @@ export async function runWithResilience<T>(
   signal: string,
   fn: () => Promise<T>,
 ): Promise<T | null> {
-  const policy = _policy;
+  const policy = _policies[signal] ?? { ...DEFAULT_POLICY };
   const attempts = Math.max(1, policy.retries + 1);
 
   // Circuit breaker check.
@@ -134,7 +134,7 @@ export async function runWithResilience<T>(
 }
 
 export function _resetResilienceForTests(): void {
-  _policy = { ...DEFAULT_POLICY };
+  _policies = {};
   for (const k of ['logs', 'traces', 'metrics']) {
     _consecutiveTimeouts[k] = 0;
     _circuitTrippedAt[k] = 0;

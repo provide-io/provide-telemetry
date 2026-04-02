@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setupTelemetry, _resetConfig } from '../src/config';
 import {
   EventSchemaError,
   eventName,
@@ -19,6 +20,14 @@ describe('EventSchemaError', () => {
 });
 
 describe('eventName', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
   it('joins valid segments with dots', () => {
     expect(eventName('app', 'user', 'login')).toBe('app.user.login');
     expect(eventName('service', 'api', 'request', 'ok')).toBe('service.api.request.ok');
@@ -96,6 +105,14 @@ describe('validateRequiredKeys', () => {
 });
 
 describe('eventName / validateEventName — error message content (mutation kills)', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
   it('segment count error mentions segment count', () => {
     // Kills: StringLiteral mutation that empties the error message
     expect(() => eventName('a', 'b')).toThrow(/got 2/);
@@ -142,5 +159,31 @@ describe('validateEventName — strict mode error message content (kills StringL
     }
     expect(msg).toMatch(/expected 3-5 segments/);
     expect(msg).toMatch(/got 6/);
+  });
+});
+
+describe('eventName — strict schema config integration', () => {
+  afterEach(() => {
+    _resetConfig();
+  });
+
+  it('relaxed mode allows 1 segment', () => {
+    setupTelemetry({ strictSchema: false });
+    expect(eventName('svc')).toBe('svc');
+  });
+
+  it('relaxed mode allows 6 segments', () => {
+    setupTelemetry({ strictSchema: false });
+    expect(eventName('a', 'b', 'c', 'd', 'e', 'f')).toBe('a.b.c.d.e.f');
+  });
+
+  it('strict mode rejects 1 segment', () => {
+    setupTelemetry({ strictSchema: true });
+    expect(() => eventName('svc')).toThrow(EventSchemaError);
+  });
+
+  it('0 segments throws even in relaxed mode', () => {
+    setupTelemetry({ strictSchema: false });
+    expect(() => eventName()).toThrow(EventSchemaError);
   });
 });

@@ -8,7 +8,14 @@
  * withTrace() / @trace work safely without any OTEL setup; they just don't export spans.
  */
 
-import { type Tracer, SpanStatusCode, trace } from '@opentelemetry/api';
+import {
+  type Tracer,
+  type Span,
+  SpanStatusCode,
+  trace,
+  context as otelContext,
+} from '@opentelemetry/api';
+import { getActiveOtelContext } from './propagation';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -29,20 +36,20 @@ export function setTraceContext(traceId: string, spanId: string): void {
 /**
  * Return the current trace context: manual injection first, then active OTEL span.
  */
-export function getTraceContext(): { traceId?: string; spanId?: string } {
+export function getTraceContext(): { trace_id?: string; span_id?: string } {
   // Stryker disable next-line ConditionalExpression,LogicalOperator: setTraceContext always sets both; partial state not reachable via public API
   if (_manualTraceId !== undefined || _manualSpanId !== undefined) {
     return {
       // Stryker disable next-line ConditionalExpression: _manualTraceId is always defined here (both set together)
-      ...(_manualTraceId !== undefined && { traceId: _manualTraceId }),
+      ...(_manualTraceId !== undefined && { trace_id: _manualTraceId }),
       // Stryker disable next-line ConditionalExpression: _manualSpanId is always defined here (both set together)
-      ...(_manualSpanId !== undefined && { spanId: _manualSpanId }),
+      ...(_manualSpanId !== undefined && { span_id: _manualSpanId }),
     };
   }
   const ids = getActiveTraceIds();
   return {
-    ...(ids.trace_id !== undefined && { traceId: ids.trace_id }),
-    ...(ids.span_id !== undefined && { spanId: ids.span_id }),
+    ...(ids.trace_id !== undefined && { trace_id: ids.trace_id }),
+    ...(ids.span_id !== undefined && { span_id: ids.span_id }),
   };
 }
 
@@ -73,6 +80,34 @@ export function getActiveTraceIds(): { trace_id?: string; span_id?: string } {
   return { trace_id: ctx.traceId, span_id: ctx.spanId };
 }
 
+/** Shared span handler for withTrace — records exceptions and sets ERROR status. */
+function _spanHandler<T>(fn: () => T, span: Span): T {
+  try {
+    const result = fn();
+    if (result instanceof Promise) {
+      return result.then(
+        (value) => {
+          span.end();
+          return value;
+        },
+        (err: unknown) => {
+          span.recordException(err instanceof Error ? err : new Error(String(err)));
+          span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+          span.end();
+          throw err;
+        },
+      ) as T;
+    }
+    span.end();
+    return result;
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : new Error(String(err)));
+    span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+    span.end();
+    throw err;
+  }
+}
+
 /**
  * Execute fn inside a new span named `name`.
  * Works for both sync and async functions.
@@ -80,32 +115,20 @@ export function getActiveTraceIds(): { trace_id?: string; span_id?: string } {
  */
 export function withTrace<T>(name: string, fn: () => T): T {
   const tracer = trace.getTracer(TRACER_NAME);
-  return tracer.startActiveSpan(name, (span) => {
-    try {
-      const result = fn();
-      if (result instanceof Promise) {
-        return result.then(
-          (value) => {
-            span.end();
-            return value;
-          },
-          (err: unknown) => {
-            span.recordException(err instanceof Error ? err : new Error(String(err)));
-            span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
-            span.end();
-            throw err;
-          },
-        ) as T;
-      }
-      span.end();
-      return result;
-    } catch (err) {
-      span.recordException(err instanceof Error ? err : new Error(String(err)));
-      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
-      span.end();
-      throw err;
+
+  // If an OTel context was extracted from propagation headers, use it as parent.
+  try {
+    const activeCtx = getActiveOtelContext();
+    if (activeCtx) {
+      return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
+        tracer.startActiveSpan(name, (span: Span) => _spanHandler(fn, span)),
+      );
     }
-  });
+  } catch {
+    // Graceful degradation — fall through to default behaviour.
+  }
+
+  return tracer.startActiveSpan(name, (span: Span) => _spanHandler(fn, span));
 }
 
 /**

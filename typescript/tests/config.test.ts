@@ -148,15 +148,47 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
+  it('PROVIDE_TELEMETRY_ENV takes priority over PROVIDE_ENV', () => {
+    withEnv({ PROVIDE_TELEMETRY_ENV: 'staging', PROVIDE_ENV: 'production' }, () => {
+      expect(configFromEnv().environment).toBe('staging');
+    });
+  });
+
   it('reads PROVIDE_VERSION', () => {
     withEnv({ PROVIDE_VERSION: 'v2.3.4' }, () => {
       expect(configFromEnv().version).toBe('v2.3.4');
     });
   });
 
+  it('PROVIDE_TELEMETRY_VERSION takes priority over PROVIDE_VERSION', () => {
+    withEnv({ PROVIDE_TELEMETRY_VERSION: 'v5.0.0', PROVIDE_VERSION: 'v2.3.4' }, () => {
+      expect(configFromEnv().version).toBe('v5.0.0');
+    });
+  });
+
   it('PROVIDE_VERSION overrides default (not AND-short-circuited)', () => {
     withEnv({ PROVIDE_VERSION: 'v9.0.0' }, () => {
       expect(configFromEnv().version).toBe('v9.0.0');
+    });
+  });
+
+  it('strictSchema defaults to false', () => {
+    expect(configFromEnv().strictSchema).toBe(false);
+  });
+
+  it('PROVIDE_TELEMETRY_STRICT_SCHEMA=true enables strictSchema', () => {
+    withEnv({ PROVIDE_TELEMETRY_STRICT_SCHEMA: 'true' }, () => {
+      expect(configFromEnv().strictSchema).toBe(true);
+    });
+  });
+
+  it('requiredLogKeys defaults to empty array', () => {
+    expect(configFromEnv().requiredLogKeys).toEqual([]);
+  });
+
+  it('PROVIDE_TELEMETRY_REQUIRED_KEYS parses comma-separated keys', () => {
+    withEnv({ PROVIDE_TELEMETRY_REQUIRED_KEYS: 'event, user_id , action' }, () => {
+      expect(configFromEnv().requiredLogKeys).toEqual(['event', 'user_id', 'action']);
     });
   });
 

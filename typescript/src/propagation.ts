@@ -14,9 +14,20 @@ export interface PropagationContext {
   spanId?: string;
 }
 
+/** Maximum length (in characters) for traceparent or tracestate header values. */
+export const MAX_HEADER_LENGTH = 512;
+/** Maximum number of comma-separated key=value pairs in tracestate. */
+export const MAX_TRACESTATE_PAIRS = 32;
+/** Maximum length (in characters) for the baggage header value. */
+export const MAX_BAGGAGE_LENGTH = 8192;
+
 /** Stack of saved contexts for bind/clear pairs. */
 // Stryker disable next-line ArrayDeclaration
 const _stack: PropagationContext[] = [];
+
+/** Stack of OTel contexts extracted from incoming propagation headers. */
+// Stryker disable next-line ArrayDeclaration
+const _otelContextStack: unknown[] = [];
 
 /** Active bound context (most recently pushed layer). */
 let _active: PropagationContext = {};
@@ -46,9 +57,24 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
   const lower: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
 
-  const rawTraceparent = lower['traceparent'];
-  const tracestate = lower['tracestate'];
-  const baggage = lower['baggage'];
+  let rawTraceparent: string | undefined = lower['traceparent'];
+  let tracestate: string | undefined = lower['tracestate'];
+  let baggage: string | undefined = lower['baggage'];
+
+  // Size guards — treat oversized headers as absent.
+  if (rawTraceparent !== undefined && rawTraceparent.length > MAX_HEADER_LENGTH) {
+    rawTraceparent = undefined;
+  }
+  if (tracestate !== undefined) {
+    if (tracestate.length > MAX_HEADER_LENGTH) {
+      tracestate = undefined;
+    } else if (tracestate.split(',').length > MAX_TRACESTATE_PAIRS) {
+      tracestate = undefined;
+    }
+  }
+  if (baggage !== undefined && baggage.length > MAX_BAGGAGE_LENGTH) {
+    baggage = undefined;
+  }
 
   const { traceId, spanId } = rawTraceparent ? _parseTraceparent(rawTraceparent) : {};
   // Stryker disable next-line LogicalOperator: traceId and spanId are always both defined or both undefined (from _parseTraceparent) — && and || give identical results
@@ -65,10 +91,33 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
 
 /**
  * Push ctx onto the propagation stack, making it the active context.
+ * When traceparent is present and OTel API is available, extracts an OTel
+ * context so that child spans created via withTrace() inherit the parent.
  */
 export function bindPropagationContext(ctx: PropagationContext): void {
   _stack.push({ ..._active });
   _active = { ..._active, ...ctx };
+
+  // Wire into OTel context chain when traceparent is present.
+  if (ctx.traceparent) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const otelApi = require('@opentelemetry/api') as {
+        propagation: { extract: (ctx: unknown, carrier: Record<string, string>) => unknown };
+        context: { active: () => unknown };
+      };
+      const carrier: Record<string, string> = { traceparent: ctx.traceparent };
+      /* Stryker disable next-line ConditionalExpression: tracestate fallback '' vs undefined — OTel extract handles both identically */
+      if (ctx.tracestate) carrier['tracestate'] = ctx.tracestate;
+      const extracted = otelApi.propagation.extract(otelApi.context.active(), carrier);
+      _otelContextStack.push(extracted);
+    } catch {
+      // OTel API not available — graceful degradation, push undefined sentinel.
+      _otelContextStack.push(undefined);
+    }
+  } else {
+    _otelContextStack.push(undefined);
+  }
 }
 
 /**
@@ -86,6 +135,7 @@ export function clearPropagationContext(): void {
     // Stryker disable BlockStatement: empty else body is equivalent — _active is always {} here because pop() restores prior state
     _active = {};
   }
+  _otelContextStack.pop();
 }
 // Stryker enable BlockStatement
 
@@ -94,7 +144,14 @@ export function getActivePropagationContext(): PropagationContext {
   return { ..._active };
 }
 
+/** Return the top of the OTel context stack, or undefined if empty/no OTel wiring. */
+export function getActiveOtelContext(): unknown | undefined {
+  if (_otelContextStack.length === 0) return undefined;
+  return _otelContextStack[_otelContextStack.length - 1];
+}
+
 export function _resetPropagationForTests(): void {
   _stack.length = 0;
+  _otelContextStack.length = 0;
   _active = {};
 }
