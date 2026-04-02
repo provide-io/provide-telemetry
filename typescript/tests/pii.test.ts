@@ -575,3 +575,24 @@ describe('sanitizePayload — secret detection (nested)', () => {
     expect(outer['inner']).toBe('safe value');
   });
 });
+
+describe('sanitize — non-string values NOT treated as secrets (kills typeof guard mutation)', () => {
+  it('does not redact number values even in non-blocked keys', () => {
+    const obj: Record<string, unknown> = { count: 42, name: 'safe' };
+    sanitize(obj);
+    expect(obj['count']).toBe(42);
+    expect(obj['name']).toBe('safe');
+  });
+
+  it('does not redact boolean values', () => {
+    const obj: Record<string, unknown> = { active: true };
+    sanitize(obj);
+    expect(obj['active']).toBe(true);
+  });
+
+  it('does not redact object values', () => {
+    const obj: Record<string, unknown> = { data: { nested: 'value' } };
+    sanitize(obj);
+    expect(obj['data']).toEqual({ nested: 'value' });
+  });
+});
