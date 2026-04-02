@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Python — Rewrite `__init__.py` as lazy facade
+## Task 1: Python — Rewrite `__init__.py` as lazy facade
 
 **Files:**
 - Modify: `src/provide/telemetry/__init__.py`
@@ -337,7 +337,7 @@ Reduces import from 34 modules to ~10 for consumers who only need logging + trac
 
 ---
 
-### Task 2: TypeScript — Confirm tree-shaking and add `sideEffects`
+## Task 2: TypeScript — Confirm tree-shaking and add `sideEffects`
 
 **Files:**
 - Modify: `typescript/package.json`
@@ -397,7 +397,7 @@ git commit -m "perf(ts): add sideEffects: false for tree-shaking in FaaS bundler
 
 ---
 
-### Task 3: Verify E2E — both languages still work with lazy loading
+## Task 3: Verify E2E — both languages still work with lazy loading
 
 **Files:** None modified — verification only.
 
