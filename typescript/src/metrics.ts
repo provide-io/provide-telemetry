@@ -21,6 +21,7 @@ import {
 } from '@opentelemetry/api';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
+import { getActiveTraceIds } from './tracing';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 
@@ -49,7 +50,12 @@ export class CounterInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
-      this._inner.add(value, attributes);
+      const ids = getActiveTraceIds();
+      const enriched =
+        ids.trace_id && ids.span_id
+          ? { ...attributes, trace_id: ids.trace_id, span_id: ids.span_id }
+          : attributes;
+      this._inner.add(value, enriched);
     } finally {
       release(ticket);
     }
@@ -114,7 +120,12 @@ export class HistogramInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
-      this._inner.record(value, attributes);
+      const ids = getActiveTraceIds();
+      const enriched =
+        ids.trace_id && ids.span_id
+          ? { ...attributes, trace_id: ids.trace_id, span_id: ids.span_id }
+          : attributes;
+      this._inner.record(value, enriched);
     } finally {
       release(ticket);
     }

@@ -2,10 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, configFromEnv, getConfig, setupTelemetry, version } from '../src/config';
+import {
+  _resetConfig,
+  applyConfigPolicies,
+  configFromEnv,
+  getConfig,
+  setupTelemetry,
+  version,
+} from '../src/config';
+import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
+import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure';
+import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience';
 
 afterEach(() => {
   _resetConfig();
+  _resetSamplingForTests();
+  _resetBackpressureForTests();
+  _resetResilienceForTests();
 });
 
 describe('getConfig defaults', () => {
@@ -663,5 +676,138 @@ describe('DEFAULTS — new boolean fields kill mutations', () => {
   it('securityMaxAttrCount default is 64', () => {
     _resetConfig();
     expect(getConfig().securityMaxAttrCount).toBe(64);
+  });
+});
+
+// ─── applyConfigPolicies integration tests ─────────────────────────────
+
+describe('setupTelemetry applies sampling policies', () => {
+  it('applies custom samplingLogsRate', () => {
+    setupTelemetry({ samplingLogsRate: 0.5 });
+    expect(getSamplingPolicy('logs').defaultRate).toBe(0.5);
+  });
+
+  it('applies custom samplingTracesRate', () => {
+    setupTelemetry({ samplingTracesRate: 0.3 });
+    expect(getSamplingPolicy('traces').defaultRate).toBe(0.3);
+  });
+
+  it('applies custom samplingMetricsRate', () => {
+    setupTelemetry({ samplingMetricsRate: 0.8 });
+    expect(getSamplingPolicy('metrics').defaultRate).toBe(0.8);
+  });
+
+  it('applies default sampling rates (1.0) when no overrides', () => {
+    setupTelemetry();
+    expect(getSamplingPolicy('logs').defaultRate).toBe(1.0);
+    expect(getSamplingPolicy('traces').defaultRate).toBe(1.0);
+    expect(getSamplingPolicy('metrics').defaultRate).toBe(1.0);
+  });
+});
+
+describe('setupTelemetry applies backpressure policies', () => {
+  it('applies custom backpressureTracesMaxsize', () => {
+    setupTelemetry({ backpressureTracesMaxsize: 64 });
+    expect(getQueuePolicy().maxTraces).toBe(64);
+  });
+
+  it('applies custom backpressureLogsMaxsize', () => {
+    setupTelemetry({ backpressureLogsMaxsize: 100 });
+    expect(getQueuePolicy().maxLogs).toBe(100);
+  });
+
+  it('applies custom backpressureMetricsMaxsize', () => {
+    setupTelemetry({ backpressureMetricsMaxsize: 200 });
+    expect(getQueuePolicy().maxMetrics).toBe(200);
+  });
+
+  it('applies default backpressure (0 = unbounded) when no overrides', () => {
+    setupTelemetry();
+    const policy = getQueuePolicy();
+    expect(policy.maxLogs).toBe(0);
+    expect(policy.maxTraces).toBe(0);
+    expect(policy.maxMetrics).toBe(0);
+  });
+});
+
+describe('setupTelemetry applies exporter resilience policies', () => {
+  it('applies custom exporterLogsRetries', () => {
+    setupTelemetry({ exporterLogsRetries: 3 });
+    expect(getExporterPolicy('logs').retries).toBe(3);
+  });
+
+  it('applies custom exporterLogsBackoffMs', () => {
+    setupTelemetry({ exporterLogsBackoffMs: 500 });
+    expect(getExporterPolicy('logs').backoffMs).toBe(500);
+  });
+
+  it('applies custom exporterLogsTimeoutMs', () => {
+    setupTelemetry({ exporterLogsTimeoutMs: 5000 });
+    expect(getExporterPolicy('logs').timeoutMs).toBe(5000);
+  });
+
+  it('applies custom exporterLogsFailOpen', () => {
+    setupTelemetry({ exporterLogsFailOpen: false });
+    expect(getExporterPolicy('logs').failOpen).toBe(false);
+  });
+
+  it('applies custom exporterTracesRetries', () => {
+    setupTelemetry({ exporterTracesRetries: 5 });
+    expect(getExporterPolicy('traces').retries).toBe(5);
+  });
+
+  it('applies custom exporterTracesBackoffMs', () => {
+    setupTelemetry({ exporterTracesBackoffMs: 1000 });
+    expect(getExporterPolicy('traces').backoffMs).toBe(1000);
+  });
+
+  it('applies custom exporterTracesTimeoutMs', () => {
+    setupTelemetry({ exporterTracesTimeoutMs: 20000 });
+    expect(getExporterPolicy('traces').timeoutMs).toBe(20000);
+  });
+
+  it('applies custom exporterTracesFailOpen', () => {
+    setupTelemetry({ exporterTracesFailOpen: false });
+    expect(getExporterPolicy('traces').failOpen).toBe(false);
+  });
+
+  it('applies custom exporterMetricsRetries', () => {
+    setupTelemetry({ exporterMetricsRetries: 2 });
+    expect(getExporterPolicy('metrics').retries).toBe(2);
+  });
+
+  it('applies custom exporterMetricsBackoffMs', () => {
+    setupTelemetry({ exporterMetricsBackoffMs: 750 });
+    expect(getExporterPolicy('metrics').backoffMs).toBe(750);
+  });
+
+  it('applies custom exporterMetricsTimeoutMs', () => {
+    setupTelemetry({ exporterMetricsTimeoutMs: 15000 });
+    expect(getExporterPolicy('metrics').timeoutMs).toBe(15000);
+  });
+
+  it('applies custom exporterMetricsFailOpen', () => {
+    setupTelemetry({ exporterMetricsFailOpen: false });
+    expect(getExporterPolicy('metrics').failOpen).toBe(false);
+  });
+
+  it('applies default exporter policies when no overrides', () => {
+    setupTelemetry();
+    for (const signal of ['logs', 'traces', 'metrics']) {
+      const policy = getExporterPolicy(signal);
+      expect(policy.retries).toBe(0);
+      expect(policy.backoffMs).toBe(0);
+      expect(policy.timeoutMs).toBe(10000);
+      expect(policy.failOpen).toBe(true);
+    }
+  });
+});
+
+describe('applyConfigPolicies standalone', () => {
+  it('can be called directly with a full config', () => {
+    const cfg = { ...configFromEnv(), samplingLogsRate: 0.1, backpressureLogsMaxsize: 42 };
+    applyConfigPolicies(cfg);
+    expect(getSamplingPolicy('logs').defaultRate).toBe(0.1);
+    expect(getQueuePolicy().maxLogs).toBe(42);
   });
 });
