@@ -5,8 +5,10 @@
  * TelemetryConfig — mirrors Python provide.telemetry TelemetryConfig.
  *
  * Env vars (same names as Python package):
- *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_ENV, PROVIDE_VERSION,
+ *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_TELEMETRY_ENV (fallback: PROVIDE_ENV),
+ *   PROVIDE_TELEMETRY_VERSION (fallback: PROVIDE_VERSION),
  *   PROVIDE_LOG_LEVEL, PROVIDE_LOG_FORMAT, PROVIDE_TRACE_ENABLED,
+ *   PROVIDE_TELEMETRY_STRICT_SCHEMA,
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
 
@@ -55,90 +57,10 @@ export interface TelemetryConfig {
    * Set true during local development for live devtools inspection.
    */
   consoleOutput: boolean;
-  /** Master schema strictness switch. */
+  /** Enforce strict event name validation (3-5 dot-separated segments). */
   strictSchema: boolean;
-  /** Enforce strict event-name validation even when strictSchema is false. */
-  strictEventName: boolean;
-  /** Keys required on every log record. */
+  /** Keys required on every log record when strictSchema is enabled. */
   requiredLogKeys: string[];
-
-  // — Logging extras —
-  /** Include timestamp in log output. */
-  logIncludeTimestamp: boolean;
-  /** Include caller info in log output. */
-  logIncludeCaller: boolean;
-  /** Enable PII/secret sanitization in logs. */
-  logSanitize: boolean;
-  /** Attach code.filepath / code.lineno attributes to log records. */
-  logCodeAttributes: boolean;
-  /** Per-module log level overrides (e.g. {"provide.server": "DEBUG"}). */
-  logModuleLevels: Record<string, string>;
-
-  // — Tracing —
-  /** Trace sampling rate (0.0–1.0). */
-  traceSampleRate: number;
-
-  // — Metrics —
-  /** Enable metrics collection. */
-  metricsEnabled: boolean;
-
-  // — Per-signal sampling —
-  /** Probabilistic sampling rate for logs (0.0–1.0). */
-  samplingLogsRate: number;
-  /** Probabilistic sampling rate for traces (0.0–1.0). */
-  samplingTracesRate: number;
-  /** Probabilistic sampling rate for metrics (0.0–1.0). */
-  samplingMetricsRate: number;
-
-  // — Per-signal backpressure —
-  /** Max queue size for log export (0 = unbounded). */
-  backpressureLogsMaxsize: number;
-  /** Max queue size for trace export (0 = unbounded). */
-  backpressureTracesMaxsize: number;
-  /** Max queue size for metric export (0 = unbounded). */
-  backpressureMetricsMaxsize: number;
-
-  // — Per-signal exporter resilience —
-  /** Max retries for log export. */
-  exporterLogsRetries: number;
-  /** Backoff between log export retries (ms). */
-  exporterLogsBackoffMs: number;
-  /** Timeout for log export (ms). */
-  exporterLogsTimeoutMs: number;
-  /** If true, drop telemetry on export failure instead of crashing. */
-  exporterLogsFailOpen: boolean;
-  /** Max retries for trace export. */
-  exporterTracesRetries: number;
-  /** Backoff between trace export retries (ms). */
-  exporterTracesBackoffMs: number;
-  /** Timeout for trace export (ms). */
-  exporterTracesTimeoutMs: number;
-  /** If true, drop telemetry on export failure instead of crashing. */
-  exporterTracesFailOpen: boolean;
-  /** Max retries for metric export. */
-  exporterMetricsRetries: number;
-  /** Backoff between metric export retries (ms). */
-  exporterMetricsBackoffMs: number;
-  /** Timeout for metric export (ms). */
-  exporterMetricsTimeoutMs: number;
-  /** If true, drop telemetry on export failure instead of crashing. */
-  exporterMetricsFailOpen: boolean;
-
-  // — SLO —
-  /** Enable RED (Rate/Error/Duration) metrics. */
-  sloEnableRedMetrics: boolean;
-  /** Enable USE (Utilization/Saturation/Errors) metrics. */
-  sloEnableUseMetrics: boolean;
-
-  // — PII —
-  /** Maximum recursion depth for PII sanitization of nested objects. */
-  piiMaxDepth: number;
-
-  // — Security —
-  /** Max length for any single attribute value. */
-  securityMaxAttrValueLength: number;
-  /** Max number of attributes on a single span/log/metric point. */
-  securityMaxAttrCount: number;
 }
 
 const DEFAULTS: TelemetryConfig = {
@@ -150,41 +72,9 @@ const DEFAULTS: TelemetryConfig = {
   otelEnabled: true,
   sanitizeFields: [],
   captureToWindow: true,
-  consoleOutput: true,
+  consoleOutput: false,
   strictSchema: false,
-  strictEventName: false,
   requiredLogKeys: [],
-  logIncludeTimestamp: true,
-  logIncludeCaller: true,
-  logSanitize: true,
-  logCodeAttributes: false,
-  logModuleLevels: {},
-  traceSampleRate: 1.0,
-  tracingEnabled: true,
-  metricsEnabled: true,
-  samplingLogsRate: 1.0,
-  samplingTracesRate: 1.0,
-  samplingMetricsRate: 1.0,
-  backpressureLogsMaxsize: 0,
-  backpressureTracesMaxsize: 0,
-  backpressureMetricsMaxsize: 0,
-  exporterLogsRetries: 0,
-  exporterLogsBackoffMs: 0,
-  exporterLogsTimeoutMs: 10000,
-  exporterLogsFailOpen: true,
-  exporterTracesRetries: 0,
-  exporterTracesBackoffMs: 0,
-  exporterTracesTimeoutMs: 10000,
-  exporterTracesFailOpen: true,
-  exporterMetricsRetries: 0,
-  exporterMetricsBackoffMs: 0,
-  exporterMetricsTimeoutMs: 10000,
-  exporterMetricsFailOpen: true,
-  sloEnableRedMetrics: false,
-  sloEnableUseMetrics: false,
-  piiMaxDepth: 8,
-  securityMaxAttrValueLength: 1024,
-  securityMaxAttrCount: 64,
 };
 
 let _config: TelemetryConfig = { ...DEFAULTS };
@@ -209,8 +99,8 @@ export function configFromEnv(): TelemetryConfig {
 
   return {
     serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
-    environment: nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
-    version: nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
+    environment: nodeEnv('PROVIDE_TELEMETRY_ENV') ?? nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
+    version: nodeEnv('PROVIDE_TELEMETRY_VERSION') ?? nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
     logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
@@ -223,6 +113,16 @@ export function configFromEnv(): TelemetryConfig {
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
     consoleOutput: false,
+    strictSchema: nodeEnv('PROVIDE_TELEMETRY_STRICT_SCHEMA') === 'true',
+    requiredLogKeys: (() => {
+      const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
+      return raw
+        ? raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    })(),
   };
 }
 

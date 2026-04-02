@@ -7,7 +7,7 @@
  *
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
- *   OPENOBSERVE_USER     e.g. someuserexample@provide.test
+ *   OPENOBSERVE_USER     e.g. admin@provide.test
  *   OPENOBSERVE_PASSWORD e.g. password
  *
  * Optional:
@@ -15,20 +15,25 @@
  *
  * Run:
  *   OPENOBSERVE_URL=http://localhost:5080/api/default \
- *   OPENOBSERVE_USER=someuserexample@provide.test \
- *   OPENOBSERVE_PASSWORD=password \
+ *   OPENOBSERVE_USER=admin@provide.test \
+ *   OPENOBSERVE_PASSWORD=Complexpass#123 \
  *   npx tsx examples/openobserve/01_emit_all_signals.ts
  */
 
-import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { resourceFromAttributes } from '@opentelemetry/resources';
-import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { context, metrics, trace } from '@opentelemetry/api';
+import * as http from 'node:http';
+import * as https from 'node:https';
 
-import { bindContext, counter, getLogger, histogram, setupTelemetry, withTrace } from '../../src/index.js';
+import {
+  bindContext,
+  counter,
+  getConfig,
+  getLogger,
+  histogram,
+  registerOtelProviders,
+  setupTelemetry,
+  shutdownTelemetry,
+  withTrace,
+} from '../../src/index.js';
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -50,39 +55,19 @@ async function main(): Promise<void> {
   const traceName = `example.openobserve.work.${runId}`;
   const metricName = `example.openobserve.requests.${runId}`;
 
-  const otlpHeaders = { Authorization: auth };
-
-  // ── OTEL SDK setup ────────────────────────────────────────────────────────
-
-  const ctxMgr = new AsyncLocalStorageContextManager();
-  ctxMgr.enable();
-  context.setGlobalContextManager(ctxMgr);
-
-  const traceExporter = new OTLPTraceExporter({ url: `${baseUrl}/v1/traces`, headers: otlpHeaders });
-  const tracerProvider = new BasicTracerProvider({
-    resource: resourceFromAttributes({
-      'service.name': 'provide-telemetry-ts-examples',
-      'service.version': '0.1.0',
-      'deployment.environment': 'development',
-    }),
-    spanProcessors: [new SimpleSpanProcessor(traceExporter)],
-  });
-  trace.setGlobalTracerProvider(tracerProvider);
-
-  const metricExporter = new OTLPMetricExporter({ url: `${baseUrl}/v1/metrics`, headers: otlpHeaders });
-  const meterProvider = new MeterProvider({
-    resource: resourceFromAttributes({ 'service.name': 'provide-telemetry-ts-examples' }),
-    readers: [new PeriodicExportingMetricReader({ exporter: metricExporter, exportIntervalMillis: 1000 })],
-  });
-  metrics.setGlobalMeterProvider(meterProvider);
-
   // ── @provide-io/telemetry setup ───────────────────────────────────────────────
 
   setupTelemetry({
     serviceName: 'provide-telemetry-ts-examples',
     logLevel: 'debug',
     consoleOutput: false,
+    otelEnabled: true,
+    otlpEndpoint: baseUrl,
+    otlpHeaders: { Authorization: auth },
+    environment: 'development',
+    version: 'examples',
   });
+  await registerOtelProviders(getConfig());
 
   bindContext({ run_id: runId, example: 'openobserve' });
 
@@ -108,11 +93,7 @@ async function main(): Promise<void> {
 
   // ── Flush and shutdown ───────────────────────────────────────────────────
 
-  await tracerProvider.forceFlush();
-  await meterProvider.forceFlush();
-  await new Promise((r) => setTimeout(r, 1000));
-  await tracerProvider.shutdown();
-  await meterProvider.shutdown();
+  await shutdownTelemetry();
 
   console.log(`signals emitted run_id=${runId}`);
 }

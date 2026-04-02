@@ -19,12 +19,9 @@ import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
 import { emitLogRecord } from './otel-logs';
-import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
-import { tryAcquire, release } from './backpressure';
-import { shouldSample } from './sampling';
-import { getTraceContext } from './tracing';
+import { getActiveTraceIds } from './tracing';
 
 /** Pino level number → console method name. */
 const LEVEL_MAP: Record<number, string> = {
@@ -166,6 +163,31 @@ export function makeWriteHook() {
 
     // Count every record that survives all filters as emitted.
     _incrementHealth(_emittedField('logs'));
+
+    // Export to OTLP when a log provider is registered (noop otherwise).
+    emitLogRecord(o);
+
+    // Schema validation — drop records that violate strict schema rules.
+    /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
+    if (cfg.strictSchema) {
+      const event = String(o['event'] ?? o['msg'] ?? '');
+      if (event) {
+        try {
+          validateEventName(event);
+        } catch (e) {
+          if (e instanceof EventSchemaError) return;
+          throw e;
+        }
+      }
+      if (cfg.requiredLogKeys.length > 0) {
+        try {
+          validateRequiredKeys(o, cfg.requiredLogKeys);
+        } catch (e) {
+          if (e instanceof EventSchemaError) return;
+          throw e;
+        }
+      }
+    }
 
     // Export to OTLP when a log provider is registered (noop otherwise).
     emitLogRecord(o);

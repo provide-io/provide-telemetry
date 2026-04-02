@@ -20,10 +20,12 @@
  */
 
 import type { TelemetryConfig } from './config';
+import { setupOtelLogProvider } from './otel-logs';
 
 const DEFAULT_OTLP_ENDPOINT = 'http://localhost:4318';
 import {
   type ShutdownableProvider,
+  _areProvidersRegistered,
   _markProvidersRegistered,
   _setProviderSignalInstalled,
   _storeRegisteredProviders,
@@ -124,6 +126,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     _setProviderSignalInstalled('logs', true);
   } catch (err) {
     console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+  }
+
+  // ── Logs ─────────────────────────────────────────────────────────────────────
+  try {
+    registered.push(await setupOtelLogProvider(cfg));
+  } catch (err) {
+    console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
   }
 
   _storeRegisteredProviders(registered);

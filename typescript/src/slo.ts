@@ -16,9 +16,11 @@ import {
 } from './metrics';
 import { getConfig } from './config';
 
-const _counters = new Map<string, CounterInstrument>();
-const _histograms = new Map<string, HistogramInstrument>();
-const _gauges = new Map<string, GaugeInstrument>();
+const _counters = new Map<string, Counter>();
+const _histograms = new Map<string, Histogram>();
+const _gauges = new Map<string, UpDownCounter>();
+/** Track previous gauge values per (name, resource) for set-semantics (delta computation). */
+const _gaugeValues = new Map<string, number>();
 
 function _lazyCounter(name: string, description: string): Counter {
   let c = _counters.get(name);
@@ -75,9 +77,12 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
-  if (!getConfig().sloEnableUseMetrics) return;
   const g = _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%');
-  g.set(opts.utilization, { resource: opts.resource });
+  const key = `resource.utilization:${opts.resource}`;
+  const prev = _gaugeValues.get(key) ?? 0;
+  const delta = opts.utilization - prev;
+  _gaugeValues.set(key, opts.utilization);
+  g.add(delta, { resource: opts.resource });
 }
 
 export interface ErrorClassification {
@@ -153,4 +158,5 @@ export function _resetSloForTests(): void {
   _counters.clear();
   _histograms.clear();
   _gauges.clear();
+  _gaugeValues.clear();
 }
