@@ -27,10 +27,19 @@ jobs:
           path: dist/*
       - name: Generate Python SBOM
         run: uvx cyclonedx-py environment --output-format json -o sbom-python.cdx.json
+      - name: Generate TypeScript SBOM
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          cd typescript
+          cyclonedx-npm --output-file ../sbom-typescript.cdx.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: sbom-python
           path: sbom-python.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-typescript
+          path: sbom-typescript.cdx.json
 
   publish-testpypi:
     needs: build
@@ -110,6 +119,10 @@ jobs:
         with:
           name: sbom-python
           path: sbom
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: sbom-typescript
+          path: sbom
       - uses: sigstore/gh-action-sigstore-python@f514d46b907ebcd5bedc05145c03b69c1edd8b46  # v3.0.0
         with:
           inputs: dist/*.whl dist/*.tar.gz
@@ -120,5 +133,6 @@ jobs:
           gh release upload "${{ github.event.release.tag_name }}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
             sbom/sbom-python.cdx.json \
+            sbom/sbom-typescript.cdx.json \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
