@@ -1,0 +1,82 @@
+name: Setup OpenObserve
+description: Start an ephemeral OpenObserve instance, wait for health, and export connection env vars.
+
+inputs:
+  user:
+    description: OpenObserve root user email
+    required: false
+    default: smoke@provide.test
+  password:
+    description: OpenObserve root user password (generated randomly if not provided)
+    required: false
+    default: ""
+  image:
+    description: OpenObserve Docker image
+    required: false
+    default: openobserve/openobserve:v0.14.5
+  port:
+    description: Host port to bind OpenObserve to
+    required: false
+    default: "5080"
+  container-name:
+    description: Docker container name
+    required: false
+    default: openobserve-local
+  health-timeout:
+    description: Maximum seconds to wait for OpenObserve health check
+    required: false
+    default: "60"
+
+outputs:
+  url:
+    description: OpenObserve API base URL
+    value: ${{ steps.start.outputs.url }}
+  user:
+    description: OpenObserve user email
+    value: ${{ steps.creds.outputs.user }}
+  password:
+    description: OpenObserve password
+    value: ${{ steps.creds.outputs.password }}
+
+runs:
+  using: composite
+  steps:
+    - id: creds
+      shell: bash
+      run: |
+        OO_USER="${{ inputs.user }}"
+        OO_PASS="${{ inputs.password }}"
+        if [ -z "${OO_PASS}" ]; then
+          OO_PASS="$(openssl rand -hex 16)"
+        fi
+        echo "user=${OO_USER}" >> "$GITHUB_OUTPUT"
+        echo "password=${OO_PASS}" >> "$GITHUB_OUTPUT"
+        # Also export as env vars for downstream steps in the same job.
+        echo "OPENOBSERVE_USER=${OO_USER}" >> "$GITHUB_ENV"
+        echo "OPENOBSERVE_PASSWORD=${OO_PASS}" >> "$GITHUB_ENV"
+
+    - id: start
+      shell: bash
+      run: |
+        docker run -d \
+          --name "${{ inputs.container-name }}" \
+          -p "${{ inputs.port }}:5080" \
+          -e "ZO_ROOT_USER_EMAIL=${{ steps.creds.outputs.user }}" \
+          -e "ZO_ROOT_USER_PASSWORD=${{ steps.creds.outputs.password }}" \
+          "${{ inputs.image }}"
+        echo "url=http://127.0.0.1:${{ inputs.port }}/api/default" >> "$GITHUB_OUTPUT"
+        echo "OPENOBSERVE_URL=http://127.0.0.1:${{ inputs.port }}/api/default" >> "$GITHUB_ENV"
+
+    - id: health
+      shell: bash
+      run: |
+        for _ in $(seq 1 ${{ inputs.health-timeout }}); do
+          if curl -fsS -o /dev/null "http://127.0.0.1:${{ inputs.port }}/"; then
+            echo "OpenObserve healthy"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::OpenObserve failed health check after ${{ inputs.health-timeout }}s"
+        docker logs "${{ inputs.container-name }}" || true
+        exit 1
