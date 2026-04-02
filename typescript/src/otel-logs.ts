@@ -38,8 +38,6 @@
 
 import type { TelemetryConfig } from './config';
 import { getConfig } from './config';
-import { validateOtlpEndpoint } from './endpoint';
-import { wrapResilientExporter } from './resilient-exporter';
 import type { ShutdownableProvider } from './runtime';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
