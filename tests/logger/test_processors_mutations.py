@@ -185,7 +185,7 @@ class TestApplySamplingMutants:
     def test_signal_is_logs(self) -> None:
         """Kills: 'logs' → 'XXlogsXX' in should_sample call."""
         with patch(
-            "provide.telemetry.logger.processors.should_sample",
+            "provide.telemetry.sampling.should_sample",
             return_value=True,
         ) as mock_sample:
             apply_sampling(None, "", {"event": "app.test.ok"})
@@ -194,7 +194,7 @@ class TestApplySamplingMutants:
     def test_event_key_read_correctly(self) -> None:
         """Kills: 'event' key → 'XXeventXX'."""
         with patch(
-            "provide.telemetry.logger.processors.should_sample",
+            "provide.telemetry.sampling.should_sample",
             return_value=True,
         ) as mock_sample:
             apply_sampling(None, "", {"event": "my.specific.event"})
@@ -204,7 +204,7 @@ class TestApplySamplingMutants:
         """When sampling rejects, DropEvent is raised to suppress the log."""
         with (
             patch(
-                "provide.telemetry.logger.processors.should_sample",
+                "provide.telemetry.sampling.should_sample",
                 return_value=False,
             ),
             pytest.raises(structlog.DropEvent),
@@ -215,7 +215,7 @@ class TestApplySamplingMutants:
         """When sampled, original event_dict is returned unchanged."""
         original: dict[str, object] = {"event": "app.test.ok", "extra": "data"}
         with patch(
-            "provide.telemetry.logger.processors.should_sample",
+            "provide.telemetry.sampling.should_sample",
             return_value=True,
         ):
             result = apply_sampling(None, "", original)
@@ -475,7 +475,7 @@ class TestHardenInputBoundaries:
 class TestSanitizeSensitiveFieldsDefault:
     def test_default_max_depth_is_8(self) -> None:
         """Kills: max_depth=8 → max_depth=7 or other value."""
-        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.pii.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True)
             processor(None, "", {"event": "x"})
@@ -483,7 +483,7 @@ class TestSanitizeSensitiveFieldsDefault:
 
     def test_custom_max_depth_forwarded(self) -> None:
         """Verifies max_depth param is passed through."""
-        with patch("provide.telemetry.logger.processors.sanitize_payload") as mock:
+        with patch("provide.telemetry.pii.sanitize_payload") as mock:
             mock.return_value = {}
             processor = sanitize_sensitive_fields(enabled=True, max_depth=3)
             processor(None, "", {"event": "x"})

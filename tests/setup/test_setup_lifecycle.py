@@ -121,12 +121,14 @@ def test_refresh_otel_tracing_updates_cached_boolean(monkeypatch: pytest.MonkeyP
 def test_setup_telemetry_calls_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_setup_state_for_tests()
     calls: list[str] = []
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: calls.append("refresh_tracing"))
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: calls.append("refresh_metrics"))
+    monkeypatch.setattr(
+        "provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: calls.append("refresh_metrics")
+    )
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
     setup_telemetry()
     assert "refresh_tracing" in calls
     assert "refresh_metrics" in calls
@@ -161,12 +163,12 @@ def test_setup_telemetry_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
 
     import provide.telemetry.slo as slo_mod
 
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", _runtime)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", _runtime)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", _log)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", _trace)
-    monkeypatch.setattr("provide.telemetry.setup.setup_metrics", _metrics)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", _metrics)
     monkeypatch.setattr(slo_mod, "record_red_metrics", _red)
     monkeypatch.setattr(slo_mod, "record_use_metrics", _use)
 
@@ -185,12 +187,12 @@ def test_setup_telemetry_emits_slo_startup_metrics(monkeypatch: pytest.MonkeyPat
     calls = {"red": 0, "use": 0}
     import provide.telemetry.slo as slo_mod
 
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
-    monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
     monkeypatch.setattr(slo_mod, "record_red_metrics", lambda *_args: calls.__setitem__("red", 1))
     monkeypatch.setattr(slo_mod, "record_use_metrics", lambda *_args: calls.__setitem__("use", 1))
     setup_telemetry(
@@ -213,7 +215,7 @@ def test_shutdown_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", _log)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", _trace)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_metrics", _metrics)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", _metrics)
     shutdown_telemetry()
     assert called == {"log": 1, "trace": 1, "metrics": 1}
 
@@ -222,7 +224,7 @@ def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(setup_mod, "_setup_done", True)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
     shutdown_telemetry()
     assert setup_mod._setup_done is False
 
@@ -242,14 +244,14 @@ def test_reset_setup_state_sets_false(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr(
         "provide.telemetry.setup.setup_tracing", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom"))
     )
-    monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
         lambda: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
@@ -259,7 +261,7 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
         lambda: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
     )
     monkeypatch.setattr(
-        "provide.telemetry.setup.shutdown_metrics",
+        "provide.telemetry.metrics.provider.shutdown_metrics",
         lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -274,13 +276,13 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
 def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
     monkeypatch.setattr(
-        "provide.telemetry.setup.setup_metrics", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom"))
+        "provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom"))
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
@@ -291,7 +293,7 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
         lambda: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
     )
     monkeypatch.setattr(
-        "provide.telemetry.setup.shutdown_metrics",
+        "provide.telemetry.metrics.provider.shutdown_metrics",
         lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -307,13 +309,13 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
     """If a teardown step raises during rollback, remaining teardowns still execute."""
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0}
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
     monkeypatch.setattr(
-        "provide.telemetry.setup.setup_metrics", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom"))
+        "provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom"))
     )
 
     def _trace_shutdown_raises() -> None:
@@ -325,7 +327,7 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
         lambda: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
     )
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", _trace_shutdown_raises)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
 
     with pytest.raises(RuntimeError, match="boom"):
         setup_telemetry()
@@ -358,15 +360,15 @@ def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> N
         shutdown_started.set()
         assert allow_shutdown_to_continue.wait(timeout=1.0)
 
-    monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", _runtime)
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", _runtime)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", _log)
     monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", _trace)
-    monkeypatch.setattr("provide.telemetry.setup.setup_metrics", _metrics)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", _metrics)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", _shutdown_log)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
 
     shutdown_thread = threading.Thread(target=shutdown_telemetry, daemon=True)
     setup_thread = threading.Thread(target=lambda: setup_telemetry(TelemetryConfig()), daemon=True)
