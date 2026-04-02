@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as tracing from '../src/tracing';
 import {
   CounterInstrument,
   GaugeInstrument,
@@ -225,5 +226,111 @@ describe('wrapper name property', () => {
   it('HistogramInstrument exposes name', () => {
     const h = histogram('my.histogram');
     expect(h.name).toBe('my.histogram');
+  });
+});
+
+describe('exemplar attachment', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('counter.add() merges trace_id and span_id into attributes when active trace exists', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1, { key: 'val' });
+    expect(inner.add).toHaveBeenCalledWith(1, { key: 'val', trace_id: 'abc', span_id: 'def' });
+  });
+
+  it('counter.add() merges trace IDs even when no attributes provided', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1);
+    expect(inner.add).toHaveBeenCalledWith(1, { trace_id: 'abc', span_id: 'def' });
+  });
+
+  it('counter.add() passes attributes unchanged when no active trace', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1, { key: 'val' });
+    expect(inner.add).toHaveBeenCalledWith(1, { key: 'val' });
+  });
+
+  it('counter.add() passes undefined attributes when no active trace and no attributes', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1);
+    expect(inner.add).toHaveBeenCalledWith(1, undefined);
+  });
+
+  it('histogram.record() merges trace_id and span_id into attributes when active trace exists', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42, { route: '/api' });
+    expect(inner.record).toHaveBeenCalledWith(42, {
+      route: '/api',
+      trace_id: 'abc',
+      span_id: 'def',
+    });
+  });
+
+  it('histogram.record() merges trace IDs even when no attributes provided', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42);
+    expect(inner.record).toHaveBeenCalledWith(42, { trace_id: 'abc', span_id: 'def' });
+  });
+
+  it('histogram.record() passes attributes unchanged when no active trace', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42, { route: '/api' });
+    expect(inner.record).toHaveBeenCalledWith(42, { route: '/api' });
+  });
+
+  it('histogram.record() passes undefined attributes when no active trace and no attributes', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42);
+    expect(inner.record).toHaveBeenCalledWith(42, undefined);
+  });
+
+  it('gauge.add() does NOT attach exemplars even when active trace exists', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.gauge', inner as never);
+    g.add(10, { key: 'val' });
+    expect(inner.add).toHaveBeenCalledWith(10, { key: 'val' });
+  });
+
+  it('gauge.set() does NOT attach exemplars even when active trace exists', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.gauge', inner as never);
+    g.set(50, { key: 'val' });
+    expect(inner.add).toHaveBeenCalledWith(50, { key: 'val' });
+  });
+
+  it('counter.add() does not attach exemplars when only trace_id present (no span_id)', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc' });
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1, { key: 'val' });
+    expect(inner.add).toHaveBeenCalledWith(1, { key: 'val' });
+  });
+
+  it('histogram.record() does not attach exemplars when only span_id present (no trace_id)', () => {
+    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ span_id: 'def' });
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42, { route: '/api' });
+    expect(inner.record).toHaveBeenCalledWith(42, { route: '/api' });
   });
 });
