@@ -119,10 +119,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
-      - name: Generate OpenObserve credentials
-        run: |
-          echo "OPENOBSERVE_USER=user@example.com" >> "$GITHUB_ENV"
-          echo "OPENOBSERVE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - name: Run telemetry examples
         run: |
           set -euo pipefail
@@ -130,28 +126,9 @@ jobs:
             echo "running $f"
             uv run --group dev --extra otel python "$f"
           done
-      - name: Start OpenObserve
-        run: |
-          docker run -d --name openobserve-local \
-            -p 5080:5080 \
-            -e "ZO_ROOT_USER_EMAIL=${OPENOBSERVE_USER}" \
-            -e "ZO_ROOT_USER_PASSWORD=${OPENOBSERVE_PASSWORD}" \
-            openobserve/openobserve:latest
-      - name: Wait for OpenObserve health
-        run: |
-          for _ in $(seq 1 60); do
-            if curl -fsS -o /dev/null http://127.0.0.1:5080/; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "openobserve failed health check"
-          exit 1
+      - name: Setup OpenObserve
+        uses: ./.github/actions/setup-openobserve
       - name: Run OpenObserve examples
-        env:
-          OPENOBSERVE_URL: http://127.0.0.1:5080/api/default
-          OPENOBSERVE_USER: ${{ env.OPENOBSERVE_USER }}
-          OPENOBSERVE_PASSWORD: ${{ env.OPENOBSERVE_PASSWORD }}
         run: |
           set -euo pipefail
           for f in examples/openobserve/*.py; do

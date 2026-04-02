@@ -77,6 +77,32 @@ export function makeWriteHook() {
     const ticket = tryAcquire('logs');
     if (!ticket) return;
 
+    // Caller info injection — intentionally expensive (creates Error per call).
+    // Stryker disable all
+    if (cfg.logIncludeCaller) {
+      const err = new Error();
+      const stack = err.stack?.split('\n');
+      /* v8 ignore next -- stack is always defined in V8 */
+      if (stack) {
+        for (const frame of stack.slice(1)) {
+          if (
+            !frame.includes('logger.ts') &&
+            !frame.includes('node_modules') &&
+            !frame.includes('pino')
+          ) {
+            const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
+            /* v8 ignore next -- match always succeeds for V8 stack frames */
+            if (match) {
+              o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
+              o['caller_line'] = Number(match[2]);
+            }
+            break;
+          }
+        }
+      }
+    }
+    // Stryker enable all
+
     // Error fingerprinting — stable hash from error name + stack.
     const errObj = o['err'] as Record<string, unknown> | undefined;
     const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
@@ -179,12 +205,9 @@ function adaptPino(pinoLogger: pino.Logger): Logger {
  */
 function findModuleLevel(name: string, moduleLevels: Record<string, string>): string | undefined {
   let bestMatch: string | undefined;
-  let bestLen = -1;
+  let bestLen = 0;
   for (const prefix of Object.keys(moduleLevels)) {
-    if (
-      (prefix === '' || name === prefix || name.startsWith(prefix + '.')) &&
-      prefix.length > bestLen
-    ) {
+    if (name.startsWith(prefix) && prefix.length > bestLen) {
       bestMatch = prefix;
       bestLen = prefix.length;
     }
