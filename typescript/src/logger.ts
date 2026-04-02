@@ -114,8 +114,15 @@ export function makeWriteHook() {
     }
 
     // PII sanitization: blocked keys + secret detection + custom PII rules.
-    sanitize(o, cfg.sanitizeFields);
-    sanitizePayload(o);
+    if (cfg.logSanitize) {
+      sanitize(o, cfg.sanitizeFields);
+      sanitizePayload(o);
+    }
+
+    // Strip timestamp when configured off.
+    if (!cfg.logIncludeTimestamp) {
+      delete o['time'];
+    }
 
     // Capture to window.__pinoLogs for Playwright and devtools inspection.
     // Check is done inline (not at module load) so it works when loaded in Node.js

@@ -14,6 +14,7 @@ import {
   gauge,
   histogram,
 } from './metrics';
+import { getConfig } from './config';
 
 const _counters = new Map<string, CounterInstrument>();
 const _histograms = new Map<string, HistogramInstrument>();
@@ -74,6 +75,7 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
+  if (!getConfig().sloEnableUseMetrics) return;
   const g = _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%');
   g.set(opts.utilization, { resource: opts.resource });
 }
