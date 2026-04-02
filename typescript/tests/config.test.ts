@@ -811,3 +811,103 @@ describe('applyConfigPolicies standalone', () => {
     expect(getQueuePolicy().maxLogs).toBe(42);
   });
 });
+
+// ─── Mutation-killing tests ─────────────────────────────────────────────
+
+describe('DEFAULTS — strictSchema and requiredLogKeys kill mutations', () => {
+  it('strictSchema default is false (not true) via _resetConfig', () => {
+    _resetConfig();
+    expect(getConfig().strictSchema).toBe(false);
+  });
+
+  it('requiredLogKeys default is empty array (not populated) via _resetConfig', () => {
+    _resetConfig();
+    expect(getConfig().requiredLogKeys).toEqual([]);
+    expect(getConfig().requiredLogKeys).toHaveLength(0);
+  });
+});
+
+describe('envNumber — undefined env var returns fallback', () => {
+  it('traceSampleRate returns fallback (1.0) when env var is not set', () => {
+    // PROVIDE_TRACE_SAMPLE_RATE is not set, so envNumber should return fallback
+    delete process.env['PROVIDE_TRACE_SAMPLE_RATE'];
+    const cfg = configFromEnv();
+    expect(cfg.traceSampleRate).toBe(1.0);
+  });
+
+  it('backpressureLogsMaxsize returns fallback (0) when env var is not set', () => {
+    delete process.env['PROVIDE_BACKPRESSURE_LOGS_MAXSIZE'];
+    const cfg = configFromEnv();
+    expect(cfg.backpressureLogsMaxsize).toBe(0);
+  });
+});
+
+describe('envSecondsToMs — undefined env var returns fallbackMs', () => {
+  it('exporterLogsBackoffMs returns fallbackMs (0) when env var is not set', () => {
+    delete process.env['PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS'];
+    const cfg = configFromEnv();
+    expect(cfg.exporterLogsBackoffMs).toBe(0);
+  });
+
+  it('exporterLogsTimeoutMs returns fallbackMs (10000) when env var is not set', () => {
+    delete process.env['PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS'];
+    const cfg = configFromEnv();
+    expect(cfg.exporterLogsTimeoutMs).toBe(10000);
+  });
+});
+
+describe('parseModuleLevels — whitespace and delimiter handling', () => {
+  it('trims whitespace around comma-separated pairs', () => {
+    withEnv({ PROVIDE_LOG_MODULE_LEVELS: '  mod1=DEBUG  ,  mod2=WARN  ' }, () => {
+      expect(configFromEnv().logModuleLevels).toEqual({
+        mod1: 'DEBUG',
+        mod2: 'WARN',
+      });
+    });
+  });
+
+  it('skips entries missing = delimiter', () => {
+    withEnv({ PROVIDE_LOG_MODULE_LEVELS: 'noequalssign,ok=INFO' }, () => {
+      const levels = configFromEnv().logModuleLevels;
+      expect(levels).toEqual({ ok: 'INFO' });
+      expect('noequalssign' in levels).toBe(false);
+    });
+  });
+
+  it('uses = as delimiter not : or other chars', () => {
+    withEnv({ PROVIDE_LOG_MODULE_LEVELS: 'mod:DEBUG,mod2=WARN' }, () => {
+      const levels = configFromEnv().logModuleLevels;
+      // "mod:DEBUG" has no '=' so it should be skipped
+      expect(levels).toEqual({ mod2: 'WARN' });
+    });
+  });
+
+  it('trims keys and values around the = sign', () => {
+    withEnv({ PROVIDE_LOG_MODULE_LEVELS: ' mymod = INFO , other = DEBUG ' }, () => {
+      const levels = configFromEnv().logModuleLevels;
+      expect(levels['mymod']).toBe('INFO');
+      expect(levels['other']).toBe('DEBUG');
+      // Ensure no untrimmed keys exist
+      expect(' mymod ' in levels).toBe(false);
+      expect(' INFO ' in Object.values(levels)).toBe(false);
+    });
+  });
+});
+
+describe('requiredLogKeys — filter(Boolean) kills empty-string entries', () => {
+  it('filters out empty strings from trailing commas', () => {
+    withEnv({ PROVIDE_TELEMETRY_REQUIRED_KEYS: 'event,action,' }, () => {
+      const keys = configFromEnv().requiredLogKeys;
+      expect(keys).toEqual(['event', 'action']);
+      expect(keys).toHaveLength(2);
+    });
+  });
+
+  it('filters out whitespace-only entries', () => {
+    withEnv({ PROVIDE_TELEMETRY_REQUIRED_KEYS: 'event, ,action' }, () => {
+      const keys = configFromEnv().requiredLogKeys;
+      // After trim, the middle entry is empty string, filtered by Boolean
+      expect(keys).toEqual(['event', 'action']);
+    });
+  });
+});
