@@ -14,7 +14,6 @@ from typing import Any, Protocol, cast
 
 from provide.telemetry import _otel
 from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.resilience import run_with_resilience
 from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
 
@@ -96,6 +95,8 @@ def setup_tracing(config: TelemetryConfig) -> None:
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = provider_cls(resource=resource)
     if config.tracing.otlp_endpoint:
+        from provide.telemetry.resilience import run_with_resilience
+
         exporter = run_with_resilience(
             "traces",
             lambda: exporter_cls(

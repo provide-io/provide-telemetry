@@ -345,12 +345,12 @@ class TestSetupConcurrency:
             with count_lock:
                 call_count += 1
 
-        monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", _counting_runtime)
+        monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", _counting_runtime)
         monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
         monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
         monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
-        monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
 
         barrier = threading.Barrier(WORKERS)
 
