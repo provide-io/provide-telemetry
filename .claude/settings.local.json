@@ -2,7 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(git tag:*)",
-      "Bash(git -C /Users/tim/code/gh/undef-games/undef-telemetry check-ignore -q .worktrees)",
+      "Bash(git -C /Users/tim/code/gh/provide-io/provide-telemetry check-ignore -q .worktrees)",
       "Bash(git worktree:*)",
       "Bash(git:*)",
       "Bash(gh pr:*)",
