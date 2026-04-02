@@ -76,12 +76,29 @@ uv run --group dev --extra otel python examples/telemetry/13_security_hardening.
   - Uses hardening-focused config profile for sampling/backpressure/resilience/SLO.
   - Emits sanitized logs with W3C-ready tracing and metrics export.
 
+Start the full dev stack (Grafana/LGTM + OpenObserve + Traefik gateway):
+
+```bash
+sh scripts/start-telemetry-stack.sh
+```
+
+Or OpenObserve standalone:
+
+```bash
+sh scripts/start-openobserve.sh
+```
+
 Environment:
 
 ```bash
+# Direct (no DNS, no proxy)
 export OPENOBSERVE_URL=http://localhost:5080/api/default
-export OPENOBSERVE_USER=user@example.com
-export OPENOBSERVE_PASSWORD=password
+
+# Proxied (requires: sudo sh scripts/setup-provide-test-dns.sh)
+# export OPENOBSERVE_URL=http://openobserve.provide.test:5314/api/default
+
+export OPENOBSERVE_USER=admin@provide.test
+export OPENOBSERVE_PASSWORD=Complexpass#123
 export OPENOBSERVE_REQUIRED_SIGNALS=logs
 ```
 

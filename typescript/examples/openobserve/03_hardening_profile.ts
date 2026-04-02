@@ -8,13 +8,13 @@
  *
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
- *   OPENOBSERVE_USER     e.g. someuserexample@provide.test
+ *   OPENOBSERVE_USER     e.g. admin@provide.test
  *   OPENOBSERVE_PASSWORD e.g. password
  *
  * Run:
  *   OPENOBSERVE_URL=http://localhost:5080/api/default \
- *   OPENOBSERVE_USER=someuserexample@provide.test \
- *   OPENOBSERVE_PASSWORD=password \
+ *   OPENOBSERVE_USER=admin@provide.test \
+ *   OPENOBSERVE_PASSWORD=Complexpass#123 \
  *   npx tsx examples/openobserve/03_hardening_profile.ts
  */
 

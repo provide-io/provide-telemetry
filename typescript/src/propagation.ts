@@ -23,169 +23,16 @@ export const MAX_TRACESTATE_PAIRS = 32;
 /** Maximum length (in characters) for the baggage header value. */
 export const MAX_BAGGAGE_LENGTH = 8192;
 
-/** Sentinel: a baggage.* key was unbound (not set) prior to an inject frame. */
-const BAGGAGE_UNSET = Symbol('propagation.baggage.unset');
-type PriorBaggageValue = unknown | typeof BAGGAGE_UNSET;
+/** Stack of saved contexts for bind/clear pairs. */
+// Stryker disable next-line ArrayDeclaration
+const _stack: PropagationContext[] = [];
 
-// ── AsyncLocalStorage type (Node.js / Cloudflare Workers) ─────────────────────
-type PropagationStore = {
-  active: PropagationContext;
-  stack: PropagationContext[];
-  otelCtxStack: unknown[];
-  /** Parallel stack of baggage.* key lists injected by each bind frame. */
-  baggageKeyStack: string[][];
-};
+/** Stack of OTel contexts extracted from incoming propagation headers. */
+// Stryker disable next-line ArrayDeclaration
+const _otelContextStack: unknown[] = [];
 
-export type PropagationALS = {
-  getStore(): PropagationStore | undefined;
-  run<T>(store: PropagationStore, fn: () => T): T;
-  enterWith(store: PropagationStore): void;
-};
-
-// ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
-let _als: PropagationALS | null = null;
-let _AlsConstructor: (new () => PropagationALS) | null = null;
-// `_propagationInitDone` flips to true once the init has reached a definitive
-// state (ALS attached, OR known-unavailable). Callers like setupTelemetry
-// distinguish "still racing" (defer the check) from "settled" (act on it).
-let _propagationInitDone = false;
-let _propagationInitPromise: Promise<void> = Promise.resolve();
-// Stryker disable BlockStatement: module-level init block runs once at import time — cannot be tested by unit tests
-//
-// Three load environments must be supported:
-//   1. CJS Node (tsx default, transpiled CJS bundles): `require` is defined;
-//      load synchronously. tsx/esbuild forbid top-level await in CJS output,
-//      so we must NOT use `await import` at module scope.
-//   2. ESM Node (modern bundlers, .mjs entrypoints): `require` is undefined;
-//      fire off an async import without awaiting it at top level. Calls that
-//      happen before the import resolves use the module-level fallback store
-//      (with a one-time warning) — the racing window is tiny in practice.
-//   3. Browsers / Workers / Deno: neither path resolves `node:async_hooks`;
-//      both branches throw or reject, _als stays null, fallback store used.
-/* v8 ignore start */
-// Module-level init IIFE. Behavior is exercised end-to-end:
-//   * vitest loader hits the CJS sync-require branch (lines 81-87).
-//   * tsx-as-ESM (every TS example, parity probes) hits the async-import
-//     branch (lines 91-103).
-//   * Browsers/workers hit the catch (line 89) on the require attempt.
-// Branch and line coverage cannot capture all three from a single test
-// loader, so this whole IIFE is excluded; correctness is asserted by the
-// observable downstream state (isFallbackMode, isPropagationInitDone) which
-// have full coverage and by the typescript-examples-smoke CI job.
-(function initAsyncStorage(): void {
-  try {
-    if (typeof require === 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const als = require('node:async_hooks') as {
-        AsyncLocalStorage: new () => PropagationALS;
-      };
-      _AlsConstructor = als.AsyncLocalStorage;
-      _als = new _AlsConstructor();
-      _propagationInitDone = true;
-      return;
-    }
-  } catch {
-    // CJS path failed (e.g. browserified bundle where require throws) —
-    // fall through to async import.
-  }
-  _propagationInitPromise = (async () => {
-    try {
-      const als = (await import('node:async_hooks')) as {
-        AsyncLocalStorage: new () => PropagationALS;
-      };
-      _AlsConstructor = als.AsyncLocalStorage;
-      _als = new _AlsConstructor();
-    } catch {
-      // node:async_hooks unresolvable — leave _als null and use fallback.
-    } finally {
-      _propagationInitDone = true;
-    }
-  })();
-})();
-/* v8 ignore stop */
-// Stryker restore BlockStatement
-
-/**
- * Has the AsyncLocalStorage init reached a definitive state?
- * - In CJS (sync require), this is true synchronously after module load.
- * - In ESM Node, this flips to true after the async `import('node:async_hooks')`
- *   resolves (typically the next microtask).
- * - In browsers/workers, this becomes true after the failed import is caught.
- *
- * Used by setupTelemetry to distinguish "ALS unavailable, fail loud" from
- * "ALS init still racing, defer the check".
- */
-export function isPropagationInitDone(): boolean {
-  return _propagationInitDone;
-}
-
-/**
- * Resolves when the AsyncLocalStorage init has reached a definitive state.
- * Always-resolved in the CJS path; awaits the dynamic import in the ESM path.
- */
-export function awaitPropagationInit(): Promise<void> {
-  return _propagationInitPromise;
-}
-
-// ── Fallback: module-level store (browser / single-thread) ────────────────────
-// Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
-let _fallbackStore: PropagationStore = {
-  active: {},
-  stack: [],
-  otelCtxStack: [],
-  baggageKeyStack: [],
-};
-
-// Emit a one-time warning when the module-level fallback store is activated.
-let _fallbackWarned = false;
-
-function _warnFallbackOnce(): void {
-  if (!_fallbackWarned) {
-    _fallbackWarned = true;
-    console.warn(
-      '[provide-telemetry] AsyncLocalStorage is unavailable; ' +
-        'falling back to module-level context store. ' +
-        'Concurrent requests will share propagation context. ' +
-        'This is unsafe in production async environments.',
-    );
-  }
-}
-
-/**
- * Returns true when AsyncLocalStorage is unavailable and the module-level
- * fallback store is being used. Callers can check this to detect unsafe
- * environments where concurrent requests share propagation context.
- */
-export function isFallbackMode(): boolean {
-  return _als === null;
-}
-
-function _getStore(): PropagationStore {
-  if (_als) {
-    return _als.getStore() ?? _fallbackStore;
-  }
-  _warnFallbackOnce();
-  return _fallbackStore;
-}
-
-// Stryker disable ConditionalExpression,BlockStatement,ArrayDeclaration: _ensureStore ALS-to-fallback clone path — tested by "clones fallback stack" test; remaining mutants are equivalent because _resetPropagationForTests empties both stores
-function _ensureStore(): PropagationStore {
-  if (_als) {
-    const store = _als.getStore();
-    if (store) return store;
-    const next: PropagationStore = {
-      active: { ..._fallbackStore.active },
-      stack: _fallbackStore.stack.map((entry) => ({ ...entry })),
-      otelCtxStack: [..._fallbackStore.otelCtxStack],
-      baggageKeyStack: _fallbackStore.baggageKeyStack.map((keys) => [...keys]),
-    };
-    _als.enterWith(next);
-    return next;
-  }
-  _warnFallbackOnce();
-  return _fallbackStore;
-}
-// Stryker restore ConditionalExpression,BlockStatement,ArrayDeclaration
+/** Active bound context (most recently pushed layer). */
+let _active: PropagationContext = {};
 
 function _parseTraceparent(value: string): { traceId?: string; spanId?: string } {
   const parts = value.split('-');
@@ -236,7 +83,7 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
   let tracestate: string | undefined = lower['tracestate'];
   let baggage: string | undefined = lower['baggage'];
 
-  // Stryker disable next-line ConditionalExpression,EqualityOperator,BlockStatement: size guard — >= vs > on boundary is equivalent (512-char valid traceparent doesn't exist)
+  // Size guards — treat oversized headers as absent.
   if (rawTraceparent !== undefined && rawTraceparent.length > MAX_HEADER_LENGTH) {
     rawTraceparent = undefined;
   }
@@ -268,13 +115,10 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
  * Push ctx onto the propagation stack, making it the active context.
  * When traceparent is present and OTel API is available, extracts an OTel
  * context so that child spans created via withTrace() inherit the parent.
- * When baggage is present, individual entries are injected as baggage.* log
- * context fields (mirrors Python bind_propagation_context baggage auto-injection).
  */
 export function bindPropagationContext(ctx: PropagationContext): void {
-  const store = _ensureStore();
-  store.stack.push({ ...store.active });
-  store.active = { ...store.active, ...ctx };
+  _stack.push({ ..._active });
+  _active = { ..._active, ...ctx };
 
   // Wire into OTel context chain when traceparent is present.
   if (ctx.traceparent) {
@@ -284,30 +128,17 @@ export function bindPropagationContext(ctx: PropagationContext): void {
         propagation: { extract: (ctx: unknown, carrier: Record<string, string>) => unknown };
         context: { active: () => unknown };
       };
-      /* Stryker disable all: OTel context wiring — carrier key, extract call, catch/else sentinels are equivalent when OTel SDK behavior varies */
       const carrier: Record<string, string> = { traceparent: ctx.traceparent };
+      /* Stryker disable next-line ConditionalExpression: tracestate fallback '' vs undefined — OTel extract handles both identically */
       if (ctx.tracestate) carrier['tracestate'] = ctx.tracestate;
       const extracted = otelApi.propagation.extract(otelApi.context.active(), carrier);
-      store.otelCtxStack.push(extracted);
+      _otelContextStack.push(extracted);
     } catch {
-      store.otelCtxStack.push(undefined);
+      // OTel API not available — graceful degradation, push undefined sentinel.
+      _otelContextStack.push(undefined);
     }
   } else {
-    store.otelCtxStack.push(undefined);
-  }
-  /* Stryker restore all */
-
-  // Auto-inject parsed baggage entries as baggage.* log context fields.
-  if (ctx.baggage) {
-    const parsed = parseBaggage(ctx.baggage);
-    const injectedKeys: string[] = [];
-    for (const [k, v] of Object.entries(parsed)) {
-      bindContext({ [`baggage.${k}`]: v });
-      injectedKeys.push(`baggage.${k}`);
-    }
-    store.baggageKeyStack.push(injectedKeys);
-  } else {
-    store.baggageKeyStack.push([]);
+    _otelContextStack.push(undefined);
   }
 }
 
@@ -334,6 +165,7 @@ export function clearPropagationContext(): void {
   for (const key of baggageKeys) {
     unbindContext(key);
   }
+  _otelContextStack.pop();
 }
 // Stryker enable BlockStatement
 
@@ -350,36 +182,14 @@ export function getActiveOtelContext(): unknown | undefined {
   return stack[stack.length - 1];
 }
 
+/** Return the top of the OTel context stack, or undefined if empty/no OTel wiring. */
+export function getActiveOtelContext(): unknown | undefined {
+  if (_otelContextStack.length === 0) return undefined;
+  return _otelContextStack[_otelContextStack.length - 1];
+}
+
 export function _resetPropagationForTests(): void {
-  // Recreate the ALS instance so no enterWith-seeded store leaks between tests.
-  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
-  /* v8 ignore next */
-  _als = _AlsConstructor ? new _AlsConstructor() : null;
-  _fallbackStore = { active: {}, stack: [], otelCtxStack: [], baggageKeyStack: [] };
-  _fallbackWarned = false;
-}
-
-/** Disable AsyncLocalStorage for testing the module-level fallback path. */
-export function _disablePropagationALSForTest(): PropagationALS | null {
-  const prev = _als;
-  _als = null;
-  return prev;
-}
-
-/** Re-enable AsyncLocalStorage after testing (pass value from _disable call). */
-export function _restorePropagationALSForTest(saved: PropagationALS | null): void {
-  _als = saved;
-}
-
-/**
- * Override the propagation-init-done flag for testing. Returns the previous
- * value so the caller can restore it. Used to exercise setupTelemetry's
- * deferred-check branch (which fires only when init is still racing — a state
- * not naturally reachable in unit tests because module-level init has long
- * since settled by the time the test runs).
- */
-export function _setPropagationInitDoneForTest(done: boolean): boolean {
-  const prev = _propagationInitDone;
-  _propagationInitDone = done;
-  return prev;
+  _stack.length = 0;
+  _otelContextStack.length = 0;
+  _active = {};
 }

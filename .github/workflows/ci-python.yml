@@ -128,6 +128,10 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
+      - name: Generate OpenObserve credentials
+        run: |
+          echo "OPENOBSERVE_USER=${OPENOBSERVE_SMOKE_USER:-smoke@provide.test}" >> "$GITHUB_ENV"
+          echo "OPENOBSERVE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - name: Run telemetry examples
         run: |
           set -euo pipefail

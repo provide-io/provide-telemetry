@@ -41,8 +41,6 @@ const CIRCUIT_MAX_COOLDOWN_MS = 1_024_000;
 
 // Stryker disable next-line ObjectLiteral
 let _policies: Record<string, ExporterPolicy> = {};
-// Module-private circuit breaker state — not exported directly to prevent external mutation.
-// Use the getter functions below (_get*ForTests) for test introspection.
 // Stryker disable next-line ObjectLiteral
 const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
@@ -57,33 +55,6 @@ const _halfOpenProbing: Record<string, boolean> = {
   metrics: false,
 };
 /* Stryker restore BooleanLiteral */
-
-/** Test-only getters for circuit breaker state inspection. */
-export function _getConsecutiveTimeoutsForTests(signal: string): number {
-  return _consecutiveTimeouts[signal] ?? 0;
-}
-export function _getCircuitTrippedAtForTests(signal: string): number {
-  return _circuitTrippedAt[signal] ?? 0;
-}
-export function _getOpenCountForTests(signal: string): number {
-  return _openCount[signal] ?? 0;
-}
-export function _getHalfOpenProbingForTests(signal: string): boolean {
-  return _halfOpenProbing[signal] ?? false;
-}
-/** Test-only setters for priming circuit breaker state in tests. */
-export function _setConsecutiveTimeoutsForTests(signal: string, value: number): void {
-  _consecutiveTimeouts[signal] = value;
-}
-export function _setCircuitTrippedAtForTests(signal: string, value: number): void {
-  _circuitTrippedAt[signal] = value;
-}
-export function _setOpenCountForTests(signal: string, value: number): void {
-  _openCount[signal] = value;
-}
-export function _setHalfOpenProbingForTests(signal: string, value: boolean): void {
-  _halfOpenProbing[signal] = value;
-}
 
 export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
   _policies[signal] = { ...DEFAULT_POLICY, ...policy };

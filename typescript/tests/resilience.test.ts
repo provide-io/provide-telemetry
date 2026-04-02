@@ -170,10 +170,7 @@ describe('runWithResilience — timeout', () => {
 
 describe('runWithResilience — circuit breaker', () => {
   it('trips after 3 consecutive TelemetryTimeoutErrors', async () => {
-    // timeoutMs > 0 so the breaker gate engages (timeout=0 explicitly bypasses it,
-    // matching Python/Go contract). The fn itself rejects synchronously with a
-    // TelemetryTimeoutError so the wrapper-imposed timeout never elapses.
-    setExporterPolicy('traces', { timeoutMs: 1000, failOpen: true, retries: 0 });
+    setExporterPolicy('traces', { timeoutMs: 0, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     await runWithResilience('traces', timeoutFn); // 1
     await runWithResilience('traces', timeoutFn); // 2
@@ -189,7 +186,7 @@ describe('runWithResilience — circuit breaker', () => {
   });
 
   it('circuit breaker with failOpen=false throws on open circuit', async () => {
-    setExporterPolicy('metrics', { timeoutMs: 1000, failOpen: false, retries: 0 });
+    setExporterPolicy('metrics', { timeoutMs: 0, failOpen: false, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // suppress errors from the tripping calls (failOpen=false, but not circuit yet)
     for (let i = 0; i < 3; i++) {
@@ -294,7 +291,8 @@ describe('runWithResilience — retriesLogs health counter', () => {
 
 describe('runWithResilience — circuit breaker per signal', () => {
   it('circuit breaker for traces signal trips independently of logs', async () => {
-    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('traces', { timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // Trip traces circuit
     await runWithResilience('traces', timeoutFn);
@@ -319,7 +317,7 @@ describe('runWithResilience — circuit breaker per signal', () => {
 
   it('circuit breaker cooldown boundary: still open at exactly 60000ms', async () => {
     vi.useFakeTimers();
-    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('metrics', { timeoutMs: 0, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     await runWithResilience('metrics', timeoutFn);
     await runWithResilience('metrics', timeoutFn);
@@ -340,7 +338,7 @@ describe('runWithResilience — circuit breaker per signal', () => {
 describe('resilience — fn called exactly once when retries=0 (kills <= vs < on attempt)', () => {
   it('calls fn exactly once when retries=0 and fn succeeds', async () => {
     _resetResilienceForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 100, backoffMs: 0 });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 100, backoffMs: 0 });
     let calls = 0;
     await runWithResilience('logs', async () => {
       calls++;
@@ -351,7 +349,7 @@ describe('resilience — fn called exactly once when retries=0 (kills <= vs < on
 
   it('calls fn exactly twice when retries=1 and fn always fails', async () => {
     _resetResilienceForTests();
-    setExporterPolicy({ retries: 1, timeoutMs: 100, backoffMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 1, timeoutMs: 100, backoffMs: 0, failOpen: true });
     let calls = 0;
     await runWithResilience('logs', async () => {
       calls++;
@@ -365,7 +363,7 @@ describe('resilience — export latency recorded (kills ArithmeticOperator - →
   it('records non-negative latency on success', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy({ timeoutMs: 1000 });
+    setExporterPolicy('logs', { timeoutMs: 1000 });
     const { getHealthSnapshot } = await import('../src/health');
     await runWithResilience('logs', async () => 'ok');
     expect(getHealthSnapshot().exportLatencyMsLogs).toBeGreaterThanOrEqual(0);
@@ -376,7 +374,7 @@ describe('resilience — export latency recorded (kills ArithmeticOperator - →
 describe('resilience — circuit breaker reset clears all signals (kills StringLiteral in for-loop)', () => {
   it('resets traces signal (after tripping it)', async () => {
     _resetResilienceForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('traces', { retries: 0, timeoutMs: 0, failOpen: true });
     // Trip circuit for 'traces'
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     await runWithResilience('traces', timeoutFn);
@@ -394,7 +392,7 @@ describe('resilience — circuit breaker reset clears all signals (kills StringL
 
   it('resets metrics signal (after tripping it)', async () => {
     _resetResilienceForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('metrics', { retries: 0, timeoutMs: 0, failOpen: true });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     await runWithResilience('metrics', timeoutFn);
     await runWithResilience('metrics', timeoutFn);
@@ -413,7 +411,7 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
   it('increments exportFailuresLogs when fn throws non-timeout error', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 1000, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 1000, failOpen: true });
     await runWithResilience('logs', async () => {
       throw new Error('plain error');
     });
@@ -423,7 +421,7 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
   it('increments retriesLogs when retries > 0 and fn fails', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy({ retries: 1, timeoutMs: 1000, failOpen: true, backoffMs: 0 });
+    setExporterPolicy('logs', { retries: 1, timeoutMs: 1000, failOpen: true, backoffMs: 0 });
     await runWithResilience('logs', async () => {
       throw new Error('fail');
     });
@@ -433,7 +431,7 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
   it('increments exportFailuresLogs specifically via circuit breaker open path', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('cbtest', { retries: 0, timeoutMs: 0, failOpen: true });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // Trip the circuit (3 consecutive timeouts — each increments exportFailuresLogs)
     await runWithResilience('logs', timeoutFn); // failure 1
@@ -452,7 +450,7 @@ describe('resilience — non-timeout error resets consecutive timeout counter (k
     // Sequence: timeout(1) → timeout(2) → normalFail(reset→0) → timeout(1) — circuit NOT open.
     // With mutation (empty else): timeout(1) → timeout(2) → normalFail(stays 2) → timeout(3) — circuit TRIPS.
     _resetResilienceForTests();
-    setExporterPolicy({ timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('elsetest', { timeoutMs: 0, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     const normalFn = () => Promise.reject(new Error('non-timeout error'));
     await runWithResilience('elsetest', timeoutFn); // consecutive = 1
@@ -473,7 +471,7 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
   it('increments exportFailuresLogs when circuit is tripped and call rejected', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
     // Trip circuit
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     await runWithResilience('logs', timeoutFn);
@@ -487,7 +485,7 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
 
   it('throws with "circuit breaker open" message when failOpen=false', async () => {
     _resetResilienceForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: false });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: false });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     for (let i = 0; i < 3; i++) {
       try {
@@ -519,315 +517,5 @@ describe('per-signal resilience isolation', () => {
     expect(p.backoffMs).toBe(0);
     expect(p.timeoutMs).toBe(10_000);
     expect(p.failOpen).toBe(true);
-  });
-});
-
-describe('getCircuitState', () => {
-  it('returns closed state by default', () => {
-    const cs = getCircuitState('logs');
-    expect(cs.state).toBe('closed');
-    expect(cs.openCount).toBe(0);
-    expect(cs.cooldownRemainingMs).toBe(0);
-  });
-
-  it('returns open state after circuit trips', async () => {
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    const cs = getCircuitState('logs');
-    expect(cs.state).toBe('open');
-    expect(cs.openCount).toBe(1);
-    expect(cs.cooldownRemainingMs).toBeGreaterThan(0);
-  });
-
-  it('returns half-open state when cooldown expires', async () => {
-    vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    // openCount=1, cooldown = 30000 * 2^1 = 60000ms
-    vi.advanceTimersByTime(61_000);
-    const cs = getCircuitState('logs');
-    expect(cs.state).toBe('half-open');
-    expect(cs.cooldownRemainingMs).toBe(0);
-    vi.useRealTimers();
-  });
-});
-
-describe('exponential backoff on circuit breaker', () => {
-  it('doubles cooldown after repeated trips', async () => {
-    vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-
-    // First trip: 3 consecutive timeouts -> openCount=1, cooldown = 30s * 2^1 = 60s
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    expect(getCircuitState('logs').openCount).toBe(1);
-
-    // Wait for first cooldown (60s) to expire, then fail the half-open probe
-    vi.advanceTimersByTime(61_000);
-    // Half-open probe: timeout -> re-open, openCount=2, cooldown = 30s * 2^2 = 120s
-    await runWithResilience('logs', timeoutFn);
-    expect(getCircuitState('logs').openCount).toBe(2);
-
-    // At 120s cooldown, 61s should NOT be enough
-    vi.advanceTimersByTime(61_000);
-    // Still open (120s cooldown, only 61s elapsed)
-    let called = false;
-    await runWithResilience('logs', async () => {
-      called = true;
-      return 'ok';
-    });
-    expect(called).toBe(false); // circuit still open
-
-    // Advance past the 120s cooldown
-    vi.advanceTimersByTime(60_000);
-    // Now half-open probe should be allowed
-    called = false;
-    await runWithResilience('logs', async () => {
-      called = true;
-      return 'ok';
-    });
-    expect(called).toBe(true);
-    vi.useRealTimers();
-  });
-});
-
-describe('half-open probe — success decays openCount', () => {
-  it('decrements openCount on successful half-open probe', async () => {
-    vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-
-    // Trip circuit: openCount -> 1
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    expect(getCircuitState('logs').openCount).toBe(1);
-
-    // Wait for cooldown (60s = 30000 * 2^1), succeed the half-open probe
-    vi.advanceTimersByTime(61_000);
-    await runWithResilience('logs', async () => 'ok');
-
-    // openCount should decay: max(0, 1-1) = 0
-    expect(getCircuitState('logs').openCount).toBe(0);
-    expect(getCircuitState('logs').state).toBe('closed');
-    vi.useRealTimers();
-  });
-});
-
-describe('half-open probe — failure on non-timeout re-opens', () => {
-  it('re-opens circuit and increments openCount on non-timeout failure during half-open', async () => {
-    vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-    const normalFail = () => Promise.reject(new Error('non-timeout'));
-
-    // Trip circuit: openCount -> 1
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    expect(getCircuitState('logs').openCount).toBe(1);
-
-    // Wait for cooldown (60s = 30000 * 2^1), then fail with a non-timeout error during half-open
-    vi.advanceTimersByTime(61_000);
-    await runWithResilience('logs', normalFail);
-
-    // Should re-open with openCount incremented to 2
-    expect(getCircuitState('logs').openCount).toBe(2);
-    expect(getCircuitState('logs').state).toBe('open');
-    vi.useRealTimers();
-  });
-});
-
-describe('half-open probe — concurrent probe rejection', () => {
-  it('rejects concurrent callers while half-open probe is in flight (failOpen=false)', async () => {
-    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 5000, failOpen: false });
-    // Trip the circuit breaker
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setOpenCountForTests('logs', 1);
-    _setCircuitTrippedAtForTests('logs', Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 2); // cooldown expired
-    // Simulate a probe already in progress
-    _setHalfOpenProbingForTests('logs', true);
-
-    let fnCalled = false;
-    await expect(
-      runWithResilience('logs', async () => {
-        fnCalled = true;
-      }),
-    ).rejects.toThrow('probe in progress');
-    expect(fnCalled).toBe(false);
-  });
-
-  it('rejects concurrent callers while half-open probe is in flight (failOpen=true)', async () => {
-    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 5000, failOpen: true });
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setOpenCountForTests('logs', 1);
-    _setCircuitTrippedAtForTests('logs', Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 2);
-    _setHalfOpenProbingForTests('logs', true);
-
-    let fnCalled = false;
-    const result = await runWithResilience('logs', async () => {
-      fnCalled = true;
-    });
-    expect(fnCalled).toBe(false);
-    expect(result).toBeNull();
-  });
-});
-
-describe('getCircuitState — unknown signal defaults', () => {
-  it('returns closed state with zero openCount for unknown signal', () => {
-    const cs = getCircuitState('unknown-signal');
-    expect(cs.state).toBe('closed');
-    expect(cs.openCount).toBe(0);
-    expect(cs.cooldownRemainingMs).toBe(0);
-  });
-});
-
-describe('half-open probe mutation-kills', () => {
-  it('probe rejection error message contains "probe in progress" (kills StringLiteral mutation)', async () => {
-    // Kills line 102/103 StringLiteral -> "" mutations on the error message.
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 5000, failOpen: false });
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setHalfOpenProbingForTests('logs', true);
-    await expect(runWithResilience('logs', async () => {})).rejects.toThrow('probe in progress');
-  });
-
-  it('normal (non-probe) success does not decay openCount (kills ConditionalExpression -> true on halfOpenProbing check)', async () => {
-    // Kills: if (_halfOpenProbing[signal]) -> always true. If always true, openCount decays on every success.
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
-    _setOpenCountForTests('logs', 2); // would decay to 1 if the if-block runs when it shouldn't
-    _setHalfOpenProbingForTests('logs', false); // not probing
-
-    await runWithResilience('logs', async () => 'ok');
-
-    expect(_getOpenCountForTests('logs')).toBe(2); // must not decay on normal success
-  });
-
-  it('probe success decays openCount from 2 to 1 not to 0 (kills Math.max -> Math.min)', async () => {
-    // Kills: Math.max(0, N-1) -> Math.min(0, N-1). With N=2: max(0,1)=1 but min(0,1)=0.
-    // Must start from "CB open + cooldown expired" so runWithResilience itself sets _halfOpenProbing=true
-    // before calling fn (manually setting _halfOpenProbing=true is rejected by the concurrent-probe guard).
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setOpenCountForTests('logs', 2);
-    _setCircuitTrippedAtForTests('logs', Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 10); // cooldown expired
-
-    await runWithResilience('logs', async () => 'ok');
-
-    expect(_getOpenCountForTests('logs')).toBe(1); // 2-1=1, not 0
-  });
-
-  it('getCircuitState returns half-open when _halfOpenProbing is set (kills ConditionalExpression/BlockStatement on line 187)', () => {
-    // Kills: if (_halfOpenProbing[signal]) -> false or {} body.
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setOpenCountForTests('logs', 1);
-    _setCircuitTrippedAtForTests('logs', Date.now());
-    _setHalfOpenProbingForTests('logs', true);
-
-    const cs = getCircuitState('logs');
-    expect(cs.state).toBe('half-open');
-    expect(cs.cooldownRemainingMs).toBe(0);
-  });
-
-  it('non-probe success resets consecutiveTimeouts to 0 even when it was 2 (kills else-BlockStatement mutation)', async () => {
-    // Kills: else { _consecutiveTimeouts = 0 } -> else {}
-    // If else-block is removed, timeouts stay at 2 instead of resetting to 0.
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
-    _setConsecutiveTimeoutsForTests('logs', 2); // < threshold, so CB is closed, fn runs normally (not half-open probe)
-    _setHalfOpenProbingForTests('logs', false);
-
-    await runWithResilience('logs', async () => 'ok');
-
-    expect(_getConsecutiveTimeoutsForTests('logs')).toBe(0); // else-block must reset to 0
-  });
-
-  it('getCircuitState uses exponential (2**N) not linear (2*N) cooldown (kills ArithmeticOperator / -> *)', () => {
-    // With openCount=3: 2**3=8 → cooldown=240s; 2*3=6 → cooldown=180s. Assert > 200s kills linear mutation.
-    _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
-    _setOpenCountForTests('logs', 3);
-    _setCircuitTrippedAtForTests('logs', Date.now());
-
-    const cs = getCircuitState('logs');
-    expect(cs.state).toBe('open');
-    expect(cs.cooldownRemainingMs).toBeGreaterThan(200_000); // 240s > 200s; linear 180s < 200s
-  });
-});
-
-describe('getCircuitState — half-open during active probe', () => {
-  it('reports half-open while probe fn is executing', async () => {
-    vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
-    const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    await runWithResilience('logs', timeoutFn);
-    // openCount=1, cooldown=60s
-    vi.advanceTimersByTime(61_000);
-
-    let stateInsideProbe: string | undefined;
-    await runWithResilience('logs', async () => {
-      stateInsideProbe = getCircuitState('logs').state;
-      return 'ok';
-    });
-    expect(stateInsideProbe).toBe('half-open');
-    vi.useRealTimers();
-  });
-});
-
-describe('resilience — encapsulated state getter/setter functions', () => {
-  it('_getConsecutiveTimeoutsForTests returns 0 by default', () => {
-    expect(_getConsecutiveTimeoutsForTests('logs')).toBe(0);
-  });
-
-  it('_setConsecutiveTimeoutsForTests / _getConsecutiveTimeoutsForTests round-trip', () => {
-    _setConsecutiveTimeoutsForTests('logs', 5);
-    expect(_getConsecutiveTimeoutsForTests('logs')).toBe(5);
-  });
-
-  it('_getOpenCountForTests returns 0 by default', () => {
-    expect(_getOpenCountForTests('logs')).toBe(0);
-  });
-
-  it('_setOpenCountForTests / _getOpenCountForTests round-trip', () => {
-    _setOpenCountForTests('traces', 3);
-    expect(_getOpenCountForTests('traces')).toBe(3);
-  });
-
-  it('_getHalfOpenProbingForTests returns false by default', () => {
-    expect(_getHalfOpenProbingForTests('logs')).toBe(false);
-  });
-
-  it('_setHalfOpenProbingForTests / _getHalfOpenProbingForTests round-trip', () => {
-    _setHalfOpenProbingForTests('metrics', true);
-    expect(_getHalfOpenProbingForTests('metrics')).toBe(true);
-  });
-
-  it('_getCircuitTrippedAtForTests returns 0 by default', () => {
-    expect(_getCircuitTrippedAtForTests('logs')).toBe(0);
-  });
-
-  it('_setCircuitTrippedAtForTests / _getCircuitTrippedAtForTests round-trip', () => {
-    const now = Date.now();
-    _setCircuitTrippedAtForTests('logs', now);
-    expect(_getCircuitTrippedAtForTests('logs')).toBe(now);
-  });
-
-  it('_resetResilienceForTests resets all getter values to zero/false', () => {
-    _setConsecutiveTimeoutsForTests('logs', 99);
-    _setOpenCountForTests('logs', 99);
-    _setHalfOpenProbingForTests('logs', true);
-    _setCircuitTrippedAtForTests('logs', 12345);
-    _resetResilienceForTests();
-    expect(_getConsecutiveTimeoutsForTests('logs')).toBe(0);
-    expect(_getOpenCountForTests('logs')).toBe(0);
-    expect(_getHalfOpenProbingForTests('logs')).toBe(false);
-    expect(_getCircuitTrippedAtForTests('logs')).toBe(0);
   });
 });

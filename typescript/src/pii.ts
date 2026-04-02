@@ -12,8 +12,9 @@
 import { shortHash12 } from './hash';
 
 /**
- * PII field names that are always redacted regardless of user config.
- * Matches the Python provide.telemetry default sanitize list.
+ * Default fields redacted from log records. TypeScript uses a wider set than Python
+ * (which only redacts: password, token, authorization, api_key, secret).
+ * This is intentional — the TS SDK defaults to a more conservative posture.
  */
 export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'password',
@@ -93,6 +94,20 @@ export function _detectSecretInValue(value: string): boolean {
   return false;
 }
 
+const _MIN_SECRET_LENGTH = 20;
+export const _SECRET_PATTERNS: RegExp[] = [
+  /(?:AKIA|ASIA)[A-Z0-9]{16}/, // AWS access key
+  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, // JWT
+  /gh[pos]_[A-Za-z0-9_]{36,}/, // GitHub token
+  /[0-9a-fA-F]{40,}/, // Long hex string
+  /[A-Za-z0-9+/]{40,}={0,2}/, // Long base64 string
+];
+
+export function _detectSecretInValue(value: string): boolean {
+  if (value.length < _MIN_SECRET_LENGTH) return false;
+  return _SECRET_PATTERNS.some((p) => p.test(value));
+}
+
 /**
  * Redact PII fields in a log object in place.
  * Checks DEFAULT_SANITIZE_FIELDS plus any additional fields from config.
@@ -108,11 +123,7 @@ export function sanitize(obj: Record<string, unknown>, extraFields: string[] = [
     // Stryker disable next-line ConditionalExpression: mutating to true redacts all keys — equivalent because tests use blocked keys
     if (blocked.has(key.toLowerCase())) {
       obj[key] = REDACTED;
-    } else if (
-      // Stryker disable next-line all: V8 perTest coverage doesn't attribute else-if branches; tested in pii.test.ts secret detection suite
-      typeof obj[key] === 'string' &&
-      _detectSecretInValue(obj[key] as string)
-    ) {
+    } else if (typeof obj[key] === 'string' && _detectSecretInValue(obj[key] as string)) {
       obj[key] = REDACTED;
     }
   }
@@ -162,7 +173,11 @@ export function _setHashFnForTest(fn: ((val: string) => string) | null): void {
 function _hashValue(val: string): string {
   try {
     if (_hashFnOverride !== null) return _hashFnOverride(val);
-    return shortHash12(val);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createHash } = require('node:crypto') as {
+      createHash: (alg: string) => { update: (s: string) => { digest: (enc: string) => string } };
+    };
+    return createHash('sha256').update(val).digest('hex').slice(0, 12);
   } catch {
     return REDACTED;
   }
@@ -305,6 +320,23 @@ function _applyDefaultSensitiveKeyRedaction(
   return result;
 }
 
+function _redactSecrets(node: unknown): unknown {
+  if (typeof node !== 'object' || node === null) return node;
+  if (Array.isArray(node)) {
+    return node.map((item) => _redactSecrets(item));
+  }
+  const obj = node as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (typeof val === 'string' && _detectSecretInValue(val)) {
+      result[key] = REDACTED;
+    } else {
+      result[key] = _redactSecrets(val);
+    }
+  }
+  return result;
+}
+
 export function registerPiiRule(rule: PIIRule): void {
   _rules.push(rule);
 }
@@ -353,7 +385,10 @@ export function sanitizePayload(
     current = _applyRuleFull(current, rule, [], maxDepth, 0, receiptHook);
   }
 
-  // Apply default field-name redaction + secret detection recursively with depth limit.
+  // Apply secret detection recursively.
+  current = _redactSecrets(current);
+
+  // Then apply default field redaction (case-insensitive, top-level only).
   // v8 ignore: current is always a non-null object here; null/array branches are defensive.
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */

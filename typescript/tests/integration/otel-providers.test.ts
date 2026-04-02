@@ -62,6 +62,7 @@ import {
   _getRegisteredProviders,
   _resetRuntimeForTests,
 } from '../../src/runtime';
+import { _resetOtelLogProviderForTests } from '../../src/otel-logs';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // Minimal stubs that satisfy OTel API interface checks for provider registration.
@@ -105,6 +106,16 @@ describe('registerOtelProviders', () => {
     vi.mocked(OTLPMetricExporter).mockImplementation(function () {
       return {};
     } as never);
+    vi.mocked(LoggerProvider).mockImplementation(function () {
+      return makeLogProviderStub();
+    } as never);
+    vi.mocked(BatchLogRecordProcessor).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      return {};
+    } as never);
+    vi.mocked(logs.getLogger).mockReturnValue({ emit: vi.fn() } as never);
   });
 
   afterEach(() => {
@@ -219,7 +230,7 @@ describe('registerOtelProviders', () => {
       timeoutMillis: 10000,
     });
     expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(2);
+    expect(_getRegisteredProviders()).toHaveLength(3);
   });
 
   it('passes provided otlpEndpoint and otlpHeaders to both exporters', async () => {
@@ -308,7 +319,7 @@ describe('registerOtelProviders', () => {
     );
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(1);
+    expect(_getRegisteredProviders()).toHaveLength(2); // metrics + logs (trace threw)
     warnSpy.mockRestore();
   });
 
@@ -383,25 +394,6 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
     expect(_getRegisteredProviders()).toHaveLength(2);
-    warnSpy.mockRestore();
-  });
-
-  it('leaves provider state unset when all OTEL provider setups fail', async () => {
-    vi.mocked(OTLPTraceExporter).mockImplementation(function () {
-      throw new Error('trace peer dep missing');
-    } as never);
-    vi.mocked(OTLPMetricExporter).mockImplementation(function () {
-      throw new Error('metrics peer dep missing');
-    } as never);
-    vi.mocked(OTLPLogExporter).mockImplementation(function () {
-      throw new Error('logs peer dep missing');
-    } as never);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
-    await registerOtelProviders(getConfig());
-    expect(_areProvidersRegistered()).toBe(false);
-    expect(_getRegisteredProviders()).toHaveLength(0);
-    expect(warnSpy).toHaveBeenCalledTimes(3);
     warnSpy.mockRestore();
   });
 });
