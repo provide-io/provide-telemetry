@@ -11,6 +11,10 @@
  *   PROVIDE_TELEMETRY_STRICT_SCHEMA,
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
+
+import { setSamplingPolicy } from './sampling';
+import { setQueuePolicy } from './backpressure';
+import { setExporterPolicy } from './resilience';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -340,11 +344,50 @@ export function getConfig(): TelemetryConfig {
 }
 
 /**
+ * Apply parsed config fields to the runtime policy engines (sampling, backpressure, resilience).
+ * Mirrors Python provide.telemetry.runtime.apply_runtime_config.
+ */
+export function applyConfigPolicies(cfg: TelemetryConfig): void {
+  // Sampling
+  setSamplingPolicy('logs', { defaultRate: cfg.samplingLogsRate });
+  setSamplingPolicy('traces', { defaultRate: cfg.samplingTracesRate });
+  setSamplingPolicy('metrics', { defaultRate: cfg.samplingMetricsRate });
+
+  // Backpressure
+  setQueuePolicy({
+    maxLogs: cfg.backpressureLogsMaxsize,
+    maxTraces: cfg.backpressureTracesMaxsize,
+    maxMetrics: cfg.backpressureMetricsMaxsize,
+  });
+
+  // Exporter resilience (per-signal)
+  setExporterPolicy('logs', {
+    retries: cfg.exporterLogsRetries,
+    backoffMs: cfg.exporterLogsBackoffMs,
+    timeoutMs: cfg.exporterLogsTimeoutMs,
+    failOpen: cfg.exporterLogsFailOpen,
+  });
+  setExporterPolicy('traces', {
+    retries: cfg.exporterTracesRetries,
+    backoffMs: cfg.exporterTracesBackoffMs,
+    timeoutMs: cfg.exporterTracesTimeoutMs,
+    failOpen: cfg.exporterTracesFailOpen,
+  });
+  setExporterPolicy('metrics', {
+    retries: cfg.exporterMetricsRetries,
+    backoffMs: cfg.exporterMetricsBackoffMs,
+    timeoutMs: cfg.exporterMetricsTimeoutMs,
+    failOpen: cfg.exporterMetricsFailOpen,
+  });
+}
+
+/**
  * Configure telemetry. Call once at app startup.
  * Merges explicit values over the current config (which may include env-derived values).
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
+  applyConfigPolicies(_config);
 }
 
 /** Reset to defaults (used in tests). */
