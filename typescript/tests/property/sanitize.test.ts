@@ -36,7 +36,7 @@ describe('property: sanitize()', () => {
         if (DEFAULT_SANITIZE_FIELDS.includes(field.toLowerCase())) return true;
         const obj: Record<string, unknown> = { [field]: value };
         sanitize(obj, [field]);
-        return obj[field] === '[REDACTED]';
+        return obj[field] === '***';
       }),
     );
   });
