@@ -428,6 +428,24 @@ def test_shutdown_logging_with_provider() -> None:
     assert core_mod._otel_log_provider is None
 
 
+def test_shutdown_logging_calls_force_flush_then_shutdown() -> None:
+    """shutdown_logging must call force_flush() before shutdown() on the provider."""
+    call_order: list[str] = []
+
+    class _Provider:
+        def force_flush(self) -> None:
+            call_order.append("force_flush")
+
+        def shutdown(self) -> None:
+            call_order.append("shutdown")
+
+    provider = _Provider()
+    core_mod._otel_log_provider = provider
+    core_mod.shutdown_logging()
+    assert call_order == ["force_flush", "shutdown"]
+    assert core_mod._otel_log_provider is None
+
+
 def test_shutdown_logging_with_non_callable_shutdown_attr() -> None:
     class _Provider:
         shutdown = "not-callable"

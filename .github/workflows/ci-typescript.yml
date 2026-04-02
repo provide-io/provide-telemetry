@@ -40,6 +40,20 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
+      - name: SPDX header check
+        shell: bash
+        run: |
+          MISSING=""
+          for f in $(find src tests -name '*.ts' -not -path '*/node_modules/*'); do
+            if ! head -3 "$f" | grep -q 'SPDX-License-Identifier'; then
+              MISSING="$MISSING\n  $f"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Missing SPDX headers:$MISSING"
+            exit 1
+          fi
+          echo "All TypeScript files have SPDX headers"
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
