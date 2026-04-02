@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
+      - "e2e/**"
+      - "examples/openobserve/**"
+      - "typescript/examples/openobserve/**"
   workflow_dispatch:
 
 permissions:
@@ -38,7 +44,7 @@ jobs:
 
   openobserve-e2e:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     env:
       OPENOBSERVE_URL: ${{ vars.OPENOBSERVE_URL }}
       OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
