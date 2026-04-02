@@ -5,8 +5,10 @@
  * TelemetryConfig — mirrors Python provide.telemetry TelemetryConfig.
  *
  * Env vars (same names as Python package):
- *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_ENV, PROVIDE_VERSION,
+ *   PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_TELEMETRY_ENV (fallback: PROVIDE_ENV),
+ *   PROVIDE_TELEMETRY_VERSION (fallback: PROVIDE_VERSION),
  *   PROVIDE_LOG_LEVEL, PROVIDE_LOG_FORMAT, PROVIDE_TRACE_ENABLED,
+ *   PROVIDE_TELEMETRY_STRICT_SCHEMA,
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
 export interface TelemetryConfig {
@@ -36,6 +38,10 @@ export interface TelemetryConfig {
    * Set true during local development for live devtools inspection.
    */
   consoleOutput: boolean;
+  /** Enforce strict event name validation (3-5 dot-separated segments). */
+  strictSchema: boolean;
+  /** Keys required on every log record when strictSchema is enabled. */
+  requiredLogKeys: string[];
 }
 
 const DEFAULTS: TelemetryConfig = {
@@ -48,6 +54,8 @@ const DEFAULTS: TelemetryConfig = {
   sanitizeFields: [],
   captureToWindow: true,
   consoleOutput: false,
+  strictSchema: false,
+  requiredLogKeys: [],
 };
 
 let _config: TelemetryConfig = { ...DEFAULTS };
@@ -83,8 +91,8 @@ export function configFromEnv(): TelemetryConfig {
 
   return {
     serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
-    environment: nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
-    version: nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
+    environment: nodeEnv('PROVIDE_TELEMETRY_ENV') ?? nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
+    version: nodeEnv('PROVIDE_TELEMETRY_VERSION') ?? nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
     logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
@@ -97,6 +105,16 @@ export function configFromEnv(): TelemetryConfig {
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
     consoleOutput: false,
+    strictSchema: nodeEnv('PROVIDE_TELEMETRY_STRICT_SCHEMA') === 'true',
+    requiredLogKeys: (() => {
+      const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
+      return raw
+        ? raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    })(),
   };
 }
 

@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# provide-io local dev telemetry stack
+#
+# Two access paths — both always work:
+#
+#   DIRECT (no DNS, no proxy)
+#     Grafana UI    http://localhost:3000
+#     OTLP HTTP     http://localhost:4318
+#     OTLP gRPC     localhost:4317
+#     OpenObserve   http://localhost:5080
+#     Traefik UI    http://localhost:8080
+#
+#   PROXIED via provide.test (requires: sudo sh scripts/setup-provide-test-dns.sh)
+#     Grafana UI    http://telemetry.provide.test:5314
+#     OTLP HTTP     http://otlp.provide.test:5314
+#     OpenObserve   http://openobserve.provide.test:5314
+#
+# Usage:
+#   docker compose up -d
+#   docker compose down
+#   docker compose down -v   # also removes persisted data
+
+services:
+
+  traefik:
+    image: traefik:v3
+    container_name: provide-traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:5314"
+    ports:
+      - "5314:5314"   # proxied gateway  (provide.test hostnames)
+      - "8080:8080"   # traefik dashboard (direct, no DNS needed)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: provide-otel-lgtm
+    restart: unless-stopped
+    volumes:
+      - otel-lgtm-data:/data
+    ports:
+      - "3000:3000"   # grafana UI    (direct)
+      - "4317:4317"   # OTLP gRPC     (direct)
+      - "4318:4318"   # OTLP HTTP     (direct)
+    labels:
+      - "traefik.enable=true"
+      # Grafana UI → telemetry.provide.test:5314
+      - "traefik.http.routers.grafana.rule=Host(`telemetry.provide.test`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.routers.grafana.service=grafana-svc"
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=3000"
+      # OTLP HTTP → otlp.provide.test:5314
+      - "traefik.http.routers.otlp.rule=Host(`otlp.provide.test`)"
+      - "traefik.http.routers.otlp.entrypoints=web"
+      - "traefik.http.routers.otlp.service=otlp-svc"
+      - "traefik.http.services.otlp-svc.loadbalancer.server.port=4318"
+
+  openobserve:
+    image: openobserve/openobserve:v0.14.5
+    container_name: provide-openobserve
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_USER:-admin@provide.test}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASSWORD:-Complexpass#123}
+      ZO_DATA_DIR: /data
+    volumes:
+      - openobserve-data:/data
+    ports:
+      - "5080:5080"   # OpenObserve UI + API (direct)
+    labels:
+      - "traefik.enable=true"
+      # OpenObserve → openobserve.provide.test:5314
+      - "traefik.http.routers.openobserve.rule=Host(`openobserve.provide.test`)"
+      - "traefik.http.routers.openobserve.entrypoints=web"
+      - "traefik.http.services.openobserve.loadbalancer.server.port=5080"
+
+volumes:
+  otel-lgtm-data:
+  openobserve-data:
