@@ -26,7 +26,9 @@ def _bypass_resilience(monkeypatch: pytest.MonkeyPatch) -> None:
         assert sig == "logs", f"expected signal 'logs', got {sig!r}"
         return op()  # type: ignore[operator]
 
-    monkeypatch.setattr(core_mod, "run_with_resilience", _passthrough)
+    from provide.telemetry import resilience as resilience_mod
+
+    monkeypatch.setattr(resilience_mod, "run_with_resilience", _passthrough)
 
 
 def test_build_handlers_without_otel_endpoint() -> None:
