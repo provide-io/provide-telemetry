@@ -9,19 +9,9 @@ from __future__ import annotations
 
 import threading
 
-from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
-from provide.telemetry.cardinality import clear_cardinality_limits as _reset_cardinality
 from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.health import reset_health_for_tests as _reset_health
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from provide.telemetry.logger.core import configure_logging, shutdown_logging
-from provide.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics, shutdown_metrics
-from provide.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
-from provide.telemetry.pii import reset_pii_rules_for_tests as _reset_pii
-from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
-from provide.telemetry.runtime import apply_runtime_config
-from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
-from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
 from provide.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
 from provide.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 
@@ -30,6 +20,8 @@ _setup_done = False
 
 
 def _rollback(completed: list[str]) -> None:
+    from provide.telemetry.metrics.provider import shutdown_metrics
+
     teardowns = {
         "configure_logging": shutdown_logging,
         "setup_tracing": shutdown_tracing,
@@ -49,6 +41,8 @@ def _quiet_otel_sdk_loggers() -> None:
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    from provide.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics
+    from provide.telemetry.runtime import apply_runtime_config
     from provide.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
 
     global _setup_done
@@ -86,6 +80,14 @@ def _reset_setup_state_for_tests() -> None:
 
 
 def _reset_all_for_tests() -> None:
+    from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
+    from provide.telemetry.cardinality import clear_cardinality_limits as _reset_cardinality
+    from provide.telemetry.health import reset_health_for_tests as _reset_health
+    from provide.telemetry.metrics.provider import _set_meter_for_test as _reset_metrics
+    from provide.telemetry.pii import reset_pii_rules_for_tests as _reset_pii
+    from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
+    from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
+    from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
     from provide.telemetry.slo import _reset_slo_for_tests as _reset_slo
 
     global _setup_done
@@ -105,6 +107,9 @@ def _reset_all_for_tests() -> None:
 
 def shutdown_telemetry() -> None:
     """Flush and tear down telemetry providers and reset runtime policies."""
+    from provide.telemetry.metrics.provider import shutdown_metrics
+    from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
+
     global _setup_done
     with _lock:
         _setup_done = False

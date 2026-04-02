@@ -53,13 +53,17 @@ def test_add_standard_fields_error_taxonomy_when_exc_name_present() -> None:
 
 
 def test_apply_sampling_drop_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: False)
-    out = apply_sampling(None, "info", {"event": "auth.login.success"})
-    assert out == {"event": "telemetry.log.dropped", "dropped_event": "auth.login.success"}
+    from provide.telemetry import sampling as sampling_mod
+
+    monkeypatch.setattr(sampling_mod, "should_sample", lambda _signal, _event: False)
+    with pytest.raises(structlog.DropEvent):
+        apply_sampling(None, "info", {"event": "auth.login.success"})
 
 
 def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(processors_mod, "should_sample", lambda _signal, _event: True)
+    from provide.telemetry import sampling as sampling_mod
+
+    monkeypatch.setattr(sampling_mod, "should_sample", lambda _signal, _event: True)
     payload = {"event": "auth.login.success"}
     out = apply_sampling(None, "info", payload)
     assert out is payload

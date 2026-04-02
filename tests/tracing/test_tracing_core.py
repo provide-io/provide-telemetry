@@ -166,7 +166,9 @@ def test_setup_tracing_endpoint_with_resilience_none(monkeypatch: pytest.MonkeyP
         "_load_otel_tracing_components",
         lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
     )
-    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _signal, _op: None)
+    from provide.telemetry import resilience as resilience_mod
+
+    monkeypatch.setattr(resilience_mod, "run_with_resilience", lambda _signal, _op: None)
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://trace"})
     provider_mod.setup_tracing(cfg)
     provider.add_span_processor.assert_not_called()
@@ -235,9 +237,9 @@ def test_trace_decorator_span_name_resolution(monkeypatch: pytest.MonkeyPatch) -
             return _Span()
 
     monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _ticket: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _ticket: None)
 
     @trace()
     def fn_default() -> int:
@@ -274,9 +276,9 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
             return 7
 
     monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _ticket: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _ticket: None)
     wrapped = trace()(_Callable())
     assert wrapped() == 7
     assert seen == ["_Callable"]
@@ -284,9 +286,9 @@ def test_trace_decorator_span_name_for_callable_object(monkeypatch: pytest.Monke
 
 def test_trace_async_preserves_context_across_await(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _ticket: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _ticket: None)
 
     @trace("async.context")
     async def afn() -> tuple[str | None, str | None]:
@@ -321,7 +323,7 @@ def test_trace_async_detection_uses_inspect_without_deprecation_warning() -> Non
 
 
 def test_trace_decorator_sampling_and_backpressure_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: False)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: False)
 
     @trace("sampled.out")
     def sampled_out() -> int:
@@ -329,8 +331,8 @@ def test_trace_decorator_sampling_and_backpressure_paths(monkeypatch: pytest.Mon
 
     assert sampled_out() == 1
 
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: None)
 
     @trace("queue.drop")
     def queue_drop() -> int:
@@ -353,9 +355,9 @@ def test_trace_decorator_releases_backpressure_ticket(monkeypatch: pytest.Monkey
         def start_as_current_span(self, _name: str, **_: object) -> _Span:
             return _Span()
 
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: object())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda ticket: releases.append(ticket))
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: object())
+    monkeypatch.setattr("provide.telemetry.backpressure.release", lambda ticket: releases.append(ticket))
     monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _name: _Tracer())
 
     @trace("ticket.release")
@@ -369,7 +371,7 @@ def test_trace_decorator_releases_backpressure_ticket(monkeypatch: pytest.Monkey
 def test_trace_decorator_async_sampling_and_queue_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: False)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: False)
 
     @trace("async.sampled.out")
     async def sampled_out() -> int:
@@ -377,8 +379,8 @@ def test_trace_decorator_async_sampling_and_queue_branches(monkeypatch: pytest.M
 
     assert asyncio.run(sampled_out()) == 11
 
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _signal: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _signal: None)
 
     @trace("async.queue.drop")
     async def queue_drop() -> int:
