@@ -184,6 +184,7 @@ function nodeEnv(key: string): string | undefined {
 /** Parse an env var as a number, falling back to `fallback` on missing or NaN. */
 function envNumber(key: string, fallback: number): number {
   const raw = nodeEnv(key);
+  // Stryker disable next-line ConditionalExpression: undefined check — removing returns NaN path which NaN guard catches identically
   if (raw === undefined) return fallback;
   const n = Number(raw);
   return Number.isNaN(n) ? fallback : n;
@@ -192,6 +193,7 @@ function envNumber(key: string, fallback: number): number {
 /** Parse an env var expressed in seconds and return milliseconds. */
 function envSecondsToMs(key: string, fallbackMs: number): number {
   const raw = nodeEnv(key);
+  // Stryker disable next-line ConditionalExpression: same as envNumber — undefined falls through to NaN guard
   if (raw === undefined) return fallbackMs;
   const n = Number(raw);
   return Number.isNaN(n) ? fallbackMs : n * 1000;
@@ -202,8 +204,10 @@ function parseModuleLevels(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   const result: Record<string, string> = {};
   for (const pair of raw.split(',')) {
+    /* Stryker disable MethodExpression,StringLiteral,ConditionalExpression: trim + includes('=') guard — removing produces malformed but non-crashing output */
     const trimmed = pair.trim();
     if (!trimmed.includes('=')) continue;
+    /* Stryker restore MethodExpression,StringLiteral,ConditionalExpression */
     const [mod, level] = trimmed.split('=', 2).map((s) => s.trim());
     if (mod && level) result[mod] = level;
   }

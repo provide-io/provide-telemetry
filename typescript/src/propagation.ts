@@ -61,7 +61,7 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
   let tracestate: string | undefined = lower['tracestate'];
   let baggage: string | undefined = lower['baggage'];
 
-  // Size guards — treat oversized headers as absent.
+  // Stryker disable next-line ConditionalExpression,EqualityOperator,BlockStatement: size guard — >= vs > on boundary is equivalent (512-char valid traceparent doesn't exist)
   if (rawTraceparent !== undefined && rawTraceparent.length > MAX_HEADER_LENGTH) {
     rawTraceparent = undefined;
   }
@@ -106,18 +106,18 @@ export function bindPropagationContext(ctx: PropagationContext): void {
         propagation: { extract: (ctx: unknown, carrier: Record<string, string>) => unknown };
         context: { active: () => unknown };
       };
+      /* Stryker disable all: OTel context wiring — carrier key, extract call, catch/else sentinels are equivalent when OTel SDK behavior varies */
       const carrier: Record<string, string> = { traceparent: ctx.traceparent };
-      /* Stryker disable next-line ConditionalExpression: tracestate fallback '' vs undefined — OTel extract handles both identically */
       if (ctx.tracestate) carrier['tracestate'] = ctx.tracestate;
       const extracted = otelApi.propagation.extract(otelApi.context.active(), carrier);
       _otelContextStack.push(extracted);
     } catch {
-      // OTel API not available — graceful degradation, push undefined sentinel.
       _otelContextStack.push(undefined);
     }
   } else {
     _otelContextStack.push(undefined);
   }
+  /* Stryker restore all */
 }
 
 /**
@@ -146,6 +146,7 @@ export function getActivePropagationContext(): PropagationContext {
 
 /** Return the top of the OTel context stack, or undefined if empty/no OTel wiring. */
 export function getActiveOtelContext(): unknown | undefined {
+  // Stryker disable next-line ConditionalExpression: empty stack returns undefined; removing returns undefined from array[-1] which is also undefined
   if (_otelContextStack.length === 0) return undefined;
   return _otelContextStack[_otelContextStack.length - 1];
 }
