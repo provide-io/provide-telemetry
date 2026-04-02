@@ -23,7 +23,7 @@ describe('property: sanitize()', () => {
         (field, value, extra) => {
           const obj: Record<string, unknown> = { ...extra, [field]: value };
           sanitize(obj);
-          return obj[field] === '[REDACTED]';
+          return obj[field] === '***';
         },
       ),
     );
@@ -36,7 +36,7 @@ describe('property: sanitize()', () => {
         if (DEFAULT_SANITIZE_FIELDS.includes(field.toLowerCase())) return true;
         const obj: Record<string, unknown> = { [field]: value };
         sanitize(obj, [field]);
-        return obj[field] === '[REDACTED]';
+        return obj[field] === '***';
       }),
     );
   });
@@ -66,7 +66,7 @@ describe('property: sanitizePayload()', () => {
         registerPiiRule({ path: safeKey, mode: 'redact' });
         const obj: Record<string, unknown> = { [safeKey]: value, other: 'untouched' };
         sanitizePayload(obj);
-        return obj[safeKey] === '[REDACTED]' && obj['other'] === 'untouched';
+        return obj[safeKey] === '***' && obj['other'] === 'untouched';
       }),
     );
   });

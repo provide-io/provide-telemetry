@@ -41,7 +41,15 @@ export { computeErrorFingerprint } from './fingerprint';
 export { formatPretty, supportsColor } from './pretty';
 
 // Metrics (mirrors Python counter / gauge / histogram)
-export { counter, gauge, histogram, getMeter } from './metrics';
+export {
+  counter,
+  gauge,
+  histogram,
+  getMeter,
+  CounterInstrument,
+  GaugeInstrument,
+  HistogramInstrument,
+} from './metrics';
 export type { Counter, Histogram, Meter, MetricOptions, UpDownCounter } from './metrics';
 
 // Tracing (mirrors Python @trace decorator)

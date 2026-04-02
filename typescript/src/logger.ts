@@ -19,6 +19,7 @@ import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
 import { emitLogRecord } from './otel-logs';
+import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { getActiveTraceIds } from './tracing';
@@ -81,8 +82,9 @@ export function makeWriteHook() {
       o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
     }
 
-    // PII sanitization.
+    // PII sanitization: blocked keys + secret detection + custom PII rules.
     sanitize(o, cfg.sanitizeFields);
+    sanitizePayload(o);
 
     // Schema validation — drop records that violate strict schema rules.
     /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */

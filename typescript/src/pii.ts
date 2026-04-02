@@ -28,7 +28,7 @@ export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'private_key',
 ];
 
-const REDACTED = '[REDACTED]';
+const REDACTED = '***';
 
 const _MIN_SECRET_LENGTH = 20;
 export const _SECRET_PATTERNS: RegExp[] = [
@@ -95,7 +95,7 @@ function _hashValue(val: string): string {
     };
     return createHash('sha256').update(val).digest('hex').slice(0, 12);
   } catch {
-    return '[HASHED]';
+    return REDACTED;
   }
 }
 
