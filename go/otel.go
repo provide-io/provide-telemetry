@@ -166,5 +166,5 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: hs}
 }
 
-// ErrOTelShutdown is a sentinel used in tests to simulate provider shutdown errors.
-var ErrOTelShutdown = errors.New("otel shutdown error")
+// errOTelShutdown is a sentinel used in tests to simulate provider shutdown errors.
+var errOTelShutdown = errors.New("otel shutdown error")
