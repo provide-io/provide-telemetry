@@ -26,6 +26,7 @@ const MAX_SEGMENTS = 5;
  */
 export function eventName(...segments: string[]): string {
   if (segments.length === 0) {
+    // Stryker disable next-line StringLiteral: error message content doesn't affect behavior
     throw new EventSchemaError(`expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got 0`);
   }
   const strict = getConfig().strictSchema;

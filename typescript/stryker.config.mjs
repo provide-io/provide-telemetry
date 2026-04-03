@@ -26,7 +26,10 @@ export default {
   },
 
   // Reporters
-  reporters: ['progress', 'html', 'clear-text'],
+  reporters: ['progress', 'html', 'json', 'clear-text'],
+  jsonReporter: {
+    fileName: 'reports/mutation/mutation.json',
+  },
   htmlReporter: {
     fileName: 'reports/mutation/index.html',
   },

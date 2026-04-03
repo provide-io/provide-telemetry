@@ -110,6 +110,7 @@ export class GaugeInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      // Stryker disable next-line StringLiteral: empty string fallback for no-attributes key — functionally equivalent to any constant
       const key = attributes ? JSON.stringify(attributes) : '';
       const prev = this._values.get(key) ?? 0;
       const delta = value - prev;
