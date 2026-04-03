@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	_validTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	_validTraceID = "4bf92f3577b34da6a3ce929d0e0e4736" // pragma: allowlist secret
 	_validSpanID  = "00f067aa0ba902b7"
 	_validFlags   = "01"
 )
@@ -234,7 +234,7 @@ func TestGetPropagationContext_EmptyContext(t *testing.T) {
 func TestExtractW3CContext_InvalidTraceID_UppercaseHex(t *testing.T) {
 	headers := http.Header{}
 	// TraceID with uppercase hex chars — should be invalid (spec requires lowercase)
-	upperTrace := "4BF92F3577B34DA6A3CE929D0E0E4736"
+	upperTrace := "4BF92F3577B34DA6A3CE929D0E0E4736" // pragma: allowlist secret
 	headers.Set("Traceparent", "00-"+upperTrace+"-"+_validSpanID+"-"+_validFlags)
 
 	pc := ExtractW3CContext(headers)
