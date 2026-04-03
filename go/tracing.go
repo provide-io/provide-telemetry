@@ -31,7 +31,7 @@ type _noopSpan struct {
 	spanID  string
 }
 
-func (s *_noopSpan) End() { _ = s }
+func (s *_noopSpan) End()                               { _ = s }
 func (s *_noopSpan) SetAttribute(key string, value any) { _ = key; _ = value }
 func (s *_noopSpan) RecordError(err error)              { _ = err }
 func (s *_noopSpan) SpanID() string                     { return s.spanID }

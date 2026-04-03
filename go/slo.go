@@ -12,13 +12,13 @@ import (
 
 // Error classification category constants.
 const (
-	_errCatClientError  = "client_error"
-	_errCatServerError  = "server_error"
-	_errCatTimeout      = "timeout"
-	_errCatUnknown      = "unknown"
-	_errSevCritical     = "critical"
-	_errSevWarning      = "warning"
-	_errSevInfo         = "info"
+	_errCatClientError = "client_error"
+	_errCatServerError = "server_error"
+	_errCatTimeout     = "timeout"
+	_errCatUnknown     = "unknown"
+	_errSevCritical    = "critical"
+	_errSevWarning     = "warning"
+	_errSevInfo        = "info"
 )
 
 // Package-level RED metric instruments (Rate, Errors, Duration).
