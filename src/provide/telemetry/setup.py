@@ -14,6 +14,7 @@ __all__ = [
 
 import logging
 import threading
+import warnings
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
@@ -69,9 +70,18 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 setup_metrics(cfg)
                 completed.append("setup_metrics")
                 _rebind_slo_instruments()
-            except Exception:
+            except Exception as exc:
                 _rollback(completed)
-                raise
+                from provide.telemetry.health import set_setup_error
+
+                set_setup_error(str(exc))
+                warnings.warn(
+                    f"telemetry setup failed, running in degraded mode: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,  # pragma: no mutate
+                )
+                if "configure_logging" not in completed:
+                    configure_logging(cfg, force=True)
             _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)

@@ -138,8 +138,13 @@ class TestCircuitBreakerLifecycle:
 
         # ── 3. Advance clock past cooldown ───────────────────────────────────
         tripped_at = resilience_mod._circuit_tripped_at["logs"]
+        oc1 = resilience_mod._open_count["logs"]
+        cooldown1 = min(
+            resilience_mod._CIRCUIT_BASE_COOLDOWN * (2**oc1),
+            resilience_mod._CIRCUIT_MAX_COOLDOWN,
+        )
         fake_time = types.SimpleNamespace(
-            monotonic=lambda: tripped_at + resilience_mod._CIRCUIT_BREAKER_COOLDOWN + 1.0,
+            monotonic=lambda: tripped_at + cooldown1 + 1.0,
             perf_counter=time.perf_counter,
             sleep=time.sleep,
         )
@@ -164,8 +169,13 @@ class TestCircuitBreakerLifecycle:
 
         # ── 6. Half-open probe — failure ─────────────────────────────────────
         tripped_at2 = resilience_mod._circuit_tripped_at["logs"]
+        oc2 = resilience_mod._open_count["logs"]
+        cooldown2 = min(
+            resilience_mod._CIRCUIT_BASE_COOLDOWN * (2**oc2),
+            resilience_mod._CIRCUIT_MAX_COOLDOWN,
+        )
         fake_time2 = types.SimpleNamespace(
-            monotonic=lambda: tripped_at2 + resilience_mod._CIRCUIT_BREAKER_COOLDOWN + 1.0,
+            monotonic=lambda: tripped_at2 + cooldown2 + 1.0,
             perf_counter=time.perf_counter,
             sleep=time.sleep,
         )
