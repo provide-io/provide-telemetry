@@ -4,97 +4,43 @@
 package telemetry
 
 import (
+	"crypto/sha256"
 	"fmt"
-	"regexp"
+	"strings"
 	"sync"
-
-	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // PIIRule defines a rule for sanitizing a specific field path.
-type PIIRule = piicore.PIIRule
+type PIIRule struct {
+	Path       []string
+	Mode       string
+	TruncateTo int
+}
 
 // PII mode constants.
 const (
-	PIIModeRedact   = piicore.PIIModeRedact
-	PIIModeDrop     = piicore.PIIModeDrop
-	PIIModeHash     = piicore.PIIModeHash
-	PIIModeTruncate = piicore.PIIModeTruncate
+	PIIModeRedact   = "redact"
+	PIIModeDrop     = "drop"
+	PIIModeHash     = "hash"
+	PIIModeTruncate = "truncate"
 )
 
-// SecretPattern pairs a diagnostic name with a compiled regexp.
-type SecretPattern struct {
-	Name    string
-	Pattern *regexp.Regexp
+const (
+	_piiRedacted   = "***"
+	_piiDefaultMax = 32
+)
+
+// _defaultSensitiveKeys lists substrings matched case-insensitively against key names.
+var _defaultSensitiveKeys = []string{
+	"password", "passwd", "secret", "token", "api_key", "apikey",
+	"auth", "authorization", "credential", "private_key", "ssn",
+	"credit_card", "creditcard", "cvv", "pin", "account_number",
 }
 
 var (
-	_piiMu              sync.RWMutex
-	_piiRules           []PIIRule
-	_classificationHook func(key string, value any) string
-	_policyHook         func(label string) string
-	_receiptHook        func(fieldPath string, action string, originalValue any)
-	_customSecretPats   map[string]*regexp.Regexp
+	_piiMu    sync.RWMutex
+	_piiRules []PIIRule
 )
-
-// RegisterSecretPattern registers a custom secret detection pattern.
-// If a pattern with the same name already exists, it is replaced.
-// The name is for diagnostics only.
-func RegisterSecretPattern(name string, pattern *regexp.Regexp) {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	if _customSecretPats == nil { // pragma: allowlist secret
-		_customSecretPats = make(map[string]*regexp.Regexp) // pragma: allowlist secret
-	}
-	_customSecretPats[name] = pattern
-}
-
-// GetSecretPatterns returns all secret patterns (built-in + custom).
-func GetSecretPatterns() []SecretPattern {
-	_piiMu.RLock()
-	defer _piiMu.RUnlock()
-	builtins := piicore.BuiltinSecretPatterns
-	out := make([]SecretPattern, 0, len(builtins)+len(_customSecretPats))
-	for i, re := range builtins {
-		out = append(out, SecretPattern{Name: fmt.Sprintf("builtin-%d", i), Pattern: re})
-	}
-	for name, re := range _customSecretPats {
-		out = append(out, SecretPattern{Name: name, Pattern: re})
-	}
-	return out
-}
-
-// _resetSecretPatterns clears all custom secret patterns (for test cleanup).
-func _resetSecretPatterns() {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	_customSecretPats = nil // pragma: allowlist secret
-}
-
-// SetClassificationHook registers a classification callback on the PII engine.
-// Pass nil to deregister.
-func SetClassificationHook(fn func(string, any) string) {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	_classificationHook = fn
-}
-
-// SetPolicyHook registers a policy lookup callback on the PII engine.
-// The callback returns the action ("drop"|"redact"|"hash"|"truncate"|"pass") for a label.
-// Pass nil to deregister.
-func SetPolicyHook(fn func(label string) string) {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	_policyHook = fn
-}
-
-// SetReceiptHook registers a redaction receipt callback on the PII engine.
-// Pass nil to deregister.
-func SetReceiptHook(fn func(string, string, any)) {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	_receiptHook = fn
-}
 
 // SetPIIRules replaces the global PII rule list.
 func SetPIIRules(rules []PIIRule) {
@@ -114,93 +60,136 @@ func GetPIIRules() []PIIRule {
 	return cp
 }
 
-// _resetPIIRules clears all custom PII rules and hooks (for test cleanup).
+// _resetPIIRules clears all custom PII rules (for test cleanup).
 func _resetPIIRules() {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	_piiRules = nil
-	_classificationHook = nil
-	_policyHook = nil
-	_receiptHook = nil
-}
-
-// _applyClassificationPolicy applies classification tags and policy actions (drop/redact/hash/truncate/pass)
-// to each top-level key in result that matches the classHook. Keys with action "drop" are removed.
-// All other matching keys get a "__key__class" tag; masking actions additionally replace the value.
-// The result map is mutated in place.
-func _applyClassificationPolicy(
-	result map[string]any,
-	classHook func(string, any) string,
-	policyHook func(string) string,
-) {
-	// Collect keys first to avoid mutating the map while iterating.
-	keys := make([]string, 0, len(result))
-	for k := range result {
-		keys = append(keys, k)
-	}
-	for _, k := range keys {
-		v := result[k]
-		label := classHook(k, v)
-		if label == "" {
-			continue
-		}
-		action := "pass"
-		if policyHook != nil {
-			action = policyHook(label)
-		}
-		if action == piicore.PIIModeDrop {
-			delete(result, k)
-			// No class tag for dropped keys.
-			continue
-		}
-		result["__"+k+"__class"] = label
-		_applyMaskAction(result, k, v, action)
-	}
-}
-
-// _applyMaskAction replaces result[k] with a masked value when action is redact/hash/truncate,
-// unless the current value is already the redaction sentinel. Pass and unknown actions are no-ops.
-func _applyMaskAction(result map[string]any, k string, v any, action string) {
-	if action != piicore.PIIModeRedact && action != piicore.PIIModeHash && action != piicore.PIIModeTruncate {
-		return
-	}
-	if strVal, ok := v.(string); ok && strVal == piicore.Redacted {
-		return // already redacted — do not double-mask
-	}
-	masked, drop := piicore.ApplyMode(v, action, 8)
-	if !drop {
-		result[k] = masked
-	}
 }
 
 // SanitizePayload applies PII sanitization to the given payload map and returns
 // a new map with sensitive fields redacted, dropped, hashed, or truncated.
 // The input map is never mutated.
 // If enabled is false, a shallow copy is returned unchanged.
-// If maxDepth <= 0, the default depth of 8 is used.
+// If maxDepth <= 0, the default depth of 32 is used.
 func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any {
 	if !enabled {
-		return piicore.ShallowCopy(payload)
+		return _shallowCopy(payload)
 	}
 	if maxDepth <= 0 {
-		maxDepth = piicore.DefaultMaxDepth
+		maxDepth = _piiDefaultMax
 	}
 	rules := GetPIIRules()
+	return _sanitizeMap(payload, []string{}, rules, maxDepth)
+}
 
-	_piiMu.RLock()
-	receiptHook := _receiptHook
-	customs := _customSecretPats
-	_piiMu.RUnlock()
-
-	result := piicore.SanitizeMap(payload, []string{}, rules, maxDepth, receiptHook, customs)
-
-	// Apply classification tags and policy actions for top-level keys if hook is registered.
-	_piiMu.RLock()
-	classHook := _classificationHook
-	policyHook := _policyHook
-	_piiMu.RUnlock()
-	if classHook != nil {
-		_applyClassificationPolicy(result, classHook, policyHook)
+// _shallowCopy returns a shallow copy of m.
+func _shallowCopy(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
 	}
-	return result
+	return out
+}
+
+// _sanitizeMap copies the map, recursively sanitizing values.
+func _sanitizeMap(m map[string]any, path []string, rules []PIIRule, depth int) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		childPath := append(path, k) //nolint:gocritic
+		sanitized, drop := _sanitizeValue(k, v, childPath, rules, depth)
+		if !drop {
+			out[k] = sanitized
+		}
+	}
+	return out
+}
+
+// _sanitizeSlice copies the slice, recursively sanitizing each element.
+func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
+	out := make([]any, len(s))
+	for i, item := range s {
+		if inner, ok := item.(map[string]any); ok {
+			out[i] = _sanitizeMap(inner, path, rules, depth)
+		} else {
+			out[i] = item
+		}
+	}
+	return out
+}
+
+// _sanitizeValue applies custom rules then default key detection to a single value.
+// Returns (sanitized value, should_drop).
+func _sanitizeValue(key string, value any, path []string, rules []PIIRule, depth int) (any, bool) {
+	// Apply custom rules first.
+	for _, rule := range rules {
+		if _applyRule(rule, path) {
+			return _applyMode(value, rule.Mode, rule.TruncateTo)
+		}
+	}
+
+	// Apply default sensitive key detection.
+	if _isDefaultSensitiveKey(key) {
+		return _piiRedacted, false
+	}
+
+	// Recurse into nested structures if depth allows.
+	if depth <= 1 {
+		return value, false
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return _sanitizeMap(typed, path, rules, depth-1), false
+	case []any:
+		return _sanitizeSlice(typed, path, rules, depth-1), false
+	}
+	return value, false
+}
+
+// _applyRule returns true if the rule's Path matches the given path.
+// A '*' in the rule path matches any single key.
+func _applyRule(rule PIIRule, path []string) bool {
+	if len(rule.Path) != len(path) {
+		return false
+	}
+	for i, seg := range rule.Path {
+		if seg != "*" && seg != path[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// _applyMode applies the given mode to value and returns (result, should_drop).
+func _applyMode(value any, mode string, truncateTo int) (any, bool) {
+	switch mode {
+	case PIIModeDrop:
+		return nil, true
+	case PIIModeHash:
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%v", value)))
+		return fmt.Sprintf("%x", sum)[:12], false
+	case PIIModeTruncate:
+		s, ok := value.(string)
+		if !ok {
+			return _piiRedacted, false
+		}
+		if len([]rune(s)) > truncateTo {
+			return string([]rune(s)[:truncateTo]), false
+		}
+		return s, false
+	default:
+		return _piiRedacted, false
+	}
+}
+
+// _isDefaultSensitiveKey returns true if key contains any default sensitive substring
+// (case-insensitive).
+func _isDefaultSensitiveKey(key string) bool {
+	lower := strings.ToLower(key)
+	for _, sensitive := range _defaultSensitiveKeys {
+		if strings.Contains(lower, sensitive) {
+			return true
+		}
+	}
+	return false
 }

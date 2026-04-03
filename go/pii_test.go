@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -18,9 +19,7 @@ const (
 func resetPII(t *testing.T) {
 	t.Helper()
 	_resetPIIRules()
-	_resetSecretPatterns()
 	t.Cleanup(_resetPIIRules)
-	t.Cleanup(_resetSecretPatterns)
 }
 
 // ── Test 1: disabled returns shallow copy unchanged ───────────────────────────
@@ -142,8 +141,8 @@ func TestSanitizePayload_CustomRule_Truncate_String(t *testing.T) {
 	})
 	payload := map[string]any{"note": "hello world"}
 	result := SanitizePayload(payload, true, 32)
-	if result["note"] != "hello..." {
-		t.Errorf("expected %q, got %v", "hello...", result["note"])
+	if result["note"] != "hello" {
+		t.Errorf("expected %q, got %v", "hello", result["note"])
 	}
 }
 
@@ -159,16 +158,15 @@ func TestSanitizePayload_CustomRule_Truncate_ShortString(t *testing.T) {
 	}
 }
 
-func TestSanitizePayload_CustomRule_Truncate_NonString_Stringified(t *testing.T) {
+func TestSanitizePayload_CustomRule_Truncate_NonString_Redacts(t *testing.T) {
 	resetPII(t)
 	SetPIIRules([]PIIRule{
 		{Path: []string{"count"}, Mode: PIIModeTruncate, TruncateTo: 5},
 	})
 	payload := map[string]any{"count": 42}
 	result := SanitizePayload(payload, true, 32)
-	// fmt.Sprintf("%v", 42) = "42" (2 chars < 5) → no truncation
-	if result["count"] != "42" {
-		t.Errorf("expected %q for non-string truncate, got %v", "42", result["count"])
+	if result["count"] != _piiRedacted {
+		t.Errorf("expected %q for non-string truncate, got %v", _piiRedacted, result["count"])
 	}
 }
 
@@ -284,22 +282,21 @@ func TestSanitizePayload_DepthLimit_StopsRecursion(t *testing.T) {
 	}
 }
 
-// ── Test 11: maxDepth=0 uses default 8 ───────────────────────────────────────
+// ── Test 11: maxDepth=0 uses default 32 ──────────────────────────────────────
 
 func TestSanitizePayload_ZeroMaxDepth_UsesDefault(t *testing.T) {
 	resetPII(t)
-	// Build a 6-level deep structure with a password at the bottom.
-	// Default depth is 8, so a 6-level nest must be fully sanitized.
+	// Build a 10-level deep structure with a password at the bottom.
 	inner := map[string]any{"password": "deep"} // pragma: allowlist secret
 	current := inner
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 9; i++ {
 		current = map[string]any{"nested": current}
 	}
 
 	result := SanitizePayload(current, true, 0)
 	// Traverse down to find the password.
 	node := result
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 9; i++ {
 		next, _ := node["nested"].(map[string]any)
 		if next == nil {
 			t.Fatalf("expected nested map at depth %d", i)
@@ -375,77 +372,82 @@ func TestSanitizePayload_Hash_Deterministic(t *testing.T) {
 	}
 }
 
-// ── pii.go:142 depth-1 in map recursion ──────────────────────────────────────
+// ── Concurrency ───────────────────────────────────────────────────────────────
 
-func TestSanitizePayload_MapDepth_CorrectDecrement(t *testing.T) {
+func TestSanitizePayload_Concurrent(t *testing.T) {
 	resetPII(t)
-	payload := map[string]any{
-		"level1": map[string]any{
-			"level2": map[string]any{
-				"password": "deep-hidden", // pragma: allowlist secret
-			},
-		},
-	}
-	result := SanitizePayload(payload, true, 2)
+	SetPIIRules([]PIIRule{
+		{Path: []string{"uid"}, Mode: PIIModeHash},
+	})
+	payload := map[string]any{"uid": "user-1", "password": "s3cr3t", "name": _testAlice} // pragma: allowlist secret
 
-	l1, _ := result["level1"].(map[string]any)
-	if l1 == nil {
-		t.Fatal("expected level1")
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			result := SanitizePayload(payload, true, 32)
+			if result["password"] != _piiRedacted { // pragma: allowlist secret
+				t.Errorf("concurrent: expected password redacted")
+			}
+		}()
 	}
-	l2, _ := l1["level2"].(map[string]any)
-	if l2 == nil {
-		t.Fatal("expected level2")
+	wg.Wait()
+}
+
+// ── Input not mutated ─────────────────────────────────────────────────────────
+
+func TestSanitizePayload_DoesNotMutateInput(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{
+		{Path: []string{"card"}, Mode: PIIModeDrop},
+	})
+	payload := map[string]any{
+		"card":  "4111-1111",
+		"extra": "keep",
 	}
-	if l2["password"] == _piiRedacted { // pragma: allowlist secret
-		t.Error("expected password NOT redacted when map depth limit reached (depth=1 stops recursion)")
+	_ = SanitizePayload(payload, true, 32)
+	if _, ok := payload["card"]; !ok {
+		t.Error("input map was mutated: card key was removed")
 	}
 }
 
-// ── pii.go:144 depth-1 vs depth+1 in _sanitizeSlice ─────────────────────────
+// ── Slice with non-map items ──────────────────────────────────────────────────
 
-func TestSanitizePayload_SliceDepth_CorrectDecrement(t *testing.T) {
+func TestSanitizePayload_SliceWithNonMapItems(t *testing.T) {
 	resetPII(t)
 	payload := map[string]any{
-		"arr": []any{
-			map[string]any{
-				"nested": map[string]any{
-					"password": "deep-secret", // pragma: allowlist secret
-				},
-			},
-		},
+		"tags": []any{"alpha", "beta", 123},
 	}
-	// maxDepth=3: arr(depth=3) → slice(depth=2) → map(depth=2) → nested(depth=2>1 recurse)
-	// → map(depth=1) → password → sensitive → redacted
-	result := SanitizePayload(payload, true, 3)
+	result := SanitizePayload(payload, true, 32)
+	tags, _ := result["tags"].([]any)
+	if len(tags) != 3 {
+		t.Fatalf("expected 3 tags, got %d", len(tags))
+	}
+	if tags[0] != "alpha" || tags[1] != "beta" || tags[2] != 123 {
+		t.Errorf("unexpected tags: %v", tags)
+	}
+}
 
-	arr, _ := result["arr"].([]any)
-	if arr == nil {
-		t.Fatal("expected arr in result")
-	}
-	item, _ := arr[0].(map[string]any)
-	if item == nil {
-		t.Fatal("expected map item in arr")
-	}
-	nested, _ := item["nested"].(map[string]any)
-	if nested == nil {
-		t.Fatal("expected nested map")
-	}
-	if nested["password"] != _piiRedacted { // pragma: allowlist secret
-		t.Errorf("expected deep password redacted at depth 3, got %v", nested["password"])
-	}
+// ── _isDefaultSensitiveKey case-insensitive ───────────────────────────────────
 
-	// Now verify depth boundary: maxDepth=2 stops before reaching the password.
-	result2 := SanitizePayload(payload, true, 2)
-	arr2, _ := result2["arr"].([]any)
-	item2, _ := arr2[0].(map[string]any)
-	// At depth=2: _sanitizeSlice called with depth=2-1=1.
-	// Inner map processed at depth=1. depth<=1 → no recursion into nested map.
-	// nested map is returned unchanged.
-	nested2, _ := item2["nested"].(map[string]any)
-	if nested2 == nil {
-		t.Fatal("expected nested map at depth 2")
+func TestIsDefaultSensitiveKey_CaseInsensitive(t *testing.T) {
+	cases := []struct {
+		key      string
+		expected bool
+	}{
+		{"PASSWORD", true},
+		{"UserPassword", true},
+		{"Api_Key", true},
+		{"APIKEY", true},
+		{"Authorization", true},
+		{"username", false},
+		{"email", false},
 	}
-	if nested2["password"] == _piiRedacted { // pragma: allowlist secret
-		t.Error("expected password NOT redacted when depth stops before reaching it")
+	for _, tc := range cases {
+		got := _isDefaultSensitiveKey(tc.key)
+		if got != tc.expected {
+			t.Errorf("_isDefaultSensitiveKey(%q): want %v, got %v", tc.key, tc.expected, got)
+		}
 	}
 }
