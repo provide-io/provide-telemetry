@@ -4,15 +4,10 @@
 package telemetry
 
 import (
-	"cmp"
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
-	"slices"
 	"strings"
-
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
@@ -56,35 +51,17 @@ func (h *_telemetryHandler) WithGroup(name string) slog.Handler {
 // Handle executes the processor chain and forwards to the base handler.
 func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyContextFields(ctx, r)
-	r = h.applyLoggerName(r)
 	r = h.applyStandardFields(r)
 	r = h.applyTraceFields(ctx, r)
 
-	// Consent gate: block before any processing when consent level forbids logs.
-	if !ShouldAllow(signalLogs, r.Level.String()) {
+	if !ShouldSample(signalLogs, r.Message) {
 		return nil
 	}
 
-	// Schema validation runs BEFORE sampling so records flagged by
-	// validateRequiredKeys / validateEventName don't inflate LogsEmitted.
-	// Annotate with _schema_error instead of dropping — preserves telemetry.
-	// Cross-language standard (Python/TypeScript/Rust match).
 	if err := h.applySchema(r); err != nil {
-		r.AddAttrs(slog.String("_schema_error", err.Error()))
+		return nil //nolint:nilerr // schema violation drops the record
 	}
 
-	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil
-		return nil
-	}
-
-	// Backpressure gate: drop when the log queue is full.
-	if !TryAcquire(signalLogs) {
-		return nil
-	}
-	defer Release(signalLogs)
-	_incLogsEmitted()
-
-	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
 	return h.next.Handle(ctx, r)
 }
@@ -92,23 +69,15 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 // clone returns a shallow copy of the handler.
 func (h *_telemetryHandler) clone() *_telemetryHandler {
 	cp := *h
-	cp.attrs = append([]slog.Attr(nil), h.attrs...)
-	cp.groups = append([]string(nil), h.groups...)
-	return &cp
-}
-
-// applyLoggerName adds the canonical logger_name field when a named logger is in use.
-func (h *_telemetryHandler) applyLoggerName(r slog.Record) slog.Record {
-	if h.name == "" {
-		return r
+	if len(h.attrs) > 0 {
+		cp.attrs = make([]slog.Attr, len(h.attrs))
+		copy(cp.attrs, h.attrs)
 	}
-	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
-	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
-		return true
-	})
-	nr.AddAttrs(slog.String("logger_name", h.name))
-	return nr
+	if len(h.groups) > 0 {
+		cp.groups = make([]string, len(h.groups))
+		copy(cp.groups, h.groups)
+	}
+	return &cp
 }
 
 // applyContextFields merges bound context fields into the record.
@@ -171,22 +140,13 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	return nr
 }
 
-// applySchema validates the event name and required keys when strict mode is enabled.
-// Returns an error if validation fails; the caller drops the record on error.
+// applySchema validates the event name against schema rules when strict mode is enabled.
+// Returns an error if the message fails validation and strict mode is active.
 func (h *_telemetryHandler) applySchema(r slog.Record) error {
-	if len(h.cfg.EventSchema.RequiredKeys) > 0 {
-		attrs := _attrsToMap(r)
-		if err := ValidateRequiredKeys(attrs, h.cfg.EventSchema.RequiredKeys); err != nil {
-			return err
-		}
-	}
-	if !_readStrictSchema() {
+	if !_strictSchema {
 		return nil
 	}
-	if err := ValidateEventName(r.Message); err != nil {
-		return err
-	}
-	return nil
+	return ValidateEventName(r.Message)
 }
 
 // applyPII sanitizes all record attributes through the PII engine.
@@ -225,25 +185,18 @@ func _effectiveLevel(name string, cfg *TelemetryConfig) slog.Level {
 	if cfg == nil {
 		return slog.LevelInfo
 	}
-	globalLevel := _parseLevel(cfg.Logging.Level)
-
-	type _match struct {
-		moduleLen int
-		level     slog.Level
-	}
-	var matches []_match
+	bestLen := -1
+	bestLevel := _parseLevel(cfg.Logging.Level)
 	for module, levelStr := range cfg.Logging.ModuleLevels {
-		if _isPrefixMatch(name, module) {
-			matches = append(matches, _match{len(module), _parseLevel(levelStr)})
+		if !_isPrefixMatch(name, module) {
+			continue
+		}
+		if len(module) > bestLen {
+			bestLen = len(module)
+			bestLevel = _parseLevel(levelStr)
 		}
 	}
-	if len(matches) == 0 {
-		return globalLevel
-	}
-	best := slices.MaxFunc(matches, func(a, b _match) int {
-		return cmp.Compare(a.moduleLen, b.moduleLen)
-	})
-	return best.level
+	return bestLevel
 }
 
 // _isPrefixMatch returns true if name equals module or starts with module + ".".
@@ -274,6 +227,34 @@ func _parseLevel(s string) slog.Level {
 	}
 }
 
+// _traceIDKey and _spanIDKey are context keys for trace/span injection.
+// Used by tests and will be superseded by the full tracing module in Task 10.
+var (
+	_traceIDKey = contextKey{"trace.id"}
+	_spanIDKey  = contextKey{"span.id"}
+)
+
+// _getTraceSpanFromContext extracts trace/span IDs from context.
+// Checks context keys set by _injectTraceContext (for testing) first.
+// Will be superseded by the full tracing module in Task 10.
+func _getTraceSpanFromContext(ctx context.Context) (traceID, spanID string) {
+	if v, ok := ctx.Value(_traceIDKey).(string); ok {
+		traceID = v
+	}
+	if v, ok := ctx.Value(_spanIDKey).(string); ok {
+		spanID = v
+	}
+	return traceID, spanID
+}
+
+// _injectTraceContext returns a context with trace/span IDs embedded.
+// Intended for testing; production use will come from Task 10.
+func _injectTraceContext(ctx context.Context, traceID, spanID string) context.Context {
+	ctx = context.WithValue(ctx, _traceIDKey, traceID)
+	ctx = context.WithValue(ctx, _spanIDKey, spanID)
+	return ctx
+}
+
 // _newTelemetryHandler wraps base with a _telemetryHandler for the given config and name.
 func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) slog.Handler {
 	return &_telemetryHandler{
@@ -283,89 +264,39 @@ func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) 
 	}
 }
 
-// _baseLogHandler builds the base slog.Handler (JSON or text) for the given config.
-func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
-	opts := &slog.HandlerOptions{
-		Level: LevelTrace,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if !cfg.Logging.IncludeTimestamp && a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
-			if a.Key == slog.MessageKey {
-				a.Key = "message"
-			}
-			return a
-		},
-	}
-	if cfg.Logging.Format == LogFormatJSON {
-		return slog.NewJSONHandler(os.Stderr, opts)
-	}
-	return slog.NewTextHandler(os.Stderr, opts)
-}
-
-// _attachTraceContext adds trace.id / span.id from ctx to logger when present.
-func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger {
-	traceID, spanID := _getTraceSpanFromContext(ctx)
-	if traceID == "" && spanID == "" {
-		return logger
-	}
-	var attrs []any
-	if traceID != "" {
-		attrs = append(attrs, slog.String("trace.id", traceID))
-	}
-	if spanID != "" {
-		attrs = append(attrs, slog.String("span.id", spanID))
-	}
-	return logger.With(attrs...)
-}
-
 // _configureLogger builds the Logger package var from cfg and sets it as slog's default.
 func _configureLogger(cfg *TelemetryConfig) {
-	Logger = slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, ""))
+	opts := &slog.HandlerOptions{Level: LevelTrace}
+	var base slog.Handler
+	if cfg.Logging.Format == LogFormatJSON {
+		base = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		base = slog.NewTextHandler(os.Stderr, opts)
+	}
+	h := _newTelemetryHandler(base, cfg, "")
+	Logger = slog.New(h)
 	slog.SetDefault(Logger)
 }
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
 // name is used for per-module level overrides (longest-prefix match).
-// If ctx carries an active trace context (OTel span or manual SetTraceContext), the
-// returned logger pre-attaches trace.id and span.id so they appear on every log line
-// even when callers use the context-free Logger.Info(...) form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	cfg, err := ConfigFromEnv()
-	if err != nil {
-		cfg = DefaultTelemetryConfig()
-	}
+	_ = ctx
+	cfg := DefaultTelemetryConfig()
 	if Logger != nil {
-		if liveCfg, ok := _telemetryConfigFromHandler(Logger.Handler()); ok {
-			cfg = liveCfg
+		if h, ok := Logger.Handler().(*_telemetryHandler); ok {
+			cfg = h.cfg
 		}
 	}
-	_setupMu.Lock()
-	loggerProvider := _otelLoggerProvider
-	_setupMu.Unlock()
-	handler := _newTelemetryHandler(_baseLogHandler(cfg), cfg, name)
-	if loggerProvider != nil {
-		bridgeName := cmp.Or(name, cfg.ServiceName)
-		handler = newMultiHandler(
-			handler,
-			otelslog.NewHandler(bridgeName, otelslog.WithLoggerProvider(loggerProvider)),
-		)
+	opts := &slog.HandlerOptions{Level: LevelTrace}
+	var base slog.Handler
+	if cfg.Logging.Format == LogFormatJSON {
+		base = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		base = slog.NewTextHandler(os.Stderr, opts)
 	}
-	return _attachTraceContext(slog.New(handler), ctx)
-}
-
-func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) {
-	switch h := handler.(type) {
-	case *_telemetryHandler:
-		return h.cfg, true
-	case *multiHandler:
-		for _, child := range h.handlers {
-			if cfg, ok := _telemetryConfigFromHandler(child); ok {
-				return cfg, true
-			}
-		}
-	}
-	return nil, false
+	h := _newTelemetryHandler(base, cfg, name)
+	return slog.New(h)
 }
 
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
@@ -382,28 +313,4 @@ func IsTraceEnabled() bool {
 		return false
 	}
 	return Logger.Enabled(context.Background(), LevelTrace)
-}
-
-// applyErrorFingerprint adds error_fingerprint when error attributes are present.
-func (h *_telemetryHandler) applyErrorFingerprint(r slog.Record) slog.Record {
-	var excName string
-	r.Attrs(func(a slog.Attr) bool {
-		switch a.Key {
-		case "exc_info", "exc_name", "exception":
-			excName = fmt.Sprint(a.Value.Any())
-			return false
-		}
-		return true
-	})
-	if excName == "" {
-		return r
-	}
-	fp := ComputeErrorFingerprintFromParts(excName, nil)
-	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
-	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
-		return true
-	})
-	nr.AddAttrs(slog.String("error_fingerprint", fp))
-	return nr
 }
