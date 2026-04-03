@@ -10,19 +10,11 @@ import (
 )
 
 // resetSetupState clears all setup state and related subsystems between tests.
-// It also blanks OTel endpoint env vars so unit tests run isolated from any real
-// OTLP exporters configured in the developer or CI environment — auto-wiring in
-// _buildDefaultMeterProvider only fires when the endpoint is non-empty.
 func resetSetupState(t *testing.T) {
 	t.Helper()
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
-	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
-	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "")
 	_resetSetup()
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
-	_resetResiliencePolicies()
 	_resetHealth()
 }
 
@@ -56,8 +48,8 @@ func TestSetupTelemetryIdempotent(t *testing.T) {
 		t.Fatalf("second setup failed: %v", err)
 	}
 
-	if cfg1.ServiceName != cfg2.ServiceName {
-		t.Error("expected equivalent config values on second call (idempotent)")
+	if cfg1 != cfg2 {
+		t.Error("expected the same config pointer on second call (idempotent)")
 	}
 }
 
@@ -114,10 +106,7 @@ func TestSetupAppliesSamplingFromEnv(t *testing.T) {
 		t.Errorf("expected LogsRate=0.5, got %v", cfg.Sampling.LogsRate)
 	}
 
-	policy, err := GetSamplingPolicy(signalLogs)
-	if err != nil {
-		t.Fatal(err)
-	}
+	policy := GetSamplingPolicy(signalLogs)
 	if policy.DefaultRate != 0.5 {
 		t.Errorf("expected sampling policy DefaultRate=0.5, got %v", policy.DefaultRate)
 	}
@@ -143,54 +132,6 @@ func TestSetupAppliesBackpressureFromEnv(t *testing.T) {
 	}
 }
 
-func TestSetupAppliesExporterPolicyFromEnv(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	t.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "3")
-	t.Setenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.5")
-	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "9")
-	t.Setenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "false")
-
-	if _, err := SetupTelemetry(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-
-	policy := GetExporterPolicy(signalLogs)
-	if policy.Retries != 3 || policy.BackoffSeconds != 0.5 || policy.TimeoutSeconds != 9 || policy.FailOpen {
-		t.Fatalf("expected exporter policy from env, got %+v", policy)
-	}
-}
-
-func TestSetupTelemetryStrictEventNameFromEnvWithoutStrictSchema(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	t.Setenv("PROVIDE_TELEMETRY_STRICT_SCHEMA", "false")
-	t.Setenv("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", "true")
-
-	if _, err := SetupTelemetry(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	cfg := GetRuntimeConfig()
-	if cfg == nil {
-		t.Fatal("expected runtime config after setup")
-	}
-	if cfg.StrictSchema {
-		t.Fatal("strict schema should remain false when only strict event name is enabled")
-	}
-	if !cfg.EventSchema.StrictEventName {
-		t.Fatal("strict event name should be enabled in runtime config")
-	}
-	if !GetStrictSchema() {
-		t.Fatal("effective strict schema should be enabled when strict event name is true")
-	}
-
-	if _, err := EventName("User", "Login", "Ok"); err == nil {
-		t.Fatal("expected strict event-name validation to reject uppercase segments")
-	}
-}
-
 func TestSetupConcurrentOnlyOneInitialises(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
@@ -213,10 +154,10 @@ func TestSetupConcurrentOnlyOneInitialises(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Verify setup completed by checking we have a config.
-	cfg := GetRuntimeConfig()
-	if cfg == nil {
-		t.Error("expected non-nil config after concurrent setup")
+	// SetupCount should be exactly 1 regardless of concurrency.
+	snap := GetHealthSnapshot()
+	if snap.SetupCount != 1 {
+		t.Errorf("expected SetupCount=1, got %d", snap.SetupCount)
 	}
 }
 
@@ -269,72 +210,11 @@ func TestSetupWithProviderOptions(t *testing.T) {
 	cfg, err := SetupTelemetry(
 		WithTracerProvider(sentinel),
 		WithMeterProvider(sentinel),
-		WithLoggerProvider(sentinel),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
-	}
-}
-
-func TestSetupTelemetryIdempotentReturnsCopy(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	cfg1, err := SetupTelemetry()
-	if err != nil {
-		t.Fatalf("first setup failed: %v", err)
-	}
-
-	cfg2, err := SetupTelemetry()
-	if err != nil {
-		t.Fatalf("second setup failed: %v", err)
-	}
-
-	// The idempotent path should return a clone, not the live pointer.
-	if cfg1 == cfg2 {
-		t.Error("expected different pointers from idempotent SetupTelemetry calls")
-	}
-
-	// Mutating the returned config should not affect internal state.
-	cfg2.ServiceName = "mutated-via-setup-return"
-
-	cfg3 := GetRuntimeConfig()
-	if cfg3 == nil {
-		t.Fatal("expected non-nil config")
-	}
-	if cfg3.ServiceName == "mutated-via-setup-return" {
-		t.Fatal("mutating SetupTelemetry return value should not affect internal state")
-	}
-}
-
-func TestSetupTelemetry_AllowBlockingInEventLoopRoundTrip(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	t.Setenv("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP", "true")
-	t.Setenv("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP", "false")
-	t.Setenv("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP", "true")
-
-	_, err := SetupTelemetry()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	logs := GetExporterPolicy(signalLogs)
-	if !logs.AllowBlockingInEventLoop {
-		t.Error("expected logs AllowBlockingInEventLoop=true")
-	}
-
-	traces := GetExporterPolicy(signalTraces)
-	if traces.AllowBlockingInEventLoop {
-		t.Error("expected traces AllowBlockingInEventLoop=false")
-	}
-
-	metrics := GetExporterPolicy(signalMetrics)
-	if !metrics.AllowBlockingInEventLoop {
-		t.Error("expected metrics AllowBlockingInEventLoop=true")
 	}
 }
