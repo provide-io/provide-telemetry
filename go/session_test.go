@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const _testBob = "bob"
+
 func TestBindSessionContext(t *testing.T) {
 	ctx := context.Background()
 	ctx = BindSessionContext(ctx, "sess-abc-123")
@@ -46,7 +48,7 @@ func TestGetSessionID_WrongType(t *testing.T) {
 
 func TestSessionContext_DoesNotAffectFields(t *testing.T) {
 	ctx := context.Background()
-	ctx = BindContext(ctx, map[string]any{"user": "bob"})
+	ctx = BindContext(ctx, map[string]any{"user": _testBob})
 	ctx = BindSessionContext(ctx, "sess-999")
 
 	// Session must be set.
@@ -56,7 +58,7 @@ func TestSessionContext_DoesNotAffectFields(t *testing.T) {
 
 	// Bound fields must be unaffected.
 	fields := GetBoundFields(ctx)
-	if fields["user"] != "bob" {
+	if fields["user"] != _testBob {
 		t.Errorf("expected user=bob, got %v", fields["user"])
 	}
 	if _, ok := fields["session"]; ok {
@@ -66,7 +68,7 @@ func TestSessionContext_DoesNotAffectFields(t *testing.T) {
 	// Clearing session must not affect fields.
 	ctx = ClearSessionContext(ctx)
 	fields = GetBoundFields(ctx)
-	if fields["user"] != "bob" {
+	if fields["user"] != _testBob {
 		t.Errorf("fields changed after ClearSessionContext: expected user=bob, got %v", fields["user"])
 	}
 }
