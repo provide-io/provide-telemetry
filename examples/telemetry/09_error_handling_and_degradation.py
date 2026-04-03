@@ -25,7 +25,7 @@ from provide.telemetry import (
     EventSchemaError,
     TelemetryError,
     counter,
-    event_name,
+    event,
     get_health_snapshot,
     get_logger,
     reconfigure_telemetry,
@@ -68,13 +68,13 @@ def main() -> None:
     # EventSchemaError — bad event names (requires strict mode)
     print("\n  2️⃣  EventSchemaError (invalid event name):")
     try:
-        event_name("only_one_segment")
+        event("only_one")
     except EventSchemaError as exc:
         print(f"     Caught EventSchemaError: {exc}")
         print(f"     Is TelemetryError? {isinstance(exc, TelemetryError)}")
 
     try:
-        event_name("BAD", "UPPER", "case")
+        event("BAD", "UPPER", "case")
     except EventSchemaError as exc:
         print(f"     Caught EventSchemaError: {exc}")
 
@@ -83,19 +83,17 @@ def main() -> None:
     errors_caught = 0
     for bad_input in [("x",), ("A", "B", "C"), ("a", "b", "c", "d", "e", "f")]:
         try:
-            event_name(*bad_input)
+            event(*bad_input)
         except TelemetryError:
             errors_caught += 1
     print(f"     Caught {errors_caught} errors with single 'except TelemetryError'")
 
     # Valid names still work
     print("\n  4️⃣  Valid event names:")
-    name3 = event_name("auth", "login", "success")
-    name4 = event_name("payment", "subscription", "renewal", "success")
-    name5 = event_name("game", "match", "round", "score", "submitted")
-    print(f"     3-seg: {name3}")
-    print(f"     4-seg: {name4}")
-    print(f"     5-seg: {name5}")
+    name3 = event("auth", "login", "success")
+    name4 = event("payment", "subscription", "renewal", "success")
+    print(f"     3-seg (DAS):  {name3}")
+    print(f"     4-seg (DARS): {name4}")
 
     # ── 🔇 Graceful degradation ─────────────────────────────
     print("\n🔇 Graceful Degradation Demo\n")

@@ -21,7 +21,7 @@ import {
   EventSchemaError,
   TelemetryError,
   counter,
-  eventName,
+  event,
   getHealthSnapshot,
   getLogger,
   setSamplingPolicy,
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   // EventSchemaError — bad event names
   console.log('\n  2️⃣  EventSchemaError (invalid event name):');
   try {
-    eventName('only_one_segment');
+    event('only_one');
   } catch (err) {
     if (err instanceof EventSchemaError) {
       console.log(`     Caught EventSchemaError: ${err.message}`);
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    eventName('BAD', 'UPPER', 'case');
+    event('BAD', 'UPPER', 'case');
   } catch (err) {
     if (err instanceof EventSchemaError) {
       console.log(`     Caught EventSchemaError: ${err.message}`);
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
   ];
   for (const segs of badInputs) {
     try {
-      eventName(...segs);
+      event(...segs);
     } catch (err) {
       if (err instanceof TelemetryError) errorsCaught++;
     }
@@ -92,12 +92,10 @@ async function main(): Promise<void> {
 
   // Valid names still work
   console.log('\n  4️⃣  Valid event names:');
-  const name3 = eventName('auth', 'login', 'success');
-  const name4 = eventName('payment', 'subscription', 'renewal', 'success');
-  const name5 = eventName('game', 'match', 'round', 'score', 'submitted');
-  console.log(`     3-seg: ${name3}`);
-  console.log(`     4-seg: ${name4}`);
-  console.log(`     5-seg: ${name5}`);
+  const name3 = event('auth', 'login', 'success');
+  const name4 = event('payment', 'subscription', 'renewal', 'success');
+  console.log(`     3-seg (DAS):  ${name3.event}`);
+  console.log(`     4-seg (DARS): ${name4.event}`);
 
   // ── 🔇 Graceful degradation ─────────────────────────────
   console.log('\n🔇 Graceful Degradation Demo\n');
