@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+const (
+	testDefaultEndpoint = "http://generic:4317"
+	testLogLevel        = "INFO"
+	testDebugLevel      = "DEBUG"
+)
+
 // ---- DefaultTelemetryConfig ----
 
 func TestDefaultTelemetryConfig_TopLevel(t *testing.T) {
@@ -29,8 +35,8 @@ func TestDefaultTelemetryConfig_TopLevel(t *testing.T) {
 func TestDefaultTelemetryConfig_Logging(t *testing.T) {
 	cfg := DefaultTelemetryConfig()
 	l := cfg.Logging
-	if l.Level != "INFO" {
-		t.Errorf("Level: got %q, want %q", l.Level, "INFO")
+	if l.Level != testLogLevel {
+		t.Errorf("Level: got %q, want %q", l.Level, testLogLevel)
 	}
 	if l.Format != "console" {
 		t.Errorf("Format: got %q, want %q", l.Format, "console")
@@ -218,8 +224,8 @@ func TestConfigFromEnv_LoggingGroup(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	l := cfg.Logging
-	if l.Level != "DEBUG" {
-		t.Errorf("Level: got %q, want DEBUG", l.Level)
+	if l.Level != testDebugLevel {
+		t.Errorf("Level: got %q, want %q", l.Level, testDebugLevel)
 	}
 	if l.Format != "json" {
 		t.Errorf("Format: got %q, want json", l.Format)
@@ -245,7 +251,7 @@ func TestConfigFromEnv_LoggingGroup(t *testing.T) {
 	if len(l.PrettyFields) != 2 || l.PrettyFields[0] != "field1" || l.PrettyFields[1] != "field2" {
 		t.Errorf("PrettyFields: got %v", l.PrettyFields)
 	}
-	if l.ModuleLevels["myapp"] != "DEBUG" {
+	if l.ModuleLevels["myapp"] != testDebugLevel {
 		t.Errorf("ModuleLevels[myapp]: got %q", l.ModuleLevels["myapp"])
 	}
 	if l.ModuleLevels["asyncio"] != "WARNING" {
@@ -530,7 +536,7 @@ func TestParseModuleLevels_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got["myapp"] != "DEBUG" {
+	if got["myapp"] != testDebugLevel {
 		t.Errorf("myapp: got %q", got["myapp"])
 	}
 	if got["asyncio"] != "WARNING" {
@@ -556,7 +562,7 @@ func TestParseModuleLevels_MalformedPair_Skipped(t *testing.T) {
 	if _, ok := got["no-equals"]; ok {
 		t.Error("malformed pair should be skipped")
 	}
-	if got["pkg"] != "DEBUG" {
+	if got["pkg"] != testDebugLevel {
 		t.Errorf("valid pair: got %q", got["pkg"])
 	}
 }
@@ -599,24 +605,24 @@ func TestParseModuleLevels_InvalidLevel_Error(t *testing.T) {
 // ---- OTLP endpoint fallback ----
 
 func TestConfigFromEnv_OTLPEndpointFallback(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://generic:4317")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", testDefaultEndpoint)
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Logging.OTLPEndpoint != "http://generic:4317" {
+	if cfg.Logging.OTLPEndpoint != testDefaultEndpoint {
 		t.Errorf("Logging.OTLPEndpoint: got %q", cfg.Logging.OTLPEndpoint)
 	}
-	if cfg.Tracing.OTLPEndpoint != "http://generic:4317" {
+	if cfg.Tracing.OTLPEndpoint != testDefaultEndpoint {
 		t.Errorf("Tracing.OTLPEndpoint: got %q", cfg.Tracing.OTLPEndpoint)
 	}
-	if cfg.Metrics.OTLPEndpoint != "http://generic:4317" {
+	if cfg.Metrics.OTLPEndpoint != testDefaultEndpoint {
 		t.Errorf("Metrics.OTLPEndpoint: got %q", cfg.Metrics.OTLPEndpoint)
 	}
 }
 
 func TestConfigFromEnv_OTLPEndpointSignalSpecificTakesPriority(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://generic:4317")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", testDefaultEndpoint)
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://traces:4318")
 	cfg, err := ConfigFromEnv()
 	if err != nil {
@@ -626,7 +632,7 @@ func TestConfigFromEnv_OTLPEndpointSignalSpecificTakesPriority(t *testing.T) {
 		t.Errorf("Tracing.OTLPEndpoint: got %q, want http://traces:4318", cfg.Tracing.OTLPEndpoint)
 	}
 	// Other signals still fall back to generic
-	if cfg.Logging.OTLPEndpoint != "http://generic:4317" {
+	if cfg.Logging.OTLPEndpoint != testDefaultEndpoint {
 		t.Errorf("Logging.OTLPEndpoint: got %q", cfg.Logging.OTLPEndpoint)
 	}
 }
@@ -871,6 +877,104 @@ func TestSplitTrimmed_EmptyElements_Skipped(t *testing.T) {
 	got := splitTrimmed(",a,,b,", ",")
 	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Errorf("got %v", got)
+	}
+}
+
+// ---- Range validation (Fix 2) ----
+
+func TestValidateRate_BelowZero(t *testing.T) {
+	t.Setenv("PROVIDE_TRACE_SAMPLE_RATE", "-0.1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateRate_AboveOne(t *testing.T) {
+	t.Setenv("PROVIDE_TRACE_SAMPLE_RATE", "1.1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateRate_SamplingLogsBelow(t *testing.T) {
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "-0.5")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateRate_SamplingTracesAbove(t *testing.T) {
+	t.Setenv("PROVIDE_SAMPLING_TRACES_RATE", "2.0")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateRate_SamplingMetricsBelow(t *testing.T) {
+	t.Setenv("PROVIDE_SAMPLING_METRICS_RATE", "-1.0")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_BackpressureLogs(t *testing.T) {
+	t.Setenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_BackpressureTraces(t *testing.T) {
+	t.Setenv("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE", "-5")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_BackpressureMetrics(t *testing.T) {
+	t.Setenv("PROVIDE_BACKPRESSURE_METRICS_MAXSIZE", "-10")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_SecurityAttrValueLength(t *testing.T) {
+	t.Setenv("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_SecurityAttrCount(t *testing.T) {
+	t.Setenv("PROVIDE_SECURITY_MAX_ATTR_COUNT", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_SecurityNestingDepth(t *testing.T) {
+	t.Setenv("PROVIDE_SECURITY_MAX_NESTING_DEPTH", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateRate_ZeroAndOneAreValid(t *testing.T) {
+	t.Setenv("PROVIDE_TRACE_SAMPLE_RATE", "0.0")
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "1.0")
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("0.0 and 1.0 should be valid rates, got error: %v", err)
+	}
+	if cfg.Tracing.SampleRate != 0.0 {
+		t.Errorf("SampleRate: got %f, want 0.0", cfg.Tracing.SampleRate)
+	}
+	if cfg.Sampling.LogsRate != 1.0 {
+		t.Errorf("LogsRate: got %f, want 1.0", cfg.Sampling.LogsRate)
+	}
+}
+
+func TestValidateNonNegative_ZeroIsValid(t *testing.T) {
+	t.Setenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE", "0")
+	t.Setenv("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH", "0")
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("0 should be a valid non-negative value, got error: %v", err)
+	}
+	if cfg.Backpressure.LogsMaxSize != 0 {
+		t.Errorf("LogsMaxSize: got %d, want 0", cfg.Backpressure.LogsMaxSize)
+	}
+	if cfg.Security.MaxAttrValueLength != 0 {
+		t.Errorf("MaxAttrValueLength: got %d, want 0", cfg.Security.MaxAttrValueLength)
 	}
 }
 
