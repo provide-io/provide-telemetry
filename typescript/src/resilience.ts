@@ -7,11 +7,10 @@
  */
 
 import {
-  _exportFailuresField,
   _incrementHealth,
   _recordExportLatency,
   _registerCircuitStateFn,
-  _retriesField,
+  _setLastExportError,
 } from './health';
 
 export class TelemetryTimeoutError extends Error {
@@ -35,8 +34,8 @@ const DEFAULT_POLICY: ExporterPolicy = {
   failOpen: true,
 };
 
-export const CIRCUIT_BREAKER_THRESHOLD = 3;
-export const CIRCUIT_BASE_COOLDOWN_MS = 30_000;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BASE_COOLDOWN_MS = 30_000;
 const CIRCUIT_MAX_COOLDOWN_MS = 1_024_000;
 
 // Stryker disable next-line ObjectLiteral
@@ -49,41 +48,8 @@ const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metri
 const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
 const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
-/* Stryker disable BooleanLiteral: initial false values are reset by _resetResilienceForTests before each test — equivalent mutant */
 // Stryker disable next-line ObjectLiteral
-const _halfOpenProbing: Record<string, boolean> = {
-  logs: false,
-  traces: false,
-  metrics: false,
-};
-/* Stryker restore BooleanLiteral */
-
-/** Test-only getters for circuit breaker state inspection. */
-export function _getConsecutiveTimeoutsForTests(signal: string): number {
-  return _consecutiveTimeouts[signal] ?? 0;
-}
-export function _getCircuitTrippedAtForTests(signal: string): number {
-  return _circuitTrippedAt[signal] ?? 0;
-}
-export function _getOpenCountForTests(signal: string): number {
-  return _openCount[signal] ?? 0;
-}
-export function _getHalfOpenProbingForTests(signal: string): boolean {
-  return _halfOpenProbing[signal] ?? false;
-}
-/** Test-only setters for priming circuit breaker state in tests. */
-export function _setConsecutiveTimeoutsForTests(signal: string, value: number): void {
-  _consecutiveTimeouts[signal] = value;
-}
-export function _setCircuitTrippedAtForTests(signal: string, value: number): void {
-  _circuitTrippedAt[signal] = value;
-}
-export function _setOpenCountForTests(signal: string, value: number): void {
-  _openCount[signal] = value;
-}
-export function _setHalfOpenProbingForTests(signal: string, value: boolean): void {
-  _halfOpenProbing[signal] = value;
-}
+const _halfOpenProbing: Record<string, boolean> = { logs: false, traces: false, metrics: false };
 
 export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
   _policies[signal] = { ...DEFAULT_POLICY, ...policy };
@@ -127,9 +93,7 @@ export async function runWithResilience<T>(
   const attempts = Math.max(1, policy.retries + 1);
 
   // Ensure per-signal dicts are initialized for custom signals.
-  // Stryker disable next-line ConditionalExpression: custom signal init — skipping leaves _openCount[signal] as undefined; 2**undefined=NaN makes cooldown NaN which fails < comparison identically
   if (!(signal in _openCount)) _openCount[signal] = 0;
-  // Stryker disable next-line ConditionalExpression,BooleanLiteral: custom signal init — skipping is equivalent since undefined is falsy like false; true init only matters inside circuit-breaker block which requires consecutiveTimeouts >= 3
   if (!(signal in _halfOpenProbing)) _halfOpenProbing[signal] = false;
 
   // Circuit breaker check.
@@ -140,20 +104,15 @@ export async function runWithResilience<T>(
   // explicitly opts out of timeout-driven failure accounting, so the breaker
   // has no signal to act on and must not reject callers.
   // Stryker disable next-line ConditionalExpression
-  if (policy.timeoutMs > 0 && _consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
-    // Reject concurrent callers while a half-open probe is already in flight.
-    if (_halfOpenProbing[signal]) {
-      _incrementHealth(failField);
-      if (policy.failOpen) return null;
-      throw new TelemetryTimeoutError('circuit breaker open: probe in progress');
-    }
+  if (_consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
     const cooldown = Math.min(
       CIRCUIT_BASE_COOLDOWN_MS * 2 ** _openCount[signal],
       CIRCUIT_MAX_COOLDOWN_MS,
     );
     const elapsed = Date.now() - _circuitTrippedAt[signal];
     if (elapsed < cooldown) {
-      _incrementHealth(failField);
+      _incrementHealth('exportFailures');
+      _setLastExportError('circuit breaker open');
       if (policy.failOpen) return null;
       throw new TelemetryTimeoutError('circuit breaker open: too many consecutive timeouts');
     }
@@ -167,12 +126,12 @@ export async function runWithResilience<T>(
     const started = Date.now();
     try {
       const result = await _withTimeout(fn, policy.timeoutMs);
-      _recordExportLatency(signal, Date.now() - started);
+      _recordExportLatency(Date.now() - started);
+      _setLastExportError(null);
       if (_halfOpenProbing[signal]) {
         _halfOpenProbing[signal] = false;
         _consecutiveTimeouts[signal] = 0;
         _openCount[signal] = Math.max(0, _openCount[signal] - 1);
-        // Stryker disable next-line BlockStatement: else-block body on non-probe success — removing is equivalent since timeouts are already 0 on fresh closed circuit
       } else {
         _consecutiveTimeouts[signal] = 0;
       }
@@ -231,7 +190,6 @@ export function getCircuitState(signal: string): CircuitState {
   if ((_consecutiveTimeouts[signal] ?? 0) >= CIRCUIT_BREAKER_THRESHOLD) {
     const cooldown = Math.min(CIRCUIT_BASE_COOLDOWN_MS * 2 ** openCount, CIRCUIT_MAX_COOLDOWN_MS);
     const remaining = cooldown - (Date.now() - _circuitTrippedAt[signal]);
-    // Stryker disable next-line EqualityOperator: > 0 vs >= 0 — exact millisecond boundary P≈0
     if (remaining > 0) {
       return { state: 'open', openCount, cooldownRemainingMs: remaining };
     }

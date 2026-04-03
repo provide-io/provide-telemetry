@@ -120,9 +120,10 @@ export {
   setExporterPolicy,
   getExporterPolicy,
   runWithResilience,
+  getCircuitState,
   TelemetryTimeoutError,
 } from './resilience';
-export type { ExporterPolicy } from './resilience';
+export type { ExporterPolicy, CircuitState } from './resilience';
 
 // Schema
 export {
