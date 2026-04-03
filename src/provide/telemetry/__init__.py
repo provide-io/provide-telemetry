@@ -58,9 +58,9 @@ if TYPE_CHECKING:
 _LAZY_REGISTRY: dict[str, tuple[str, str]] = {}
 
 
-def _register(module: str, *names: str) -> None:
+def _register(module: str, *names: str) -> None:  # pragma: no mutate
     for name in names:
-        _LAZY_REGISTRY[name] = (module, name)
+        _LAZY_REGISTRY[name] = (module, name)  # pragma: no mutate
 
 
 _register("provide.telemetry.asgi", "TelemetryMiddleware", "bind_websocket_context", "clear_websocket_context")
