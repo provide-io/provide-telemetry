@@ -53,7 +53,9 @@ func ReloadRuntimeFromEnv() error {
 // ReconfigureTelemetry performs a full shutdown followed by a fresh setup using current
 // environment variables. It is equivalent to calling ShutdownTelemetry then SetupTelemetry.
 func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryConfig, error) {
-	// ShutdownTelemetry always returns nil in the current implementation; ignore the error.
+	// TODO(Task-14): propagate this error once ShutdownTelemetry can fail
+	// (OTel TracerProvider/MeterProvider.Shutdown returns errors on context
+	// deadline or exporter flush failure).
 	_ = ShutdownTelemetry(ctx)
 	return SetupTelemetry(opts...)
 }
