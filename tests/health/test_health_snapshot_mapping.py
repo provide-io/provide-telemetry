@@ -22,12 +22,15 @@ from provide.telemetry.health import (
     record_export_success,
     reset_health_for_tests,
     set_queue_depth,
+    set_setup_error,
 )
+from provide.telemetry.resilience import reset_resilience_for_tests
 
 
 @pytest.fixture(autouse=True)
 def _reset_health() -> None:
     """Reset all health counters before each test."""
+    reset_resilience_for_tests()
     reset_health_for_tests()
 
 
@@ -262,3 +265,41 @@ class TestResetHealthForTests:
 
         # Exemplar counter is exactly 0
         assert snap.exemplar_unsupported_total == 0
+
+    def test_reset_clears_setup_error(self) -> None:
+        set_setup_error("broken")
+        reset_health_for_tests()
+        snap = get_health_snapshot()
+        assert snap.setup_error is None
+
+
+# ── Circuit state fields in snapshot ─────────────────────────────
+
+
+class TestHealthSnapshotCircuitState:
+    def test_circuit_state_defaults_to_closed(self) -> None:
+        snap = get_health_snapshot()
+        assert snap.circuit_state_logs == "closed"
+        assert snap.circuit_state_traces == "closed"
+        assert snap.circuit_state_metrics == "closed"
+        assert snap.circuit_open_count_logs == 0
+        assert snap.circuit_open_count_traces == 0
+        assert snap.circuit_open_count_metrics == 0
+        assert snap.circuit_cooldown_remaining_logs == 0.0
+        assert snap.circuit_cooldown_remaining_traces == 0.0
+        assert snap.circuit_cooldown_remaining_metrics == 0.0
+
+    def test_setup_error_none_by_default(self) -> None:
+        snap = get_health_snapshot()
+        assert snap.setup_error is None
+
+    def test_setup_error_reflected_in_snapshot(self) -> None:
+        set_setup_error("provider init failed")
+        snap = get_health_snapshot()
+        assert snap.setup_error == "provider init failed"
+
+    def test_setup_error_can_be_cleared(self) -> None:
+        set_setup_error("err")
+        set_setup_error(None)
+        snap = get_health_snapshot()
+        assert snap.setup_error is None
