@@ -162,6 +162,36 @@ describe('validateEventName — strict mode error message content (kills StringL
   });
 });
 
+describe('eventName — join separator is dot (kills .join mutation at line 29)', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
+  it('segments are joined with dots, not other separators', () => {
+    const name = eventName('app', 'user', 'login');
+    expect(name).toBe('app.user.login');
+    // Verify dot is the separator specifically
+    expect(name).toContain('.');
+    expect(name.split('.').length).toBe(3);
+    expect(name.split('.')[0]).toBe('app');
+    expect(name.split('.')[1]).toBe('user');
+    expect(name.split('.')[2]).toBe('login');
+  });
+
+  it('result contains dots between every pair of segments', () => {
+    const name = eventName('a', 'b', 'c', 'd', 'e');
+    // Verify every adjacent pair is separated by exactly '.'
+    expect(name).toBe('a.b.c.d.e');
+    expect(name.indexOf('.')).toBe(1);
+    expect(name.charAt(1)).toBe('.');
+    expect(name.charAt(3)).toBe('.');
+  });
+});
+
 describe('eventName — strict schema config integration', () => {
   afterEach(() => {
     _resetConfig();

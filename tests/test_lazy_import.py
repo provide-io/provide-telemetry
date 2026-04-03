@@ -83,21 +83,36 @@ def test_bare_import_loads_core_modules() -> None:
 
 
 def test_lazy_access_loads_module() -> None:
-    from provide.telemetry import register_pii_rule  # noqa: F401
+    from provide.telemetry import register_pii_rule
 
     assert "provide.telemetry.pii" in sys.modules
+    assert callable(register_pii_rule)
 
 
 def test_lazy_access_slo() -> None:
-    from provide.telemetry import record_red_metrics  # noqa: F401
+    from provide.telemetry import record_red_metrics
 
     assert "provide.telemetry.slo" in sys.modules
+    assert callable(record_red_metrics)
 
 
 def test_lazy_access_health() -> None:
-    from provide.telemetry import get_health_snapshot  # noqa: F401
+    from provide.telemetry import get_health_snapshot
 
     assert "provide.telemetry.health" in sys.modules
+    assert callable(get_health_snapshot)
+
+
+def test_lazy_registry_maps_to_correct_modules() -> None:
+    """Verify _LAZY_REGISTRY entries resolve to the correct module/attr pairs."""
+    from provide.telemetry import _LAZY_REGISTRY
+
+    # Spot-check several entries across different modules.
+    assert _LAZY_REGISTRY["counter"] == ("provide.telemetry.metrics", "counter")
+    assert _LAZY_REGISTRY["register_pii_rule"] == ("provide.telemetry.pii", "register_pii_rule")
+    assert _LAZY_REGISTRY["get_health_snapshot"] == ("provide.telemetry.health", "get_health_snapshot")
+    assert _LAZY_REGISTRY["TelemetryMiddleware"] == ("provide.telemetry.asgi", "TelemetryMiddleware")
+    assert _LAZY_REGISTRY["should_sample"] == ("provide.telemetry.sampling", "should_sample")
 
 
 def test_lazy_access_nonexistent_raises_attribute_error() -> None:

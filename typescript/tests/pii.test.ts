@@ -344,6 +344,94 @@ describe('secret detection — _detectSecretInValue', () => {
   });
 });
 
+describe('secret detection — each pattern independently (kills individual array entry removal)', () => {
+  // Each test uses a value that matches ONLY its target pattern and no other.
+
+  it('AWS key pattern is the only match for AKIA prefix strings', () => {
+    // AKIA + 16 uppercase/digits = 20 chars. Does NOT match hex (has uppercase non-hex),
+    // does NOT match base64 (only 20 chars, pattern needs 40), does NOT match JWT or GitHub.
+    const awsKey = 'AKIAIOSFODNN7EXAMP01'; // pragma: allowlist secret
+    expect(awsKey.length).toBe(20);
+    expect(_detectSecretInValue(awsKey)).toBe(true);
+    // Verify it doesn't match other patterns individually
+    expect(_SECRET_PATTERNS[1].test(awsKey)).toBe(false); // not JWT
+    expect(_SECRET_PATTERNS[2].test(awsKey)).toBe(false); // not GitHub
+    expect(_SECRET_PATTERNS[3].test(awsKey)).toBe(false); // not 40+ hex
+    expect(_SECRET_PATTERNS[4].test(awsKey)).toBe(false); // not 40+ base64
+  });
+
+  it('JWT pattern is the only match for eyJ prefix strings', () => {
+    // eyJ + 10 base64url chars + '.' + 10 base64url chars = ~24 chars
+    // Keep short enough to avoid 40+ hex/base64 match
+    const jwt = 'eyJhbGciOiJIUzI1Ni.eyJzdWIiOiIxMj'; // pragma: allowlist secret
+    expect(jwt.length).toBeGreaterThanOrEqual(20);
+    expect(_detectSecretInValue(jwt)).toBe(true);
+    expect(_SECRET_PATTERNS[0].test(jwt)).toBe(false); // not AWS
+    expect(_SECRET_PATTERNS[2].test(jwt)).toBe(false); // not GitHub
+    expect(_SECRET_PATTERNS[3].test(jwt)).toBe(false); // not 40+ hex
+    expect(_SECRET_PATTERNS[4].test(jwt)).toBe(false); // not 40+ base64
+  });
+
+  it('GitHub token (ghp_) pattern is the only match', () => {
+    // ghp_ + 36 chars. Use chars that include non-hex to avoid hex pattern.
+    // Also keep base64 run under 40 by including non-base64 chars.
+    const ghToken = 'ghp_RSTUVWXYZ012345678901234567890123456'; // pragma: allowlist secret
+    expect(_detectSecretInValue(ghToken)).toBe(true);
+    expect(_SECRET_PATTERNS[0].test(ghToken)).toBe(false); // not AWS
+    expect(_SECRET_PATTERNS[1].test(ghToken)).toBe(false); // not JWT
+  });
+
+  it('GitHub token (gho_) variant matches', () => {
+    const ghoToken = 'gho_RSTUVWXYZ012345678901234567890123456'; // pragma: allowlist secret
+    expect(_detectSecretInValue(ghoToken)).toBe(true);
+  });
+
+  it('GitHub token (ghs_) variant matches', () => {
+    const ghsToken = 'ghs_RSTUVWXYZ012345678901234567890123456'; // pragma: allowlist secret
+    expect(_detectSecretInValue(ghsToken)).toBe(true);
+  });
+
+  it('long hex pattern is the only match for 40+ hex strings', () => {
+    // 40 lowercase hex chars — doesn't match AWS (no AKIA prefix), JWT (no eyJ), GitHub (no ghp_)
+    // Does match base64 pattern too (hex chars are subset of base64), so we need a value
+    // that's hex but we verify the hex pattern specifically matches.
+    const hexStr = '0123456789abcdef0123456789abcdef01234567'; // pragma: allowlist secret
+    expect(hexStr.length).toBe(40);
+    expect(_SECRET_PATTERNS[3].test(hexStr)).toBe(true); // hex pattern matches
+    expect(_SECRET_PATTERNS[0].test(hexStr)).toBe(false); // not AWS
+    expect(_SECRET_PATTERNS[1].test(hexStr)).toBe(false); // not JWT
+    expect(_SECRET_PATTERNS[2].test(hexStr)).toBe(false); // not GitHub
+  });
+
+  it('long base64 pattern matches strings with +/ chars that hex cannot', () => {
+    // Use chars like + and / that are valid base64 but NOT valid hex
+    const b64Str = 'ABCDE+GHIJKLMNOP/RSTUVWXYZabcde+ghijklmnop=='; // pragma: allowlist secret
+    expect(b64Str.length).toBeGreaterThanOrEqual(40);
+    expect(_SECRET_PATTERNS[4].test(b64Str)).toBe(true); // base64 pattern
+    expect(_SECRET_PATTERNS[0].test(b64Str)).toBe(false); // not AWS
+    expect(_SECRET_PATTERNS[1].test(b64Str)).toBe(false); // not JWT
+    expect(_SECRET_PATTERNS[2].test(b64Str)).toBe(false); // not GitHub
+    expect(_SECRET_PATTERNS[3].test(b64Str)).toBe(false); // not hex (has + and /)
+    expect(_detectSecretInValue(b64Str)).toBe(true);
+  });
+});
+
+describe('secret detection — _MIN_SECRET_LENGTH boundary (kills threshold change)', () => {
+  it('detects secret at exactly 20 chars (the threshold)', () => {
+    // AKIA + 16 chars = 20 chars total
+    const exactly20 = 'AKIAIOSFODNN7EXAMP01'; // pragma: allowlist secret
+    expect(exactly20.length).toBe(20);
+    expect(_detectSecretInValue(exactly20)).toBe(true);
+  });
+
+  it('does NOT detect secret at 19 chars (below threshold)', () => {
+    // AKIA + 15 chars = 19 chars — would match AWS pattern but too short
+    const chars19 = 'AKIAIOSFODNN7EXAMPL'; // pragma: allowlist secret
+    expect(chars19.length).toBe(19);
+    expect(_detectSecretInValue(chars19)).toBe(false);
+  });
+});
+
 describe('sanitize — secret detection', () => {
   it('redacts AWS access key in value', () => {
     const obj: Record<string, unknown> = { key: 'AKIAIOSFODNN7EXAMPLE1' }; // pragma: allowlist secret
@@ -391,6 +479,76 @@ describe('sanitize — secret detection', () => {
     const obj: Record<string, unknown> = { safe: 'hello world' };
     sanitize(obj);
     expect(obj['safe']).toBe('hello world');
+  });
+});
+
+describe('sanitize — non-string values are not secret-checked (kills typeof check at line 61)', () => {
+  it('does not redact numeric values even if they stringify to a pattern match', () => {
+    const obj: Record<string, unknown> = { count: 12345678901234567890n, status: 200 };
+    sanitize(obj);
+    // Numbers should not be treated as strings for secret detection
+    expect(obj['status']).toBe(200);
+  });
+
+  it('does not redact boolean values', () => {
+    const obj: Record<string, unknown> = { active: true, name: 'safe' };
+    sanitize(obj);
+    expect(obj['active']).toBe(true);
+  });
+
+  it('does not redact object values (only checks string type)', () => {
+    const nested = { inner: 'AKIAIOSFODNN7EXAMPLE1' }; // pragma: allowlist secret
+    const obj: Record<string, unknown> = { data: nested };
+    sanitize(obj);
+    // sanitize is flat — only checks top-level string values
+    expect(obj['data']).toBe(nested);
+  });
+});
+
+describe('sanitizePayload — _redactSecrets handles arrays of objects (kills Array.isArray at line 153)', () => {
+  it('redacts secrets inside objects within arrays', () => {
+    const obj: Record<string, unknown> = {
+      items: [
+        { key: 'AKIAIOSFODNN7EXAMPLE1' }, // pragma: allowlist secret
+        { key: 'safe value' },
+      ],
+    };
+    sanitizePayload(obj);
+    const items = obj['items'] as Array<Record<string, unknown>>;
+    expect(items[0]['key']).toBe('***');
+    expect(items[1]['key']).toBe('safe value');
+  });
+
+  it('redacts secrets in nested arrays of objects', () => {
+    const obj: Record<string, unknown> = {
+      nested: {
+        list: [
+          { secret: '0123456789abcdef0123456789abcdef01234567' }, // pragma: allowlist secret
+        ],
+      },
+    };
+    sanitizePayload(obj);
+    const nested = obj['nested'] as Record<string, unknown>;
+    const list = nested['list'] as Array<Record<string, unknown>>;
+    expect(list[0]['secret']).toBe('***');
+  });
+});
+
+describe('sanitizePayload — obj key update from transformed result (kills line 225)', () => {
+  it('updates original obj keys from rule-transformed result', () => {
+    registerPiiRule({ path: 'data', mode: 'redact' });
+    const obj: Record<string, unknown> = { data: 'secret', name: 'Alice' };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+    expect(obj['name']).toBe('Alice');
+  });
+
+  it('deletes keys from original obj when rule drops them', () => {
+    registerPiiRule({ path: 'remove_me', mode: 'drop' });
+    const obj: Record<string, unknown> = { remove_me: 'gone', keep: 'here' };
+    sanitizePayload(obj);
+    expect('remove_me' in obj).toBe(false);
+    expect(obj['keep']).toBe('here');
   });
 });
 

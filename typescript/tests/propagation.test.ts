@@ -435,4 +435,71 @@ describe('getActiveOtelContext — OTel context wiring', () => {
     _resetPropagationForTests();
     expect(getActiveOtelContext()).toBeUndefined();
   });
+
+  it('extracted OTel context carries the expected span ID (kills line 112 extract mutation)', () => {
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      spanId: '00f067aa0ba902b7',
+    });
+    const otelCtx = getActiveOtelContext();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { trace } = require('@opentelemetry/api') as typeof import('@opentelemetry/api');
+    const spanCtx = trace.getSpanContext(otelCtx as import('@opentelemetry/api').Context);
+    expect(spanCtx).toBeDefined();
+    expect(spanCtx?.spanId).toBe('00f067aa0ba902b7');
+  });
+
+  it('OTel context is distinct from ROOT_CONTEXT (kills context.active() mutation at line 112)', () => {
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      spanId: '00f067aa0ba902b7',
+    });
+    const otelCtx = getActiveOtelContext();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const api = require('@opentelemetry/api') as typeof import('@opentelemetry/api');
+    // The extracted context should NOT be the same as ROOT_CONTEXT
+    // (it has span context set on it)
+    const spanCtx = api.trace.getSpanContext(otelCtx as import('@opentelemetry/api').Context);
+    expect(spanCtx).toBeDefined();
+    expect(spanCtx?.traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
+    expect(spanCtx?.spanId).toBe('00f067aa0ba902b7');
+  });
+});
+
+describe('propagation — constant value verification (kills constant mutations at line 65)', () => {
+  it('MAX_HEADER_LENGTH is exactly 512', () => {
+    expect(MAX_HEADER_LENGTH).toBe(512);
+  });
+
+  it('MAX_TRACESTATE_PAIRS is exactly 32', () => {
+    expect(MAX_TRACESTATE_PAIRS).toBe(32);
+  });
+
+  it('MAX_BAGGAGE_LENGTH is exactly 8192', () => {
+    expect(MAX_BAGGAGE_LENGTH).toBe(8192);
+  });
+});
+
+describe('propagation — clearPropagation pops OTel context stack (kills line 149)', () => {
+  it('getActiveOtelContext returns undefined when stack is empty (length === 0)', () => {
+    // No bind — stack is empty
+    expect(getActiveOtelContext()).toBeUndefined();
+  });
+
+  it('clearPropagationContext pops OTel context and reveals previous layer', () => {
+    // Bind two layers: first without traceparent, second with traceparent
+    bindPropagationContext({ traceId: 'no-otel' });
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      spanId: '00f067aa0ba902b7',
+    });
+    expect(getActiveOtelContext()).toBeTruthy(); // second layer has OTel context
+    clearPropagationContext(); // pop second layer
+    expect(getActiveOtelContext()).toBeUndefined(); // first layer had no traceparent → undefined sentinel
+    clearPropagationContext(); // pop first layer
+    expect(getActiveOtelContext()).toBeUndefined(); // stack is now empty
+  });
 });

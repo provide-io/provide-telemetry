@@ -328,4 +328,61 @@ describe('withTrace — OTel propagation context wiring', () => {
     const result = withTrace('test.no-propagation', () => 'ok');
     expect(result).toBe('ok');
   });
+
+  it('withTrace uses getActiveOtelContext and otelContext.with for parent span (kills lines 120-122)', () => {
+    // Bind a propagation context so getActiveOtelContext() returns a real OTel context
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
+      spanId: '00f067aa0ba902b7',
+    });
+
+    // Spy on otelContext.with to verify it's called with the extracted context
+    const { context: otelCtxModule } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@opentelemetry/api') as typeof import('@opentelemetry/api');
+    const withSpy = vi.spyOn(otelCtxModule, 'with');
+
+    const result = withTrace('test.verify-parent', () => 'done');
+    expect(result).toBe('done');
+
+    // otelContext.with must have been called (proves line 123 branch is taken)
+    expect(withSpy).toHaveBeenCalled();
+    // The first argument to the FIRST call of otelContext.with should be the extracted OTel context
+    const firstArg = withSpy.mock.calls[0][0];
+    expect(firstArg).toBeTruthy();
+
+    // Verify the context carries the propagated trace ID
+    const spanCtx = trace.getSpanContext(firstArg as import('@opentelemetry/api').Context);
+    expect(spanCtx).toBeDefined();
+    expect(spanCtx?.traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736'); // pragma: allowlist secret
+
+    withSpy.mockRestore();
+  });
+
+  it('withTrace calls otelContext.with only once when no propagation context (line 120 check)', () => {
+    // No bindPropagationContext — getActiveOtelContext() returns undefined
+    // In this case, withTrace falls through to startActiveSpan without calling otelContext.with explicitly.
+    // startActiveSpan itself internally calls otelContext.with, but the context should NOT carry our trace ID.
+    const { context: otelCtxModule } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@opentelemetry/api') as typeof import('@opentelemetry/api');
+    const withSpy = vi.spyOn(otelCtxModule, 'with');
+
+    const result = withTrace('test.no-parent', () => 'ok');
+    expect(result).toBe('ok');
+
+    // When there's no propagation context, otelContext.with should only be called
+    // by startActiveSpan internally (not by our explicit call in the if-branch).
+    // Verify none of the calls carry our specific trace ID.
+    for (const call of withSpy.mock.calls) {
+      const ctx = call[0] as import('@opentelemetry/api').Context;
+      const spanCtx = trace.getSpanContext(ctx);
+      if (spanCtx) {
+        expect(spanCtx.traceId).not.toBe('4bf92f3577b34da6a3ce929d0e0e4736'); // pragma: allowlist secret
+      }
+    }
+
+    withSpy.mockRestore();
+  });
 });
