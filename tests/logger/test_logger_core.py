@@ -325,7 +325,9 @@ def test_build_handlers_returns_console_only_when_exporter_creation_fails(monkey
         "_load_otel_logs_components",
         lambda: (Mock(), Mock(), Mock(), Mock(), Mock()),
     )
-    monkeypatch.setattr(core_mod, "run_with_resilience", lambda _signal, _op: None)
+    from provide.telemetry import resilience as resilience_mod
+
+    monkeypatch.setattr(resilience_mod, "run_with_resilience", lambda _signal, _op: None)
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
 

@@ -28,7 +28,6 @@ from provide.telemetry.logger.processors import (
     merge_runtime_context,
     sanitize_sensitive_fields,
 )
-from provide.telemetry.resilience import run_with_resilience
 
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
@@ -140,6 +139,8 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     components = _load_otel_logs_components()
     if components is None:
         return handlers
+
+    from provide.telemetry.resilience import run_with_resilience
 
     logs_api_mod, sdk_logs_mod, sdk_logs_export_mod, resource_cls, otlp_exporter_cls = components
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
@@ -267,6 +268,9 @@ def shutdown_logging() -> None:
             _active_config = None
             return
         try:
+            flush = getattr(provider, "force_flush", None)
+            if callable(flush):
+                flush()
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 shutdown()

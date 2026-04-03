@@ -26,7 +26,9 @@ def _bypass_resilience(monkeypatch: pytest.MonkeyPatch) -> None:
         assert sig == "logs", f"expected signal 'logs', got {sig!r}"
         return op()  # type: ignore[operator]
 
-    monkeypatch.setattr(core_mod, "run_with_resilience", _passthrough)
+    from provide.telemetry import resilience as resilience_mod
+
+    monkeypatch.setattr(resilience_mod, "run_with_resilience", _passthrough)
 
 
 def test_build_handlers_without_otel_endpoint() -> None:
@@ -423,6 +425,24 @@ def test_shutdown_logging_with_provider() -> None:
     core_mod._otel_log_provider = provider
     core_mod.shutdown_logging()
     assert provider.calls == 1
+    assert core_mod._otel_log_provider is None
+
+
+def test_shutdown_logging_calls_force_flush_then_shutdown() -> None:
+    """shutdown_logging must call force_flush() before shutdown() on the provider."""
+    call_order: list[str] = []
+
+    class _Provider:
+        def force_flush(self) -> None:
+            call_order.append("force_flush")
+
+        def shutdown(self) -> None:
+            call_order.append("shutdown")
+
+    provider = _Provider()
+    core_mod._otel_log_provider = provider
+    core_mod.shutdown_logging()
+    assert call_order == ["force_flush", "shutdown"]
     assert core_mod._otel_log_provider is None
 
 

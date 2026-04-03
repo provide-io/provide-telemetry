@@ -47,14 +47,14 @@ class TestApplySamplingDropEvent:
     def test_dropped_event_raises_structlog_drop_event(self) -> None:
         """Sampling rejection must suppress the log, not emit a replacement."""
         with (
-            patch("provide.telemetry.logger.processors.should_sample", return_value=False),
+            patch("provide.telemetry.sampling.should_sample", return_value=False),
             pytest.raises(structlog.DropEvent),
         ):
             apply_sampling(None, "", {"event": "auth.login.success"})
 
     def test_sampled_event_passes_through_unchanged(self) -> None:
         original: dict[str, object] = {"event": "auth.login.success", "user": "u1"}
-        with patch("provide.telemetry.logger.processors.should_sample", return_value=True):
+        with patch("provide.telemetry.sampling.should_sample", return_value=True):
             result = apply_sampling(None, "", original)
         assert result is original
 
@@ -70,12 +70,12 @@ class TestSetupDoneOrdering:
         from provide.telemetry.setup import _reset_setup_state_for_tests, setup_telemetry
 
         _reset_setup_state_for_tests()
-        monkeypatch.setattr("provide.telemetry.setup.apply_runtime_config", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
         monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
         monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
-        monkeypatch.setattr("provide.telemetry.setup._refresh_otel_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
         monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
-        monkeypatch.setattr("provide.telemetry.setup.setup_metrics", lambda _cfg: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
         monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
 
         def _boom_red(*_args: object) -> None:

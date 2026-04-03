@@ -41,6 +41,7 @@ jobs:
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
       - name: SPDX header check
+        shell: bash
         run: |
           MISSING=""
           for f in $(find src tests -name '*.ts' -not -path '*/node_modules/*'); do

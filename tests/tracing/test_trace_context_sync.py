@@ -165,9 +165,9 @@ def test_trace_decorator_syncs_otel_context(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
     monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _name: _OtelTracer())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-    monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+    monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+    monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+    monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _t: None)
 
     captured: dict[str, str | None] = {}
 

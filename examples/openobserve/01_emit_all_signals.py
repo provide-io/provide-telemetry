@@ -86,6 +86,7 @@ def main() -> None:
     metric_name = f"example.openobserve.requests.{run_id}"
 
     os.environ["OTEL_BSP_SCHEDULE_DELAY"] = "200"
+    os.environ["OTEL_BLRP_SCHEDULE_DELAY"] = "200"
     os.environ["OTEL_METRIC_EXPORT_INTERVAL"] = "1000"
 
     cfg = TelemetryConfig.from_env(

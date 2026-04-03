@@ -12,8 +12,6 @@ import inspect
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
-from provide.telemetry.backpressure import release, try_acquire
-from provide.telemetry.sampling import should_sample
 from provide.telemetry.tracing.context import get_span_id, get_trace_id, set_trace_context
 from provide.telemetry.tracing.provider import _sync_otel_trace_context, get_tracer
 
@@ -29,6 +27,9 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
 
             @functools.wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+                from provide.telemetry.backpressure import release, try_acquire
+                from provide.telemetry.sampling import should_sample
+
                 if not should_sample("traces", span_name):
                     return await fn(*args, **kwargs)
                 ticket = try_acquire("traces")
@@ -48,6 +49,9 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
 
         @functools.wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            from provide.telemetry.backpressure import release, try_acquire
+            from provide.telemetry.sampling import should_sample
+
             if not should_sample("traces", span_name):
                 return fn(*args, **kwargs)
             ticket = try_acquire("traces")

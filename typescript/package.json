@@ -60,6 +60,9 @@
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "test:memory": "npx tsx scripts/memory-audit.ts",
+    "perf": "tsx scripts/perf-smoke.ts",
+    "stress": "tsx scripts/stress-logging.ts && tsx scripts/stress-backpressure.ts && tsx scripts/stress-metrics.ts",
+    "bundle-size": "tsx scripts/bundle-size.ts",
     "prepublishOnly": "npm run build && npm run test:coverage"
   },
   "dependencies": {

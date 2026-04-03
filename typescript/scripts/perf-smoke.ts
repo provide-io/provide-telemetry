@@ -6,29 +6,86 @@
  * Report-only: exits 0 regardless of results.
  */
 
-import { setupTelemetry, getLogger, counter } from '../src/index';
+// --- Import time ---
+const importStart = performance.now();
+const mod = await import('../src/index.js');
+const importMs = performance.now() - importStart;
+
+const { setupTelemetry, getLogger, counter, withTrace, sanitize } = mod;
 
 setupTelemetry({ serviceName: 'perf-smoke', logLevel: 'silent' });
 
-const N = 10_000;
+interface Result {
+  operation: string;
+  count: number;
+  ms: number;
+  opsPerSec: number;
+}
+
+const results: Result[] = [];
+
+function bench(operation: string, count: number, fn: () => void): void {
+  const start = performance.now();
+  for (let i = 0; i < count; i++) fn();
+  const ms = performance.now() - start;
+  results.push({ operation, count, ms, opsPerSec: Math.round(count / (ms / 1000)) });
+}
+
+// --- Import time (special case, already measured) ---
+results.push({
+  operation: 'import()',
+  count: 1,
+  ms: importMs,
+  opsPerSec: Math.round(1 / (importMs / 1000)),
+});
 
 // --- Logging throughput ---
 const log = getLogger('perf');
-const logStart = performance.now();
-for (let i = 0; i < N; i++) {
-  log.info({ event: 'perf.test.log', i });
-}
-const logMs = performance.now() - logStart;
-const logOps = Math.round(N / (logMs / 1000));
+bench('logger.info()', 100_000, () => {
+  log.info({ event: 'perf.test.log' });
+});
 
 // --- Counter throughput ---
 const c = counter('perf.test.counter', { description: 'perf smoke counter' });
-const counterStart = performance.now();
-for (let i = 0; i < N; i++) {
+bench('counter.add(1)', 100_000, () => {
   c.add(1);
-}
-const counterMs = performance.now() - counterStart;
-const counterOps = Math.round(N / (counterMs / 1000));
+});
 
-console.log(`Logging:  ${N} calls in ${logMs.toFixed(1)}ms  (${logOps.toLocaleString()} ops/sec)`);
-console.log(`Counter:  ${N} calls in ${counterMs.toFixed(1)}ms  (${counterOps.toLocaleString()} ops/sec)`);
+// --- Trace throughput ---
+bench('withTrace()', 10_000, () => {
+  withTrace('perf.span', () => {});
+});
+
+// --- PII sanitization throughput ---
+const piiPayload = { email: 'user@example.com', password: 'secret123', name: 'Test User' }; // pragma: allowlist secret
+bench('sanitize()', 10_000, () => {
+  sanitize(piiPayload);
+});
+
+// --- Print table ---
+const header = ['Operation', 'Count', 'Time (ms)', 'ops/sec'];
+const rows = results.map((r) => [
+  r.operation,
+  r.count.toLocaleString(),
+  r.ms.toFixed(1),
+  r.opsPerSec.toLocaleString(),
+]);
+
+const colWidths = header.map((h, i) =>
+  Math.max(h.length, ...rows.map((r) => r[i].length)),
+);
+
+const sep = colWidths.map((w) => '-'.repeat(w)).join(' | ');
+const fmtRow = (cols: string[]) =>
+  cols.map((c, i) => c.padStart(colWidths[i])).join(' | ');
+
+console.log();
+console.log('Performance Smoke Test Results');
+console.log(sep);
+console.log(fmtRow(header));
+console.log(sep);
+for (const row of rows) console.log(fmtRow(row));
+console.log(sep);
+console.log();
+
+process.exit(0);
