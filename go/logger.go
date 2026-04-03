@@ -281,7 +281,7 @@ func _configureLogger(cfg *TelemetryConfig) {
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
 // name is used for per-module level overrides (longest-prefix match).
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	_ = ctx
+	_ = ctx // TODO(Task-10): extract existing span from ctx and attach to returned logger
 	cfg := DefaultTelemetryConfig()
 	if Logger != nil {
 		if h, ok := Logger.Handler().(*_telemetryHandler); ok {
