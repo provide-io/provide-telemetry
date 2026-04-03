@@ -44,8 +44,8 @@ func authHeader(user, password string) string {
 }
 
 func emit(ctx context.Context, iteration int) error {
-	traceEvt, _ := telemetry.Event("example", "openobserve", "work")
-	return telemetry.Trace(ctx, traceEvt.Event, func(ctx context.Context) error {
+	traceName, _ := telemetry.Event("example", "openobserve", "work")
+	return telemetry.Trace(ctx, traceName, func(ctx context.Context) error {
 		tokenValue := os.Getenv("PROVIDE_EXAMPLE_TOKEN")
 		if tokenValue == "" {
 			tokenValue = "example-token-from-env"
@@ -63,11 +63,11 @@ func emit(ctx context.Context, iteration int) error {
 			"token": tokenValue,
 		}
 		sanitized := telemetry.SanitizePayload(payload, true, 0)
-		log.InfoContext(ctx, logEvt.Event, append(logEvt.Attrs(),
+		log.InfoContext(ctx, logEvt,
 			"iteration", strconv.Itoa(iteration),
 			"user", fmt.Sprintf("%v", sanitized["user"]),
 			"token", fmt.Sprintf("%v", sanitized["token"]),
-		)...)
+		)
 		return nil
 	})
 }
@@ -98,21 +98,21 @@ func main() {
 
 	// Wire OTel endpoints.
 	encodedAuth := url.QueryEscape(auth)
-	_ = os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+encodedAuth)
-	_ = os.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", baseURL+"/v1/traces")
-	_ = os.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", baseURL+"/v1/metrics")
-	_ = os.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", baseURL+"/v1/logs")
-	_ = os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-telemetry-hardening-example")
-	_ = os.Setenv("PROVIDE_TELEMETRY_VERSION", "hardening")
-	_ = os.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "1.0")
-	_ = os.Setenv("PROVIDE_SAMPLING_TRACES_RATE", "1.0")
-	_ = os.Setenv("PROVIDE_SAMPLING_METRICS_RATE", "1.0")
-	_ = os.Setenv("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE", "64")
-	_ = os.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "1")
-	_ = os.Setenv("PROVIDE_EXPORTER_TRACES_RETRIES", "1")
-	_ = os.Setenv("PROVIDE_EXPORTER_METRICS_RETRIES", "1")
-	_ = os.Setenv("PROVIDE_SLO_ENABLE_RED_METRICS", "true")
-	_ = os.Setenv("PROVIDE_SLO_ENABLE_USE_METRICS", "true")
+	os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+encodedAuth)
+	os.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", baseURL+"/v1/traces")
+	os.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", baseURL+"/v1/metrics")
+	os.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", baseURL+"/v1/logs")
+	os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-telemetry-hardening-example")
+	os.Setenv("PROVIDE_TELEMETRY_VERSION", "hardening")
+	os.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "1.0")
+	os.Setenv("PROVIDE_SAMPLING_TRACES_RATE", "1.0")
+	os.Setenv("PROVIDE_SAMPLING_METRICS_RATE", "1.0")
+	os.Setenv("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE", "64")
+	os.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "1")
+	os.Setenv("PROVIDE_EXPORTER_TRACES_RETRIES", "1")
+	os.Setenv("PROVIDE_EXPORTER_METRICS_RETRIES", "1")
+	os.Setenv("PROVIDE_SLO_ENABLE_RED_METRICS", "true")
+	os.Setenv("PROVIDE_SLO_ENABLE_USE_METRICS", "true")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -134,8 +134,8 @@ func main() {
 	}
 
 	health := telemetry.GetHealthSnapshot()
-	fmt.Printf("health: logs_emitted=%d traces_emitted=%d metrics_emitted=%d "+
-		"logs_dropped=%d traces_dropped=%d\n",
-		health.LogsEmitted, health.TracesEmitted, health.MetricsEmitted,
-		health.LogsDropped, health.TracesDropped)
+	fmt.Printf("health: logs_emitted=%d spans_started=%d metrics_recorded=%d "+
+		"logs_dropped=%d spans_dropped=%d\n",
+		health.LogsEmitted, health.SpansStarted, health.MetricsRecorded,
+		health.LogsDropped, health.SpansDropped)
 }
