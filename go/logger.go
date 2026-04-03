@@ -227,34 +227,6 @@ func _parseLevel(s string) slog.Level {
 	}
 }
 
-// _traceIDKey and _spanIDKey are context keys for trace/span injection.
-// Used by tests and will be superseded by the full tracing module in Task 10.
-var (
-	_traceIDKey = contextKey{"trace.id"}
-	_spanIDKey  = contextKey{"span.id"}
-)
-
-// _getTraceSpanFromContext extracts trace/span IDs from context.
-// Checks context keys set by _injectTraceContext (for testing) first.
-// Will be superseded by the full tracing module in Task 10.
-func _getTraceSpanFromContext(ctx context.Context) (traceID, spanID string) {
-	if v, ok := ctx.Value(_traceIDKey).(string); ok {
-		traceID = v
-	}
-	if v, ok := ctx.Value(_spanIDKey).(string); ok {
-		spanID = v
-	}
-	return traceID, spanID
-}
-
-// _injectTraceContext returns a context with trace/span IDs embedded.
-// Intended for testing; production use will come from Task 10.
-func _injectTraceContext(ctx context.Context, traceID, spanID string) context.Context {
-	ctx = context.WithValue(ctx, _traceIDKey, traceID)
-	ctx = context.WithValue(ctx, _spanIDKey, spanID)
-	return ctx
-}
-
 // _newTelemetryHandler wraps base with a _telemetryHandler for the given config and name.
 func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) slog.Handler {
 	return &_telemetryHandler{
