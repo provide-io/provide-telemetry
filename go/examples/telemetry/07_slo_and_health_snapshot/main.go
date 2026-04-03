@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	fmt.Println("SLO Metrics & Health Snapshot Demo")
+	fmt.Println("SLO Metrics & Health Snapshot Demo\n")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -70,12 +70,12 @@ func main() {
 		)
 		if c.code == 503 {
 			errEvt, _ := telemetry.Event("example", "slo", "error")
-			log.ErrorContext(ctx, errEvt.Event, append(errEvt.Attrs(),
+			log.ErrorContext(ctx, errEvt,
 				"exc_name", c.name,
 				"status_code", fmt.Sprint(c.code),
 				"error_category", taxonomy["error.category"],
 				"error_severity", taxonomy["error.severity"],
-			)...)
+			)
 		}
 	}
 
@@ -84,20 +84,22 @@ func main() {
 	s := telemetry.GetHealthSnapshot()
 	fmt.Printf("  LogsEmitted:         %d\n", s.LogsEmitted)
 	fmt.Printf("  LogsDropped:         %d\n", s.LogsDropped)
-	fmt.Printf("  LogsExportFailures:  %d\n", s.LogsExportFailures)
-	fmt.Printf("  LogsRetries:         %d\n", s.LogsRetries)
-	fmt.Printf("  LogsCircuitState:    %s\n", s.LogsCircuitState)
-	fmt.Printf("  TracesEmitted:       %d\n", s.TracesEmitted)
-	fmt.Printf("  TracesDropped:       %d\n", s.TracesDropped)
-	fmt.Printf("  TracesExportFailures:%d\n", s.TracesExportFailures)
-	fmt.Printf("  TracesRetries:       %d\n", s.TracesRetries)
-	fmt.Printf("  TracesCircuitState:  %s\n", s.TracesCircuitState)
-	fmt.Printf("  MetricsEmitted:      %d\n", s.MetricsEmitted)
+	fmt.Printf("  LogsExportErrors:    %d\n", s.LogsExportErrors)
+	fmt.Printf("  LogsExportedOK:      %d\n", s.LogsExportedOK)
+	fmt.Printf("  SpansStarted:        %d\n", s.SpansStarted)
+	fmt.Printf("  SpansDropped:        %d\n", s.SpansDropped)
+	fmt.Printf("  SpansExportErrors:   %d\n", s.SpansExportErrors)
+	fmt.Printf("  SpansExportedOK:     %d\n", s.SpansExportedOK)
+	fmt.Printf("  MetricsRecorded:     %d\n", s.MetricsRecorded)
 	fmt.Printf("  MetricsDropped:      %d\n", s.MetricsDropped)
-	fmt.Printf("  MetricsExportFailures:%d\n", s.MetricsExportFailures)
-	fmt.Printf("  MetricsRetries:      %d\n", s.MetricsRetries)
-	fmt.Printf("  MetricsCircuitState: %s\n", s.MetricsCircuitState)
-	fmt.Printf("  SetupError:          %q\n", s.SetupError)
+	fmt.Printf("  MetricsExportErrors: %d\n", s.MetricsExportErrors)
+	fmt.Printf("  MetricsExportedOK:   %d\n", s.MetricsExportedOK)
+	fmt.Printf("  RetryAttempts:       %d\n", s.RetryAttempts)
+	fmt.Printf("  CircuitBreakerTrips: %d\n", s.CircuitBreakerTrips)
+	fmt.Printf("  ExportLatencyMs:     %d\n", s.ExportLatencyMs)
+	fmt.Printf("  SetupCount:          %d\n", s.SetupCount)
+	fmt.Printf("  ShutdownCount:       %d\n", s.ShutdownCount)
+	fmt.Printf("  LastError:           %q\n", s.LastError)
 
 	fmt.Println("\nDone!")
 }
