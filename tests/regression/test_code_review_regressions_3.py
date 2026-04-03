@@ -197,7 +197,7 @@ class TestShutdownResetsRuntime:
         assert runtime_mod.get_runtime_config().service_name == "before-shutdown"
         monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
         monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-        monkeypatch.setattr("provide.telemetry.setup.shutdown_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
         shutdown_telemetry()
         assert runtime_mod.get_runtime_config().service_name != "before-shutdown"
 

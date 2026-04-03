@@ -19,8 +19,6 @@ import structlog
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.context import get_context
-from provide.telemetry.pii import sanitize_payload
-from provide.telemetry.sampling import should_sample
 from provide.telemetry.schema.events import validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
@@ -121,6 +119,8 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 
 def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    from provide.telemetry.sampling import should_sample
+
     event_name = str(event_dict.get("event", ""))  # pragma: no mutate
     if should_sample("logs", event_name):
         return event_dict
@@ -144,6 +144,8 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
 
 def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:  # pragma: no mutate
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+        from provide.telemetry.pii import sanitize_payload
+
         return sanitize_payload(event_dict, enabled, max_depth=max_depth)
 
     return _processor
