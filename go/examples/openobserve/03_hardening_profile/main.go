@@ -44,8 +44,8 @@ func authHeader(user, password string) string {
 }
 
 func emit(ctx context.Context, iteration int) error {
-	traceName, _ := telemetry.Event("example", "openobserve", "work")
-	return telemetry.Trace(ctx, traceName, func(ctx context.Context) error {
+	traceEvt, _ := telemetry.Event("example", "openobserve", "work")
+	return telemetry.Trace(ctx, traceEvt.Event, func(ctx context.Context) error {
 		tokenValue := os.Getenv("PROVIDE_EXAMPLE_TOKEN")
 		if tokenValue == "" {
 			tokenValue = "example-token-from-env"
@@ -63,11 +63,11 @@ func emit(ctx context.Context, iteration int) error {
 			"token": tokenValue,
 		}
 		sanitized := telemetry.SanitizePayload(payload, true, 0)
-		log.InfoContext(ctx, logEvt,
+		log.InfoContext(ctx, logEvt.Event, append(logEvt.Attrs(),
 			"iteration", strconv.Itoa(iteration),
 			"user", fmt.Sprintf("%v", sanitized["user"]),
 			"token", fmt.Sprintf("%v", sanitized["token"]),
-		)
+		)...)
 		return nil
 	})
 }

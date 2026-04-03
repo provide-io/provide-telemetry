@@ -5,14 +5,14 @@ package telemetry
 
 import "testing"
 
-// TestEvent delegates to EventName and shares its validation logic.
+// TestEvent_ValidSegments verifies that Event returns a correctly populated EventRecord.
 func TestEvent_ValidSegments(t *testing.T) {
-	name, err := Event("db", "query", "ok")
+	evt, err := Event("db", "query", "ok")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if name != "db.query.ok" {
-		t.Errorf("want %q, got %q", "db.query.ok", name)
+	if evt.Event != "db.query.ok" {
+		t.Errorf("want Event=%q, got %q", "db.query.ok", evt.Event)
 	}
 }
 
