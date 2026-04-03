@@ -112,7 +112,7 @@ def main() -> None:
     print(f"  ✅ @trace works without OTel: result={result!r}")
 
     # Logging always works
-    log.info("example.errors.degradation_test", status="ok")
+    log.info(event("example", "errors", "degradation_test"), status="ok")
     print("  ✅ Structured logging always works")
 
     # Health snapshot shows the state

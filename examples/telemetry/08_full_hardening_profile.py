@@ -25,6 +25,7 @@ from provide.telemetry import (
     QueuePolicy,
     SamplingPolicy,
     counter,
+    event,
     get_health_snapshot,
     get_logger,
     get_runtime_config,
@@ -62,7 +63,7 @@ def main() -> None:
     register_pii_rule(PIIRule(path=("user", "email"), mode="hash"))
     register_pii_rule(PIIRule(path=("credit_card",), mode="drop"))
     log.info(
-        "example.hardening.user_event",
+        event("example", "hardening", "user_event"),
         user={"email": "player@game.io", "name": "Hero"},
         credit_card="4111111111111111",
     )
