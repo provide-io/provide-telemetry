@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setupTelemetry, _resetConfig } from '../src/config';
 import {
   EventSchemaError,
+  event,
   eventName,
   validateEventName,
   validateRequiredKeys,
@@ -215,5 +216,75 @@ describe('eventName — strict schema config integration', () => {
   it('0 segments throws even in relaxed mode', () => {
     setupTelemetry({ strictSchema: false });
     expect(() => eventName()).toThrow(EventSchemaError);
+  });
+});
+
+describe('event()', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
+  it('returns structured EventRecord for 3 segments (DAS)', () => {
+    const rec = event('auth', 'login', 'success');
+    expect(rec).toEqual({
+      event: 'auth.login.success',
+      domain: 'auth',
+      action: 'login',
+      status: 'success',
+    });
+    expect(rec.resource).toBeUndefined();
+  });
+
+  it('returns structured EventRecord for 4 segments (DARS)', () => {
+    const rec = event('db', 'query', 'orders', 'failure');
+    expect(rec).toEqual({
+      event: 'db.query.orders.failure',
+      domain: 'db',
+      action: 'query',
+      resource: 'orders',
+      status: 'failure',
+    });
+  });
+
+  it('throws EventSchemaError with 2 segments', () => {
+    expect(() => event('a', 'b')).toThrow(EventSchemaError);
+    expect(() => event('a', 'b')).toThrow(/requires 3 or 4 segments/);
+  });
+
+  it('throws EventSchemaError with 5 segments', () => {
+    expect(() => event('a', 'b', 'c', 'd', 'e')).toThrow(EventSchemaError);
+    expect(() => event('a', 'b', 'c', 'd', 'e')).toThrow(/requires 3 or 4 segments/);
+  });
+
+  it('throws EventSchemaError with 0 segments', () => {
+    expect(() => event()).toThrow(EventSchemaError);
+  });
+
+  it('throws EventSchemaError with 1 segment', () => {
+    expect(() => event('a')).toThrow(EventSchemaError);
+  });
+
+  it('strict mode validates segment format', () => {
+    expect(() => event('Auth', 'login', 'success')).toThrow(EventSchemaError);
+    expect(() => event('auth', 'LOGIN', 'success')).toThrow(/does not match pattern/);
+    expect(() => event('auth', 'login', '0bad')).toThrow(EventSchemaError);
+  });
+
+  it('relaxed mode skips segment format validation', () => {
+    _resetConfig();
+    setupTelemetry({ strictSchema: false });
+    const rec = event('Auth', 'Login', 'Success');
+    expect(rec.event).toBe('Auth.Login.Success');
+    expect(rec.domain).toBe('Auth');
+  });
+
+  it('eventName() still works as deprecated alias', () => {
+    const name = eventName('auth', 'login', 'success');
+    expect(name).toBe('auth.login.success');
+    expect(typeof name).toBe('string');
   });
 });

@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 __all__ = [
+    "Event",
     "EventSchemaError",
+    "event",
     "event_name",
     "validate_event_name",
     "validate_required_keys",
@@ -29,8 +31,74 @@ class EventSchemaError(TelemetryError, ValueError):
     """Raised when an event violates schema policy."""
 
 
+class Event(str):
+    """String subclass carrying DA(R)S metadata.
+
+    Behaves as a plain string (the dot-joined event name) but also
+    exposes ``.domain``, ``.action``, ``.resource``, ``.status`` attributes.
+    """
+
+    domain: str
+    action: str
+    resource: str | None
+    status: str
+
+    def __new__(cls, *segments: str) -> Event:
+        """Create an Event from 3 (DAS) or 4 (DARS) segments."""
+        if len(segments) not in (3, 4):
+            raise EventSchemaError(f"event() requires 3 or 4 segments (DA[R]S), got {len(segments)}")
+
+        from provide.telemetry.runtime import _is_strict_event_name
+
+        if _is_strict_event_name():
+            for i, seg in enumerate(segments):
+                if not _SEGMENT_RE.match(seg):
+                    raise EventSchemaError(f"invalid event segment: segment[{i}]={seg}")
+
+        name = ".".join(segments)
+        instance = super().__new__(cls, name)
+
+        if len(segments) == 3:
+            instance.domain = segments[0]
+            instance.action = segments[1]
+            instance.resource = None
+            instance.status = segments[2]
+        else:
+            instance.domain = segments[0]
+            instance.action = segments[1]
+            instance.resource = segments[2]
+            instance.status = segments[3]
+
+        return instance
+
+    def as_dict(self) -> dict[str, str]:
+        """Return a dictionary with the event name and DA(R)S fields."""
+        d: dict[str, str] = {
+            "event": str(self),
+            "domain": self.domain,
+            "action": self.action,
+            "status": self.status,
+        }
+        if self.resource is not None:
+            d["resource"] = self.resource
+        return d
+
+
+def event(*segments: str) -> Event:
+    """Create a structured event with DA(R)S fields.
+
+    3 args: ``event(domain, action, status)`` -- DAS
+    4 args: ``event(domain, action, resource, status)`` -- DARS
+    """
+    return Event(*segments)
+
+
 def event_name(*segments: str) -> str:
     """Build an event name from dot-separated segments.
+
+    .. deprecated:: 0.4
+        Use :func:`event` instead.  This function returns a plain string
+        without DA(R)S metadata.
 
     In strict mode (``strict_schema`` or ``strict_event_name``): enforces 3-5
     lowercase/underscore segments.  In relaxed mode (default): accepts 1+

@@ -121,7 +121,14 @@ export {
 export type { ExporterPolicy, CircuitState } from './resilience';
 
 // Schema
-export { EventSchemaError, eventName, validateEventName, validateRequiredKeys } from './schema';
+export {
+  EventSchemaError,
+  event,
+  eventName,
+  validateEventName,
+  validateRequiredKeys,
+} from './schema';
+export type { EventRecord } from './schema';
 
 // SLO
 export { recordRedMetrics, recordUseMetrics, classifyError } from './slo';
