@@ -15,19 +15,9 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from spdx_headers import EXCLUDED_DIRS as _BASE_EXCLUDED_DIRS  # noqa: E402
-
-_GO_COPYRIGHT = "// SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
-_GO_LICENSE = "// SPDX-License-Identifier" + ": Apache-2.0\n"
+from spdx_headers import has_go_canonical_header as _has_go_spdx_header  # noqa: E402
 
 _EXCLUDED_DIRS = _BASE_EXCLUDED_DIRS | {"vendor"}
-
-
-def _has_go_spdx_header(text: str) -> bool:
-    """Return True if the Go file begins with the canonical // SPDX header block."""
-    lines = text.splitlines(keepends=True)
-    if len(lines) < 2:
-        return False
-    return lines[0] == _GO_COPYRIGHT and lines[1] == _GO_LICENSE
 
 
 def _find_go_files(root: Path) -> list[Path]:
