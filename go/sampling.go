@@ -71,7 +71,7 @@ func ShouldSample(signal, key string) bool {
 	case 1.0:
 		sampled = true
 	default:
-		sampled = rand.Float64() < rate //nolint:gosec
+		sampled = rand.Float64() < rate // #nosec G404 -- probabilistic sampling; crypto/rand not required
 	}
 
 	_recordSampleDecision(signal, sampled)
