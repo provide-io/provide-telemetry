@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -110,7 +111,7 @@ async function main(): Promise<void> {
   console.log(`  ✅ withTrace works without OTEL SDK: result=${JSON.stringify(result)}`);
 
   // Logging always works
-  log.info({ event: 'example.errors.degradation_test', status: 'ok' });
+  log.info({ ...event('example', 'errors', 'degradation_test'), status: 'ok' });
   console.log('  ✅ Structured logging always works');
 
   // Health snapshot shows the state

@@ -14,7 +14,7 @@ from collections.abc import Callable
 from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import quote, urlparse
 
-from provide.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry import counter, event, get_logger, setup_telemetry, shutdown_telemetry, trace
 from provide.telemetry.config import TelemetryConfig
 
 
@@ -70,7 +70,7 @@ def _send_openobserve_json_log(base_url: str, auth: str, run_id: str) -> None:
 def _make_work(trace_name: str, metric_name: str) -> Callable[[int], None]:
     @trace(trace_name)
     def _work(iteration: int) -> None:
-        get_logger("examples.openobserve").info("example.openobserve.log", iteration=str(iteration))
+        get_logger("examples.openobserve").info(event("example", "openobserve", "log"), iteration=str(iteration))
         counter(metric_name).add(1, {"iteration": str(iteration)})
 
     return _work

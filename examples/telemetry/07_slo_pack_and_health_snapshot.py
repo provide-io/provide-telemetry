@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from provide.telemetry import (
     classify_error,
+    event,
     get_health_snapshot,
     get_logger,
     record_red_metrics,
@@ -73,7 +74,7 @@ def main() -> None:
         icon = {"server": "🔴", "client": "🟡", "internal": "⚫"}.get(taxonomy["error_type"], "❓")
         print(f"  {icon} {exc_name}(status={code}) → type={taxonomy['error_type']}, code={taxonomy['error_code']}")
         if code == 503:
-            log.error("example.slo.error", exc_name=exc_name, status_code=code, **taxonomy)
+            log.error(event("example", "slo", "error"), exc_name=exc_name, status_code=code, **taxonomy)
 
     # ── 🩺 Full health snapshot ──────────────────────────────
     print("\n🩺 Full HealthSnapshot (all 25 fields):")
