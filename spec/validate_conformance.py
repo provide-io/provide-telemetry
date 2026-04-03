@@ -44,6 +44,13 @@ def _to_camel_case(snake: str) -> str:
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
 
 
+def _to_pascal_case(snake: str) -> str:
+    """Convert snake_case to PascalCase, preserving already-PascalCase names unchanged."""
+    if "_" not in snake:
+        return snake
+    return "".join(p.capitalize() for p in snake.split("_"))
+
+
 def _load_spec(path: Path | None = None) -> dict[str, object]:
     """Load the YAML spec. Uses PyYAML if available, else a regex-based fallback."""
     text = (path or _SPEC_PATH).read_text(encoding="utf-8")
@@ -95,6 +102,23 @@ def _get_python_exports() -> set[str]:
     return set()
 
 
+def _get_go_exports() -> set[str]:
+    """Parse exported symbol names from go/telemetry.go via regex."""
+    facade_path = _REPO_ROOT / "go" / "telemetry.go"
+    if not facade_path.exists():
+        return set()
+    text = facade_path.read_text(encoding="utf-8")
+    exports: set[str] = set()
+    for pattern in (
+        r"^func ([A-Z][A-Za-z0-9]*)",
+        r"^var ([A-Z][A-Za-z0-9]*)",
+        r"^type ([A-Z][A-Za-z0-9]*)",
+    ):
+        for match in re.finditer(pattern, text, re.MULTILINE):
+            exports.add(match.group(1))
+    return exports
+
+
 def _get_typescript_exports() -> set[str]:
     """Parse TypeScript export names from index.ts via regex."""
     index_path = _REPO_ROOT / "typescript" / "src" / "index.ts"
@@ -124,6 +148,9 @@ def _check_language(
     elif lang == "typescript":
         exports = _get_typescript_exports()
         transform = _to_camel_case
+    elif lang == "go":
+        exports = _get_go_exports()
+        transform = _to_pascal_case
     else:
         return [f"Language '{lang}' is not yet supported by the conformance checker."]
 
@@ -141,7 +168,7 @@ def _check_language(
 def main() -> int:
     """Run conformance checks. Returns 0 on success, 1 on failure."""
     parser = argparse.ArgumentParser(description="Validate API conformance against spec.")
-    parser.add_argument("--lang", choices=["python", "typescript"], action="append", default=None)
+    parser.add_argument("--lang", choices=["python", "typescript", "go"], action="append", default=None)
     parser.add_argument("--spec", type=Path, default=None, help="Path to spec YAML (default: spec/telemetry-api.yaml)")
     args = parser.parse_args()
 
