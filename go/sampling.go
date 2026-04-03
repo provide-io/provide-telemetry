@@ -4,33 +4,9 @@
 package telemetry
 
 import (
-	"fmt"
-	"math"
+	"math/rand"
 	"sync"
 )
-
-const (
-	signalLogs    = "logs"
-	signalTraces  = "traces"
-	signalMetrics = "metrics"
-)
-
-// _validSignals is the set of allowed signal names.
-var _validSignals = map[string]struct{}{
-	signalLogs:    {},
-	signalTraces:  {},
-	signalMetrics: {},
-}
-
-// _validateSignal returns a ConfigurationError if signal is not in the valid set.
-func _validateSignal(signal string) error {
-	if _, ok := _validSignals[signal]; !ok {
-		return NewConfigurationError(
-			fmt.Sprintf("unknown signal %q, expected one of [logs, metrics, traces]", signal),
-		)
-	}
-	return nil
-}
 
 // SamplingPolicy defines per-signal sampling configuration.
 type SamplingPolicy struct {
@@ -44,48 +20,23 @@ var (
 	_samplingPolicies = make(map[string]SamplingPolicy) // keyed by signal: "logs", "traces", "metrics"
 )
 
-// _clampRate clamps a sampling rate to [0.0, 1.0], treating NaN as 0.0.
-func _clampRate(r float64) float64 {
-	if math.IsNaN(r) {
-		return 0.0
-	}
-	return max(0.0, min(1.0, r))
-}
-
 // SetSamplingPolicy registers a sampling policy for a signal.
-// signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
-// DefaultRate is clamped to [0.0, 1.0].
-func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, error) {
-	if err := _validateSignal(signal); err != nil {
-		return SamplingPolicy{}, err
-	}
-	policy.DefaultRate = _clampRate(policy.DefaultRate)
-	if policy.Overrides != nil {
-		clamped := make(map[string]float64, len(policy.Overrides))
-		for k, v := range policy.Overrides {
-			clamped[k] = _clampRate(v)
-		}
-		policy.Overrides = clamped
-	}
+// signal should be "logs", "traces", or "metrics".
+func SetSamplingPolicy(signal string, policy SamplingPolicy) {
 	_samplingMu.Lock()
 	defer _samplingMu.Unlock()
 	_samplingPolicies[signal] = policy
-	return policy, nil
 }
 
 // GetSamplingPolicy returns the current policy for a signal.
 // Returns SamplingPolicy{DefaultRate: 1.0} if no policy is set.
-// signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
-func GetSamplingPolicy(signal string) (SamplingPolicy, error) {
-	if err := _validateSignal(signal); err != nil {
-		return SamplingPolicy{}, err
-	}
+func GetSamplingPolicy(signal string) SamplingPolicy {
 	_samplingMu.RLock()
 	defer _samplingMu.RUnlock()
 	if policy, ok := _samplingPolicies[signal]; ok {
-		return policy, nil
+		return policy
 	}
-	return SamplingPolicy{DefaultRate: 1.0}, nil
+	return SamplingPolicy{DefaultRate: 1.0}
 }
 
 // ShouldSample returns true if the given key (usually event name or span name)
@@ -97,11 +48,8 @@ func GetSamplingPolicy(signal string) (SamplingPolicy, error) {
 //   - otherwise: rand.Float64() < rate
 //
 // Key lookup: if policy.Overrides[key] exists, use that rate; otherwise use DefaultRate.
-func ShouldSample(signal, key string) (bool, error) {
-	policy, err := GetSamplingPolicy(signal)
-	if err != nil {
-		return false, err
-	}
+func ShouldSample(signal, key string) bool {
+	policy := GetSamplingPolicy(signal)
 
 	rate := policy.DefaultRate
 	if policy.Overrides != nil {
@@ -111,35 +59,36 @@ func ShouldSample(signal, key string) (bool, error) {
 	}
 
 	var sampled bool
-	switch rate {
-	case 0.0:
+	switch {
+	case rate == 0.0:
 		sampled = false
-	case 1.0:
+	case rate == 1.0:
 		sampled = true
 	default:
-		sampled = _rollBelowRate(rate)
+		sampled = rand.Float64() < rate //nolint:gosec
 	}
 
-	_recordSampleDecision(signal, sampled)
-
-	return sampled, nil
-}
-
-// _recordSampleDecision increments drop counters when a signal is sampled out.
-// Emitted counters for logs and traces are NOT incremented here — they are
-// incremented after the backpressure gate succeeds in the respective hot paths
-// (logger.go and tracing.go), matching the metrics pattern.
-func _recordSampleDecision(signal string, sampled bool) {
-	if !sampled {
+	if sampled {
 		switch signal {
-		case signalLogs:
+		case "logs":
+			_incLogsEmitted()
+		case "traces":
+			_incSpansStarted()
+		case "metrics":
+			_incMetricsRecorded()
+		}
+	} else {
+		switch signal {
+		case "logs":
 			_incLogsDropped()
-		case signalTraces:
+		case "traces":
 			_incSpansDropped()
-		case signalMetrics:
+		case "metrics":
 			_incMetricsDropped()
 		}
 	}
+
+	return sampled
 }
 
 // _resetSamplingPolicies clears all registered sampling policies (for test cleanup).
