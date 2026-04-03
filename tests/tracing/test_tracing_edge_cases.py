@@ -85,9 +85,9 @@ class TestTraceDecoratorExceptions:
             def start_as_current_span(self, _name: str, **_: object) -> _Span:
                 return _Span()
 
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda t: releases.append(t))
         monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("fail.sync")
@@ -112,9 +112,9 @@ class TestTraceDecoratorExceptions:
             def start_as_current_span(self, _name: str, **_: object) -> _Span:
                 return _Span()
 
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda t: releases.append(t))
         monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("fail.async")
@@ -156,9 +156,9 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _t: None)
         monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         fn = trace()(lambda: 42)
@@ -180,9 +180,9 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _t: None)
         monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         def add(a: int, b: int) -> int:
@@ -208,9 +208,9 @@ class TestTraceDecoratorSpanNames:
                 seen.append(name)
                 return _Span()
 
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.should_sample", lambda _s, _n: True)
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.try_acquire", lambda _s: object())
-        monkeypatch.setattr("provide.telemetry.tracing.decorators.release", lambda _t: None)
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: object())
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda _t: None)
         monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
 
         @trace("custom.span.name")
