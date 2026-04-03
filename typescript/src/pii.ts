@@ -10,10 +10,6 @@
  */
 
 import { shortHash12 } from './hash';
-import {
-  PATTERNS as _GENERATED_PATTERNS,
-  MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH,
-} from './secret-patterns-generated';
 
 /**
  * Default fields redacted from log records. Canonical 17-key list shared across
