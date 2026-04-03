@@ -116,13 +116,31 @@ Error events automatically receive an `error_fingerprint` field — a 12-charact
 
 ## Event Schema
 
-### `event_name(*segments: str) -> str`
+### `event(*segments: str) -> Event`
 
-Build a dot-separated event name from segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), validates 3-5 lowercase segments; in non-strict mode (the default), accepts 1+ segments with no format validation.
+Build a structured event from 3 or 4 segments following the DA(R)S pattern (Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that behaves as a dot-joined string and exposes typed fields.
+
+In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), validates segment count and format; in non-strict mode (the default), accepts 1+ segments with no format validation.
 
 ```python
-event_name("auth", "login", "success")  # -> "auth.login.success"
+# 3-segment DAS (domain.action.status)
+e = event("auth", "login", "success")    # -> "auth.login.success"
+e.domain   # "auth"
+e.action   # "login"
+e.status   # "success"
+e.resource # None
+
+# 4-segment DARS (domain.action.resource.status)
+e = event("payment", "subscription", "renewal", "success")
+e.domain   # "payment"
+e.action   # "subscription"
+e.resource # "renewal"
+e.status   # "success"
 ```
+
+### `EventRecord` (TypeScript)
+
+TypeScript equivalent for structured event creation. See the [TypeScript README](../typescript/README.md) for usage.
 
 ## ASGI Integration
 
