@@ -20,9 +20,58 @@ const MIN_SEGMENTS = 3;
 const MAX_SEGMENTS = 5;
 
 /**
+ * Structured event record returned by event().
+ * Fields spread directly into pino log objects.
+ */
+export interface EventRecord {
+  event: string;
+  domain: string;
+  action: string;
+  resource?: string;
+  status: string;
+}
+
+/**
+ * Build a structured EventRecord from 3 (DAS) or 4 (DARS) segments.
+ *
+ * In strict mode: validates each segment matches /^[a-z][a-z0-9_]*$/.
+ *
+ * Usage: `log.info({ ...event('auth', 'login', 'success'), userId: '123' })`
+ */
+export function event(...segments: string[]): EventRecord {
+  if (segments.length !== 3 && segments.length !== 4) {
+    throw new EventSchemaError(`event() requires 3 or 4 segments (DA[R]S), got ${segments.length}`);
+  }
+
+  const strict = getConfig().strictSchema;
+  if (strict) {
+    for (const seg of segments) {
+      if (!SEGMENT_RE.test(seg)) {
+        throw new EventSchemaError(`segment '${seg}' does not match pattern ^[a-z][a-z0-9_]*$`);
+      }
+    }
+  }
+
+  const name = segments.join('.');
+
+  if (segments.length === 3) {
+    return { event: name, domain: segments[0], action: segments[1], status: segments[2] };
+  }
+  return {
+    event: name,
+    domain: segments[0],
+    action: segments[1],
+    resource: segments[2],
+    status: segments[3],
+  };
+}
+
+/**
  * Build and validate an event name from dot-separated segments.
  * In strict mode (default): enforces 3–5 segments, each matching /^[a-z][a-z0-9_]*$/.
  * In relaxed mode: requires at least 1 segment, skips count and format checks.
+ *
+ * @deprecated Use event() instead, which returns a structured EventRecord.
  */
 export function eventName(...segments: string[]): string {
   if (segments.length === 0) {
