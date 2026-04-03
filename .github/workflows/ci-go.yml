@@ -18,8 +18,8 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.22"
       - name: Run tests with coverage
@@ -39,11 +39,11 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.22"
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v6  # TODO: pin to SHA when stable SHA is known
         with:
           working-directory: go
 
@@ -53,8 +53,8 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.22"
       - name: Install security tools
@@ -72,9 +72,25 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.22"
       - name: Run go vet
         run: go vet ./...
+
+  mutation:
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.22"
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+      - name: Run mutation tests
+        run: gremlins unleash ./...

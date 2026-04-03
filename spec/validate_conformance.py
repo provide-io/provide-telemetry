@@ -45,10 +45,15 @@ def _to_camel_case(snake: str) -> str:
 
 
 def _to_pascal_case(snake: str) -> str:
-    """Convert snake_case to PascalCase, preserving already-PascalCase names unchanged."""
-    if "_" not in snake:
+    """Convert snake_case or lowercase identifier to PascalCase for Go.
+
+    Names that contain no underscores and already have uppercase letters are
+    assumed to be PascalCase (e.g. ``TelemetryError``) and returned unchanged.
+    """
+    if "_" not in snake and any(c.isupper() for c in snake):
         return snake
-    return "".join(p.capitalize() for p in snake.split("_"))
+    parts = snake.split("_")
+    return "".join(p.capitalize() for p in parts)
 
 
 def _load_spec(path: Path | None = None) -> dict[str, object]:

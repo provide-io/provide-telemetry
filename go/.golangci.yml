@@ -16,3 +16,7 @@ linters:
     - misspell
     - exhaustive
     - goimports
+    - gocyclo
+  settings:
+    gocyclo:
+      min-complexity: 10
