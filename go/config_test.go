@@ -978,6 +978,81 @@ func TestValidateNonNegative_ZeroIsValid(t *testing.T) {
 	}
 }
 
+// ---- Exporter range validation (Fix 3) ----
+
+func TestValidateNonNegative_ExporterLogsRetries(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_ExporterTracesRetries(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_TRACES_RETRIES", "-2")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegative_ExporterMetricsRetries(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_METRICS_RETRIES", "-3")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterLogsBackoff(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "-0.5")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterTracesBackoff(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS", "-1.0")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterMetricsBackoff(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS", "-2.5")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterLogsTimeout(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "-1.0")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterTracesTimeout(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "-5.0")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ExporterMetricsTimeout(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "-0.1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestValidateNonNegativeFloat_ZeroIsValid(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "0")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "0.0")
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("0 should be valid for retries/backoff/timeout, got error: %v", err)
+	}
+	if cfg.Exporter.LogsRetries != 0 {
+		t.Errorf("LogsRetries: got %d, want 0", cfg.Exporter.LogsRetries)
+	}
+	if cfg.Exporter.LogsBackoffSeconds != 0.0 {
+		t.Errorf("LogsBackoffSeconds: got %f, want 0.0", cfg.Exporter.LogsBackoffSeconds)
+	}
+	if cfg.Exporter.LogsTimeoutSeconds != 0.0 {
+		t.Errorf("LogsTimeoutSeconds: got %f, want 0.0", cfg.Exporter.LogsTimeoutSeconds)
+	}
+}
+
 // ---- Helper ----
 
 func assertConfigError(t *testing.T, err error) {
