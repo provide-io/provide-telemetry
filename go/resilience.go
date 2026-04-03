@@ -5,20 +5,18 @@ package telemetry
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
+	"github.com/sony/gobreaker"
 )
 
 const (
-	_defaultRetries        = 0
-	_defaultBackoffSeconds = 0.0
-	_defaultTimeoutSeconds = 10.0
+	_defaultRetries        = 3
+	_defaultBackoffSeconds = 1.0
+	_defaultTimeoutSeconds = 30.0
 	_defaultFailOpen       = true
-
-	_cbThreshold    = 3
-	_cbBaseCooldown = 30 * time.Second
-	_cbMaxCooldown  = 1024 * time.Second
 )
 
 // ExporterPolicy defines resilience parameters for a signal's exporter.
@@ -27,26 +25,12 @@ type ExporterPolicy struct {
 	BackoffSeconds float64
 	TimeoutSeconds float64
 	FailOpen       bool
-	// AllowBlockingInEventLoop is accepted for cross-language config parity.
-	// It is a no-op in Go: goroutines are scheduled cooperatively and blocking
-	// in one goroutine does not stall the runtime, unlike Python's asyncio.
-	AllowBlockingInEventLoop bool
-}
-
-// CircuitState reports the current state of a signal's circuit breaker.
-type CircuitState struct {
-	State               string
-	OpenCount           int
-	CooldownRemainingMs int64
 }
 
 var (
-	_resilienceMu        sync.RWMutex
-	_exporterPolicies    = make(map[string]ExporterPolicy)
-	_consecutiveTimeouts = make(map[string]int)
-	_circuitTrippedAt    = make(map[string]time.Time)
-	_openCount           = make(map[string]int)
-	_halfOpenProbing     = make(map[string]bool)
+	_resilienceMu      sync.RWMutex
+	_exporterPolicies  = make(map[string]ExporterPolicy)
+	_circuitBreakers   = make(map[string]*gobreaker.CircuitBreaker)
 )
 
 // _defaultExporterPolicy returns the default ExporterPolicy.
@@ -59,11 +43,26 @@ func _defaultExporterPolicy() ExporterPolicy {
 	}
 }
 
-// SetExporterPolicy replaces the per-signal policy.
+// _newCircuitBreaker creates a circuit breaker for the given signal and policy.
+func _newCircuitBreaker(signal string, _ ExporterPolicy) *gobreaker.CircuitBreaker {
+	settings := gobreaker.Settings{
+		Name:        signal,
+		MaxRequests: 1,
+		Interval:    0,
+		Timeout:     60 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+	}
+	return gobreaker.NewCircuitBreaker(settings)
+}
+
+// SetExporterPolicy replaces the per-signal policy and circuit breaker.
 func SetExporterPolicy(signal string, policy ExporterPolicy) {
 	_resilienceMu.Lock()
 	defer _resilienceMu.Unlock()
 	_exporterPolicies[signal] = policy
+	_circuitBreakers[signal] = _newCircuitBreaker(signal, policy)
 }
 
 // GetExporterPolicy returns the current policy for a signal.
@@ -77,161 +76,102 @@ func GetExporterPolicy(signal string) ExporterPolicy {
 	return _defaultExporterPolicy()
 }
 
-// _checkCircuitBreaker returns true if the circuit is OPEN (should reject).
-func _checkCircuitBreaker(signal string) bool {
+// _getCircuitBreaker returns (or lazily creates) the circuit breaker for a signal.
+// Caller must NOT hold any lock.
+func _getCircuitBreaker(signal string) *gobreaker.CircuitBreaker {
 	_resilienceMu.Lock()
 	defer _resilienceMu.Unlock()
-
-	if !_reachedThreshold(_consecutiveTimeouts[signal], _cbThreshold) {
-		return false
+	if cb, ok := _circuitBreakers[signal]; ok {
+		return cb
 	}
-
-	if _halfOpenProbing[signal] {
-		return true
-	}
-
-	cooldown := min(_cbBaseCooldown*(1<<_openCount[signal]), _cbMaxCooldown)
-
-	elapsed := time.Since(_circuitTrippedAt[signal])
-	if _elapsedLessThan(elapsed, cooldown) {
-		return true
-	}
-
-	_halfOpenProbing[signal] = true
-	return false
-}
-
-// _recordAttemptSuccess records a successful attempt for the circuit breaker.
-func _recordAttemptSuccess(signal string) {
-	_resilienceMu.Lock()
-	defer _resilienceMu.Unlock()
-
-	if _halfOpenProbing[signal] {
-		_halfOpenProbing[signal] = false
-		_consecutiveTimeouts[signal] = 0
-		_openCount[signal] = max(0, _openCount[signal]-1)
-	} else {
-		_consecutiveTimeouts[signal] = 0
-	}
-}
-
-// _recordAttemptFailure records a failed attempt for the circuit breaker.
-func _recordAttemptFailure(signal string, isTimeout bool) {
-	_resilienceMu.Lock()
-	defer _resilienceMu.Unlock()
-
-	switch {
-	case _halfOpenProbing[signal]:
-		_halfOpenProbing[signal] = false
-		_openCount[signal]++
-		_circuitTrippedAt[signal] = time.Now()
-	case isTimeout:
-		_consecutiveTimeouts[signal]++
-		if _reachedThreshold(_consecutiveTimeouts[signal], _cbThreshold) {
-			_openCount[signal]++
-			_circuitTrippedAt[signal] = time.Now()
-		}
-	default:
-		_consecutiveTimeouts[signal] = 0
-	}
-}
-
-// GetCircuitState returns the current circuit breaker state for a signal.
-func GetCircuitState(signal string) CircuitState {
-	_resilienceMu.RLock()
-	defer _resilienceMu.RUnlock()
-
-	oc := _openCount[signal]
-
-	if _halfOpenProbing[signal] {
-		return CircuitState{State: "half-open", OpenCount: oc, CooldownRemainingMs: 0}
-	}
-
-	if _reachedThreshold(_consecutiveTimeouts[signal], _cbThreshold) {
-		cooldown := min(_cbBaseCooldown*(1<<oc), _cbMaxCooldown)
-		elapsed := time.Since(_circuitTrippedAt[signal])
-		remaining := cooldown - elapsed
-		if _durationPositive(remaining) {
-			return CircuitState{State: "open", OpenCount: oc, CooldownRemainingMs: remaining.Milliseconds()}
-		}
-		return CircuitState{State: "half-open", OpenCount: oc, CooldownRemainingMs: 0}
-	}
-
-	return CircuitState{State: "closed", OpenCount: oc, CooldownRemainingMs: 0}
+	cb := _newCircuitBreaker(signal, _defaultExporterPolicy())
+	_circuitBreakers[signal] = cb
+	return cb
 }
 
 // RunWithResilience executes fn wrapped in a circuit breaker, retry loop, and timeout.
+// On success, the appropriate success counter is incremented.
+// On permanent failure, the failure counter is incremented.
+// If the circuit breaker is open and FailOpen=true, the error is swallowed (returns nil).
 func RunWithResilience(ctx context.Context, signal string, fn func(context.Context) error) error {
+	cb := _getCircuitBreaker(signal)
 	policy := GetExporterPolicy(signal)
-	startTime := time.Now()
 
-	attempts := max(1, policy.Retries+1)
+	_, cbErr := cb.Execute(func() (interface{}, error) {
+		return nil, _runWithBackoff(ctx, signal, policy, fn)
+	})
+	err := cbErr
 
-	if _timeoutEnabled(policy.TimeoutSeconds) {
-		if _checkCircuitBreaker(signal) {
-			if policy.FailOpen {
-				return nil
-			}
-			return errors.New("circuit breaker open for signal: " + signal)
-		}
-	}
+	return _handleResilienceResult(signal, policy, err)
+}
 
-	var lastErr error
-	for attempt := 0; attempt < attempts; attempt++ {
+// _runWithBackoff runs fn under a timeout with exponential backoff retries.
+func _runWithBackoff(ctx context.Context, signal string, policy ExporterPolicy, fn func(context.Context) error) error {
+	timeout := time.Duration(policy.TimeoutSeconds * float64(time.Second))
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = time.Duration(policy.BackoffSeconds * float64(time.Second))
+	bor := backoff.WithMaxRetries(bo, uint64(policy.Retries)) //nolint:gosec
+
+	var attempt int
+	return backoff.Retry(func() error {
 		if attempt > 0 {
-			_incRetries(signal)
-			time.Sleep(_secondsToDuration(policy.BackoffSeconds))
+			_incRetryAttempts()
 		}
+		attempt++
+		return fn(tctx)
+	}, backoff.WithContext(bor, tctx))
+}
 
-		var tctx context.Context
-		var cancel context.CancelFunc
-		if _timeoutEnabled(policy.TimeoutSeconds) {
-			timeout := _secondsToDuration(policy.TimeoutSeconds)
-			tctx, cancel = context.WithTimeout(ctx, timeout)
-		} else {
-			tctx = ctx
-			cancel = func() {}
-		}
-
-		err := fn(tctx)
-		cancel()
-
-		if err == nil {
-			_incExportSuccess(signal)
-			_recordAttemptSuccess(signal)
-			_recordExportLatencyForSignal(signal, float64(time.Since(startTime).Milliseconds()))
-			return nil
-		}
-
-		isTimeout := errors.Is(err, context.DeadlineExceeded)
-		_incExportFailure(signal)
-		_recordAttemptFailure(signal, isTimeout)
-		lastErr = err
-	}
-
-	if policy.FailOpen {
+// _handleResilienceResult processes the result from cb.Execute and updates counters.
+func _handleResilienceResult(signal string, policy ExporterPolicy, err error) error {
+	if err == nil {
+		_incExportSuccess(signal)
 		return nil
 	}
-	return lastErr
+
+	if err == gobreaker.ErrOpenState || err == gobreaker.ErrTooManyRequests {
+		_incCircuitBreakerTrips()
+		if policy.FailOpen {
+			return nil
+		}
+		return err
+	}
+
+	_incExportFailure(signal)
+	return err
 }
 
-// _incExportSuccess is a no-op — success counters were removed from the canonical layout.
+// _incExportSuccess increments the per-signal "exported OK" counter.
 func _incExportSuccess(signal string) {
-	_ = signal
+	switch signal {
+	case signalLogs:
+		_incLogsExportedOK()
+	case signalTraces:
+		_incSpansExportedOK()
+	case signalMetrics:
+		_incMetricsExportedOK()
+	}
 }
 
-// _incExportFailure increments the per-signal export-failure counter.
+// _incExportFailure increments the per-signal export-error counter.
 func _incExportFailure(signal string) {
-	_incExportFailures(signal)
+	switch signal {
+	case signalLogs:
+		_incLogsExportErrors()
+	case signalTraces:
+		_incSpansExportErrors()
+	case signalMetrics:
+		_incMetricsExportErrors()
+	}
 }
 
-// _resetResiliencePolicies clears all registered policies and circuit breaker state (for test cleanup).
+// _resetResiliencePolicies clears all registered policies and circuit breakers (for test cleanup).
 func _resetResiliencePolicies() {
 	_resilienceMu.Lock()
 	defer _resilienceMu.Unlock()
 	_exporterPolicies = make(map[string]ExporterPolicy)
-	_consecutiveTimeouts = make(map[string]int)
-	_circuitTrippedAt = make(map[string]time.Time)
-	_openCount = make(map[string]int)
-	_halfOpenProbing = make(map[string]bool)
+	_circuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
 }
