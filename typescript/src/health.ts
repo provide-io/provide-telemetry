@@ -18,13 +18,34 @@ export interface HealthSnapshot {
   exemplarUnsupported: number;
   lastExportError: string | null;
   exportLatencyMs: number;
+  circuitStateLogs: string;
+  circuitStateTraces: string;
+  circuitStateMetrics: string;
+  circuitOpenCountLogs: number;
+  circuitOpenCountTraces: number;
+  circuitOpenCountMetrics: number;
+  circuitCooldownRemainingLogs: number;
+  circuitCooldownRemainingTraces: number;
+  circuitCooldownRemainingMetrics: number;
+  setupError: string | null;
 }
 
-type NumericHealthField = {
-  [K in keyof HealthSnapshot]: HealthSnapshot[K] extends number ? K : never;
-}[keyof HealthSnapshot];
+/** Numeric fields that live in the mutable _state object (not derived circuit fields). */
+type NumericHealthField =
+  | 'logsEmitted'
+  | 'logsDropped'
+  | 'tracesEmitted'
+  | 'tracesDropped'
+  | 'metricsEmitted'
+  | 'metricsDropped'
+  | 'exportFailures'
+  | 'exportRetries'
+  | 'asyncBlockingRisk'
+  | 'exemplarUnsupported';
 
-const _state: HealthSnapshot = {
+let _setupError: string | null = null;
+
+const _state = {
   logsEmitted: 0,
   logsDropped: 0,
   tracesEmitted: 0,
@@ -35,12 +56,48 @@ const _state: HealthSnapshot = {
   exportRetries: 0,
   asyncBlockingRisk: 0,
   exemplarUnsupported: 0,
-  lastExportError: null,
+  lastExportError: null as string | null,
   exportLatencyMs: 0,
 };
 
+// Lazy reference to avoid circular dependency at module load time.
+// resilience.ts imports from health.ts, so we register the callback after load.
+type CircuitStateResult = { state: string; openCount: number; cooldownRemainingMs: number };
+type CircuitStateFn = (signal: string) => CircuitStateResult;
+
+const _defaultCircuitState: CircuitStateResult = {
+  state: 'closed',
+  openCount: 0,
+  cooldownRemainingMs: 0,
+};
+let _circuitStateFn: CircuitStateFn = () => _defaultCircuitState;
+
+/** Called by resilience module to register the getCircuitState function. */
+export function _registerCircuitStateFn(fn: CircuitStateFn): void {
+  _circuitStateFn = fn;
+}
+
 export function getHealthSnapshot(): HealthSnapshot {
-  return { ..._state };
+  const csLogs = _circuitStateFn('logs');
+  const csTraces = _circuitStateFn('traces');
+  const csMetrics = _circuitStateFn('metrics');
+  return {
+    ..._state,
+    circuitStateLogs: csLogs.state,
+    circuitStateTraces: csTraces.state,
+    circuitStateMetrics: csMetrics.state,
+    circuitOpenCountLogs: csLogs.openCount,
+    circuitOpenCountTraces: csTraces.openCount,
+    circuitOpenCountMetrics: csMetrics.openCount,
+    circuitCooldownRemainingLogs: csLogs.cooldownRemainingMs,
+    circuitCooldownRemainingTraces: csTraces.cooldownRemainingMs,
+    circuitCooldownRemainingMetrics: csMetrics.cooldownRemainingMs,
+    setupError: _setupError,
+  };
+}
+
+export function setSetupError(error: string | null): void {
+  _setupError = error;
 }
 
 export function _incrementHealth(field: NumericHealthField, by: number = 1): void {
@@ -69,4 +126,5 @@ export function _resetHealthForTests(): void {
   _state.exemplarUnsupported = 0;
   _state.lastExportError = null;
   _state.exportLatencyMs = 0;
+  _setupError = null;
 }

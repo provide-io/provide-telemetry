@@ -16,12 +16,14 @@
  */
 
 import {
+  getCircuitState,
   getExporterPolicy,
   getHealthSnapshot,
   runWithResilience,
   setExporterPolicy,
   setupTelemetry,
   shutdownTelemetry,
+  TelemetryTimeoutError,
 } from '../../src/index.js';
 
 async function main(): Promise<void> {
@@ -31,21 +33,21 @@ async function main(): Promise<void> {
 
   // ── 🟢 Fail-open: returns null on failure ────────────
   console.log('🟢 Fail-open mode (retries=1, backoffMs=0)');
-  setExporterPolicy({ retries: 1, backoffMs: 0, failOpen: true, timeoutMs: 0 });
+  setExporterPolicy('logs', { retries: 1, backoffMs: 0, failOpen: true, timeoutMs: 0 });
 
   let attemptsOpen = 0;
   const result = await runWithResilience('logs', async () => {
     attemptsOpen++;
     throw new Error('simulated exporter failure');
   });
-  const policy = getExporterPolicy();
+  const policy = getExporterPolicy('logs');
   console.log(`  📦 Result: ${result}`);
   console.log(`  🔄 Attempts: ${attemptsOpen}`);
   console.log(`  📋 Policy: retries=${policy.retries}, failOpen=${policy.failOpen}`);
 
   // ── 🔴 Fail-closed: throws on failure ────────────────
   console.log('\n🔴 Fail-closed mode (retries=1, backoffMs=0)');
-  setExporterPolicy({ retries: 1, backoffMs: 0, failOpen: false, timeoutMs: 0 });
+  setExporterPolicy('logs', { retries: 1, backoffMs: 0, failOpen: false, timeoutMs: 0 });
 
   let attemptsClosed = 0;
   try {
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
 
   // ── ⏱️ Timeout enforcement ────────────────────────────
   console.log('\n⏱️  Timeout enforcement (timeoutMs=50)');
-  setExporterPolicy({ retries: 0, timeoutMs: 50, failOpen: true });
+  setExporterPolicy('traces', { retries: 0, timeoutMs: 50, failOpen: true });
 
   const timedOut = await runWithResilience('traces', async () => {
     await new Promise((r) => setTimeout(r, 200));
@@ -68,13 +70,31 @@ async function main(): Promise<void> {
   });
   console.log(`  📦 Result: ${timedOut}  (null = timed out, fail-open)`);
 
+  // ── 🔌 Circuit breaker with exponential backoff ─────────
+  console.log('\n🔌 Circuit breaker (exponential backoff + half-open probing)');
+  setExporterPolicy('metrics', { retries: 0, timeoutMs: 10, failOpen: true });
+
+  for (let i = 0; i < 4; i++) {
+    await runWithResilience('metrics', async () => {
+      throw new TelemetryTimeoutError('simulated timeout');
+    });
+  }
+
+  const circuit = getCircuitState('metrics');
+  console.log(`  🔌 Circuit state:     ${circuit.state}`);
+  console.log(`  📈 Open count:        ${circuit.openCount}`);
+  console.log(`  ⏳ Cooldown remaining: ${(circuit.cooldownRemainingMs / 1000).toFixed(1)}s`);
+
   // ── 📊 Health snapshot ────────────────────────────────
   console.log('\n📊 Health snapshot after all operations:');
   const snapshot = getHealthSnapshot();
-  console.log(`  🔄 exportRetries:    ${snapshot.exportRetries}`);
-  console.log(`  ❌ exportFailures:   ${snapshot.exportFailures}`);
-  console.log(`  💬 lastExportError:  ${snapshot.lastExportError}`);
-  console.log(`  ⏱️  exportLatencyMs: ${snapshot.exportLatencyMs}`);
+  console.log(`  🔄 exportRetries:       ${snapshot.exportRetries}`);
+  console.log(`  ❌ exportFailures:      ${snapshot.exportFailures}`);
+  console.log(`  💬 lastExportError:     ${snapshot.lastExportError}`);
+  console.log(`  ⏱️  exportLatencyMs:    ${snapshot.exportLatencyMs}`);
+  console.log(`  🔌 circuitStateMetrics: ${snapshot.circuitStateMetrics}`);
+  console.log(`  📈 circuitOpenCount:    ${snapshot.circuitOpenCountMetrics}`);
+  console.log(`  🛑 setupError:          ${snapshot.setupError}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();
