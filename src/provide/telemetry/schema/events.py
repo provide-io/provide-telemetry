@@ -94,11 +94,7 @@ def event(*segments: str) -> Event:
 
 
 def event_name(*segments: str) -> str:
-    """Build an event name from dot-separated segments.
-
-    .. deprecated:: 0.4
-        Use :func:`event` instead.  This function returns a plain string
-        without DA(R)S metadata.
+    """Build a dot-joined event name string from segments.
 
     In strict mode (``strict_schema`` or ``strict_event_name``): enforces 3-5
     lowercase/underscore segments.  In relaxed mode (default): accepts 1+
