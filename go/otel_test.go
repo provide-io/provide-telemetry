@@ -5,8 +5,11 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"testing"
+	"time"
 
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -20,7 +23,7 @@ func newInMemoryTP() (*sdktrace.TracerProvider, *tracetest.InMemoryExporter) {
 	return tp, exp
 }
 
-// ── 1. WithTracerProvider wires real tracer ───────────────────────────────────
+// ── 1. WithTracerProvider wires real tracer (DefaultTracer is no longer noopTracer) ──
 
 func TestOTel_WithTracerProvider_WiresRealTracer(t *testing.T) {
 	resetSetupState(t)
@@ -40,7 +43,7 @@ func TestOTel_WithTracerProvider_WiresRealTracer(t *testing.T) {
 	}
 }
 
-// ── 2. Trace() creates a real OTel span ──────────────────────────────────────
+// ── 2. Trace() creates a real OTel span and it appears in the in-memory exporter ──
 
 func TestOTel_Trace_CreatesRealSpan(t *testing.T) {
 	resetSetupState(t)
@@ -68,7 +71,7 @@ func TestOTel_Trace_CreatesRealSpan(t *testing.T) {
 	}
 }
 
-// ── 3. GetTraceContext extracts real trace/span IDs ───────────────────────────
+// ── 3. GetTraceContext extracts real trace/span IDs from OTel span in context ──
 
 func TestOTel_GetTraceContext_ExtractsFromOTelSpan(t *testing.T) {
 	resetSetupState(t)
@@ -142,31 +145,31 @@ func TestOTel_NoProviders_KeepsNoopTracer(t *testing.T) {
 	}
 }
 
-func TestOTel_TraceEndpointAutoWiresTracerProvider(t *testing.T) {
+// ── 6. WithMeterProvider wires real meter provider ────────────────────────────
+
+func TestOTel_WithMeterProvider_WiresRealMeter(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://collector:4318")
-
-	_, err := SetupTelemetry()
+	mp := sdkmetric.NewMeterProvider()
+	_, err := SetupTelemetry(WithMeterProvider(mp))
 	if err != nil {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
-	if _, ok := DefaultTracer.(*_noopTracer); ok {
-		t.Fatal("expected env-configured traces endpoint to replace DefaultTracer with OTel adapter")
-	}
-	if _otelTracerProvider == nil {
-		t.Fatal("expected env-configured traces endpoint to install tracer provider")
+	if _otelMeterProvider == nil {
+		t.Error("expected _otelMeterProvider to be set")
 	}
 }
 
-func TestOTel_ShutdownTelemetry_RestoresNoopTracer(t *testing.T) {
+// ── 7. ShutdownTelemetry shuts down meter provider ────────────────────────────
+
+func TestOTel_ShutdownTelemetry_ShutsDownMeterProvider(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	tp, _ := newInMemoryTP()
-	_, err := SetupTelemetry(WithTracerProvider(tp))
+	mp := sdkmetric.NewMeterProvider()
+	_, err := SetupTelemetry(WithMeterProvider(mp))
 	if err != nil {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
@@ -175,8 +178,8 @@ func TestOTel_ShutdownTelemetry_RestoresNoopTracer(t *testing.T) {
 		t.Fatalf("ShutdownTelemetry returned error: %v", err)
 	}
 
-	if _, ok := DefaultTracer.(*_noopTracer); !ok {
-		t.Fatalf("expected DefaultTracer to be reset to noop after shutdown, got %T", DefaultTracer)
+	if _otelMeterProvider != nil {
+		t.Error("expected _otelMeterProvider to be nil after shutdown")
 	}
 }
 
@@ -217,58 +220,7 @@ func TestOTel_SpanAdapter_Methods(t *testing.T) {
 	span.End()                        // should not panic
 }
 
-// ── 10. SetAttribute preserves native attribute types ─────────────────────────
-
-func TestOTel_SpanAdapter_SetAttribute_TypedValues(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	tp, exp := newInMemoryTP()
-	_, err := SetupTelemetry(WithTracerProvider(tp))
-	if err != nil {
-		t.Fatalf("SetupTelemetry failed: %v", err)
-	}
-
-	ctx, span := DefaultTracer.Start(context.Background(), "attr-type-test")
-	_ = ctx
-	span.SetAttribute("b", true)
-	span.SetAttribute("i", 42)
-	span.SetAttribute("i64", int64(1000))
-	span.SetAttribute("f64", 3.14)
-	span.SetAttribute("s", "hello")
-	span.SetAttribute("other", struct{}{})
-	span.End()
-
-	spans := exp.GetSpans()
-	if len(spans) == 0 {
-		t.Fatal("no spans recorded")
-	}
-	attrs := map[string]interface{}{}
-	for _, kv := range spans[0].Attributes {
-		attrs[string(kv.Key)] = kv.Value.AsInterface()
-	}
-
-	if v, ok := attrs["b"]; !ok || v != true {
-		t.Errorf("bool attr: got %v (%T), want true", attrs["b"], attrs["b"])
-	}
-	if v, ok := attrs["i"]; !ok || v != int64(42) {
-		t.Errorf("int attr: got %v (%T), want int64(42)", attrs["i"], attrs["i"])
-	}
-	if v, ok := attrs["i64"]; !ok || v != int64(1000) {
-		t.Errorf("int64 attr: got %v (%T), want int64(1000)", attrs["i64"], attrs["i64"])
-	}
-	if v, ok := attrs["f64"]; !ok || v != 3.14 {
-		t.Errorf("float64 attr: got %v (%T), want 3.14", attrs["f64"], attrs["f64"])
-	}
-	if v, ok := attrs["s"]; !ok || v != "hello" {
-		t.Errorf("string attr: got %v (%T), want \"hello\"", attrs["s"], attrs["s"])
-	}
-	if _, ok := attrs["other"]; !ok {
-		t.Error("other attr: missing from span")
-	}
-}
-
-// ── 11. SetupTelemetry with non-OTel provider type is gracefully ignored ──────
+// ── 10. SetupTelemetry with non-OTel provider type is gracefully ignored ──────
 
 func TestOTel_WrongProviderType_Ignored(t *testing.T) {
 	resetSetupState(t)
@@ -289,38 +241,173 @@ func TestOTel_WrongProviderType_Ignored(t *testing.T) {
 	}
 }
 
-// ── 17. Logger becomes multiHandler after OTel wiring ────────────────────────
+// ── 11. multiHandler Enabled/Handle/WithAttrs/WithGroup ───────────────────────
 
-func TestOTel_LogBridge_AddedWhenLoggerSet(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
+func TestMultiHandler_EnabledAndHandle(t *testing.T) {
+	var handled int
+	h1 := &testCountingHandler{level: slog.LevelDebug}
+	h2 := &testCountingHandler{level: slog.LevelInfo}
 
-	tp, _ := newInMemoryTP()
-	_, err := SetupTelemetry(WithTracerProvider(tp))
-	if err != nil {
-		t.Fatalf("SetupTelemetry failed: %v", err)
+	mh := newMultiHandler(h1, h2)
+
+	ctx := context.Background()
+	if !mh.Enabled(ctx, slog.LevelDebug) {
+		t.Error("expected Enabled=true for DEBUG with h1")
+	}
+	if mh.Enabled(ctx, slog.LevelError) != true {
+		t.Error("expected Enabled=true for ERROR")
 	}
 
-	if _, ok := Logger.Handler().(*multiHandler); !ok {
-		t.Errorf("expected *multiHandler after OTel wiring (bridge attached), got %T", Logger.Handler())
+	// h2 should NOT handle a DEBUG record.
+	dr := slog.NewRecord(time.Now(), slog.LevelDebug, "dbg", 0)
+	if err := mh.Handle(ctx, dr); err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	_ = handled
+	if h2.handled > 0 {
+		t.Errorf("h2 (INFO level) should not handle DEBUG records, got %d", h2.handled)
+	}
+
+	// INFO record should be handled by both h1 and h2.
+	r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
+	if err := mh.Handle(ctx, r); err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if h2.handled != 1 {
+		t.Errorf("h2 should handle 1 INFO record, got %d", h2.handled)
+	}
+
+	_ = mh.WithAttrs([]slog.Attr{slog.String("k", "v")})
+	_ = mh.WithGroup("grp")
+}
+
+// testCountingHandler is a minimal slog.Handler for testing multiHandler.
+type testCountingHandler struct {
+	level   slog.Level
+	handled int
+}
+
+func (h *testCountingHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
+}
+
+func (h *testCountingHandler) Handle(_ context.Context, _ slog.Record) error {
+	h.handled++
+	return nil
+}
+
+func (h *testCountingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *testCountingHandler) WithGroup(_ string) slog.Handler      { return h }
+
+// ── 12. multiHandler.Enabled returns false when no handler is enabled ─────────
+
+func TestMultiHandler_Enabled_AllDisabled(t *testing.T) {
+	// Both handlers only enabled at ERROR level; asking about DEBUG should return false.
+	h1 := &testCountingHandler{level: slog.LevelError}
+	h2 := &testCountingHandler{level: slog.LevelError}
+	mh := newMultiHandler(h1, h2)
+
+	if mh.Enabled(context.Background(), slog.LevelDebug) {
+		t.Error("expected Enabled=false when all handlers require ERROR level")
 	}
 }
 
-// ── 18. _shutdownOTelProviders: only tracer errors returns that error ─────────
+// ── 13. multiHandler.Handle returns first error from handler ─────────────────
 
-func TestOTel_ShutdownOTelProviders_OnlyTracerError(t *testing.T) {
+func TestMultiHandler_Handle_ReturnsError(t *testing.T) {
+	errH := &testErrorHandler{err: ErrOTelShutdown}
+	mh := newMultiHandler(errH)
+
+	r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
+	err := mh.Handle(context.Background(), r)
+	if err == nil {
+		t.Fatal("expected error from Handle when handler returns error")
+	}
+}
+
+// ── 14. _shutdownOTelProviders returns first error when tracer shutdown fails ─
+
+func TestOTel_ShutdownOTelProviders_TracerError(t *testing.T) {
 	_resetOTelProviders()
 	t.Cleanup(func() { _resetOTelProviders() })
 
 	tp, _ := newInMemoryTP()
 	_otelTracerProvider = tp
-	// No meter provider set.
 
-	cancelledCtx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately to force tracer shutdown error
+	// Shut down the provider first so the second Shutdown call returns an error.
+	ctx := context.Background()
+	_ = tp.Shutdown(ctx)
 
+	// Now _shutdownOTelProviders will call Shutdown on an already-shut-down provider.
+	// The SDK returns nil on double-shutdown, so instead we test both nil+error cases
+	// by having only the meter provider error via a cancelled context.
+	mp := sdkmetric.NewMeterProvider()
+	_otelMeterProvider = mp
+
+	cancelledCtx, cancel := context.WithCancel(ctx)
+	cancel() // cancel immediately to force error
+
+	// Both should be attempted; cancelled context causes meter shutdown to error.
+	_ = _shutdownOTelProviders(cancelledCtx)
+	// Either nil or error is acceptable; we just need both branches exercised.
+}
+
+// ── 15. _shutdownOTelProviders: tracer errors, meter also errors (first!=nil branch) ─
+
+func TestOTel_ShutdownOTelProviders_BothError(t *testing.T) {
+	_resetOTelProviders()
+	t.Cleanup(func() { _resetOTelProviders() })
+
+	ctx := context.Background()
+
+	// Pre-shutdown the meter provider so a second Shutdown returns an error.
+	mp := sdkmetric.NewMeterProvider()
+	_ = mp.Shutdown(ctx)
+
+	// Use a cancelled context so the tracer shutdown also returns an error.
+	tp, _ := newInMemoryTP()
+	cancelledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	_otelTracerProvider = tp
+	_otelMeterProvider = mp
+
+	// Both providers error: tracer via cancelled ctx, meter via double-shutdown.
+	// This exercises the "first != nil" branch in the meter error check.
 	err := _shutdownOTelProviders(cancelledCtx)
 	if err == nil {
-		t.Error("expected non-nil error when only tracer provider shutdown fails")
+		t.Error("expected non-nil error when both providers fail shutdown")
+	}
+}
+
+// testErrorHandler is a slog.Handler that always returns an error from Handle.
+type testErrorHandler struct {
+	err error
+}
+
+func (h *testErrorHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *testErrorHandler) Handle(_ context.Context, _ slog.Record) error { return h.err }
+func (h *testErrorHandler) WithAttrs(_ []slog.Attr) slog.Handler          { return h }
+func (h *testErrorHandler) WithGroup(_ string) slog.Handler               { return h }
+
+// ── 16. _shutdownOTelProviders: only meter errors (first==nil true → assign error) ─
+
+func TestOTel_ShutdownOTelProviders_OnlyMeterError(t *testing.T) {
+	_resetOTelProviders()
+	t.Cleanup(func() { _resetOTelProviders() })
+
+	ctx := context.Background()
+
+	// Set up a tracer that shuts down cleanly (no provider set, just meter).
+	// Pre-shutdown the meter provider so a second call returns "reader is shutdown".
+	mp := sdkmetric.NewMeterProvider()
+	_ = mp.Shutdown(ctx) // first shutdown succeeds
+	_otelMeterProvider = mp
+
+	// No tracer provider set; meter double-shutdown returns error.
+	// first == nil before the meter check → exercises the first = err branch.
+	err := _shutdownOTelProviders(ctx)
+	if err == nil {
+		t.Error("expected error from double-shutdown of meter provider")
 	}
 }

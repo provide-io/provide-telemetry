@@ -72,6 +72,9 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	// Configure the package-level logger.
 	_configureLogger(cfg)
 
+	// Wire OTel providers if any were supplied.
+	_applyOTelProviders(state, cfg)
+
 	// Wire strict schema flag.
 	_strictSchema = cfg.StrictSchema
 
@@ -86,7 +89,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 
 // ShutdownTelemetry tears down all telemetry subsystems and resets the setup sentinel.
 // It is safe to call on an already-shutdown system (no-op).
-func ShutdownTelemetry(_ context.Context) error {
+func ShutdownTelemetry(ctx context.Context) error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
 
@@ -98,7 +101,7 @@ func ShutdownTelemetry(_ context.Context) error {
 	_runtimeCfg = nil
 	_incShutdownCount()
 
-	return nil
+	return _shutdownOTelProviders(ctx)
 }
 
 // _resetSetup clears setup state unconditionally. For use in tests only.
@@ -107,4 +110,6 @@ func _resetSetup() {
 	defer _setupMu.Unlock()
 	_setupDone = false
 	_runtimeCfg = nil
+	_resetOTelProviders()
+	DefaultTracer = &_noopTracer{}
 }
