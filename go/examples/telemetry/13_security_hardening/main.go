@@ -42,17 +42,19 @@ func main() {
 	ctx := context.Background()
 	log := telemetry.GetLogger(ctx, "security-demo")
 
-	fmt.Println("=== Security Hardening Demo ===\n")
+	fmt.Println("=== Security Hardening Demo ===")
+fmt.Println()
 
 	// 1. Control characters stripped from log output
 	fmt.Println("1. Control character stripping:")
 	rawData := "clean\x00hidden\x01bytes\x7fremoved"
 	cleanData := stripControlChars(rawData)
 	ctrlEvt, _ := telemetry.Event("security", "demo", "control_chars")
-	log.InfoContext(ctx, ctrlEvt, "data", cleanData)
+	log.InfoContext(ctx, ctrlEvt.Event, append(ctrlEvt.Attrs(), "data", cleanData)...)
 	fmt.Printf("   Input:  %q\n", rawData)
 	fmt.Printf("   Output: %q\n", cleanData)
-	fmt.Println("   (null bytes and control chars silently removed)\n")
+	fmt.Println("   (null bytes and control chars silently removed)")
+fmt.Println()
 
 	// 2. Value truncation via SanitizePayload
 	fmt.Println("2. Value truncation (max_depth and oversized values):")
@@ -69,7 +71,7 @@ func main() {
 	})
 	sanitizedTrunc := telemetry.SanitizePayload(truncPayload, true, 0)
 	truncEvt, _ := telemetry.Event("security", "demo", "truncation")
-	log.InfoContext(ctx, truncEvt, "big_field_len", len(sanitizedTrunc["big_field"].(string)))
+	log.InfoContext(ctx, truncEvt.Event, append(truncEvt.Attrs(), "big_field_len", len(sanitizedTrunc["big_field"].(string)))...)
 	fmt.Printf("   Input: %d chars -> truncated to %d chars\n",
 		len(hugeValue), len(sanitizedTrunc["big_field"].(string)))
 	fmt.Println()
