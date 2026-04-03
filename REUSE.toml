@@ -84,3 +84,8 @@ path = [
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["go/coverage_new.out", "go/coverage.out"]
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-License-Identifier = "Apache-2.0"
