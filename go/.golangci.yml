@@ -15,7 +15,6 @@ linters:
     - unconvert
     - misspell
     - exhaustive
-    - goimports
     - gocyclo
   settings:
     gocyclo:
