@@ -1,0 +1,549 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+
+package telemetry
+
+import (
+	"fmt"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+)
+
+// LoggingConfig holds all logging-related configuration.
+type LoggingConfig struct {
+	Level             string            // default "INFO"
+	Format            string            // default "console" (console|json|pretty)
+	IncludeTimestamp  bool              // default true
+	IncludeCaller     bool              // default true
+	Sanitize          bool              // default true
+	OTLPEndpoint      string            // optional
+	OTLPHeaders       map[string]string // optional
+	LogCodeAttributes bool              // default false
+	PrettyKeyColor    string            // default "dim"
+	PrettyValueColor  string            // default ""
+	PrettyFields      []string          // default []
+	ModuleLevels      map[string]string // default {}
+}
+
+// TracingConfig holds all tracing-related configuration.
+type TracingConfig struct {
+	Enabled      bool              // default true
+	SampleRate   float64           // default 1.0
+	OTLPEndpoint string
+	OTLPHeaders  map[string]string
+}
+
+// MetricsConfig holds all metrics-related configuration.
+type MetricsConfig struct {
+	Enabled      bool // default true
+	OTLPEndpoint string
+	OTLPHeaders  map[string]string
+}
+
+// SchemaConfig holds event schema validation configuration.
+type SchemaConfig struct {
+	StrictEventName bool
+	RequiredKeys    []string
+}
+
+// SamplingConfig holds per-signal sampling rates.
+type SamplingConfig struct {
+	LogsRate    float64 // default 1.0
+	TracesRate  float64 // default 1.0
+	MetricsRate float64 // default 1.0
+}
+
+// BackpressureConfig holds bounded queue configuration.
+type BackpressureConfig struct {
+	LogsMaxSize    int // default 0
+	TracesMaxSize  int
+	MetricsMaxSize int
+}
+
+// ExporterPolicyConfig holds retry/timeout/fail-open policy for exporters.
+type ExporterPolicyConfig struct {
+	LogsRetries    int
+	TracesRetries  int
+	MetricsRetries int
+
+	LogsBackoffSeconds    float64
+	TracesBackoffSeconds  float64
+	MetricsBackoffSeconds float64
+
+	LogsTimeoutSeconds    float64 // default 10.0
+	TracesTimeoutSeconds  float64 // default 10.0
+	MetricsTimeoutSeconds float64 // default 10.0
+
+	LogsFailOpen    bool // default true
+	TracesFailOpen  bool // default true
+	MetricsFailOpen bool // default true
+
+	LogsAllowBlockingInEventLoop    bool
+	TracesAllowBlockingInEventLoop  bool
+	MetricsAllowBlockingInEventLoop bool
+}
+
+// SLOConfig holds SLO metric configuration.
+type SLOConfig struct {
+	EnableREDMetrics     bool
+	EnableUSEMetrics     bool
+	IncludeErrorTaxonomy bool // default true
+}
+
+// SecurityConfig holds attribute security limits.
+type SecurityConfig struct {
+	MaxAttrValueLength int // default 1024
+	MaxAttrCount       int // default 64
+	MaxNestingDepth    int // default 8
+}
+
+// TelemetryConfig is the top-level configuration for provide-telemetry.
+type TelemetryConfig struct {
+	ServiceName  string // default "provide-service"
+	Environment  string // default "dev"
+	Version      string // default "0.0.0"
+	StrictSchema bool
+	Logging      LoggingConfig
+	Tracing      TracingConfig
+	Metrics      MetricsConfig
+	EventSchema  SchemaConfig
+	Sampling     SamplingConfig
+	Backpressure BackpressureConfig
+	Exporter     ExporterPolicyConfig
+	SLO          SLOConfig
+	Security     SecurityConfig
+}
+
+// DefaultTelemetryConfig returns a *TelemetryConfig with all defaults applied.
+func DefaultTelemetryConfig() *TelemetryConfig {
+	return &TelemetryConfig{
+		ServiceName: "provide-service",
+		Environment: "dev",
+		Version:     "0.0.0",
+		Logging: LoggingConfig{
+			Level:            "INFO",
+			Format:           "console",
+			IncludeTimestamp: true,
+			IncludeCaller:    true,
+			Sanitize:         true,
+			OTLPHeaders:      map[string]string{},
+			PrettyKeyColor:   "dim",
+			PrettyValueColor: "",
+			PrettyFields:     []string{},
+			ModuleLevels:     map[string]string{},
+		},
+		Tracing: TracingConfig{
+			Enabled:     true,
+			SampleRate:  1.0,
+			OTLPHeaders: map[string]string{},
+		},
+		Metrics: MetricsConfig{
+			Enabled:     true,
+			OTLPHeaders: map[string]string{},
+		},
+		EventSchema: SchemaConfig{
+			RequiredKeys: []string{},
+		},
+		Sampling: SamplingConfig{
+			LogsRate:    1.0,
+			TracesRate:  1.0,
+			MetricsRate: 1.0,
+		},
+		Exporter: ExporterPolicyConfig{
+			LogsTimeoutSeconds:    10.0,
+			TracesTimeoutSeconds:  10.0,
+			MetricsTimeoutSeconds: 10.0,
+			LogsFailOpen:          true,
+			TracesFailOpen:        true,
+			MetricsFailOpen:       true,
+		},
+		SLO: SLOConfig{
+			IncludeErrorTaxonomy: true,
+		},
+		Security: SecurityConfig{
+			MaxAttrValueLength: 1024,
+			MaxAttrCount:       64,
+			MaxNestingDepth:    8,
+		},
+	}
+}
+
+// ConfigFromEnv reads environment variables and returns a fully populated *TelemetryConfig.
+// Returns *ConfigurationError for invalid values.
+func ConfigFromEnv() (*TelemetryConfig, error) {
+	cfg := DefaultTelemetryConfig()
+
+	// Top-level
+	if v := os.Getenv("PROVIDE_TELEMETRY_SERVICE_NAME"); v != "" {
+		cfg.ServiceName = v
+	}
+	if v := os.Getenv("PROVIDE_TELEMETRY_ENV"); v != "" {
+		cfg.Environment = v
+	}
+	if v := os.Getenv("PROVIDE_TELEMETRY_VERSION"); v != "" {
+		cfg.Version = v
+	}
+	cfg.StrictSchema = parseBool(os.Getenv("PROVIDE_TELEMETRY_STRICT_SCHEMA"), false)
+
+	// EventSchema
+	cfg.EventSchema.StrictEventName = parseBool(os.Getenv("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), false)
+	if v := os.Getenv("PROVIDE_TELEMETRY_REQUIRED_KEYS"); v != "" {
+		cfg.EventSchema.RequiredKeys = splitTrimmed(v, ",")
+	}
+
+	// Logging
+	if v := os.Getenv("PROVIDE_LOG_LEVEL"); v != "" {
+		normalized, err := normalizeLevel(v)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Logging.Level = normalized
+	}
+	if v := os.Getenv("PROVIDE_LOG_FORMAT"); v != "" {
+		if err := validateFormat(v); err != nil {
+			return nil, err
+		}
+		cfg.Logging.Format = v
+	}
+	cfg.Logging.IncludeTimestamp = parseBool(os.Getenv("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true)
+	cfg.Logging.IncludeCaller = parseBool(os.Getenv("PROVIDE_LOG_INCLUDE_CALLER"), true)
+	cfg.Logging.Sanitize = parseBool(os.Getenv("PROVIDE_LOG_SANITIZE"), true)
+	cfg.Logging.LogCodeAttributes = parseBool(os.Getenv("PROVIDE_LOG_CODE_ATTRIBUTES"), false)
+
+	if v := os.Getenv("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
+		cfg.Logging.PrettyKeyColor = v
+	}
+	if v := os.Getenv("PROVIDE_LOG_PRETTY_VALUE_COLOR"); v != "" {
+		cfg.Logging.PrettyValueColor = v
+	}
+	if v := os.Getenv("PROVIDE_LOG_PRETTY_FIELDS"); v != "" {
+		cfg.Logging.PrettyFields = splitTrimmed(v, ",")
+	}
+	if v := os.Getenv("PROVIDE_LOG_MODULE_LEVELS"); v != "" {
+		ml, err := parseModuleLevels(v)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Logging.ModuleLevels = ml
+	}
+
+	// OTLP endpoints/headers — signal-specific fallback to generic
+	genericEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	genericHeaders := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")
+
+	cfg.Logging.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"), genericEndpoint)
+	logsHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS"), genericHeaders)
+	cfg.Logging.OTLPHeaders = parseOTLPHeaders(logsHeadersRaw)
+
+	cfg.Tracing.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"), genericEndpoint)
+	tracesHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_HEADERS"), genericHeaders)
+	cfg.Tracing.OTLPHeaders = parseOTLPHeaders(tracesHeadersRaw)
+
+	cfg.Metrics.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"), genericEndpoint)
+	metricsHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_METRICS_HEADERS"), genericHeaders)
+	cfg.Metrics.OTLPHeaders = parseOTLPHeaders(metricsHeadersRaw)
+
+	// Tracing
+	cfg.Tracing.Enabled = parseBool(os.Getenv("PROVIDE_TRACE_ENABLED"), true)
+	if v := os.Getenv("PROVIDE_TRACE_SAMPLE_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_TRACE_SAMPLE_RATE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Tracing.SampleRate = f
+	}
+
+	// Metrics
+	cfg.Metrics.Enabled = parseBool(os.Getenv("PROVIDE_METRICS_ENABLED"), true)
+
+	// Sampling
+	if v := os.Getenv("PROVIDE_SAMPLING_LOGS_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_LOGS_RATE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Sampling.LogsRate = f
+	}
+	if v := os.Getenv("PROVIDE_SAMPLING_TRACES_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_TRACES_RATE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Sampling.TracesRate = f
+	}
+	if v := os.Getenv("PROVIDE_SAMPLING_METRICS_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_METRICS_RATE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Sampling.MetricsRate = f
+	}
+
+	// Backpressure
+	if v := os.Getenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Backpressure.LogsMaxSize = n
+	}
+	if v := os.Getenv("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Backpressure.TracesMaxSize = n
+	}
+	if v := os.Getenv("PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Backpressure.MetricsMaxSize = n
+	}
+
+	// Exporter retries
+	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_LOGS_RETRIES")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.LogsRetries = n
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_TRACES_RETRIES")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.TracesRetries = n
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_METRICS_RETRIES")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.MetricsRetries = n
+	}
+
+	// Exporter backoff
+	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.LogsBackoffSeconds = f
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.TracesBackoffSeconds = f
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.MetricsBackoffSeconds = f
+	}
+
+	// Exporter timeout
+	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.LogsTimeoutSeconds = f
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.TracesTimeoutSeconds = f
+	}
+	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Exporter.MetricsTimeoutSeconds = f
+	}
+
+	// Exporter fail-open
+	cfg.Exporter.LogsFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), true)
+	cfg.Exporter.TracesFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), true)
+	cfg.Exporter.MetricsFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), true)
+
+	// Exporter allow-blocking
+	cfg.Exporter.LogsAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), false)
+	cfg.Exporter.TracesAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), false)
+	cfg.Exporter.MetricsAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), false)
+
+	// SLO
+	cfg.SLO.EnableREDMetrics = parseBool(os.Getenv("PROVIDE_SLO_ENABLE_RED_METRICS"), false)
+	cfg.SLO.EnableUSEMetrics = parseBool(os.Getenv("PROVIDE_SLO_ENABLE_USE_METRICS"), false)
+	cfg.SLO.IncludeErrorTaxonomy = parseBool(os.Getenv("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), true)
+
+	// Security
+	if v := os.Getenv("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Security.MaxAttrValueLength = n
+	}
+	if v := os.Getenv("PROVIDE_SECURITY_MAX_ATTR_COUNT"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_COUNT")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Security.MaxAttrCount = n
+	}
+	if v := os.Getenv("PROVIDE_SECURITY_MAX_NESTING_DEPTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_NESTING_DEPTH")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Security.MaxNestingDepth = n
+	}
+
+	return cfg, nil
+}
+
+// parseBool interprets "1", "true", "yes", "on" (case-insensitive) as true;
+// empty string returns the default; anything else returns false.
+func parseBool(value string, defaultVal bool) bool {
+	if value == "" {
+		return defaultVal
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeLevel validates and normalises a log level string.
+func normalizeLevel(value string) (string, error) {
+	allowed := map[string]struct{}{
+		"TRACE": {}, "DEBUG": {}, "INFO": {},
+		"WARNING": {}, "ERROR": {}, "CRITICAL": {},
+	}
+	upper := strings.ToUpper(strings.TrimSpace(value))
+	if _, ok := allowed[upper]; !ok {
+		return "", NewConfigurationError(fmt.Sprintf("invalid log level: %s", value))
+	}
+	return upper, nil
+}
+
+// validateFormat checks that the log format is one of the allowed values.
+func validateFormat(value string) error {
+	switch value {
+	case "console", "json", "pretty":
+		return nil
+	default:
+		return NewConfigurationError(fmt.Sprintf("invalid log format: %s", value))
+	}
+}
+
+// parseEnvFloat parses a float64 from a string, returning ConfigurationError on failure.
+func parseEnvFloat(value, field string) (float64, error) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0, NewConfigurationError(fmt.Sprintf("invalid float for %s: %q", field, value))
+	}
+	return f, nil
+}
+
+// parseEnvInt parses an int from a string, returning ConfigurationError on failure.
+func parseEnvInt(value, field string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, NewConfigurationError(fmt.Sprintf("invalid integer for %s: %q", field, value))
+	}
+	return n, nil
+}
+
+// parseOTLPHeaders parses "key=value,key2=value2" into a map.
+// Keys and values are URL-decoded. Malformed pairs are skipped.
+func parseOTLPHeaders(raw string) map[string]string {
+	headers := map[string]string{}
+	if raw == "" {
+		return headers
+	}
+	for _, pair := range strings.Split(raw, ",") {
+		idx := strings.Index(pair, "=")
+		if idx < 0 {
+			// malformed — skip
+			continue
+		}
+		rawKey := strings.TrimSpace(pair[:idx])
+		rawVal := strings.TrimSpace(pair[idx+1:])
+		key, err := url.QueryUnescape(rawKey)
+		if err != nil || key == "" {
+			continue
+		}
+		val, err := url.QueryUnescape(rawVal)
+		if err != nil {
+			continue
+		}
+		headers[key] = val
+	}
+	return headers
+}
+
+// parseModuleLevels parses "module=LEVEL,module2=LEVEL2" into a map.
+// Malformed pairs and invalid levels are skipped.
+func parseModuleLevels(raw string) (map[string]string, error) {
+	result := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return result, nil
+	}
+	for _, pair := range strings.Split(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		idx := strings.Index(pair, "=")
+		if idx < 0 {
+			continue
+		}
+		module := strings.TrimSpace(pair[:idx])
+		levelStr := strings.TrimSpace(pair[idx+1:])
+		if module == "" {
+			continue
+		}
+		normalized, err := normalizeLevel(levelStr)
+		if err != nil {
+			return nil, err
+		}
+		result[module] = normalized
+	}
+	return result, nil
+}
+
+// splitTrimmed splits a string by sep and trims whitespace from each element,
+// omitting empty strings.
+func splitTrimmed(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// firstNonEmpty returns the first non-empty string among the provided values.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
