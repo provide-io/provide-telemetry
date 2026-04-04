@@ -26,7 +26,7 @@ npm install @undef/telemetry             # core (pino + @opentelemetry/api)
 **Python:**
 
 ```python
-from undef.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event_name
+from provide.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event
 
 setup_telemetry()
 log = get_logger(__name__)
@@ -65,12 +65,12 @@ See the [Configuration Reference](https://github.com/undef-games/undef-telemetry
 
 ## Event Naming
 
-Event names use 3-5 dot-separated lowercase segments:
+Event names follow the DA(R)S pattern — Domain, Action, (Resource), Status — as 3 or 4 dot-separated lowercase segments. `event()` returns a structured `Event` (a `str` subclass with `.domain`, `.action`, `.resource`, and `.status` fields):
 
 ```python
 # Python
 log.info("auth.login.success", user_id="u-123")
-log.info(event_name("auth", "login", "failed"), reason="bad_password")
+log.info(event("auth", "login", "failed"), reason="bad_password")
 ```
 
 ```typescript
