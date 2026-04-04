@@ -28,7 +28,7 @@ func init() {
 
 // _buildQueue returns a buffered channel of the given size (minimum 1).
 func _buildQueue(size int) chan struct{} {
-	if size < 1 {
+	if size <= 0 {
 		size = 1
 	}
 	return make(chan struct{}, size)

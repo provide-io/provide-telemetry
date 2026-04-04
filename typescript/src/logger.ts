@@ -212,9 +212,12 @@ function adaptPino(pinoLogger: pino.Logger): Logger {
  */
 function findModuleLevel(name: string, moduleLevels: Record<string, string>): string | undefined {
   let bestMatch: string | undefined;
-  let bestLen = 0;
+  let bestLen = -1;
   for (const prefix of Object.keys(moduleLevels)) {
-    if (name.startsWith(prefix) && prefix.length > bestLen) {
+    if (
+      (prefix === '' || name === prefix || name.startsWith(prefix + '.')) &&
+      prefix.length > bestLen
+    ) {
       bestMatch = prefix;
       bestLen = prefix.length;
     }

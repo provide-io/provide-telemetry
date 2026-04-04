@@ -49,7 +49,7 @@ func _newCircuitBreaker(signal string, _ ExporterPolicy) *gobreaker.CircuitBreak
 		Name:        signal,
 		MaxRequests: 1,
 		Interval:    0,
-		Timeout:     60 * time.Second,
+		Timeout:     time.Minute, // CB open-state duration; not the per-request timeout
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			return counts.ConsecutiveFailures >= 5
 		},

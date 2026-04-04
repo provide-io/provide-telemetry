@@ -4,9 +4,11 @@
 package telemetry
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -69,14 +71,8 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 // clone returns a shallow copy of the handler.
 func (h *_telemetryHandler) clone() *_telemetryHandler {
 	cp := *h
-	if len(h.attrs) > 0 {
-		cp.attrs = make([]slog.Attr, len(h.attrs))
-		copy(cp.attrs, h.attrs)
-	}
-	if len(h.groups) > 0 {
-		cp.groups = make([]string, len(h.groups))
-		copy(cp.groups, h.groups)
-	}
+	cp.attrs = append([]slog.Attr(nil), h.attrs...)
+	cp.groups = append([]string(nil), h.groups...)
 	return &cp
 }
 
@@ -185,18 +181,25 @@ func _effectiveLevel(name string, cfg *TelemetryConfig) slog.Level {
 	if cfg == nil {
 		return slog.LevelInfo
 	}
-	bestLen := -1
-	bestLevel := _parseLevel(cfg.Logging.Level)
+	globalLevel := _parseLevel(cfg.Logging.Level)
+
+	type _match struct {
+		moduleLen int
+		level     slog.Level
+	}
+	var matches []_match
 	for module, levelStr := range cfg.Logging.ModuleLevels {
-		if !_isPrefixMatch(name, module) {
-			continue
-		}
-		if len(module) > bestLen {
-			bestLen = len(module)
-			bestLevel = _parseLevel(levelStr)
+		if _isPrefixMatch(name, module) {
+			matches = append(matches, _match{len(module), _parseLevel(levelStr)})
 		}
 	}
-	return bestLevel
+	if len(matches) == 0 {
+		return globalLevel
+	}
+	best := slices.MaxFunc(matches, func(a, b _match) int {
+		return cmp.Compare(a.moduleLen, b.moduleLen)
+	})
+	return best.level
 }
 
 // _isPrefixMatch returns true if name equals module or starts with module + ".".
