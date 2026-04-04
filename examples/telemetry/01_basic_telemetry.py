@@ -12,6 +12,7 @@ from provide.telemetry import (
     bind_context,
     clear_context,
     counter,
+    event,
     gauge,
     get_logger,
     histogram,
@@ -22,10 +23,10 @@ from provide.telemetry import (
 )
 
 
-@trace("example.basic.work")
+@trace(event("example", "basic", "work"))
 def do_work(iteration: int) -> None:
     log = get_logger("examples.basic")
-    log.info("example.basic.iteration", iteration=str(iteration))
+    log.info(event("example", "basic", "iteration"), iteration=str(iteration))
     counter("example.basic.requests", "Total request count").add(1, {"iteration": str(iteration)})
     histogram("example.basic.latency_ms", "Simulated latency", "ms").record(
         iteration * 12.5, {"iteration": str(iteration)}
@@ -36,16 +37,33 @@ def do_work(iteration: int) -> None:
 def main() -> None:
     cfg = setup_telemetry()
     log = get_logger("examples.basic")
-    log.info(
-        "example.basic.start",
-        service=cfg.service_name,
-        env=cfg.environment,
-        version=cfg.version,
-    )
+
+    print(f"⚙️  Service: {cfg.service_name}  |  Env: {cfg.environment}  |  Version: {cfg.version}")
+
+    # ── 📋 Structured context binding ───────────────────────
+    print("\n📋 Binding structured context fields...")
+    bind_context(region="us-east-1", tier="premium")
+    log.info(event("example", "basic", "start"), msg="context is bound")
+    print("  ✅ Bound: region=us-east-1, tier=premium")
+
+    # ── 🔄 Traced work loop with all metric types ──────────
+    print("\n🔄 Running traced iterations with counter + histogram + gauge:")
     for i in range(3):
         do_work(i)
         time.sleep(0.05)
-    log.info("example.basic.complete")
+        print(f"  🔹 Iteration {i}: counter +1, histogram {i * 12.5}ms, gauge +1")
+
+    # ── 🧹 Context cleanup ─────────────────────────────────
+    print("\n🧹 Unbinding 'region', then clearing all context...")
+    unbind_context("region")
+    log.info(event("example", "basic", "after_unbind"), msg="region removed")
+    print("  🔸 Unbound: region")
+
+    clear_context()
+    log.info(event("example", "basic", "after_clear"), msg="all context cleared")
+    print("  🔸 Cleared: all context fields")
+
+    print("\n🏁 Done!")
     shutdown_telemetry()
 
 

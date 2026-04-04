@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from provide.telemetry import (
+    event,
     get_health_snapshot,
     get_logger,
     get_runtime_config,
@@ -24,7 +25,7 @@ def main() -> None:
     cfg_before = get_runtime_config()
     print({"before_logs_rate": cfg_before.sampling.logs_rate})
 
-    log.info("example.runtime.before")
+    log.info(event("example", "runtime", "before"))
 
     # ── 🔧 Hot-swap sampling rate to 0% ──────────────────
     print("\n🔧 Hot-swapping sampling rate to 0%...")
@@ -32,7 +33,7 @@ def main() -> None:
     updated = update_runtime_config(cfg_after)
     print(f"  ✅ After update: logs_rate={updated.sampling.logs_rate}")
 
-    log.info("example.runtime.dropped")
+    log.info(event("example", "runtime", "dropped"))
 
     snapshot = get_health_snapshot()
     print(
@@ -47,7 +48,7 @@ def main() -> None:
     cfg_restarted = reconfigure_telemetry(TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "1.0"}))
     print(f"  ✅ Restarted: logs_rate={cfg_restarted.sampling.logs_rate}")
 
-    log.info("example.runtime.restarted")
+    log.info(event("example", "runtime", "restarted"))
 
     # ── 🌍 Reload from environment ───────────────────────
     print("\n🌍 reload_runtime_from_env() — re-reads os.environ...")
