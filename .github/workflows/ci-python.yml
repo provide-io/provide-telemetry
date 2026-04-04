@@ -1,4 +1,4 @@
-name: 1. 🐍 CI — Python
+name: 🐍 CI — Python
 
 on:
   push:
