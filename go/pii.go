@@ -6,6 +6,7 @@ package telemetry
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -134,6 +135,11 @@ func _sanitizeValue(key string, value any, path []string, rules []PIIRule, depth
 		return _piiRedacted, false
 	}
 
+	// Scan string values for known secret patterns.
+	if str, ok := value.(string); ok && _detectSecretInValue(str) {
+		return _piiRedacted, false
+	}
+
 	// Recurse into nested structures if depth allows.
 	if depth <= 1 {
 		return value, false
@@ -190,6 +196,29 @@ func _isDefaultSensitiveKey(key string) bool {
 	lower := strings.ToLower(key)
 	for _, sensitive := range _defaultSensitiveKeys {
 		if strings.Contains(lower, sensitive) {
+			return true
+		}
+	}
+	return false
+}
+
+const _minSecretLength = 20
+
+var _secretPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?:AKIA|ASIA)[A-Z0-9]{16}`),
+	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`),
+	regexp.MustCompile(`gh[pos]_[A-Za-z0-9_]{36,}`),
+	regexp.MustCompile(`[0-9a-fA-F]{40,}`),
+	regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`),
+}
+
+// _detectSecretInValue returns true if the string matches any known secret pattern.
+func _detectSecretInValue(s string) bool {
+	if len(s) < _minSecretLength {
+		return false
+	}
+	for _, re := range _secretPatterns {
+		if re.MatchString(s) {
 			return true
 		}
 	}
