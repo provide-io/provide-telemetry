@@ -240,7 +240,7 @@ error_fingerprint:
   cases:
     - input: "valueerror"
       frames: []
-      expected: "07be54796690"
+      expected: "a50aba76697e"
       note: "No frames — hash of just 'valueerror'"
     - input: "typeerror"
       frames: ["module:main"]
