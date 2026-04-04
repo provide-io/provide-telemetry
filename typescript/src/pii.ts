@@ -12,22 +12,29 @@
 import { shortHash12 } from './hash';
 
 /**
- * Default fields redacted from log records. TypeScript uses a wider set than Python
- * (which only redacts: password, token, authorization, api_key, secret).
- * This is intentional — the TS SDK defaults to a more conservative posture.
+ * Default fields redacted from log records. Canonical 17-key list shared across
+ * Python, TypeScript, and Go implementations.
+ * Note: 'email' is intentionally excluded — it is commonly used for user identification
+ * in logs. Users who want email redaction should register a custom PII rule.
  */
 export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'password',
   'passwd',
-  'token',
   'secret',
-  'authorization',
-  'cookie',
-  'credit_card',
-  'ssn',
-  'email',
+  'token',
   'api_key',
+  'apikey',
+  'auth',
+  'authorization',
+  'credential',
   'private_key',
+  'ssn',
+  'credit_card',
+  'creditcard',
+  'cvv',
+  'pin',
+  'account_number',
+  'cookie',
 ];
 
 const REDACTED = '***';
