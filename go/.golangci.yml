@@ -19,4 +19,8 @@ linters:
   settings:
     gocyclo:
       min-complexity: 10
-      skip-tests: true
+  exclusions:
+    rules:
+      - linters:
+          - gocyclo
+        path: "_test\\.go$"
