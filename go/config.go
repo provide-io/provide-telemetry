@@ -244,6 +244,17 @@ func applyTopLevelEnv(cfg *TelemetryConfig, env func(string) string) error {
 
 // applyLoggingEnv reads logging-related env vars into cfg.
 func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if err := applyLoggingLevelFormat(cfg, env); err != nil {
+		return err
+	}
+	if err := applyLoggingBoolFlags(cfg, env); err != nil {
+		return err
+	}
+	return applyLoggingPrettyAndModules(cfg, env)
+}
+
+// applyLoggingLevelFormat handles PROVIDE_LOG_LEVEL and PROVIDE_LOG_FORMAT.
+func applyLoggingLevelFormat(cfg *TelemetryConfig, env func(string) string) error {
 	if v := env("PROVIDE_LOG_LEVEL"); v != "" {
 		normalized, err := normalizeLevel(v)
 		if err != nil {
@@ -257,6 +268,11 @@ func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
 		}
 		cfg.Logging.Format = v
 	}
+	return nil
+}
+
+// applyLoggingBoolFlags handles the four boolean PROVIDE_LOG_* env vars.
+func applyLoggingBoolFlags(cfg *TelemetryConfig, env func(string) string) error {
 	var err error
 	cfg.Logging.IncludeTimestamp, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true, "PROVIDE_LOG_INCLUDE_TIMESTAMP")
 	if err != nil {
@@ -275,10 +291,11 @@ func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
 		false,
 		"PROVIDE_LOG_CODE_ATTRIBUTES",
 	)
-	if err != nil {
-		return err
-	}
+	return err
+}
 
+// applyLoggingPrettyAndModules handles pretty-print and module-level env vars.
+func applyLoggingPrettyAndModules(cfg *TelemetryConfig, env func(string) string) error {
 	if v := env("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
 		cfg.Logging.PrettyKeyColor = v
 	}

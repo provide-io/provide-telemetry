@@ -89,7 +89,7 @@ func doRequest(ctx context.Context, method, url, auth string, body any) ([]byte,
 	if err != nil {
 		return nil, 0, fmt.Errorf("http: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	return data, resp.StatusCode, err
 }
@@ -192,7 +192,7 @@ func runEmitBinary(runID string) error {
 	return cmd.Run()
 }
 
-func main() {
+func main() { //nolint:gocyclo // verification script with sequential checks
 	baseURL := requireEnv("OPENOBSERVE_URL")
 	for len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
 		baseURL = baseURL[:len(baseURL)-1]
@@ -202,7 +202,7 @@ func main() {
 	auth := authHeader(user, password)
 
 	runID := fmt.Sprintf("%d", time.Now().Unix())
-	os.Setenv("PROVIDE_EXAMPLE_RUN_ID", runID)
+	_ = os.Setenv("PROVIDE_EXAMPLE_RUN_ID", runID)
 
 	ctx := context.Background()
 	startUS := time.Now().Add(-2*time.Hour).UnixMicro()
