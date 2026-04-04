@@ -14,21 +14,17 @@ func BindSessionContext(ctx context.Context, sessionID string) context.Context {
 }
 
 // GetSessionID retrieves the session ID from the context.
-// Returns ("", false) when no session is set or the stored value is not a string.
-// Returns (id, true) when a valid session ID is present.
-func GetSessionID(ctx context.Context) (string, bool) {
+// Returns empty string if not set.
+func GetSessionID(ctx context.Context) string {
 	v := ctx.Value(_sessionKey)
 	if v == nil {
-		return "", false
+		return ""
 	}
 	s, ok := v.(string)
 	if !ok {
-		return "", false
+		return ""
 	}
-	if s == "" {
-		return "", false
-	}
-	return s, true
+	return s
 }
 
 // ClearSessionContext removes the session ID from the context.
