@@ -188,3 +188,61 @@ slo_classify:
   - description: "status 0 = timeout"
     status_code: 0
     expected_category: "timeout"
+
+secret_detection:
+  description: >
+    String values matching known secret patterns are redacted regardless of key name.
+    Minimum string length 20 before pattern matching.
+  cases:
+    - input: "AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
+      detected: true
+      note: "AWS access key (20 chars)"
+    - input: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"  # pragma: allowlist secret
+      detected: true
+      note: "JWT token"
+    - input: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm"  # pragma: allowlist secret
+      detected: true
+      note: "GitHub personal access token"
+    - input: "not-a-secret"
+      detected: false
+      note: "Short string, no pattern match"
+    - input: "hello world this is normal text"
+      detected: false
+      note: "Long string but no pattern match"
+
+default_sensitive_keys:
+  description: >
+    Canonical set of 17 default sensitive key names. Case-insensitive substring match.
+  keys:
+    - password
+    - passwd
+    - secret
+    - token
+    - api_key
+    - apikey
+    - auth
+    - authorization
+    - credential
+    - private_key
+    - ssn
+    - credit_card
+    - creditcard
+    - cvv
+    - pin
+    - account_number
+    - cookie
+
+error_fingerprint:
+  description: >
+    SHA-256 of colon-joined lowercase parts, first 12 hex chars.
+    Parts: [exc_type_lower, basename1:func1, basename2:func2, basename3:func3]
+    When no stack frames available, just the exc type.
+  cases:
+    - input: "valueerror"
+      frames: []
+      expected: "07be54796690"
+      note: "No frames — hash of just 'valueerror'"
+    - input: "typeerror"
+      frames: ["module:main"]
+      expected_length: 12
+      note: "One frame — hash of 'typeerror:module:main'"
