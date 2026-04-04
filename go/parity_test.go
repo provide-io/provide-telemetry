@@ -313,3 +313,32 @@ func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
 		t.Errorf("expected normal string unchanged, got %v", result["data"])
 	}
 }
+
+// ── Backpressure Parity ───────────────────────────────────────────────────────
+
+func TestParity_Backpressure_DefaultUnlimited(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+
+	policy := GetQueuePolicy()
+	if policy.LogsMaxSize != 0 {
+		t.Errorf("expected default LogsMaxSize=0 (unlimited), got %d", policy.LogsMaxSize)
+	}
+	if policy.TracesMaxSize != 0 {
+		t.Errorf("expected default TracesMaxSize=0 (unlimited), got %d", policy.TracesMaxSize)
+	}
+	if policy.MetricsMaxSize != 0 {
+		t.Errorf("expected default MetricsMaxSize=0 (unlimited), got %d", policy.MetricsMaxSize)
+	}
+}
+
+func TestParity_Backpressure_UnlimitedAlwaysAcquires(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+
+	for i := 0; i < 5000; i++ {
+		if !TryAcquire(signalLogs) {
+			t.Fatalf("TryAcquire failed at iteration %d with unlimited queue", i)
+		}
+	}
+}

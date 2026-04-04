@@ -185,20 +185,18 @@ func TestRelease_EmptyChannel_NoOp(t *testing.T) {
 	Release(signalMetrics)
 }
 
-func TestSetQueuePolicy_ZeroSize_ClampsToOne(t *testing.T) {
+func TestSetQueuePolicy_ZeroSize_Unlimited(t *testing.T) {
 	_resetQueuePolicy()
 	t.Cleanup(_resetQueuePolicy)
 
-	// A zero-sized policy should clamp each channel to minimum size 1.
+	// A zero-sized policy means unlimited — TryAcquire always succeeds.
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 0, TracesMaxSize: 0, MetricsMaxSize: 0})
 
-	// Should be able to acquire exactly one slot per signal.
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-		if !TryAcquire(signal) {
-			t.Errorf("TryAcquire(%q) with clamped size 1: expected true", signal)
-		}
-		if TryAcquire(signal) {
-			t.Errorf("TryAcquire(%q) second acquire with clamped size 1: expected false", signal)
+		for i := 0; i < 10; i++ {
+			if !TryAcquire(signal) {
+				t.Errorf("TryAcquire(%q) iteration %d with unlimited size: expected true", signal, i)
+			}
 		}
 	}
 }
