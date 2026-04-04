@@ -271,3 +271,45 @@ func TestParity_ClassifyError_0(t *testing.T) {
 		t.Errorf("0 category: want timeout, got %s", m["error.category"])
 	}
 }
+
+// ── Secret Detection ──────────────────────────────────────────────────────────
+
+func TestParity_SecretDetection_AWSKey(t *testing.T) {
+	payload := map[string]any{"data": "AKIAIOSFODNN7EXAMPLE"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected AWS key redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_JWT(t *testing.T) {
+	payload := map[string]any{"data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected JWT redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_GitHubToken(t *testing.T) {
+	payload := map[string]any{"data": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected GitHub token redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_ShortString_NotRedacted(t *testing.T) {
+	payload := map[string]any{"data": "not-a-secret"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != "not-a-secret" {
+		t.Errorf("expected short string unchanged, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
+	payload := map[string]any{"data": "hello world this is normal text"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != "hello world this is normal text" {
+		t.Errorf("expected normal string unchanged, got %v", result["data"])
+	}
+}
