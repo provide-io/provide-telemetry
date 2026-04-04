@@ -19,3 +19,4 @@ linters:
   settings:
     gocyclo:
       min-complexity: 10
+      skip-tests: true

@@ -174,47 +174,43 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 // Returns *ConfigurationError for invalid values.
 func ConfigFromEnv() (*TelemetryConfig, error) {
 	cfg := DefaultTelemetryConfig()
+	env := os.Getenv
+	helpers := []func(*TelemetryConfig, func(string) string) error{
+		applyTopLevelEnv,
+		applyLoggingEnv,
+		applyExporterEnv,
+		applyTracingEnv,
+		func(c *TelemetryConfig, e func(string) string) error { applyMetricsEnv(c, e); return nil },
+		applySamplingEnv,
+		applyBackpressureEnv,
+		func(c *TelemetryConfig, e func(string) string) error { applySLOEnv(c, e); return nil },
+		applySecurityEnv,
+	}
+	for _, fn := range helpers {
+		if err := fn(cfg, env); err != nil {
+			return nil, err
+		}
+	}
+	return cfg, nil
+}
 
-	// Top-level
-	if v := os.Getenv("PROVIDE_TELEMETRY_SERVICE_NAME"); v != "" {
+// applyTopLevelEnv reads top-level and event-schema env vars into cfg.
+func applyTopLevelEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_TELEMETRY_SERVICE_NAME"); v != "" {
 		cfg.ServiceName = v
 	}
-	if v := os.Getenv("PROVIDE_TELEMETRY_ENV"); v != "" {
+	if v := env("PROVIDE_TELEMETRY_ENV"); v != "" {
 		cfg.Environment = v
 	}
-	if v := os.Getenv("PROVIDE_TELEMETRY_VERSION"); v != "" {
+	if v := env("PROVIDE_TELEMETRY_VERSION"); v != "" {
 		cfg.Version = v
 	}
-	cfg.StrictSchema = parseBool(os.Getenv("PROVIDE_TELEMETRY_STRICT_SCHEMA"), false)
-
-	// EventSchema
-	cfg.EventSchema.StrictEventName = parseBool(os.Getenv("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), false)
-	if v := os.Getenv("PROVIDE_TELEMETRY_REQUIRED_KEYS"); v != "" {
+	cfg.StrictSchema = parseBool(env("PROVIDE_TELEMETRY_STRICT_SCHEMA"), false)
+	cfg.EventSchema.StrictEventName = parseBool(env("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), false)
+	if v := env("PROVIDE_TELEMETRY_REQUIRED_KEYS"); v != "" {
 		cfg.EventSchema.RequiredKeys = splitTrimmed(v, ",")
 	}
-
-	if err := applyLoggingEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-	if err := applyExporterEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-	if err := applyTracingEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-	applyMetricsEnv(cfg, os.Getenv)
-	if err := applySamplingEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-	if err := applyBackpressureEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-	applySLOEnv(cfg, os.Getenv)
-	if err := applySecurityEnv(cfg, os.Getenv); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
+	return nil
 }
 
 // applyLoggingEnv reads logging-related env vars into cfg.
@@ -392,6 +388,9 @@ func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegative(n, "PROVIDE_EXPORTER_LOGS_RETRIES"); err != nil {
+			return err
+		}
 		cfg.Exporter.LogsRetries = n
 	}
 	if v := env("PROVIDE_EXPORTER_TRACES_RETRIES"); v != "" {
@@ -399,11 +398,17 @@ func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegative(n, "PROVIDE_EXPORTER_TRACES_RETRIES"); err != nil {
+			return err
+		}
 		cfg.Exporter.TracesRetries = n
 	}
 	if v := env("PROVIDE_EXPORTER_METRICS_RETRIES"); v != "" {
 		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_METRICS_RETRIES")
 		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_EXPORTER_METRICS_RETRIES"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsRetries = n
@@ -418,6 +423,9 @@ func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); err != nil {
+			return err
+		}
 		cfg.Exporter.LogsBackoffSeconds = f
 	}
 	if v := env("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); v != "" {
@@ -425,11 +433,17 @@ func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); err != nil {
+			return err
+		}
 		cfg.Exporter.TracesBackoffSeconds = f
 	}
 	if v := env("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); v != "" {
 		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS")
 		if err != nil {
+			return err
+		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsBackoffSeconds = f
@@ -444,6 +458,9 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); err != nil {
+			return err
+		}
 		cfg.Exporter.LogsTimeoutSeconds = f
 	}
 	if v := env("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); v != "" {
@@ -451,11 +468,17 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); err != nil {
+			return err
+		}
 		cfg.Exporter.TracesTimeoutSeconds = f
 	}
 	if v := env("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); v != "" {
 		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS")
 		if err != nil {
+			return err
+		}
+		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsTimeoutSeconds = f
@@ -517,6 +540,14 @@ func validateRate(v float64, field string) error {
 func validateNonNegative(v int, field string) error {
 	if v < 0 {
 		return NewConfigurationError(fmt.Sprintf("%s must be >= 0, got %d", field, v))
+	}
+	return nil
+}
+
+// validateNonNegativeFloat returns a ConfigurationError if v is negative.
+func validateNonNegativeFloat(v float64, field string) error {
+	if v < 0 {
+		return NewConfigurationError(fmt.Sprintf("%s must be >= 0, got %g", field, v))
 	}
 	return nil
 }
