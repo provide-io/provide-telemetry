@@ -24,7 +24,7 @@ import (
 const overflowValue = "__overflow__"
 
 func main() {
-	fmt.Println("PII & Cardinality Policy Demo\n")
+	fmt.Println("PII & Cardinality Policy Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -55,11 +55,11 @@ func main() {
 
 	// Log with PII fields — processor chain applies the rules
 	piiEvt, _ := telemetry.Event("example", "policy", "pii")
-	log.InfoContext(ctx, piiEvt,
+	log.InfoContext(ctx, piiEvt.Event, append(piiEvt.Attrs(),
 		"user_email", "dev@example.com",
 		"user_full_name", "Casey Developer",
 		"credit_card", "4111111111111111",
-	)
+	)...)
 
 	// Wildcard path matching for nested list items
 	fmt.Println("\nWildcard path matching on list items...")
