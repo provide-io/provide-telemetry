@@ -10,209 +10,194 @@ import (
 
 func TestGetHealthSnapshot_InitiallyZero(t *testing.T) {
 	_resetHealth()
-	_resetResiliencePolicies()
-	t.Cleanup(_resetHealth)
-	t.Cleanup(_resetResiliencePolicies)
-
 	snap := GetHealthSnapshot()
-	// Circuit states default to "closed" (not zero-value ""), so we cannot
-	// compare against a bare HealthSnapshot{}. Check key counters instead.
-	if snap.LogsEmitted != 0 || snap.TracesEmitted != 0 || snap.MetricsEmitted != 0 {
-		t.Errorf("expected zeroed emitted counters, got %+v", snap)
-	}
-	if snap.LogsCircuitState != "closed" || snap.TracesCircuitState != "closed" || snap.MetricsCircuitState != "closed" {
-		t.Errorf("expected all circuit states closed, got logs=%s traces=%s metrics=%s",
-			snap.LogsCircuitState, snap.TracesCircuitState, snap.MetricsCircuitState)
-	}
-	if snap.SetupError != "" {
-		t.Errorf("expected empty SetupError, got %q", snap.SetupError)
+	if snap != (HealthSnapshot{}) {
+		t.Errorf("expected zeroed snapshot, got %+v", snap)
 	}
 }
 
-func TestIncEmitted(t *testing.T) {
+func TestIncLogsEmitted(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_incEmitted(signalLogs)
-	_incEmitted(signalLogs)
-	_incEmitted(signalTraces)
-	_incEmitted(signalMetrics)
+	_incLogsEmitted()
+	_incLogsEmitted()
 	snap := GetHealthSnapshot()
 	if snap.LogsEmitted != 2 {
 		t.Errorf("LogsEmitted: want 2, got %d", snap.LogsEmitted)
 	}
-	if snap.TracesEmitted != 1 {
-		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
-	}
-	if snap.MetricsEmitted != 1 {
-		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
-	}
 }
 
-func TestIncDropped(t *testing.T) {
+func TestIncLogsDropped(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_incDroppedHealth(signalLogs)
-	_incDroppedHealth(signalTraces)
-	_incDroppedHealth(signalMetrics)
+	_incLogsDropped()
 	snap := GetHealthSnapshot()
 	if snap.LogsDropped != 1 {
 		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
 	}
-	if snap.TracesDropped != 1 {
-		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
+}
+
+func TestIncLogsExportErrors(t *testing.T) {
+	_resetHealth()
+	_incLogsExportErrors()
+	snap := GetHealthSnapshot()
+	if snap.LogsExportErrors != 1 {
+		t.Errorf("LogsExportErrors: want 1, got %d", snap.LogsExportErrors)
 	}
+}
+
+func TestIncLogsExportedOK(t *testing.T) {
+	_resetHealth()
+	_incLogsExportedOK()
+	snap := GetHealthSnapshot()
+	if snap.LogsExportedOK != 1 {
+		t.Errorf("LogsExportedOK: want 1, got %d", snap.LogsExportedOK)
+	}
+}
+
+func TestIncSpansStarted(t *testing.T) {
+	_resetHealth()
+	_incSpansStarted()
+	snap := GetHealthSnapshot()
+	if snap.SpansStarted != 1 {
+		t.Errorf("SpansStarted: want 1, got %d", snap.SpansStarted)
+	}
+}
+
+func TestIncSpansDropped(t *testing.T) {
+	_resetHealth()
+	_incSpansDropped()
+	snap := GetHealthSnapshot()
+	if snap.SpansDropped != 1 {
+		t.Errorf("SpansDropped: want 1, got %d", snap.SpansDropped)
+	}
+}
+
+func TestIncSpansExportErrors(t *testing.T) {
+	_resetHealth()
+	_incSpansExportErrors()
+	snap := GetHealthSnapshot()
+	if snap.SpansExportErrors != 1 {
+		t.Errorf("SpansExportErrors: want 1, got %d", snap.SpansExportErrors)
+	}
+}
+
+func TestIncSpansExportedOK(t *testing.T) {
+	_resetHealth()
+	_incSpansExportedOK()
+	snap := GetHealthSnapshot()
+	if snap.SpansExportedOK != 1 {
+		t.Errorf("SpansExportedOK: want 1, got %d", snap.SpansExportedOK)
+	}
+}
+
+func TestIncMetricsRecorded(t *testing.T) {
+	_resetHealth()
+	_incMetricsRecorded()
+	snap := GetHealthSnapshot()
+	if snap.MetricsRecorded != 1 {
+		t.Errorf("MetricsRecorded: want 1, got %d", snap.MetricsRecorded)
+	}
+}
+
+func TestIncMetricsDropped(t *testing.T) {
+	_resetHealth()
+	_incMetricsDropped()
+	snap := GetHealthSnapshot()
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
 	}
 }
 
-func TestIncExportFailures(t *testing.T) {
+func TestIncMetricsExportErrors(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_incExportFailures(signalLogs)
-	_incExportFailures(signalTraces)
-	_incExportFailures(signalMetrics)
+	_incMetricsExportErrors()
 	snap := GetHealthSnapshot()
-	if snap.LogsExportFailures != 1 {
-		t.Errorf("LogsExportFailures: want 1, got %d", snap.LogsExportFailures)
-	}
-	if snap.TracesExportFailures != 1 {
-		t.Errorf("TracesExportFailures: want 1, got %d", snap.TracesExportFailures)
-	}
-	if snap.MetricsExportFailures != 1 {
-		t.Errorf("MetricsExportFailures: want 1, got %d", snap.MetricsExportFailures)
+	if snap.MetricsExportErrors != 1 {
+		t.Errorf("MetricsExportErrors: want 1, got %d", snap.MetricsExportErrors)
 	}
 }
 
-func TestIncRetries(t *testing.T) {
+func TestIncMetricsExportedOK(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_incRetries(signalLogs)
-	_incRetries(signalTraces)
-	_incRetries(signalMetrics)
+	_incMetricsExportedOK()
 	snap := GetHealthSnapshot()
-	if snap.LogsRetries != 1 {
-		t.Errorf("LogsRetries: want 1, got %d", snap.LogsRetries)
-	}
-	if snap.TracesRetries != 1 {
-		t.Errorf("TracesRetries: want 1, got %d", snap.TracesRetries)
-	}
-	if snap.MetricsRetries != 1 {
-		t.Errorf("MetricsRetries: want 1, got %d", snap.MetricsRetries)
+	if snap.MetricsExportedOK != 1 {
+		t.Errorf("MetricsExportedOK: want 1, got %d", snap.MetricsExportedOK)
 	}
 }
 
-func TestRecordExportLatency(t *testing.T) {
+func TestIncCircuitBreakerTrips(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_recordExportLatencyForSignal(signalLogs, 10.5)
-	_recordExportLatencyForSignal(signalLogs, 25.0)
+	_incCircuitBreakerTrips()
 	snap := GetHealthSnapshot()
-	// Latest, not cumulative.
-	if snap.LogsExportLatencyMs != 25.0 {
-		t.Errorf("LogsExportLatencyMs: want 25.0, got %f", snap.LogsExportLatencyMs)
+	if snap.CircuitBreakerTrips != 1 {
+		t.Errorf("CircuitBreakerTrips: want 1, got %d", snap.CircuitBreakerTrips)
 	}
 }
 
-func TestIncAsyncBlockingRisk(t *testing.T) {
+func TestIncRetryAttempts(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_incAsyncBlockingRisk(signalLogs)
-	_incAsyncBlockingRisk(signalTraces)
-	_incAsyncBlockingRisk(signalMetrics)
+	_incRetryAttempts()
 	snap := GetHealthSnapshot()
-	if snap.LogsAsyncBlockingRisk != 1 {
-		t.Errorf("LogsAsyncBlockingRisk: want 1, got %d", snap.LogsAsyncBlockingRisk)
-	}
-	if snap.TracesAsyncBlockingRisk != 1 {
-		t.Errorf("TracesAsyncBlockingRisk: want 1, got %d", snap.TracesAsyncBlockingRisk)
-	}
-	if snap.MetricsAsyncBlockingRisk != 1 {
-		t.Errorf("MetricsAsyncBlockingRisk: want 1, got %d", snap.MetricsAsyncBlockingRisk)
+	if snap.RetryAttempts != 1 {
+		t.Errorf("RetryAttempts: want 1, got %d", snap.RetryAttempts)
 	}
 }
 
-func TestSetSetupError(t *testing.T) {
+func TestAddExportLatency(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_setSetupError("something went wrong")
+	_addExportLatency(10)
+	_addExportLatency(25)
 	snap := GetHealthSnapshot()
-	if snap.SetupError != "something went wrong" {
-		t.Errorf("SetupError: want %q, got %q", "something went wrong", snap.SetupError)
+	if snap.ExportLatencyMs != 35 {
+		t.Errorf("ExportLatencyMs: want 35, got %d", snap.ExportLatencyMs)
 	}
 }
 
-func TestSetSetupError_EmptyString(t *testing.T) {
+func TestIncSetupCount(t *testing.T) {
 	_resetHealth()
-	t.Cleanup(_resetHealth)
-
-	_setSetupError("initial error")
-	_setSetupError("")
+	_incSetupCount()
 	snap := GetHealthSnapshot()
-	if snap.SetupError != "" {
-		t.Errorf("SetupError: want empty, got %q", snap.SetupError)
+	if snap.SetupCount != 1 {
+		t.Errorf("SetupCount: want 1, got %d", snap.SetupCount)
+	}
+}
+
+func TestIncShutdownCount(t *testing.T) {
+	_resetHealth()
+	_incShutdownCount()
+	snap := GetHealthSnapshot()
+	if snap.ShutdownCount != 1 {
+		t.Errorf("ShutdownCount: want 1, got %d", snap.ShutdownCount)
+	}
+}
+
+func TestSetLastError(t *testing.T) {
+	_resetHealth()
+	_setLastError("something went wrong")
+	snap := GetHealthSnapshot()
+	if snap.LastError != "something went wrong" {
+		t.Errorf("LastError: want %q, got %q", "something went wrong", snap.LastError)
+	}
+}
+
+func TestSetLastError_EmptyString(t *testing.T) {
+	_resetHealth()
+	_setLastError("initial error")
+	_setLastError("")
+	snap := GetHealthSnapshot()
+	if snap.LastError != "" {
+		t.Errorf("LastError: want empty, got %q", snap.LastError)
 	}
 }
 
 func TestResetHealth(t *testing.T) {
-	_incEmitted(signalLogs)
-	_incEmitted(signalTraces)
-	_setSetupError("err")
-	_resetHealth()
-	snap := GetHealthSnapshot()
-	if snap.LogsEmitted != 0 || snap.TracesEmitted != 0 || snap.SetupError != "" {
-		t.Errorf("after reset expected zeroed counters, got %+v", snap)
-	}
-}
-
-func TestBackwardCompatWrappers(t *testing.T) {
-	_resetHealth()
-	t.Cleanup(_resetHealth)
-
 	_incLogsEmitted()
-	_incLogsDropped()
 	_incSpansStarted()
-	_incSpansDropped()
-	_incMetricsRecorded()
-	_incMetricsDropped()
-	_incLogsExportErrors()
-	_incSpansExportErrors()
-	_incMetricsExportErrors()
-
+	_setLastError("err")
+	_resetHealth()
 	snap := GetHealthSnapshot()
-	if snap.LogsEmitted != 1 {
-		t.Errorf("LogsEmitted: want 1, got %d", snap.LogsEmitted)
-	}
-	if snap.LogsDropped != 1 {
-		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
-	}
-	if snap.TracesEmitted != 1 {
-		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
-	}
-	if snap.TracesDropped != 1 {
-		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
-	}
-	if snap.MetricsEmitted != 1 {
-		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
-	}
-	if snap.MetricsDropped != 1 {
-		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
-	}
-	if snap.LogsExportFailures != 1 {
-		t.Errorf("LogsExportFailures: want 1, got %d", snap.LogsExportFailures)
-	}
-	if snap.TracesExportFailures != 1 {
-		t.Errorf("TracesExportFailures: want 1, got %d", snap.TracesExportFailures)
-	}
-	if snap.MetricsExportFailures != 1 {
-		t.Errorf("MetricsExportFailures: want 1, got %d", snap.MetricsExportFailures)
+	if snap != (HealthSnapshot{}) {
+		t.Errorf("after reset expected zeroed snapshot, got %+v", snap)
 	}
 }
 
@@ -229,11 +214,11 @@ func TestConcurrentIncrements(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				_incEmitted(signalLogs)
-				_incDroppedHealth(signalLogs)
-				_incEmitted(signalTraces)
-				_incEmitted(signalMetrics)
-				_incRetries(signalLogs)
+				_incLogsEmitted()
+				_incLogsDropped()
+				_incSpansStarted()
+				_incMetricsRecorded()
+				_addExportLatency(1)
 			}
 		}()
 	}
@@ -247,33 +232,13 @@ func TestConcurrentIncrements(t *testing.T) {
 	if snap.LogsDropped != expected {
 		t.Errorf("LogsDropped: want %d, got %d", expected, snap.LogsDropped)
 	}
-	if snap.TracesEmitted != expected {
-		t.Errorf("TracesEmitted: want %d, got %d", expected, snap.TracesEmitted)
+	if snap.SpansStarted != expected {
+		t.Errorf("SpansStarted: want %d, got %d", expected, snap.SpansStarted)
 	}
-	if snap.MetricsEmitted != expected {
-		t.Errorf("MetricsEmitted: want %d, got %d", expected, snap.MetricsEmitted)
+	if snap.MetricsRecorded != expected {
+		t.Errorf("MetricsRecorded: want %d, got %d", expected, snap.MetricsRecorded)
 	}
-	if snap.LogsRetries != expected {
-		t.Errorf("LogsRetries: want %d, got %d", expected, snap.LogsRetries)
-	}
-}
-
-func TestCircuitStateIntegration(t *testing.T) {
-	_resetHealth()
-	_resetResiliencePolicies()
-	t.Cleanup(_resetHealth)
-	t.Cleanup(_resetResiliencePolicies)
-
-	_tripCircuitBreaker(signalLogs)
-
-	snap := GetHealthSnapshot()
-	if snap.LogsCircuitState != "open" {
-		t.Errorf("LogsCircuitState: want open, got %s", snap.LogsCircuitState)
-	}
-	if snap.LogsCircuitOpenCount != 1 {
-		t.Errorf("LogsCircuitOpenCount: want 1, got %d", snap.LogsCircuitOpenCount)
-	}
-	if snap.TracesCircuitState != "closed" {
-		t.Errorf("TracesCircuitState: want closed, got %s", snap.TracesCircuitState)
+	if snap.ExportLatencyMs != expected {
+		t.Errorf("ExportLatencyMs: want %d, got %d", expected, snap.ExportLatencyMs)
 	}
 }
