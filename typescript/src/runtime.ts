@@ -6,40 +6,7 @@
  * Mirrors Python provide.telemetry.runtime.
  */
 
-import {
-  type RuntimeOverrides,
-  type TelemetryConfig,
-  configFromEnv,
-  setupTelemetry,
-} from './config';
-import { ConfigurationError } from './exceptions';
-import { getHealthSnapshot } from './health';
-
-/** Minimal interface for providers that can be flushed and shut down cleanly. */
-export interface ShutdownableProvider {
-  forceFlush?(): Promise<void>;
-  shutdown?(): Promise<void>;
-}
-
-export interface RuntimeStatus {
-  setupDone: boolean;
-  signals: {
-    logs: boolean;
-    traces: boolean;
-    metrics: boolean;
-  };
-  providers: {
-    logs: boolean;
-    traces: boolean;
-    metrics: boolean;
-  };
-  fallback: {
-    logs: boolean;
-    traces: boolean;
-    metrics: boolean;
-  };
-  setupError: string | null;
-}
+import { type TelemetryConfig, configFromEnv, setupTelemetry } from './config';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -261,8 +228,8 @@ const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
 
 /**
  * Apply config changes.
- * If provider-changing fields differ and providers are already registered, fail fast:
- * provider replacement requires explicit process restart to avoid async export loss.
+ * If provider-changing fields differ and providers are already registered, performs a
+ * best-effort shutdown (fire-and-forget) then re-initialises — matching Go/Python behaviour.
  * Otherwise delegates to setupTelemetry.
  */
 export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
@@ -274,9 +241,13 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(proposed[k]),
     );
     if (changed) {
-      throw new ConfigurationError(
-        'provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; restart the process and call setupTelemetry() with the new config',
+      // Best-effort async shutdown — fire-and-forget, errors ignored (mirrors Go's `_ = ShutdownTelemetry(ctx)`)
+      const providers = _getRegisteredProviders();
+      void Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve())).then(
+        () => Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve())),
       );
+      _providersRegistered = false;
+      _registeredProviders = [];
     }
   }
 
