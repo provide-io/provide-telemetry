@@ -193,225 +193,332 @@ func ConfigFromEnv() (*TelemetryConfig, error) {
 		cfg.EventSchema.RequiredKeys = splitTrimmed(v, ",")
 	}
 
-	// Logging
-	if v := os.Getenv("PROVIDE_LOG_LEVEL"); v != "" {
-		normalized, err := normalizeLevel(v)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Logging.Level = normalized
+	if err := applyLoggingEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
-	if v := os.Getenv("PROVIDE_LOG_FORMAT"); v != "" {
-		if err := validateFormat(v); err != nil {
-			return nil, err
-		}
-		cfg.Logging.Format = v
+	if err := applyExporterEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
-	cfg.Logging.IncludeTimestamp = parseBool(os.Getenv("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true)
-	cfg.Logging.IncludeCaller = parseBool(os.Getenv("PROVIDE_LOG_INCLUDE_CALLER"), true)
-	cfg.Logging.Sanitize = parseBool(os.Getenv("PROVIDE_LOG_SANITIZE"), true)
-	cfg.Logging.LogCodeAttributes = parseBool(os.Getenv("PROVIDE_LOG_CODE_ATTRIBUTES"), false)
-
-	if v := os.Getenv("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
-		cfg.Logging.PrettyKeyColor = v
+	if err := applyTracingEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
-	if v := os.Getenv("PROVIDE_LOG_PRETTY_VALUE_COLOR"); v != "" {
-		cfg.Logging.PrettyValueColor = v
+	applyMetricsEnv(cfg, os.Getenv)
+	if err := applySamplingEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
-	if v := os.Getenv("PROVIDE_LOG_PRETTY_FIELDS"); v != "" {
-		cfg.Logging.PrettyFields = splitTrimmed(v, ",")
+	if err := applyBackpressureEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
-	if v := os.Getenv("PROVIDE_LOG_MODULE_LEVELS"); v != "" {
-		ml, err := parseModuleLevels(v)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Logging.ModuleLevels = ml
-	}
-
-	// OTLP endpoints/headers — signal-specific fallback to generic
-	genericEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	genericHeaders := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")
-
-	cfg.Logging.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"), genericEndpoint)
-	logsHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS"), genericHeaders)
-	cfg.Logging.OTLPHeaders = parseOTLPHeaders(logsHeadersRaw)
-
-	cfg.Tracing.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"), genericEndpoint)
-	tracesHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_HEADERS"), genericHeaders)
-	cfg.Tracing.OTLPHeaders = parseOTLPHeaders(tracesHeadersRaw)
-
-	cfg.Metrics.OTLPEndpoint = firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"), genericEndpoint)
-	metricsHeadersRaw := firstNonEmpty(os.Getenv("OTEL_EXPORTER_OTLP_METRICS_HEADERS"), genericHeaders)
-	cfg.Metrics.OTLPHeaders = parseOTLPHeaders(metricsHeadersRaw)
-
-	// Tracing
-	cfg.Tracing.Enabled = parseBool(os.Getenv("PROVIDE_TRACE_ENABLED"), true)
-	if v := os.Getenv("PROVIDE_TRACE_SAMPLE_RATE"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_TRACE_SAMPLE_RATE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Tracing.SampleRate = f
-	}
-
-	// Metrics
-	cfg.Metrics.Enabled = parseBool(os.Getenv("PROVIDE_METRICS_ENABLED"), true)
-
-	// Sampling
-	if v := os.Getenv("PROVIDE_SAMPLING_LOGS_RATE"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_LOGS_RATE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Sampling.LogsRate = f
-	}
-	if v := os.Getenv("PROVIDE_SAMPLING_TRACES_RATE"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_TRACES_RATE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Sampling.TracesRate = f
-	}
-	if v := os.Getenv("PROVIDE_SAMPLING_METRICS_RATE"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_METRICS_RATE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Sampling.MetricsRate = f
-	}
-
-	// Backpressure
-	if v := os.Getenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Backpressure.LogsMaxSize = n
-	}
-	if v := os.Getenv("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Backpressure.TracesMaxSize = n
-	}
-	if v := os.Getenv("PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Backpressure.MetricsMaxSize = n
-	}
-
-	// Exporter retries
-	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_RETRIES"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_LOGS_RETRIES")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.LogsRetries = n
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_RETRIES"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_TRACES_RETRIES")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.TracesRetries = n
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_RETRIES"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_METRICS_RETRIES")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.MetricsRetries = n
-	}
-
-	// Exporter backoff
-	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.LogsBackoffSeconds = f
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.TracesBackoffSeconds = f
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.MetricsBackoffSeconds = f
-	}
-
-	// Exporter timeout
-	if v := os.Getenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.LogsTimeoutSeconds = f
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.TracesTimeoutSeconds = f
-	}
-	if v := os.Getenv("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Exporter.MetricsTimeoutSeconds = f
-	}
-
-	// Exporter fail-open
-	cfg.Exporter.LogsFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), true)
-	cfg.Exporter.TracesFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), true)
-	cfg.Exporter.MetricsFailOpen = parseBool(os.Getenv("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), true)
-
-	// Exporter allow-blocking
-	cfg.Exporter.LogsAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), false)
-	cfg.Exporter.TracesAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), false)
-	cfg.Exporter.MetricsAllowBlockingInEventLoop = parseBool(os.Getenv("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), false)
-
-	// SLO
-	cfg.SLO.EnableREDMetrics = parseBool(os.Getenv("PROVIDE_SLO_ENABLE_RED_METRICS"), false)
-	cfg.SLO.EnableUSEMetrics = parseBool(os.Getenv("PROVIDE_SLO_ENABLE_USE_METRICS"), false)
-	cfg.SLO.IncludeErrorTaxonomy = parseBool(os.Getenv("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), true)
-
-	// Security
-	if v := os.Getenv("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Security.MaxAttrValueLength = n
-	}
-	if v := os.Getenv("PROVIDE_SECURITY_MAX_ATTR_COUNT"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_COUNT")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Security.MaxAttrCount = n
-	}
-	if v := os.Getenv("PROVIDE_SECURITY_MAX_NESTING_DEPTH"); v != "" {
-		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_NESTING_DEPTH")
-		if err != nil {
-			return nil, err
-		}
-		cfg.Security.MaxNestingDepth = n
+	applySLOEnv(cfg, os.Getenv)
+	if err := applySecurityEnv(cfg, os.Getenv); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
+}
+
+// applyLoggingEnv reads logging-related env vars into cfg.
+func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_LOG_LEVEL"); v != "" {
+		normalized, err := normalizeLevel(v)
+		if err != nil {
+			return err
+		}
+		cfg.Logging.Level = normalized
+	}
+	if v := env("PROVIDE_LOG_FORMAT"); v != "" {
+		if err := validateFormat(v); err != nil {
+			return err
+		}
+		cfg.Logging.Format = v
+	}
+	cfg.Logging.IncludeTimestamp = parseBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true)
+	cfg.Logging.IncludeCaller = parseBool(env("PROVIDE_LOG_INCLUDE_CALLER"), true)
+	cfg.Logging.Sanitize = parseBool(env("PROVIDE_LOG_SANITIZE"), true)
+	cfg.Logging.LogCodeAttributes = parseBool(env("PROVIDE_LOG_CODE_ATTRIBUTES"), false)
+
+	if v := env("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
+		cfg.Logging.PrettyKeyColor = v
+	}
+	if v := env("PROVIDE_LOG_PRETTY_VALUE_COLOR"); v != "" {
+		cfg.Logging.PrettyValueColor = v
+	}
+	if v := env("PROVIDE_LOG_PRETTY_FIELDS"); v != "" {
+		cfg.Logging.PrettyFields = splitTrimmed(v, ",")
+	}
+	if v := env("PROVIDE_LOG_MODULE_LEVELS"); v != "" {
+		ml, err := parseModuleLevels(v)
+		if err != nil {
+			return err
+		}
+		cfg.Logging.ModuleLevels = ml
+	}
+	return nil
+}
+
+// applyTracingEnv reads tracing-related env vars into cfg.
+func applyTracingEnv(cfg *TelemetryConfig, env func(string) string) error {
+	cfg.Tracing.Enabled = parseBool(env("PROVIDE_TRACE_ENABLED"), true)
+	if v := env("PROVIDE_TRACE_SAMPLE_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_TRACE_SAMPLE_RATE")
+		if err != nil {
+			return err
+		}
+		if err := validateRate(f, "PROVIDE_TRACE_SAMPLE_RATE"); err != nil {
+			return err
+		}
+		cfg.Tracing.SampleRate = f
+	}
+	return nil
+}
+
+// applyMetricsEnv reads metrics-related env vars into cfg.
+func applyMetricsEnv(cfg *TelemetryConfig, env func(string) string) {
+	cfg.Metrics.Enabled = parseBool(env("PROVIDE_METRICS_ENABLED"), true)
+}
+
+// applySamplingEnv reads per-signal sampling rate env vars into cfg.
+func applySamplingEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_SAMPLING_LOGS_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_LOGS_RATE")
+		if err != nil {
+			return err
+		}
+		if err := validateRate(f, "PROVIDE_SAMPLING_LOGS_RATE"); err != nil {
+			return err
+		}
+		cfg.Sampling.LogsRate = f
+	}
+	if v := env("PROVIDE_SAMPLING_TRACES_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_TRACES_RATE")
+		if err != nil {
+			return err
+		}
+		if err := validateRate(f, "PROVIDE_SAMPLING_TRACES_RATE"); err != nil {
+			return err
+		}
+		cfg.Sampling.TracesRate = f
+	}
+	if v := env("PROVIDE_SAMPLING_METRICS_RATE"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_SAMPLING_METRICS_RATE")
+		if err != nil {
+			return err
+		}
+		if err := validateRate(f, "PROVIDE_SAMPLING_METRICS_RATE"); err != nil {
+			return err
+		}
+		cfg.Sampling.MetricsRate = f
+	}
+	return nil
+}
+
+// applyBackpressureEnv reads backpressure maxsize env vars into cfg.
+func applyBackpressureEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"); err != nil {
+			return err
+		}
+		cfg.Backpressure.LogsMaxSize = n
+	}
+	if v := env("PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"); err != nil {
+			return err
+		}
+		cfg.Backpressure.TracesMaxSize = n
+	}
+	if v := env("PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"); err != nil {
+			return err
+		}
+		cfg.Backpressure.MetricsMaxSize = n
+	}
+	return nil
+}
+
+// applyExporterEnv reads exporter policy env vars and OTLP endpoints/headers into cfg.
+func applyExporterEnv(cfg *TelemetryConfig, env func(string) string) error {
+	// OTLP endpoints/headers — signal-specific fallback to generic
+	genericEndpoint := env("OTEL_EXPORTER_OTLP_ENDPOINT")
+	genericHeaders := env("OTEL_EXPORTER_OTLP_HEADERS")
+
+	cfg.Logging.OTLPEndpoint = firstNonEmpty(env("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"), genericEndpoint)
+	cfg.Logging.OTLPHeaders = parseOTLPHeaders(firstNonEmpty(env("OTEL_EXPORTER_OTLP_LOGS_HEADERS"), genericHeaders))
+
+	cfg.Tracing.OTLPEndpoint = firstNonEmpty(env("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"), genericEndpoint)
+	cfg.Tracing.OTLPHeaders = parseOTLPHeaders(firstNonEmpty(env("OTEL_EXPORTER_OTLP_TRACES_HEADERS"), genericHeaders))
+
+	cfg.Metrics.OTLPEndpoint = firstNonEmpty(env("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"), genericEndpoint)
+	cfg.Metrics.OTLPHeaders = parseOTLPHeaders(firstNonEmpty(env("OTEL_EXPORTER_OTLP_METRICS_HEADERS"), genericHeaders))
+
+	if err := applyExporterRetries(cfg, env); err != nil {
+		return err
+	}
+	if err := applyExporterBackoff(cfg, env); err != nil {
+		return err
+	}
+	if err := applyExporterTimeout(cfg, env); err != nil {
+		return err
+	}
+
+	// Fail-open
+	cfg.Exporter.LogsFailOpen = parseBool(env("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), true)
+	cfg.Exporter.TracesFailOpen = parseBool(env("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), true)
+	cfg.Exporter.MetricsFailOpen = parseBool(env("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), true)
+
+	// Allow-blocking
+	cfg.Exporter.LogsAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), false)
+	cfg.Exporter.TracesAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), false)
+	cfg.Exporter.MetricsAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), false)
+
+	return nil
+}
+
+// applyExporterRetries reads exporter retry count env vars into cfg.
+func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_EXPORTER_LOGS_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_LOGS_RETRIES")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.LogsRetries = n
+	}
+	if v := env("PROVIDE_EXPORTER_TRACES_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_TRACES_RETRIES")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.TracesRetries = n
+	}
+	if v := env("PROVIDE_EXPORTER_METRICS_RETRIES"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_EXPORTER_METRICS_RETRIES")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.MetricsRetries = n
+	}
+	return nil
+}
+
+// applyExporterBackoff reads exporter backoff seconds env vars into cfg.
+func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.LogsBackoffSeconds = f
+	}
+	if v := env("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.TracesBackoffSeconds = f
+	}
+	if v := env("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.MetricsBackoffSeconds = f
+	}
+	return nil
+}
+
+// applyExporterTimeout reads exporter timeout seconds env vars into cfg.
+func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.LogsTimeoutSeconds = f
+	}
+	if v := env("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.TracesTimeoutSeconds = f
+	}
+	if v := env("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); v != "" {
+		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS")
+		if err != nil {
+			return err
+		}
+		cfg.Exporter.MetricsTimeoutSeconds = f
+	}
+	return nil
+}
+
+// applySLOEnv reads SLO env vars into cfg.
+func applySLOEnv(cfg *TelemetryConfig, env func(string) string) {
+	cfg.SLO.EnableREDMetrics = parseBool(env("PROVIDE_SLO_ENABLE_RED_METRICS"), false)
+	cfg.SLO.EnableUSEMetrics = parseBool(env("PROVIDE_SLO_ENABLE_USE_METRICS"), false)
+	cfg.SLO.IncludeErrorTaxonomy = parseBool(env("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), true)
+}
+
+// applySecurityEnv reads security limit env vars into cfg.
+func applySecurityEnv(cfg *TelemetryConfig, env func(string) string) error {
+	if v := env("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"); err != nil {
+			return err
+		}
+		cfg.Security.MaxAttrValueLength = n
+	}
+	if v := env("PROVIDE_SECURITY_MAX_ATTR_COUNT"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_ATTR_COUNT")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_SECURITY_MAX_ATTR_COUNT"); err != nil {
+			return err
+		}
+		cfg.Security.MaxAttrCount = n
+	}
+	if v := env("PROVIDE_SECURITY_MAX_NESTING_DEPTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_SECURITY_MAX_NESTING_DEPTH")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_SECURITY_MAX_NESTING_DEPTH"); err != nil {
+			return err
+		}
+		cfg.Security.MaxNestingDepth = n
+	}
+	return nil
+}
+
+// validateRate returns a ConfigurationError if v is not in [0.0, 1.0].
+func validateRate(v float64, field string) error {
+	if v < 0.0 || v > 1.0 {
+		return NewConfigurationError(fmt.Sprintf("%s must be in [0.0, 1.0], got %g", field, v))
+	}
+	return nil
+}
+
+// validateNonNegative returns a ConfigurationError if v is negative.
+func validateNonNegative(v int, field string) error {
+	if v < 0 {
+		return NewConfigurationError(fmt.Sprintf("%s must be >= 0, got %d", field, v))
+	}
+	return nil
 }
 
 // parseBool interprets "1", "true", "yes", "on" (case-insensitive) as true;
