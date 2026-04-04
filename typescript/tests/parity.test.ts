@@ -333,23 +333,43 @@ describe('parity: default_sensitive_keys', () => {
 
 describe('parity: slo_classify', () => {
   it('status 400 = client_error', () => {
-    const c = classifyError(400);
+    const c = classifyError('ClientError', 400);
     expect(c.category).toBe('client_error');
   });
 
   it('status 500 = server_error', () => {
-    const c = classifyError(500);
+    const c = classifyError('ServerError', 500);
     expect(c.category).toBe('server_error');
   });
 
   it('status 429 = client_error with critical severity', () => {
-    const c = classifyError(429);
+    const c = classifyError('RateLimitError', 429);
     expect(c.category).toBe('client_error');
     expect(c.severity).toBe('critical');
   });
 
   it('status 0 = timeout', () => {
-    const c = classifyError(0);
+    const c = classifyError('TimeoutError', 0);
     expect(c.category).toBe('timeout');
+  });
+
+  it('OTel-aligned keys match Go/Python parity', () => {
+    const c = classifyError('ServerError', 500);
+    expect(c['error.type']).toBe('ServerError');
+    expect(c['error.category']).toBe('server_error');
+    expect(c['error.severity']).toBe('critical');
+    expect(c['http.status_code']).toBe('500');
+  });
+
+  it('excName in errorName matches Go parity', () => {
+    const c = classifyError('MyException', 503);
+    expect(c.errorName).toBe('MyException');
+    expect(c['error.type']).toBe('MyException');
+  });
+
+  it('timeout detection by excName matches Go parity', () => {
+    const c = classifyError('ConnectionTimeoutError', 503);
+    expect(c.category).toBe('timeout');
+    expect(c['error.category']).toBe('timeout');
   });
 });
