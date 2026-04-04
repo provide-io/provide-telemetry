@@ -801,6 +801,44 @@ func TestHandler_ErrorFingerprint_NotAdded_WhenNoError(t *testing.T) {
 	}
 }
 
+// ── Schema strict: required keys drop / pass ──────────────────────────────────
+
+func TestHandler_SchemaStrict_RequiredKeys_Drop(t *testing.T) {
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.EventSchema.RequiredKeys = []string{"domain"}
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("user.auth.login")
+
+	if buf.Len() != 0 {
+		t.Errorf("expected record dropped for missing required key, got: %s", buf.String())
+	}
+}
+
+func TestHandler_SchemaStrict_RequiredKeys_Pass(t *testing.T) {
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.EventSchema.RequiredKeys = []string{"domain"}
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("user.auth.login", slog.String("domain", "user"))
+
+	if buf.Len() == 0 {
+		t.Error("expected record to pass when required key is present")
+	}
+}
+
 // ── GetLogger produces JSON output when format=json ─────────────────────────
 func TestGetLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	setupFullSampling(t)
