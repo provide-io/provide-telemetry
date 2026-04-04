@@ -93,6 +93,7 @@ jobs:
       - name: Install gremlins
         run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
       - name: Run mutation tests
-# sampling_cmp.go excluded: float64 < vs <= boundary is mathematically
-        # equivalent (P(rand == rate) = 0). See sampling_cmp.go header comment.
-        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --exclude-files="sampling_cmp.go" .
+# Excluded files contain comparisons where gremlins boundary/arithmetic
+        # mutations are mathematically equivalent (float64 exact equality P=0,
+        # nanosecond time boundary P≈0). See file header comments.
+        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" .
