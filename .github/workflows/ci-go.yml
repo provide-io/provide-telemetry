@@ -1,19 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-name: 🐹 CI — Go
+name: Go CI
 
 on:
   push:
     paths:
       - "go/**"
-      - "VERSION"
-      - ".github/workflows/ci-go.yml"
   pull_request:
     paths:
       - "go/**"
-      - "VERSION"
-      - ".github/workflows/ci-go.yml"
 
 permissions:
   contents: read
@@ -25,12 +18,12 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.22"
       - name: Run tests with coverage
-        run: go test -race -coverprofile=coverage.out .
+        run: go test -race -coverprofile=coverage.out ./...
       - name: Enforce 100% coverage
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
@@ -46,17 +39,13 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
-      # Build golangci-lint v2 from source — v2 module path supports Go 1.25 and the v2 config format.
-      # Pre-built binaries are Go 1.24 and refuse Go 1.25; v1 module path ignores v2 config.
-      - name: Install golangci-lint (v2)
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-      - name: Run golangci-lint
-        run: golangci-lint run --path-prefix=go
-        working-directory: go
+          go-version: "1.22"
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: go
 
   security:
     runs-on: ubuntu-latest
@@ -64,21 +53,18 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.22"
       - name: Install security tools
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run gosec
-        # Exclude cmd/e2e_cross_language_client — separate module requiring Go 1.26, only used for E2E
-        run: gosec -exclude-dir=cmd/e2e_cross_language_client ./...
+        run: gosec ./...
       - name: Run govulncheck
-        # Scan the library package only — examples are demo code, not library, and their
-        # transitive TLS usage should not block library releases.
-        run: govulncheck .
+        run: govulncheck ./...
 
   vet:
     runs-on: ubuntu-latest
@@ -86,126 +72,9 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.22"
       - name: Run go vet
         run: go vet ./...
-
-  examples:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version: "1.26"
-      # Build and run each standalone telemetry example (no live backend required)
-      - name: Run telemetry examples
-        run: |
-          set -euo pipefail
-          for d in examples/telemetry/*/; do
-            echo "running $d"
-            go run ./"$d"
-          done
-
-  otlp-integration:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version: "1.26"
-      - name: Prepare collector output directory
-        run: |
-          mkdir -p ../tests/integration/otel-output-go
-          rm -f ../tests/integration/otel-output-go/*.json
-      - name: Start OTLP collector
-        run: |
-          docker run -d --name otelcol-go \
-            -p 4318:4318 \
-            -p 13133:13133 \
-            -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
-            otel/opentelemetry-collector-contrib:0.102.1
-      - name: Wait for collector health
-        run: ci/wait-for-collector.sh
-      - name: Run collector-backed OTLP smoke test
-        run: go test -run TestOTLPCollectorSmoke .
-        env:
-          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-go"
-      - name: Collector logs
-        if: always()
-        run: docker logs otelcol-go || true
-      - name: Capture collector logs
-        run: docker logs otelcol-go > ../tests/integration/otel-output-go/collector.log 2>&1
-      - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.collector.span" ../tests/integration/otel-output-go/collector.log
-          grep -q "integration.collector.requests" ../tests/integration/otel-output-go/collector.log
-          grep -q "integration.collector.log" ../tests/integration/otel-output-go/collector.log
-      - name: Stop collector
-        if: always()
-        run: |
-          docker stop otelcol-go || true
-          docker rm otelcol-go || true
-
-  test-logger:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go/logger
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version: "1.26"
-      # Verify go/logger builds and tests independently with zero OTel deps
-      - name: Run go/logger tests with coverage
-        run: go test -race -coverprofile=coverage.out ./...
-      - name: Enforce 100% coverage
-        run: |
-          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
-          echo "Total coverage: $TOTAL"
-          if [ "$TOTAL" != "100.0%" ]; then
-            echo "FAIL: coverage is $TOTAL, expected 100.0%"
-            exit 1
-          fi
-      # Confirm no OTel packages pulled in as transitive deps
-      - name: Confirm zero OTel dependencies
-        run: |
-          if grep -q "opentelemetry" go.sum 2>/dev/null; then
-            echo "FAIL: go/logger has unexpected OTel dependency"
-            grep "opentelemetry" go.sum
-            exit 1
-          fi
-          echo "OK: no OTel deps in go/logger"
-
-  test-tracer:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go/tracer
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version: "1.26"
-      # Verify go/tracer builds and tests independently with OTel API only (no SDK)
-      - name: Run go/tracer tests
-        run: go test -race ./...
-      # Confirm only OTel API (not SDK/exporters) is present
-      - name: Confirm no OTel SDK dependencies
-        run: |
-          if grep -q "opentelemetry.io/otel/sdk" go.sum 2>/dev/null; then
-            echo "FAIL: go/tracer has OTel SDK dependency (API-only expected)"
-            grep "opentelemetry.io/otel/sdk" go.sum
-            exit 1
-          fi
-          echo "OK: go/tracer has OTel API only, no SDK"

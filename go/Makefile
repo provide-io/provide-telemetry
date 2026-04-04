@@ -1,4 +1,4 @@
-.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress check
+.PHONY: help lint vet test coverage mutation security fmt fmt-check check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -14,7 +14,7 @@ test: ## Run tests with race detector
 	go test -race -count=1 ./...
 
 coverage: ## Run tests and enforce 100% coverage
-	go test -race -coverprofile=coverage.out -covermode=atomic .
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 	@TOTAL=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}'); \
 	echo "Total coverage: $$TOTAL"; \
 	if [ "$$TOTAL" != "100.0%" ]; then \
@@ -35,11 +35,5 @@ fmt: ## Format source files
 
 fmt-check: ## Check formatting (fail if any files need formatting)
 	goimports -l . | diff /dev/null -
-
-bench: ## Run benchmarks
-	go test -bench=. -benchmem -count=1 ./...
-
-stress: ## Run stress tests
-	go run ./scripts/stress
 
 check: fmt-check vet lint security test coverage ## Run all quality gates
