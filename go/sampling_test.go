@@ -12,7 +12,7 @@ func TestSamplingPolicy_DefaultWhenNotSet(t *testing.T) {
 	_resetSamplingPolicies()
 	t.Cleanup(_resetSamplingPolicies)
 
-	policy := GetSamplingPolicy("logs")
+	policy := GetSamplingPolicy(signalLogs)
 	if policy.DefaultRate != 1.0 {
 		t.Errorf("expected DefaultRate 1.0, got %f", policy.DefaultRate)
 	}
@@ -29,8 +29,8 @@ func TestSetSamplingPolicy_RoundTrip(t *testing.T) {
 		DefaultRate: 0.75,
 		Overrides:   map[string]float64{"foo": 0.25, "bar": 0.9},
 	}
-	SetSamplingPolicy("traces", policy)
-	got := GetSamplingPolicy("traces")
+	SetSamplingPolicy(signalTraces, policy)
+	got := GetSamplingPolicy(signalTraces)
 
 	if got.DefaultRate != policy.DefaultRate {
 		t.Errorf("DefaultRate: want %f, got %f", policy.DefaultRate, got.DefaultRate)
@@ -50,10 +50,10 @@ func TestShouldSample_RateOne_AlwaysTrue(t *testing.T) {
 	_resetSamplingPolicies()
 	t.Cleanup(_resetSamplingPolicies)
 
-	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 1.0})
+	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.0})
 
 	for i := 0; i < 100; i++ {
-		if !ShouldSample("logs", "event") {
+		if !ShouldSample(signalLogs, "event") {
 			t.Errorf("expected true at iteration %d", i)
 		}
 	}
@@ -63,10 +63,10 @@ func TestShouldSample_RateZero_AlwaysFalse(t *testing.T) {
 	_resetSamplingPolicies()
 	t.Cleanup(_resetSamplingPolicies)
 
-	SetSamplingPolicy("traces", SamplingPolicy{DefaultRate: 0.0})
+	SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 0.0})
 
 	for i := 0; i < 100; i++ {
-		if ShouldSample("traces", "span") {
+		if ShouldSample(signalTraces, "span") {
 			t.Errorf("expected false at iteration %d", i)
 		}
 	}
@@ -76,21 +76,21 @@ func TestShouldSample_Override_UseOverrideRate(t *testing.T) {
 	_resetSamplingPolicies()
 	t.Cleanup(_resetSamplingPolicies)
 
-	SetSamplingPolicy("metrics", SamplingPolicy{
+	SetSamplingPolicy(signalMetrics, SamplingPolicy{
 		DefaultRate: 1.0,
 		Overrides:   map[string]float64{"foo": 0.0},
 	})
 
 	// key "foo" should always be false (override rate 0.0)
 	for i := 0; i < 100; i++ {
-		if ShouldSample("metrics", "foo") {
+		if ShouldSample(signalMetrics, "foo") {
 			t.Errorf("expected false for key 'foo' at iteration %d", i)
 		}
 	}
 
 	// other keys should always be true (default rate 1.0)
 	for i := 0; i < 100; i++ {
-		if !ShouldSample("metrics", "bar") {
+		if !ShouldSample(signalMetrics, "bar") {
 			t.Errorf("expected true for key 'bar' at iteration %d", i)
 		}
 	}
@@ -100,11 +100,11 @@ func TestShouldSample_DefaultRate(t *testing.T) {
 	_resetSamplingPolicies()
 	t.Cleanup(_resetSamplingPolicies)
 
-	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.5})
+	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5})
 
 	count := 0
 	for i := 0; i < 1000; i++ {
-		if ShouldSample("logs", "event") {
+		if ShouldSample(signalLogs, "event") {
 			count++
 		}
 	}
@@ -121,29 +121,29 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 	t.Cleanup(_resetHealth)
 
 	// logs: rate 1.0 -> sampled -> _incLogsEmitted
-	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 1.0})
-	ShouldSample("logs", "e")
-	ShouldSample("logs", "e")
+	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.0})
+	ShouldSample(signalLogs, "e")
+	ShouldSample(signalLogs, "e")
 
 	// logs: rate 0.0 -> dropped -> _incLogsDropped
-	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.0})
-	ShouldSample("logs", "e")
+	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.0})
+	ShouldSample(signalLogs, "e")
 
 	// traces: rate 1.0 -> _incSpansStarted
-	SetSamplingPolicy("traces", SamplingPolicy{DefaultRate: 1.0})
-	ShouldSample("traces", "span")
+	SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 1.0})
+	ShouldSample(signalTraces, "span")
 
 	// traces: rate 0.0 -> _incSpansDropped
-	SetSamplingPolicy("traces", SamplingPolicy{DefaultRate: 0.0})
-	ShouldSample("traces", "span")
+	SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 0.0})
+	ShouldSample(signalTraces, "span")
 
 	// metrics: rate 1.0 -> _incMetricsRecorded
-	SetSamplingPolicy("metrics", SamplingPolicy{DefaultRate: 1.0})
-	ShouldSample("metrics", "m")
+	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 1.0})
+	ShouldSample(signalMetrics, "m")
 
 	// metrics: rate 0.0 -> _incMetricsDropped
-	SetSamplingPolicy("metrics", SamplingPolicy{DefaultRate: 0.0})
-	ShouldSample("metrics", "m")
+	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0})
+	ShouldSample(signalMetrics, "m")
 
 	snap := GetHealthSnapshot()
 
@@ -199,12 +199,12 @@ func TestSamplingConcurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.5})
-				SetSamplingPolicy("traces", SamplingPolicy{DefaultRate: 1.0, Overrides: map[string]float64{"k": 0.0}})
-				_ = GetSamplingPolicy("logs")
-				_ = ShouldSample("logs", "event")
-				_ = ShouldSample("traces", "k")
-				_ = ShouldSample("metrics", "m")
+				SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5})
+				SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 1.0, Overrides: map[string]float64{"k": 0.0}})
+				_ = GetSamplingPolicy(signalLogs)
+				_ = ShouldSample(signalLogs, "event")
+				_ = ShouldSample(signalTraces, "k")
+				_ = ShouldSample(signalMetrics, "m")
 			}
 		}(i)
 	}
