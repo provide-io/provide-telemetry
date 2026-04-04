@@ -8,6 +8,12 @@ import (
 	"sync"
 )
 
+const (
+	signalLogs    = "logs"
+	signalTraces  = "traces"
+	signalMetrics = "metrics"
+)
+
 // SamplingPolicy defines per-signal sampling configuration.
 type SamplingPolicy struct {
 	DefaultRate float64            // probability [0.0, 1.0]; default 1.0 = sample all
@@ -70,20 +76,20 @@ func ShouldSample(signal, key string) bool {
 
 	if sampled {
 		switch signal {
-		case "logs":
+		case signalLogs:
 			_incLogsEmitted()
-		case "traces":
+		case signalTraces:
 			_incSpansStarted()
-		case "metrics":
+		case signalMetrics:
 			_incMetricsRecorded()
 		}
 	} else {
 		switch signal {
-		case "logs":
+		case signalLogs:
 			_incLogsDropped()
-		case "traces":
+		case signalTraces:
 			_incSpansDropped()
-		case "metrics":
+		case signalMetrics:
 			_incMetricsDropped()
 		}
 	}
