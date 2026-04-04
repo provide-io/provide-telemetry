@@ -9,6 +9,8 @@
  * sanitize.ts re-exports these for backwards compatibility.
  */
 
+import { shortHash12 } from './hash';
+
 /**
  * Default fields redacted from log records. TypeScript uses a wider set than Python
  * (which only redacts: password, token, authorization, api_key, secret).
@@ -97,11 +99,7 @@ export function _setHashFnForTest(fn: ((val: string) => string) | null): void {
 function _hashValue(val: string): string {
   try {
     if (_hashFnOverride !== null) return _hashFnOverride(val);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createHash } = require('node:crypto') as {
-      createHash: (alg: string) => { update: (s: string) => { digest: (enc: string) => string } };
-    };
-    return createHash('sha256').update(val).digest('hex').slice(0, 12);
+    return shortHash12(val);
   } catch {
     return REDACTED;
   }

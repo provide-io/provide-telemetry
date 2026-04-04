@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -19,7 +20,7 @@
  */
 
 import {
-  eventName,
+  event,
   getConfig,
   getHealthSnapshot,
   getLogger,
@@ -91,9 +92,9 @@ async function main(): Promise<void> {
   // ── Emit with hardening active ───────────────────────────────────────────
 
   for (let i = 0; i < 5; i++) {
-    await withTrace(eventName('example', 'openobserve', 'work'), async () => {
+    await withTrace(event('example', 'openobserve', 'work').event, async () => {
       log.info({
-        event: eventName('example', 'openobserve', 'log'),
+        ...event('example', 'openobserve', 'log'),
         iteration: i,
         user: { email: 'ops@example.com', full_name: 'Operator Example' },
         token: tokenValue,

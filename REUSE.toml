@@ -41,6 +41,11 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 path = [
   "Makefile",
+  "go/Makefile",
+  "go/.golangci.yml",
+  "go/VERSION",
+  "go/go.mod",
+  "go/go.sum",
   "typescript/README.md",
   "typescript/CHANGELOG.md",
   "typescript/VERSION",
@@ -77,5 +82,10 @@ path = [
   "tests/memray/baselines.json",
   ".playwright-mcp/**",
 ]
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["go/coverage_new.out", "go/coverage.out"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"

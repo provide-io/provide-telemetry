@@ -11,6 +11,7 @@ completed.append() arg mutations, and SLO metric argument mutations.
 
 from __future__ import annotations
 
+import warnings
 from unittest.mock import MagicMock
 
 import pytest
@@ -124,8 +125,10 @@ def test_setup_metrics_failure_triggers_rollback_of_logging_and_tracing(
         lambda: shutdown_calls.append("metrics"),
     )
 
-    with pytest.raises(RuntimeError, match="metrics_boom"):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         setup_telemetry()
+    assert any("degraded mode" in str(warning.message) for warning in w)
 
     # Logging and tracing completed, so both should be rolled back
     assert "logging" in shutdown_calls
@@ -257,8 +260,10 @@ def test_setup_telemetry_completed_list_has_correct_keys(
         lambda: shutdown_calls.append("metrics"),
     )
 
-    with pytest.raises(RuntimeError, match="rebind_boom"):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         setup_telemetry()
+    assert any("degraded mode" in str(warning.message) for warning in w)
 
     # All three steps completed before _rebind_slo_instruments failed
     assert "logging" in shutdown_calls
