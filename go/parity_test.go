@@ -342,3 +342,23 @@ func TestParity_Backpressure_UnlimitedAlwaysAcquires(t *testing.T) {
 		}
 	}
 }
+
+// ── Error Fingerprint ─────────────────────────────────────────────────────────
+
+func TestParity_ErrorFingerprint_NoFrames(t *testing.T) {
+	fp := _computeErrorFingerprint("ValueError", nil)
+	if len(fp) != 12 {
+		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
+	}
+	expected := "a50aba76697e"
+	if fp != expected {
+		t.Errorf("fingerprint mismatch: got %q, want %q", fp, expected)
+	}
+}
+
+func TestParity_ErrorFingerprint_WithParts(t *testing.T) {
+	fp := _computeErrorFingerprintFromParts("TypeError", []string{"module:main", "handler:process"})
+	if len(fp) != 12 {
+		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
+	}
+}
