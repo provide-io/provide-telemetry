@@ -362,3 +362,78 @@ func TestParity_ErrorFingerprint_WithParts(t *testing.T) {
 		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
 	}
 }
+
+// ── PII Truncate — non-string conversion ─────────────────────────────────────
+
+func TestParity_PIITruncate_NonString(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"count"}, Mode: PIIModeTruncate, TruncateTo: 3}})
+	result := SanitizePayload(map[string]any{"count": 12345}, true, 0)
+	if result["count"] != "123..." {
+		t.Errorf("expected truncated non-string '123...', got %v", result["count"])
+	}
+}
+
+// ── PII Drop — removes key ────────────────────────────────────────────────────
+
+func TestParity_PIIDrop_RemovesKey(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"secret_data"}, Mode: PIIModeDrop}})
+	result := SanitizePayload(map[string]any{"secret_data": "top-secret", "keep": "visible"}, true, 0) // pragma: allowlist secret
+	if _, exists := result["secret_data"]; exists {
+		t.Error("expected 'secret_data' to be dropped entirely")
+	}
+	if result["keep"] != "visible" {
+		t.Errorf("expected 'keep' unchanged, got %v", result["keep"])
+	}
+}
+
+// ── Propagation Guards — baggage limits ──────────────────────────────────────
+
+func TestParity_Propagation_BaggageAtLimit_Accepted(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Baggage", strings.Repeat("x", 8192))
+	pc := ExtractW3CContext(headers)
+	if pc.Baggage == "" {
+		t.Error("expected baggage at limit (8192) to be accepted")
+	}
+}
+
+func TestParity_Propagation_BaggageOverLimit_Discarded(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Baggage", strings.Repeat("x", 8193))
+	pc := ExtractW3CContext(headers)
+	if pc.Baggage != "" {
+		t.Error("expected baggage over limit (8193) to be discarded")
+	}
+}
+
+// ── SLO Classify — edge cases ─────────────────────────────────────────────────
+
+func TestParity_ClassifyError_200_Unknown(t *testing.T) {
+	result := ClassifyError("", 200)
+	if result["error.category"] != "unknown" {
+		t.Errorf("expected unknown for 200, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_301_Unknown(t *testing.T) {
+	result := ClassifyError("", 301)
+	if result["error.category"] != "unknown" {
+		t.Errorf("expected unknown for 301, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_TimeoutByExcName(t *testing.T) {
+	result := ClassifyError("ConnectionTimeoutError", 503)
+	if result["error.category"] != "timeout" {
+		t.Errorf("expected timeout by exc name, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_599_ServerError(t *testing.T) {
+	result := ClassifyError("ServerError", 599)
+	if result["error.category"] != "server_error" {
+		t.Errorf("expected server_error for 599, got %s", result["error.category"])
+	}
+}
