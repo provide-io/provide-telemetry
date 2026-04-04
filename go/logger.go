@@ -6,6 +6,7 @@ package telemetry
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"slices"
@@ -64,6 +65,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		return nil //nolint:nilerr // schema violation drops the record
 	}
 
+	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
 	return h.next.Handle(ctx, r)
 }
@@ -288,4 +290,28 @@ func IsTraceEnabled() bool {
 		return false
 	}
 	return Logger.Enabled(context.Background(), LevelTrace)
+}
+
+// applyErrorFingerprint adds error_fingerprint when error attributes are present.
+func (h *_telemetryHandler) applyErrorFingerprint(r slog.Record) slog.Record {
+	var excName string
+	r.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "exc_info", "exc_name", "exception":
+			excName = fmt.Sprint(a.Value.Any())
+			return false
+		}
+		return true
+	})
+	if excName == "" {
+		return r
+	}
+	fp := _computeErrorFingerprintFromParts(excName, nil)
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		nr.AddAttrs(a)
+		return true
+	})
+	nr.AddAttrs(slog.String("error_fingerprint", fp))
+	return nr
 }
