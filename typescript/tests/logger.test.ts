@@ -642,6 +642,48 @@ describe('getLogger — logModuleLevels', () => {
     expect(found).toBe(false);
   });
 
+  it('does NOT match partial module name without dot boundary', async () => {
+    _resetRootLogger();
+    makeCfg({ logLevel: 'warn', logModuleLevels: { my: 'debug' } });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    const log = getLogger('myapp');
+    log.debug({ event: 'partial.should.not.match' }, 'nope');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    const found = logs.some(
+      (l) => (l as Record<string, unknown>)['event'] === 'partial.should.not.match',
+    );
+    expect(found).toBe(false);
+  });
+
+  it('matches module name with dot boundary', async () => {
+    _resetRootLogger();
+    makeCfg({ logLevel: 'warn', logModuleLevels: { my: 'debug' } });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    const log = getLogger('my.app');
+    log.debug({ event: 'dot.boundary.match' }, 'yes');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    const found = logs.some(
+      (l) => (l as Record<string, unknown>)['event'] === 'dot.boundary.match',
+    );
+    expect(found).toBe(true);
+  });
+
+  it('empty-string prefix matches all loggers as fallback', async () => {
+    _resetRootLogger();
+    makeCfg({ logLevel: 'warn', logModuleLevels: { '': 'debug' } });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+    const log = getLogger('anything.here');
+    log.debug({ event: 'empty.prefix.match' }, 'catchall');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    const found = logs.some(
+      (l) => (l as Record<string, unknown>)['event'] === 'empty.prefix.match',
+    );
+    expect(found).toBe(true);
+  });
+
   it('does not override level when logModuleLevels is empty', () => {
     _resetRootLogger();
     makeCfg({ logLevel: 'info', logModuleLevels: {} });

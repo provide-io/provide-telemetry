@@ -141,8 +141,8 @@ func TestSanitizePayload_CustomRule_Truncate_String(t *testing.T) {
 	})
 	payload := map[string]any{"note": "hello world"}
 	result := SanitizePayload(payload, true, 32)
-	if result["note"] != "hello" {
-		t.Errorf("expected %q, got %v", "hello", result["note"])
+	if result["note"] != "hello..." {
+		t.Errorf("expected %q, got %v", "hello...", result["note"])
 	}
 }
 
@@ -449,5 +449,142 @@ func TestIsDefaultSensitiveKey_CaseInsensitive(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("_isDefaultSensitiveKey(%q): want %v, got %v", tc.key, tc.expected, got)
 		}
+	}
+}
+
+// ── pii.go:142 depth-1 in map recursion ──────────────────────────────────────
+// At maxDepth=2, "level1" map is reached at depth=2, recurses to depth-1=1.
+// Inside that, "level2" is at depth=1 (depth<=1 → stop), so password is NOT redacted.
+// Under mutation (depth+1=3): "level2" recurses → password IS redacted.
+func TestSanitizePayload_MapDepth_CorrectDecrement(t *testing.T) {
+	resetPII(t)
+	payload := map[string]any{
+		"level1": map[string]any{
+			"level2": map[string]any{
+				"password": "deep-hidden", // pragma: allowlist secret
+			},
+		},
+	}
+	result := SanitizePayload(payload, true, 2)
+
+	l1, _ := result["level1"].(map[string]any)
+	if l1 == nil {
+		t.Fatal("expected level1")
+	}
+	l2, _ := l1["level2"].(map[string]any)
+	if l2 == nil {
+		t.Fatal("expected level2")
+	}
+	if l2["password"] == _piiRedacted { // pragma: allowlist secret
+		t.Error("expected password NOT redacted when map depth limit reached (depth=1 stops recursion)")
+	}
+}
+
+// ── pii.go:144 depth-1 vs depth+1 in _sanitizeSlice ─────────────────────────
+// Same pattern as map depth test but through the slice path.
+func TestSanitizePayload_SliceDepth_CorrectDecrement(t *testing.T) {
+	resetPII(t)
+	// Structure: {"arr": [ {"nested": {"password": "secret"}} ]}
+	// - SanitizePayload called with maxDepth=3
+	// - _sanitizeMap(depth=3) → _sanitizeValue("arr", []any{...}, depth=3)
+	//   → _sanitizeSlice(depth=3-1=2) → _sanitizeMap(inner, depth=2)
+	//   → _sanitizeValue("nested", map{...}, depth=2) > 1 → recurse
+	//   → _sanitizeMap(depth=2-1=1) → _sanitizeValue("password", ..., depth=1)
+	//   → _isDefaultSensitiveKey → redacted ✓
+	// With mutation depth+1=4: same path reaches password and redacts it.
+	// Use a structure where depth matters: non-sensitive key below threshold.
+	// At maxDepth=2, slice is at depth 1 → _sanitizeSlice(depth=2-1=1).
+	// Inner map processed at depth=1, depth<=1 → no recursion into nested map.
+	// Nested map's "safe_deep" key is NOT a sensitive key, so it stays unredacted.
+	// With mutation depth+1=3: slice called with depth=3, inner map with depth=3,
+	//   recurses into nested map at depth=2, "safe_deep" still not sensitive → unchanged.
+	// This doesn't distinguish. Use a sensitive key at depth 3:
+	payload := map[string]any{
+		"arr": []any{
+			map[string]any{
+				"nested": map[string]any{
+					"password": "deep-secret", // pragma: allowlist secret
+				},
+			},
+		},
+	}
+	// maxDepth=3: arr(depth=3) → slice(depth=2) → map(depth=2) → nested(depth=2>1 recurse)
+	// → map(depth=1) → password → sensitive → redacted
+	result := SanitizePayload(payload, true, 3)
+
+	arr, _ := result["arr"].([]any)
+	if arr == nil {
+		t.Fatal("expected arr in result")
+	}
+	item, _ := arr[0].(map[string]any)
+	if item == nil {
+		t.Fatal("expected map item in arr")
+	}
+	nested, _ := item["nested"].(map[string]any)
+	if nested == nil {
+		t.Fatal("expected nested map")
+	}
+	if nested["password"] != _piiRedacted { // pragma: allowlist secret
+		t.Errorf("expected deep password redacted at depth 3, got %v", nested["password"])
+	}
+
+	// Now verify depth boundary: maxDepth=2 stops before reaching the password.
+	result2 := SanitizePayload(payload, true, 2)
+	arr2, _ := result2["arr"].([]any)
+	item2, _ := arr2[0].(map[string]any)
+	// At depth=2: _sanitizeSlice called with depth=2-1=1.
+	// Inner map processed at depth=1. depth<=1 → no recursion into nested map.
+	// nested map is returned unchanged.
+	nested2, _ := item2["nested"].(map[string]any)
+	if nested2 == nil {
+		t.Fatal("expected nested map at depth 2")
+	}
+	if nested2["password"] == _piiRedacted { // pragma: allowlist secret
+		t.Error("expected password NOT redacted when depth stops before reaching it")
+	}
+}
+
+// ── pii.go:177 truncate: string of truncateTo-1 runes must NOT be truncated.
+// Under ARITHMETIC mutation (truncateTo+1 → truncateTo-1), a string of 4 runes
+// matches >= 4, and runes[:5] on 4-element slice panics.
+func TestSanitizePayload_Truncate_OneBelowLimit_Unchanged(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{
+		{Path: []string{"note"}, Mode: PIIModeTruncate, TruncateTo: 5},
+	})
+	payload := map[string]any{"note": "abcd"} // 4 runes = truncateTo-1
+	result := SanitizePayload(payload, true, 32)
+	if result["note"] != "abcd" {
+		t.Errorf("string shorter than truncateTo should be unchanged, got %v", result["note"])
+	}
+}
+
+// ── pii.go:177 truncate: string of truncateTo+1 runes MUST be truncated ──
+func TestSanitizePayload_Truncate_OneOverLimit_Truncated(t *testing.T) {
+	resetPII(t)
+	const limit = 5
+	SetPIIRules([]PIIRule{
+		{Path: []string{"note"}, Mode: PIIModeTruncate, TruncateTo: limit},
+	})
+	// "abcdef" has 6 runes (truncateTo+1) — must be truncated to 5.
+	payload := map[string]any{"note": "abcdef"}
+	result := SanitizePayload(payload, true, 32)
+	if result["note"] != "abcde..." {
+		t.Errorf("string one over limit should be truncated to %d runes + suffix, got %v", limit, result["note"])
+	}
+}
+
+// ── pii.go:177 truncate boundary: exactly truncateTo runes must NOT truncate ──
+func TestSanitizePayload_Truncate_ExactlyAtLimit_NotTruncated(t *testing.T) {
+	resetPII(t)
+	const limit = 5
+	SetPIIRules([]PIIRule{
+		{Path: []string{"note"}, Mode: PIIModeTruncate, TruncateTo: limit},
+	})
+	// "hello" has exactly 5 runes — must NOT be truncated (> not >=)
+	payload := map[string]any{"note": "hello"}
+	result := SanitizePayload(payload, true, 32)
+	if result["note"] != "hello" {
+		t.Errorf("string of exactly %d runes should not be truncated, got %v", limit, result["note"])
 	}
 }

@@ -21,7 +21,6 @@ export {
   getConfig,
   configFromEnv,
   parseOtlpHeaders,
-  redactConfig,
   version,
   __version__,
 } from './config';

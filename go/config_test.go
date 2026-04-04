@@ -522,6 +522,13 @@ func TestParseOTLPHeaders_InvalidURLEncodedKey_Skipped(t *testing.T) {
 	}
 }
 
+func TestParseOTLPHeaders_SingleCharKey_Accepted(t *testing.T) {
+	got := parseOTLPHeaders("k=v")
+	if got["k"] != "v" {
+		t.Errorf("single-char key: want k=v, got %v", got)
+	}
+}
+
 func TestParseOTLPHeaders_Empty(t *testing.T) {
 	got := parseOTLPHeaders("")
 	if len(got) != 0 {
@@ -551,6 +558,16 @@ func TestParseModuleLevels_MixedCase(t *testing.T) {
 	}
 	if got["pkg"] != "INFO" {
 		t.Errorf("level should be normalised to INFO, got %q", got["pkg"])
+	}
+}
+
+func TestParseModuleLevels_SingleCharModule_Accepted(t *testing.T) {
+	got, err := parseModuleLevels("a=DEBUG")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["a"] != testDebugLevel {
+		t.Errorf("single-char module: got %q, want %q", got["a"], testDebugLevel)
 	}
 }
 

@@ -126,22 +126,20 @@ func TestExtractW3CContext_AllZeroSpanID(t *testing.T) {
 
 func TestExtractW3CContext_TraceparentTooLarge(t *testing.T) {
 	headers := http.Header{}
-	// Build a traceparent that exceeds 512 bytes:
-	// Prepend 512 bytes of filler so the valid traceparent is cut off entirely.
+	// Build a traceparent that exceeds 512 bytes.
 	long := strings.Repeat("x", 512) + validTraceparent()
 	headers.Set("Traceparent", long)
 
 	pc := ExtractW3CContext(headers)
 
-	if len(pc.Traceparent) > _maxTraceparentBytes {
-		t.Errorf("Traceparent should be truncated to %d bytes, got %d", _maxTraceparentBytes, len(pc.Traceparent))
+	if pc.Traceparent != "" {
+		t.Errorf("Traceparent should be discarded when oversized, got %q", pc.Traceparent)
 	}
-	// After truncation the header contains only filler — not a valid traceparent
 	if pc.TraceID != "" {
-		t.Errorf("TraceID should be empty after truncated traceparent, got %q", pc.TraceID)
+		t.Errorf("TraceID should be empty after discarded traceparent, got %q", pc.TraceID)
 	}
 	if pc.SpanID != "" {
-		t.Errorf("SpanID should be empty after truncated traceparent, got %q", pc.SpanID)
+		t.Errorf("SpanID should be empty after discarded traceparent, got %q", pc.SpanID)
 	}
 }
 
@@ -154,8 +152,8 @@ func TestExtractW3CContext_TracestateTooLarge(t *testing.T) {
 
 	pc := ExtractW3CContext(headers)
 
-	if len(pc.Tracestate) > _maxTracestateBytes {
-		t.Errorf("Tracestate should be at most %d bytes, got %d", _maxTracestateBytes, len(pc.Tracestate))
+	if pc.Tracestate != "" {
+		t.Errorf("Tracestate should be discarded when oversized, got len %d", len(pc.Tracestate))
 	}
 }
 
@@ -172,9 +170,8 @@ func TestExtractW3CContext_TracestateMoreThan32Pairs(t *testing.T) {
 
 	pc := ExtractW3CContext(headers)
 
-	got := strings.Split(pc.Tracestate, ",")
-	if len(got) > _maxTracestatePairs {
-		t.Errorf("Tracestate should have at most %d pairs, got %d", _maxTracestatePairs, len(got))
+	if pc.Tracestate != "" {
+		t.Errorf("Tracestate should be discarded when exceeding %d pairs, got %q", _maxTracestatePairs, pc.Tracestate)
 	}
 }
 
@@ -187,11 +184,8 @@ func TestExtractW3CContext_BaggageTooLarge(t *testing.T) {
 
 	pc := ExtractW3CContext(headers)
 
-	if len(pc.Baggage) > _maxBaggageBytes {
-		t.Errorf("Baggage should be at most %d bytes, got %d", _maxBaggageBytes, len(pc.Baggage))
-	}
-	if len(pc.Baggage) != _maxBaggageBytes {
-		t.Errorf("Baggage should be truncated to exactly %d bytes, got %d", _maxBaggageBytes, len(pc.Baggage))
+	if pc.Baggage != "" {
+		t.Errorf("Baggage should be discarded when oversized, got len %d", len(pc.Baggage))
 	}
 }
 
@@ -254,6 +248,79 @@ func TestExtractW3CContext_InvalidSpanID_UppercaseHex(t *testing.T) {
 
 	if pc.SpanID != "" {
 		t.Errorf("SpanID: want empty for uppercase hex, got %q", pc.SpanID)
+	}
+}
+
+// _guardSize: string of maxBytes-1 must NOT be truncated. Under ARITHMETIC mutation
+// (maxBytes+1 → maxBytes-1), this string would match (len >= maxBytes-1) and try
+// to truncate to maxBytes bytes (which exceeds len), causing a panic.
+func TestGuardSize_OneBelowMax_NotTruncated(t *testing.T) {
+	s := strings.Repeat("x", _maxTraceparentBytes-1)
+	got := _guardSize(s, _maxTraceparentBytes)
+	if got != s {
+		t.Errorf("string %d bytes shorter than max should not be truncated", _maxTraceparentBytes-1)
+	}
+}
+
+// _guardSize: string of maxBytes+1 MUST be discarded.
+func TestGuardSize_OneOverMax_Discarded(t *testing.T) {
+	s := strings.Repeat("x", _maxTraceparentBytes+1)
+	got := _guardSize(s, _maxTraceparentBytes)
+	if got != "" {
+		t.Errorf("string 1 over max should be discarded, got len %d", len(got))
+	}
+}
+
+// _guardTracestateSize: exactly 31 pairs must NOT be trimmed. Under ARITHMETIC mutation
+// (_maxTracestatePairs+1 → _maxTracestatePairs-1), 31 pairs match (>= 31) and would try
+// pairs[:32] on 31-element slice → panic.
+func TestGuardTracestateSize_31Pairs_NotTrimmed(t *testing.T) {
+	pairs := make([]string, _maxTracestatePairs-1)
+	for i := range pairs {
+		pairs[i] = "k=v"
+	}
+	ts := strings.Join(pairs, ",")
+	got := _guardTracestateSize(ts)
+	gotPairs := strings.Split(got, ",")
+	if len(gotPairs) != _maxTracestatePairs-1 {
+		t.Errorf("%d pairs should not be trimmed, got %d", _maxTracestatePairs-1, len(gotPairs))
+	}
+}
+
+// _guardSize boundary: string of exactly maxBytes must NOT be truncated
+func TestGuardSize_AtExactBoundary_NotTruncated(t *testing.T) {
+	exact := strings.Repeat("x", _maxTraceparentBytes) // len == 512
+	got := _guardSize(exact, _maxTraceparentBytes)
+	if len(got) != _maxTraceparentBytes {
+		t.Errorf("string of exactly %d bytes should not be truncated, got len %d", _maxTraceparentBytes, len(got))
+	}
+}
+
+// _guardTracestateSize boundary: exactly 33 pairs MUST be discarded.
+// With `>= _maxTracestatePairs+1`, mutation `> _maxTracestatePairs+1` skips 33.
+func TestGuardTracestateSize_33Pairs_Discarded(t *testing.T) {
+	pairs := make([]string, _maxTracestatePairs+1)
+	for i := range pairs {
+		pairs[i] = "k=v"
+	}
+	ts := strings.Join(pairs, ",")
+	got := _guardTracestateSize(ts)
+	if got != "" {
+		t.Errorf("33 pairs should be discarded, got %q", got)
+	}
+}
+
+// _guardTracestateSize boundary: exactly 32 pairs must NOT be trimmed
+func TestGuardTracestateSize_Exactly32Pairs_NotTrimmed(t *testing.T) {
+	pairs := make([]string, _maxTracestatePairs)
+	for i := range pairs {
+		pairs[i] = "k=v"
+	}
+	ts := strings.Join(pairs, ",")
+	got := _guardTracestateSize(ts)
+	gotPairs := strings.Split(got, ",")
+	if len(gotPairs) != _maxTracestatePairs {
+		t.Errorf("exactly %d pairs should not be trimmed, got %d", _maxTracestatePairs, len(gotPairs))
 	}
 }
 

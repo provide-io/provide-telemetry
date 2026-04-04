@@ -90,6 +90,27 @@ describe('configFromEnv', () => {
     }
   });
 
+  it('preserves = in header values (split on first = only)', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'Authorization=Bearer=token';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ Authorization: 'Bearer=token' });
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('filters out empty keys from header parsing', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = '=value,x-key=ok';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
+      expect('' in (cfg.otlpHeaders ?? {})).toBe(false);
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
   it('nodeEnv returns undefined when process is undefined (browser-like environment)', () => {
     // Simulate a browser environment where process is not defined
     vi.stubGlobal('process', undefined);

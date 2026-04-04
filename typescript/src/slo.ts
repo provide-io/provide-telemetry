@@ -81,71 +81,49 @@ export function recordUseMetrics(opts: {
 }
 
 export interface ErrorClassification {
-  errorType: 'server' | 'client' | 'timeout' | 'unknown';
+  errorType: 'server' | 'client' | 'timeout' | 'none';
   errorCode: number;
   errorName: string;
-  category: 'server_error' | 'client_error' | 'timeout' | 'unknown';
-  severity: 'critical' | 'warning' | 'info' | 'unknown';
-  // OTel-aligned keys for cross-language parity with Go/Python
-  'error.type': string;
-  'error.category': string;
-  'error.severity': string;
-  'http.status_code': string;
+  category: 'server_error' | 'client_error' | 'timeout' | 'none';
+  severity: 'critical' | 'warning' | 'info' | 'none';
 }
 
-export function classifyError(excName: string, statusCode: number): ErrorClassification {
-  const isTimeout = statusCode === 0 || excName.toLowerCase().includes('timeout');
+export function classifyError(statusCode: number): ErrorClassification {
+  const isTimeout = statusCode === 0;
 
   if (isTimeout) {
     return {
       errorType: 'timeout',
       errorCode: statusCode,
-      errorName: excName,
+      errorName: 'TimeoutError',
       category: 'timeout',
       severity: 'info',
-      'error.type': excName,
-      'error.category': 'timeout',
-      'error.severity': 'info',
-      'http.status_code': String(statusCode),
     };
   }
   if (statusCode >= 500) {
     return {
       errorType: 'server',
       errorCode: statusCode,
-      errorName: excName,
+      errorName: 'ServerError',
       category: 'server_error',
       severity: 'critical',
-      'error.type': excName,
-      'error.category': 'server_error',
-      'error.severity': 'critical',
-      'http.status_code': String(statusCode),
     };
   }
   if (statusCode >= 400) {
-    const sev = statusCode === 429 ? 'critical' : 'warning';
     return {
       errorType: 'client',
       errorCode: statusCode,
-      errorName: excName,
+      errorName: 'ClientError',
       category: 'client_error',
-      severity: sev as 'critical' | 'warning',
-      'error.type': excName,
-      'error.category': 'client_error',
-      'error.severity': sev,
-      'http.status_code': String(statusCode),
+      severity: statusCode === 429 ? 'critical' : 'warning',
     };
   }
   return {
-    errorType: 'unknown',
+    errorType: 'none',
     errorCode: statusCode,
-    errorName: excName,
-    category: 'unknown',
-    severity: 'unknown',
-    'error.type': excName,
-    'error.category': 'unknown',
-    'error.severity': 'unknown',
-    'http.status_code': String(statusCode),
+    errorName: '',
+    category: 'none',
+    severity: 'none',
   };
 }
 

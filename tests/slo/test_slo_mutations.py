@@ -157,7 +157,7 @@ def test_classify_error_internal_no_status() -> None:
     assert result["error_type"] == "internal"
     assert result["error_code"] == "0"
     assert result["error_name"] == "RuntimeError"
-    assert result["error.category"] == "unclassified"  # no timeout in name, code=0 -> unclassified
+    assert result["error.category"] == "timeout"  # status_code=0 -> timeout
 
 
 def test_classify_error_internal_with_none() -> None:
@@ -165,7 +165,7 @@ def test_classify_error_internal_with_none() -> None:
     assert result["error_type"] == "internal"
     assert result["error_code"] == "0"
     assert result["error_name"] == "ValueError"
-    assert result["error.category"] == "unclassified"  # no timeout in name, code=0 -> unclassified
+    assert result["error.category"] == "timeout"  # status_code=None -> 0 -> timeout
 
 
 def test_classify_error_exc_name_preserved() -> None:

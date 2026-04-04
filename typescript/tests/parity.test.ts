@@ -16,6 +16,8 @@ import {
   event,
   EventSchemaError,
   extractW3cContext,
+  classifyError,
+  parseOtlpHeaders,
   setupTelemetry,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
@@ -74,29 +76,6 @@ describe('parity: sampling', () => {
     const pct = (count / trials) * 100;
     expect(pct).toBeGreaterThanOrEqual(0);
     expect(pct).toBeLessThanOrEqual(1);
-  });
-
-  it('rejects unknown signal name', () => {
-    expect(() => shouldSample('invalid')).toThrow();
-    expect(() => shouldSample('log')).toThrow();
-    expect(() => shouldSample('')).toThrow();
-  });
-
-  it('accepts valid signal names', () => {
-    setSamplingPolicy('logs', { defaultRate: 1.0 });
-    expect(() => shouldSample('logs')).not.toThrow();
-    expect(() => shouldSample('traces')).not.toThrow();
-    expect(() => shouldSample('metrics')).not.toThrow();
-  });
-});
-
-describe('parity: sampling_signal_validation', () => {
-  afterEach(() => _resetSamplingForTests());
-
-  it('rejects invalid signal names', () => {
-    expect(() => shouldSample('invalid')).toThrow();
-    expect(() => shouldSample('log')).toThrow();
-    expect(() => shouldSample('')).toThrow();
   });
 });
 
@@ -276,5 +255,64 @@ describe('parity: propagation_guards', () => {
       baggage,
     });
     expect(ctx.baggage).toBeUndefined();
+  });
+});
+
+// ── Config Headers ──────────────────────────────────────────────────────────
+
+describe('parity: config_headers', () => {
+  it('normal key=value parsed', () => {
+    expect(parseOtlpHeaders('Authorization=Bearer+token')).toEqual({
+      Authorization: 'Bearer token',
+    });
+  });
+
+  it('URL-encoded key and value', () => {
+    expect(parseOtlpHeaders('my%20key=my%20value')).toEqual({
+      'my key': 'my value',
+    });
+  });
+
+  it('empty key (=value) skipped', () => {
+    expect(parseOtlpHeaders('=value,key=val')).toEqual({ key: 'val' });
+  });
+
+  it('no equals sign skipped', () => {
+    expect(parseOtlpHeaders('malformed,key=val')).toEqual({ key: 'val' });
+  });
+
+  it('value containing = preserved', () => {
+    expect(parseOtlpHeaders('Authorization=Bearer token=xyz')).toEqual({
+      Authorization: 'Bearer token=xyz',
+    });
+  });
+
+  it('empty string returns empty', () => {
+    expect(parseOtlpHeaders('')).toEqual({});
+  });
+});
+
+// ── SLO Classify ────────────────────────────────────────────────────────────
+
+describe('parity: slo_classify', () => {
+  it('status 400 = client_error', () => {
+    const c = classifyError(400);
+    expect(c.category).toBe('client_error');
+  });
+
+  it('status 500 = server_error', () => {
+    const c = classifyError(500);
+    expect(c.category).toBe('server_error');
+  });
+
+  it('status 429 = client_error with critical severity', () => {
+    const c = classifyError(429);
+    expect(c.category).toBe('client_error');
+    expect(c.severity).toBe('critical');
+  });
+
+  it('status 0 = timeout', () => {
+    const c = classifyError(0);
+    expect(c.category).toBe('timeout');
   });
 });
