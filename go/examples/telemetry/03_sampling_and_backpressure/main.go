@@ -21,16 +21,16 @@ import (
 )
 
 func tracedWork(ctx context.Context, taskID int) error {
-	concEvt, _ := telemetry.Event("example", "sampling", "concurrent")
-	return telemetry.Trace(ctx, concEvt.Event, func(ctx context.Context) error {
+	name, _ := telemetry.Event("example", "sampling", "concurrent")
+	return telemetry.Trace(ctx, name, func(ctx context.Context) error {
 		requests := telemetry.NewCounter("example.sampling.counter")
-		requests.Add(ctx, 1)
+		requests.Add(ctx, 1, )
 		return nil
 	})
 }
 
 func main() {
-	fmt.Println("Sampling & Backpressure Demo")
+	fmt.Println("Sampling & Backpressure Demo\n")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -44,25 +44,23 @@ func main() {
 
 	// Sampling policies with overrides
 	fmt.Println("Setting sampling policies...")
-	_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
+	telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
 		DefaultRate: 0.0,
 		Overrides:   map[string]float64{"example.critical": 1.0},
 	})
-	_, _ = telemetry.SetSamplingPolicy("metrics", telemetry.SamplingPolicy{DefaultRate: 1.0})
-	_, _ = telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	telemetry.SetSamplingPolicy("metrics", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
 
 	// Inspect active policies
-	logsPolicy, _ := telemetry.GetSamplingPolicy("logs")
+	logsPolicy := telemetry.GetSamplingPolicy("logs")
 	fmt.Printf("  logs:    default_rate=%.1f, overrides=%v\n", logsPolicy.DefaultRate, logsPolicy.Overrides)
-	metricsPolicy, _ := telemetry.GetSamplingPolicy("metrics")
-	fmt.Printf("  metrics: default_rate=%.1f\n", metricsPolicy.DefaultRate)
-	tracesPolicy, _ := telemetry.GetSamplingPolicy("traces")
-	fmt.Printf("  traces:  default_rate=%.1f\n", tracesPolicy.DefaultRate)
+	fmt.Printf("  metrics: default_rate=%.1f\n", telemetry.GetSamplingPolicy("metrics").DefaultRate)
+	fmt.Printf("  traces:  default_rate=%.1f\n", telemetry.GetSamplingPolicy("traces").DefaultRate)
 
 	// should_sample with overrides
 	fmt.Println("\nShouldSample() decisions:")
 	for _, key := range []string{"example.routine", "example.critical"} {
-		sampled, _ := telemetry.ShouldSample("logs", key)
+		sampled := telemetry.ShouldSample("logs", key)
 		mark := "NO"
 		if sampled {
 			mark = "YES"
@@ -109,13 +107,13 @@ func main() {
 
 	// This event itself is sampled out (logs rate=0%).
 	doneEvt, _ := telemetry.Event("example", "sampling", "done")
-	log.InfoContext(ctx, doneEvt.Event, doneEvt.Attrs()...)
+	log.InfoContext(ctx, doneEvt)
 
 	// Health snapshot
 	fmt.Println("\nHealth snapshot after saturation:")
 	snapshot := telemetry.GetHealthSnapshot()
 	fmt.Printf("  dropped_logs:       %d\n", snapshot.LogsDropped)
-	fmt.Printf("  dropped_traces:     %d\n", snapshot.TracesDropped)
+	fmt.Printf("  dropped_traces:     %d\n", snapshot.SpansDropped)
 	fmt.Printf("  dropped_metrics:    %d\n", snapshot.MetricsDropped)
 	fmt.Printf("  queue_depth_traces: (n/a in Go snapshot)\n")
 

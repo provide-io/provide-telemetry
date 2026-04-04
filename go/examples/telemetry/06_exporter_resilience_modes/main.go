@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Exporter Resilience Demo")
+	fmt.Println("Exporter Resilience Demo\n")
 
 	// No SetupTelemetry needed — resilience API is standalone.
 	// We call it anyway to match the pattern of other examples.
@@ -91,41 +91,14 @@ func main() {
 	})
 	fmt.Printf("  Result: %v  (nil = timed out, fail-open)\n", timeoutResult)
 
-	// Circuit breaker — trip it with repeated timeouts, then inspect state.
-	fmt.Println("\nCircuit breaker (exponential backoff + half-open probing):")
-	telemetry.SetExporterPolicy("metrics", telemetry.ExporterPolicy{
-		Retries:        0,
-		BackoffSeconds: 0.0,
-		TimeoutSeconds: 0.01, // 10ms timeout
-		FailOpen:       true,
-	})
-	for i := 0; i < 4; i++ {
-		_ = telemetry.RunWithResilience(ctx, "metrics", func(opCtx context.Context) error {
-			select {
-			case <-opCtx.Done():
-				return opCtx.Err() // context.DeadlineExceeded → counted as timeout
-			case <-time.After(200 * time.Millisecond):
-				return nil
-			}
-		})
-	}
-	cs := telemetry.GetCircuitState("metrics")
-	fmt.Printf("  circuit_state:            %s\n", cs.State)
-	fmt.Printf("  open_count:               %d\n", cs.OpenCount)
-	fmt.Printf("  cooldown_remaining_ms:    %d\n", cs.CooldownRemainingMs)
-
 	// Health snapshot
 	fmt.Println("\nHealth snapshot after all operations:")
 	snapshot := telemetry.GetHealthSnapshot()
-	fmt.Printf("  retries_logs:              %d\n", snapshot.LogsRetries)
-	fmt.Printf("  retries_traces:            %d\n", snapshot.TracesRetries)
-	fmt.Printf("  export_failures_logs:      %d\n", snapshot.LogsExportFailures)
-	fmt.Printf("  export_failures_traces:    %d\n", snapshot.TracesExportFailures)
-	fmt.Printf("  export_failures_metrics:   %d\n", snapshot.MetricsExportFailures)
-	fmt.Printf("  circuit_state_logs:        %s\n", snapshot.LogsCircuitState)
-	fmt.Printf("  circuit_state_metrics:     %s\n", snapshot.MetricsCircuitState)
-	fmt.Printf("  circuit_open_count_metrics: %d\n", snapshot.MetricsCircuitOpenCount)
-	fmt.Printf("  setup_error:               %s\n", snapshot.SetupError)
+	fmt.Printf("  retries_total:          %d\n", snapshot.RetryAttempts)
+	fmt.Printf("  export_failures_logs:   %d\n", snapshot.LogsExportErrors)
+	fmt.Printf("  export_failures_traces: %d\n", snapshot.SpansExportErrors)
+	fmt.Printf("  circuit_breaker_trips:  %d\n", snapshot.CircuitBreakerTrips)
+	fmt.Printf("  last_error:             %s\n", snapshot.LastError)
 
 	fmt.Println("\nDone!")
 }

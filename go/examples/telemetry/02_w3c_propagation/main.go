@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	fmt.Println("W3C Propagation Demo")
+	fmt.Println("W3C Propagation Demo\n")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -45,11 +45,11 @@ func main() {
 
 	ctx = telemetry.BindPropagationContext(ctx, pc)
 	receivedEvt, _ := telemetry.Event("example", "w3c", "received")
-	log.InfoContext(ctx, receivedEvt.Event, receivedEvt.Attrs()...)
+	log.InfoContext(ctx, receivedEvt)
 
 	traceID, spanID := telemetry.GetTraceContext(ctx)
 	traceEvt, _ := telemetry.Event("example", "w3c", "trace")
-	log.InfoContext(ctx, traceEvt.Event, append(traceEvt.Attrs(), "trace_id", traceID, "span_id", spanID)...)
+	log.InfoContext(ctx, traceEvt, "trace_id", traceID, "span_id", spanID)
 	fmt.Printf("  Bound trace_id=%s\n", traceID)
 	fmt.Printf("  Bound span_id=%s\n", spanID)
 
@@ -68,11 +68,11 @@ func main() {
 	// Session context binding
 	fmt.Println("\nSession context binding")
 	ctx3 := telemetry.BindSessionContext(context.Background(), "session-42")
-	sessionID, _ := telemetry.GetSessionID(ctx3)
+	sessionID := telemetry.GetSessionID(ctx3)
 	fmt.Printf("  session_id=%s\n", sessionID)
 
 	ctx3 = telemetry.ClearSessionContext(ctx3)
-	afterSession, _ := telemetry.GetSessionID(ctx3)
+	afterSession := telemetry.GetSessionID(ctx3)
 	fmt.Printf("  After clear: session_id=%q\n", afterSession)
 
 	fmt.Println("\nDone!")

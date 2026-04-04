@@ -8,6 +8,7 @@ path = [
   "SECURITY.md",
   "docs/**",
   "examples/**",
+  "go/examples/**",
   ".github/**",
   ".ci/**",
   ".pre-commit-config.yaml",
