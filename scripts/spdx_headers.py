@@ -21,6 +21,18 @@ CANONICAL_BLOCK = (
     SPDX_BLANK,
 )
 
+GO_COPYRIGHT = "// SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
+GO_LICENSE = "// SPDX-License-Identifier" + ": Apache-2.0\n"
+GO_CANONICAL_BLOCK = (GO_COPYRIGHT, GO_LICENSE)
+
+
+def has_go_canonical_header(text: str) -> bool:
+    lines = text.splitlines(keepends=True)
+    if len(lines) < 2:
+        return False
+    return lines[0] == GO_COPYRIGHT and lines[1] == GO_LICENSE
+
+
 EXCLUDED_DIRS = {
     ".git",
     ".venv",

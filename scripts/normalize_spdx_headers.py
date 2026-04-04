@@ -14,17 +14,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-_GO_COPYRIGHT = "// SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
-_GO_LICENSE = "// SPDX-License-Identifier" + ": Apache-2.0\n"
-_GO_CANONICAL_BLOCK = (_GO_COPYRIGHT, _GO_LICENSE)
+from spdx_headers import EXCLUDED_DIRS as _BASE_EXCLUDED_DIRS  # noqa: E402
+from spdx_headers import GO_CANONICAL_BLOCK as _GO_CANONICAL_BLOCK  # noqa: E402
+from spdx_headers import has_go_canonical_header as _has_go_spdx_header  # noqa: E402
 
-
-def _has_go_spdx_header(text: str) -> bool:
-    """Return True if the Go file begins with the canonical // SPDX header block."""
-    lines = text.splitlines(keepends=True)
-    if len(lines) < 2:
-        return False
-    return lines[0] == _GO_COPYRIGHT and lines[1] == _GO_LICENSE
+_EXCLUDED_DIRS = _BASE_EXCLUDED_DIRS | {"vendor"}
 
 
 def _normalize_go_text(text: str) -> str:
@@ -42,10 +36,7 @@ def _normalize_go_text(text: str) -> str:
 
 
 def normalize_headers(root: Path) -> list[Path]:
-    from spdx_headers import EXCLUDED_DIRS as _BASE_EXCLUDED_DIRS
     from spdx_headers import find_python_files, normalize_python_text
-
-    excluded_dirs = _BASE_EXCLUDED_DIRS | {"vendor"}
 
     changed: list[Path] = []
     for path in find_python_files(root):
@@ -56,7 +47,7 @@ def normalize_headers(root: Path) -> list[Path]:
             changed.append(path)
 
     for path in root.rglob("*.go"):
-        if any(part in excluded_dirs for part in path.parts):
+        if any(part in _EXCLUDED_DIRS for part in path.parts):
             continue
         original = path.read_text(encoding="utf-8")
         if not _has_go_spdx_header(original):
