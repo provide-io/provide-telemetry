@@ -315,7 +315,7 @@ func TestMultiHandler_Enabled_AllDisabled(t *testing.T) {
 // ── 13. multiHandler.Handle returns first error from handler ─────────────────
 
 func TestMultiHandler_Handle_ReturnsError(t *testing.T) {
-	errH := &testErrorHandler{err: ErrOTelShutdown}
+	errH := &testErrorHandler{err: errOTelShutdown}
 	mh := newMultiHandler(errH)
 
 	r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
