@@ -30,7 +30,16 @@ func NewTelemetryError(msg string, cause ...error) *TelemetryError {
 
 // ConfigurationError wraps TelemetryError for configuration problems.
 type ConfigurationError struct {
-	TelemetryError
+	*TelemetryError
+}
+
+// As implements the errors.As interface so that errors.As(cfgErr, &telemetryErrPtr) matches.
+func (e *ConfigurationError) As(target interface{}) bool {
+	if t, ok := target.(**TelemetryError); ok {
+		*t = e.TelemetryError
+		return true
+	}
+	return false
 }
 
 // NewConfigurationError creates a new ConfigurationError with an optional cause.
@@ -39,12 +48,21 @@ func NewConfigurationError(msg string, cause ...error) *ConfigurationError {
 	if len(cause) > 0 {
 		c = cause[0]
 	}
-	return &ConfigurationError{TelemetryError{msg: msg, cause: c}}
+	return &ConfigurationError{TelemetryError: &TelemetryError{msg: msg, cause: c}}
 }
 
 // EventSchemaError wraps TelemetryError for event schema violations.
 type EventSchemaError struct {
-	TelemetryError
+	*TelemetryError
+}
+
+// As implements the errors.As interface so that errors.As(schemaErr, &telemetryErrPtr) matches.
+func (e *EventSchemaError) As(target interface{}) bool {
+	if t, ok := target.(**TelemetryError); ok {
+		*t = e.TelemetryError
+		return true
+	}
+	return false
 }
 
 // NewEventSchemaError creates a new EventSchemaError with an optional cause.
@@ -53,5 +71,5 @@ func NewEventSchemaError(msg string, cause ...error) *EventSchemaError {
 	if len(cause) > 0 {
 		c = cause[0]
 	}
-	return &EventSchemaError{TelemetryError{msg: msg, cause: c}}
+	return &EventSchemaError{TelemetryError: &TelemetryError{msg: msg, cause: c}}
 }

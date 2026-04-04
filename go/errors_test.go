@@ -62,10 +62,24 @@ func TestConfigurationError_As(t *testing.T) {
 func TestConfigurationError_AsTelemetryError(t *testing.T) {
 	err := NewConfigurationError("cfg")
 	var target *TelemetryError
-	// ConfigurationError embeds TelemetryError by value, not pointer; errors.As won't match *TelemetryError.
-	// This verifies the expected (non-matching) behaviour.
-	if errors.As(err, &target) {
-		t.Errorf("errors.As should NOT match *TelemetryError for *ConfigurationError (embedded by value)")
+	// ConfigurationError embeds *TelemetryError by pointer; errors.As correctly matches *TelemetryError.
+	if !errors.As(err, &target) {
+		t.Errorf("errors.As should match *TelemetryError for *ConfigurationError (embedded by pointer)")
+	}
+	if target.Error() != "cfg" {
+		t.Errorf("expected %q, got %q", "cfg", target.Error())
+	}
+}
+
+func TestEventSchemaError_AsTelemetryError(t *testing.T) {
+	err := NewEventSchemaError("schema")
+	var target *TelemetryError
+	// EventSchemaError embeds *TelemetryError by pointer; errors.As correctly matches *TelemetryError.
+	if !errors.As(err, &target) {
+		t.Errorf("errors.As should match *TelemetryError for *EventSchemaError (embedded by pointer)")
+	}
+	if target.Error() != "schema" {
+		t.Errorf("expected %q, got %q", "schema", target.Error())
 	}
 }
 
@@ -111,4 +125,22 @@ func TestAllErrorsImplementError(t *testing.T) {
 	var _ error = NewTelemetryError("x")
 	var _ error = NewConfigurationError("x")
 	var _ error = NewEventSchemaError("x")
+}
+
+func TestConfigurationError_As_WrongType(t *testing.T) {
+	// Verify As returns false for a non-matching target type.
+	cfgErr := NewConfigurationError("cfg")
+	var target *EventSchemaError
+	if errors.As(cfgErr, &target) {
+		t.Error("errors.As should not match *EventSchemaError for *ConfigurationError")
+	}
+}
+
+func TestEventSchemaError_As_WrongType(t *testing.T) {
+	// Verify As returns false for a non-matching target type.
+	schemaErr := NewEventSchemaError("schema")
+	var target *ConfigurationError
+	if errors.As(schemaErr, &target) {
+		t.Error("errors.As should not match *ConfigurationError for *EventSchemaError")
+	}
 }
