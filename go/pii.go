@@ -26,8 +26,9 @@ const (
 )
 
 const (
-	_piiRedacted   = "***"
-	_piiDefaultMax = 32
+	_piiRedacted          = "***"
+	_piiTruncationSuffix  = "..."
+	_piiDefaultMax        = 32
 )
 
 // _defaultSensitiveKeys lists substrings matched case-insensitively against key names.
@@ -173,8 +174,9 @@ func _applyMode(value any, mode string, truncateTo int) (any, bool) {
 		if !ok {
 			return _piiRedacted, false
 		}
-		if len([]rune(s)) > truncateTo {
-			return string([]rune(s)[:truncateTo]), false
+		runes := []rune(s)
+		if len(runes) >= truncateTo+1 {
+			return string(runes[:truncateTo]) + _piiTruncationSuffix, false
 		}
 		return s, false
 	default:

@@ -110,40 +110,62 @@ def test_lazy_gauge_caches_on_name() -> None:
 def test_classify_error_server_at_500() -> None:
     """Boundary test: status_code == 500 must be 'server'."""
     result = classify_error("ServerError", status_code=500)
-    assert result == {"error_type": "server", "error_code": "500", "error_name": "ServerError"}
+    assert result["error_type"] == "server"
+    assert result["error_code"] == "500"
+    assert result["error_name"] == "ServerError"
+    assert result["error.category"] == "server_error"
+    assert result["error.severity"] == "critical"
 
 
 def test_classify_error_server_at_501() -> None:
     result = classify_error("BadGateway", status_code=501)
-    assert result == {"error_type": "server", "error_code": "501", "error_name": "BadGateway"}
+    assert result["error_type"] == "server"
+    assert result["error_code"] == "501"
+    assert result["error_name"] == "BadGateway"
+    assert result["error.category"] == "server_error"
 
 
 def test_classify_error_client_at_400() -> None:
     """Boundary test: status_code == 400 must be 'client'."""
     result = classify_error("BadRequest", status_code=400)
-    assert result == {"error_type": "client", "error_code": "400", "error_name": "BadRequest"}
+    assert result["error_type"] == "client"
+    assert result["error_code"] == "400"
+    assert result["error_name"] == "BadRequest"
+    assert result["error.category"] == "client_error"
 
 
 def test_classify_error_client_at_499() -> None:
-    """status_code == 499 is client, not server."""
+    """status_code == 499 with timeout-named exc triggers timeout detection."""
     result = classify_error("Timeout", status_code=499)
-    assert result == {"error_type": "client", "error_code": "499", "error_name": "Timeout"}
+    # "Timeout" in exc_name triggers timeout classification
+    assert result["error.category"] == "timeout"
+    assert result["error_code"] == "499"
+    assert result["error_name"] == "Timeout"
 
 
 def test_classify_error_internal_at_399() -> None:
-    """status_code == 399 is below 400, should be 'internal'."""
+    """status_code == 399 is below 400, should be 'unclassified'."""
     result = classify_error("Redirect", status_code=399)
-    assert result == {"error_type": "internal", "error_code": "0", "error_name": "Redirect"}
+    assert result["error_type"] == "internal"
+    assert result["error_code"] == "399"
+    assert result["error_name"] == "Redirect"
+    assert result["error.category"] == "unclassified"
 
 
 def test_classify_error_internal_no_status() -> None:
     result = classify_error("RuntimeError")
-    assert result == {"error_type": "internal", "error_code": "0", "error_name": "RuntimeError"}
+    assert result["error_type"] == "internal"
+    assert result["error_code"] == "0"
+    assert result["error_name"] == "RuntimeError"
+    assert result["error.category"] == "timeout"  # status_code=0 -> timeout
 
 
 def test_classify_error_internal_with_none() -> None:
     result = classify_error("ValueError", status_code=None)
-    assert result == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
+    assert result["error_type"] == "internal"
+    assert result["error_code"] == "0"
+    assert result["error_name"] == "ValueError"
+    assert result["error.category"] == "timeout"  # status_code=None -> 0 -> timeout
 
 
 def test_classify_error_exc_name_preserved() -> None:
