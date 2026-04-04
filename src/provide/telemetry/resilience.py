@@ -7,6 +7,14 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "ExporterPolicy",
+    "get_circuit_state",
+    "get_exporter_policy",
+    "run_with_resilience",
+    "set_exporter_policy",
+]
+
 import asyncio
 import queue
 import threading
@@ -37,7 +45,8 @@ class ExporterPolicy:
 
 
 _CIRCUIT_BREAKER_THRESHOLD = 3  # consecutive timeouts before tripping
-_CIRCUIT_BREAKER_COOLDOWN = 30.0  # seconds before allowing a half-open probe
+_CIRCUIT_BASE_COOLDOWN = 30.0  # seconds before allowing a half-open probe
+_CIRCUIT_MAX_COOLDOWN = 1024.0  # upper cap for exponential backoff
 
 _lock = threading.Lock()
 _policies: dict[Signal, ExporterPolicy] = {
@@ -47,6 +56,8 @@ _policies: dict[Signal, ExporterPolicy] = {
 }
 _consecutive_timeouts: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
+_open_count: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
+_half_open_probing: dict[Signal, bool] = {"logs": False, "traces": False, "metrics": False}
 _async_warned_signals: set[tuple[Signal, bool]] = set()
 # Per-signal executors isolate failure domains so a timeout storm in one
 # signal (e.g. traces) cannot starve workers used by another (e.g. logs).
@@ -87,6 +98,47 @@ def get_exporter_policy(signal: Signal) -> ExporterPolicy:
         return _policies[sig]
 
 
+def _check_circuit_breaker(sig: str) -> bool | None:
+    """Check circuit breaker state. Returns None to proceed, or a sentinel value to short-circuit."""
+    with _lock:
+        if _consecutive_timeouts[sig] < _CIRCUIT_BREAKER_THRESHOLD:
+            return None  # Circuit closed — proceed normally
+        cooldown = min(_CIRCUIT_BASE_COOLDOWN * (2 ** _open_count[sig]), _CIRCUIT_MAX_COOLDOWN)
+        elapsed = time.monotonic() - _circuit_tripped_at[sig]
+        if elapsed < cooldown:
+            return True  # Circuit open — reject
+        # Half-open: cooldown expired, allow one probe attempt through
+        _half_open_probing[sig] = True
+        return None
+
+
+def _record_attempt_success(sig: str) -> None:
+    """Record a successful attempt, handling half-open state decay."""
+    with _lock:
+        if _half_open_probing[sig]:
+            _half_open_probing[sig] = False
+            _consecutive_timeouts[sig] = 0
+            _open_count[sig] = max(0, _open_count[sig] - 1)
+        else:
+            _consecutive_timeouts[sig] = 0
+
+
+def _record_attempt_failure(sig: str, *, is_timeout: bool) -> None:
+    """Record a failed attempt, handling half-open re-open and circuit tripping."""
+    with _lock:
+        if _half_open_probing[sig]:
+            _half_open_probing[sig] = False
+            _open_count[sig] += 1
+            _circuit_tripped_at[sig] = time.monotonic()
+        elif is_timeout:
+            _consecutive_timeouts[sig] += 1
+            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+                _open_count[sig] += 1
+                _circuit_tripped_at[sig] = time.monotonic()
+        else:
+            _consecutive_timeouts[sig] = 0
+
+
 def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     sig = _validate_signal(signal)
     policy = get_exporter_policy(sig)
@@ -95,15 +147,12 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     timeout_seconds = max(0.0, policy.timeout_seconds)
     # Circuit breaker: skip work if the pool is likely saturated.
     if timeout_seconds > 0:
-        with _lock:
-            if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
-                elapsed = time.monotonic() - _circuit_tripped_at[sig]
-                if elapsed < _CIRCUIT_BREAKER_COOLDOWN:
-                    record_export_failure(sig, TimeoutError("circuit breaker open"))
-                    if policy.fail_open:
-                        return None
-                    raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
-                # Half-open: cooldown expired, allow one probe attempt through
+        rejected = _check_circuit_breaker(sig)
+        if rejected:
+            record_export_failure(sig, TimeoutError("circuit breaker open"))
+            if policy.fail_open:
+                return None
+            raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
     if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):
         increment_async_blocking_risk(sig)
         _warn_async_risk(sig, policy)  # pragma: no mutate
@@ -117,16 +166,12 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
             result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
             latency_ms = (time.perf_counter() - started) * 1000.0
             record_export_success(sig, latency_ms=latency_ms)
-            with _lock:
-                _consecutive_timeouts[sig] = 0
+            _record_attempt_success(sig)
             return result
         except TimeoutError as exc:
             last_error = exc
             record_export_failure(sig, exc)
-            with _lock:
-                _consecutive_timeouts[sig] += 1
-                if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
-                    _circuit_tripped_at[sig] = time.monotonic()
+            _record_attempt_failure(sig, is_timeout=True)
             if attempt < attempts - 1:
                 increment_retries(sig)
                 if backoff_seconds > 0:
@@ -134,8 +179,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         except Exception as exc:
             last_error = exc
             record_export_failure(sig, exc)
-            with _lock:
-                _consecutive_timeouts[sig] = 0
+            _record_attempt_failure(sig, is_timeout=False)
             if attempt < attempts - 1:
                 increment_retries(sig)
                 if backoff_seconds > 0:
@@ -168,12 +212,48 @@ def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeou
         raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
 
 
+def _maybe_replace_executor(signal: Signal) -> None:
+    """Replace the executor if the circuit breaker has tripped.
+
+    This abandons ghost threads stuck in the old pool and gives the next
+    half-open probe a clean executor with no hung workers.
+    """
+    with _lock:
+        if _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
+            old = _timeout_executors.pop(signal, None)
+            if old is not None:
+                old.shutdown(wait=False)  # non-blocking; daemon threads die with process
+
+
+def get_circuit_state(signal: Signal) -> tuple[str, int, float]:
+    """Return ``(state, open_count, cooldown_remaining)`` for *signal*.
+
+    *state* is one of ``"closed"``, ``"open"``, or ``"half-open"``.
+    """
+    sig = _validate_signal(signal)
+    with _lock:
+        if _half_open_probing[sig]:
+            return ("half-open", _open_count[sig], 0.0)
+        if _consecutive_timeouts[sig] >= _CIRCUIT_BREAKER_THRESHOLD:
+            cooldown = min(
+                _CIRCUIT_BASE_COOLDOWN * (2 ** _open_count[sig]),
+                _CIRCUIT_MAX_COOLDOWN,
+            )
+            remaining = cooldown - (time.monotonic() - _circuit_tripped_at[sig])
+            if remaining > 0:
+                return ("open", _open_count[sig], remaining)
+            return ("half-open", _open_count[sig], 0.0)
+        return ("closed", _open_count[sig], 0.0)
+
+
 def reset_resilience_for_tests() -> None:
     with _lock:
         for signal in ("logs", "traces", "metrics"):
             _policies[signal] = ExporterPolicy()
             _consecutive_timeouts[signal] = 0
             _circuit_tripped_at[signal] = 0.0
+            _open_count[signal] = 0
+            _half_open_probing[signal] = False
         _async_warned_signals.clear()
         for executor in _timeout_executors.values():
             executor.shutdown(wait=False)
