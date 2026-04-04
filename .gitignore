@@ -24,3 +24,5 @@ memray-output/
 .lgtm-data/
 go/coverage.out
 go/coverage_new.out
+go/cover.out
+go/coverage_prop.out
