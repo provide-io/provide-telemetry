@@ -44,16 +44,32 @@ def _to_camel_case(snake: str) -> str:
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
 
 
+_GO_ACRONYMS: dict[str, str] = {
+    "id": "ID",
+    "pii": "PII",
+    "w3c": "W3C",
+    "url": "URL",
+    "uri": "URI",
+    "api": "API",
+    "http": "HTTP",
+    "json": "JSON",
+    "xml": "XML",
+}
+
+
 def _to_pascal_case(snake: str) -> str:
     """Convert snake_case or lowercase identifier to PascalCase for Go.
 
     Names that contain no underscores and already have uppercase letters are
     assumed to be PascalCase (e.g. ``TelemetryError``) and returned unchanged.
+
+    Go acronyms (ID, PII, W3C, URL, etc.) are uppercased rather than
+    title-cased so that the output matches idiomatic Go naming.
     """
     if "_" not in snake and any(c.isupper() for c in snake):
         return snake
     parts = snake.split("_")
-    return "".join(p.capitalize() for p in parts)
+    return "".join(_GO_ACRONYMS.get(p.lower(), p.capitalize()) for p in parts)
 
 
 def _load_spec(path: Path | None = None) -> dict[str, object]:
@@ -108,19 +124,23 @@ def _get_python_exports() -> set[str]:
 
 
 def _get_go_exports() -> set[str]:
-    """Parse exported symbol names from go/telemetry.go via regex."""
-    facade_path = _REPO_ROOT / "go" / "telemetry.go"
-    if not facade_path.exists():
+    """Parse exported symbol names from all non-test Go files in go/."""
+    go_dir = _REPO_ROOT / "go"
+    if not go_dir.is_dir():
         return set()
-    text = facade_path.read_text(encoding="utf-8")
     exports: set[str] = set()
-    for pattern in (
+    patterns = (
         r"^func ([A-Z][A-Za-z0-9]*)",
         r"^var ([A-Z][A-Za-z0-9]*)",
         r"^type ([A-Z][A-Za-z0-9]*)",
-    ):
-        for match in re.finditer(pattern, text, re.MULTILINE):
-            exports.add(match.group(1))
+    )
+    for go_file in sorted(go_dir.glob("*.go")):
+        if go_file.name.endswith("_test.go"):
+            continue
+        text = go_file.read_text(encoding="utf-8")
+        for pattern in patterns:
+            for match in re.finditer(pattern, text, re.MULTILINE):
+                exports.add(match.group(1))
     return exports
 
 
@@ -180,7 +200,7 @@ def main() -> int:
     spec = _load_spec(args.spec)
     symbols = _collect_spec_symbols(spec)
 
-    langs = args.lang or ["python", "typescript"]
+    langs = args.lang or ["python", "typescript", "go"]
     all_errors: list[str] = []
 
     for lang in langs:
