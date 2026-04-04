@@ -15,7 +15,7 @@ var _segmentRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // _strictSchema controls whether EventName enforces validation.
 // Set to true by SetupTelemetry when StrictSchema is enabled.
-var _strictSchema bool
+var _strictSchema bool //nolint:unused
 
 const (
 	_minSegments = 3
