@@ -46,7 +46,25 @@ def _detect_secret_in_value(value: str) -> bool:
     return False
 
 
-_DEFAULT_SENSITIVE_KEYS = {"password", "token", "authorization", "api_key", "secret"}
+_DEFAULT_SENSITIVE_KEYS = {
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "auth",
+    "authorization",
+    "credential",
+    "private_key",
+    "ssn",
+    "credit_card",
+    "creditcard",
+    "cvv",
+    "pin",
+    "account_number",
+    "cookie",
+}
 _lock = threading.Lock()
 _rules: list[PIIRule] = []
 
