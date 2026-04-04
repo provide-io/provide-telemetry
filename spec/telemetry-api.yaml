@@ -147,9 +147,14 @@ api:
       required: true
 
   schema:
-    - name: event_name
+    - name: event
       kind: function
       required: true
+      note: "Returns structured Event with domain/action/[resource]/status fields. DA(R)S pattern."
+    - name: event_name
+      kind: function
+      required: false
+      note: "Returns plain dot-joined event name string."
 
   slo:
     - name: classify_error

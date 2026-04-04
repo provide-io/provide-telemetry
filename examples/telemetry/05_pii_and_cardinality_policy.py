@@ -22,6 +22,7 @@ import os
 from provide.telemetry import (
     PIIRule,
     counter,
+    event,
     get_logger,
     register_cardinality_limit,
     register_pii_rule,
@@ -53,7 +54,7 @@ def main() -> None:
 
     # ── 📝 Log with PII fields ───────────────────────────
     log.info(
-        "example.policy.pii",
+        event("example", "policy", "pii"),
         user={"email": "dev@example.com", "full_name": "Casey Developer"},
         credit_card="4111111111111111",
         token=token_value,

@@ -37,6 +37,21 @@ _FAST_LEVEL_LOOKUP: dict[str, int] = {
 }
 
 
+def inject_das_fields(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Extract DA(R)S fields from an :class:`Event` instance into the log record."""
+    from provide.telemetry.schema.events import Event
+
+    ev = event_dict.get("event")
+    if isinstance(ev, Event):
+        event_dict["domain"] = ev.domain
+        event_dict["action"] = ev.action
+        if ev.resource is not None:
+            event_dict["resource"] = ev.resource
+        event_dict["status"] = ev.status
+        event_dict["event"] = str(ev)
+    return event_dict
+
+
 def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     event_dict.update(get_context())
     trace_id = get_trace_id()

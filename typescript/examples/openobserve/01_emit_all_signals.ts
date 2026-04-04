@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -26,6 +27,7 @@ import * as https from 'node:https';
 import {
   bindContext,
   counter,
+  event,
   getConfig,
   getLogger,
   histogram,
@@ -103,19 +105,19 @@ async function main(): Promise<void> {
 
   // ── Emit signals ─────────────────────────────────────────────────────────
 
-  log.info({ event: 'example.openobserve.start', run_id: runId });
+  log.info({ ...event('example', 'openobserve', 'start'), run_id: runId });
 
   for (let i = 0; i < 5; i++) {
     const start = Date.now();
     await withTrace(traceName, async () => {
-      log.info({ event: 'example.openobserve.log', run_id: runId, iteration: String(i) });
+      log.info({ ...event('example', 'openobserve', 'log'), run_id: runId, iteration: String(i) });
       requestsCounter.add(1, { iteration: String(i) });
       await new Promise((r) => setTimeout(r, 50));
     });
     latencyHistogram.record(Date.now() - start, { iteration: String(i) });
   }
 
-  log.info({ event: 'example.openobserve.done', run_id: runId, iterations: 5 });
+  log.info({ ...event('example', 'openobserve', 'done'), run_id: runId, iterations: 5 });
 
   // ── Flush and shutdown ───────────────────────────────────────────────────
 

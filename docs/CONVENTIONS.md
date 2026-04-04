@@ -2,47 +2,50 @@
 
 ## Event Naming
 
-Use 3-5 dot-separated segments (last segment is status by convention).
+Event names follow the DA(R)S pattern: **Domain**, **Action**, **(Resource)**, **Status**.
+
+- **3-segment DAS**: `domain.action.status` — use when no resource qualifier is needed
+- **4-segment DARS**: `domain.action.resource.status` — use when a resource narrows the action
 
 Rules:
 
 - lowercase only
-- 3-5 dot-separated segments
+- 3 or 4 dot-separated segments
 - underscores allowed inside segments
+- last segment is always the status
 
 Examples:
 
-- `auth.login.success` (3 segments)
-- `auth.login.password.failed` (4 segments)
-- `payment.sub.renewal.attempt.success` (5 segments)
-- `matchmaking.queue.joined`
-- `inventory.item.removed`
+- `auth.login.success` (DAS: domain=auth, action=login, status=success)
+- `payment.subscription.renewal.success` (DARS: domain=payment, action=subscription, resource=renewal, status=success)
+- `matchmaking.queue.joined` (DAS)
+- `inventory.item.removed` (DAS)
 
-Use `provide.telemetry.event_name(*segments)` when event names are composed dynamically.
+Use `provide.telemetry.event(*segments)` when event names are composed dynamically.
 
-### `event_name` Cookbook
+### `event()` Cookbook
 
 Recommended:
 
 - Fixed event:
   - `log.info("auth.login.success", user_id=user_id)`
 - Dynamic status:
-  - `log.info(event_name("auth", "login", "failed"), reason="bad_password")`
+  - `log.info(event("auth", "login", "failed"), reason="bad_password")`
 - Dynamic action from known enum/constant set:
-  - `log.info(event_name("ws", action, "received"), size=len(payload))`
+  - `log.info(event("ws", action, "received"), size=len(payload))`
 - Middleware/instrumentation composition:
-  - `log.info(event_name("http", "request", "started"), method=method, path=path)`
-- Nested domain (4 segments):
-  - `log.info(event_name("payment", "subscription", "renewal", "success"))`
+  - `log.info(event("http", "request", "started"), method=method, path=path)`
+- DARS with resource (4 segments):
+  - `log.info(event("payment", "subscription", "renewal", "success"))`
 
 Avoid:
 
-- 6+ segment names:
+- 5+ segment names:
   - `auth.login.password.reset.attempt.failed`
 - Free-form strings as segments:
-  - `event_name("auth", user_input, "success")`
+  - `event("auth", user_input, "success")`
 - Encoding details in event name instead of attributes:
-  - prefer `event_name("auth", "login", "failed")` with `reason="token_expired"`
+  - prefer `event("auth", "login", "failed")` with `reason="token_expired"`
 
 ## Required Context Keys
 

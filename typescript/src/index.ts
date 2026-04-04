@@ -89,7 +89,7 @@ export type { MaskMode, PIIRule } from './pii';
 export { TelemetryError, ConfigurationError } from './exceptions';
 
 // Health
-export { getHealthSnapshot } from './health';
+export { getHealthSnapshot, setSetupError } from './health';
 export type { HealthSnapshot } from './health';
 
 // Backpressure
@@ -115,12 +115,20 @@ export {
   setExporterPolicy,
   getExporterPolicy,
   runWithResilience,
+  getCircuitState,
   TelemetryTimeoutError,
 } from './resilience';
-export type { ExporterPolicy } from './resilience';
+export type { ExporterPolicy, CircuitState } from './resilience';
 
 // Schema
-export { EventSchemaError, eventName, validateEventName, validateRequiredKeys } from './schema';
+export {
+  EventSchemaError,
+  event,
+  eventName,
+  validateEventName,
+  validateRequiredKeys,
+} from './schema';
+export type { EventRecord } from './schema';
 
 // SLO
 export { recordRedMetrics, recordUseMetrics, classifyError } from './slo';

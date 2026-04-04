@@ -5,8 +5,8 @@ SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 
 ## Telemetry
 
-Event naming in examples follows strict 3-5 segment format (last segment is status).
-Use `provide.telemetry.event_name(*segments)` when composing names.
+Event naming in examples follows the DA(R)S pattern: 3 segments (domain.action.status) or 4 segments (domain.action.resource.status).
+Use `provide.telemetry.event(*segments)` when composing structured events.
 
 - `telemetry/01_basic_telemetry.py`
   - Local console/json logging.

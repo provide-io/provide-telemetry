@@ -106,7 +106,7 @@ class TestCircuitBreaker:
         with r_mod._lock:
             r_mod._consecutive_timeouts["logs"] = 3
             # Trip time far enough in the past to exceed cooldown
-            r_mod._circuit_tripped_at["logs"] = time.monotonic() - r_mod._CIRCUIT_BREAKER_COOLDOWN - 1.0
+            r_mod._circuit_tripped_at["logs"] = time.monotonic() - r_mod._CIRCUIT_BASE_COOLDOWN - 1.0
         # Should let the probe through (half-open) and succeed → reset breaker
         assert run_with_resilience("logs", lambda: "recovered") == "recovered"
         with r_mod._lock:
@@ -121,7 +121,7 @@ class TestCircuitBreaker:
         set_exporter_policy("logs", ExporterPolicy(retries=0, fail_open=True, timeout_seconds=0.01))
         with r_mod._lock:
             r_mod._consecutive_timeouts["logs"] = 3
-            r_mod._circuit_tripped_at["logs"] = _time.monotonic() - r_mod._CIRCUIT_BREAKER_COOLDOWN - 1.0
+            r_mod._circuit_tripped_at["logs"] = _time.monotonic() - r_mod._CIRCUIT_BASE_COOLDOWN - 1.0
         # Probe should be allowed through but will timeout → re-trip
         assert run_with_resilience("logs", lambda: _time.sleep(1.0)) is None
         with r_mod._lock:
@@ -164,13 +164,13 @@ class TestCircuitBreaker:
         from provide.telemetry import resilience as r_mod
 
         set_exporter_policy("logs", ExporterPolicy(retries=0, fail_open=True, timeout_seconds=1.0))
-        # Freeze time so elapsed == _CIRCUIT_BREAKER_COOLDOWN exactly.
+        # Freeze time so elapsed == _CIRCUIT_BASE_COOLDOWN exactly.
         # With `<`, this should pass through (half-open). With `<=`, it would block.
         frozen = 1000.0
         monkeypatch.setattr(time, "monotonic", lambda: frozen)
         with r_mod._lock:
             r_mod._consecutive_timeouts["logs"] = 3
-            r_mod._circuit_tripped_at["logs"] = frozen - r_mod._CIRCUIT_BREAKER_COOLDOWN
+            r_mod._circuit_tripped_at["logs"] = frozen - r_mod._CIRCUIT_BASE_COOLDOWN
         assert run_with_resilience("logs", lambda: "probe_ok") == "probe_ok"
 
     def test_reset_clears_circuit_tripped_at(self) -> None:

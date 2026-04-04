@@ -265,7 +265,7 @@ describe('_resetConfig', () => {
 
 describe('version constant', () => {
   it('exports version as 0.4.1', () => {
-    expect(version).toBe('0.4.2');
+    expect(version).toBe('0.2.0');
   });
 });
 
@@ -909,5 +909,32 @@ describe('requiredLogKeys — filter(Boolean) kills empty-string entries', () =>
       // After trim, the middle entry is empty string, filtered by Boolean
       expect(keys).toEqual(['event', 'action']);
     });
+  });
+});
+
+describe('setupTelemetry — emergency fallback', () => {
+  it('does not throw when applyConfigPolicies fails with Error', async () => {
+    const samplingModule = await import('../src/sampling');
+    vi.spyOn(samplingModule, 'setSamplingPolicy').mockImplementation(() => {
+      throw new Error('policy explosion');
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => setupTelemetry()).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('policy explosion'));
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('does not throw when applyConfigPolicies fails with non-Error', async () => {
+    const samplingModule = await import('../src/sampling');
+    vi.spyOn(samplingModule, 'setSamplingPolicy').mockImplementation(() => {
+      // eslint-disable-next-line no-throw-literal
+      throw 'string-failure';
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => setupTelemetry()).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('string-failure'));
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
   });
 });

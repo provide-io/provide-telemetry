@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -16,6 +17,7 @@
 
 import {
   classifyError,
+  event,
   getHealthSnapshot,
   getLogger,
   recordRedMetrics,
@@ -64,7 +66,7 @@ async function main(): Promise<void> {
       `  ${icon[taxonomy.errorType] ?? '❓'} ${excName}(status=${code}) → type=${taxonomy.errorType}, code=${taxonomy.errorCode}`,
     );
     if (code === 503) {
-      log.error({ event: 'example.slo.error', excName, statusCode: code, ...taxonomy });
+      log.error({ ...event('example', 'slo', 'error'), excName, statusCode: code, ...taxonomy });
     }
   }
 

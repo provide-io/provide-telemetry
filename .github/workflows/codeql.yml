@@ -1,4 +1,4 @@
-name: 5. 🔒 CodeQL
+name: 🔒 CodeQL
 
 on:
   push:

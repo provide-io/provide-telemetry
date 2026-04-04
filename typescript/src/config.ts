@@ -15,6 +15,7 @@
 import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
+import { setSetupError } from './health';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -391,7 +392,14 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
-  applyConfigPolicies(_config);
+  try {
+    applyConfigPolicies(_config);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    setSetupError(message);
+    // eslint-disable-next-line no-console
+    console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
+  }
 }
 
 /** Reset to defaults (used in tests). */
@@ -400,5 +408,5 @@ export function _resetConfig(): void {
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.4.2';
+export const version = '0.2.0';
 export const __version__ = version;

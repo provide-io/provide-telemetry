@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -16,6 +17,7 @@
 
 import {
   ConfigurationError,
+  event,
   getLogger,
   getRuntimeConfig,
   reconfigureTelemetry,
@@ -35,7 +37,7 @@ async function main(): Promise<void> {
   const cfgBefore = getRuntimeConfig();
   console.log(`📊 Before: serviceName=${cfgBefore.serviceName}  logLevel=${cfgBefore.logLevel}`);
 
-  log.info({ event: 'example.runtime.before' });
+  log.info({ ...event('example', 'runtime', 'before') });
 
   // ── 🔧 Hot-swap log level ─────────────────────────────
   console.log('\n🔧 Hot-swapping logLevel to warn...');
@@ -43,7 +45,7 @@ async function main(): Promise<void> {
   const cfgAfter = getRuntimeConfig();
   console.log(`  ✅ After update: logLevel=${cfgAfter.logLevel}`);
 
-  log.info({ event: 'example.runtime.dropped' }); // suppressed at warn level
+  log.info({ ...event('example', 'runtime', 'dropped') }); // suppressed at warn level
 
   // ── ♻️ Non-breaking reconfigure ──────────────────────
   console.log('\n♻️  reconfigureTelemetry() — safe reconfigure (no provider change)...');
@@ -51,7 +53,7 @@ async function main(): Promise<void> {
   const cfgRestarted = getRuntimeConfig();
   console.log(`  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`);
 
-  log.info({ event: 'example.runtime.reconfigured' });
+  log.info({ ...event('example', 'runtime', 'reconfigured') });
 
   // ── 🌍 Reload from environment ───────────────────────
   console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env...');

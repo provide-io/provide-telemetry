@@ -13,7 +13,7 @@ Every log event passes through a linear chain of structlog processors configured
 5. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
 6. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
 7. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from exception type and normalized stack trace when `exc_info` is present.
-8. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event_name)`. Raises `DropEvent` to discard below-rate events.
+8. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
 9. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Raises `EventSchemaError` on violation.
 10. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
 11. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering, placed late so enrichment processors run first.

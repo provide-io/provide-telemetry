@@ -11,7 +11,7 @@ Demonstrates:
 - configure_logging() cost
 - Hot-path instrument ops: counter.add(), gauge.set(), histogram.record()
 - Sampling decision throughput via should_sample()
-- Event name construction via event_name()
+- Event construction via event()
 - Full setup_telemetry() / shutdown_telemetry() lifecycle cost
 - Lazy-loading verification: processors.py has no direct slo dependency
 """
@@ -68,7 +68,7 @@ def main() -> None:
 
     # ── 🔥 Hot-path ops ──────────────────────────────────────────────
     print("🔥 Hot-Path Instrument Operations\n")
-    from provide.telemetry import counter, event_name, gauge, histogram
+    from provide.telemetry import counter, event, gauge, histogram
     from provide.telemetry.sampling import should_sample
 
     c = counter("perf.example.requests", "bench counter")
@@ -86,8 +86,8 @@ def main() -> None:
     )
     rows.append(
         (
-            'event_name("a","b","c")',
-            _fmt(_bench(lambda: event_name("perf", "bench", "op"))),
+            'event("a","b","c")',
+            _fmt(_bench(lambda: event("perf", "bench", "op"))),
         )
     )
 

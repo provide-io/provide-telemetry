@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -16,6 +17,7 @@ import {
   setupTelemetry,
   shutdownTelemetry,
   getLogger,
+  event,
   sanitize,
   registerPiiRule,
   getPiiRules,
@@ -46,13 +48,13 @@ function main(): void {
   registerPiiRule({ path: ['email'], mode: 'redact' });
   console.log(`   Registered rules: ${getPiiRules().length}`);
 
-  log.info({ event: 'security.demo.pii', email: 'alice@example.com', name: 'Alice' });
+  log.info({ ...event('security', 'demo', 'pii'), email: 'alice@example.com', name: 'Alice' });
   console.log('   (email field redacted in log output)\n');
 
   // 3. Logging with automatic secret detection
   console.log('3. Automatic secret detection in logger:');
   log.info({
-    event: 'security.demo.secrets',
+    ...event('security', 'demo', 'secrets'),
     safe_field: 'normal value',
     debug_info: 'nothing sensitive here',
   });

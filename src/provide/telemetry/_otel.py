@@ -135,7 +135,7 @@ def attach_w3c_context(traceparent: str, tracestate: str | None) -> object | Non
 
 
 def detach_w3c_context(token: object | None) -> None:
-    """Detach a previously attached OTEL context token."""
+    """Detach an OTEL context token."""
     if token is None:
         return
     try:

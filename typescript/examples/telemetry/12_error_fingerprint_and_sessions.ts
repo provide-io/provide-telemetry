@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -15,6 +16,7 @@ import {
   setupTelemetry,
   shutdownTelemetry,
   getLogger,
+  event,
   computeErrorFingerprint,
   bindSessionContext,
   getSessionId,
@@ -59,8 +61,8 @@ function demoSessionCorrelation(): void {
   bindSessionContext('sess-demo-42');
   console.log(`  Session after bind:  ${getSessionId()}`);
 
-  log.info({ event: 'app.session.bound', msg: 'session is active' });
-  log.info({ event: 'app.session.action', action: 'page_view', path: '/dashboard' });
+  log.info({ ...event('app', 'session', 'bound'), msg: 'session is active' });
+  log.info({ ...event('app', 'session', 'action'), action: 'page_view', path: '/dashboard' });
 
   clearSessionContext();
   console.log(`  Session after clear: ${getSessionId()}\n`);

@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -20,6 +21,7 @@
 
 import {
   counter,
+  event,
   getHealthSnapshot,
   getLogger,
   getRuntimeConfig,
@@ -48,7 +50,7 @@ async function main(): Promise<void> {
   registerPiiRule({ path: 'user.email', mode: 'hash' });
   registerPiiRule({ path: 'credit_card', mode: 'drop' });
   log.info({
-    event: 'example.hardening.user_event',
+    ...event('example', 'hardening', 'user_event'),
     user: { email: 'player@game.io', name: 'Hero' },
     credit_card: '4111111111111111',
   });
