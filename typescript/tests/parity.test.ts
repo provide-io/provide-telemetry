@@ -19,6 +19,9 @@ import {
   classifyError,
   parseOtlpHeaders,
   setupTelemetry,
+  getQueuePolicy,
+  computeErrorFingerprint,
+  reconfigureTelemetry,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -326,6 +329,62 @@ describe('parity: default_sensitive_keys', () => {
     const obj: Record<string, unknown> = { email: 'a@b.com' };
     sanitizePayload(obj);
     expect(obj['email']).toBe('a@b.com');
+  });
+});
+
+// ── Secret Detection ────────────────────────────────────────────────────────
+
+describe('parity: secret_detection', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('redacts AWS access key in value', () => {
+    const obj: Record<string, unknown> = { data: 'AKIAIOSFODNN7EXAMPLE' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+  });
+
+  it('redacts JWT in value', () => {
+    const obj: Record<string, unknown> = {
+      data: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0', // pragma: allowlist secret
+    };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+  });
+
+  it('does not redact short normal string', () => {
+    const obj: Record<string, unknown> = { data: 'not-a-secret' };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('not-a-secret');
+  });
+});
+
+// ── Backpressure Default ─────────────────────────────────────────────────────
+
+describe('parity: backpressure_default', () => {
+  it('default queue policy is unlimited (0)', () => {
+    const policy = getQueuePolicy();
+    expect(policy.maxLogs).toBe(0);
+    expect(policy.maxTraces).toBe(0);
+    expect(policy.maxMetrics).toBe(0);
+  });
+});
+
+// ── Error Fingerprint Algorithm ──────────────────────────────────────────────
+
+describe('parity: error_fingerprint_algorithm', () => {
+  it('produces correct 12-char hex for error name only', () => {
+    const fp = computeErrorFingerprint('ValueError');
+    expect(fp).toHaveLength(12);
+    expect(fp).toBe('a50aba76697e');
+  });
+});
+
+// ── Reconfigure Provider Change ──────────────────────────────────────────────
+
+describe('parity: reconfigure_provider_change', () => {
+  it('allows provider-changing reconfigure without error', () => {
+    setupTelemetry({ otlpEndpoint: 'http://old:4318' });
+    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).not.toThrow();
   });
 });
 
