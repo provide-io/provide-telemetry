@@ -22,6 +22,7 @@ from provide.telemetry import (
     bind_context,
     clear_context,
     counter,
+    event,
     gauge,
     get_logger,
     histogram,
@@ -32,10 +33,10 @@ from provide.telemetry import (
 )
 
 
-@trace("example.basic.work")
+@trace(event("example", "basic", "work"))
 def do_work(iteration: int) -> None:
     log = get_logger("examples.basic")
-    log.info("example.basic.iteration", iteration=str(iteration))
+    log.info(event("example", "basic", "iteration"), iteration=str(iteration))
     counter("example.basic.requests", "Total request count").add(1, {"iteration": str(iteration)})
     histogram("example.basic.latency_ms", "Simulated latency", "ms").record(
         iteration * 12.5, {"iteration": str(iteration)}
@@ -54,7 +55,7 @@ def main() -> None:
     # ── 📋 Structured context binding ───────────────────────
     print("\n📋 Binding structured context fields...")
     bind_context(region="us-east-1", tier="premium")
-    log.info("example.basic.start", msg="context is bound")
+    log.info(event("example", "basic", "start"), msg="context is bound")
     print("  ✅ Bound: region=us-east-1, tier=premium")
 
     # ── 🔄 Traced work loop with all metric types ──────────
@@ -67,11 +68,11 @@ def main() -> None:
     # ── 🧹 Context cleanup ─────────────────────────────────
     print("\n🧹 Unbinding 'region', then clearing all context...")
     unbind_context("region")
-    log.info("example.basic.after_unbind", msg="region removed")
+    log.info(event("example", "basic", "after_unbind"), msg="region removed")
     print("  🔸 Unbound: region")
 
     clear_context()
-    log.info("example.basic.after_clear", msg="all context cleared")
+    log.info(event("example", "basic", "after_clear"), msg="all context cleared")
     print("  🔸 Cleared: all context fields")
 
     print("\n🏁 Done!")

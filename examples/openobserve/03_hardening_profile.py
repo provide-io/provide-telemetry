@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from provide.telemetry import (
     PIIRule,
-    event_name,
+    event,
     get_health_snapshot,
     get_logger,
     register_cardinality_limit,
@@ -33,11 +33,11 @@ def _require_env(name: str) -> str:
     return value
 
 
-@trace(event_name("example", "openobserve", "work"))
+@trace(event("example", "openobserve", "work"))
 def _emit(iteration: int) -> None:
     token_value = os.getenv("PROVIDE_EXAMPLE_TOKEN", "example-token-from-env")
     get_logger("examples.openobserve.hardening").info(
-        event_name("example", "openobserve", "log"),
+        event("example", "openobserve", "log"),
         iteration=iteration,
         user={"email": "ops@example.com", "full_name": "Operator Example"},
         token=token_value,

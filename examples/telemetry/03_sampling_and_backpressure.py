@@ -22,6 +22,7 @@ from provide.telemetry import (
     QueuePolicy,
     SamplingPolicy,
     counter,
+    event,
     get_health_snapshot,
     get_logger,
     get_queue_policy,
@@ -35,7 +36,7 @@ from provide.telemetry import (
 )
 
 
-@trace("example.sampling.concurrent")
+@trace(event("example", "sampling", "concurrent"))
 async def _traced_work(task_id: int) -> None:
     await asyncio.sleep(0.15)
     counter("example.sampling.counter").add(1, {"task_id": str(task_id)})
@@ -79,7 +80,7 @@ async def _run() -> None:
     print("  ✅ All tasks completed")
 
     # This event itself is sampled out (logs rate=0%).
-    log.info("example.sampling.done")
+    log.info(event("example", "sampling", "done"))
 
     # ── 📊 Health snapshot ──────────────────────────────────
     print("\n📊 Health snapshot after saturation:")

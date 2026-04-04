@@ -20,7 +20,7 @@ from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError, TelemetryError
 from provide.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
-from provide.telemetry.schema.events import EventSchemaError, event_name
+from provide.telemetry.schema.events import Event, EventSchemaError, event, event_name
 from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
 from provide.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace, tracer
 
@@ -109,6 +109,7 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "CardinalityLimit",
     "ConfigurationError",
+    "Event",
     "EventSchemaError",
     "ExporterPolicy",
     "HealthSnapshot",
@@ -129,6 +130,7 @@ __all__ = [
     "clear_session_context",
     "clear_websocket_context",
     "counter",
+    "event",
     "event_name",
     "extract_w3c_context",
     "gauge",

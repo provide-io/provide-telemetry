@@ -1,0 +1,220 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+
+package telemetry
+
+import (
+	"context"
+	"sync"
+	"testing"
+)
+
+// resetSetupState clears all setup state and related subsystems between tests.
+func resetSetupState(t *testing.T) {
+	t.Helper()
+	_resetSetup()
+	_resetSamplingPolicies()
+	_resetQueuePolicy()
+	_resetHealth()
+}
+
+func TestSetupTelemetryReturnsConfig(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	cfg, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg.ServiceName == "" {
+		t.Error("expected non-empty ServiceName")
+	}
+}
+
+func TestSetupTelemetryIdempotent(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	cfg1, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("first setup failed: %v", err)
+	}
+
+	cfg2, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("second setup failed: %v", err)
+	}
+
+	if cfg1 != cfg2 {
+		t.Error("expected the same config pointer on second call (idempotent)")
+	}
+}
+
+func TestShutdownTelemetryResetsState(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	// After shutdown the config should be nil.
+	cfg := GetRuntimeConfig()
+	if cfg != nil {
+		t.Error("expected nil config after shutdown")
+	}
+}
+
+func TestShutdownThenSetupReinitialises(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("first setup failed: %v", err)
+	}
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	cfg, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("second setup failed: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config after re-setup")
+	}
+}
+
+func TestSetupAppliesSamplingFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "0.5")
+
+	cfg, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if cfg.Sampling.LogsRate != 0.5 {
+		t.Errorf("expected LogsRate=0.5, got %v", cfg.Sampling.LogsRate)
+	}
+
+	policy := GetSamplingPolicy(signalLogs)
+	if policy.DefaultRate != 0.5 {
+		t.Errorf("expected sampling policy DefaultRate=0.5, got %v", policy.DefaultRate)
+	}
+}
+
+func TestSetupAppliesBackpressureFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE", "42")
+
+	cfg, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if cfg.Backpressure.LogsMaxSize != 42 {
+		t.Errorf("expected LogsMaxSize=42, got %v", cfg.Backpressure.LogsMaxSize)
+	}
+
+	qp := GetQueuePolicy()
+	if qp.LogsMaxSize != 42 {
+		t.Errorf("expected queue policy LogsMaxSize=42, got %v", qp.LogsMaxSize)
+	}
+}
+
+func TestSetupConcurrentOnlyOneInitialises(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			cfg, err := SetupTelemetry()
+			if err != nil {
+				t.Errorf("unexpected error in goroutine: %v", err)
+			}
+			if cfg == nil {
+				t.Error("expected non-nil config from goroutine")
+			}
+		}()
+	}
+	wg.Wait()
+
+	// SetupCount should be exactly 1 regardless of concurrency.
+	snap := GetHealthSnapshot()
+	if snap.SetupCount != 1 {
+		t.Errorf("expected SetupCount=1, got %d", snap.SetupCount)
+	}
+}
+
+func TestResetSetupClearsState(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	_resetSetup()
+
+	if GetRuntimeConfig() != nil {
+		t.Error("expected nil config after _resetSetup")
+	}
+}
+
+func TestShutdownNoOpWhenNotSetUp(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// Calling shutdown when nothing is set up should be a no-op without error.
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
+func TestSetupTelemetryConfigFromEnvError(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// An invalid sampling rate causes ConfigFromEnv to return an error.
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "invalid")
+
+	cfg, err := SetupTelemetry()
+	if err == nil {
+		t.Fatal("expected error from SetupTelemetry with invalid env var")
+	}
+	if cfg != nil {
+		t.Error("expected nil config on error")
+	}
+}
+
+func TestSetupWithProviderOptions(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	sentinel := struct{ name string }{name: "test-tp"}
+	cfg, err := SetupTelemetry(
+		WithTracerProvider(sentinel),
+		WithMeterProvider(sentinel),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+}
