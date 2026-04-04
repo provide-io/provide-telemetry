@@ -28,13 +28,21 @@ export interface HealthSnapshot {
   // Metrics (8)
   metricsEmitted: number;
   metricsDropped: number;
-  exportFailuresMetrics: number;
-  retriesMetrics: number;
-  exportLatencyMsMetrics: number;
-  asyncBlockingRiskMetrics: number;
+  exportFailures: number;
+  exportRetries: number;
+  asyncBlockingRisk: number;
+  exemplarUnsupported: number;
+  lastExportError: string | null;
+  exportLatencyMs: number;
+  circuitStateLogs: string;
+  circuitStateTraces: string;
   circuitStateMetrics: string;
+  circuitOpenCountLogs: number;
+  circuitOpenCountTraces: number;
   circuitOpenCountMetrics: number;
-  // Global (1)
+  circuitCooldownRemainingLogs: number;
+  circuitCooldownRemainingTraces: number;
+  circuitCooldownRemainingMetrics: number;
   setupError: string | null;
 }
 
@@ -46,18 +54,10 @@ type NumericHealthField =
   | 'tracesDropped'
   | 'metricsEmitted'
   | 'metricsDropped'
-  | 'exportFailuresLogs'
-  | 'exportFailuresTraces'
-  | 'exportFailuresMetrics'
-  | 'retriesLogs'
-  | 'retriesTraces'
-  | 'retriesMetrics'
-  | 'exportLatencyMsLogs'
-  | 'exportLatencyMsTraces'
-  | 'exportLatencyMsMetrics'
-  | 'asyncBlockingRiskLogs'
-  | 'asyncBlockingRiskTraces'
-  | 'asyncBlockingRiskMetrics';
+  | 'exportFailures'
+  | 'exportRetries'
+  | 'asyncBlockingRisk'
+  | 'exemplarUnsupported';
 
 let _setupError: string | null = null;
 
@@ -68,18 +68,12 @@ const _state = {
   tracesDropped: 0,
   metricsEmitted: 0,
   metricsDropped: 0,
-  exportFailuresLogs: 0,
-  exportFailuresTraces: 0,
-  exportFailuresMetrics: 0,
-  retriesLogs: 0,
-  retriesTraces: 0,
-  retriesMetrics: 0,
-  exportLatencyMsLogs: 0,
-  exportLatencyMsTraces: 0,
-  exportLatencyMsMetrics: 0,
-  asyncBlockingRiskLogs: 0,
-  asyncBlockingRiskTraces: 0,
-  asyncBlockingRiskMetrics: 0,
+  exportFailures: 0,
+  exportRetries: 0,
+  asyncBlockingRisk: 0,
+  exemplarUnsupported: 0,
+  lastExportError: null as string | null,
+  exportLatencyMs: 0,
 };
 
 // Lazy reference to avoid circular dependency at module load time.
@@ -104,30 +98,16 @@ export function getHealthSnapshot(): HealthSnapshot {
   const csTraces = _circuitStateFn('traces');
   const csMetrics = _circuitStateFn('metrics');
   return {
-    logsEmitted: _state.logsEmitted,
-    logsDropped: _state.logsDropped,
-    exportFailuresLogs: _state.exportFailuresLogs,
-    retriesLogs: _state.retriesLogs,
-    exportLatencyMsLogs: _state.exportLatencyMsLogs,
-    asyncBlockingRiskLogs: _state.asyncBlockingRiskLogs,
+    ..._state,
     circuitStateLogs: csLogs.state,
-    circuitOpenCountLogs: csLogs.openCount,
-    tracesEmitted: _state.tracesEmitted,
-    tracesDropped: _state.tracesDropped,
-    exportFailuresTraces: _state.exportFailuresTraces,
-    retriesTraces: _state.retriesTraces,
-    exportLatencyMsTraces: _state.exportLatencyMsTraces,
-    asyncBlockingRiskTraces: _state.asyncBlockingRiskTraces,
     circuitStateTraces: csTraces.state,
-    circuitOpenCountTraces: csTraces.openCount,
-    metricsEmitted: _state.metricsEmitted,
-    metricsDropped: _state.metricsDropped,
-    exportFailuresMetrics: _state.exportFailuresMetrics,
-    retriesMetrics: _state.retriesMetrics,
-    exportLatencyMsMetrics: _state.exportLatencyMsMetrics,
-    asyncBlockingRiskMetrics: _state.asyncBlockingRiskMetrics,
     circuitStateMetrics: csMetrics.state,
+    circuitOpenCountLogs: csLogs.openCount,
+    circuitOpenCountTraces: csTraces.openCount,
     circuitOpenCountMetrics: csMetrics.openCount,
+    circuitCooldownRemainingLogs: csLogs.cooldownRemainingMs,
+    circuitCooldownRemainingTraces: csTraces.cooldownRemainingMs,
+    circuitCooldownRemainingMetrics: csMetrics.cooldownRemainingMs,
     setupError: _setupError,
   };
 }
@@ -190,17 +170,11 @@ export function _resetHealthForTests(): void {
   _state.tracesDropped = 0;
   _state.metricsEmitted = 0;
   _state.metricsDropped = 0;
-  _state.exportFailuresLogs = 0;
-  _state.exportFailuresTraces = 0;
-  _state.exportFailuresMetrics = 0;
-  _state.retriesLogs = 0;
-  _state.retriesTraces = 0;
-  _state.retriesMetrics = 0;
-  _state.exportLatencyMsLogs = 0;
-  _state.exportLatencyMsTraces = 0;
-  _state.exportLatencyMsMetrics = 0;
-  _state.asyncBlockingRiskLogs = 0;
-  _state.asyncBlockingRiskTraces = 0;
-  _state.asyncBlockingRiskMetrics = 0;
+  _state.exportFailures = 0;
+  _state.exportRetries = 0;
+  _state.asyncBlockingRisk = 0;
+  _state.exemplarUnsupported = 0;
+  _state.lastExportError = null;
+  _state.exportLatencyMs = 0;
   _setupError = null;
 }

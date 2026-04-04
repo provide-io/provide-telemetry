@@ -15,12 +15,7 @@
 import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
-import { ConfigurationError } from './exceptions';
 import { setSetupError } from './health';
-import { isFallbackMode } from './propagation';
-import { _setActiveConfig } from './runtime';
-import { configFromEnv } from './config-env';
-export { configFromEnv } from './config-env';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -442,56 +437,14 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
-  _validateConfig(_config);
-  if (isFallbackMode()) {
-    const isNodeLike =
-      typeof process !== 'undefined' &&
-      typeof process.versions === 'object' &&
-      typeof (process.versions as Record<string, unknown>).node === 'string';
-    if (isNodeLike) {
-      throw new ConfigurationError(
-        'AsyncLocalStorage unavailable in a Node.js environment — ' +
-          'concurrent requests would share propagation context. ' +
-          'Check that node:async_hooks is not excluded from your bundler config.',
-      );
-    }
-  }
-  _configVersion++;
-  _setActiveConfig(_config);
   try {
     applyConfigPolicies(_config);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     setSetupError(message);
+    // eslint-disable-next-line no-console
     console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
   }
-}
-
-/** Validate config values — reject out-of-range instead of silently clamping (fail-fast contract). */
-function _validateConfig(cfg: TelemetryConfig): void {
-  const requireRate = (name: string, v: number): void => {
-    if (!Number.isFinite(v) || v < 0 || v > 1) {
-      throw new ConfigurationError(`${name} must be in [0, 1], got ${String(v)}`);
-    }
-  };
-  const requireNonNegInt = (name: string, v: number): void => {
-    if (!Number.isInteger(v) || v < 0) {
-      throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(v)}`);
-    }
-  };
-  requireRate('samplingLogsRate', cfg.samplingLogsRate);
-  requireRate('samplingTracesRate', cfg.samplingTracesRate);
-  requireRate('samplingMetricsRate', cfg.samplingMetricsRate);
-  requireRate('traceSampleRate', cfg.traceSampleRate);
-  requireNonNegInt('backpressureLogsMaxsize', cfg.backpressureLogsMaxsize);
-  requireNonNegInt('backpressureTracesMaxsize', cfg.backpressureTracesMaxsize);
-  requireNonNegInt('backpressureMetricsMaxsize', cfg.backpressureMetricsMaxsize);
-  requireNonNegInt('exporterLogsRetries', cfg.exporterLogsRetries);
-  requireNonNegInt('exporterTracesRetries', cfg.exporterTracesRetries);
-  requireNonNegInt('exporterMetricsRetries', cfg.exporterMetricsRetries);
-  requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
-  requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
-  requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
 }
 
 /** Reset to defaults (used in tests). */

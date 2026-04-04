@@ -37,10 +37,8 @@ export function sha256Hex(input: string): string {
   padded[bytes.length] = 0x80;
 
   const view = new DataView(padded.buffer);
-  // Stryker disable next-line ArithmeticOperator: highBits is always 0 for inputs under 512 MB — division vs multiplication both produce 0 after ToUint32 coercion
   const highBits = Math.floor(bitLength / 0x100000000);
   const lowBits = bitLength >>> 0;
-  // Stryker disable next-line BooleanLiteral: highBits is 0 for all testable inputs — big-endian vs little-endian of 0 is identical
   view.setUint32(paddedLength - 8, highBits, false);
   view.setUint32(paddedLength - 4, lowBits, false);
 
@@ -52,13 +50,12 @@ export function sha256Hex(input: string): string {
       words[i] = view.getUint32(offset + i * 4, false);
     }
 
-    // Stryker disable next-line EqualityOperator: Uint32Array(64) silently ignores writes to index 64 — the extra iteration is a no-op
     for (let i = 16; i < 64; i++) {
-      const w15 = words[i - 15] as number;
-      const w2 = words[i - 2] as number;
+      const w15 = words[i - 15]!;
+      const w2 = words[i - 2]!;
       const sigma0 = rotateRight(w15, 7) ^ rotateRight(w15, 18) ^ (w15 >>> 3);
       const sigma1 = rotateRight(w2, 17) ^ rotateRight(w2, 19) ^ (w2 >>> 10);
-      words[i] = add32(words[i - 16] as number, sigma0, words[i - 7] as number, sigma1);
+      words[i] = add32(words[i - 16]!, sigma0, words[i - 7]!, sigma1);
     }
 
     let a = h0;
@@ -73,7 +70,7 @@ export function sha256Hex(input: string): string {
     for (let i = 0; i < 64; i++) {
       const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
       const choose = (e & f) ^ (~e & g);
-      const temp1 = add32(h, sum1, choose, ROUND_CONSTANTS[i] as number, words[i] as number);
+      const temp1 = add32(h, sum1, choose, ROUND_CONSTANTS[i]!, words[i]!);
       const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
       const majority = (a & b) ^ (a & c) ^ (b & c);
       const temp2 = add32(sum0, majority);
@@ -105,14 +102,4 @@ export function sha256Hex(input: string): string {
 
 export function shortHash12(input: string): string {
   return sha256Hex(input).slice(0, 12);
-}
-
-/**
- * Generate `numBytes` random bytes and return them as a lowercase hex string.
- * Uses the Web Crypto API (available in Node.js 15+, browsers, and edge runtimes).
- */
-export function randomHex(numBytes: number): string {
-  const bytes = new Uint8Array(numBytes);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
