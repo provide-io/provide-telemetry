@@ -5,14 +5,14 @@ package telemetry
 
 import "testing"
 
-// TestEvent_ValidSegments verifies that Event returns a correctly populated EventRecord.
+// TestEvent delegates to EventName and shares its validation logic.
 func TestEvent_ValidSegments(t *testing.T) {
-	evt, err := Event("db", "query", "ok")
+	name, err := Event("db", "query", "ok")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if evt.Event != "db.query.ok" {
-		t.Errorf("want Event=%q, got %q", "db.query.ok", evt.Event)
+	if name != "db.query.ok" {
+		t.Errorf("want %q, got %q", "db.query.ok", name)
 	}
 }
 
@@ -130,9 +130,7 @@ func TestResetForTests(t *testing.T) {
 	// Pollute state across multiple subsystems.
 	SetCardinalityLimit("x", CardinalityLimit{MaxValues: 99})
 	RegisterPIIRule(PIIRule{Path: []string{"secret"}, Mode: PIIModeRedact})
-	if _, err := SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.1}); err != nil {
-		t.Fatal(err)
-	}
+	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.1})
 	SetExporterPolicy("traces", ExporterPolicy{Retries: 10})
 
 	ResetForTests()
@@ -146,9 +144,7 @@ func TestResetForTests(t *testing.T) {
 		t.Error("expected PII rules cleared")
 	}
 	// Sampling reset (default rate = 1.0 when nothing registered).
-	if p, err := GetSamplingPolicy("logs"); err != nil {
-		t.Fatal(err)
-	} else if p.DefaultRate != 1.0 {
+	if p := GetSamplingPolicy("logs"); p.DefaultRate != 1.0 {
 		t.Errorf("expected sampling DefaultRate=1.0, got %v", p.DefaultRate)
 	}
 	// Resilience reset (default retries).
