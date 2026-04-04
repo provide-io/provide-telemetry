@@ -15,6 +15,7 @@ func resetSetupState(t *testing.T) {
 	_resetSetup()
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
+	_resetResiliencePolicies()
 	_resetHealth()
 }
 
@@ -129,6 +130,25 @@ func TestSetupAppliesBackpressureFromEnv(t *testing.T) {
 	qp := GetQueuePolicy()
 	if qp.LogsMaxSize != 42 {
 		t.Errorf("expected queue policy LogsMaxSize=42, got %v", qp.LogsMaxSize)
+	}
+}
+
+func TestSetupAppliesExporterPolicyFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "3")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.5")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "9")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "false")
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	policy := GetExporterPolicy(signalLogs)
+	if policy.Retries != 3 || policy.BackoffSeconds != 0.5 || policy.TimeoutSeconds != 9 || policy.FailOpen {
+		t.Fatalf("expected exporter policy from env, got %+v", policy)
 	}
 }
 

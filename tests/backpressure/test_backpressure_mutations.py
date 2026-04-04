@@ -139,25 +139,25 @@ def test_release_unknown_signal_raises() -> None:
         release(fake_ticket)
 
 
-# ── set_queue_policy resets queue depth to 0 (not 1) ──────────────────
+# ── set_queue_policy preserves in-flight queue depth ───────────────────
 
 
-def test_set_queue_policy_resets_depth_to_zero() -> None:
+def test_set_queue_policy_preserves_depth() -> None:
     set_queue_policy(QueuePolicy(logs_maxsize=5))
     try_acquire("logs")
     try_acquire("logs")
     snap = get_health_snapshot()
     assert snap.queue_depth_logs == 2
-    # Reset via new policy
+    # Update policy without losing in-flight occupancy.
     set_queue_policy(QueuePolicy(logs_maxsize=10))
     snap = get_health_snapshot()
-    assert snap.queue_depth_logs == 0
+    assert snap.queue_depth_logs == 2
     assert snap.queue_depth_traces == 0
     assert snap.queue_depth_metrics == 0
 
 
-def test_set_queue_policy_iterates_all_three_signals() -> None:
-    """Ensure the for-loop touches logs, traces, AND metrics."""
+def test_set_queue_policy_recomputes_all_three_signal_depths() -> None:
+    """Ensure the loop updates logs, traces, AND metrics without clearing them."""
     set_queue_policy(QueuePolicy(logs_maxsize=5, traces_maxsize=5, metrics_maxsize=5))
     try_acquire("logs")
     try_acquire("traces")
@@ -166,12 +166,12 @@ def test_set_queue_policy_iterates_all_three_signals() -> None:
     assert snap.queue_depth_logs == 1
     assert snap.queue_depth_traces == 1
     assert snap.queue_depth_metrics == 1
-    # Reset
+    # Update policy and preserve the occupancy across all signals.
     set_queue_policy(QueuePolicy())
     snap = get_health_snapshot()
-    assert snap.queue_depth_logs == 0
-    assert snap.queue_depth_traces == 0
-    assert snap.queue_depth_metrics == 0
+    assert snap.queue_depth_logs == 1
+    assert snap.queue_depth_traces == 1
+    assert snap.queue_depth_metrics == 1
 
 
 # ── cumulative acquire yields non-zero positive tokens ─────────────────

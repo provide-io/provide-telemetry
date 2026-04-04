@@ -13,6 +13,7 @@ import {
 import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
 import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure';
 import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience';
+import { ConfigurationError } from '../src/exceptions';
 
 afterEach(() => {
   _resetConfig();
@@ -113,6 +114,41 @@ describe('configFromEnv', () => {
       const cfg = configFromEnv();
       expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
       expect('' in (cfg.otlpHeaders ?? {})).toBe(false);
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('URL-decodes OTLP header keys and values from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] =
+      'Authorization=Bearer%20token%3D123,X-Custom+Key=value+with+spaces';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({
+        Authorization: 'Bearer token=123',
+        'X-Custom Key': 'value with spaces',
+      });
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('skips malformed OTLP header pairs from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'badpair,x-key=ok';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
+      expect(cfg.otlpHeaders).not.toHaveProperty('badpair');
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('skips invalid URL-encoded OTLP header pairs from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'bad=%ZZ,x-key=ok';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
     } finally {
       delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
     }
@@ -259,6 +295,41 @@ describe('configFromEnv — env var reads', () => {
   it('PROVIDE_TRACE_ENABLED=false does not enable otel', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'false' }, () => {
       expect(configFromEnv().otelEnabled).toBe(false);
+    });
+  });
+
+  it('boolean env aliases are parsed consistently', () => {
+    withEnv(
+      {
+        PROVIDE_TRACE_ENABLED: 'yes',
+        PROVIDE_METRICS_ENABLED: 'off',
+        PROVIDE_LOG_INCLUDE_TIMESTAMP: ' ',
+      },
+      () => {
+        const cfg = configFromEnv();
+        expect(cfg.otelEnabled).toBe(true);
+        expect(cfg.metricsEnabled).toBe(false);
+        expect(cfg.logIncludeTimestamp).toBe(true);
+      },
+    );
+  });
+
+  it('covers all accepted boolean env aliases', () => {
+    for (const truthy of ['1', 'true', 'yes', 'on']) {
+      withEnv({ PROVIDE_TRACE_ENABLED: truthy }, () => {
+        expect(configFromEnv().otelEnabled).toBe(true);
+      });
+    }
+    for (const falsy of ['0', 'false', 'no', 'off']) {
+      withEnv({ PROVIDE_METRICS_ENABLED: falsy }, () => {
+        expect(configFromEnv().metricsEnabled).toBe(false);
+      });
+    }
+  });
+
+  it('invalid boolean env values throw ConfigurationError', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'invalid-boolean' }, () => {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
     });
   });
 
@@ -861,6 +932,33 @@ describe('envNumber — undefined env var returns fallback', () => {
     const cfg = configFromEnv();
     expect(cfg.backpressureLogsMaxsize).toBe(0);
   });
+
+  it('rejects out-of-range sampling rates', () => {
+    process.env['PROVIDE_SAMPLING_LOGS_RATE'] = '1.5';
+    try {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
+    } finally {
+      delete process.env['PROVIDE_SAMPLING_LOGS_RATE'];
+    }
+  });
+
+  it('rejects negative queue sizes', () => {
+    process.env['PROVIDE_BACKPRESSURE_LOGS_MAXSIZE'] = '-1';
+    try {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
+    } finally {
+      delete process.env['PROVIDE_BACKPRESSURE_LOGS_MAXSIZE'];
+    }
+  });
+
+  it('rejects non-integer retry counts', () => {
+    process.env['PROVIDE_EXPORTER_LOGS_RETRIES'] = '1.5';
+    try {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
+    } finally {
+      delete process.env['PROVIDE_EXPORTER_LOGS_RETRIES'];
+    }
+  });
 });
 
 describe('envSecondsToMs — undefined env var returns fallbackMs', () => {
@@ -874,6 +972,15 @@ describe('envSecondsToMs — undefined env var returns fallbackMs', () => {
     delete process.env['PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS'];
     const cfg = configFromEnv();
     expect(cfg.exporterLogsTimeoutMs).toBe(10000);
+  });
+
+  it('rejects negative timeout values', () => {
+    process.env['PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS'] = '-1';
+    try {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
+    } finally {
+      delete process.env['PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS'];
+    }
   });
 });
 
@@ -949,7 +1056,6 @@ describe('setupTelemetry — emergency fallback', () => {
   it('does not throw when applyConfigPolicies fails with non-Error', async () => {
     const samplingModule = await import('../src/sampling');
     vi.spyOn(samplingModule, 'setSamplingPolicy').mockImplementation(() => {
-      // eslint-disable-next-line no-throw-literal
       throw 'string-failure';
     });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
