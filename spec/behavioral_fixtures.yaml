@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# Cross-language behavioral parity fixtures.
+# Each language's test suite MUST validate these inputs produce these outputs.
+# Run: python spec/validate_behavioral_parity.py (checks Python)
+#       npx vitest run tests/parity.test.ts (checks TypeScript)
+#       go test -run TestBehavioralParity (checks Go)
+
+sampling:
+  - description: "rate=0.0 always drops"
+    rate: 0.0
+    expected: false
+
+  - description: "rate=1.0 always keeps"
+    rate: 1.0
+    expected: true
+
+  - description: "rate=0.5 keeps ~50% (statistical)"
+    rate: 0.5
+    trials: 10000
+    expected_min_pct: 40
+    expected_max_pct: 60
+
+  - description: "rate=0.99 keeps ~99% (statistical)"
+    rate: 0.99
+    trials: 10000
+    expected_min_pct: 95
+    expected_max_pct: 100
+
+  - description: "rate=0.001 keeps ~0.1% (statistical)"
+    rate: 0.001
+    trials: 100000
+    expected_min_pct: 0
+    expected_max_pct: 1
+
+pii_hash:
+  - description: "hash produces 12-char lowercase hex"
+    input: "user-42"
+    expected_length: 12
+    expected_pattern: "^[0-9a-f]{12}$"
+
+  - description: "hash is deterministic"
+    input: "same-input"
+    # same input must produce same output across runs AND languages
+    expected: "f52c2013103b"
+
+  - description: "hash of integer (as string)"
+    input: 42
+    expected: "73475cb40a56"  # pragma: allowlist secret
+
+pii_truncate:
+  - description: "string longer than limit is truncated with suffix"
+    input: "hello world"
+    truncate_to: 5
+    expected: "hello..."
+
+  - description: "string at limit is NOT truncated"
+    input: "hello"
+    truncate_to: 5
+    expected: "hello"
+
+  - description: "string shorter than limit is unchanged"
+    input: "hi"
+    truncate_to: 5
+    expected: "hi"
+
+  - description: "non-string converted then truncated"
+    input: 1234567890
+    truncate_to: 5
+    # str(1234567890) = "1234567890" (10 chars > 5)
+    expected: "12345..."
+
+pii_redact:
+  - description: "sensitive key is replaced with redaction marker"
+    key: "password"
+    value: "s3cret"
+    expected: "***"
+
+  - description: "case-insensitive sensitive detection"
+    key: "API_KEY"
+    value: "abc123"
+    expected: "***"
+
+pii_drop:
+  - description: "drop mode removes the key entirely"
+    key: "card_number"
+    value: "4111-1111"
+    expected_present: false
+
+event_dars:
+  - description: "3 segments = DAS"
+    segments: ["user", "login", "ok"]
+    expected:
+      event: "user.login.ok"
+      domain: "user"
+      action: "login"
+      resource: null
+      status: "ok"
+
+  - description: "4 segments = DARS"
+    segments: ["db", "query", "users", "ok"]
+    expected:
+      event: "db.query.users.ok"
+      domain: "db"
+      action: "query"
+      resource: "users"
+      status: "ok"
+
+  - description: "2 segments = error"
+    segments: ["too", "few"]
+    expected_error: true
+
+  - description: "5 segments = error"
+    segments: ["a", "b", "c", "d", "e"]
+    expected_error: true
+
+propagation_guards:
+  - description: "traceparent at limit (512 bytes) is accepted"
+    header: "traceparent"
+    length: 512
+    expected_action: "accept"
+
+  - description: "traceparent over limit (513 bytes) is discarded"
+    header: "traceparent"
+    length: 513
+    expected_action: "discard"
+
+  - description: "tracestate with 32 pairs is accepted"
+    header: "tracestate"
+    pairs: 32
+    expected_action: "accept"
+
+  - description: "tracestate with 33 pairs is discarded"
+    header: "tracestate"
+    pairs: 33
+    expected_action: "discard"
+
+  - description: "baggage at limit (8192 bytes) is accepted"
+    header: "baggage"
+    length: 8192
+    expected_action: "accept"
+
+  - description: "baggage over limit (8193 bytes) is discarded"
+    header: "baggage"
+    length: 8193
+    expected_action: "discard"
+
+config_headers:
+  - description: "normal key=value parsed"
+    input: "Authorization=Bearer+token"
+    expected: {"Authorization": "Bearer token"}
+
+  - description: "URL-encoded key and value"
+    input: "my%20key=my%20value"
+    expected: {"my key": "my value"}
+
+  - description: "empty key (=value) skipped"
+    input: "=value,key=val"
+    expected: {"key": "val"}
+
+  - description: "no equals sign skipped"
+    input: "malformed,key=val"
+    expected: {"key": "val"}
+
+  - description: "value containing = preserved"
+    input: "Authorization=Bearer token=xyz"
+    expected: {"Authorization": "Bearer token=xyz"}
+
+  - description: "empty string returns empty"
+    input: ""
+    expected: {}
+
+slo_classify:
+  - description: "status 400 = client_error"
+    status_code: 400
+    expected_category: "client_error"
+
+  - description: "status 500 = server_error"
+    status_code: 500
+    expected_category: "server_error"
+
+  - description: "status 429 = client_error with critical severity"
+    status_code: 429
+    expected_category: "client_error"
+    expected_severity: "critical"
+
+  - description: "status 0 = timeout"
+    status_code: 0
+    expected_category: "timeout"
