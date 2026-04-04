@@ -59,25 +59,24 @@ func GetPropagationContext(ctx context.Context) PropagationContext {
 	return v.(PropagationContext) //nolint:forcetypeassert
 }
 
-// _guardSize truncates s to at most maxBytes bytes.
+// _guardSize discards s entirely if it exceeds maxBytes.
 func _guardSize(s string, maxBytes int) string {
-	if len(s) > maxBytes {
-		return s[:maxBytes]
+	if len(s) >= maxBytes+1 {
+		return ""
 	}
 	return s
 }
 
-// _guardTracestateSize truncates tracestate to at most _maxTracestateBytes bytes
-// and trims to at most _maxTracestatePairs comma-separated pairs.
+// _guardTracestateSize discards tracestate if it exceeds _maxTracestateBytes bytes
+// or contains more than _maxTracestatePairs comma-separated pairs.
 func _guardTracestateSize(s string) string {
 	s = _guardSize(s, _maxTracestateBytes)
 	if s == "" {
 		return s
 	}
 	pairs := strings.Split(s, ",")
-	if len(pairs) > _maxTracestatePairs {
-		pairs = pairs[:_maxTracestatePairs]
-		s = strings.Join(pairs, ",")
+	if len(pairs) >= _maxTracestatePairs+1 {
+		return ""
 	}
 	return s
 }
