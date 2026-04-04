@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -180,5 +181,157 @@ func TestValidateEventName_RoundTrip(t *testing.T) {
 	}
 	if err := ValidateEventName(name); err != nil {
 		t.Errorf("ValidateEventName round-trip failed: %v", err)
+	}
+}
+
+func TestEvent_DAS(t *testing.T) {
+	evt, err := Event("auth", "login", "success")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if evt.Event != "auth.login.success" {
+		t.Errorf("want Event=%q, got %q", "auth.login.success", evt.Event)
+	}
+	if evt.Domain != "auth" {
+		t.Errorf("want Domain=%q, got %q", "auth", evt.Domain)
+	}
+	if evt.Action != "login" {
+		t.Errorf("want Action=%q, got %q", "login", evt.Action)
+	}
+	if evt.Resource != "" {
+		t.Errorf("want empty Resource, got %q", evt.Resource)
+	}
+	if evt.Status != "success" {
+		t.Errorf("want Status=%q, got %q", "success", evt.Status)
+	}
+}
+
+func TestEvent_DARS(t *testing.T) {
+	evt, err := Event("payment", "subscription", "renewal", "success")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if evt.Event != "payment.subscription.renewal.success" {
+		t.Errorf("want Event=%q, got %q", "payment.subscription.renewal.success", evt.Event)
+	}
+	if evt.Domain != "payment" {
+		t.Errorf("want Domain=%q, got %q", "payment", evt.Domain)
+	}
+	if evt.Action != "subscription" {
+		t.Errorf("want Action=%q, got %q", "subscription", evt.Action)
+	}
+	if evt.Resource != "renewal" {
+		t.Errorf("want Resource=%q, got %q", "renewal", evt.Resource)
+	}
+	if evt.Status != "success" {
+		t.Errorf("want Status=%q, got %q", "success", evt.Status)
+	}
+}
+
+func TestEvent_TwoArgs_Error(t *testing.T) {
+	_, err := Event("auth", "login")
+	if err == nil {
+		t.Fatal("expected error for 2 segments")
+	}
+	var schemaErr *EventSchemaError
+	if !errors.As(err, &schemaErr) {
+		t.Errorf("expected *EventSchemaError, got %T: %v", err, err)
+	}
+}
+
+func TestEvent_FiveArgs_Error(t *testing.T) {
+	_, err := Event("auth", "login", "user", "detail", "success")
+	if err == nil {
+		t.Fatal("expected error for 5 segments")
+	}
+	var schemaErr *EventSchemaError
+	if !errors.As(err, &schemaErr) {
+		t.Errorf("expected *EventSchemaError, got %T: %v", err, err)
+	}
+}
+
+func TestEvent_InvalidSegment_StrictMode(t *testing.T) {
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+
+	_, err := Event("Auth", "login", "success")
+	if err == nil {
+		t.Fatal("expected error for uppercase segment in strict mode")
+	}
+	var schemaErr *EventSchemaError
+	if !errors.As(err, &schemaErr) {
+		t.Errorf("expected *EventSchemaError, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "Auth") {
+		t.Errorf("error %q should mention invalid segment %q", err.Error(), "Auth")
+	}
+}
+
+func TestEvent_InvalidSegment_NonStrictMode(t *testing.T) {
+	_strictSchema = false
+	evt, err := Event("Auth", "Login", "Success")
+	if err != nil {
+		t.Fatalf("unexpected error in non-strict mode: %v", err)
+	}
+	if evt.Event != "Auth.Login.Success" {
+		t.Errorf("want %q, got %q", "Auth.Login.Success", evt.Event)
+	}
+}
+
+func TestEventRecord_Attrs_DAS(t *testing.T) {
+	evt := EventRecord{
+		Event:  "auth.login.success",
+		Domain: "auth",
+		Action: "login",
+		Status: "success",
+	}
+	attrs := evt.Attrs()
+	if len(attrs) != 3 {
+		t.Fatalf("want 3 attrs for DAS, got %d", len(attrs))
+	}
+	type kv struct{ key, val string }
+	want := []kv{
+		{"event.domain", "auth"},
+		{"event.action", "login"},
+		{"event.status", "success"},
+	}
+	for i, a := range attrs {
+		sa, ok := a.(slog.Attr)
+		if !ok {
+			t.Fatalf("attr[%d] is not slog.Attr: %T", i, a)
+		}
+		if sa.Key != want[i].key {
+			t.Errorf("attr[%d] key: want %q, got %q", i, want[i].key, sa.Key)
+		}
+		if sa.Value.String() != want[i].val {
+			t.Errorf("attr[%d] val: want %q, got %q", i, want[i].val, sa.Value.String())
+		}
+	}
+}
+
+func TestEventRecord_Attrs_DARS(t *testing.T) {
+	evt := EventRecord{
+		Event:    "payment.subscription.renewal.success",
+		Domain:   "payment",
+		Action:   "subscription",
+		Resource: "renewal",
+		Status:   "success",
+	}
+	attrs := evt.Attrs()
+	if len(attrs) != 4 {
+		t.Fatalf("want 4 attrs for DARS, got %d", len(attrs))
+	}
+	found := false
+	for _, a := range attrs {
+		sa, ok := a.(slog.Attr)
+		if !ok {
+			t.Fatalf("attr element is not slog.Attr: %T", a)
+		}
+		if sa.Key == "event.resource" && sa.Value.String() == "renewal" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected event.resource=renewal in attrs")
 	}
 }

@@ -51,12 +51,12 @@ type row struct {
 }
 
 func main() {
-	fmt.Println("Performance Characteristics\n")
+	fmt.Println("Performance Characteristics")
 
 	var rows []row
 
 	// Full setup/shutdown lifecycle
-	fmt.Println("Setup / Shutdown Lifecycle\n")
+	fmt.Println("Setup / Shutdown Lifecycle")
 	lifecycleNs := bench(func() {
 		_, _ = telemetry.SetupTelemetry()
 		_ = telemetry.ShutdownTelemetry(context.Background())
@@ -80,7 +80,7 @@ func main() {
 	rows = append(rows, row{"SetupTelemetry (idempotent)", fmtNs(idempotentNs)})
 
 	// Hot-path instrument operations
-	fmt.Println("Hot-Path Instrument Operations\n")
+	fmt.Println("Hot-Path Instrument Operations")
 
 	c := telemetry.NewCounter("perf.example.requests",
 		telemetry.WithDescription("bench counter"))
@@ -123,7 +123,7 @@ func main() {
 	}, _defaultIterations))})
 
 	// Results table
-	fmt.Println("Results\n")
+	fmt.Println("Results")
 	maxLabel := 0
 	for _, r := range rows {
 		if len(r.label) > maxLabel {

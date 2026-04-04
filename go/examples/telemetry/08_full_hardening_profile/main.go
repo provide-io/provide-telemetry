@@ -22,7 +22,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Full Production Hardening Profile\n")
+	fmt.Println("Full Production Hardening Profile")
 
 	cfg, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 	}
 	sanitized := telemetry.SanitizePayload(payload, true, 0)
 	evtName, _ := telemetry.Event("example", "hardening", "user_event")
-	log.InfoContext(ctx, evtName, "payload", fmt.Sprintf("%v", sanitized))
+	log.InfoContext(ctx, evtName.Event, append(evtName.Attrs(), "payload", fmt.Sprintf("%v", sanitized))...)
 	fmt.Println("  PII rules active")
 
 	// Cardinality limits

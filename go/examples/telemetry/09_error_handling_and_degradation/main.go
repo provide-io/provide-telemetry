@@ -21,7 +21,8 @@ import (
 )
 
 func main() {
-	fmt.Println("Error Handling & Graceful Degradation Demo\n")
+	fmt.Println("Error Handling & Graceful Degradation Demo")
+fmt.Println()
 
 	// Normal setup — works with or without OTel
 	fmt.Println("Setting up telemetry (works with or without OTel)...")
@@ -37,7 +38,8 @@ func main() {
 	log := telemetry.GetLogger(ctx, "examples.errors")
 
 	// Exception hierarchy demo
-	fmt.Println("Exception Hierarchy Demo\n")
+	fmt.Println("Exception Hierarchy Demo")
+fmt.Println()
 
 	// ConfigurationError
 	fmt.Println("  1. ConfigurationError (invalid config):")
@@ -58,7 +60,7 @@ func main() {
 			fmt.Printf("     Is TelemetryError? %v\n", isTel)
 		}
 	}
-	_, err = telemetry.Event("BAD", "UPPER", "case")
+	_, err = telemetry.Event("too", "few")
 	if err != nil {
 		fmt.Printf("     Caught EventSchemaError: %v\n", err)
 	}
@@ -67,7 +69,7 @@ func main() {
 	fmt.Println("\n  3. Catch-all with TelemetryError:")
 	badInputs := [][]string{
 		{"x"},
-		{"A", "B", "C"},
+		{"a", "b"},
 		{"a", "b", "c", "d", "e", "f"},
 	}
 	errorsCaught := 0
@@ -84,13 +86,14 @@ func main() {
 
 	// Valid event names
 	fmt.Println("\n  4. Valid event names:")
-	name3, _ := telemetry.Event("auth", "login", "success")
-	name4, _ := telemetry.Event("payment", "subscription", "renewal", "success")
-	fmt.Printf("     3-seg: %s\n", name3)
-	fmt.Printf("     4-seg: %s\n", name4)
+	evt3, _ := telemetry.Event("auth", "login", "success")
+	evt4, _ := telemetry.Event("payment", "subscription", "renewal", "success")
+	fmt.Printf("     3-seg DAS:  %s\n", evt3.Event)
+	fmt.Printf("     4-seg DARS: %s  (resource=%s)\n", evt4.Event, evt4.Resource)
 
 	// Graceful degradation
-	fmt.Println("\nGraceful Degradation Demo\n")
+	fmt.Println("\nGraceful Degradation Demo")
+fmt.Println()
 
 	// Metrics work even without OTel
 	c := telemetry.NewCounter("example.errors.requests",
@@ -99,15 +102,15 @@ func main() {
 	fmt.Println("  Counter works without OTel (fallback in-memory)")
 
 	// Tracing works with noop span when OTel isn't configured
-	evtName, _ := telemetry.Event("example", "errors", "traced_work")
-	traceErr := telemetry.Trace(ctx, evtName, func(innerCtx context.Context) error {
+	traceEvt, _ := telemetry.Event("example", "errors", "traced_work")
+	traceErr := telemetry.Trace(ctx, traceEvt.Event, func(innerCtx context.Context) error {
 		return nil
 	})
 	fmt.Printf("  Trace works without OTel: err=%v\n", traceErr)
 
 	// Logging always works
 	degradEvt, _ := telemetry.Event("example", "errors", "degradation_test")
-	log.InfoContext(ctx, degradEvt, "status", "ok")
+	log.InfoContext(ctx, degradEvt.Event, append(degradEvt.Attrs(), "status", "ok")...)
 	fmt.Println("  Structured logging always works")
 
 	// Health snapshot shows the state

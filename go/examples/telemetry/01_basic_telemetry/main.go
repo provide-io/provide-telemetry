@@ -21,11 +21,11 @@ import (
 )
 
 func doWork(ctx context.Context, iteration int) error {
-	name, _ := telemetry.Event("example", "basic", "work")
-	return telemetry.Trace(ctx, name, func(ctx context.Context) error {
+	workEvt, _ := telemetry.Event("example", "basic", "work")
+	return telemetry.Trace(ctx, workEvt.Event, func(ctx context.Context) error {
 		log := telemetry.GetLogger(ctx, "examples.basic")
-		evtName, _ := telemetry.Event("example", "basic", "iteration")
-		log.InfoContext(ctx, evtName, "iteration", fmt.Sprint(iteration))
+		iterEvt, _ := telemetry.Event("example", "basic", "iteration")
+		log.InfoContext(ctx, iterEvt.Event, append(iterEvt.Attrs(), "iteration", fmt.Sprint(iteration))...)
 
 		requests := telemetry.NewCounter("example.basic.requests",
 			telemetry.WithDescription("Total request count"))
@@ -46,7 +46,7 @@ func doWork(ctx context.Context, iteration int) error {
 }
 
 func main() {
-	fmt.Println("Basic Telemetry Demo\n")
+	fmt.Println("Basic Telemetry Demo")
 
 	cfg, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -58,14 +58,14 @@ func main() {
 	ctx := context.Background()
 	log := telemetry.GetLogger(ctx, "examples.basic")
 
-	fmt.Printf("Service: %s  |  Env: %s  |  Version: %s\n",
+	fmt.Printf("Service: %s  |  Env: %s  |  SampleRate: %.2f\n",
 		cfg.ServiceName, cfg.Logging.Level, cfg.Tracing.SampleRate)
 
 	// Structured context binding
 	fmt.Println("\nBinding structured context fields...")
 	ctx = telemetry.BindContext(ctx, map[string]any{"region": "us-east-1", "tier": "premium"})
 	startEvt, _ := telemetry.Event("example", "basic", "start")
-	log.InfoContext(ctx, startEvt, "msg", "context is bound")
+	log.InfoContext(ctx, startEvt.Event, append(startEvt.Attrs(), "msg", "context is bound")...)
 	fmt.Println("  Bound: region=us-east-1, tier=premium")
 
 	// Traced work loop with all metric types
@@ -82,12 +82,12 @@ func main() {
 	fmt.Println("\nUnbinding 'region', then clearing all context...")
 	ctx = telemetry.UnbindContext(ctx, "region")
 	unbindEvt, _ := telemetry.Event("example", "basic", "after_unbind")
-	log.InfoContext(ctx, unbindEvt, "msg", "region removed")
+	log.InfoContext(ctx, unbindEvt.Event, append(unbindEvt.Attrs(), "msg", "region removed")...)
 	fmt.Println("  Unbound: region")
 
 	ctx = telemetry.ClearContext(ctx)
 	clearEvt, _ := telemetry.Event("example", "basic", "after_clear")
-	log.InfoContext(ctx, clearEvt, "msg", "all context cleared")
+	log.InfoContext(ctx, clearEvt.Event, append(clearEvt.Attrs(), "msg", "all context cleared")...)
 	fmt.Println("  Cleared: all context fields")
 
 	fmt.Println("\nDone!")

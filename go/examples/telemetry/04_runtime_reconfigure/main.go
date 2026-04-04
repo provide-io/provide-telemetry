@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Runtime Reconfiguration Demo\n")
+	fmt.Println("Runtime Reconfiguration Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	beforeEvt, _ := telemetry.Event("example", "runtime", "before")
-	log.InfoContext(ctx, beforeEvt)
+	log.InfoContext(ctx, beforeEvt.Event, beforeEvt.Attrs()...)
 
 	// Hot-swap sampling rate to 0%
 	fmt.Println("\nHot-swapping sampling rate to 0%...")
@@ -55,7 +55,7 @@ func main() {
 
 	// Log an event that will be sampled out at 0%
 	droppedEvt, _ := telemetry.Event("example", "runtime", "dropped")
-	log.InfoContext(ctx, droppedEvt)
+	log.InfoContext(ctx, droppedEvt.Event, droppedEvt.Attrs()...)
 
 	snapshot := telemetry.GetHealthSnapshot()
 	fmt.Printf("  Dropped logs: %d\n", snapshot.LogsDropped)
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	restartedEvt, _ := telemetry.Event("example", "runtime", "restarted")
-	log.InfoContext(ctx, restartedEvt)
+	log.InfoContext(ctx, restartedEvt.Event, restartedEvt.Attrs()...)
 
 	// Reload from environment
 	fmt.Println("\nReloadRuntimeFromEnv() — re-reads os.Environ...")
