@@ -20,3 +20,6 @@ otel_stderr.txt
 coverage.json
 memray-output/
 .worktrees/
+.openobserve-data/
+.lgtm-data/
+go/coverage.out
