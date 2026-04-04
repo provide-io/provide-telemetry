@@ -518,7 +518,7 @@ func TestHandler_TraceSpanFields(t *testing.T) {
 	var buf bytes.Buffer
 	l := newTestLogger(&buf, cfg, "")
 
-	ctx := _injectTraceContext(context.Background(), "trace-abc", "span-xyz")
+	ctx := SetTraceContext(context.Background(), "trace-abc", "span-xyz")
 	l.InfoContext(ctx, "with trace")
 
 	out := buf.String()
@@ -539,7 +539,7 @@ func TestHandler_TraceIDOnly(t *testing.T) {
 	var buf bytes.Buffer
 	l := newTestLogger(&buf, cfg, "")
 
-	ctx := _injectTraceContext(context.Background(), "trace-only", "")
+	ctx := SetTraceContext(context.Background(), "trace-only", "")
 	l.InfoContext(ctx, "trace only")
 
 	out := buf.String()
@@ -557,7 +557,7 @@ func TestHandler_SpanIDOnly(t *testing.T) {
 	var buf bytes.Buffer
 	l := newTestLogger(&buf, cfg, "")
 
-	ctx := _injectTraceContext(context.Background(), "", "span-only")
+	ctx := SetTraceContext(context.Background(), "", "span-only")
 	l.InfoContext(ctx, "span only")
 
 	out := buf.String()

@@ -7,8 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Span represents an active trace span.
@@ -31,7 +29,7 @@ type _noopSpan struct {
 	spanID  string
 }
 
-func (s *_noopSpan) End()                               { _ = s }
+func (s *_noopSpan) End()                               {}
 func (s *_noopSpan) SetAttribute(key string, value any) { _ = key; _ = value }
 func (s *_noopSpan) RecordError(err error)              { _ = err }
 func (s *_noopSpan) SpanID() string                     { return s.spanID }
@@ -72,41 +70,15 @@ func GetTracer(name string) Tracer {
 
 // Trace wraps fn in a span using DefaultTracer.
 // fn receives the context enriched with trace/span IDs.
-// If fn returns an error, the error is recorded on the span before it ends.
-// Consent, sampling, and backpressure are applied before starting the span;
-// fn is still invoked (without a span) when any gate rejects.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
-	if !ShouldAllow(signalTraces, "") {
-		return fn(ctx)
-	}
-	if sampled, _ := ShouldSample(signalTraces, name); !sampled {
-		return fn(ctx)
-	}
-	if !TryAcquire(signalTraces) {
-		return fn(ctx)
-	}
-	defer Release(signalTraces)
-	_incSpansStarted()
-
 	spanCtx, span := DefaultTracer.Start(ctx, name)
 	defer span.End()
-	err := fn(spanCtx)
-	if err != nil {
-		// Record exception to span; OTel spans forward this to the backend.
-		span.RecordError(err)
-	}
-	return err
+	return fn(spanCtx)
 }
 
 // GetTraceContext returns the trace and span IDs bound to ctx.
-// When an active OTel span is present in ctx its IDs take precedence.
-// Falls back to context key values set by SetTraceContext.
 // Returns empty strings if not set.
 func GetTraceContext(ctx context.Context) (traceID, spanID string) {
-	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
-		sc := span.SpanContext()
-		return sc.TraceID().String(), sc.SpanID().String()
-	}
 	if v, ok := ctx.Value(_traceIDKey).(string); ok {
 		traceID = v
 	}
