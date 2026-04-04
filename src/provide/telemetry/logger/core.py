@@ -24,6 +24,7 @@ from provide.telemetry.logger.processors import (
     apply_sampling,
     enforce_event_schema,
     harden_input,
+    inject_das_fields,
     make_level_filter,
     merge_runtime_context,
     sanitize_sensitive_fields,
@@ -221,6 +222,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         merge_runtime_context,
+        inject_das_fields,
         structlog.processors.add_log_level,
     ]
     if config.logging.include_timestamp:
