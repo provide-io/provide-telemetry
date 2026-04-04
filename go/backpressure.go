@@ -5,7 +5,7 @@ package telemetry
 
 import "sync"
 
-const _defaultQueueSize = 0
+const _defaultQueueSize = 1000
 
 // QueuePolicy defines per-signal maximum in-flight queue sizes.
 type QueuePolicy struct {
@@ -26,15 +26,15 @@ func init() {
 	_resetQueuePolicy()
 }
 
-// _buildQueue returns a buffered channel of the given size, or nil for unlimited (size <= 0).
+// _buildQueue returns a buffered channel of the given size (minimum 1).
 func _buildQueue(size int) chan struct{} {
-	if size <= 0 {
-		return nil
+	if size < 1 {
+		size = 1
 	}
 	return make(chan struct{}, size)
 }
 
-// _resetQueuePolicy rebuilds all queues with default sizes.
+// _resetQueuePolicy closes existing channels and rebuilds with default sizes.
 // Must be called with no lock held.
 func _resetQueuePolicy() {
 	_queueMu.Lock()
@@ -49,13 +49,17 @@ func _resetQueuePolicy() {
 }
 
 // _drainAndRebuild replaces all queues with new channels based on policy.
-// Old channels are abandoned (not closed) to prevent a panic: closing a channel
-// while a concurrent sender holds a stale pointer to it would panic. GC reclaims
-// the old channel once all in-flight references drop.
 // Caller must hold _queueMu write lock.
 func _drainAndRebuild(policy QueuePolicy) {
-	// Intentionally do not close old channels — let them be GC'd once all
-	// in-flight references drop.
+	if _logsQueue != nil {
+		close(_logsQueue)
+	}
+	if _tracesQueue != nil {
+		close(_tracesQueue)
+	}
+	if _metricsQueue != nil {
+		close(_metricsQueue)
+	}
 	_queuePolicy = policy
 	_logsQueue = _buildQueue(policy.LogsMaxSize)
 	_tracesQueue = _buildQueue(policy.TracesMaxSize)
@@ -93,31 +97,18 @@ func _channelForSignal(signal string) chan struct{} {
 
 // TryAcquire attempts a non-blocking acquire on the signal's semaphore.
 // Returns true if a slot was acquired; false if the queue is at capacity or the signal is unknown.
-// A maxSize of 0 (or negative) means unlimited — always succeeds without a channel.
-// The RLock is held through the entire read + send to prevent a TOCTOU race where
-// SetQueuePolicy swaps the channel pointer between the read and the send.
 func TryAcquire(signal string) bool {
 	_queueMu.RLock()
-	defer _queueMu.RUnlock()
+	ch := _channelForSignal(signal)
+	_queueMu.RUnlock()
 
-	maxSize := 0
-	switch signal {
-	case signalLogs:
-		maxSize = _queuePolicy.LogsMaxSize
-	case signalTraces:
-		maxSize = _queuePolicy.TracesMaxSize
-	case signalMetrics:
-		maxSize = _queuePolicy.MetricsMaxSize
-	default:
+	if ch == nil {
 		return false
 	}
-	if maxSize <= 0 {
-		return true
-	}
 
-	ch := _channelForSignal(signal)
 	select {
 	case ch <- struct{}{}:
+		_incAcquired(signal)
 		return true
 	default:
 		_incDropped(signal)
@@ -125,31 +116,31 @@ func TryAcquire(signal string) bool {
 	}
 }
 
-// Release frees one slot on the signal's semaphore. No-op for unknown signals or unlimited queues.
-// The RLock is held through the entire read + receive to prevent a TOCTOU race where
-// SetQueuePolicy swaps the channel pointer between the read and the receive.
+// Release frees one slot on the signal's semaphore. No-op for unknown signals.
 func Release(signal string) {
 	_queueMu.RLock()
-	defer _queueMu.RUnlock()
-
-	maxSize := 0
-	switch signal {
-	case signalLogs:
-		maxSize = _queuePolicy.LogsMaxSize
-	case signalTraces:
-		maxSize = _queuePolicy.TracesMaxSize
-	case signalMetrics:
-		maxSize = _queuePolicy.MetricsMaxSize
-	}
-
 	ch := _channelForSignal(signal)
-	if maxSize <= 0 || ch == nil {
+	_queueMu.RUnlock()
+
+	if ch == nil {
 		return
 	}
 
 	select {
 	case <-ch:
 	default:
+	}
+}
+
+// _incAcquired increments the appropriate "emitted/started/recorded" counter.
+func _incAcquired(signal string) {
+	switch signal {
+	case signalLogs:
+		_incLogsEmitted()
+	case signalTraces:
+		_incSpansStarted()
+	case signalMetrics:
+		_incMetricsRecorded()
 	}
 }
 
