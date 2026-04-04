@@ -768,6 +768,39 @@ func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	}
 }
 
+// ── Error fingerprint injection ───────────────────────────────────────────────
+
+func TestHandler_ErrorFingerprint_Added(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("error occurred", slog.String("exc_name", "ValueError"))
+
+	out := buf.String()
+	if !strings.Contains(out, "error_fingerprint") {
+		t.Errorf("expected error_fingerprint in output: %s", out)
+	}
+}
+
+func TestHandler_ErrorFingerprint_NotAdded_WhenNoError(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("normal message")
+
+	if strings.Contains(buf.String(), "error_fingerprint") {
+		t.Errorf("unexpected error_fingerprint in output: %s", buf.String())
+	}
+}
+
 // ── GetLogger produces JSON output when format=json ─────────────────────────
 func TestGetLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	setupFullSampling(t)
