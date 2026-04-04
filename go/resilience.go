@@ -28,9 +28,9 @@ type ExporterPolicy struct {
 }
 
 var (
-	_resilienceMu      sync.RWMutex
-	_exporterPolicies  = make(map[string]ExporterPolicy)
-	_circuitBreakers   = make(map[string]*gobreaker.CircuitBreaker)
+	_resilienceMu     sync.RWMutex
+	_exporterPolicies = make(map[string]ExporterPolicy)
+	_circuitBreakers  = make(map[string]*gobreaker.CircuitBreaker)
 )
 
 // _defaultExporterPolicy returns the default ExporterPolicy.
@@ -113,7 +113,7 @@ func _runWithBackoff(ctx context.Context, signal string, policy ExporterPolicy, 
 
 	bo := backoff.NewExponentialBackOff()
 	bo.InitialInterval = time.Duration(policy.BackoffSeconds * float64(time.Second))
-	bor := backoff.WithMaxRetries(bo, uint64(policy.Retries)) //nolint:gosec
+	bor := backoff.WithMaxRetries(bo, uint64(policy.Retries)) // #nosec G115 -- Retries validated ≥ 0 in config
 
 	var attempt int
 	return backoff.Retry(func() error {

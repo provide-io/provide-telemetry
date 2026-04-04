@@ -47,8 +47,8 @@ type LoggingConfig struct {
 
 // TracingConfig holds all tracing-related configuration.
 type TracingConfig struct {
-	Enabled      bool              // default true
-	SampleRate   float64           // default 1.0
+	Enabled      bool    // default true
+	SampleRate   float64 // default 1.0
 	OTLPEndpoint string
 	OTLPHeaders  map[string]string
 }

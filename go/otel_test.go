@@ -385,7 +385,7 @@ type testErrorHandler struct {
 	err error
 }
 
-func (h *testErrorHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *testErrorHandler) Enabled(_ context.Context, _ slog.Level) bool  { return true }
 func (h *testErrorHandler) Handle(_ context.Context, _ slog.Record) error { return h.err }
 func (h *testErrorHandler) WithAttrs(_ []slog.Attr) slog.Handler          { return h }
 func (h *testErrorHandler) WithGroup(_ string) slog.Handler               { return h }
