@@ -94,7 +94,7 @@ func doWork(ctx context.Context, runID string, iteration int) error {
 	return telemetry.Trace(ctx, traceName, func(ctx context.Context) error {
 		log := telemetry.GetLogger(ctx, "examples.openobserve")
 		evtName, _ := telemetry.Event("example", "openobserve", "log")
-		log.InfoContext(ctx, evtName, "iteration", strconv.Itoa(iteration))
+		log.InfoContext(ctx, evtName.Event, append(evtName.Attrs(), "iteration", strconv.Itoa(iteration))...)
 
 		metricName := "example.openobserve.requests." + runID
 		c := telemetry.NewCounter(metricName)
