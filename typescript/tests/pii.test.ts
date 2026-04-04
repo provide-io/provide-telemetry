@@ -305,10 +305,10 @@ describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpressio
     registerPiiRule({ path: 'password', mode: 'hash' });
     const obj: Record<string, unknown> = { password: 'hunter2', name: 'Alice' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code, hash rule handled email — result is a hash, NOT [REDACTED]
-    expect(typeof obj['email']).toBe('string');
-    expect(obj['email']).not.toBe('***');
-    expect(String(obj['email'])).toMatch(/^[0-9a-f]{12}$/); // 8-char hex hash
+    // With correct code, hash rule handled password — result is a hash, NOT [REDACTED]
+    expect(typeof obj['password']).toBe('string');
+    expect(obj['password']).not.toBe('***');
+    expect(String(obj['password'])).toMatch(/^[0-9a-f]{12}$/); // 12-char hex hash
     expect(obj['name']).toBe('Alice'); // unaffected
   });
 
@@ -320,8 +320,8 @@ describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpressio
     registerPiiRule({ path: 'password', mode: 'truncate', truncateTo: 4 });
     const obj: Record<string, unknown> = { password: 'hunter2', name: 'Bob' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code: truncated value 'user...' NOT '***'
-    expect(String(obj['email'])).toBe('user...');
+    // With correct code: truncated value 'hunt...' NOT '***'
+    expect(String(obj['password'])).toBe('hunt...');
     expect(obj['name']).toBe('Bob');
   });
 });
