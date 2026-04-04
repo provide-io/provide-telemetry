@@ -14,17 +14,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from spdx_headers import EXCLUDED_DIRS as _BASE_EXCLUDED_DIRS  # noqa: E402
+
 _GO_COPYRIGHT = "// SPDX-FileCopyrightText" + ": Copyright (C) 2026 provide.io llc\n"
 _GO_LICENSE = "// SPDX-License-Identifier" + ": Apache-2.0\n"
 
-_EXCLUDED_DIRS = {
-    ".git",
-    ".venv",
-    "vendor",
-    "dist",
-    "build",
-    "node_modules",
-}
+_EXCLUDED_DIRS = _BASE_EXCLUDED_DIRS | {"vendor"}
 
 
 def _has_go_spdx_header(text: str) -> bool:
