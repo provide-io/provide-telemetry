@@ -6,6 +6,6 @@ module github.com/provide-io/provide-telemetry/go
 go 1.22
 
 require (
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/sony/gobreaker v1.0.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/sony/gobreaker v1.0.0
 )
