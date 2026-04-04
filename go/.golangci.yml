@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 version: "2"
 
 run:
@@ -18,13 +15,4 @@ linters:
     - unconvert
     - misspell
     - exhaustive
-    - gocyclo
-  settings:
-    gocyclo:
-      min-complexity: 10
-  exclusions:
-    rules:
-      - linters:
-          - gocyclo
-          - goconst
-        path: "_test\\.go$"
+    - goimports

@@ -41,6 +41,8 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 path = [
   "Makefile",
+  "go/Makefile",
+  "go/.golangci.yml",
   "typescript/README.md",
   "typescript/CHANGELOG.md",
   "typescript/VERSION",
