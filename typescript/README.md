@@ -74,7 +74,7 @@ log.warn({ event: 'retry.attempt.warn', attempt: 2 });
 log.error({ event: 'db.query.error', error: err.message });
 ```
 
-Event names follow the `segment.segment.status` convention (3–5 dot-separated segments).
+Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 segments (`domain.action.resource.status`).
 
 ### Tracing
 
