@@ -23,4 +23,5 @@ linters:
     rules:
       - linters:
           - gocyclo
+          - goconst
         path: "_test\\.go$"
