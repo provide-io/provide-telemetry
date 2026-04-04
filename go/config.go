@@ -11,6 +11,24 @@ import (
 	"strings"
 )
 
+// Log format constants.
+const (
+	LogFormatConsole = "console"
+	LogFormatJSON    = "json"
+	LogFormatPretty  = "pretty"
+)
+
+// Log level constants.
+const (
+	LogLevelTrace    = "TRACE"
+	LogLevelDebug    = "DEBUG"
+	LogLevelInfo     = "INFO"
+	LogLevelWarn     = "WARN"
+	LogLevelWarning  = "WARNING"
+	LogLevelError    = "ERROR"
+	LogLevelCritical = "CRITICAL"
+)
+
 // LoggingConfig holds all logging-related configuration.
 type LoggingConfig struct {
 	Level             string            // default "INFO"
@@ -123,8 +141,8 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 		Environment: "dev",
 		Version:     "0.0.0",
 		Logging: LoggingConfig{
-			Level:            "INFO",
-			Format:           "console",
+			Level:            LogLevelInfo,
+			Format:           LogFormatConsole,
 			IncludeTimestamp: true,
 			IncludeCaller:    true,
 			Sanitize:         true,
@@ -569,8 +587,8 @@ func parseBool(value string, defaultVal bool) bool {
 // normalizeLevel validates and normalises a log level string.
 func normalizeLevel(value string) (string, error) {
 	allowed := map[string]struct{}{
-		"TRACE": {}, "DEBUG": {}, "INFO": {},
-		"WARNING": {}, "ERROR": {}, "CRITICAL": {},
+		LogLevelTrace: {}, LogLevelDebug: {}, LogLevelInfo: {},
+		LogLevelWarning: {}, LogLevelError: {}, LogLevelCritical: {},
 	}
 	upper := strings.ToUpper(strings.TrimSpace(value))
 	if _, ok := allowed[upper]; !ok {
@@ -582,7 +600,7 @@ func normalizeLevel(value string) (string, error) {
 // validateFormat checks that the log format is one of the allowed values.
 func validateFormat(value string) error {
 	switch value {
-	case "console", "json", "pretty":
+	case LogFormatConsole, LogFormatJSON, LogFormatPretty:
 		return nil
 	default:
 		return NewConfigurationError(fmt.Sprintf("invalid log format: %s", value))
