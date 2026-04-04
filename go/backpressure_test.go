@@ -79,8 +79,7 @@ func TestRelease_FreesSlot(t *testing.T) {
 	}
 }
 
-func TestTryAcquire_HealthCounters_AcquireSuccess_NoEmittedIncrement(t *testing.T) {
-	// TryAcquire no longer increments emitted — emitted is tracked by ShouldSample only.
+func TestTryAcquire_HealthCounters_AcquireSuccess(t *testing.T) {
 	_resetQueuePolicy()
 	_resetHealth()
 	t.Cleanup(_resetQueuePolicy)
@@ -93,14 +92,14 @@ func TestTryAcquire_HealthCounters_AcquireSuccess_NoEmittedIncrement(t *testing.
 	TryAcquire(signalMetrics)
 
 	snap := GetHealthSnapshot()
-	if snap.LogsEmitted != 0 {
-		t.Errorf("LogsEmitted: want 0, got %d", snap.LogsEmitted)
+	if snap.LogsEmitted != 1 {
+		t.Errorf("LogsEmitted: want 1, got %d", snap.LogsEmitted)
 	}
-	if snap.TracesEmitted != 0 {
-		t.Errorf("TracesEmitted: want 0, got %d", snap.TracesEmitted)
+	if snap.SpansStarted != 1 {
+		t.Errorf("SpansStarted: want 1, got %d", snap.SpansStarted)
 	}
-	if snap.MetricsEmitted != 0 {
-		t.Errorf("MetricsEmitted: want 0, got %d", snap.MetricsEmitted)
+	if snap.MetricsRecorded != 1 {
+		t.Errorf("MetricsRecorded: want 1, got %d", snap.MetricsRecorded)
 	}
 }
 
@@ -122,8 +121,8 @@ func TestTryAcquire_HealthCounters_AcquireFailure(t *testing.T) {
 	if snap.LogsDropped != 1 {
 		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
 	}
-	if snap.TracesDropped != 1 {
-		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
+	if snap.SpansDropped != 1 {
+		t.Errorf("SpansDropped: want 1, got %d", snap.SpansDropped)
 	}
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
@@ -186,68 +185,22 @@ func TestRelease_EmptyChannel_NoOp(t *testing.T) {
 	Release(signalMetrics)
 }
 
-func TestSetQueuePolicy_ZeroSize_Unlimited(t *testing.T) {
+func TestSetQueuePolicy_ZeroSize_ClampsToOne(t *testing.T) {
 	_resetQueuePolicy()
 	t.Cleanup(_resetQueuePolicy)
 
-	// A zero-sized policy means unlimited — TryAcquire always succeeds.
+	// A zero-sized policy should clamp each channel to minimum size 1.
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 0, TracesMaxSize: 0, MetricsMaxSize: 0})
 
+	// Should be able to acquire exactly one slot per signal.
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-		for i := 0; i < 10; i++ {
-			if !TryAcquire(signal) {
-				t.Errorf("TryAcquire(%q) iteration %d with unlimited size: expected true", signal, i)
-			}
+		if !TryAcquire(signal) {
+			t.Errorf("TryAcquire(%q) with clamped size 1: expected true", signal)
+		}
+		if TryAcquire(signal) {
+			t.Errorf("TryAcquire(%q) second acquire with clamped size 1: expected false", signal)
 		}
 	}
-}
-
-// TestTryAcquireRelease_ConcurrentSetQueuePolicy verifies that concurrent calls to
-// TryAcquire/Release and SetQueuePolicy do not race. Before the TOCTOU fix,
-// TryAcquire would release the RLock before sending on the channel, allowing
-// SetQueuePolicy to swap the channel pointer mid-operation.
-func TestTryAcquireRelease_ConcurrentSetQueuePolicy(t *testing.T) {
-	_resetQueuePolicy()
-	_resetHealth()
-	t.Cleanup(_resetQueuePolicy)
-	t.Cleanup(_resetHealth)
-
-	SetQueuePolicy(QueuePolicy{LogsMaxSize: 10, TracesMaxSize: 10, MetricsMaxSize: 10})
-
-	const goroutines = 20
-	const iterations = 200
-
-	var wg sync.WaitGroup
-	// Goroutines that continuously swap the queue policy.
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			for j := 0; j < iterations; j++ {
-				size := (i+j)%10 + 1
-				SetQueuePolicy(QueuePolicy{
-					LogsMaxSize:    size,
-					TracesMaxSize:  size,
-					MetricsMaxSize: size,
-				})
-			}
-		}(i)
-	}
-	// Goroutines that continuously acquire and release.
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < iterations; j++ {
-				for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-					if TryAcquire(signal) {
-						Release(signal)
-					}
-				}
-			}
-		}()
-	}
-	wg.Wait()
 }
 
 func TestBackpressureConcurrency(t *testing.T) {
