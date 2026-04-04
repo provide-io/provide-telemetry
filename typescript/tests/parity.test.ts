@@ -292,6 +292,43 @@ describe('parity: config_headers', () => {
   });
 });
 
+// ── Default sensitive keys ──────────────────────────────────────────────────
+
+describe('parity: default_sensitive_keys', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('redacts credential key', () => {
+    const obj: Record<string, unknown> = { credential: 'abc' };
+    sanitizePayload(obj);
+    expect(obj['credential']).toBe('***');
+  });
+  it('redacts cvv key', () => {
+    const obj: Record<string, unknown> = { cvv: '123' };
+    sanitizePayload(obj);
+    expect(obj['cvv']).toBe('***');
+  });
+  it('redacts pin key', () => {
+    const obj: Record<string, unknown> = { pin: '9876' };
+    sanitizePayload(obj);
+    expect(obj['pin']).toBe('***');
+  });
+  it('redacts account_number key', () => {
+    const obj: Record<string, unknown> = { account_number: '111' };
+    sanitizePayload(obj);
+    expect(obj['account_number']).toBe('***');
+  });
+  it('redacts cookie key', () => {
+    const obj: Record<string, unknown> = { cookie: 'sess=x' };
+    sanitizePayload(obj);
+    expect(obj['cookie']).toBe('***');
+  });
+  it('does NOT redact email key', () => {
+    const obj: Record<string, unknown> = { email: 'a@b.com' };
+    sanitizePayload(obj);
+    expect(obj['email']).toBe('a@b.com');
+  });
+});
+
 // ── SLO Classify ────────────────────────────────────────────────────────────
 
 describe('parity: slo_classify', () => {
