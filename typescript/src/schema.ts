@@ -102,11 +102,9 @@ export function event(...segments: string[]): EventRecord {
 }
 
 /**
- * Build and validate an event name from dot-separated segments.
+ * Build a dot-joined event name string from segments.
  * In strict mode (default): enforces 3–5 segments, each matching /^[a-z][a-z0-9_]*$/.
  * In relaxed mode: requires at least 1 segment, skips count and format checks.
- *
- * @deprecated Use event() instead, which returns a structured EventRecord.
  */
 export function eventName(...segments: string[]): string {
   if (segments.length === 0) {

@@ -154,7 +154,7 @@ api:
     - name: event_name
       kind: function
       required: false
-      note: "Deprecated alias. Returns plain string."
+      note: "Returns plain dot-joined event name string."
 
   slo:
     - name: classify_error
