@@ -337,3 +337,35 @@ def test_parity_default_sensitive_keys_pin() -> None:
     payload = {"pin": "9876"}
     result = sanitize_payload(payload, enabled=True)
     assert result["pin"] == "***"
+
+
+# ── Secret Detection ──────────────────────────────────────────────────────────
+
+
+def test_parity_secret_detection_aws_key() -> None:
+    payload = {"data": "AKIAIOSFODNN7EXAMPLE"}  # pragma: allowlist secret
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "***"
+
+
+def test_parity_secret_detection_jwt() -> None:
+    payload = {"data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"}  # pragma: allowlist secret
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "***"
+
+
+def test_parity_secret_detection_normal_string_unchanged() -> None:
+    payload = {"data": "not-a-secret"}
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "not-a-secret"
+
+
+# ── Error Fingerprint Algorithm ──────────────────────────────────────────────
+
+
+def test_parity_error_fingerprint_no_frames() -> None:
+    from provide.telemetry.logger.processors import _compute_error_fingerprint
+
+    fp = _compute_error_fingerprint("ValueError", None)
+    assert fp == "a50aba76697e"
+    assert len(fp) == 12
