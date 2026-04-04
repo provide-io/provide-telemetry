@@ -76,10 +76,9 @@
 //   - [GetHealthSnapshot]
 //
 // ## Schema
-//   - [Event] — build a structured DA(R)S [EventRecord] (3 or 4 segments)
-//   - [EventName] — validate and return a dot-joined event name (3–5 segments)
+//   - [Event] — build and validate a structured DA(R)S event name
+//   - [EventName] — validate and return a dot-joined event name from segments
 //   - [ValidateEventName] — validate a pre-built dotted name string
-//   - [EventRecord] — structured record with Domain, Action, Resource, Status fields
 //
 // ## SLO
 //   - [ClassifyError] / [RecordREDMetrics] / [RecordUSEMetrics]
@@ -99,6 +98,21 @@
 // ## Config helpers
 //   - [ConfigFromEnv] / [DefaultTelemetryConfig]
 package telemetry
+
+// Event builds and validates a structured DA(R)S event name from segments and
+// returns it as a plain string. It is the Go equivalent of the spec's event()
+// function that returns a structured event value.
+//
+// The DA(R)S pattern requires 3–5 dot-separated lowercase segments:
+//
+//	domain.action.status                  (3 segments)
+//	domain.action.resource.status         (4 segments)
+//	domain.action.resource.detail.status  (5 segments)
+//
+// Returns an *EventSchemaError if the segments are invalid.
+func Event(segments ...string) (string, error) {
+	return EventName(segments...)
+}
 
 // RegisterCardinalityLimit registers or updates the cardinality limit for key.
 // It is the spec-named equivalent of [SetCardinalityLimit].
