@@ -42,19 +42,17 @@ func main() {
 	ctx := context.Background()
 	log := telemetry.GetLogger(ctx, "security-demo")
 
-	fmt.Println("=== Security Hardening Demo ===")
-	fmt.Println()
+	fmt.Println("=== Security Hardening Demo ===\n")
 
 	// 1. Control characters stripped from log output
 	fmt.Println("1. Control character stripping:")
 	rawData := "clean\x00hidden\x01bytes\x7fremoved"
 	cleanData := stripControlChars(rawData)
 	ctrlEvt, _ := telemetry.Event("security", "demo", "control_chars")
-	log.InfoContext(ctx, ctrlEvt.Event, append(ctrlEvt.Attrs(), "data", cleanData)...)
+	log.InfoContext(ctx, ctrlEvt, "data", cleanData)
 	fmt.Printf("   Input:  %q\n", rawData)
 	fmt.Printf("   Output: %q\n", cleanData)
-	fmt.Println("   (null bytes and control chars silently removed)")
-	fmt.Println()
+	fmt.Println("   (null bytes and control chars silently removed)\n")
 
 	// 2. Value truncation via SanitizePayload
 	fmt.Println("2. Value truncation (max_depth and oversized values):")
@@ -71,7 +69,7 @@ func main() {
 	})
 	sanitizedTrunc := telemetry.SanitizePayload(truncPayload, true, 0)
 	truncEvt, _ := telemetry.Event("security", "demo", "truncation")
-	log.InfoContext(ctx, truncEvt.Event, append(truncEvt.Attrs(), "big_field_len", len(sanitizedTrunc["big_field"].(string)))...)
+	log.InfoContext(ctx, truncEvt, "big_field_len", len(sanitizedTrunc["big_field"].(string)))
 	fmt.Printf("   Input: %d chars -> truncated to %d chars\n",
 		len(hugeValue), len(sanitizedTrunc["big_field"].(string)))
 	fmt.Println()
@@ -79,11 +77,11 @@ func main() {
 	// 3. Secret detection in values (default sensitive keys)
 	fmt.Println("3. Automatic secret detection (default sensitive keys):")
 	payload := map[string]any{
-		"user":     "alice",
-		"password": "super-secret-pw",  //nolint:gosec // demo only
-		"token":    "ghp_exampletoken", //nolint:gosec // demo only
-		"api_key":  "sk-EXAMPLE12345",  //nolint:gosec // demo only
-		"notes":    "normal text is fine",
+		"user":        "alice",
+		"password":    "super-secret-pw",   //nolint:gosec // demo only
+		"token":       "ghp_exampletoken",  //nolint:gosec // demo only
+		"api_key":     "sk-EXAMPLE12345",   //nolint:gosec // demo only
+		"notes":       "normal text is fine",
 	}
 	cleaned := telemetry.SanitizePayload(payload, true, 0)
 	for _, k := range []string{"user", "password", "token", "api_key", "notes"} {

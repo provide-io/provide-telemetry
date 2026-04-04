@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	_defaultIterations = 10_000
-	_lifecycleIter     = 50
-	_configureIter     = 100
+	_defaultIterations  = 10_000
+	_lifecycleIter      = 50
+	_configureIter      = 100
 )
 
 func bench(fn func(), iterations int) float64 {
@@ -51,12 +51,12 @@ type row struct {
 }
 
 func main() {
-	fmt.Println("Performance Characteristics")
+	fmt.Println("Performance Characteristics\n")
 
 	var rows []row
 
 	// Full setup/shutdown lifecycle
-	fmt.Println("Setup / Shutdown Lifecycle")
+	fmt.Println("Setup / Shutdown Lifecycle\n")
 	lifecycleNs := bench(func() {
 		_, _ = telemetry.SetupTelemetry()
 		_ = telemetry.ShutdownTelemetry(context.Background())
@@ -80,7 +80,7 @@ func main() {
 	rows = append(rows, row{"SetupTelemetry (idempotent)", fmtNs(idempotentNs)})
 
 	// Hot-path instrument operations
-	fmt.Println("Hot-Path Instrument Operations")
+	fmt.Println("Hot-Path Instrument Operations\n")
 
 	c := telemetry.NewCounter("perf.example.requests",
 		telemetry.WithDescription("bench counter"))
@@ -115,7 +115,7 @@ func main() {
 	}, _defaultIterations))})
 
 	rows = append(rows, row{`ShouldSample("logs","x")`, fmtNs(bench(func() {
-		_, _ = telemetry.ShouldSample("logs", "perf.test")
+		_ = telemetry.ShouldSample("logs", "perf.test")
 	}, _defaultIterations))})
 
 	rows = append(rows, row{`Event("a","b","c")`, fmtNs(bench(func() {
@@ -123,7 +123,7 @@ func main() {
 	}, _defaultIterations))})
 
 	// Results table
-	fmt.Println("Results")
+	fmt.Println("Results\n")
 	maxLabel := 0
 	for _, r := range rows {
 		if len(r.label) > maxLabel {

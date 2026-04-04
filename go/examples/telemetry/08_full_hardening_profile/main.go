@@ -22,7 +22,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Full Production Hardening Profile")
+	fmt.Println("Full Production Hardening Profile\n")
 
 	cfg, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 	}
 	sanitized := telemetry.SanitizePayload(payload, true, 0)
 	evtName, _ := telemetry.Event("example", "hardening", "user_event")
-	log.InfoContext(ctx, evtName.Event, append(evtName.Attrs(), "payload", fmt.Sprintf("%v", sanitized))...)
+	log.InfoContext(ctx, evtName, "payload", fmt.Sprintf("%v", sanitized))
 	fmt.Println("  PII rules active")
 
 	// Cardinality limits
@@ -74,11 +74,11 @@ func main() {
 
 	// Sampling policies
 	fmt.Println("\nSampling: logs=50%, traces=100%, critical overrides=100%")
-	_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
+	telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
 		DefaultRate: 0.5,
 		Overrides:   map[string]float64{"example.critical": 1.0},
 	})
-	_, _ = telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
 
 	// Backpressure
 	fmt.Println("\nBackpressure: traces queue max=2")
@@ -111,17 +111,17 @@ func main() {
 
 	// Runtime reconfiguration
 	fmt.Println("\nHot-swapping sampling rate to 100%...")
-	before, _ := telemetry.GetSamplingPolicy("logs")
+	before := telemetry.GetSamplingPolicy("logs")
 	fmt.Printf("  Before: logs_rate=%.1f\n", before.DefaultRate)
-	err = telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{
-		Sampling: &telemetry.SamplingConfig{LogsRate: 1.0, TracesRate: 1.0, MetricsRate: 1.0},
+	err = telemetry.UpdateRuntimeConfig(func(c *telemetry.TelemetryConfig) {
+		c.Sampling.LogsRate = 1.0
 	})
 	if err != nil {
 		fmt.Printf("  UpdateRuntimeConfig error: %v\n", err)
 	} else {
 		// re-apply sampling policy to reflect the new rate
-		_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.0})
-		after, _ := telemetry.GetSamplingPolicy("logs")
+		telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.0})
+		after := telemetry.GetSamplingPolicy("logs")
 		fmt.Printf("  After:  logs_rate=%.1f\n", after.DefaultRate)
 	}
 
@@ -129,14 +129,12 @@ func main() {
 	fmt.Printf("\nHealth snapshot (service=%s):\n", cfg.ServiceName)
 	s := telemetry.GetHealthSnapshot()
 	fmt.Printf("  Dropped:         logs=%d  traces=%d  metrics=%d\n",
-		s.LogsDropped, s.TracesDropped, s.MetricsDropped)
-	fmt.Printf("  Retries:         logs=%d  traces=%d  metrics=%d\n",
-		s.LogsRetries, s.TracesRetries, s.MetricsRetries)
+		s.LogsDropped, s.SpansDropped, s.MetricsDropped)
+	fmt.Printf("  Retries:         %d\n", s.RetryAttempts)
 	fmt.Printf("  Export failures: logs=%d  traces=%d\n",
-		s.LogsExportFailures, s.TracesExportFailures)
-	fmt.Printf("  Circuit state:   logs=%s  traces=%s  metrics=%s\n",
-		s.LogsCircuitState, s.TracesCircuitState, s.MetricsCircuitState)
-	fmt.Printf("  Setup error:     %q\n", s.SetupError)
+		s.LogsExportErrors, s.SpansExportErrors)
+	fmt.Printf("  Circuit trips:   %d\n", s.CircuitBreakerTrips)
+	fmt.Printf("  Last error:      %q\n", s.LastError)
 
 	fmt.Println("\nAll guardrails active — production-ready!")
 }
