@@ -3,11 +3,6 @@ module github.com/provide-io/provide-telemetry/go
 go 1.25.0
 
 require (
-	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/sony/gobreaker v1.0.0
-)
-
-require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	go.opentelemetry.io/contrib/bridges/otelslog v0.17.0
 	go.opentelemetry.io/otel v1.43.0
