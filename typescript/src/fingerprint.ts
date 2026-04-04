@@ -9,7 +9,7 @@
  * the same fingerprint when the call path is equivalent.
  */
 
-import { createHash } from 'node:crypto';
+import { shortHash12 } from './hash';
 
 /**
  * Parse an Error stack trace into normalized frames: `basename:function`.
@@ -46,5 +46,5 @@ function extractFrames(stack: string | undefined): string[] {
 export function computeErrorFingerprint(errorName: string, stack?: string): string {
   const parts = [errorName.toLowerCase()];
   parts.push(...extractFrames(stack));
-  return createHash('sha256').update(parts.join(':')).digest('hex').slice(0, 12);
+  return shortHash12(parts.join(':'));
 }

@@ -7,6 +7,19 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "HealthSnapshot",
+    "get_health_snapshot",
+    "increment_async_blocking_risk",
+    "increment_dropped",
+    "increment_exemplar_unsupported",
+    "increment_retries",
+    "record_export_failure",
+    "record_export_success",
+    "set_queue_depth",
+    "set_setup_error",
+]
+
 import threading
 import time
 from dataclasses import dataclass
@@ -41,6 +54,16 @@ class HealthSnapshot:
     export_latency_ms_logs: float
     export_latency_ms_traces: float
     export_latency_ms_metrics: float
+    circuit_state_logs: str
+    circuit_state_traces: str
+    circuit_state_metrics: str
+    circuit_open_count_logs: int
+    circuit_open_count_traces: int
+    circuit_open_count_metrics: int
+    circuit_cooldown_remaining_logs: float
+    circuit_cooldown_remaining_traces: float
+    circuit_cooldown_remaining_metrics: float
+    setup_error: str | None
 
 
 _lock = threading.Lock()
@@ -53,6 +76,7 @@ _last_error: dict[Signal, str | None] = {"logs": None, "traces": None, "metrics"
 _last_success: dict[Signal, float | None] = {"logs": None, "traces": None, "metrics": None}
 _export_latency_ms: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
 _exemplar_unsupported_total = 0
+_setup_error: str | None = None
 
 
 def _known_signal(signal: Signal) -> Signal:
@@ -106,7 +130,19 @@ def increment_exemplar_unsupported(amount: int = 1) -> None:
         _exemplar_unsupported_total += max(0, amount)
 
 
+def set_setup_error(error: str | None) -> None:
+    global _setup_error
+    with _lock:
+        _setup_error = error
+
+
 def get_health_snapshot() -> HealthSnapshot:
+    # Acquire resilience._lock BEFORE health._lock to prevent deadlock.
+    from provide.telemetry.resilience import get_circuit_state
+
+    cs_logs = get_circuit_state("logs")
+    cs_traces = get_circuit_state("traces")
+    cs_metrics = get_circuit_state("metrics")
     with _lock:
         return HealthSnapshot(
             queue_depth_logs=_queue_depth["logs"],
@@ -134,11 +170,21 @@ def get_health_snapshot() -> HealthSnapshot:
             export_latency_ms_logs=_export_latency_ms["logs"],
             export_latency_ms_traces=_export_latency_ms["traces"],
             export_latency_ms_metrics=_export_latency_ms["metrics"],
+            circuit_state_logs=cs_logs[0],
+            circuit_state_traces=cs_traces[0],
+            circuit_state_metrics=cs_metrics[0],
+            circuit_open_count_logs=cs_logs[1],
+            circuit_open_count_traces=cs_traces[1],
+            circuit_open_count_metrics=cs_metrics[1],
+            circuit_cooldown_remaining_logs=cs_logs[2],
+            circuit_cooldown_remaining_traces=cs_traces[2],
+            circuit_cooldown_remaining_metrics=cs_metrics[2],
+            setup_error=_setup_error,
         )
 
 
 def reset_health_for_tests() -> None:
-    global _exemplar_unsupported_total
+    global _exemplar_unsupported_total, _setup_error
     with _lock:
         for signal in ("logs", "traces", "metrics"):
             _queue_depth[signal] = 0
@@ -150,3 +196,4 @@ def reset_health_for_tests() -> None:
             _last_success[signal] = None
             _export_latency_ms[signal] = 0.0
         _exemplar_unsupported_total = 0
+        _setup_error = None

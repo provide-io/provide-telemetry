@@ -242,6 +242,8 @@ def test_reset_setup_state_sets_false(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import warnings
+
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
     monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
@@ -264,16 +266,21 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
         "provide.telemetry.metrics.provider.shutdown_metrics",
         lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
-    with pytest.raises(RuntimeError, match="boom"):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         setup_telemetry()
+    assert any("degraded mode" in str(warning.message) for warning in w)
     # Only logging was completed before tracing failed, so only logging is rolled back
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 0
     assert called["metrics_shutdown"] == 0
-    assert setup_mod._setup_done is False
+    # Setup is marked done even in degraded mode (idempotent)
+    assert setup_mod._setup_done is True
 
 
 def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import warnings
+
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0, "metrics_shutdown": 0}
     monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
@@ -296,17 +303,21 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
         "provide.telemetry.metrics.provider.shutdown_metrics",
         lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
-    with pytest.raises(RuntimeError, match="boom"):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         setup_telemetry()
+    assert any("degraded mode" in str(warning.message) for warning in w)
     # Logging + tracing completed, so both rolled back in reverse
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 1
     assert called["metrics_shutdown"] == 0
-    assert setup_mod._setup_done is False
+    assert setup_mod._setup_done is True
 
 
 def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """If a teardown step raises during rollback, remaining teardowns still execute."""
+    import warnings
+
     _reset_setup_state_for_tests()
     called = {"log_shutdown": 0, "trace_shutdown": 0}
     monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
@@ -329,12 +340,13 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", _trace_shutdown_raises)
     monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
 
-    with pytest.raises(RuntimeError, match="boom"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()
     # Tracing teardown raised, but logging teardown must still have been called
     assert called["trace_shutdown"] == 1
     assert called["log_shutdown"] == 1
-    assert setup_mod._setup_done is False
+    assert setup_mod._setup_done is True
 
 
 def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> None:

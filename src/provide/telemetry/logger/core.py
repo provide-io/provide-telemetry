@@ -168,88 +168,119 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     return handlers
 
 
-def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:
+def _setup_emergency_fallback(exc: Exception) -> None:
+    """Configure minimal stderr-only structlog pipeline when normal setup fails."""
+    global _configured, _active_config
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(colors=False),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        cache_logger_on_first_use=False,
+    )
+    _configured = True
+    _active_config = None
+    warnings.warn(
+        f"logging setup failed, using emergency stderr fallback: {exc}",
+        RuntimeWarning,
+        stacklevel=3,  # pragma: no mutate
+    )
+
+
+def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:  # pragma: no mutate
     global _configured, _active_config
     with _lock:
         if _configured and not force and _active_config == config:
             return
 
-        level = _get_level(config.logging.level)
-        handlers = _build_handlers(config, level)
-        logging.basicConfig(level=level, handlers=handlers, format="%(message)s", force=True)
+        try:
+            _configure_logging_inner(config)
+        except Exception as exc:
+            _setup_emergency_fallback(exc)
 
-        # Compute effective level for FilteringBoundLogger: min of default
-        # and all module-level overrides so overridden modules reach the
-        # _LevelFilter processor which evaluates per-module thresholds.
-        effective_level = level
-        for module_level_str in config.logging.module_levels.values():
-            module_numeric = _LEVEL_NAME_TO_NUMERIC.get(module_level_str, logging.INFO)
-            if module_numeric < effective_level:
-                effective_level = module_numeric
 
-        processors: list[Any] = [
-            structlog.contextvars.merge_contextvars,
-            merge_runtime_context,
-            structlog.processors.add_log_level,
+def _configure_logging_inner(config: TelemetryConfig) -> None:
+    global _configured, _active_config
+
+    level = _get_level(config.logging.level)
+    handlers = _build_handlers(config, level)
+    logging.basicConfig(level=level, handlers=handlers, format="%(message)s", force=True)
+
+    # Compute effective level for FilteringBoundLogger: min of default
+    # and all module-level overrides so overridden modules reach the
+    # _LevelFilter processor which evaluates per-module thresholds.
+    effective_level = level
+    for module_level_str in config.logging.module_levels.values():
+        module_numeric = _LEVEL_NAME_TO_NUMERIC.get(module_level_str, logging.INFO)  # pragma: no mutate
+        if module_numeric < effective_level:  # pragma: no mutate
+            effective_level = module_numeric
+
+    processors: list[Any] = [
+        structlog.contextvars.merge_contextvars,
+        merge_runtime_context,
+        structlog.processors.add_log_level,
+    ]
+    if config.logging.include_timestamp:
+        processors.append(structlog.processors.TimeStamper(fmt="iso"))
+
+    processors.extend(
+        [
+            harden_input(
+                config.security.max_attr_value_length,
+                config.security.max_attr_count,
+                config.security.max_nesting_depth,
+            ),
+            add_standard_fields(config),
+            add_error_fingerprint,
+            apply_sampling,
+            enforce_event_schema(config),
+            sanitize_sensitive_fields(config.logging.sanitize, config.security.max_nesting_depth),
         ]
-        if config.logging.include_timestamp:
-            processors.append(structlog.processors.TimeStamper(fmt="iso"))
+    )
 
-        processors.extend(
-            [
-                harden_input(
-                    config.security.max_attr_value_length,
-                    config.security.max_attr_count,
-                    config.security.max_nesting_depth,
-                ),
-                add_standard_fields(config),
-                add_error_fingerprint,
-                apply_sampling,
-                enforce_event_schema(config),
-                sanitize_sensitive_fields(config.logging.sanitize, config.security.max_nesting_depth),
-            ]
+    # Per-module level filter — placed late so enrichment processors
+    # run first.  Only added when module_levels are configured.
+    if config.logging.module_levels:
+        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
+
+    if config.logging.include_caller:
+        processors.append(
+            structlog.processors.CallsiteParameterAdder(
+                parameters=[
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                ]
+            )
         )
 
-        # Per-module level filter — placed late so enrichment processors
-        # run first.  Only added when module_levels are configured.
-        if config.logging.module_levels:
-            processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
+    renderer: Any
+    if config.logging.fmt == "json":
+        renderer = structlog.processors.JSONRenderer()
+    elif config.logging.fmt == "pretty":
+        from provide.telemetry.logger.pretty import resolve_color
 
-        if config.logging.include_caller:
-            processors.append(
-                structlog.processors.CallsiteParameterAdder(
-                    parameters=[
-                        structlog.processors.CallsiteParameter.FILENAME,
-                        structlog.processors.CallsiteParameter.LINENO,
-                    ]
-                )
-            )
-
-        renderer: Any
-        if config.logging.fmt == "json":
-            renderer = structlog.processors.JSONRenderer()
-        elif config.logging.fmt == "pretty":
-            from provide.telemetry.logger.pretty import resolve_color
-
-            renderer = PrettyRenderer(  # pragma: no mutate
-                colors=sys.stderr.isatty(),
-                key_color=resolve_color(config.logging.pretty_key_color),  # pragma: no mutate
-                value_color=resolve_color(config.logging.pretty_value_color),  # pragma: no mutate
-                fields=config.logging.pretty_fields,  # pragma: no mutate
-            )
-        else:
-            renderer = structlog.dev.ConsoleRenderer(colors=False)
-
-        processors.append(renderer)
-
-        structlog.configure(
-            processors=processors,
-            wrapper_class=_make_filtering_bound_logger(effective_level),
-            logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
+        renderer = PrettyRenderer(  # pragma: no mutate
+            colors=sys.stderr.isatty(),
+            key_color=resolve_color(config.logging.pretty_key_color),  # pragma: no mutate
+            value_color=resolve_color(config.logging.pretty_value_color),  # pragma: no mutate
+            fields=config.logging.pretty_fields,  # pragma: no mutate
         )
-        _active_config = config
-        _configured = True
+    else:
+        renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
+
+    processors.append(renderer)
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=_make_filtering_bound_logger(effective_level),
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=False,
+    )
+    _active_config = config
+    _configured = True
 
 
 def shutdown_logging() -> None:
