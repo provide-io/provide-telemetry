@@ -13,7 +13,10 @@ import (
 func GetRuntimeConfig() *TelemetryConfig {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
-	return _runtimeCfg
+	if _runtimeCfg == nil {
+		return nil
+	}
+	return cloneTelemetryConfig(_runtimeCfg)
 }
 
 // UpdateRuntimeConfig applies mutate to the current config atomically.
@@ -26,7 +29,10 @@ func UpdateRuntimeConfig(mutate func(*TelemetryConfig)) error {
 		return fmt.Errorf("telemetry not set up: call SetupTelemetry first")
 	}
 
-	mutate(_runtimeCfg)
+	next := cloneTelemetryConfig(_runtimeCfg)
+	mutate(next)
+	_applyRuntimePolicies(next)
+	_runtimeCfg = next
 	return nil
 }
 
@@ -46,6 +52,7 @@ func ReloadRuntimeFromEnv() error {
 		return err
 	}
 
+	_applyRuntimePolicies(cfg)
 	_runtimeCfg = cfg
 	return nil
 }

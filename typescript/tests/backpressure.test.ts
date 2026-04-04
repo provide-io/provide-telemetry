@@ -30,6 +30,16 @@ describe('getQueuePolicy / setQueuePolicy', () => {
     p.maxLogs = 99;
     expect(getQueuePolicy().maxLogs).toBe(0);
   });
+
+  it('preserves in-flight occupancy when policy updates', () => {
+    setQueuePolicy({ maxLogs: 2 });
+    const first = tryAcquire('logs');
+    expect(first).not.toBeNull();
+    setQueuePolicy({ maxLogs: 3 });
+    expect(tryAcquire('logs')).not.toBeNull();
+    expect(tryAcquire('logs')).not.toBeNull();
+    expect(tryAcquire('logs')).toBeNull();
+  });
 });
 
 describe('tryAcquire', () => {

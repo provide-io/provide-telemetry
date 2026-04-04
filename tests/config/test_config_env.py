@@ -14,6 +14,7 @@ from provide.telemetry.config import (
     TelemetryConfig,
     TracingConfig,
     _parse_bool,
+    _parse_env_bool,
     _parse_otlp_headers,
 )
 
@@ -24,6 +25,16 @@ def test_parse_bool() -> None:
     assert _parse_bool("true", False) is True
     assert _parse_bool("YES", False) is True
     assert _parse_bool("0", True) is False
+
+
+def test_parse_env_bool_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="invalid boolean for PROVIDE_TRACE_ENABLED"):
+        _parse_env_bool("invalid-boolean", True, "PROVIDE_TRACE_ENABLED")
+
+
+def test_telemetry_from_env_rejects_invalid_boolean_value() -> None:
+    with pytest.raises(ValueError, match="invalid boolean for PROVIDE_TRACE_ENABLED"):
+        TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "invalid-boolean"})
 
 
 def test_parse_otlp_headers() -> None:
