@@ -65,15 +65,22 @@ func ShouldSample(signal, key string) bool {
 	}
 
 	var sampled bool
-	switch {
-	case rate == 0.0:
+	switch rate {
+	case 0.0:
 		sampled = false
-	case rate == 1.0:
+	case 1.0:
 		sampled = true
 	default:
 		sampled = rand.Float64() < rate //nolint:gosec
 	}
 
+	_recordSampleDecision(signal, sampled)
+
+	return sampled
+}
+
+// _recordSampleDecision increments the appropriate counter based on the signal and sampling outcome.
+func _recordSampleDecision(signal string, sampled bool) {
 	if sampled {
 		switch signal {
 		case signalLogs:
@@ -93,8 +100,6 @@ func ShouldSample(signal, key string) bool {
 			_incMetricsDropped()
 		}
 	}
-
-	return sampled
 }
 
 // _resetSamplingPolicies clears all registered sampling policies (for test cleanup).
