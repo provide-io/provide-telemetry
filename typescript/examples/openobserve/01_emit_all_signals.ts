@@ -1,3 +1,4 @@
+#!/usr/bin/env npx tsx
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
@@ -116,7 +117,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     const start = Date.now();
     await withTrace(traceName, async () => {
-      log.info({ event: 'example.openobserve.log', run_id: runId, iteration: String(i) });
+      log.info({ ...event('example', 'openobserve', 'log'), run_id: runId, iteration: String(i) });
       requestsCounter.add(1, { iteration: String(i) });
       await new Promise((r) => setTimeout(r, 50));
     });

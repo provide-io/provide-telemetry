@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from provide.telemetry import (
     classify_error,
+    event,
     get_health_snapshot,
     get_logger,
     record_red_metrics,
@@ -33,8 +34,19 @@ def main() -> None:
     record_red_metrics(route="/matchmaking", method="POST", status_code=503, duration_ms=210.5)
     record_use_metrics(resource="cpu", utilization_percent=61)
 
-    taxonomy = classify_error("UpstreamTimeout", 503)
-    log.error("example.slo.error", exc_name="UpstreamTimeout", status_code=503, **taxonomy)
+    # ── 🏷️ Error taxonomy ────────────────────────────────────
+    print("\n🏷️  Error taxonomy classification:")
+    cases = [
+        ("UpstreamTimeout", 503),
+        ("InvalidPayload", 400),
+        ("NullPointerError", None),
+    ]
+    for exc_name, code in cases:
+        taxonomy = classify_error(exc_name, code)
+        icon = {"server": "🔴", "client": "🟡", "internal": "⚫"}.get(taxonomy["error_type"], "❓")
+        print(f"  {icon} {exc_name}(status={code}) → type={taxonomy['error_type']}, code={taxonomy['error_code']}")
+        if code == 503:
+            log.error(event("example", "slo", "error"), exc_name=exc_name, status_code=code, **taxonomy)
 
     # ── 🩺 Full health snapshot ──────────────────────────────
     print("\n🩺 Full HealthSnapshot (all 25 fields):")

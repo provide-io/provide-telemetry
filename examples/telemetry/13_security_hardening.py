@@ -16,7 +16,7 @@ Demonstrates:
 
 from __future__ import annotations
 
-from provide.telemetry import get_logger, setup_telemetry, shutdown_telemetry
+from provide.telemetry import event, get_logger, setup_telemetry, shutdown_telemetry
 from provide.telemetry.pii import sanitize_payload
 
 
@@ -28,13 +28,13 @@ def main() -> None:
 
     # 1. Control characters stripped from log output
     print("1. Control character stripping:")
-    log.info("security.demo.control_chars", data="clean\x00hidden\x01bytes\x7fremoved")
+    log.info(event("security", "demo", "control_chars"), data="clean\x00hidden\x01bytes\x7fremoved")
     print("   (null bytes and control chars silently removed)\n")
 
     # 2. Oversized values truncated
     print("2. Value truncation (default 1024 chars):")
     huge_value = "x" * 2000
-    log.info("security.demo.truncation", big_field=huge_value)
+    log.info(event("security", "demo", "truncation"), big_field=huge_value)
     print(f"   Input: {len(huge_value)} chars → truncated to 1024\n")
 
     # 3. Secret detection in values

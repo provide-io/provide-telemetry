@@ -13,6 +13,7 @@ from provide.telemetry import (
     TelemetryMiddleware,
     bind_websocket_context,
     clear_websocket_context,
+    event,
     extract_w3c_context,
     get_logger,
     get_trace_context,
@@ -25,8 +26,15 @@ from provide.telemetry.propagation import bind_propagation_context, clear_propag
 
 async def _app(_scope: dict[str, Any], _receive: Any, _send: Any) -> None:
     log = get_logger("examples.w3c")
-    log.info("example.w3c.received", context=get_context())
-    log.info("example.w3c.context", trace_context=get_trace_context())
+    if scope["type"] == "websocket":
+        log.info(event("example", "w3c", "websocket"), context=get_context())
+        await send({"type": "websocket.accept"})
+        await send({"type": "websocket.close", "code": 1000})
+        return
+    log.info(event("example", "w3c", "received"), context=get_context())
+    log.info(event("example", "w3c", "trace"), trace_context=get_trace_context())
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
 
 
 async def _run_once() -> None:
