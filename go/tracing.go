@@ -7,6 +7,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Span represents an active trace span.
@@ -29,7 +31,7 @@ type _noopSpan struct {
 	spanID  string
 }
 
-func (s *_noopSpan) End()                               {}
+func (s *_noopSpan) End() { _ = s }
 func (s *_noopSpan) SetAttribute(key string, value any) { _ = key; _ = value }
 func (s *_noopSpan) RecordError(err error)              { _ = err }
 func (s *_noopSpan) SpanID() string                     { return s.spanID }
@@ -77,8 +79,14 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 }
 
 // GetTraceContext returns the trace and span IDs bound to ctx.
+// When an active OTel span is present in ctx its IDs take precedence.
+// Falls back to context key values set by SetTraceContext.
 // Returns empty strings if not set.
 func GetTraceContext(ctx context.Context) (traceID, spanID string) {
+	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		sc := span.SpanContext()
+		return sc.TraceID().String(), sc.SpanID().String()
+	}
 	if v, ok := ctx.Value(_traceIDKey).(string); ok {
 		traceID = v
 	}
