@@ -138,13 +138,20 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	return nr
 }
 
-// applySchema validates the event name against schema rules when strict mode is enabled.
-// Returns an error if the message fails validation and strict mode is active.
+// applySchema validates the event name and required keys when strict mode is enabled.
+// Returns an error if validation fails; the caller drops the record on error.
 func (h *_telemetryHandler) applySchema(r slog.Record) error {
 	if !_strictSchema {
 		return nil
 	}
-	return ValidateEventName(r.Message)
+	if err := ValidateEventName(r.Message); err != nil {
+		return err
+	}
+	if len(h.cfg.EventSchema.RequiredKeys) > 0 {
+		attrs := _attrsToMap(r)
+		return ValidateRequiredKeys(attrs, h.cfg.EventSchema.RequiredKeys)
+	}
+	return nil
 }
 
 // applyPII sanitizes all record attributes through the PII engine.
