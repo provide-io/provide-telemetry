@@ -34,7 +34,7 @@ func _buildQueue(size int) chan struct{} {
 	return make(chan struct{}, size)
 }
 
-// _resetQueuePolicy closes existing channels and rebuilds with default sizes.
+// _resetQueuePolicy rebuilds all queues with default sizes.
 // Must be called with no lock held.
 func _resetQueuePolicy() {
 	_queueMu.Lock()
@@ -49,17 +49,14 @@ func _resetQueuePolicy() {
 }
 
 // _drainAndRebuild replaces all queues with new channels based on policy.
+// Old channels are abandoned (not closed) to prevent a TOCTOU panic: TryAcquire
+// and Release read the channel pointer under RLock then release the lock before
+// the channel operation, so closing the old channel here could race with a
+// concurrent send/receive on the now-stale pointer.
 // Caller must hold _queueMu write lock.
 func _drainAndRebuild(policy QueuePolicy) {
-	if _logsQueue != nil {
-		close(_logsQueue)
-	}
-	if _tracesQueue != nil {
-		close(_tracesQueue)
-	}
-	if _metricsQueue != nil {
-		close(_metricsQueue)
-	}
+	// Intentionally do not close old channels — let them be GC'd once all
+	// in-flight references drop.
 	_queuePolicy = policy
 	_logsQueue = _buildQueue(policy.LogsMaxSize)
 	_tracesQueue = _buildQueue(policy.TracesMaxSize)
