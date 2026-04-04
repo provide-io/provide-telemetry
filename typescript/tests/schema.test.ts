@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EventSchemaError,
+  event,
   eventName,
   validateEventName,
   validateRequiredKeys,

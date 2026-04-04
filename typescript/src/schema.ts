@@ -78,7 +78,7 @@ export function event(...segments: string[]): EventRecord {
     throw new EventSchemaError(`event() requires 3 or 4 segments (DA[R]S), got ${segments.length}`);
   }
 
-  const strict = getStrictSchema();
+  const strict = getConfig().strictSchema;
   if (strict) {
     for (const seg of segments) {
       if (!SEGMENT_RE.test(seg)) {
@@ -102,9 +102,11 @@ export function event(...segments: string[]): EventRecord {
 }
 
 /**
- * Build a dot-joined event name string from segments.
+ * Build and validate an event name from dot-separated segments.
  * In strict mode (default): enforces 3–5 segments, each matching /^[a-z][a-z0-9_]*$/.
  * In relaxed mode: requires at least 1 segment, skips count and format checks.
+ *
+ * @deprecated Use event() instead, which returns a structured EventRecord.
  */
 export function eventName(...segments: string[]): string {
   if (segments.length === 0) {
