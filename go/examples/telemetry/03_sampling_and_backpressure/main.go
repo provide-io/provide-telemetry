@@ -115,7 +115,7 @@ func main() {
 	fmt.Println("\nHealth snapshot after saturation:")
 	snapshot := telemetry.GetHealthSnapshot()
 	fmt.Printf("  dropped_logs:       %d\n", snapshot.LogsDropped)
-	fmt.Printf("  dropped_traces:     %d\n", snapshot.SpansDropped)
+	fmt.Printf("  dropped_traces:     %d\n", snapshot.TracesDropped)
 	fmt.Printf("  dropped_metrics:    %d\n", snapshot.MetricsDropped)
 	fmt.Printf("  queue_depth_traces: (n/a in Go snapshot)\n")
 

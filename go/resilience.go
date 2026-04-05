@@ -159,7 +159,6 @@ func RunWithResilience(ctx context.Context, signal string, fn func(context.Conte
 
 	if _timeoutEnabled(policy.TimeoutSeconds) {
 		if _checkCircuitBreaker(signal) {
-			_incCircuitBreakerTrips()
 			if policy.FailOpen {
 				return nil
 			}
@@ -170,7 +169,7 @@ func RunWithResilience(ctx context.Context, signal string, fn func(context.Conte
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
 		if attempt > 0 {
-			_incRetryAttempts()
+			_incRetries(signal)
 			time.Sleep(_secondsToDuration(policy.BackoffSeconds))
 		}
 
@@ -205,28 +204,12 @@ func RunWithResilience(ctx context.Context, signal string, fn func(context.Conte
 	return lastErr
 }
 
-// _incExportSuccess increments the per-signal "exported OK" counter.
-func _incExportSuccess(signal string) {
-	switch signal {
-	case signalLogs:
-		_incLogsExportedOK()
-	case signalTraces:
-		_incSpansExportedOK()
-	case signalMetrics:
-		_incMetricsExportedOK()
-	}
-}
+// _incExportSuccess is a no-op — success counters were removed from the canonical layout.
+func _incExportSuccess(_ string) {}
 
-// _incExportFailure increments the per-signal export-error counter.
+// _incExportFailure increments the per-signal export-failure counter.
 func _incExportFailure(signal string) {
-	switch signal {
-	case signalLogs:
-		_incLogsExportErrors()
-	case signalTraces:
-		_incSpansExportErrors()
-	case signalMetrics:
-		_incMetricsExportErrors()
-	}
+	_incExportFailures(signal)
 }
 
 // _resetResiliencePolicies clears all registered policies and circuit breaker state (for test cleanup).

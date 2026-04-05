@@ -175,7 +175,7 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// traces: rate 1.0 -> _incSpansStarted
+	// traces: rate 1.0 -> _incEmitted(signalTraces)
 	if _, err := SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 1.0}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// metrics: rate 1.0 -> _incMetricsRecorded
+	// metrics: rate 1.0 -> _incEmitted(signalMetrics)
 	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 1.0}); err != nil {
 		t.Fatal(err)
 	}
@@ -215,14 +215,14 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 	if snap.LogsDropped != 1 {
 		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
 	}
-	if snap.SpansStarted != 1 {
-		t.Errorf("SpansStarted: want 1, got %d", snap.SpansStarted)
+	if snap.TracesEmitted != 1 {
+		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
 	}
-	if snap.SpansDropped != 1 {
-		t.Errorf("SpansDropped: want 1, got %d", snap.SpansDropped)
+	if snap.TracesDropped != 1 {
+		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
 	}
-	if snap.MetricsRecorded != 1 {
-		t.Errorf("MetricsRecorded: want 1, got %d", snap.MetricsRecorded)
+	if snap.MetricsEmitted != 1 {
+		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
 	}
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
@@ -242,7 +242,7 @@ func TestShouldSample_UnknownSignal_ReturnsError(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.LogsEmitted != 0 || snap.SpansStarted != 0 || snap.MetricsRecorded != 0 {
+	if snap.LogsEmitted != 0 || snap.TracesEmitted != 0 || snap.MetricsEmitted != 0 {
 		t.Errorf("unexpected health counter increments for unknown signal: %+v", snap)
 	}
 }

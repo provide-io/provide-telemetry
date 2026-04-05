@@ -134,8 +134,8 @@ func main() {
 	}
 
 	health := telemetry.GetHealthSnapshot()
-	fmt.Printf("health: logs_emitted=%d spans_started=%d metrics_recorded=%d "+
-		"logs_dropped=%d spans_dropped=%d\n",
-		health.LogsEmitted, health.SpansStarted, health.MetricsRecorded,
-		health.LogsDropped, health.SpansDropped)
+	fmt.Printf("health: logs_emitted=%d traces_emitted=%d metrics_emitted=%d "+
+		"logs_dropped=%d traces_dropped=%d\n",
+		health.LogsEmitted, health.TracesEmitted, health.MetricsEmitted,
+		health.LogsDropped, health.TracesDropped)
 }
