@@ -5,7 +5,7 @@ package telemetry
 
 import "sync"
 
-const _defaultQueueSize = 1000
+const _defaultQueueSize = 0
 
 // QueuePolicy defines per-signal maximum in-flight queue sizes.
 type QueuePolicy struct {
@@ -94,13 +94,27 @@ func _channelForSignal(signal string) chan struct{} {
 
 // TryAcquire attempts a non-blocking acquire on the signal's semaphore.
 // Returns true if a slot was acquired; false if the queue is at capacity or the signal is unknown.
+// A maxSize of 0 (or negative) means unlimited — always succeeds without a channel.
 func TryAcquire(signal string) bool {
 	_queueMu.RLock()
+	policy := _queuePolicy
 	ch := _channelForSignal(signal)
 	_queueMu.RUnlock()
 
-	if ch == nil {
+	maxSize := 0
+	switch signal {
+	case signalLogs:
+		maxSize = policy.LogsMaxSize
+	case signalTraces:
+		maxSize = policy.TracesMaxSize
+	case signalMetrics:
+		maxSize = policy.MetricsMaxSize
+	default:
 		return false
+	}
+	if maxSize <= 0 {
+		_incAcquired(signal)
+		return true
 	}
 
 	select {
@@ -113,13 +127,23 @@ func TryAcquire(signal string) bool {
 	}
 }
 
-// Release frees one slot on the signal's semaphore. No-op for unknown signals.
+// Release frees one slot on the signal's semaphore. No-op for unknown signals or unlimited queues.
 func Release(signal string) {
 	_queueMu.RLock()
+	policy := _queuePolicy
 	ch := _channelForSignal(signal)
 	_queueMu.RUnlock()
 
-	if ch == nil {
+	maxSize := 0
+	switch signal {
+	case signalLogs:
+		maxSize = policy.LogsMaxSize
+	case signalTraces:
+		maxSize = policy.TracesMaxSize
+	case signalMetrics:
+		maxSize = policy.MetricsMaxSize
+	}
+	if maxSize <= 0 || ch == nil {
 		return
 	}
 

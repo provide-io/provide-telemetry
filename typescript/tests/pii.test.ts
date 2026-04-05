@@ -187,7 +187,7 @@ describe('sanitizePayload — default sensitive keys', () => {
 });
 
 describe('DEFAULT_SANITIZE_FIELDS — complete coverage', () => {
-  it('includes all expected PII field names', () => {
+  it('includes all expected PII field names (canonical 17-key list)', () => {
     const fields = DEFAULT_SANITIZE_FIELDS;
     expect(fields).toContain('passwd');
     expect(fields).toContain('secret');
@@ -195,8 +195,17 @@ describe('DEFAULT_SANITIZE_FIELDS — complete coverage', () => {
     expect(fields).toContain('cookie');
     expect(fields).toContain('credit_card');
     expect(fields).toContain('ssn');
-    expect(fields).toContain('email');
     expect(fields).toContain('private_key');
+    // New keys in the canonical list
+    expect(fields).toContain('credential');
+    expect(fields).toContain('cvv');
+    expect(fields).toContain('pin');
+    expect(fields).toContain('account_number');
+    expect(fields).toContain('apikey');
+    expect(fields).toContain('creditcard');
+    expect(fields).toContain('auth');
+    // email is intentionally NOT in the default list
+    expect(fields).not.toContain('email');
   });
 });
 
@@ -276,33 +285,33 @@ describe('pii — ruleTargets optimization (kills OptionalChaining + MethodExpre
 });
 
 describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpression at pii.ts:178)', () => {
-  it('hash rule on email prevents default redaction from overriding with [REDACTED]', () => {
+  it('hash rule on password prevents default redaction from overriding with [REDACTED]', () => {
     // ruleTargets collects last path segments of rules (via .pop()?.toLowerCase()).
-    // If ArrowFunction is mutated → () => undefined, ruleTargets = {undefined}, ruleTargets.has('email') = false
-    // → default redaction applies to 'email' even though a rule already handled it → value becomes [REDACTED].
+    // If ArrowFunction is mutated → () => undefined, ruleTargets = {undefined}, ruleTargets.has('password') = false
+    // → default redaction applies to 'password' even though a rule already handled it → value becomes [REDACTED].
     // If MethodExpression mutates .pop() → undefined, same effect.
-    // With correct implementation: ruleTargets = {'email'}, ruleTargets.has('email') = true → default redaction skipped.
+    // With correct implementation: ruleTargets = {'password'}, ruleTargets.has('password') = true → default redaction skipped.
     resetPiiRulesForTests();
-    registerPiiRule({ path: 'email', mode: 'hash' });
-    const obj: Record<string, unknown> = { email: 'user@example.com', name: 'Alice' };
+    registerPiiRule({ path: 'password', mode: 'hash' });
+    const obj: Record<string, unknown> = { password: 'hunter2', name: 'Alice' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code, hash rule handled email — result is a hash, NOT [REDACTED]
-    expect(typeof obj['email']).toBe('string');
-    expect(obj['email']).not.toBe('***');
-    expect(String(obj['email'])).toMatch(/^[0-9a-f]{12}$/); // 8-char hex hash
+    // With correct code, hash rule handled password — result is a hash, NOT [REDACTED]
+    expect(typeof obj['password']).toBe('string');
+    expect(obj['password']).not.toBe('***');
+    expect(String(obj['password'])).toMatch(/^[0-9a-f]{12}$/); // 12-char hex hash
     expect(obj['name']).toBe('Alice'); // unaffected
   });
 
-  it('truncate rule on email preserves truncated value (not overridden by [REDACTED])', () => {
-    // email is a DEFAULT_SANITIZE_FIELD. With ArrowFunction/MethodExpression mutation, ruleTargets.has('email') = false
+  it('truncate rule on password preserves truncated value (not overridden by [REDACTED])', () => {
+    // password is a DEFAULT_SANITIZE_FIELD. With ArrowFunction/MethodExpression mutation, ruleTargets.has('password') = false
     // → default redaction overrides the truncated value with [REDACTED].
-    // With correct code: ruleTargets.has('email') = true → default redaction skipped → truncated value preserved.
+    // With correct code: ruleTargets.has('password') = true → default redaction skipped → truncated value preserved.
     resetPiiRulesForTests();
-    registerPiiRule({ path: 'email', mode: 'truncate', truncateTo: 4 });
-    const obj: Record<string, unknown> = { email: 'user@example.com', name: 'Bob' };
+    registerPiiRule({ path: 'password', mode: 'truncate', truncateTo: 4 });
+    const obj: Record<string, unknown> = { password: 'hunter2', name: 'Bob' }; // pragma: allowlist secret
     sanitizePayload(obj);
-    // With correct code: truncated value 'user...' NOT '***'
-    expect(String(obj['email'])).toBe('user...');
+    // With correct code: truncated value 'hunt...' NOT '***'
+    expect(String(obj['password'])).toBe('hunt...');
     expect(obj['name']).toBe('Bob');
   });
 });

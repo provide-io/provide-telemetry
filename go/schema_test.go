@@ -309,6 +309,30 @@ func TestEventRecord_Attrs_DAS(t *testing.T) {
 	}
 }
 
+func TestValidateRequiredKeys_AllPresent(t *testing.T) {
+	attrs := map[string]any{"domain": "user", "action": "login"}
+	err := ValidateRequiredKeys(attrs, []string{"domain", "action"})
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestValidateRequiredKeys_MissingKey(t *testing.T) {
+	attrs := map[string]any{"domain": "user"}
+	err := ValidateRequiredKeys(attrs, []string{"domain", "action"})
+	if err == nil {
+		t.Error("expected error for missing required key 'action'")
+	}
+}
+
+func TestValidateRequiredKeys_EmptyRequired(t *testing.T) {
+	attrs := map[string]any{"domain": "user"}
+	err := ValidateRequiredKeys(attrs, nil)
+	if err != nil {
+		t.Errorf("expected no error with nil required keys, got %v", err)
+	}
+}
+
 func TestEventRecord_Attrs_DARS(t *testing.T) {
 	evt := EventRecord{
 		Event:    "payment.subscription.renewal.success",

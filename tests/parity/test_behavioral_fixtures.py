@@ -313,3 +313,59 @@ def test_parity_classify_error_429() -> None:
 def test_parity_classify_error_0_timeout() -> None:
     result = classify_error("ConnectionError", status_code=0)
     assert result["error.category"] == "timeout"
+
+
+# ── PII Default Sensitive Keys (canonical 17) ────────────────────────────────
+
+
+def test_parity_default_sensitive_keys_cookie() -> None:
+    """cookie is in the canonical 17-key default sensitive list."""
+    payload = {"cookie": "session=abc123"}
+    result = sanitize_payload(payload, enabled=True)
+    assert result["cookie"] == "***"
+
+
+def test_parity_default_sensitive_keys_cvv() -> None:
+    """cvv is in the canonical 17-key default sensitive list."""
+    payload = {"cvv": "123"}
+    result = sanitize_payload(payload, enabled=True)
+    assert result["cvv"] == "***"
+
+
+def test_parity_default_sensitive_keys_pin() -> None:
+    """pin is in the canonical 17-key default sensitive list."""
+    payload = {"pin": "9876"}
+    result = sanitize_payload(payload, enabled=True)
+    assert result["pin"] == "***"
+
+
+# ── Secret Detection ──────────────────────────────────────────────────────────
+
+
+def test_parity_secret_detection_aws_key() -> None:
+    payload = {"data": "AKIAIOSFODNN7EXAMPLE"}  # pragma: allowlist secret
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "***"
+
+
+def test_parity_secret_detection_jwt() -> None:
+    payload = {"data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"}  # pragma: allowlist secret
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "***"
+
+
+def test_parity_secret_detection_normal_string_unchanged() -> None:
+    payload = {"data": "not-a-secret"}
+    result = sanitize_payload(payload, enabled=True)
+    assert result["data"] == "not-a-secret"
+
+
+# ── Error Fingerprint Algorithm ──────────────────────────────────────────────
+
+
+def test_parity_error_fingerprint_no_frames() -> None:
+    from provide.telemetry.logger.processors import _compute_error_fingerprint
+
+    fp = _compute_error_fingerprint("ValueError", None)
+    assert fp == "a50aba76697e"
+    assert len(fp) == 12

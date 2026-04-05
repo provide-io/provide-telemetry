@@ -66,36 +66,40 @@ describe('recordUseMetrics', () => {
 
 describe('classifyError', () => {
   it('classifies 5xx as server error', () => {
-    const r = classifyError(500);
+    const r = classifyError('ServerError', 500);
     expect(r.errorType).toBe('server');
     expect(r.errorCode).toBe(500);
     expect(r.errorName).toBe('ServerError');
   });
 
   it('classifies 4xx as client error', () => {
-    const r = classifyError(404);
+    const r = classifyError('ClientError', 404);
     expect(r.errorType).toBe('client');
     expect(r.errorCode).toBe(404);
     expect(r.errorName).toBe('ClientError');
   });
 
-  it('classifies 2xx as none', () => {
-    const r = classifyError(200);
-    expect(r.errorType).toBe('none');
+  it('classifies 2xx as unknown', () => {
+    const r = classifyError('', 200);
+    expect(r.errorType).toBe('unknown');
     expect(r.errorCode).toBe(200);
     expect(r.errorName).toBe('');
   });
 
-  it('classifies 3xx as none', () => {
-    expect(classifyError(301).errorType).toBe('none');
+  it('classifies 3xx as unknown', () => {
+    expect(classifyError('', 301).errorType).toBe('unknown');
   });
 
   it('classifies 599 as server', () => {
-    expect(classifyError(599).errorType).toBe('server');
+    expect(classifyError('ServerError', 599).errorType).toBe('server');
   });
 
   it('classifies 400 as client', () => {
-    expect(classifyError(400).errorType).toBe('client');
+    expect(classifyError('ClientError', 400).errorType).toBe('client');
+  });
+
+  it('classifies timeout by exc name even with non-zero status', () => {
+    expect(classifyError('TimeoutError', 503).category).toBe('timeout');
   });
 });
 

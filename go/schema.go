@@ -115,6 +115,16 @@ func ValidateEventName(name string) error {
 	return validateSegments(segments)
 }
 
+// ValidateRequiredKeys returns an EventSchemaError if any required key is missing from attrs.
+func ValidateRequiredKeys(attrs map[string]any, requiredKeys []string) error {
+	for _, key := range requiredKeys {
+		if _, ok := attrs[key]; !ok {
+			return NewEventSchemaError("missing required key: " + key)
+		}
+	}
+	return nil
+}
+
 // validateSegments checks segment count and per-segment format rules.
 func validateSegments(segments []string) error {
 	n := len(segments)
