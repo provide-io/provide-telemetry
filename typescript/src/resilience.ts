@@ -7,10 +7,11 @@
  */
 
 import {
+  _exportFailuresField,
   _incrementHealth,
   _recordExportLatency,
   _registerCircuitStateFn,
-  _setLastExportError,
+  _retriesField,
 } from './health';
 
 export class TelemetryTimeoutError extends Error {
@@ -102,14 +103,13 @@ export async function runWithResilience<T>(
   if (!(signal in _halfOpenProbing)) _halfOpenProbing[signal] = false;
 
   // Circuit breaker check.
+  const failField = _exportFailuresField(signal);
+  const retryField = _retriesField(signal);
   // Stryker disable next-line ConditionalExpression
   if (_consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
     // Reject concurrent callers while a half-open probe is already in flight.
     if (_halfOpenProbing[signal]) {
-      // Stryker disable next-line StringLiteral: health counter key — exact string not assertable from outside
-      _incrementHealth('exportFailures');
-      // Stryker disable next-line StringLiteral: error tracking message — exact wording not separately tested
-      _setLastExportError('circuit breaker open: probe in progress');
+      _incrementHealth(failField);
       if (policy.failOpen) return null;
       throw new TelemetryTimeoutError('circuit breaker open: probe in progress');
     }
@@ -119,8 +119,7 @@ export async function runWithResilience<T>(
     );
     const elapsed = Date.now() - _circuitTrippedAt[signal];
     if (elapsed < cooldown) {
-      _incrementHealth('exportFailures');
-      _setLastExportError('circuit breaker open');
+      _incrementHealth(failField);
       if (policy.failOpen) return null;
       throw new TelemetryTimeoutError('circuit breaker open: too many consecutive timeouts');
     }
@@ -134,8 +133,7 @@ export async function runWithResilience<T>(
     const started = Date.now();
     try {
       const result = await _withTimeout(fn, policy.timeoutMs);
-      _recordExportLatency(Date.now() - started);
-      _setLastExportError(null);
+      _recordExportLatency(signal, Date.now() - started);
       if (_halfOpenProbing[signal]) {
         _halfOpenProbing[signal] = false;
         _consecutiveTimeouts[signal] = 0;
@@ -147,8 +145,7 @@ export async function runWithResilience<T>(
       return result;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      _incrementHealth('exportFailures');
-      _setLastExportError(lastError.message);
+      _incrementHealth(failField);
 
       if (err instanceof TelemetryTimeoutError) {
         if (_halfOpenProbing[signal]) {
@@ -173,7 +170,7 @@ export async function runWithResilience<T>(
 
       // Stryker disable next-line ArithmeticOperator
       if (attempt < attempts - 1) {
-        _incrementHealth('exportRetries');
+        _incrementHealth(retryField);
         // Stryker disable next-line ConditionalExpression,EqualityOperator
         if (policy.backoffMs > 0) await _sleep(policy.backoffMs);
       }
