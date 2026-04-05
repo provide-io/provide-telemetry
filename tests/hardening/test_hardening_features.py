@@ -18,7 +18,7 @@ from provide.telemetry import resilience as resilience_mod
 from provide.telemetry import runtime as runtime_mod
 from provide.telemetry import sampling as sampling_mod
 from provide.telemetry import slo as slo_mod
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import RuntimeOverrides, SamplingConfig, TelemetryConfig
 from provide.telemetry.logger.context import clear_context, get_context
 from provide.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 from provide.telemetry.tracing.context import get_trace_context, set_trace_context
@@ -303,8 +303,8 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg.sampling.logs_rate = 0.9
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
     assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
-    updated = runtime_mod.update_runtime_config(cfg)
-    assert updated is not cfg
+    overrides = RuntimeOverrides(sampling=SamplingConfig(logs_rate=0.9))
+    updated = runtime_mod.update_runtime_config(overrides)
     assert updated.sampling.logs_rate == 0.9
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.9
 
