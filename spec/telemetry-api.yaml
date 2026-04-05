@@ -310,9 +310,30 @@ behavioral_parity:
       OTEL_EXPORTER_OTLP_HEADERS parsed as comma-separated key=value pairs.
     rules:
       - split on first '=' only (preserves '=' in values)
-      - URL-decode both key and value
+      - URL-decode both key and value (percent-encoding only; '+' is literal, not space)
       - skip pairs with empty key
       - skip pairs with no '='
+
+  sampling_signal_validation:
+    description: >
+      Only "logs", "traces", and "metrics" are valid signal names.
+    rules:
+      - unknown signal names must raise an error (ValueError, ConfigurationError, or equivalent)
+      - validation applies to shouldSample, setSamplingPolicy, and getSamplingPolicy
+
+  cardinality_input_clamping:
+    description: >
+      Cardinality limit inputs are clamped to minimum values on registration.
+    rules:
+      - max_values clamped to max(1, input)
+      - ttl_seconds clamped to max(1.0, input)
+
+  backpressure_unlimited:
+    description: >
+      Queue size 0 (or negative) means unlimited — acquire always succeeds.
+    rules:
+      - size <= 0 treated as unlimited (no bounding)
+      - bounded queues are explicit opt-in via positive size
 
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"

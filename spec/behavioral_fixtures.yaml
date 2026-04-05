@@ -147,9 +147,9 @@ propagation_guards:
     expected_action: "discard"
 
 config_headers:
-  - description: "normal key=value parsed"
+  - description: "plus sign preserved as literal (not space)"
     input: "Authorization=Bearer+token"
-    expected: {"Authorization": "Bearer token"}
+    expected: {"Authorization": "Bearer+token"}
 
   - description: "URL-encoded key and value"
     input: "my%20key=my%20value"
@@ -166,6 +166,14 @@ config_headers:
   - description: "value containing = preserved"
     input: "Authorization=Bearer token=xyz"
     expected: {"Authorization": "Bearer token=xyz"}
+
+  - description: "plus in key and value preserved"
+    input: "a+b=c+d"
+    expected: {"a+b": "c+d"}
+
+  - description: "percent-encoded spaces decoded"
+    input: "a%20b=c%20d"
+    expected: {"a b": "c d"}
 
   - description: "empty string returns empty"
     input: ""
@@ -246,3 +254,98 @@ error_fingerprint:
       frames: ["module:main"]
       expected_length: 12
       note: "One frame — hash of 'typeerror:module:main'"
+
+backpressure_unlimited:
+  description: >
+    Queue size 0 means unlimited — acquire always succeeds without blocking.
+  cases:
+    - description: "size=0 acquire succeeds"
+      queue_size: 0
+      action: "acquire"
+      expected: "success"
+    - description: "size=0 multiple acquires succeed"
+      queue_size: 0
+      acquire_count: 100
+      expected: "all_success"
+    - description: "size=1 second acquire blocked/rejected"
+      queue_size: 1
+      acquire_count: 2
+      release_count: 0
+      expected: "second_rejected"
+
+cardinality_clamping:
+  description: >
+    Cardinality limit inputs are clamped to minimum values.
+  cases:
+    - description: "zero max_values clamped to 1"
+      max_values: 0
+      ttl_seconds: 10.0
+      expected_max_values: 1
+      expected_ttl_seconds: 10.0
+    - description: "negative max_values clamped to 1"
+      max_values: -5
+      ttl_seconds: 10.0
+      expected_max_values: 1
+      expected_ttl_seconds: 10.0
+    - description: "zero ttl clamped to 1.0"
+      max_values: 10
+      ttl_seconds: 0.0
+      expected_max_values: 10
+      expected_ttl_seconds: 1.0
+    - description: "negative ttl clamped to 1.0"
+      max_values: 10
+      ttl_seconds: -3.0
+      expected_max_values: 10
+      expected_ttl_seconds: 1.0
+    - description: "valid values unchanged"
+      max_values: 50
+      ttl_seconds: 300.0
+      expected_max_values: 50
+      expected_ttl_seconds: 300.0
+
+sampling_signal_validation:
+  description: >
+    Only "logs", "traces", and "metrics" are valid signal names.
+    Unknown signals must raise an error.
+  valid_signals:
+    - "logs"
+    - "traces"
+    - "metrics"
+  invalid_signals:
+    - description: "typo: singular"
+      signal: "log"
+      expected_error: true
+    - description: "typo: singular"
+      signal: "trace"
+      expected_error: true
+    - description: "typo: singular"
+      signal: "metric"
+      expected_error: true
+    - description: "unknown signal"
+      signal: "events"
+      expected_error: true
+    - description: "empty string"
+      signal: ""
+      expected_error: true
+
+schema_strict_mode:
+  description: >
+    When strict mode is off, EventName() accepts segments without validation.
+    When strict mode is on, invalid segments are rejected.
+  cases:
+    - description: "lenient mode accepts uppercase segments"
+      strict: false
+      segments: ["A", "B", "C"]
+      expected_error: false
+    - description: "lenient mode accepts mixed case"
+      segments: ["User", "Login", "Ok"]
+      strict: false
+      expected_error: false
+    - description: "strict mode rejects uppercase"
+      strict: true
+      segments: ["User", "login", "ok"]
+      expected_error: true
+    - description: "strict mode accepts valid segments"
+      strict: true
+      segments: ["user", "login", "ok"]
+      expected_error: false
