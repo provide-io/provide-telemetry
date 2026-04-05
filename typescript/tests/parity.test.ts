@@ -26,6 +26,7 @@ import {
   registerCardinalityLimit,
   getCardinalityLimits,
   clearCardinalityLimits,
+  validateRequiredKeys,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -520,5 +521,49 @@ describe('parity: schema strict mode', () => {
   it('strict mode accepts valid lowercase', () => {
     setupTelemetry({ strictSchema: true });
     expect(eventName('user', 'login', 'ok')).toBe('user.login.ok');
+  });
+});
+
+// ── Default Sensitive Keys (parity) ─────────────────────────────────────────
+
+describe('parity: default sensitive keys', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('cookie is auto-redacted', () => {
+    const obj: Record<string, unknown> = { cookie: 'session=abc123' };
+    sanitizePayload(obj);
+    expect(obj['cookie']).toBe('***');
+  });
+
+  it('cvv is auto-redacted', () => {
+    const obj: Record<string, unknown> = { cvv: '123' };
+    sanitizePayload(obj);
+    expect(obj['cvv']).toBe('***');
+  });
+
+  it('pin is auto-redacted', () => {
+    const obj: Record<string, unknown> = { pin: '9876' };
+    sanitizePayload(obj);
+    expect(obj['pin']).toBe('***');
+  });
+});
+
+// ── Required Keys Validation (parity) ───────────────────────────────────────
+
+describe('parity: required keys validation', () => {
+  it('missing required key throws EventSchemaError', () => {
+    expect(() => validateRequiredKeys({ domain: 'auth' }, ['domain', 'action'])).toThrow(
+      EventSchemaError,
+    );
+  });
+
+  it('all required keys present does not throw', () => {
+    expect(() =>
+      validateRequiredKeys({ domain: 'auth', action: 'login' }, ['domain', 'action']),
+    ).not.toThrow();
+  });
+
+  it('empty required keys does not throw', () => {
+    expect(() => validateRequiredKeys({ domain: 'auth' }, [])).not.toThrow();
   });
 });
