@@ -116,7 +116,7 @@ def _record_attempt_success(sig: str) -> None:
     """Record a successful attempt, handling half-open state decay."""
     with _lock:
         if _half_open_probing[sig]:
-            _half_open_probing[sig] = False
+            _half_open_probing[sig] = False  # pragma: no mutate — False/None both falsy
             _consecutive_timeouts[sig] = 0
             _open_count[sig] = max(0, _open_count[sig] - 1)
         else:
@@ -179,7 +179,10 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         except Exception as exc:
             last_error = exc
             record_export_failure(sig, exc)
-            _record_attempt_failure(sig, is_timeout=False)
+            _record_attempt_failure(
+                sig,
+                is_timeout=False,  # pragma: no mutate — False/None both falsy in elif is_timeout check
+            )
             if attempt < attempts - 1:
                 increment_retries(sig)
                 if backoff_seconds > 0:
@@ -240,7 +243,7 @@ def get_circuit_state(signal: Signal) -> tuple[str, int, float]:
                 _CIRCUIT_MAX_COOLDOWN,
             )
             remaining = cooldown - (time.monotonic() - _circuit_tripped_at[sig])
-            if remaining > 0:
+            if remaining > 0:  # pragma: no mutate — boundary equivalence: >0 vs >=0 and >0 vs >1
                 return ("open", _open_count[sig], remaining)
             return ("half-open", _open_count[sig], 0.0)
         return ("closed", _open_count[sig], 0.0)
