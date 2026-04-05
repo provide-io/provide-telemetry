@@ -468,11 +468,11 @@ def test_configure_logging_passes_max_nesting_depth_to_harden_input(
     assert max_nesting_depth == 3
 
 
-def test_configure_logging_passes_max_nesting_depth_to_sanitize(
+def test_configure_logging_passes_pii_max_depth_to_sanitize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Kills mutmut_42: sanitize_sensitive_fields called without max_nesting_depth → uses default 8.
-    # Spy on sanitize_sensitive_fields to assert it receives the configured depth.
+    # Kills mutmut_42: sanitize_sensitive_fields called without max_depth → uses default 8.
+    # Spy on sanitize_sensitive_fields to assert it receives the configured pii_max_depth.
     _reset_logging_for_tests()
     core_mod_any = cast(Any, core_mod)
     captured: list[tuple[Any, ...]] = []
@@ -485,9 +485,9 @@ def test_configure_logging_passes_max_nesting_depth_to_sanitize(
     monkeypatch.setattr(core_mod_any, "sanitize_sensitive_fields", _spy_sanitize)
     monkeypatch.setattr(core_mod_any.structlog, "configure", lambda **kw: None)
 
-    cfg = TelemetryConfig.from_env({"PROVIDE_SECURITY_MAX_NESTING_DEPTH": "3", "PROVIDE_LOG_SANITIZE": "true"})
+    cfg = TelemetryConfig.from_env({"PROVIDE_LOG_PII_MAX_DEPTH": "3", "PROVIDE_LOG_SANITIZE": "true"})
     configure_logging(cfg)
 
     assert len(captured) == 1
-    _enabled, max_nesting_depth = captured[0]
-    assert max_nesting_depth == 3
+    _enabled, max_depth = captured[0]
+    assert max_depth == 3
