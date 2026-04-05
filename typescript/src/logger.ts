@@ -116,7 +116,7 @@ export function makeWriteHook() {
     // PII sanitization: blocked keys + secret detection + custom PII rules.
     if (cfg.logSanitize) {
       sanitize(o, cfg.sanitizeFields);
-      sanitizePayload(o);
+      sanitizePayload(o, [], { maxDepth: cfg.piiMaxDepth });
     }
 
     // Strip timestamp when configured off.
