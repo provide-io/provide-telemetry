@@ -62,7 +62,7 @@ type _atomicCounter struct {
 func (c *_atomicCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if sampled, _ := ShouldSample(signalMetrics, c.name); !sampled {
+	if sampled, _ := ShouldSample(signalMetrics, c.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
 	if !TryAcquire(signalMetrics) {
@@ -85,7 +85,7 @@ type _atomicGauge struct {
 func (g *_atomicGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if sampled, _ := ShouldSample(signalMetrics, g.name); !sampled {
+	if sampled, _ := ShouldSample(signalMetrics, g.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
 	if !TryAcquire(signalMetrics) {
@@ -109,7 +109,7 @@ type _atomicHistogram struct {
 func (h *_atomicHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if sampled, _ := ShouldSample(signalMetrics, h.name); !sampled {
+	if sampled, _ := ShouldSample(signalMetrics, h.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
 	if !TryAcquire(signalMetrics) {
