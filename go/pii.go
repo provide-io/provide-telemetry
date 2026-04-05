@@ -37,6 +37,7 @@ var _defaultSensitiveKeys = []string{
 	"password", "passwd", "secret", "token", "api_key", "apikey",
 	"auth", "authorization", "credential", "private_key", "ssn",
 	"credit_card", "creditcard", "cvv", "pin", "account_number",
+	"cookie",
 }
 
 var (

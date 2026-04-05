@@ -160,3 +160,29 @@ func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
 		t.Errorf("expected normal string unchanged, got %v", result["data"])
 	}
 }
+
+// ── Default Sensitive Keys ────────────────────────────────────────────────────
+
+func TestParity_DefaultSensitiveKeys_Cookie(t *testing.T) {
+	resetPII(t)
+	result := SanitizePayload(map[string]any{"cookie": "session=abc123"}, true, 32)
+	if result["cookie"] != _piiRedacted {
+		t.Errorf("expected 'cookie' auto-redacted, got %v", result["cookie"])
+	}
+}
+
+func TestParity_DefaultSensitiveKeys_CVV(t *testing.T) {
+	resetPII(t)
+	result := SanitizePayload(map[string]any{"cvv": "123"}, true, 32)
+	if result["cvv"] != _piiRedacted {
+		t.Errorf("expected 'cvv' auto-redacted, got %v", result["cvv"])
+	}
+}
+
+func TestParity_DefaultSensitiveKeys_PIN(t *testing.T) {
+	resetPII(t)
+	result := SanitizePayload(map[string]any{"pin": "9876"}, true, 32)
+	if result["pin"] != _piiRedacted {
+		t.Errorf("expected 'pin' auto-redacted, got %v", result["pin"])
+	}
+}
