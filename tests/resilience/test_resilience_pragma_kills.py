@@ -335,3 +335,44 @@ async def test_async_blocking_risk_incremented_in_event_loop() -> None:
     run_with_resilience("metrics", lambda: "ok2")
     snap = health_mod.get_health_snapshot()
     assert snap.async_blocking_risk_metrics == 2
+
+
+# ---------------------------------------------------------------------------
+# Half-open success: _record_attempt_success resets timeouts to 0
+# ---------------------------------------------------------------------------
+
+
+def test_half_open_success_resets_consecutive_timeouts_to_zero() -> None:
+    """Kill mutant: _consecutive_timeouts[sig] = 0 -> = 1 in half-open success path.
+
+    After the circuit trips (3 timeouts), wait for cooldown to expire so the
+    circuit enters half-open state, then succeed. The consecutive_timeouts must
+    be reset to exactly 0.
+    """
+    import time as _time
+
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+    )
+
+    # Trip the circuit breaker
+    for _ in range(3):
+        run_with_resilience("logs", lambda: _time.sleep(1.0))
+
+    with resilience_mod._lock:
+        assert resilience_mod._consecutive_timeouts["logs"] >= 3
+        # Force cooldown to have expired
+        resilience_mod._circuit_tripped_at["logs"] = _time.monotonic() - 999.0
+
+    # Next call enters half-open (cooldown expired) and succeeds
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(timeout_seconds=0, retries=0, fail_open=True),
+    )
+    result = run_with_resilience("logs", lambda: "ok")
+    assert result == "ok"
+
+    # After half-open success, consecutive_timeouts must be exactly 0
+    with resilience_mod._lock:
+        assert resilience_mod._consecutive_timeouts["logs"] == 0
