@@ -27,9 +27,9 @@ const (
 )
 
 const (
-	_piiRedacted          = "***"
-	_piiTruncationSuffix  = "..."
-	_piiDefaultMax        = 32
+	_piiRedacted         = "***"
+	_piiTruncationSuffix = "..."
+	_piiDefaultMax       = 8
 )
 
 // _defaultSensitiveKeys lists substrings matched case-insensitively against key names.
@@ -74,7 +74,7 @@ func _resetPIIRules() {
 // a new map with sensitive fields redacted, dropped, hashed, or truncated.
 // The input map is never mutated.
 // If enabled is false, a shallow copy is returned unchanged.
-// If maxDepth <= 0, the default depth of 32 is used.
+// If maxDepth <= 0, the default depth of 8 is used.
 func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any {
 	if !enabled {
 		return _shallowCopy(payload)
