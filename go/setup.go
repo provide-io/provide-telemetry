@@ -35,6 +35,58 @@ var (
 	_runtimeCfg *TelemetryConfig
 )
 
+func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
+	if cfg == nil {
+		return nil
+	}
+	clone := *cfg
+	clone.Logging = cfg.Logging
+	clone.Logging.OTLPHeaders = maps.Clone(cfg.Logging.OTLPHeaders)
+	clone.Logging.PrettyFields = append([]string(nil), cfg.Logging.PrettyFields...)
+	clone.Logging.ModuleLevels = maps.Clone(cfg.Logging.ModuleLevels)
+	clone.Tracing = cfg.Tracing
+	clone.Tracing.OTLPHeaders = maps.Clone(cfg.Tracing.OTLPHeaders)
+	clone.Metrics = cfg.Metrics
+	clone.Metrics.OTLPHeaders = maps.Clone(cfg.Metrics.OTLPHeaders)
+	clone.EventSchema = cfg.EventSchema
+	clone.EventSchema.RequiredKeys = append([]string(nil), cfg.EventSchema.RequiredKeys...)
+	return &clone
+}
+
+func _applyRuntimePolicies(cfg *TelemetryConfig) {
+	_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
+	_, _ = SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: cfg.Sampling.TracesRate})
+	_, _ = SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: cfg.Sampling.MetricsRate})
+
+	SetQueuePolicy(QueuePolicy{
+		LogsMaxSize:    cfg.Backpressure.LogsMaxSize,
+		TracesMaxSize:  cfg.Backpressure.TracesMaxSize,
+		MetricsMaxSize: cfg.Backpressure.MetricsMaxSize,
+	})
+
+	SetExporterPolicy(signalLogs, ExporterPolicy{
+		Retries:        cfg.Exporter.LogsRetries,
+		BackoffSeconds: cfg.Exporter.LogsBackoffSeconds,
+		TimeoutSeconds: cfg.Exporter.LogsTimeoutSeconds,
+		FailOpen:       cfg.Exporter.LogsFailOpen,
+	})
+	SetExporterPolicy(signalTraces, ExporterPolicy{
+		Retries:        cfg.Exporter.TracesRetries,
+		BackoffSeconds: cfg.Exporter.TracesBackoffSeconds,
+		TimeoutSeconds: cfg.Exporter.TracesTimeoutSeconds,
+		FailOpen:       cfg.Exporter.TracesFailOpen,
+	})
+	SetExporterPolicy(signalMetrics, ExporterPolicy{
+		Retries:        cfg.Exporter.MetricsRetries,
+		BackoffSeconds: cfg.Exporter.MetricsBackoffSeconds,
+		TimeoutSeconds: cfg.Exporter.MetricsTimeoutSeconds,
+		FailOpen:       cfg.Exporter.MetricsFailOpen,
+	})
+
+	_configureLogger(cfg)
+	_strictSchema = cfg.StrictSchema
+}
+
 // SetupTelemetry initialises all telemetry subsystems from environment variables.
 // It is idempotent: a second call with the system already set up returns the existing
 // config without re-initialising anything.

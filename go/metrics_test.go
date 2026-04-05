@@ -35,7 +35,9 @@ func TestCounterAdd(t *testing.T) {
 func TestCounterAddDropsWhenSamplingZero(t *testing.T) {
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
-	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0})
+	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0}); err != nil {
+		t.Fatal(err)
+	}
 	defer _resetSamplingPolicies()
 
 	c := NewCounter("test.sample.drop")
@@ -84,7 +86,9 @@ func TestGaugeSet(t *testing.T) {
 func TestGaugeSetDropsWhenSamplingZero(t *testing.T) {
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
-	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0})
+	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0}); err != nil {
+		t.Fatal(err)
+	}
 	defer _resetSamplingPolicies()
 
 	g := NewGauge("test.gauge.sample.drop")
@@ -137,7 +141,9 @@ func TestHistogramRecord(t *testing.T) {
 func TestHistogramRecordDropsWhenSamplingZero(t *testing.T) {
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
-	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0})
+	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 0.0}); err != nil {
+		t.Fatal(err)
+	}
 	defer _resetSamplingPolicies()
 
 	h := NewHistogram("test.hist.sample.drop")
