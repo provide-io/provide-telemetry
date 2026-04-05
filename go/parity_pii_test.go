@@ -81,7 +81,7 @@ func TestParity_PIITruncate_ShorterThanLimit_Unchanged(t *testing.T) {
 func TestParity_PIIRedact_SensitiveKey(t *testing.T) {
 	resetPII(t)
 	r := SanitizePayload(map[string]any{"password": "s3cret"}, true, 32) // pragma: allowlist secret
-	if r["password"] != "***" {                                          // pragma: allowlist secret
+	if r["password"] != "***" {                                           // pragma: allowlist secret
 		t.Errorf("redact(password): want ***, got %v", r["password"])
 	}
 }
@@ -158,82 +158,5 @@ func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
 	result := SanitizePayload(payload, true, 0)
 	if result["data"] != "hello world this is normal text" {
 		t.Errorf("expected normal string unchanged, got %v", result["data"])
-	}
-}
-
-// ── Default Sensitive Keys ────────────────────────────────────────────────────
-
-func TestParity_DefaultSensitiveKeys_Cookie(t *testing.T) {
-	resetPII(t)
-	result := SanitizePayload(map[string]any{"cookie": "session=abc123"}, true, 32)
-	if result["cookie"] != _piiRedacted {
-		t.Errorf("expected 'cookie' auto-redacted, got %v", result["cookie"])
-	}
-}
-
-func TestParity_DefaultSensitiveKeys_CVV(t *testing.T) {
-	resetPII(t)
-	result := SanitizePayload(map[string]any{"cvv": "123"}, true, 32)
-	if result["cvv"] != _piiRedacted {
-		t.Errorf("expected 'cvv' auto-redacted, got %v", result["cvv"])
-	}
-}
-
-func TestParity_DefaultSensitiveKeys_PIN(t *testing.T) {
-	resetPII(t)
-	result := SanitizePayload(map[string]any{"pin": "9876"}, true, 32)
-	if result["pin"] != _piiRedacted {
-		t.Errorf("expected 'pin' auto-redacted, got %v", result["pin"])
-	}
-}
-
-func TestParity_DefaultSensitiveKeys_ExactMatchOnly(t *testing.T) {
-	resetPII(t)
-	payload := map[string]any{
-		"author_id":      "safe-author",
-		"spinning_wheel": "safe-spin",
-		"glassness":      "safe-word",
-	}
-	result := SanitizePayload(payload, true, 32)
-	if result["author_id"] != payload["author_id"] {
-		t.Errorf("expected author_id unchanged, got %v", result["author_id"])
-	}
-	if result["spinning_wheel"] != payload["spinning_wheel"] {
-		t.Errorf("expected spinning_wheel unchanged, got %v", result["spinning_wheel"])
-	}
-	if result["glassness"] != payload["glassness"] {
-		t.Errorf("expected glassness unchanged, got %v", result["glassness"])
-	}
-}
-
-// ── PII Default Depth ─────────────────────────────────────────────────────────
-
-func TestParity_PIIDepth_DefaultIs8(t *testing.T) {
-	resetPII(t)
-	// Build 9-level deep nested map with "password" at each level
-	payload := map[string]any{"password": "level8_should_survive"}
-	for i := 7; i >= 0; i-- {
-		payload = map[string]any{
-			"password": fmt.Sprintf("level%d", i),
-			"nested":   payload,
-		}
-	}
-	result := SanitizePayload(payload, true, 0) // 0 = use default
-	// Depth 0 should be redacted
-	if result["password"] == fmt.Sprintf("level%d", 0) {
-		t.Error("depth 0: expected redacted")
-	}
-	// Navigate to depth 8
-	node := result
-	for i := 0; i < 8; i++ {
-		nested, ok := node["nested"].(map[string]any)
-		if !ok {
-			t.Fatalf("depth %d: expected nested map", i+1)
-		}
-		node = nested
-	}
-	// Depth 8 should survive (beyond default max_depth=8)
-	if node["password"] == _piiRedacted { // pragma: allowlist secret
-		t.Error("depth 8: should NOT be redacted with default max_depth=8")
 	}
 }

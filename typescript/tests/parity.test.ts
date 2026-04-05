@@ -14,6 +14,7 @@ import {
   resetPiiRulesForTests,
   sanitizePayload,
   event,
+  eventName,
   EventSchemaError,
   extractW3cContext,
   classifyError,
@@ -22,6 +23,9 @@ import {
   getQueuePolicy,
   computeErrorFingerprint,
   reconfigureTelemetry,
+  registerCardinalityLimit,
+  getCardinalityLimits,
+  clearCardinalityLimits,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -451,5 +455,70 @@ describe('parity: slo_classify', () => {
     const c = classifyError('ConnectionTimeoutError', 503);
     expect(c.category).toBe('timeout');
     expect(c['error.category']).toBe('timeout');
+  });
+});
+
+// ── Cardinality Clamping ────────────────────────────────────────────────────
+
+describe('parity: cardinality clamping', () => {
+  afterEach(() => clearCardinalityLimits());
+
+  it('zero maxValues clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 0, ttlSeconds: 10 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(1);
+    expect(limits.get('k')?.ttlSeconds).toBe(10);
+  });
+
+  it('negative maxValues clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: -5, ttlSeconds: 10 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(1);
+  });
+
+  it('zero ttlSeconds clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 10, ttlSeconds: 0 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.ttlSeconds).toBe(1);
+  });
+
+  it('negative ttlSeconds clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 10, ttlSeconds: -3 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.ttlSeconds).toBe(1);
+  });
+
+  it('valid values unchanged', () => {
+    registerCardinalityLimit('k', { maxValues: 50, ttlSeconds: 300 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(50);
+    expect(limits.get('k')?.ttlSeconds).toBe(300);
+  });
+});
+
+// ── Schema Strict Mode ──────────────────────────────────────────────────────
+
+describe('parity: schema strict mode', () => {
+  afterEach(() => setupTelemetry({ strictSchema: false }));
+
+  it('lenient mode accepts uppercase segments', () => {
+    // eventName with strict=false should accept any segments
+    // Need to ensure strict mode is off (default is false)
+    expect(() => eventName('A', 'B', 'C')).not.toThrow();
+    expect(eventName('A', 'B', 'C')).toBe('A.B.C');
+  });
+
+  it('lenient mode accepts mixed case', () => {
+    expect(eventName('User', 'Login', 'Ok')).toBe('User.Login.Ok');
+  });
+
+  it('strict mode rejects uppercase', () => {
+    setupTelemetry({ strictSchema: true });
+    expect(() => eventName('User', 'login', 'ok')).toThrow(EventSchemaError);
+  });
+
+  it('strict mode accepts valid lowercase', () => {
+    setupTelemetry({ strictSchema: true });
+    expect(eventName('user', 'login', 'ok')).toBe('user.login.ok');
   });
 });

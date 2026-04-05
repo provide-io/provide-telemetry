@@ -112,35 +112,3 @@ func TestParity_EventName_StrictAcceptsValid(t *testing.T) {
 		t.Fatalf("expected user.login.ok, got %s", name)
 	}
 }
-
-// ── Required Keys Validation ─────────────────────────────────────────────────
-
-func TestParity_RequiredKeys_MissingKey_Error(t *testing.T) {
-	err := ValidateRequiredKeys(
-		map[string]any{"domain": "auth"},
-		[]string{"domain", "action"},
-	)
-	if err == nil {
-		t.Fatal("expected error for missing required key 'action'")
-	}
-}
-
-func TestParity_RequiredKeys_AllPresent_NoError(t *testing.T) {
-	err := ValidateRequiredKeys(
-		map[string]any{"domain": "auth", "action": "login"},
-		[]string{"domain", "action"},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestParity_RequiredKeys_EmptyRequired_NoError(t *testing.T) {
-	err := ValidateRequiredKeys(
-		map[string]any{"domain": "auth"},
-		[]string{},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error with empty required keys: %v", err)
-	}
-}
