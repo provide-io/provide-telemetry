@@ -18,10 +18,6 @@ import {
 import { _emittedField, _incrementHealth } from './health';
 import { getActiveOtelContext } from './propagation';
 import { randomHex } from './hash';
-import { shouldAllow } from './consent';
-import { shouldSample } from './sampling';
-import { tryAcquire, release } from './backpressure';
-import { getConfig } from './config';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -142,30 +138,19 @@ const NOOP_TRACE_ID = '00000000000000000000000000000000';
  * Used to decide whether to inject synthetic random IDs.
  */
 function _isNoopSpan(span: Span): boolean {
-  // Stryker disable next-line ConditionalExpression: without a registered OTel SDK all spans are noop — mutating to true is equivalent
   return span.spanContext().traceId === NOOP_TRACE_ID;
 }
 
 /**
- * Execute fn with random synthetic trace/span IDs set as manual context.
- *
- * On Node we open a fresh AsyncLocalStorage scope so concurrent callers never
- * see each other's IDs: each await chain carries its own store.  Outside Node
- * we fall back to the save/restore pattern on module globals.
+ * Execute fn with random synthetic trace/span IDs set as manual context,
+ * then restore the previous manual context when done.
+ * Handles both sync and async results.
  */
 function _withSyntheticIds<T>(fn: () => T): T {
-  // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
-  const traceId = randomHex(16);
-  const spanId = randomHex(8);
-  /* c8 ignore next -- _als is always non-null in Node.js; false branch is browser/Deno only */
-  if (_als !== null) {
-    return _als.run<T>({ traceId, spanId }, fn);
-  }
-  /* c8 ignore start -- browser/Deno fallback: _als is always non-null in Node.js tests */
   const prevTraceId = _manualTraceId;
   const prevSpanId = _manualSpanId;
-  _manualTraceId = traceId;
-  _manualSpanId = spanId;
+  // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
+  setTraceContext(randomHex(16), randomHex(8));
   const result = fn();
   if (result instanceof Promise) {
     return result.then(
@@ -184,7 +169,6 @@ function _withSyntheticIds<T>(fn: () => T): T {
   _manualTraceId = prevTraceId;
   _manualSpanId = prevSpanId;
   return result;
-  /* c8 ignore stop */
 }
 
 /** Shared span handler for withTrace — records exceptions and sets ERROR status. */
@@ -238,36 +222,25 @@ export function withTrace<T>(name: string, fn: () => T): T {
   // a second span attempt in the fallback path without holding a backpressure slot.
   let activeCtx: ReturnType<typeof getActiveOtelContext> | undefined;
   try {
-    activeCtx = getActiveOtelContext();
+    const activeCtx = getActiveOtelContext();
+    if (activeCtx) {
+      return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
+        tracer.startActiveSpan(name, (span: Span) => {
+          // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+          if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+          return _spanHandler(fn, span);
+        }),
+      );
+    }
   } catch {
     // getActiveOtelContext() threw — graceful degradation, fall through to default behaviour.
   }
 
-  if (activeCtx) {
-    try {
-      return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
-        tracer.startActiveSpan(name, (span: Span) => {
-          // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-          /* v8 ignore start: noop-span false branch + real-span return are unreachable without a registered OTel provider */
-          if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-          return _spanHandler(fn, span);
-          /* v8 ignore stop */
-        }),
-      );
-    } finally {
-      release(ticket);
-    }
-  }
-
-  try {
-    return tracer.startActiveSpan(name, (span: Span) => {
-      // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-      if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-      return _spanHandler(fn, span);
-    });
-  } finally {
-    release(ticket);
-  }
+  return tracer.startActiveSpan(name, (span: Span) => {
+    // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+    if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+    return _spanHandler(fn, span);
+  });
 }
 
 /**
