@@ -128,6 +128,10 @@ export interface TelemetryConfig {
   /** Enable USE (Utilization/Saturation/Errors) metrics. */
   sloEnableUseMetrics: boolean;
 
+  // — PII —
+  /** Maximum recursion depth for PII sanitization of nested objects. */
+  piiMaxDepth: number;
+
   // — Security —
   /** Max length for any single attribute value. */
   securityMaxAttrValueLength: number;
@@ -220,6 +224,7 @@ export const DEFAULTS: TelemetryConfig = {
   exporterMetricsFailOpen: true,
   sloEnableRedMetrics: false,
   sloEnableUseMetrics: false,
+  piiMaxDepth: 8,
   securityMaxAttrValueLength: 1024,
   securityMaxAttrCount: 64,
 };
@@ -378,6 +383,9 @@ export function configFromEnv(): TelemetryConfig {
     // SLO
     sloEnableRedMetrics: nodeEnv('PROVIDE_SLO_ENABLE_RED_METRICS') === 'true',
     sloEnableUseMetrics: nodeEnv('PROVIDE_SLO_ENABLE_USE_METRICS') === 'true',
+
+    // PII
+    piiMaxDepth: envNonNegativeInt('PROVIDE_LOG_PII_MAX_DEPTH', DEFAULTS.piiMaxDepth),
 
     // Security
     securityMaxAttrValueLength: envNumber(

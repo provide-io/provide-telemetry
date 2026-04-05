@@ -87,7 +87,7 @@ export {
   getSecretPatterns,
   resetSecretPatternsForTests,
 } from './pii';
-export type { MaskMode, PIIRule, SanitizePayloadOptions, SecretPattern } from './pii';
+export type { MaskMode, PIIRule, SanitizePayloadOptions } from './pii';
 
 // Exceptions
 export { TelemetryError, ConfigurationError } from './exceptions';

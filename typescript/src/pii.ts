@@ -42,6 +42,7 @@ const REDACTED = '***';
 /** Default maximum recursion depth for PII sanitization. */
 const _DEFAULT_MAX_DEPTH = 8;
 
+const _MIN_SECRET_LENGTH = 20;
 /* Stryker disable all: regex quantifier mutations produce patterns that still match test values */
 export const _SECRET_PATTERNS: RegExp[] = _GENERATED_PATTERNS.map((p) => p.regex);
 /* Stryker restore all */
@@ -202,17 +203,21 @@ function _matches(ruleSegs: string[], valueSegs: string[]): boolean {
   return ruleSegs.every((seg, i) => seg === '*' || seg === valueSegs[i]);
 }
 
-function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): unknown {
+function _applyRuleFull(
+  node: unknown,
+  rule: PIIRule,
+  currentPath: string[],
+  maxDepth: number = _DEFAULT_MAX_DEPTH,
+  depth: number = 0,
+): unknown {
   if (typeof node !== 'object' || node === null) return node;
-  // Stryker disable next-line EqualityOperator: depth == maxDepth means we already recursed maxDepth times; >= vs > only differs at the boundary which is tested but Stryker's perTest coverage misattributes
   if (depth >= maxDepth) return node;
   // Stryker disable next-line ConditionalExpression,BlockStatement: when array is treated as object, numeric string indices still match wildcard '*' rule segments — equivalent
   if (Array.isArray(node)) {
-    /* Stryker disable StringLiteral,ArithmeticOperator: '*' wildcard in VALUE path is irrelevant; depth-1 causes infinite recursion (timeout kill) — equivalent */
+    // Stryker disable next-line StringLiteral: '*' wildcard in VALUE path is irrelevant because _matches checks RULE segment, not value segment, for wildcards
     return node.map((item) =>
-      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1, receiptHook),
+      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1),
     );
-    /* Stryker restore StringLiteral,ArithmeticOperator */
   }
   const obj = node as Record<string, unknown>;
   const ruleSegs = _pathSegments(rule.path);
@@ -224,7 +229,7 @@ function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): un
       const { keep, value } = _applyMode(val, rule);
       if (keep) result[key] = value;
     } else {
-      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1, receiptHook);
+      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1);
     }
   }
   return result;
@@ -240,15 +245,11 @@ function _applyDefaultSensitiveKeyRedaction(
   blocked: Set<string>,
   ruleTargets: Set<string | undefined>,
   maxDepth: number,
-  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
   depth: number = 0,
 ): unknown {
   if (depth >= maxDepth) return node;
   if (typeof node !== 'object' || node === null) return node;
-  // Stryker disable next-line ConditionalExpression,BlockStatement,ArrayDeclaration: array items are recursed as objects — when Array.isArray is skipped, for..of on array indices still redacts nested keys identically
   if (Array.isArray(node)) {
-    // Stryker disable next-line ArrayDeclaration: [] fallback for original — defensive, original always mirrors node shape
-    /* v8 ignore next */
     const origArr = Array.isArray(original) ? original : [];
     return node.map((item, i) =>
       _applyDefaultSensitiveKeyRedaction(
@@ -257,34 +258,25 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
-        receiptHook,
-        // Stryker disable next-line ArithmeticOperator: depth-1 causes infinite recursion killed by timeout — equivalent
         depth + 1,
       ),
     );
   }
   const obj = node as Record<string, unknown>;
-  /* v8 ignore start: original always mirrors node's object structure through recursive calls — obj fallback is defensive */
-  /* Stryker disable ConditionalExpression,LogicalOperator,EqualityOperator,StringLiteral,BooleanLiteral: defensive guard — original always mirrors node shape; fallback to obj is equivalent */
   const orig =
     typeof original === 'object' && original !== null && !Array.isArray(original)
       ? (original as Record<string, unknown>)
       : obj;
-  /* Stryker restore ConditionalExpression,LogicalOperator,EqualityOperator,StringLiteral,BooleanLiteral */
-  /* v8 ignore stop */
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
     const lk = key.toLowerCase();
     const origVal = orig[key];
     if (blocked.has(lk) && !ruleTargets.has(lk)) {
       // If a custom rule already changed the value, keep the rule's result.
-      // Stryker disable next-line ConditionalExpression,BlockStatement: defensive guard — val always equals origVal; removing branch is equivalent
-      /* v8 ignore next 2 */
       if (val !== origVal) {
         result[key] = val;
       } else {
         result[key] = REDACTED;
-        if (receiptHook !== null) receiptHook(key, 'redact', origVal);
       }
     } else if (typeof val === 'string' && _detectSecretInValue(val)) {
       result[key] = REDACTED;
@@ -297,7 +289,6 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
-        receiptHook,
         depth + 1,
       );
     }
@@ -333,6 +324,12 @@ export interface SanitizePayloadOptions {
   maxDepth?: number;
 }
 
+/** Options for sanitizePayload. */
+export interface SanitizePayloadOptions {
+  /** Maximum recursion depth for nested traversal. Default 8. */
+  maxDepth?: number;
+}
+
 /**
  * Apply all registered PII rules to a payload object recursively.
  * Also redacts top-level keys that match DEFAULT_SANITIZE_FIELDS unless a rule already handled them.
@@ -344,15 +341,11 @@ export function sanitizePayload(
   options?: SanitizePayloadOptions,
 ): void {
   const maxDepth = options?.maxDepth ?? _DEFAULT_MAX_DEPTH;
-  // Capture hooks once at call time to avoid repeated reads.
-  const receiptHook = _receiptHook;
-  const classHook = _classificationHook;
-  const policyHook = _policyHook;
   let current: unknown = obj;
 
   // Apply registered rules first.
   for (const rule of _rules) {
-    current = _applyRuleFull(current, rule, [], maxDepth, 0, receiptHook);
+    current = _applyRuleFull(current, rule, [], maxDepth);
   }
 
   // Apply default field-name redaction + secret detection recursively with depth limit.
@@ -372,7 +365,6 @@ export function sanitizePayload(
       blocked,
       ruleTargets,
       maxDepth,
-      receiptHook,
     ) as Record<string, unknown>;
     // Update the original object in-place.
     for (const key of Object.keys(obj)) {
