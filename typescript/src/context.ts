@@ -142,10 +142,11 @@ export function clearSessionContext(): void {
 
 /** Reset to empty context (used in tests). */
 export function _resetContext(): void {
-  // Recreate ALS so no enterWith-seeded store leaks between tests.
-  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
-  /* v8 ignore next */
-  _asyncLocalStorage = _AlsConstructor ? new _AlsConstructor() : null;
+  // Stryker disable next-line OptionalChaining: _asyncLocalStorage is always non-null in Node.js/test environments — ?. vs . is equivalent
+  const store = _asyncLocalStorage?.getStore();
+  if (store) {
+    for (const key of Object.keys(store)) delete store[key];
+  }
   _moduleCtx = {};
 }
 
