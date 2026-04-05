@@ -7,10 +7,11 @@
  */
 
 import {
+  _exportFailuresField,
   _incrementHealth,
   _recordExportLatency,
   _registerCircuitStateFn,
-  _setLastExportError,
+  _retriesField,
 } from './health';
 
 export class TelemetryTimeoutError extends Error {
@@ -105,20 +106,21 @@ export async function runWithResilience<T>(
   // Circuit breaker check.
   const failField = _exportFailuresField(signal);
   const retryField = _retriesField(signal);
-  // Only consult the breaker when timeout enforcement is on. Mirrors Python
-  // (resilience.py:177) and Go (resilience.go:170): when timeout=0 the policy
-  // explicitly opts out of timeout-driven failure accounting, so the breaker
-  // has no signal to act on and must not reject callers.
   // Stryker disable next-line ConditionalExpression
   if (_consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
+    // Reject concurrent callers while a half-open probe is already in flight.
+    if (_halfOpenProbing[signal]) {
+      _incrementHealth(failField);
+      if (policy.failOpen) return null;
+      throw new TelemetryTimeoutError('circuit breaker open: probe in progress');
+    }
     const cooldown = Math.min(
       CIRCUIT_BASE_COOLDOWN_MS * 2 ** _openCount[signal],
       CIRCUIT_MAX_COOLDOWN_MS,
     );
     const elapsed = Date.now() - _circuitTrippedAt[signal];
     if (elapsed < cooldown) {
-      _incrementHealth('exportFailures');
-      _setLastExportError('circuit breaker open');
+      _incrementHealth(failField);
       if (policy.failOpen) return null;
       throw new TelemetryTimeoutError('circuit breaker open: too many consecutive timeouts');
     }
@@ -132,8 +134,7 @@ export async function runWithResilience<T>(
     const started = Date.now();
     try {
       const result = await _withTimeout(fn, policy.timeoutMs);
-      _recordExportLatency(Date.now() - started);
-      _setLastExportError(null);
+      _recordExportLatency(signal, Date.now() - started);
       if (_halfOpenProbing[signal]) {
         _halfOpenProbing[signal] = false;
         _consecutiveTimeouts[signal] = 0;

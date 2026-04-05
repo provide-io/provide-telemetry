@@ -360,8 +360,8 @@ describe('resilience — export latency recorded (kills ArithmeticOperator - →
     setExporterPolicy({ timeoutMs: 1000 });
     const { getHealthSnapshot } = await import('../src/health');
     await runWithResilience('logs', async () => 'ok');
-    expect(getHealthSnapshot().exportLatencyMs).toBeGreaterThanOrEqual(0);
-    expect(getHealthSnapshot().exportLatencyMs).toBeLessThan(1000);
+    expect(getHealthSnapshot().exportLatencyMsLogs).toBeGreaterThanOrEqual(0);
+    expect(getHealthSnapshot().exportLatencyMsLogs).toBeLessThan(1000);
   });
 });
 
@@ -401,41 +401,40 @@ describe('resilience — circuit breaker reset clears all signals (kills StringL
   });
 });
 
-describe('resilience — health increments (kills StringLiteral on exportFailures/exportRetries)', () => {
-  it('increments exportFailures when fn throws non-timeout error', async () => {
+describe('resilience — health increments (kills StringLiteral on exportFailures/retries)', () => {
+  it('increments exportFailuresLogs when fn throws non-timeout error', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy({ retries: 0, timeoutMs: 1000, failOpen: true });
     await runWithResilience('logs', async () => {
       throw new Error('plain error');
     });
-    expect(getHealthSnapshot().exportFailures).toBe(1);
+    expect(getHealthSnapshot().exportFailuresLogs).toBe(1);
   });
 
-  it('increments exportRetries when retries > 0 and fn fails', async () => {
+  it('increments retriesLogs when retries > 0 and fn fails', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy({ retries: 1, timeoutMs: 1000, failOpen: true, backoffMs: 0 });
     await runWithResilience('logs', async () => {
       throw new Error('fail');
     });
-    expect(getHealthSnapshot().exportRetries).toBe(1);
+    expect(getHealthSnapshot().retriesLogs).toBe(1);
   });
 
-  it('increments exportFailures specifically via circuit breaker open path (kills StringLiteral exportFailures at resilience.ts:88)', async () => {
-    // The circuit-breaker open path calls _incrementHealth('exportFailures') — verify this key
+  it('increments exportFailuresLogs specifically via circuit breaker open path', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
-    // Trip the circuit (3 consecutive timeouts — each increments exportFailures)
-    await runWithResilience('cbtest', timeoutFn); // failure 1
-    await runWithResilience('cbtest', timeoutFn); // failure 2
-    await runWithResilience('cbtest', timeoutFn); // failure 3, circuit trips
-    const afterTrip = getHealthSnapshot().exportFailures;
-    // Now call while circuit is open — should increment exportFailures via circuit-open path
-    await runWithResilience('cbtest', async () => 'ok');
-    expect(getHealthSnapshot().exportFailures).toBe(afterTrip + 1);
+    // Trip the circuit (3 consecutive timeouts — each increments exportFailuresLogs)
+    await runWithResilience('logs', timeoutFn); // failure 1
+    await runWithResilience('logs', timeoutFn); // failure 2
+    await runWithResilience('logs', timeoutFn); // failure 3, circuit trips
+    const afterTrip = getHealthSnapshot().exportFailuresLogs;
+    // Now call while circuit is open — should increment exportFailuresLogs via circuit-open path
+    await runWithResilience('logs', async () => 'ok');
+    expect(getHealthSnapshot().exportFailuresLogs).toBe(afterTrip + 1);
   });
 });
 
@@ -463,7 +462,7 @@ describe('resilience — non-timeout error resets consecutive timeout counter (k
 });
 
 describe('resilience — circuit breaker error messages (kills StringLiteral on messages)', () => {
-  it('sets lastExportError to "circuit breaker open" when circuit is tripped', async () => {
+  it('increments exportFailuresLogs when circuit is tripped and call rejected', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy({ retries: 0, timeoutMs: 0, failOpen: true });
@@ -472,9 +471,10 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
     await runWithResilience('logs', timeoutFn);
     await runWithResilience('logs', timeoutFn);
     await runWithResilience('logs', timeoutFn);
+    const beforeOpen = getHealthSnapshot().exportFailuresLogs;
     // Call while circuit open
     await runWithResilience('logs', async () => 'ok');
-    expect(getHealthSnapshot().lastExportError).toBe('circuit breaker open');
+    expect(getHealthSnapshot().exportFailuresLogs).toBe(beforeOpen + 1);
   });
 
   it('throws with "circuit breaker open" message when failOpen=false', async () => {

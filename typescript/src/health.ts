@@ -28,21 +28,13 @@ export interface HealthSnapshot {
   // Metrics (8)
   metricsEmitted: number;
   metricsDropped: number;
-  exportFailures: number;
-  exportRetries: number;
-  asyncBlockingRisk: number;
-  exemplarUnsupported: number;
-  lastExportError: string | null;
-  exportLatencyMs: number;
-  circuitStateLogs: string;
-  circuitStateTraces: string;
+  exportFailuresMetrics: number;
+  retriesMetrics: number;
+  exportLatencyMsMetrics: number;
+  asyncBlockingRiskMetrics: number;
   circuitStateMetrics: string;
-  circuitOpenCountLogs: number;
-  circuitOpenCountTraces: number;
   circuitOpenCountMetrics: number;
-  circuitCooldownRemainingLogs: number;
-  circuitCooldownRemainingTraces: number;
-  circuitCooldownRemainingMetrics: number;
+  // Global (1)
   setupError: string | null;
 }
 
@@ -54,10 +46,18 @@ type NumericHealthField =
   | 'tracesDropped'
   | 'metricsEmitted'
   | 'metricsDropped'
-  | 'exportFailures'
-  | 'exportRetries'
-  | 'asyncBlockingRisk'
-  | 'exemplarUnsupported';
+  | 'exportFailuresLogs'
+  | 'exportFailuresTraces'
+  | 'exportFailuresMetrics'
+  | 'retriesLogs'
+  | 'retriesTraces'
+  | 'retriesMetrics'
+  | 'exportLatencyMsLogs'
+  | 'exportLatencyMsTraces'
+  | 'exportLatencyMsMetrics'
+  | 'asyncBlockingRiskLogs'
+  | 'asyncBlockingRiskTraces'
+  | 'asyncBlockingRiskMetrics';
 
 let _setupError: string | null = null;
 
@@ -68,12 +68,18 @@ const _state = {
   tracesDropped: 0,
   metricsEmitted: 0,
   metricsDropped: 0,
-  exportFailures: 0,
-  exportRetries: 0,
-  asyncBlockingRisk: 0,
-  exemplarUnsupported: 0,
-  lastExportError: null as string | null,
-  exportLatencyMs: 0,
+  exportFailuresLogs: 0,
+  exportFailuresTraces: 0,
+  exportFailuresMetrics: 0,
+  retriesLogs: 0,
+  retriesTraces: 0,
+  retriesMetrics: 0,
+  exportLatencyMsLogs: 0,
+  exportLatencyMsTraces: 0,
+  exportLatencyMsMetrics: 0,
+  asyncBlockingRiskLogs: 0,
+  asyncBlockingRiskTraces: 0,
+  asyncBlockingRiskMetrics: 0,
 };
 
 // Lazy reference to avoid circular dependency at module load time.
@@ -105,9 +111,6 @@ export function getHealthSnapshot(): HealthSnapshot {
     circuitOpenCountLogs: csLogs.openCount,
     circuitOpenCountTraces: csTraces.openCount,
     circuitOpenCountMetrics: csMetrics.openCount,
-    circuitCooldownRemainingLogs: csLogs.cooldownRemainingMs,
-    circuitCooldownRemainingTraces: csTraces.cooldownRemainingMs,
-    circuitCooldownRemainingMetrics: csMetrics.cooldownRemainingMs,
     setupError: _setupError,
   };
 }
@@ -118,20 +121,6 @@ export function setSetupError(error: string | null): void {
 
 export function _incrementHealth(field: NumericHealthField, by: number = 1): void {
   _state[field] += by;
-}
-
-/** Map a signal name to the per-signal emitted field. */
-export function _emittedField(signal: string): 'logsEmitted' | 'tracesEmitted' | 'metricsEmitted' {
-  if (signal === 'traces') return 'tracesEmitted';
-  if (signal === 'metrics') return 'metricsEmitted';
-  return 'logsEmitted';
-}
-
-/** Map a signal name to the per-signal dropped field. */
-export function _droppedField(signal: string): 'logsDropped' | 'tracesDropped' | 'metricsDropped' {
-  if (signal === 'traces') return 'tracesDropped';
-  if (signal === 'metrics') return 'metricsDropped';
-  return 'logsDropped';
 }
 
 /** Map a signal name to the per-signal export-failures field. */
@@ -170,11 +159,17 @@ export function _resetHealthForTests(): void {
   _state.tracesDropped = 0;
   _state.metricsEmitted = 0;
   _state.metricsDropped = 0;
-  _state.exportFailures = 0;
-  _state.exportRetries = 0;
-  _state.asyncBlockingRisk = 0;
-  _state.exemplarUnsupported = 0;
-  _state.lastExportError = null;
-  _state.exportLatencyMs = 0;
+  _state.exportFailuresLogs = 0;
+  _state.exportFailuresTraces = 0;
+  _state.exportFailuresMetrics = 0;
+  _state.retriesLogs = 0;
+  _state.retriesTraces = 0;
+  _state.retriesMetrics = 0;
+  _state.exportLatencyMsLogs = 0;
+  _state.exportLatencyMsTraces = 0;
+  _state.exportLatencyMsMetrics = 0;
+  _state.asyncBlockingRiskLogs = 0;
+  _state.asyncBlockingRiskTraces = 0;
+  _state.asyncBlockingRiskMetrics = 0;
   _setupError = null;
 }
