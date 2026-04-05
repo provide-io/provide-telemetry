@@ -106,3 +106,13 @@ export function sha256Hex(input: string): string {
 export function shortHash12(input: string): string {
   return sha256Hex(input).slice(0, 12);
 }
+
+/**
+ * Generate `numBytes` random bytes and return them as a lowercase hex string.
+ * Uses the Web Crypto API (available in Node.js 15+, browsers, and edge runtimes).
+ */
+export function randomHex(numBytes: number): string {
+  const bytes = new Uint8Array(numBytes);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
