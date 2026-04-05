@@ -380,3 +380,100 @@ def test_parity_error_fingerprint_no_frames() -> None:
     fp = _compute_error_fingerprint("ValueError", None)
     assert fp == "a50aba76697e"
     assert len(fp) == 12
+
+
+# ── Cardinality Clamping ────────────────────────────────────────────────────
+
+
+def test_parity_cardinality_zero_max_values_clamped() -> None:
+    from provide.telemetry.cardinality import (
+        clear_cardinality_limits,
+        register_cardinality_limit,
+    )
+
+    clear_cardinality_limits()
+    register_cardinality_limit("k", max_values=0, ttl_seconds=10.0)
+    # Internal state check: 0 should be clamped to 1
+    from provide.telemetry.cardinality import _limits
+
+    assert _limits["k"].max_values == 1
+    assert _limits["k"].ttl_seconds == 10.0
+    clear_cardinality_limits()
+
+
+def test_parity_cardinality_negative_max_values_clamped() -> None:
+    from provide.telemetry.cardinality import (
+        clear_cardinality_limits,
+        register_cardinality_limit,
+    )
+
+    clear_cardinality_limits()
+    register_cardinality_limit("k", max_values=-5, ttl_seconds=10.0)
+    from provide.telemetry.cardinality import _limits
+
+    assert _limits["k"].max_values == 1
+    clear_cardinality_limits()
+
+
+def test_parity_cardinality_zero_ttl_clamped() -> None:
+    from provide.telemetry.cardinality import (
+        clear_cardinality_limits,
+        register_cardinality_limit,
+    )
+
+    clear_cardinality_limits()
+    register_cardinality_limit("k", max_values=10, ttl_seconds=0.0)
+    from provide.telemetry.cardinality import _limits
+
+    assert _limits["k"].ttl_seconds == 1.0
+    clear_cardinality_limits()
+
+
+def test_parity_cardinality_valid_values_unchanged() -> None:
+    from provide.telemetry.cardinality import (
+        clear_cardinality_limits,
+        register_cardinality_limit,
+    )
+
+    clear_cardinality_limits()
+    register_cardinality_limit("k", max_values=50, ttl_seconds=300.0)
+    from provide.telemetry.cardinality import _limits
+
+    assert _limits["k"].max_values == 50
+    assert _limits["k"].ttl_seconds == 300.0
+    clear_cardinality_limits()
+
+
+# ── Schema Strict Mode ──────────────────────────────────────────────────────
+
+
+def test_parity_event_name_lenient_accepts_uppercase(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.schema import events as _events_mod
+
+    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: False)
+    result = _events_mod.event_name("A", "B", "C")
+    assert result == "A.B.C"
+
+
+def test_parity_event_name_lenient_accepts_mixed_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.schema import events as _events_mod
+
+    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: False)
+    result = _events_mod.event_name("User", "Login", "Ok")
+    assert result == "User.Login.Ok"
+
+
+def test_parity_event_name_strict_rejects_uppercase(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.schema import events as _events_mod
+
+    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: True)
+    with pytest.raises(_events_mod.EventSchemaError):
+        _events_mod.event_name("User", "login", "ok")
+
+
+def test_parity_event_name_strict_accepts_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.schema import events as _events_mod
+
+    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: True)
+    result = _events_mod.event_name("user", "login", "ok")
+    assert result == "user.login.ok"
