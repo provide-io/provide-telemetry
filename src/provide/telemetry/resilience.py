@@ -181,10 +181,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         except Exception as exc:
             last_error = exc
             record_export_failure(sig, exc)
-            _record_attempt_failure(
-                sig,
-                is_timeout=False,  # pragma: no mutate — False/None both falsy in elif is_timeout check
-            )
+            _record_attempt_failure(sig, is_timeout=False)  # pragma: no mutate — False/None both falsy
             if attempt < attempts - 1:
                 increment_retries(sig)
                 if backoff_seconds > 0:
