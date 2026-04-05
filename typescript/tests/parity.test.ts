@@ -264,9 +264,9 @@ describe('parity: propagation_guards', () => {
 // ── Config Headers ──────────────────────────────────────────────────────────
 
 describe('parity: config_headers', () => {
-  it('normal key=value parsed', () => {
+  it('plus sign preserved as literal (not space)', () => {
     expect(parseOtlpHeaders('Authorization=Bearer+token')).toEqual({
-      Authorization: 'Bearer token',
+      Authorization: 'Bearer+token',
     });
   });
 
@@ -274,6 +274,14 @@ describe('parity: config_headers', () => {
     expect(parseOtlpHeaders('my%20key=my%20value')).toEqual({
       'my key': 'my value',
     });
+  });
+
+  it('plus sign preserved as literal', () => {
+    expect(parseOtlpHeaders('a+b=c+d')).toEqual({ 'a+b': 'c+d' });
+  });
+
+  it('percent-encoded spaces decoded', () => {
+    expect(parseOtlpHeaders('a%20b=c%20d')).toEqual({ 'a b': 'c d' });
   });
 
   it('empty key (=value) skipped', () => {
