@@ -16,7 +16,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
 # ── Eager: core symbols needed by every consumer ────────────────────────────
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError, TelemetryError
 from provide.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
@@ -115,6 +115,7 @@ __all__ = [
     "HealthSnapshot",
     "PIIRule",
     "QueuePolicy",
+    "RuntimeOverrides",
     "SamplingPolicy",
     "TelemetryConfig",
     "TelemetryError",
