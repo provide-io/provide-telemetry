@@ -210,3 +210,47 @@ func TestSamplingConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// ── Kill CONDITIONALS_NEGATION at sampling.go:74 ─────────────────────────────
+// Negation inverts `rand.Float64() < rate` to `>= rate`, flipping which half
+// passes. With rate=0.99, correct code samples ~99%; negation samples ~1%.
+
+func TestShouldSample_HighRate_AlmostAlwaysTrue(t *testing.T) {
+	_resetSamplingPolicies()
+	_resetHealth()
+	t.Cleanup(_resetSamplingPolicies)
+	t.Cleanup(_resetHealth)
+
+	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.99})
+
+	count := 0
+	const n = 1000
+	for i := 0; i < n; i++ {
+		if ShouldSample(signalLogs, "event") {
+			count++
+		}
+	}
+	if count < 900 {
+		t.Errorf("at rate=0.99, expected >900 sampled out of %d, got %d", n, count)
+	}
+}
+
+func TestShouldSample_LowRate_AlmostAlwaysFalse(t *testing.T) {
+	_resetSamplingPolicies()
+	_resetHealth()
+	t.Cleanup(_resetSamplingPolicies)
+	t.Cleanup(_resetHealth)
+
+	SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 0.01})
+
+	count := 0
+	const n = 1000
+	for i := 0; i < n; i++ {
+		if ShouldSample(signalTraces, "span") {
+			count++
+		}
+	}
+	if count > 100 {
+		t.Errorf("at rate=0.01, expected <100 sampled out of %d, got %d", n, count)
+	}
+}

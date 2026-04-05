@@ -226,7 +226,12 @@ export function configFromEnv(): TelemetryConfig {
     ? Object.fromEntries(
         otelHeader
           .split(',')
-          .map((pair) => pair.split('=').map((s) => s.trim()) as [string, string]),
+          .map((pair) => {
+            const idx = pair.indexOf('=');
+            if (idx === -1) return [pair.trim(), ''] as [string, string];
+            return [pair.slice(0, idx).trim(), pair.slice(idx + 1).trim()] as [string, string];
+          })
+          .filter(([k]) => k !== ''),
       )
     : undefined;
 
@@ -405,6 +410,32 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
 /** Reset to defaults (used in tests). */
 export function _resetConfig(): void {
   _config = { ...DEFAULTS };
+}
+
+/**
+ * Parse OTLP-style header string "key=value,key2=value2" into a Record.
+ * Keys and values are URL-decoded. Malformed pairs (no '=') and empty keys are skipped.
+ * Values may contain '=' characters (only the first '=' splits key from value).
+ */
+export function parseOtlpHeaders(raw: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!raw) return result;
+  for (const pair of raw.split(',')) {
+    const idx = pair.indexOf('=');
+    if (idx < 1) continue; // no '=' or empty key
+    const rawKey = pair.slice(0, idx).trim();
+    const rawVal = pair.slice(idx + 1).trim();
+    try {
+      const key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
+      if (!key) continue;
+      const val = decodeURIComponent(rawVal.replace(/\+/g, ' '));
+      result[key] = val;
+    } catch {
+      // Skip pairs with invalid URL encoding
+      continue;
+    }
+  }
+  return result;
 }
 
 /** Package version — mirrors Python __version__. */

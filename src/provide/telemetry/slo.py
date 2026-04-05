@@ -68,11 +68,37 @@ def record_use_metrics(resource: str, utilization_percent: int) -> None:
 
 
 def classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]:
-    if status_code is not None and status_code >= 500:
-        return {"error_type": "server", "error_code": str(status_code), "error_name": exc_name}
-    if status_code is not None and status_code >= 400:
-        return {"error_type": "client", "error_code": str(status_code), "error_name": exc_name}
-    return {"error_type": "internal", "error_code": "0", "error_name": exc_name}
+    code = status_code if status_code is not None else 0
+    is_timeout = code == 0 or "timeout" in exc_name.lower()
+
+    if is_timeout:
+        category = "timeout"
+        severity = "info"
+        error_type = "internal"
+    elif code >= 500:
+        category = "server_error"
+        severity = "critical"
+        error_type = "server"
+    elif code >= 400:
+        category = "client_error"
+        severity = "critical" if code == 429 else "warning"
+        error_type = "client"
+    else:
+        category = "unclassified"
+        severity = "info"
+        error_type = "internal"
+
+    return {
+        # Legacy keys (used by processors and existing consumers)
+        "error_type": error_type,
+        "error_code": str(code),
+        "error_name": exc_name,
+        # Spec-aligned keys (cross-language parity)
+        "error.type": exc_name,
+        "error.category": category,
+        "error.severity": severity,
+        "http.status_code": str(code),
+    }
 
 
 def _reset_slo_for_tests() -> None:

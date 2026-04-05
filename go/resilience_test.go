@@ -335,6 +335,121 @@ func TestRunWithResilience_UnknownSignal_UsesDefault(t *testing.T) {
 	}
 }
 
+// TestRunWithResilience_RetryAttempts_ExactCount verifies the retry counter is
+// incremented exactly once per retry (not on the initial attempt, and not multiple
+// times per retry). This kills CONDITIONALS_BOUNDARY (>= 0, always increment) and
+// CONDITIONALS_NEGATION (<= 0, increment only on attempt 0) mutations.
+func TestRunWithResilience_RetryAttempts_ExactCount(t *testing.T) {
+	_resetResiliencePolicies()
+	_resetHealth()
+	t.Cleanup(_resetResiliencePolicies)
+	t.Cleanup(_resetHealth)
+
+	// Allow up to 2 retries (3 total attempts). fn fails twice then succeeds.
+	fastPolicy := ExporterPolicy{Retries: 2, BackoffSeconds: 0.001, TimeoutSeconds: 5.0, FailOpen: true}
+	SetExporterPolicy(signalLogs, fastPolicy)
+
+	attempt := 0
+	err := RunWithResilience(context.Background(), signalLogs, func(_ context.Context) error {
+		attempt++
+		if attempt < 3 {
+			return errors.New("transient")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error after 3 attempts, got %v", err)
+	}
+	if attempt != 3 {
+		t.Errorf("expected 3 attempts, got %d", attempt)
+	}
+
+	snap := GetHealthSnapshot()
+	// RetryAttempts must be exactly 2: incremented on attempt 1 and attempt 2 (not 0).
+	if snap.RetryAttempts != 2 {
+		t.Errorf("RetryAttempts: want exactly 2, got %d", snap.RetryAttempts)
+	}
+}
+
+// TestRunWithResilience_BackoffApplied verifies the backoff interval is computed
+// correctly (BackoffSeconds * time.Second, not / time.Second). Under the arithmetic
+// mutation (* → /), backoff ≈ 0ns → retries fire immediately → multiple attempts
+// within the 100ms timeout. Under correct code: 2s backoff → only 1 attempt.
+func TestRunWithResilience_BackoffApplied(t *testing.T) {
+	_resetResiliencePolicies()
+	_resetHealth()
+	t.Cleanup(_resetResiliencePolicies)
+	t.Cleanup(_resetHealth)
+
+	policy := ExporterPolicy{
+		Retries:        5,
+		BackoffSeconds: 2.0,
+		TimeoutSeconds: 0.1,
+		FailOpen:       false,
+	}
+	SetExporterPolicy("backoff-test", policy)
+
+	attempts := 0
+	_ = RunWithResilience(context.Background(), "backoff-test", func(_ context.Context) error {
+		attempts++
+		return errors.New("always fail")
+	})
+
+	if attempts != 1 {
+		t.Errorf("expected 1 attempt (2s backoff prevents retry within 100ms timeout), got %d", attempts)
+	}
+}
+
+// TestRunWithResilience_NoRetries_RetryCounterIsZero verifies that succeeding on
+// the first attempt does not increment the retry counter. Kills BOUNDARY mutation
+// (attempt >= 0 would fire at attempt=0).
+func TestRunWithResilience_NoRetries_RetryCounterIsZero(t *testing.T) {
+	_resetResiliencePolicies()
+	_resetHealth()
+	t.Cleanup(_resetResiliencePolicies)
+	t.Cleanup(_resetHealth)
+
+	fastPolicy := ExporterPolicy{Retries: 3, BackoffSeconds: 0.001, TimeoutSeconds: 5.0, FailOpen: true}
+	SetExporterPolicy(signalLogs, fastPolicy)
+
+	err := RunWithResilience(context.Background(), signalLogs, func(_ context.Context) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	snap := GetHealthSnapshot()
+	if snap.RetryAttempts != 0 {
+		t.Errorf("RetryAttempts: want 0 (no retries needed), got %d", snap.RetryAttempts)
+	}
+}
+
+// TestCircuitBreaker_DoesNotTripBefore5Failures verifies ReadyToTrip requires
+// exactly 5 consecutive failures. Under CONDITIONALS_NEGATION (>= 5 → < 5),
+// the CB would trip after 1 failure instead of 5.
+func TestCircuitBreaker_DoesNotTripBefore5Failures(t *testing.T) {
+	policy := _defaultExporterPolicy()
+	cb := _newCircuitBreaker("trip-count-test", policy)
+
+	sentinel := errors.New("fail")
+
+	// 4 failures should NOT trip the CB.
+	for i := 0; i < 4; i++ {
+		_, _ = cb.Execute(func() (interface{}, error) { return nil, sentinel })
+	}
+	if cb.State() != gobreaker.StateClosed {
+		t.Errorf("CB should be closed after 4 failures, got %v", cb.State())
+	}
+
+	// 5th failure trips it.
+	_, _ = cb.Execute(func() (interface{}, error) { return nil, sentinel })
+	if cb.State() != gobreaker.StateOpen {
+		t.Errorf("CB should be open after 5 failures, got %v", cb.State())
+	}
+}
+
 func TestGetCircuitBreaker_ConcurrentLazyInit(t *testing.T) {
 	_resetResiliencePolicies()
 	t.Cleanup(_resetResiliencePolicies)

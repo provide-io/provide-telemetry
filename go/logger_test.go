@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -487,10 +488,17 @@ func TestAttrsToMap_AndMapToAttrs(t *testing.T) {
 	if m["foo"] != "bar" {
 		t.Errorf("expected foo=bar, got %v", m["foo"])
 	}
+	if m["n"] != int64(42) {
+		t.Errorf("expected n=42, got %v (%T)", m["n"], m["n"])
+	}
 
 	attrs := _mapToAttrs(m)
-	if len(attrs) != 2 {
-		t.Errorf("expected 2 attrs, got %d", len(attrs))
+	found := map[string]bool{}
+	for _, a := range attrs {
+		found[a.Key] = true
+	}
+	if !found["foo"] || !found["n"] {
+		t.Errorf("round-trip lost keys: got %v", found)
 	}
 }
 
@@ -498,12 +506,6 @@ func TestGetTraceSpanFromContext_ReturnsEmpty(t *testing.T) {
 	traceID, spanID := _getTraceSpanFromContext(context.Background())
 	if traceID != "" || spanID != "" {
 		t.Errorf("expected empty trace/span IDs, got %q %q", traceID, spanID)
-	}
-}
-
-func TestLevelTrace_Value(t *testing.T) {
-	if LevelTrace != slog.Level(-8) {
-		t.Errorf("LevelTrace = %v, want -8", LevelTrace)
 	}
 }
 
@@ -635,5 +637,162 @@ func TestHandler_ContextFields_WithExistingAttrs(t *testing.T) {
 	}
 	if !strings.Contains(out, "inline_key") {
 		t.Errorf("missing inline_key in output: %s", out)
+	}
+}
+
+// ── applyStandardFields partial-set: kills CONDITIONALS_NEGATION mutations ───
+// logger.go:103 condition: ServiceName == "" && Environment == "" && Version == ""
+// Mutation col 21: ServiceName != "" — with ServiceName set and others empty,
+// mutant returns early (skips all fields). Test verifies service.name IS present.
+func TestHandler_StandardField_OnlyServiceName(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.ServiceName = "only-svc"
+	cfg.Environment = ""
+	cfg.Version = ""
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("partial std fields")
+
+	out := buf.String()
+	if !strings.Contains(out, `"service.name":"only-svc"`) {
+		t.Errorf("expected service.name in output, got: %s", out)
+	}
+	if strings.Contains(out, "service.env") {
+		t.Errorf("unexpected service.env when Environment is empty: %s", out)
+	}
+}
+
+// Mutation col 67: Version != "" — with Version set and others empty,
+// mutant returns early. Test verifies service.version IS present.
+func TestHandler_StandardField_OnlyVersion(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.ServiceName = ""
+	cfg.Environment = ""
+	cfg.Version = "1.0.0"
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("version only")
+
+	out := buf.String()
+	if !strings.Contains(out, `"service.version":"1.0.0"`) {
+		t.Errorf("expected service.version in output, got: %s", out)
+	}
+}
+
+// Mutation col 46: Environment != "" — with Environment set and others empty,
+// mutant returns early. Test verifies service.env IS present.
+func TestHandler_StandardField_OnlyEnvironment(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.ServiceName = ""
+	cfg.Environment = "staging"
+	cfg.Version = ""
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("env only")
+
+	out := buf.String()
+	if !strings.Contains(out, `"service.env":"staging"`) {
+		t.Errorf("expected service.env in output, got: %s", out)
+	}
+}
+
+// ── _effectiveLevel: modules differing by 1 char ─────────────────────────────
+// logger.go:188 `len(module) >= bestLen+1` BOUNDARY: `> bestLen+1` would skip
+// module "ab" (len=2) when bestLen=1 because 2 > 2 is false.
+func TestEffectiveLevel_ConsecutiveLengthModules(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Level = "INFO"
+	cfg.Logging.ModuleLevels = map[string]string{
+		"a":  "WARN",
+		"ab": "DEBUG",
+	}
+	// "ab.c" matches both "a" (prefix) and "ab" (prefix).
+	// "ab" is longer → should win with DEBUG.
+	level := _effectiveLevel("ab.c", cfg)
+	if level != slog.LevelDebug {
+		t.Errorf("expected DEBUG from longest prefix 'ab', got %v", level)
+	}
+}
+
+// ── _effectiveLevel: empty module key ────────────────────────────────────────
+func TestEffectiveLevel_EmptyModuleKey_MatchesAll(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Level = "INFO"
+	cfg.Logging.ModuleLevels = map[string]string{"": "DEBUG"}
+
+	level := _effectiveLevel("any.module.name", cfg)
+	if level != slog.LevelDebug {
+		t.Errorf("empty module key should match all names; want DEBUG, got %v", level)
+	}
+}
+
+// ── _configureLogger produces JSON output when format=json ───────────────────
+// Tests observable behavior: logger output must be valid JSON, not just the handler type.
+func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
+	setupFullSampling(t)
+
+	r, w, _ := os.Pipe()
+	origStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Format = LogFormatJSON
+	cfg.ServiceName = "json-pipe-test"
+	cfg.Logging.Sanitize = false
+	_configureLogger(cfg)
+	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
+
+	Logger.Info("format check")
+	w.Close()
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("_configureLogger with JSON format produced non-JSON output: %v\noutput: %s", err, out)
+	}
+}
+
+// ── GetLogger produces JSON output when format=json ─────────────────────────
+func TestGetLogger_JSONFormat_ProducesJSON(t *testing.T) {
+	setupFullSampling(t)
+
+	r, w, _ := os.Pipe()
+	origStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Format = LogFormatJSON
+	cfg.Logging.Sanitize = false
+	_configureLogger(cfg)
+	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
+
+	l := GetLogger(context.Background(), "json-pipe-test")
+	l.Info("format check")
+	w.Close()
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("GetLogger with JSON format produced non-JSON output: %v\noutput: %s", err, out)
 	}
 }

@@ -374,7 +374,10 @@ def test_slo_helpers_and_error_taxonomy() -> None:
     record_red_metrics("/health", "GET", 500, 13.0)
     record_red_metrics("/ws", "WS", 1008, 5.0)
     record_use_metrics("cpu", 42)
-    assert classify_error("ValueError") == {"error_type": "internal", "error_code": "0", "error_name": "ValueError"}
+    ve_result = classify_error("ValueError")
+    assert ve_result["error_type"] == "internal"
+    assert ve_result["error_code"] == "0"
+    assert ve_result["error_name"] == "ValueError"
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
     assert slo_mod._counters["http.errors.total"].value == 1

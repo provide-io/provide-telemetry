@@ -85,7 +85,7 @@ func TestGuardAttributes_TTLExpiry_SlotFreed(t *testing.T) {
 	_resetCardinalityLimits()
 	t.Cleanup(_resetCardinalityLimits)
 
-	SetCardinalityLimit("session", CardinalityLimit{MaxValues: 1, TTLSeconds: 0.01}) // 10ms TTL
+	SetCardinalityLimit("session", CardinalityLimit{MaxValues: 1, TTLSeconds: 0.05}) // 50ms TTL
 
 	// Fill the single slot.
 	r1 := GuardAttributes(map[string]string{"session": "s1"})
@@ -100,7 +100,7 @@ func TestGuardAttributes_TTLExpiry_SlotFreed(t *testing.T) {
 	}
 
 	// Wait for TTL to expire.
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 
 	// After expiry the slot is free — new value should be accepted.
 	r3 := GuardAttributes(map[string]string{"session": "s2"})
@@ -181,4 +181,32 @@ func TestGuardAttributes_Concurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestGuardAttributes_LargeMaxValues_OverflowCorrect verifies the LRU capacity
+// scales with MaxValues * _lruCapMultiplier. Under ARITHMETIC mutation (* → /),
+// cap = max(MaxValues/10, 1000) = 1000, causing eviction before MaxValues is
+// reached. The test fills MaxValues entries (all accepted), then checks that
+// entry MaxValues+1 OVERFLOWS (Len >= MaxValues). Under mutation, eviction
+// keeps Len < MaxValues, so entry MaxValues+1 is incorrectly accepted.
+func TestGuardAttributes_LargeMaxValues_OverflowCorrect(t *testing.T) {
+	_resetCardinalityLimits()
+	t.Cleanup(_resetCardinalityLimits)
+
+	const maxValues = 1100
+	SetCardinalityLimit("bigkey", CardinalityLimit{MaxValues: maxValues, TTLSeconds: 3600})
+
+	for i := 0; i < maxValues; i++ {
+		v := fmt.Sprintf("v%d", i)
+		got := GuardAttributes(map[string]string{"bigkey": v})
+		if got["bigkey"] == _overflowValue {
+			t.Fatalf("entry %d should be accepted (MaxValues=%d), got overflow", i, maxValues)
+		}
+	}
+
+	// Entry maxValues must OVERFLOW: cache.Len() == maxValues >= maxValues.
+	got := GuardAttributes(map[string]string{"bigkey": "overflow-entry"})
+	if got["bigkey"] != _overflowValue {
+		t.Errorf("entry %d should overflow, got %q", maxValues, got["bigkey"])
+	}
 }

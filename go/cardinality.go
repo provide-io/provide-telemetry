@@ -62,10 +62,7 @@ func _lruForKey(key string, limit CardinalityLimit) *expirable.LRU[string, struc
 	if cache, ok := _cardinalityCaches[key]; ok {
 		return cache
 	}
-	cap := limit.MaxValues * _lruCapMultiplier
-	if cap < _lruCapMin {
-		cap = _lruCapMin
-	}
+	cap := max(limit.MaxValues*_lruCapMultiplier, _lruCapMin)
 	ttl := time.Duration(float64(time.Second) * limit.TTLSeconds)
 	cache := expirable.NewLRU[string, struct{}](cap, nil, ttl)
 	_cardinalityCaches[key] = cache
