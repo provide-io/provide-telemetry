@@ -28,6 +28,7 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             @functools.wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 from provide.telemetry.backpressure import release, try_acquire
+                from provide.telemetry.health import increment_emitted
                 from provide.telemetry.sampling import should_sample
 
                 if not should_sample("traces", span_name):
@@ -35,6 +36,7 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                 ticket = try_acquire("traces")
                 if ticket is None:
                     return await fn(*args, **kwargs)
+                increment_emitted("traces")
                 prev_trace = get_trace_id()
                 prev_span = get_span_id()
                 with get_tracer(fn.__module__).start_as_current_span(span_name):
@@ -50,6 +52,7 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
         @functools.wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             from provide.telemetry.backpressure import release, try_acquire
+            from provide.telemetry.health import increment_emitted
             from provide.telemetry.sampling import should_sample
 
             if not should_sample("traces", span_name):
@@ -57,6 +60,7 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             ticket = try_acquire("traces")
             if ticket is None:
                 return fn(*args, **kwargs)
+            increment_emitted("traces")
             prev_trace = get_trace_id()
             prev_span = get_span_id()
             with get_tracer(fn.__module__).start_as_current_span(span_name):
