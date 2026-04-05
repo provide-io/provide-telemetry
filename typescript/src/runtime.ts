@@ -6,7 +6,6 @@
  * Mirrors Python provide.telemetry.runtime.
  */
 
-import { ConfigurationError } from './exceptions';
 import { type TelemetryConfig, configFromEnv, setupTelemetry } from './config';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
@@ -67,7 +66,8 @@ const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
 
 /**
  * Apply config changes.
- * Throws ConfigurationError if provider-changing fields differ and providers are already registered.
+ * If provider-changing fields differ and providers are already registered, performs a
+ * best-effort shutdown (fire-and-forget) then re-initialises — matching Go/Python behaviour.
  * Otherwise delegates to setupTelemetry.
  */
 export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
@@ -79,9 +79,13 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(proposed[k]),
     );
     if (changed) {
-      throw new ConfigurationError(
-        'Cannot change OTEL provider config after providers are initialized; restart the process',
+      // Best-effort async shutdown — fire-and-forget, errors ignored (mirrors Go's `_ = ShutdownTelemetry(ctx)`)
+      const providers = _getRegisteredProviders();
+      void Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve())).then(
+        () => Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve())),
       );
+      _providersRegistered = false;
+      _registeredProviders = [];
     }
   }
 

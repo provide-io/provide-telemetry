@@ -6,6 +6,7 @@ package telemetry
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"slices"
@@ -64,6 +65,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		return nil //nolint:nilerr // schema violation drops the record
 	}
 
+	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
 	return h.next.Handle(ctx, r)
 }
@@ -136,13 +138,20 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	return nr
 }
 
-// applySchema validates the event name against schema rules when strict mode is enabled.
-// Returns an error if the message fails validation and strict mode is active.
+// applySchema validates the event name and required keys when strict mode is enabled.
+// Returns an error if validation fails; the caller drops the record on error.
 func (h *_telemetryHandler) applySchema(r slog.Record) error {
 	if !_strictSchema {
 		return nil
 	}
-	return ValidateEventName(r.Message)
+	if err := ValidateEventName(r.Message); err != nil {
+		return err
+	}
+	if len(h.cfg.EventSchema.RequiredKeys) > 0 {
+		attrs := _attrsToMap(r)
+		return ValidateRequiredKeys(attrs, h.cfg.EventSchema.RequiredKeys)
+	}
+	return nil
 }
 
 // applyPII sanitizes all record attributes through the PII engine.
@@ -288,4 +297,28 @@ func IsTraceEnabled() bool {
 		return false
 	}
 	return Logger.Enabled(context.Background(), LevelTrace)
+}
+
+// applyErrorFingerprint adds error_fingerprint when error attributes are present.
+func (h *_telemetryHandler) applyErrorFingerprint(r slog.Record) slog.Record {
+	var excName string
+	r.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "exc_info", "exc_name", "exception":
+			excName = fmt.Sprint(a.Value.Any())
+			return false
+		}
+		return true
+	})
+	if excName == "" {
+		return r
+	}
+	fp := _computeErrorFingerprintFromParts(excName, nil)
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		nr.AddAttrs(a)
+		return true
+	})
+	nr.AddAttrs(slog.String("error_fingerprint", fp))
+	return nr
 }
