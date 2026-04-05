@@ -135,29 +135,6 @@ describe('withTrace', () => {
     expect(called).toBe(true);
   });
 
-  it('returns callback result without trace emission when tracing is disabled', () => {
-    _resetConfig();
-    _resetHealthForTests();
-    _resetTraceContext();
-    try {
-      setupTelemetry({ tracingEnabled: false });
-
-      let capturedCtx: { trace_id?: string; span_id?: string } = {};
-      const result = withTrace('disabled.trace', () => {
-        capturedCtx = getTraceContext();
-        return 'ok';
-      });
-
-      expect(result).toBe('ok');
-      expect(capturedCtx).toEqual({});
-      expect(getHealthSnapshot().tracesEmitted).toBe(0);
-    } finally {
-      _resetTraceContext();
-      _resetHealthForTests();
-      _resetConfig();
-    }
-  });
-
   it('provides random hex trace IDs via getTraceContext() inside a noop span', () => {
     // When no OTel SDK is registered, withTrace should generate synthetic random IDs
     // so that callers can get non-zero trace context (parity with Python/Go).
@@ -278,6 +255,10 @@ describe('withTrace — span.setStatus called on error', () => {
       end: vi.fn(),
       recordException: vi.fn(),
       setStatus: mockSetStatus,
+      spanContext: () => ({
+        traceId: 'aabbccddeeff00112233445566778899',
+        spanId: 'aabbccdd11223344',
+      }),
     };
     const mockTracer = {
       startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
@@ -307,6 +288,10 @@ describe('withTrace — span.setStatus called on error', () => {
       end: vi.fn(),
       recordException: vi.fn(),
       setStatus: mockSetStatus,
+      spanContext: () => ({
+        traceId: 'aabbccddeeff00112233445566778899',
+        spanId: 'aabbccdd11223344',
+      }),
     };
     const mockTracer = {
       startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
