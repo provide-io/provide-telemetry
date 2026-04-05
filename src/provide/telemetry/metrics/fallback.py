@@ -11,7 +11,7 @@ from typing import Any
 
 from provide.telemetry.backpressure import release, try_acquire
 from provide.telemetry.cardinality import guard_attributes
-from provide.telemetry.health import increment_exemplar_unsupported
+from provide.telemetry.health import increment_emitted
 from provide.telemetry.sampling import should_sample
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
@@ -65,6 +65,7 @@ class Counter:
         try:
             with self._lock:
                 self.value += amount
+            increment_emitted("metrics")
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -74,7 +75,7 @@ class Counter:
                         otel_counter.add(amount, attrs, exemplar=exemplar)
                         return
                     except TypeError:
-                        increment_exemplar_unsupported()
+                        pass  # exemplar unsupported; fall through to plain add
                 otel_counter.add(amount, attrs)
         finally:
             release(ticket)
@@ -113,6 +114,9 @@ class Gauge:
         if ticket is None:
             return
         try:
+            increment_emitted("metrics")
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 self.value += amount
             otel_gauge = self._resolve_otel()
@@ -129,6 +133,9 @@ class Gauge:
         if ticket is None:
             return
         try:
+            increment_emitted("metrics")
+            otel_gauge = self._resolve_otel()
+            attrs = guard_attributes(attributes or {})
             with self._lock:
                 delta = value - self.value
                 self.value = value
@@ -183,6 +190,7 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
+            increment_emitted("metrics")
             otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
@@ -192,7 +200,7 @@ class Histogram:
                         otel_histogram.record(value, attrs, exemplar=exemplar)
                         return
                     except TypeError:
-                        increment_exemplar_unsupported()
+                        pass  # exemplar unsupported; fall through to plain record
                 otel_histogram.record(value, attrs)
         finally:
             release(ticket)

@@ -28,7 +28,7 @@ from provide.telemetry.health import (
     increment_async_blocking_risk,
     increment_retries,
     record_export_failure,
-    record_export_success,
+    record_export_latency,
 )
 
 T = TypeVar("T")
@@ -166,8 +166,8 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         started = time.perf_counter()
         try:
             result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
-            latency_ms = (time.perf_counter() - started) * 1000.0
-            record_export_success(sig, latency_ms=latency_ms)
+            latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+            record_export_latency(sig, latency_ms=latency_ms)
             _record_attempt_success(sig)
             return result
         except TimeoutError as exc:

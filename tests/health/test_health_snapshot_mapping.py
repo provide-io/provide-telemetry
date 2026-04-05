@@ -21,7 +21,6 @@ from provide.telemetry.health import (
     record_export_failure,
     record_export_latency,
     reset_health_for_tests,
-    set_queue_depth,
     set_setup_error,
 )
 from provide.telemetry.resilience import reset_resilience_for_tests
@@ -85,24 +84,6 @@ class TestHealthSnapshotFieldMapping:
         assert snap.export_failures_traces == 1
         assert snap.export_failures_metrics == 1
 
-    def test_last_error_maps_correctly(self) -> None:
-        record_export_failure("logs", RuntimeError("log_e"))
-        record_export_failure("traces", RuntimeError("trace_e"))
-        record_export_failure("metrics", RuntimeError("metric_e"))
-        snap = get_health_snapshot()
-        assert snap.last_error_logs == "log_e"
-        assert snap.last_error_traces == "trace_e"
-        assert snap.last_error_metrics == "metric_e"
-
-    def test_last_success_maps_correctly(self) -> None:
-        record_export_success("logs", latency_ms=1.0)
-        record_export_success("traces", latency_ms=2.0)
-        record_export_success("metrics", latency_ms=3.0)
-        snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_logs, (int, float)) and snap.last_successful_export_logs > 0
-        assert isinstance(snap.last_successful_export_traces, (int, float)) and snap.last_successful_export_traces > 0
-        assert isinstance(snap.last_successful_export_metrics, (int, float)) and snap.last_successful_export_metrics > 0
-
     def test_export_latency_maps_correctly(self) -> None:
         record_export_latency("logs", latency_ms=100.0)
         record_export_latency("traces", latency_ms=200.0)
@@ -150,9 +131,12 @@ class TestHealthSnapshotFieldMapping:
 
     def test_snapshot_has_exactly_25_fields(self) -> None:
         """Canonical 25-field layout: 8 per signal * 3 + 1 global."""
+        import dataclasses
+
         from provide.telemetry.health import HealthSnapshot
 
-        assert len(HealthSnapshot._fields) == 25
+        fields = dataclasses.fields(HealthSnapshot)
+        assert len(fields) == 25
 
 
 # -- reset_health_for_tests --
@@ -232,9 +216,6 @@ class TestResetHealthForTests:
         assert snap.export_failures_logs == 0
         assert snap.export_latency_ms_logs == 0.0
 
-        # Exemplar counter is exactly 0
-        assert snap.exemplar_unsupported_total == 0
-
     def test_reset_clears_setup_error(self) -> None:
         set_setup_error("broken")
         reset_health_for_tests()
@@ -242,7 +223,7 @@ class TestResetHealthForTests:
         assert snap.setup_error is None
 
 
-# ── Circuit state fields in snapshot ─────────────────────────────
+# -- Circuit state fields in snapshot --
 
 
 class TestHealthSnapshotCircuitState:
@@ -254,9 +235,6 @@ class TestHealthSnapshotCircuitState:
         assert snap.circuit_open_count_logs == 0
         assert snap.circuit_open_count_traces == 0
         assert snap.circuit_open_count_metrics == 0
-        assert snap.circuit_cooldown_remaining_logs == 0.0
-        assert snap.circuit_cooldown_remaining_traces == 0.0
-        assert snap.circuit_cooldown_remaining_metrics == 0.0
 
     def test_setup_error_none_by_default(self) -> None:
         snap = get_health_snapshot()
@@ -273,12 +251,8 @@ class TestHealthSnapshotCircuitState:
         snap = get_health_snapshot()
         assert snap.setup_error is None
 
-    def test_circuit_open_count_distinct_from_cooldown(self) -> None:
-        """Kill mutant: cs_logs[1] -> cs_logs[2] (swaps open_count with cooldown).
-
-        Trip the circuit breaker to get non-zero open_count and positive cooldown,
-        then verify they are placed in the correct snapshot fields.
-        """
+    def test_circuit_open_count_distinct_from_state(self) -> None:
+        """Trip the circuit breaker to get non-zero open_count."""
         import time
 
         from provide.telemetry.resilience import (
@@ -291,7 +265,6 @@ class TestHealthSnapshotCircuitState:
 
         reset_resilience_for_tests()
         reset_health_for_tests()
-        # Trip the circuit for "logs" signal
         set_exporter_policy(
             "logs",
             ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
@@ -300,15 +273,9 @@ class TestHealthSnapshotCircuitState:
             run_with_resilience("logs", lambda: time.sleep(1.0))
 
         snap = get_health_snapshot()
-        # Circuit is open: open_count >= 1 (integer), cooldown_remaining > 0 (float)
         assert snap.circuit_state_logs == "open"
         assert isinstance(snap.circuit_open_count_logs, int)
         assert snap.circuit_open_count_logs >= 1
-        assert isinstance(snap.circuit_cooldown_remaining_logs, float)
-        assert snap.circuit_cooldown_remaining_logs > 0.0
-        # The values must be different types/magnitudes (int vs float > 1.0)
-        # so swapping indices would produce wrong types or values
-        assert snap.circuit_open_count_logs != snap.circuit_cooldown_remaining_logs
 
     def test_circuit_open_count_per_signal_mapping(self) -> None:
         """Kill mutants swapping indices for traces and metrics signals."""
@@ -335,9 +302,5 @@ class TestHealthSnapshotCircuitState:
         snap = get_health_snapshot()
         assert snap.circuit_state_traces == "open"
         assert snap.circuit_open_count_traces >= 1
-        assert snap.circuit_cooldown_remaining_traces > 0.0
-        assert snap.circuit_open_count_traces != snap.circuit_cooldown_remaining_traces
         assert snap.circuit_state_metrics == "open"
         assert snap.circuit_open_count_metrics >= 1
-        assert snap.circuit_cooldown_remaining_metrics > 0.0
-        assert snap.circuit_open_count_metrics != snap.circuit_cooldown_remaining_metrics

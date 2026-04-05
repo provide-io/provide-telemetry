@@ -254,22 +254,6 @@ class TestRecordExportFailure:
         snap = get_health_snapshot()
         assert snap.export_failures_traces == 2
 
-    def test_stores_error_string_not_none(self) -> None:
-        exc = ValueError("test error")
-        record_export_failure("logs", exc)
-        snap = get_health_snapshot()
-        assert snap.last_error_logs == "test error"
-
-    def test_traces_error_stored(self) -> None:
-        record_export_failure("traces", RuntimeError("trace err"))
-        snap = get_health_snapshot()
-        assert snap.last_error_traces == "trace err"
-
-    def test_metrics_error_stored(self) -> None:
-        record_export_failure("metrics", RuntimeError("metric err"))
-        snap = get_health_snapshot()
-        assert snap.last_error_metrics == "metric err"
-
     def test_signals_are_independent(self) -> None:
         record_export_failure("logs", RuntimeError("log err"))
         record_export_failure("traces", RuntimeError("trace err"))
@@ -282,13 +266,7 @@ class TestRecordExportFailure:
 # ── record_export_latency ─────────────────────────────────────
 
 
-class TestRecordExportSuccess:
-    def test_records_timestamp(self) -> None:
-        record_export_success("logs", latency_ms=1.5)
-        snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_logs, (int, float))
-        assert snap.last_successful_export_logs > 0
-
+class TestRecordExportLatency:
     def test_records_latency(self) -> None:
         record_export_latency("traces", latency_ms=42.0)
         snap = get_health_snapshot()
@@ -313,35 +291,17 @@ class TestRecordExportSuccess:
     def test_traces_latency(self) -> None:
         record_export_latency("traces", latency_ms=10.0)
         snap = get_health_snapshot()
-        assert snap.last_error_logs == "err"
-
-        record_export_success("logs", latency_ms=1.0)
-        snap = get_health_snapshot()
-        assert snap.last_error_logs is None
-        # Ensure it's actually None, not empty string
-        assert snap.last_error_logs != ""
-
-    def test_traces_success(self) -> None:
-        record_export_success("traces", latency_ms=10.0)
-        snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_traces, (int, float))
-        assert snap.last_successful_export_traces > 0
         assert snap.export_latency_ms_traces == 10.0
 
     def test_metrics_latency(self) -> None:
         record_export_latency("metrics", latency_ms=20.0)
         snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_metrics, (int, float))
-        assert snap.last_successful_export_metrics > 0
         assert snap.export_latency_ms_metrics == 20.0
 
     def test_signals_are_independent(self) -> None:
         record_export_latency("logs", latency_ms=1.0)
         record_export_latency("traces", latency_ms=2.0)
         snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_logs, (int, float))
-        assert isinstance(snap.last_successful_export_traces, (int, float))
-        assert snap.last_successful_export_metrics is None
         assert snap.export_latency_ms_logs == 1.0
         assert snap.export_latency_ms_traces == 2.0
         assert snap.export_latency_ms_metrics == 0.0
