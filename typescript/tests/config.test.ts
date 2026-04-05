@@ -111,6 +111,41 @@ describe('configFromEnv', () => {
     }
   });
 
+  it('URL-decodes OTLP header keys and values from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] =
+      'Authorization=Bearer%20token%3D123,X-Custom%20Key=value%20with%20spaces';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({
+        Authorization: 'Bearer token=123',
+        'X-Custom Key': 'value with spaces',
+      });
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('skips malformed OTLP header pairs from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'badpair,x-key=ok';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
+      expect(cfg.otlpHeaders).not.toHaveProperty('badpair');
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
+  it('skips invalid URL-encoded OTLP header pairs from env', () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'bad=%ZZ,x-key=ok';
+    try {
+      const cfg = configFromEnv();
+      expect(cfg.otlpHeaders).toEqual({ 'x-key': 'ok' });
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_HEADERS'];
+    }
+  });
+
   it('nodeEnv returns undefined when process is undefined (browser-like environment)', () => {
     // Simulate a browser environment where process is not defined
     vi.stubGlobal('process', undefined);
