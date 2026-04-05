@@ -586,3 +586,19 @@ func TestParity_EventName_StrictAcceptsValid(t *testing.T) {
 		t.Fatalf("expected user.login.ok, got %s", name)
 	}
 }
+
+// ── Config Headers Plus Literal ─────────────────────────────────────────────
+
+func TestParity_ConfigHeaders_PlusPreserved(t *testing.T) {
+	result := parseOTLPHeaders("a+b=c+d")
+	if val, ok := result["a+b"]; !ok || val != "c+d" {
+		t.Fatalf("expected {a+b: c+d}, got %v", result)
+	}
+}
+
+func TestParity_ConfigHeaders_PercentSpace(t *testing.T) {
+	result := parseOTLPHeaders("a%20b=c%20d")
+	if val, ok := result["a b"]; !ok || val != "c d" {
+		t.Fatalf("expected {a b: c d}, got %v", result)
+	}
+}
