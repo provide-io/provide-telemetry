@@ -57,7 +57,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyStandardFields(r)
 	r = h.applyTraceFields(ctx, r)
 
-	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled {
+	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil
 		return nil
 	}
 
