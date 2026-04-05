@@ -6,158 +6,164 @@ package telemetry
 import "sync"
 
 // HealthSnapshot holds point-in-time counters for all telemetry signals.
+// The canonical layout has 25 fields: 8 per signal (logs, traces, metrics)
+// plus 1 global field (SetupError).
 type HealthSnapshot struct {
-	// Logging counters
-	LogsEmitted      int64
-	LogsDropped      int64
-	LogsExportErrors int64
-	LogsExportedOK   int64
+	// Logs (8 fields)
+	LogsEmitted           int64
+	LogsDropped           int64
+	LogsExportFailures    int64
+	LogsRetries           int64
+	LogsExportLatencyMs   float64
+	LogsAsyncBlockingRisk int64
+	LogsCircuitState      string
+	LogsCircuitOpenCount  int64
 
-	// Tracing counters
-	SpansStarted      int64
-	SpansDropped      int64
-	SpansExportErrors int64
-	SpansExportedOK   int64
+	// Traces (8 fields)
+	TracesEmitted           int64
+	TracesDropped           int64
+	TracesExportFailures    int64
+	TracesRetries           int64
+	TracesExportLatencyMs   float64
+	TracesAsyncBlockingRisk int64
+	TracesCircuitState      string
+	TracesCircuitOpenCount  int64
 
-	// Metrics counters
-	MetricsRecorded     int64
-	MetricsDropped      int64
-	MetricsExportErrors int64
-	MetricsExportedOK   int64
+	// Metrics (8 fields)
+	MetricsEmitted           int64
+	MetricsDropped           int64
+	MetricsExportFailures    int64
+	MetricsRetries           int64
+	MetricsExportLatencyMs   float64
+	MetricsAsyncBlockingRisk int64
+	MetricsCircuitState      string
+	MetricsCircuitOpenCount  int64
 
-	// Resilience counters
-	CircuitBreakerTrips int64
-	RetryAttempts       int64
-	ExportLatencyMs     int64 // cumulative; divide by exported count for avg
-
-	// Setup state
-	SetupCount    int64
-	ShutdownCount int64
-	LastError     string // last error message, "" if none
+	// Global (1 field)
+	SetupError string
 }
 
 var (
-	_healthMu sync.Mutex
-	_health   HealthSnapshot
+	_healthMu          sync.Mutex
+	_emitted           = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_dropped           = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_exportFailures    = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_retries           = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_exportLatencyMs   = map[string]float64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_asyncBlockingRisk = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_setupErrorHealth  string
 )
 
-// GetHealthSnapshot returns a point-in-time copy of the health counters.
+// GetHealthSnapshot returns a point-in-time copy of the health counters,
+// integrating live circuit breaker state from the resilience module.
 func GetHealthSnapshot() HealthSnapshot {
+	logsCS := GetCircuitState(signalLogs)
+	tracesCS := GetCircuitState(signalTraces)
+	metricsCS := GetCircuitState(signalMetrics)
+
 	_healthMu.Lock()
 	defer _healthMu.Unlock()
-	return _health
+	return HealthSnapshot{
+		LogsEmitted:           _emitted[signalLogs],
+		LogsDropped:           _dropped[signalLogs],
+		LogsExportFailures:    _exportFailures[signalLogs],
+		LogsRetries:           _retries[signalLogs],
+		LogsExportLatencyMs:   _exportLatencyMs[signalLogs],
+		LogsAsyncBlockingRisk: _asyncBlockingRisk[signalLogs],
+		LogsCircuitState:      logsCS.State,
+		LogsCircuitOpenCount:  int64(logsCS.OpenCount),
+
+		TracesEmitted:           _emitted[signalTraces],
+		TracesDropped:           _dropped[signalTraces],
+		TracesExportFailures:    _exportFailures[signalTraces],
+		TracesRetries:           _retries[signalTraces],
+		TracesExportLatencyMs:   _exportLatencyMs[signalTraces],
+		TracesAsyncBlockingRisk: _asyncBlockingRisk[signalTraces],
+		TracesCircuitState:      tracesCS.State,
+		TracesCircuitOpenCount:  int64(tracesCS.OpenCount),
+
+		MetricsEmitted:           _emitted[signalMetrics],
+		MetricsDropped:           _dropped[signalMetrics],
+		MetricsExportFailures:    _exportFailures[signalMetrics],
+		MetricsRetries:           _retries[signalMetrics],
+		MetricsExportLatencyMs:   _exportLatencyMs[signalMetrics],
+		MetricsAsyncBlockingRisk: _asyncBlockingRisk[signalMetrics],
+		MetricsCircuitState:      metricsCS.State,
+		MetricsCircuitOpenCount:  int64(metricsCS.OpenCount),
+
+		SetupError: _setupErrorHealth,
+	}
 }
 
-func _incLogsEmitted() {
+// _incEmitted increments the emitted counter for the given signal.
+func _incEmitted(signal string) {
 	_healthMu.Lock()
-	_health.LogsEmitted++
+	_emitted[signal]++
 	_healthMu.Unlock()
 }
 
-func _incLogsDropped() {
+// _incDroppedHealth increments the dropped counter for the given signal.
+func _incDroppedHealth(signal string) {
 	_healthMu.Lock()
-	_health.LogsDropped++
+	_dropped[signal]++
 	_healthMu.Unlock()
 }
 
-func _incLogsExportErrors() {
+// _incExportFailures increments the export failure counter for the given signal.
+func _incExportFailures(signal string) {
 	_healthMu.Lock()
-	_health.LogsExportErrors++
+	_exportFailures[signal]++
 	_healthMu.Unlock()
 }
 
-func _incLogsExportedOK() {
+// _incRetries increments the retry counter for the given signal.
+func _incRetries(signal string) {
 	_healthMu.Lock()
-	_health.LogsExportedOK++
+	_retries[signal]++
 	_healthMu.Unlock()
 }
 
-func _incSpansStarted() {
+// _recordExportLatencyForSignal records the latest export latency for a signal.
+func _recordExportLatencyForSignal(signal string, ms float64) {
 	_healthMu.Lock()
-	_health.SpansStarted++
+	_exportLatencyMs[signal] = ms
 	_healthMu.Unlock()
 }
 
-func _incSpansDropped() {
+// _incAsyncBlockingRisk increments the async blocking risk counter for a signal.
+func _incAsyncBlockingRisk(signal string) {
 	_healthMu.Lock()
-	_health.SpansDropped++
+	_asyncBlockingRisk[signal]++
 	_healthMu.Unlock()
 }
 
-func _incSpansExportErrors() {
+// _setSetupError records a setup-time error message.
+func _setSetupError(msg string) {
 	_healthMu.Lock()
-	_health.SpansExportErrors++
+	_setupErrorHealth = msg
 	_healthMu.Unlock()
 }
 
-func _incSpansExportedOK() {
-	_healthMu.Lock()
-	_health.SpansExportedOK++
-	_healthMu.Unlock()
-}
+// Backward-compatible wrappers — used by sampling, backpressure, and resilience.
 
-func _incMetricsRecorded() {
-	_healthMu.Lock()
-	_health.MetricsRecorded++
-	_healthMu.Unlock()
-}
-
-func _incMetricsDropped() {
-	_healthMu.Lock()
-	_health.MetricsDropped++
-	_healthMu.Unlock()
-}
-
-func _incMetricsExportErrors() {
-	_healthMu.Lock()
-	_health.MetricsExportErrors++
-	_healthMu.Unlock()
-}
-
-func _incMetricsExportedOK() {
-	_healthMu.Lock()
-	_health.MetricsExportedOK++
-	_healthMu.Unlock()
-}
-
-func _incCircuitBreakerTrips() {
-	_healthMu.Lock()
-	_health.CircuitBreakerTrips++
-	_healthMu.Unlock()
-}
-
-func _incRetryAttempts() {
-	_healthMu.Lock()
-	_health.RetryAttempts++
-	_healthMu.Unlock()
-}
-
-func _addExportLatency(ms int64) {
-	_healthMu.Lock()
-	_health.ExportLatencyMs += ms
-	_healthMu.Unlock()
-}
-
-func _incSetupCount() {
-	_healthMu.Lock()
-	_health.SetupCount++
-	_healthMu.Unlock()
-}
-
-func _incShutdownCount() {
-	_healthMu.Lock()
-	_health.ShutdownCount++
-	_healthMu.Unlock()
-}
-
-func _setLastError(msg string) {
-	_healthMu.Lock()
-	_health.LastError = msg
-	_healthMu.Unlock()
-}
+func _incLogsEmitted()      { _incEmitted(signalLogs) }
+func _incLogsDropped()       { _incDroppedHealth(signalLogs) }
+func _incSpansStarted()      { _incEmitted(signalTraces) }
+func _incSpansDropped()      { _incDroppedHealth(signalTraces) }
+func _incMetricsRecorded()   { _incEmitted(signalMetrics) }
+func _incMetricsDropped()    { _incDroppedHealth(signalMetrics) }
+func _incLogsExportErrors()  { _incExportFailures(signalLogs) }
+func _incSpansExportErrors() { _incExportFailures(signalTraces) }
+func _incMetricsExportErrors() { _incExportFailures(signalMetrics) }
 
 func _resetHealth() {
 	_healthMu.Lock()
-	_health = HealthSnapshot{}
+	_emitted = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_dropped = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_exportFailures = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_retries = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_exportLatencyMs = map[string]float64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_asyncBlockingRisk = map[string]int64{signalLogs: 0, signalTraces: 0, signalMetrics: 0}
+	_setupErrorHealth = ""
 	_healthMu.Unlock()
 }
