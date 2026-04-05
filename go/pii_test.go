@@ -158,15 +158,16 @@ func TestSanitizePayload_CustomRule_Truncate_ShortString(t *testing.T) {
 	}
 }
 
-func TestSanitizePayload_CustomRule_Truncate_NonString_Redacts(t *testing.T) {
+func TestSanitizePayload_CustomRule_Truncate_NonString_Stringified(t *testing.T) {
 	resetPII(t)
 	SetPIIRules([]PIIRule{
 		{Path: []string{"count"}, Mode: PIIModeTruncate, TruncateTo: 5},
 	})
 	payload := map[string]any{"count": 42}
 	result := SanitizePayload(payload, true, 32)
-	if result["count"] != _piiRedacted {
-		t.Errorf("expected %q for non-string truncate, got %v", _piiRedacted, result["count"])
+	// fmt.Sprintf("%v", 42) = "42" (2 chars < 5) → no truncation
+	if result["count"] != "42" {
+		t.Errorf("expected %q for non-string truncate, got %v", "42", result["count"])
 	}
 }
 
