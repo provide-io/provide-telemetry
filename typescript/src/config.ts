@@ -16,6 +16,7 @@ import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
 import { setSetupError } from './health';
+import { ConfigurationError } from './exceptions';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -191,6 +192,51 @@ function envNumber(key: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n;
 }
 
+function envBool(key: string, fallback: boolean): boolean {
+  const raw = nodeEnv(key);
+  if (raw === undefined || raw.trim() === '') return fallback;
+  switch (raw.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true;
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false;
+    default:
+      throw new ConfigurationError(
+        `invalid boolean for ${key}: ${JSON.stringify(raw)} (expected one of: 1,true,yes,on,0,false,no,off)`,
+      );
+  }
+}
+
+function envFloatInRange(key: string, fallback: number, min: number, max: number): number {
+  const value = envNumber(key, fallback);
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new ConfigurationError(`${key} must be in [${min}, ${max}], got ${String(value)}`);
+  }
+  return value;
+}
+
+function envNonNegativeInt(key: string, fallback: number): number {
+  const value = envNumber(key, fallback);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ConfigurationError(`${key} must be a non-negative integer, got ${String(value)}`);
+  }
+  return value;
+}
+
+function envNonNegativeMsFromSeconds(key: string, fallbackMs: number): number {
+  const value = envSecondsToMs(key, fallbackMs);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ConfigurationError(`${key} must be >= 0, got ${String(value)}`);
+  }
+  return value;
+}
+
 /** Parse an env var expressed in seconds and return milliseconds. */
 function envSecondsToMs(key: string, fallbackMs: number): number {
   const raw = nodeEnv(key);
@@ -222,18 +268,7 @@ function parseModuleLevels(raw: string | undefined): Record<string, string> {
  */
 export function configFromEnv(): TelemetryConfig {
   const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
-  const parsedHeaders: Record<string, string> | undefined = otelHeader
-    ? Object.fromEntries(
-        otelHeader
-          .split(',')
-          .map((pair) => {
-            const idx = pair.indexOf('=');
-            if (idx === -1) return [pair.trim(), ''] as [string, string];
-            return [pair.slice(0, idx).trim(), pair.slice(idx + 1).trim()] as [string, string];
-          })
-          .filter(([k]) => k !== ''),
-      )
-    : undefined;
+  const parsedHeaders = otelHeader ? parseOtlpHeaders(otelHeader) : undefined;
 
   return {
     serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
@@ -245,13 +280,13 @@ export function configFromEnv(): TelemetryConfig {
       // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
       return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
     })(),
-    otelEnabled: nodeEnv('PROVIDE_TRACE_ENABLED') === 'true',
+    otelEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.otelEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
     consoleOutput: false,
-    strictSchema: nodeEnv('PROVIDE_TELEMETRY_STRICT_SCHEMA') === 'true',
+    strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
       return raw
@@ -263,85 +298,109 @@ export function configFromEnv(): TelemetryConfig {
     })(),
 
     // Logging extras
-    logIncludeTimestamp: nodeEnv('PROVIDE_LOG_INCLUDE_TIMESTAMP') !== 'false',
-    logIncludeCaller: nodeEnv('PROVIDE_LOG_INCLUDE_CALLER') !== 'false',
-    logSanitize: nodeEnv('PROVIDE_LOG_SANITIZE') !== 'false',
-    logCodeAttributes: nodeEnv('PROVIDE_LOG_CODE_ATTRIBUTES') === 'true',
+    logIncludeTimestamp: envBool('PROVIDE_LOG_INCLUDE_TIMESTAMP', DEFAULTS.logIncludeTimestamp),
+    logIncludeCaller: envBool('PROVIDE_LOG_INCLUDE_CALLER', DEFAULTS.logIncludeCaller),
+    logSanitize: envBool('PROVIDE_LOG_SANITIZE', DEFAULTS.logSanitize),
+    logCodeAttributes: envBool('PROVIDE_LOG_CODE_ATTRIBUTES', DEFAULTS.logCodeAttributes),
     logModuleLevels: parseModuleLevels(nodeEnv('PROVIDE_LOG_MODULE_LEVELS')),
 
     // Tracing
-    traceSampleRate: envNumber('PROVIDE_TRACE_SAMPLE_RATE', DEFAULTS.traceSampleRate),
+    traceSampleRate: envFloatInRange('PROVIDE_TRACE_SAMPLE_RATE', DEFAULTS.traceSampleRate, 0, 1),
 
     // Metrics
-    metricsEnabled: nodeEnv('PROVIDE_METRICS_ENABLED') !== 'false',
+    metricsEnabled: envBool('PROVIDE_METRICS_ENABLED', DEFAULTS.metricsEnabled),
 
     // Per-signal sampling
-    samplingLogsRate: envNumber('PROVIDE_SAMPLING_LOGS_RATE', DEFAULTS.samplingLogsRate),
-    samplingTracesRate: envNumber('PROVIDE_SAMPLING_TRACES_RATE', DEFAULTS.samplingTracesRate),
-    samplingMetricsRate: envNumber('PROVIDE_SAMPLING_METRICS_RATE', DEFAULTS.samplingMetricsRate),
+    samplingLogsRate: envFloatInRange(
+      'PROVIDE_SAMPLING_LOGS_RATE',
+      DEFAULTS.samplingLogsRate,
+      0,
+      1,
+    ),
+    samplingTracesRate: envFloatInRange(
+      'PROVIDE_SAMPLING_TRACES_RATE',
+      DEFAULTS.samplingTracesRate,
+      0,
+      1,
+    ),
+    samplingMetricsRate: envFloatInRange(
+      'PROVIDE_SAMPLING_METRICS_RATE',
+      DEFAULTS.samplingMetricsRate,
+      0,
+      1,
+    ),
 
     // Per-signal backpressure
-    backpressureLogsMaxsize: envNumber(
+    backpressureLogsMaxsize: envNonNegativeInt(
       'PROVIDE_BACKPRESSURE_LOGS_MAXSIZE',
       DEFAULTS.backpressureLogsMaxsize,
     ),
-    backpressureTracesMaxsize: envNumber(
+    backpressureTracesMaxsize: envNonNegativeInt(
       'PROVIDE_BACKPRESSURE_TRACES_MAXSIZE',
       DEFAULTS.backpressureTracesMaxsize,
     ),
-    backpressureMetricsMaxsize: envNumber(
+    backpressureMetricsMaxsize: envNonNegativeInt(
       'PROVIDE_BACKPRESSURE_METRICS_MAXSIZE',
       DEFAULTS.backpressureMetricsMaxsize,
     ),
 
     // Per-signal exporter resilience
-    exporterLogsRetries: envNumber('PROVIDE_EXPORTER_LOGS_RETRIES', DEFAULTS.exporterLogsRetries),
-    exporterLogsBackoffMs: envSecondsToMs(
+    exporterLogsRetries: envNonNegativeInt(
+      'PROVIDE_EXPORTER_LOGS_RETRIES',
+      DEFAULTS.exporterLogsRetries,
+    ),
+    exporterLogsBackoffMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS',
       DEFAULTS.exporterLogsBackoffMs,
     ),
-    exporterLogsTimeoutMs: envSecondsToMs(
+    exporterLogsTimeoutMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS',
       DEFAULTS.exporterLogsTimeoutMs,
     ),
-    exporterLogsFailOpen: nodeEnv('PROVIDE_EXPORTER_LOGS_FAIL_OPEN') !== 'false',
-    exporterTracesRetries: envNumber(
+    exporterLogsFailOpen: envBool('PROVIDE_EXPORTER_LOGS_FAIL_OPEN', DEFAULTS.exporterLogsFailOpen),
+    exporterTracesRetries: envNonNegativeInt(
       'PROVIDE_EXPORTER_TRACES_RETRIES',
       DEFAULTS.exporterTracesRetries,
     ),
-    exporterTracesBackoffMs: envSecondsToMs(
+    exporterTracesBackoffMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS',
       DEFAULTS.exporterTracesBackoffMs,
     ),
-    exporterTracesTimeoutMs: envSecondsToMs(
+    exporterTracesTimeoutMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS',
       DEFAULTS.exporterTracesTimeoutMs,
     ),
-    exporterTracesFailOpen: nodeEnv('PROVIDE_EXPORTER_TRACES_FAIL_OPEN') !== 'false',
-    exporterMetricsRetries: envNumber(
+    exporterTracesFailOpen: envBool(
+      'PROVIDE_EXPORTER_TRACES_FAIL_OPEN',
+      DEFAULTS.exporterTracesFailOpen,
+    ),
+    exporterMetricsRetries: envNonNegativeInt(
       'PROVIDE_EXPORTER_METRICS_RETRIES',
       DEFAULTS.exporterMetricsRetries,
     ),
-    exporterMetricsBackoffMs: envSecondsToMs(
+    exporterMetricsBackoffMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS',
       DEFAULTS.exporterMetricsBackoffMs,
     ),
-    exporterMetricsTimeoutMs: envSecondsToMs(
+    exporterMetricsTimeoutMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS',
       DEFAULTS.exporterMetricsTimeoutMs,
     ),
-    exporterMetricsFailOpen: nodeEnv('PROVIDE_EXPORTER_METRICS_FAIL_OPEN') !== 'false',
+    exporterMetricsFailOpen: envBool(
+      'PROVIDE_EXPORTER_METRICS_FAIL_OPEN',
+      DEFAULTS.exporterMetricsFailOpen,
+    ),
 
     // SLO
-    sloEnableRedMetrics: nodeEnv('PROVIDE_SLO_ENABLE_RED_METRICS') === 'true',
-    sloEnableUseMetrics: nodeEnv('PROVIDE_SLO_ENABLE_USE_METRICS') === 'true',
+    sloEnableRedMetrics: envBool('PROVIDE_SLO_ENABLE_RED_METRICS', DEFAULTS.sloEnableRedMetrics),
+    sloEnableUseMetrics: envBool('PROVIDE_SLO_ENABLE_USE_METRICS', DEFAULTS.sloEnableUseMetrics),
 
     // Security
-    securityMaxAttrValueLength: envNumber(
+    securityMaxAttrValueLength: envNonNegativeInt(
       'PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH',
       DEFAULTS.securityMaxAttrValueLength,
     ),
-    securityMaxAttrCount: envNumber(
+    securityMaxAttrCount: envNonNegativeInt(
       'PROVIDE_SECURITY_MAX_ATTR_COUNT',
       DEFAULTS.securityMaxAttrCount,
     ),
@@ -402,7 +461,6 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     setSetupError(message);
-    // eslint-disable-next-line no-console
     console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
   }
 }
@@ -427,6 +485,7 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
     const rawVal = pair.slice(idx + 1).trim();
     try {
       const key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
+      /* v8 ignore next -- defensive: idx<1 and trim() already exclude observable empty keys */
       if (!key) continue;
       const val = decodeURIComponent(rawVal.replace(/\+/g, ' '));
       result[key] = val;

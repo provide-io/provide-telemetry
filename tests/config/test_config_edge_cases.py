@@ -18,6 +18,7 @@ from provide.telemetry.config import (
     TelemetryConfig,
     TracingConfig,
     _parse_bool,
+    _parse_env_bool,
     _parse_env_float,
     _parse_env_int,
     _parse_otlp_headers,
@@ -45,6 +46,10 @@ class TestParseBoolEdgeCases:
     def test_all_falsy_variants(self) -> None:
         for val in ("0", "false", "FALSE", "no", "off", "random", "nope"):
             assert _parse_bool(val, True) is False, f"Expected False for {val!r}"
+
+    def test_parse_env_bool_invalid_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid boolean for PROVIDE_TRACE_ENABLED"):
+            _parse_env_bool("random", True, "PROVIDE_TRACE_ENABLED")
 
 
 # ── _parse_env_float edge cases ────────────────────────────────────────
