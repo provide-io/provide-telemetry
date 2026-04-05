@@ -134,10 +134,12 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 
 def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
 
     event_name = str(event_dict.get("event", ""))  # pragma: no mutate
     if should_sample("logs", event_name):
+        increment_emitted("logs")
         return event_dict
     raise structlog.DropEvent()
 
