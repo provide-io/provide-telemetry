@@ -282,21 +282,22 @@ func TestSanitizePayload_DepthLimit_StopsRecursion(t *testing.T) {
 	}
 }
 
-// ── Test 11: maxDepth=0 uses default 32 ──────────────────────────────────────
+// ── Test 11: maxDepth=0 uses default 8 ───────────────────────────────────────
 
 func TestSanitizePayload_ZeroMaxDepth_UsesDefault(t *testing.T) {
 	resetPII(t)
-	// Build a 10-level deep structure with a password at the bottom.
+	// Build a 6-level deep structure with a password at the bottom.
+	// Default depth is 8, so a 6-level nest must be fully sanitized.
 	inner := map[string]any{"password": "deep"} // pragma: allowlist secret
 	current := inner
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 5; i++ {
 		current = map[string]any{"nested": current}
 	}
 
 	result := SanitizePayload(current, true, 0)
 	// Traverse down to find the password.
 	node := result
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 5; i++ {
 		next, _ := node["nested"].(map[string]any)
 		if next == nil {
 			t.Fatalf("expected nested map at depth %d", i)

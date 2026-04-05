@@ -259,6 +259,43 @@ func TestConfigFromEnv_LoggingGroup(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnv_PIIMaxDepth(t *testing.T) {
+	t.Setenv("PROVIDE_LOG_PII_MAX_DEPTH", "16")
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Logging.PIIMaxDepth != 16 {
+		t.Errorf("PIIMaxDepth: got %d, want 16", cfg.Logging.PIIMaxDepth)
+	}
+}
+
+func TestConfigFromEnv_PIIMaxDepth_InvalidInt(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	err := applyLoggingEnv(cfg, func(key string) string {
+		if key == "PROVIDE_LOG_PII_MAX_DEPTH" {
+			return "notanint"
+		}
+		return ""
+	})
+	if err == nil {
+		t.Fatal("expected invalid integer to fail")
+	}
+}
+
+func TestConfigFromEnv_PIIMaxDepth_Negative(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	err := applyLoggingEnv(cfg, func(key string) string {
+		if key == "PROVIDE_LOG_PII_MAX_DEPTH" {
+			return "-1"
+		}
+		return ""
+	})
+	if err == nil {
+		t.Fatal("expected negative value to fail")
+	}
+}
+
 func TestConfigFromEnv_TracingGroup(t *testing.T) {
 	t.Setenv("PROVIDE_TRACE_ENABLED", "false")
 	t.Setenv("PROVIDE_TRACE_SAMPLE_RATE", "0.5")

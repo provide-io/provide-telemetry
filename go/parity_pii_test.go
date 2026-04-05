@@ -186,3 +186,35 @@ func TestParity_DefaultSensitiveKeys_PIN(t *testing.T) {
 		t.Errorf("expected 'pin' auto-redacted, got %v", result["pin"])
 	}
 }
+
+// ── PII Default Depth ─────────────────────────────────────────────────────────
+
+func TestParity_PIIDepth_DefaultIs8(t *testing.T) {
+	resetPII(t)
+	// Build 9-level deep nested map with "password" at each level
+	payload := map[string]any{"password": "level8_should_survive"}
+	for i := 7; i >= 0; i-- {
+		payload = map[string]any{
+			"password": fmt.Sprintf("level%d", i),
+			"nested":   payload,
+		}
+	}
+	result := SanitizePayload(payload, true, 0) // 0 = use default
+	// Depth 0 should be redacted
+	if result["password"] == fmt.Sprintf("level%d", 0) {
+		t.Error("depth 0: expected redacted")
+	}
+	// Navigate to depth 8
+	node := result
+	for i := 0; i < 8; i++ {
+		nested, ok := node["nested"].(map[string]any)
+		if !ok {
+			t.Fatalf("depth %d: expected nested map", i+1)
+		}
+		node = nested
+	}
+	// Depth 8 should survive (beyond default max_depth=8)
+	if node["password"] == _piiRedacted { // pragma: allowlist secret
+		t.Error("depth 8: should NOT be redacted with default max_depth=8")
+	}
+}
