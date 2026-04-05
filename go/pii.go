@@ -170,10 +170,7 @@ func _applyMode(value any, mode string, truncateTo int) (any, bool) {
 		sum := sha256.Sum256([]byte(fmt.Sprintf("%v", value)))
 		return fmt.Sprintf("%x", sum)[:12], false
 	case PIIModeTruncate:
-		s, ok := value.(string)
-		if !ok {
-			return _piiRedacted, false
-		}
+		s := fmt.Sprintf("%v", value)
 		runes := []rune(s)
 		if len(runes) >= truncateTo+1 {
 			return string(runes[:truncateTo]) + _piiTruncationSuffix, false
