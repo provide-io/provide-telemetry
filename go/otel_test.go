@@ -390,6 +390,45 @@ func (h *testErrorHandler) Handle(_ context.Context, _ slog.Record) error { retu
 func (h *testErrorHandler) WithAttrs(_ []slog.Attr) slog.Handler          { return h }
 func (h *testErrorHandler) WithGroup(_ string) slog.Handler               { return h }
 
+// ── 17. Logger becomes multiHandler after OTel wiring ────────────────────────
+// otel.go:80 mutation: Logger == nil (bridge added only when Logger is nil).
+// With mutation, bridge is never added (Logger is always set before _applyOTelProviders).
+// Test: after SetupTelemetry with a tracer provider, Logger.Handler() must be *multiHandler.
+func TestOTel_LogBridge_AddedWhenLoggerSet(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	tp, _ := newInMemoryTP()
+	_, err := SetupTelemetry(WithTracerProvider(tp))
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if _, ok := Logger.Handler().(*multiHandler); !ok {
+		t.Errorf("expected *multiHandler after OTel wiring (bridge attached), got %T", Logger.Handler())
+	}
+}
+
+// ── 18. _shutdownOTelProviders: only tracer errors returns that error ─────────
+// otel.go:94:52 mutation: err == nil (swallows tracer error, captures only non-error).
+// With mutation and only the tracer failing, first stays nil → return nil (wrong).
+func TestOTel_ShutdownOTelProviders_OnlyTracerError(t *testing.T) {
+	_resetOTelProviders()
+	t.Cleanup(func() { _resetOTelProviders() })
+
+	tp, _ := newInMemoryTP()
+	_otelTracerProvider = tp
+	// No meter provider set.
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately to force tracer shutdown error
+
+	err := _shutdownOTelProviders(cancelledCtx)
+	if err == nil {
+		t.Error("expected non-nil error when only tracer provider shutdown fails")
+	}
+}
+
 // ── 16. _shutdownOTelProviders: only meter errors (first==nil true → assign error) ─
 
 func TestOTel_ShutdownOTelProviders_OnlyMeterError(t *testing.T) {

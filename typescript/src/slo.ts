@@ -80,18 +80,51 @@ export function recordUseMetrics(opts: {
   g.set(opts.utilization, { resource: opts.resource });
 }
 
-export function classifyError(statusCode: number): {
-  errorType: 'server' | 'client' | 'none';
+export interface ErrorClassification {
+  errorType: 'server' | 'client' | 'timeout' | 'none';
   errorCode: number;
   errorName: string;
-} {
+  category: 'server_error' | 'client_error' | 'timeout' | 'none';
+  severity: 'critical' | 'warning' | 'info' | 'none';
+}
+
+export function classifyError(statusCode: number): ErrorClassification {
+  const isTimeout = statusCode === 0;
+
+  if (isTimeout) {
+    return {
+      errorType: 'timeout',
+      errorCode: statusCode,
+      errorName: 'TimeoutError',
+      category: 'timeout',
+      severity: 'info',
+    };
+  }
   if (statusCode >= 500) {
-    return { errorType: 'server', errorCode: statusCode, errorName: 'ServerError' };
+    return {
+      errorType: 'server',
+      errorCode: statusCode,
+      errorName: 'ServerError',
+      category: 'server_error',
+      severity: 'critical',
+    };
   }
   if (statusCode >= 400) {
-    return { errorType: 'client', errorCode: statusCode, errorName: 'ClientError' };
+    return {
+      errorType: 'client',
+      errorCode: statusCode,
+      errorName: 'ClientError',
+      category: 'client_error',
+      severity: statusCode === 429 ? 'critical' : 'warning',
+    };
   }
-  return { errorType: 'none', errorCode: statusCode, errorName: '' };
+  return {
+    errorType: 'none',
+    errorCode: statusCode,
+    errorName: '',
+    category: 'none',
+    severity: 'none',
+  };
 }
 
 export function _resetSloForTests(): void {
