@@ -26,10 +26,10 @@ func init() {
 	_resetQueuePolicy()
 }
 
-// _buildQueue returns a buffered channel of the given size (minimum 1).
+// _buildQueue returns a buffered channel of the given size, or nil for unlimited (size <= 0).
 func _buildQueue(size int) chan struct{} {
 	if size <= 0 {
-		size = 1
+		return nil
 	}
 	return make(chan struct{}, size)
 }
