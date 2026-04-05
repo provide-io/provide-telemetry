@@ -150,12 +150,38 @@ describe('supportsColor', () => {
   });
 
   it('returns true when stdout.isTTY is true', () => {
-    const orig = process.stdout.isTTY;
+    const origProcess = globalThis.process;
+    const origForceColor = process.env['FORCE_COLOR'];
+    const origNoColor = process.env['NO_COLOR'];
     try {
-      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+      delete process.env['FORCE_COLOR'];
+      delete process.env['NO_COLOR'];
+      vi.stubGlobal('process', {
+        ...origProcess,
+        env: { ...origProcess.env },
+        stdout: { ...origProcess.stdout, isTTY: true },
+      });
       expect(supportsColor()).toBe(true);
     } finally {
-      Object.defineProperty(process.stdout, 'isTTY', { value: orig, configurable: true });
+      if (origForceColor === undefined) delete process.env['FORCE_COLOR'];
+      else process.env['FORCE_COLOR'] = origForceColor;
+      if (origNoColor === undefined) delete process.env['NO_COLOR'];
+      else process.env['NO_COLOR'] = origNoColor;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('returns false when stdout exists but isTTY is not boolean', () => {
+    const origProcess = globalThis.process;
+    try {
+      vi.stubGlobal('process', {
+        ...origProcess,
+        env: { ...origProcess.env },
+        stdout: {},
+      });
+      expect(supportsColor()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

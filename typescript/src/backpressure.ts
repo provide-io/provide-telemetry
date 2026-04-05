@@ -29,7 +29,6 @@ const _acquired: Map<string, Set<number>> = new Map([
 
 export function setQueuePolicy(policy: Partial<QueuePolicy>): void {
   _policy = { ..._policy, ...policy };
-  for (const set of _acquired.values()) set.clear();
 }
 
 export function getQueuePolicy(): QueuePolicy {

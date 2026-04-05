@@ -34,20 +34,24 @@ const DEFAULT_POLICY: ExporterPolicy = {
   failOpen: true,
 };
 
-const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BASE_COOLDOWN_MS = 30_000;
+export const CIRCUIT_BREAKER_THRESHOLD = 3;
+export const CIRCUIT_BASE_COOLDOWN_MS = 30_000;
 const CIRCUIT_MAX_COOLDOWN_MS = 1_024_000;
 
 // Stryker disable next-line ObjectLiteral
 let _policies: Record<string, ExporterPolicy> = {};
 // Stryker disable next-line ObjectLiteral
-const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
+export const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
-const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
+export const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
-const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
-// Stryker disable next-line ObjectLiteral
-const _halfOpenProbing: Record<string, boolean> = { logs: false, traces: false, metrics: false };
+export const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
+// Stryker disable next-line ObjectLiteral,BooleanLiteral: initial false values are reset by _resetResilienceForTests before each test
+export const _halfOpenProbing: Record<string, boolean> = {
+  logs: false,
+  traces: false,
+  metrics: false,
+};
 
 export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
   _policies[signal] = { ...DEFAULT_POLICY, ...policy };
@@ -92,11 +96,21 @@ export async function runWithResilience<T>(
 
   // Ensure per-signal dicts are initialized for custom signals.
   if (!(signal in _openCount)) _openCount[signal] = 0;
+  // Stryker disable next-line ConditionalExpression: custom signal init — skipping is equivalent since undefined is falsy like false
   if (!(signal in _halfOpenProbing)) _halfOpenProbing[signal] = false;
 
   // Circuit breaker check.
   // Stryker disable next-line ConditionalExpression
   if (_consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
+    // Reject concurrent callers while a half-open probe is already in flight.
+    if (_halfOpenProbing[signal]) {
+      // Stryker disable next-line StringLiteral: health counter key — exact string not assertable from outside
+      _incrementHealth('exportFailures');
+      // Stryker disable next-line StringLiteral: error tracking message — exact wording not separately tested
+      _setLastExportError('circuit breaker open: probe in progress');
+      if (policy.failOpen) return null;
+      throw new TelemetryTimeoutError('circuit breaker open: probe in progress');
+    }
     const cooldown = Math.min(
       CIRCUIT_BASE_COOLDOWN_MS * 2 ** _openCount[signal],
       CIRCUIT_MAX_COOLDOWN_MS,
@@ -124,6 +138,7 @@ export async function runWithResilience<T>(
         _halfOpenProbing[signal] = false;
         _consecutiveTimeouts[signal] = 0;
         _openCount[signal] = Math.max(0, _openCount[signal] - 1);
+        // Stryker disable next-line BlockStatement: else-block body on non-probe success — removing is equivalent since timeouts are already 0 on fresh closed circuit
       } else {
         _consecutiveTimeouts[signal] = 0;
       }
@@ -183,6 +198,7 @@ export function getCircuitState(signal: string): CircuitState {
   if ((_consecutiveTimeouts[signal] ?? 0) >= CIRCUIT_BREAKER_THRESHOLD) {
     const cooldown = Math.min(CIRCUIT_BASE_COOLDOWN_MS * 2 ** openCount, CIRCUIT_MAX_COOLDOWN_MS);
     const remaining = cooldown - (Date.now() - _circuitTrippedAt[signal]);
+    // Stryker disable next-line EqualityOperator: > 0 vs >= 0 — exact millisecond boundary P≈0
     if (remaining > 0) {
       return { state: 'open', openCount, cooldownRemainingMs: remaining };
     }

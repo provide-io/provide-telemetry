@@ -130,7 +130,7 @@ These are not parsed by `TelemetryConfig.from_env()` but are used by the example
 
 ### Boolean Parsing
 
-Boolean environment variables are parsed case-insensitively. The following values are treated as **true**: `1`, `true`, `yes`, `on`. All other values (including empty string) resolve to the field default (usually `false`).
+Boolean environment variables are parsed case-insensitively. The following values are treated as **true**: `1`, `true`, `yes`, `on`. The following values are treated as **false**: `0`, `false`, `no`, `off`. Empty or whitespace-only values resolve to the field default. Any other non-empty value is rejected as invalid configuration.
 
 ### OTLP Header Format
 

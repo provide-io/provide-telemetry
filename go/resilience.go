@@ -82,6 +82,10 @@ func _checkCircuitBreaker(signal string) bool {
 		return false
 	}
 
+	if _halfOpenProbing[signal] {
+		return true
+	}
+
 	cooldown := min(_cbBaseCooldown*(1<<_openCount[signal]), _cbMaxCooldown)
 
 	elapsed := time.Since(_circuitTrippedAt[signal])

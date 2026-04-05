@@ -33,6 +33,13 @@ func _setOpenCount(signal string, count int) {
 	_openCount[signal] = count
 }
 
+// _setHalfOpenProbing is a test helper that sets the half-open probing flag for a signal.
+func _setHalfOpenProbing(signal string, v bool) {
+	_resilienceMu.Lock()
+	defer _resilienceMu.Unlock()
+	_halfOpenProbing[signal] = v
+}
+
 func TestGetExporterPolicy_Defaults(t *testing.T) {
 	_resetResiliencePolicies()
 	t.Cleanup(_resetResiliencePolicies)
@@ -363,6 +370,36 @@ func TestCB_HalfOpenProbe_FailureReopens(t *testing.T) {
 	}
 	if state.State != "open" {
 		t.Errorf("expected open after failed probe, got %s", state.State)
+	}
+}
+
+func TestCB_HalfOpenProbe_ConcurrentCallRejected(t *testing.T) {
+	_resetResiliencePolicies()
+	_resetHealth()
+	t.Cleanup(_resetResiliencePolicies)
+	t.Cleanup(_resetHealth)
+
+	signal := "half-open-concurrent"
+	SetExporterPolicy(signal, ExporterPolicy{Retries: 0, BackoffSeconds: 0, TimeoutSeconds: 5.0, FailOpen: false})
+
+	_tripCircuitBreaker(signal)
+	_setCircuitTrippedAt(signal, time.Now().Add(-2*_cbBaseCooldown))
+
+	// Simulate a probe already in progress.
+	_setHalfOpenProbing(signal, true)
+
+	// This call should be rejected (probe already in flight).
+	fnCalled := false
+	err := RunWithResilience(context.Background(), signal, func(_ context.Context) error {
+		fnCalled = true
+		return nil
+	})
+
+	if fnCalled {
+		t.Error("fn should not be called when half-open probe is already in progress")
+	}
+	if err == nil {
+		t.Error("expected error when half-open probe in progress and FailOpen=false")
 	}
 }
 

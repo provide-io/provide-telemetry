@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

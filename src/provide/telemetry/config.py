@@ -164,14 +164,22 @@ class TelemetryConfig:
             service_name=data.get("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-service"),
             environment=data.get("PROVIDE_TELEMETRY_ENV", "dev"),
             version=data.get("PROVIDE_TELEMETRY_VERSION", "0.0.0"),
-            strict_schema=_parse_bool(data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False),
+            strict_schema=_parse_env_bool(
+                data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False, "PROVIDE_TELEMETRY_STRICT_SCHEMA"
+            ),
             logging=LoggingConfig(
                 level=data.get("PROVIDE_LOG_LEVEL", "INFO"),
                 fmt=data.get("PROVIDE_LOG_FORMAT", "console"),
-                include_timestamp=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True),
-                include_caller=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_CALLER"), True),
-                sanitize=_parse_bool(data.get("PROVIDE_LOG_SANITIZE"), True),
-                log_code_attributes=_parse_bool(data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False),
+                include_timestamp=_parse_env_bool(
+                    data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True, "PROVIDE_LOG_INCLUDE_TIMESTAMP"
+                ),
+                include_caller=_parse_env_bool(
+                    data.get("PROVIDE_LOG_INCLUDE_CALLER"), True, "PROVIDE_LOG_INCLUDE_CALLER"
+                ),
+                sanitize=_parse_env_bool(data.get("PROVIDE_LOG_SANITIZE"), True, "PROVIDE_LOG_SANITIZE"),
+                log_code_attributes=_parse_env_bool(
+                    data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False, "PROVIDE_LOG_CODE_ATTRIBUTES"
+                ),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
@@ -184,7 +192,7 @@ class TelemetryConfig:
                 module_levels=_parse_module_levels(data.get("PROVIDE_LOG_MODULE_LEVELS", "")),
             ),
             tracing=TracingConfig(
-                enabled=_parse_bool(data.get("PROVIDE_TRACE_ENABLED"), True),
+                enabled=_parse_env_bool(data.get("PROVIDE_TRACE_ENABLED"), True, "PROVIDE_TRACE_ENABLED"),
                 sample_rate=_parse_env_float(data.get("PROVIDE_TRACE_SAMPLE_RATE", "1.0"), "PROVIDE_TRACE_SAMPLE_RATE"),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -192,7 +200,7 @@ class TelemetryConfig:
                 ),
             ),
             metrics=MetricsConfig(
-                enabled=_parse_bool(data.get("PROVIDE_METRICS_ENABLED"), True),
+                enabled=_parse_env_bool(data.get("PROVIDE_METRICS_ENABLED"), True, "PROVIDE_METRICS_ENABLED"),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
                 or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -200,7 +208,9 @@ class TelemetryConfig:
                 ),
             ),
             event_schema=SchemaConfig(
-                strict_event_name=_parse_bool(data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False),
+                strict_event_name=_parse_env_bool(
+                    data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False, "PROVIDE_TELEMETRY_STRICT_EVENT_NAME"
+                ),
                 required_keys=tuple(
                     k.strip() for k in data.get("PROVIDE_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
@@ -257,23 +267,41 @@ class TelemetryConfig:
                     data.get("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
                 ),
-                logs_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True),
-                traces_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True),
-                metrics_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True),
-                logs_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                logs_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_LOGS_FAIL_OPEN"
                 ),
-                traces_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), False
+                traces_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True, "PROVIDE_EXPORTER_TRACES_FAIL_OPEN"
                 ),
-                metrics_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                metrics_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_METRICS_FAIL_OPEN"
+                ),
+                logs_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP",
+                ),
+                traces_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP",
+                ),
+                metrics_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP",
                 ),
             ),
             slo=SLOConfig(
-                enable_red_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False),
-                enable_use_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False),
-                include_error_taxonomy=_parse_bool(data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True),
+                enable_red_metrics=_parse_env_bool(
+                    data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False, "PROVIDE_SLO_ENABLE_RED_METRICS"
+                ),
+                enable_use_metrics=_parse_env_bool(
+                    data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False, "PROVIDE_SLO_ENABLE_USE_METRICS"
+                ),
+                include_error_taxonomy=_parse_env_bool(
+                    data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True, "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"
+                ),
             ),
             security=SecurityConfig(
                 max_attr_value_length=_parse_env_int(
@@ -323,6 +351,17 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_env_bool(value: str | None, default: bool, field: str) -> bool:
+    if value is None or not value.strip():
+        return default
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigurationError(f"invalid boolean for {field}: {value!r} (expected one of: 1,true,yes,on,0,false,no,off)")
 
 
 def _parse_module_levels(raw: str) -> dict[str, str]:

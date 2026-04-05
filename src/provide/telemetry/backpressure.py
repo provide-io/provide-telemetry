@@ -61,8 +61,7 @@ def set_queue_policy(policy: QueuePolicy) -> None:
     with _lock:
         _policy = policy
         for signal in ("logs", "traces", "metrics"):
-            _queues[signal].clear()
-            set_queue_depth(signal, 0)
+            set_queue_depth(signal, len(_queues[signal]))
 
 
 def get_queue_policy() -> QueuePolicy:
@@ -109,4 +108,10 @@ def release(ticket: QueueTicket | None) -> None:
 
 
 def reset_queues_for_tests() -> None:
-    set_queue_policy(QueuePolicy())
+    global _policy, _tokens
+    with _lock:
+        _policy = QueuePolicy()
+        _tokens = itertools.count(1)
+        for signal in ("logs", "traces", "metrics"):
+            _queues[signal].clear()
+            set_queue_depth(signal, 0)

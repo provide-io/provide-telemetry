@@ -3,7 +3,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CIRCUIT_BASE_COOLDOWN_MS,
+  CIRCUIT_BREAKER_THRESHOLD,
   TelemetryTimeoutError,
+  _consecutiveTimeouts,
+  _circuitTrippedAt,
+  _halfOpenProbing,
+  _openCount,
   _resetResilienceForTests,
   getCircuitState,
   getExporterPolicy,
@@ -636,12 +642,117 @@ describe('half-open probe — failure on non-timeout re-opens', () => {
   });
 });
 
+describe('half-open probe — concurrent probe rejection', () => {
+  it('rejects concurrent callers while half-open probe is in flight (failOpen=false)', async () => {
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 5000, failOpen: false });
+    // Trip the circuit breaker
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _openCount['logs'] = 1;
+    _circuitTrippedAt['logs'] = Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 2; // cooldown expired
+    // Simulate a probe already in progress
+    _halfOpenProbing['logs'] = true;
+
+    let fnCalled = false;
+    await expect(
+      runWithResilience('logs', async () => {
+        fnCalled = true;
+      }),
+    ).rejects.toThrow('probe in progress');
+    expect(fnCalled).toBe(false);
+  });
+
+  it('rejects concurrent callers while half-open probe is in flight (failOpen=true)', async () => {
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 5000, failOpen: true });
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _openCount['logs'] = 1;
+    _circuitTrippedAt['logs'] = Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 2;
+    _halfOpenProbing['logs'] = true;
+
+    let fnCalled = false;
+    const result = await runWithResilience('logs', async () => {
+      fnCalled = true;
+    });
+    expect(fnCalled).toBe(false);
+    expect(result).toBeNull();
+  });
+});
+
 describe('getCircuitState — unknown signal defaults', () => {
   it('returns closed state with zero openCount for unknown signal', () => {
     const cs = getCircuitState('unknown-signal');
     expect(cs.state).toBe('closed');
     expect(cs.openCount).toBe(0);
     expect(cs.cooldownRemainingMs).toBe(0);
+  });
+});
+
+describe('half-open probe mutation-kills', () => {
+  it('probe rejection error message contains "probe in progress" (kills StringLiteral mutation)', async () => {
+    // Kills line 102/103 StringLiteral -> "" mutations on the error message.
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 5000, failOpen: false });
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _halfOpenProbing['logs'] = true;
+    await expect(runWithResilience('logs', async () => {})).rejects.toThrow('probe in progress');
+  });
+
+  it('normal (non-probe) success does not decay openCount (kills ConditionalExpression -> true on halfOpenProbing check)', async () => {
+    // Kills: if (_halfOpenProbing[signal]) -> always true. If always true, openCount decays on every success.
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    _openCount['logs'] = 2; // would decay to 1 if the if-block runs when it shouldn't
+    _halfOpenProbing['logs'] = false; // not probing
+
+    await runWithResilience('logs', async () => 'ok');
+
+    expect(_openCount['logs']).toBe(2); // must not decay on normal success
+  });
+
+  it('probe success decays openCount from 2 to 1 not to 0 (kills Math.max -> Math.min)', async () => {
+    // Kills: Math.max(0, N-1) -> Math.min(0, N-1). With N=2: max(0,1)=1 but min(0,1)=0.
+    // Must start from "CB open + cooldown expired" so runWithResilience itself sets _halfOpenProbing=true
+    // before calling fn (manually setting _halfOpenProbing=true is rejected by the concurrent-probe guard).
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _openCount['logs'] = 2;
+    _circuitTrippedAt['logs'] = Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 10; // cooldown expired
+
+    await runWithResilience('logs', async () => 'ok');
+
+    expect(_openCount['logs']).toBe(1); // 2-1=1, not 0
+  });
+
+  it('getCircuitState returns half-open when _halfOpenProbing is set (kills ConditionalExpression/BlockStatement on line 187)', () => {
+    // Kills: if (_halfOpenProbing[signal]) -> false or {} body.
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _openCount['logs'] = 1;
+    _circuitTrippedAt['logs'] = Date.now();
+    _halfOpenProbing['logs'] = true;
+
+    const cs = getCircuitState('logs');
+    expect(cs.state).toBe('half-open');
+    expect(cs.cooldownRemainingMs).toBe(0);
+  });
+
+  it('non-probe success resets consecutiveTimeouts to 0 even when it was 2 (kills else-BlockStatement mutation)', async () => {
+    // Kills: else { _consecutiveTimeouts = 0 } -> else {}
+    // If else-block is removed, timeouts stay at 2 instead of resetting to 0.
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    _consecutiveTimeouts['logs'] = 2; // < threshold, so CB is closed, fn runs normally (not half-open probe)
+    _halfOpenProbing['logs'] = false;
+
+    await runWithResilience('logs', async () => 'ok');
+
+    expect(_consecutiveTimeouts['logs']).toBe(0); // else-block must reset to 0
+  });
+
+  it('getCircuitState uses exponential (2**N) not linear (2*N) cooldown (kills ArithmeticOperator / -> *)', () => {
+    // With openCount=3: 2**3=8 → cooldown=240s; 2*3=6 → cooldown=180s. Assert > 200s kills linear mutation.
+    _consecutiveTimeouts['logs'] = CIRCUIT_BREAKER_THRESHOLD;
+    _openCount['logs'] = 3;
+    _circuitTrippedAt['logs'] = Date.now();
+
+    const cs = getCircuitState('logs');
+    expect(cs.state).toBe('open');
+    expect(cs.cooldownRemainingMs).toBeGreaterThan(200_000); // 240s > 200s; linear 180s < 200s
   });
 });
 

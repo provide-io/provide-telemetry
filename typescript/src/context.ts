@@ -18,6 +18,7 @@ type Context = Record<string, unknown>;
 type ALS = {
   getStore(): Context | undefined;
   run<T>(store: Context, fn: () => T): T;
+  enterWith(store: Context): void;
 };
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
@@ -41,12 +42,23 @@ function getStore(): Context {
   return _moduleCtx;
 }
 
+function ensureStore(): Context {
+  if (_asyncLocalStorage) {
+    const store = _asyncLocalStorage.getStore();
+    if (store) return store;
+    const next = { ..._moduleCtx };
+    _asyncLocalStorage.enterWith(next);
+    return next;
+  }
+  return _moduleCtx;
+}
+
 /**
  * Bind key/value pairs into the current context.
  * These fields are merged into every log record emitted after this call.
  */
 export function bindContext(values: Context): void {
-  const store = getStore();
+  const store = ensureStore();
   Object.assign(store, values);
 }
 
@@ -54,7 +66,7 @@ export function bindContext(values: Context): void {
  * Remove specific keys from the current context.
  */
 export function unbindContext(...keys: string[]): void {
-  const store = getStore();
+  const store = ensureStore();
   for (const k of keys) delete store[k];
 }
 
@@ -99,15 +111,10 @@ export function runWithContext<T>(values: Context, fn: () => T): T {
   }
 }
 
-// ── Session correlation ──────────────────────────────────────────────────────
-
-let _sessionId: string | null = null;
-
 /**
  * Bind a session ID that propagates across all telemetry events.
  */
 export function bindSessionContext(sessionId: string): void {
-  _sessionId = sessionId;
   bindContext({ session_id: sessionId });
 }
 
@@ -115,19 +122,23 @@ export function bindSessionContext(sessionId: string): void {
  * Return the current session ID, or null if not set.
  */
 export function getSessionId(): string | null {
-  return _sessionId;
+  const sessionId = getStore()['session_id'];
+  return typeof sessionId === 'string' ? sessionId : null;
 }
 
 /**
  * Clear the session ID.
  */
 export function clearSessionContext(): void {
-  _sessionId = null;
   unbindContext('session_id');
 }
 
 /** Reset to empty context (used in tests). */
 export function _resetContext(): void {
+  const store = _asyncLocalStorage?.getStore();
+  if (store) {
+    for (const key of Object.keys(store)) delete store[key];
+  }
   _moduleCtx = {};
 }
 

@@ -78,6 +78,19 @@ def test_apply_runtime_config_backpressure_all_fields() -> None:
     assert qp.metrics_maxsize == 30
 
 
+def test_apply_runtime_config_backpressure_preserves_inflight_tickets() -> None:
+    backpressure_mod.set_queue_policy(backpressure_mod.QueuePolicy(logs_maxsize=2))
+    ticket = backpressure_mod.try_acquire("logs")
+    assert ticket is not None
+
+    cfg = TelemetryConfig(backpressure=BackpressureConfig(logs_maxsize=3))
+    runtime_mod.apply_runtime_config(cfg)
+
+    assert backpressure_mod.try_acquire("logs") is not None
+    assert backpressure_mod.try_acquire("logs") is not None
+    assert backpressure_mod.try_acquire("logs") is None
+
+
 def test_apply_runtime_config_exporter_logs_all_fields() -> None:
     """Kill mutants in the logs ExporterPolicy construction.
 

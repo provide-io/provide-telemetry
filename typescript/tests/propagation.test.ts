@@ -3,7 +3,9 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
+  _disablePropagationALSForTest,
   _resetPropagationForTests,
+  _restorePropagationALSForTest,
   bindPropagationContext,
   clearPropagationContext,
   extractW3cContext,
@@ -114,6 +116,68 @@ describe('bindPropagationContext / clearPropagationContext', () => {
   it('nested bind/clear restores correctly', () => {
     bindPropagationContext({ traceId: 'outer' });
     bindPropagationContext({ traceId: 'inner' });
+    expect(getActivePropagationContext().traceId).toBe('inner');
+    clearPropagationContext();
+    expect(getActivePropagationContext().traceId).toBe('outer');
+    clearPropagationContext();
+    expect(getActivePropagationContext().traceId).toBeUndefined();
+  });
+
+  it('isolates concurrent propagation contexts when AsyncLocalStorage is available', async () => {
+    const first = new Promise(
+      (resolve: (value: ReturnType<typeof getActivePropagationContext>) => void) => {
+        setTimeout(async () => {
+          bindPropagationContext({ traceId: 'first', spanId: '1111' });
+          await Promise.resolve();
+          const active = getActivePropagationContext();
+          clearPropagationContext();
+          resolve(active);
+        }, 0);
+      },
+    );
+
+    const second = new Promise(
+      (resolve: (value: ReturnType<typeof getActivePropagationContext>) => void) => {
+        setTimeout(async () => {
+          bindPropagationContext({ traceId: 'second', spanId: '2222' });
+          await Promise.resolve();
+          const active = getActivePropagationContext();
+          clearPropagationContext();
+          resolve(active);
+        }, 0);
+      },
+    );
+
+    const [activeFirst, activeSecond] = await Promise.all([first, second]);
+    expect(activeFirst.traceId).toBe('first');
+    expect(activeSecond.traceId).toBe('second');
+  });
+
+  it('falls back to process-global propagation state when ALS is disabled', () => {
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'fallback', spanId: '9999' });
+      expect(getActivePropagationContext().traceId).toBe('fallback');
+      clearPropagationContext();
+      expect(getActivePropagationContext().traceId).toBeUndefined();
+    } finally {
+      _restorePropagationALSForTest(saved);
+      _resetPropagationForTests();
+    }
+  });
+
+  it('clones fallback stack into ALS store when ALS is restored without an active store', () => {
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'outer', spanId: '1111' });
+      bindPropagationContext({ traceId: 'inner', spanId: '2222' });
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+
+    bindPropagationContext({ traceId: 'als', spanId: '3333' });
+    expect(getActivePropagationContext().traceId).toBe('als');
+    clearPropagationContext();
     expect(getActivePropagationContext().traceId).toBe('inner');
     clearPropagationContext();
     expect(getActivePropagationContext().traceId).toBe('outer');
