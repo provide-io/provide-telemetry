@@ -437,3 +437,34 @@ func TestParity_ClassifyError_599_ServerError(t *testing.T) {
 		t.Errorf("expected server_error for 599, got %s", result["error.category"])
 	}
 }
+
+// ── Backpressure Unlimited ──────────────────────────────────────────────────
+
+func TestParity_Backpressure_ZeroIsUnlimited(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+	t.Cleanup(_resetHealth)
+
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 0, TracesMaxSize: 0, MetricsMaxSize: 0})
+	// 100 concurrent acquires must all succeed without release.
+	for i := 0; i < 100; i++ {
+		if !TryAcquire(signalLogs) {
+			t.Fatalf("acquire %d failed with unlimited (0) queue", i)
+		}
+	}
+}
+
+func TestParity_Backpressure_BoundedRejects(t *testing.T) {
+	_resetQueuePolicy()
+	_resetHealth()
+	t.Cleanup(_resetQueuePolicy)
+	t.Cleanup(_resetHealth)
+
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
+	if !TryAcquire(signalLogs) {
+		t.Fatal("first acquire must succeed")
+	}
+	if TryAcquire(signalLogs) {
+		t.Fatal("second acquire must fail with queue size 1")
+	}
+}
