@@ -265,8 +265,19 @@ def test_parity_propagation_baggage_over_limit_discarded() -> None:
 # ── Config Headers ───────────────────────────────────────────────────────────
 
 
-def test_parity_config_headers_normal() -> None:
-    assert _parse_otlp_headers("Authorization=Bearer+token") == {"Authorization": "Bearer token"}
+def test_parity_config_headers_normal_kv() -> None:
+    result = _parse_otlp_headers("Authorization=Bearer+token")
+    assert result == {"Authorization": "Bearer+token"}
+
+
+def test_parity_config_headers_plus_preserved() -> None:
+    result = _parse_otlp_headers("a+b=c+d")
+    assert result == {"a+b": "c+d"}
+
+
+def test_parity_config_headers_percent_space() -> None:
+    result = _parse_otlp_headers("a%20b=c%20d")
+    assert result == {"a b": "c d"}
 
 
 def test_parity_config_headers_url_encoded() -> None:
