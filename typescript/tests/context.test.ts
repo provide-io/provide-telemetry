@@ -193,6 +193,26 @@ describe('_disableAsyncLocalStorageForTest / _restoreAsyncLocalStorageForTest', 
   });
 });
 
+describe('ensureStore — clones _moduleCtx into new ALS store (kills ObjectLiteral→{})', () => {
+  it('preserves module-level context when ALS bootstraps a new store', () => {
+    // Disable ALS so bindings go to _moduleCtx
+    const saved = _disableAsyncLocalStorageForTest();
+    try {
+      bindContext({ preserved_key: 'preserved_value' });
+      expect(getContext()['preserved_key']).toBe('preserved_value');
+    } finally {
+      // Re-enable ALS — next ensureStore will clone _moduleCtx into new ALS store
+      _restoreAsyncLocalStorageForTest(saved);
+    }
+    // Trigger ensureStore by binding new context — it should clone _moduleCtx first
+    bindContext({ new_key: 'new_value' });
+    // Both old and new bindings should be present
+    const ctx = getContext();
+    expect(ctx['preserved_key']).toBe('preserved_value');
+    expect(ctx['new_key']).toBe('new_value');
+  });
+});
+
 describe('round-trip: bind + unbind + clear', () => {
   it('full lifecycle works without errors', () => {
     bindContext({ session: 'abc', env: 'test', uid: 1 });
