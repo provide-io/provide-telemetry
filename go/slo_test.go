@@ -144,6 +144,54 @@ func TestRecordREDMetrics500(t *testing.T) {
 	}
 }
 
+func TestRecordREDMetrics400(t *testing.T) {
+	_resetSamplingPolicies()
+	_resetQueuePolicy()
+
+	origReq := _redRequestCounter
+	origErr := _redErrorCounter
+	origDur := _redDurationHistogram
+	defer func() {
+		_redRequestCounter = origReq
+		_redErrorCounter = origErr
+		_redDurationHistogram = origDur
+	}()
+
+	reqC := NewCounter("test.slo.red.req.400")
+	errC := NewCounter("test.slo.red.err.400")
+	durH := NewHistogram("test.slo.red.dur.400")
+	_redRequestCounter = reqC
+	_redErrorCounter = errC
+	_redDurationHistogram = durH
+
+	// statusCode == 400 is the boundary: must count as error (>= 400, not > 400)
+	RecordREDMetrics("/api/boundary", "GET", 400, 5.0)
+
+	if got := reqC.(*_atomicCounter).Value(); got != 1 {
+		t.Fatalf("expected request counter 1, got %d", got)
+	}
+	if got := errC.(*_atomicCounter).Value(); got != 1 {
+		t.Fatalf("expected error counter 1 for status 400, got %d", got)
+	}
+}
+
+func TestRecordREDMetrics399_NotError(t *testing.T) {
+	_resetSamplingPolicies()
+	_resetQueuePolicy()
+
+	origErr := _redErrorCounter
+	defer func() { _redErrorCounter = origErr }()
+
+	errC := NewCounter("test.slo.red.err.399")
+	_redErrorCounter = errC
+
+	RecordREDMetrics("/api/ok", "GET", 399, 1.0)
+
+	if got := errC.(*_atomicCounter).Value(); got != 0 {
+		t.Fatalf("expected error counter 0 for status 399, got %d", got)
+	}
+}
+
 // --- RecordUSEMetrics tests ---
 
 func TestRecordUSEMetrics(t *testing.T) {

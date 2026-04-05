@@ -634,8 +634,8 @@ func parseOTLPHeaders(raw string) map[string]string {
 	}
 	for _, pair := range strings.Split(raw, ",") {
 		idx := strings.Index(pair, "=")
-		if idx < 0 {
-			// malformed — skip
+		if idx < 1 {
+			// malformed or empty key — skip
 			continue
 		}
 		rawKey := strings.TrimSpace(pair[:idx])
@@ -663,14 +663,12 @@ func parseModuleLevels(raw string) (map[string]string, error) {
 	for _, pair := range strings.Split(raw, ",") {
 		pair = strings.TrimSpace(pair)
 		idx := strings.Index(pair, "=")
-		if idx < 0 {
+		if idx < 1 {
+			// malformed or empty module name — skip
 			continue
 		}
 		module := strings.TrimSpace(pair[:idx])
 		levelStr := strings.TrimSpace(pair[idx+1:])
-		if module == "" {
-			continue
-		}
 		normalized, err := normalizeLevel(levelStr)
 		if err != nil {
 			return nil, err

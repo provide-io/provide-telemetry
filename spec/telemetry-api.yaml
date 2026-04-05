@@ -253,10 +253,71 @@ required_behaviors:
       Use language-idiomatic async context (contextvars, AsyncLocalStorage,
       context.Context, etc).
 
+behavioral_parity:
+  # Cross-language behavioral contracts validated by spec/behavioral_fixtures.yaml.
+  # All languages MUST produce identical outputs for these inputs.
+
+  sampling:
+    description: >
+      Probabilistic sampling with fast-path short-circuits.
+    rules:
+      - rate 0.0 → always false (never sample)
+      - rate 1.0 → always true (always sample)
+      - 0 < rate < 1 → uniform random < rate (full float64 precision)
+
+  pii_truncation:
+    description: >
+      Truncate mode shortens strings and appends a suffix.
+    rules:
+      - condition: "len(text) > truncate_to"
+      - output: "text[:truncate_to] + suffix"
+      - suffix: "..."
+      - non_string_values: convert to string first
+      - default_truncate_to: 8
+
+  pii_hash:
+    description: >
+      Hash mode produces a deterministic 12-char hex digest.
+    rules:
+      - algorithm: SHA-256 of string representation
+      - output: first 12 hex characters (lowercase)
+
+  propagation_guards:
+    description: >
+      Size guards on W3C context headers. Oversized headers are discarded entirely.
+    limits:
+      traceparent_max_bytes: 512
+      tracestate_max_bytes: 512
+      tracestate_max_pairs: 32
+      baggage_max_bytes: 8192
+    oversize_behavior: discard
+    note: >
+      Go currently truncates instead of discarding (known divergence).
+      All languages should converge on discard in a future release.
+
+  event_dars:
+    description: >
+      Event() accepts 3 (DAS) or 4 (DARS) segments and returns a structured record.
+    fields:
+      - event: dot-joined string
+      - domain: first segment
+      - action: second segment
+      - resource: third segment (DARS only, omitted for DAS)
+      - status: last segment
+
+  config_header_parsing:
+    description: >
+      OTEL_EXPORTER_OTLP_HEADERS parsed as comma-separated key=value pairs.
+    rules:
+      - split on first '=' only (preserves '=' in values)
+      - URL-decode both key and value
+      - skip pairs with empty key
+      - skip pairs with no '='
+
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"
   min_segments: 3
-  max_segments: 5
+  max_segments: 4  # event() implementations accept 3-4 segments (DARS); event_name() remains lenient at 3-5 for backward compat
   separator: "."
 
 # TypeScript-only extras: framework helpers that have no polyglot equivalent.

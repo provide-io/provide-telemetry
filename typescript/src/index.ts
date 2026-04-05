@@ -20,6 +20,7 @@ export {
   applyConfigPolicies,
   getConfig,
   configFromEnv,
+  parseOtlpHeaders,
   version,
   __version__,
 } from './config';
@@ -132,6 +133,7 @@ export type { EventRecord } from './schema';
 
 // SLO
 export { recordRedMetrics, recordUseMetrics, classifyError } from './slo';
+export type { ErrorClassification } from './slo';
 
 // Propagation
 export {
