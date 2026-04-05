@@ -12,6 +12,7 @@ __all__ = [
     "ExporterPolicyConfig",
     "LoggingConfig",
     "MetricsConfig",
+    "RuntimeOverrides",
     "SLOConfig",
     "SamplingConfig",
     "SchemaConfig",
@@ -139,6 +140,26 @@ class SecurityConfig:
         _validate_non_negative(self.max_attr_value_length, "max_attr_value_length must be >= 0")
         _validate_non_negative(self.max_attr_count, "max_attr_count must be >= 0")
         _validate_non_negative(self.max_nesting_depth, "max_nesting_depth must be >= 0")
+
+
+@dataclass(slots=True)
+class RuntimeOverrides:
+    """Hot-reloadable config subset.
+
+    Only fields that can be changed at runtime without restarting providers.
+    All fields are optional (None = keep current value).
+    """
+
+    sampling: SamplingConfig | None = None
+    backpressure: BackpressureConfig | None = None
+    exporter: ExporterPolicyConfig | None = None
+    security: SecurityConfig | None = None
+    slo: SLOConfig | None = None
+    pii_max_depth: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.pii_max_depth is not None:
+            _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
 
 
 @dataclass(slots=True)
