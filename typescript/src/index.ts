@@ -84,7 +84,7 @@ export {
   replacePiiRules,
   resetPiiRulesForTests,
 } from './pii';
-export type { MaskMode, PIIRule } from './pii';
+export type { MaskMode, PIIRule, SanitizePayloadOptions } from './pii';
 
 // Exceptions
 export { TelemetryError, ConfigurationError } from './exceptions';
