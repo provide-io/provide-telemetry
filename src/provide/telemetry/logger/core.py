@@ -239,7 +239,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             add_error_fingerprint,
             apply_sampling,
             enforce_event_schema(config),
-            sanitize_sensitive_fields(config.logging.sanitize, config.security.max_nesting_depth),
+            sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )
 
