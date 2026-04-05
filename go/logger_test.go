@@ -756,7 +756,7 @@ func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
 	Logger.Info("format check")
-	w.Close()
+	_ = w.Close()
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
@@ -856,7 +856,7 @@ func TestGetLogger_JSONFormat_ProducesJSON(t *testing.T) {
 
 	l := GetLogger(context.Background(), "json-pipe-test")
 	l.Info("format check")
-	w.Close()
+	_ = w.Close()
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
