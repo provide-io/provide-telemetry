@@ -24,7 +24,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from urllib.parse import unquote_plus
+from urllib.parse import unquote
 
 from provide.telemetry.exceptions import ConfigurationError
 
@@ -370,8 +370,8 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
                 _logger.warning("config.otlp.header_malformed")  # pragma: no mutate
             continue
         key, raw = pair.split("=", 1)
-        key = unquote_plus(key.strip())
+        key = unquote(key.strip())
         if not key:
             continue
-        headers[key] = unquote_plus(raw.strip())
+        headers[key] = unquote(raw.strip())
     return headers
