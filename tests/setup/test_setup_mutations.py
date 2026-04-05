@@ -470,11 +470,10 @@ def test_reconfigure_telemetry_raises_when_only_metrics_provider_set(monkeypatch
 # ── setup.py: "configure_logging" not in completed (mutmut_31/32) ───────
 
 
-def test_setup_fallback_restores_logging_after_rollback(
+def test_setup_fallback_skipped_when_logging_already_completed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When logging succeeds but a later step fails, rollback tears down logging.
-    configure_logging must be called again to restore it — degraded mode must log."""
+    """When logging succeeds but metrics fails, no fallback configure_logging call."""
     _reset_setup_state_for_tests()
     calls = {"n": 0}
     monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
@@ -493,4 +492,4 @@ def test_setup_fallback_restores_logging_after_rollback(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()
-    assert calls["n"] == 2  # initial call + restore after rollback
+    assert calls["n"] == 1  # initial only, no fallback
