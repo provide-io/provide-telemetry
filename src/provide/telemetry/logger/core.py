@@ -194,7 +194,7 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     warnings.warn(  # pragma: no mutate
         f"logging setup failed, using emergency stderr fallback: {exc}",
         RuntimeWarning,
-        stacklevel=3,
+        stacklevel=3,  # pragma: no mutate
     )
 
 

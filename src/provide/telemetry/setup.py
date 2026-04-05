@@ -78,7 +78,7 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 warnings.warn(  # pragma: no mutate
                     f"telemetry setup failed, running in degraded mode: {exc}",
                     RuntimeWarning,
-                    stacklevel=2,
+                    stacklevel=2,  # pragma: no mutate
                 )
                 if "configure_logging" not in completed:
                     configure_logging(cfg, force=True)
