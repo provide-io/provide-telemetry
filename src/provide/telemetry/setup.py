@@ -75,10 +75,10 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 from provide.telemetry.health import set_setup_error
 
                 set_setup_error(str(exc))
-                warnings.warn(
+                warnings.warn(  # pragma: no mutate
                     f"telemetry setup failed, running in degraded mode: {exc}",
                     RuntimeWarning,
-                    stacklevel=2,  # pragma: no mutate
+                    stacklevel=2,
                 )
                 if "configure_logging" not in completed:
                     configure_logging(cfg, force=True)

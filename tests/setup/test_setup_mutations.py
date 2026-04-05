@@ -465,3 +465,31 @@ def test_reconfigure_telemetry_raises_when_only_metrics_provider_set(monkeypatch
     monkeypatch.setattr(metrics_provider, "_meter_provider", object())
     with pytest.raises(RuntimeError, match="provider-changing reconfiguration"):
         runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="renamed"))
+
+
+# ── setup.py: "configure_logging" not in completed (mutmut_31/32) ───────
+
+
+def test_setup_fallback_skipped_when_logging_already_completed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When logging succeeds but metrics fails, no fallback configure_logging call."""
+    _reset_setup_state_for_tests()
+    calls = {"n": 0}
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr(
+        "provide.telemetry.setup.configure_logging", lambda *a, **kw: calls.__setitem__("n", calls["n"] + 1)
+    )
+    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr(
+        "provide.telemetry.metrics.provider.setup_metrics", lambda _: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        setup_telemetry()
+    assert calls["n"] == 1  # initial only, no fallback
