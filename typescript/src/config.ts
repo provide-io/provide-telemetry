@@ -547,6 +547,7 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
  */
 export function parseOtlpHeaders(raw: string): Record<string, string> {
   const result: Record<string, string> = {};
+  // Stryker disable next-line ConditionalExpression: early return is an optimization — empty string splits to [""], idx<1 skips the only pair, returns {} identically
   if (!raw) return result;
   for (const pair of raw.split(',')) {
     const idx = pair.indexOf('=');
@@ -556,6 +557,7 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
     try {
       const key = decodeURIComponent(rawKey);
       /* v8 ignore next -- defensive: idx<1 and trim() already exclude observable empty keys */
+      // Stryker disable next-line ConditionalExpression: defensive guard — unreachable because idx<1 check and trim() already exclude empty keys
       if (!key) continue;
       const val = decodeURIComponent(rawVal);
       result[key] = val;

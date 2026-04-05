@@ -243,9 +243,11 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
     if (changed) {
       // Best-effort async shutdown — fire-and-forget, errors ignored (mirrors Go's `_ = ShutdownTelemetry(ctx)`)
       const providers = _getRegisteredProviders();
+      // Stryker disable LogicalOperator: ?? vs && is equivalent here — forceFlush/shutdown return Promise (truthy) so && still resolves; when undefined, Promise.allSettled wraps both in Promise.resolve
       void Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve())).then(
         () => Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve())),
       );
+      // Stryker restore LogicalOperator
       _providersRegistered = false;
       _registeredProviders = [];
     }

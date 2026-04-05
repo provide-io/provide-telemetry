@@ -53,8 +53,7 @@ export type PropagationALS = {
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
-let _AlsConstructor: (new () => PropagationALS) | null = null;
-// Stryker disable BlockStatement: module-level await/try block runs once at import time — cannot be tested by unit tests
+// Stryker disable BlockStatement: module-level try/catch runs once at import time — cannot be tested by unit tests
 try {
   // Dynamic ESM import so this works in both Node ESM (where `require` is
   // undefined) and Node CJS (where dynamic import returns a Promise of the
@@ -72,37 +71,7 @@ try {
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
 // Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
-let _fallbackStore: PropagationStore = {
-  active: {},
-  stack: [],
-  otelCtxStack: [],
-  baggagePriorStack: [],
-  traceCtxStack: [],
-};
-
-// Emit a one-time warning when the module-level fallback store is activated.
-let _fallbackWarned = false;
-
-function _warnFallbackOnce(): void {
-  if (!_fallbackWarned) {
-    _fallbackWarned = true;
-    console.warn(
-      '[provide-telemetry] AsyncLocalStorage is unavailable; ' +
-        'falling back to module-level context store. ' +
-        'Concurrent requests will share propagation context. ' +
-        'This is unsafe in production async environments.',
-    );
-  }
-}
-
-/**
- * Returns true when AsyncLocalStorage is unavailable and the module-level
- * fallback store is being used. Callers can check this to detect unsafe
- * environments where concurrent requests share propagation context.
- */
-export function isFallbackMode(): boolean {
-  return _als === null;
-}
+let _fallbackStore: PropagationStore = { active: {}, stack: [], otelCtxStack: [] };
 
 function _getStore(): PropagationStore {
   if (_als) {

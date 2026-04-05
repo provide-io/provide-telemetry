@@ -257,6 +257,123 @@ describe('slo — counter.add called with route/method/status_code attrs (kills 
   });
 });
 
+describe('classifyError — exact return value assertions for mutation killing', () => {
+  it('status 0 → timeout classification with all OTel-aligned keys', () => {
+    const r = classifyError('ConnectionError', 0);
+    expect(r).toEqual({
+      errorType: 'timeout',
+      errorCode: 0,
+      errorName: 'ConnectionError',
+      category: 'timeout',
+      severity: 'info',
+      'error.type': 'ConnectionError',
+      'error.category': 'timeout',
+      'error.severity': 'info',
+      'http.status_code': '0',
+    });
+  });
+
+  it('timeout by name with non-zero status has correct severity "info"', () => {
+    const r = classifyError('TimeoutError', 503);
+    expect(r.severity).toBe('info');
+    expect(r['error.severity']).toBe('info');
+    expect(r['error.category']).toBe('timeout');
+    expect(r['http.status_code']).toBe('503');
+  });
+
+  it('status 500 → server_error with severity "critical"', () => {
+    const r = classifyError('InternalServerError', 500);
+    expect(r.category).toBe('server_error');
+    expect(r.severity).toBe('critical');
+    expect(r['error.category']).toBe('server_error');
+    expect(r['error.severity']).toBe('critical');
+    expect(r['error.type']).toBe('InternalServerError');
+    expect(r['http.status_code']).toBe('500');
+  });
+
+  it('status 499 → client_error (boundary: not server_error)', () => {
+    const r = classifyError('ClientError', 499);
+    expect(r.category).toBe('client_error');
+    expect(r.errorType).toBe('client');
+    expect(r['error.category']).toBe('client_error');
+  });
+
+  it('status 429 → client_error with severity "critical" (rate limit)', () => {
+    const r = classifyError('RateLimitError', 429);
+    expect(r.category).toBe('client_error');
+    expect(r.severity).toBe('critical');
+    expect(r['error.severity']).toBe('critical');
+  });
+
+  it('status 430 → client_error with severity "warning" (not critical)', () => {
+    const r = classifyError('ClientError', 430);
+    expect(r.category).toBe('client_error');
+    expect(r.severity).toBe('warning');
+    expect(r['error.severity']).toBe('warning');
+  });
+
+  it('status 400 → client_error with severity "warning"', () => {
+    const r = classifyError('BadRequest', 400);
+    expect(r.severity).toBe('warning');
+    expect(r['error.severity']).toBe('warning');
+  });
+
+  it('status 200 → unknown with severity "unknown"', () => {
+    const r = classifyError('Unexpected', 200);
+    expect(r).toEqual({
+      errorType: 'unknown',
+      errorCode: 200,
+      errorName: 'Unexpected',
+      category: 'unknown',
+      severity: 'unknown',
+      'error.type': 'Unexpected',
+      'error.category': 'unknown',
+      'error.severity': 'unknown',
+      'http.status_code': '200',
+    });
+  });
+
+  it('status 399 → unknown (below 400 boundary)', () => {
+    const r = classifyError('Other', 399);
+    expect(r.errorType).toBe('unknown');
+    expect(r.category).toBe('unknown');
+  });
+
+  it('http.status_code is always a string representation', () => {
+    expect(classifyError('E', 500)['http.status_code']).toBe('500');
+    expect(classifyError('E', 404)['http.status_code']).toBe('404');
+    expect(classifyError('E', 0)['http.status_code']).toBe('0');
+    expect(classifyError('E', 200)['http.status_code']).toBe('200');
+  });
+
+  it('error.type matches errorName for all branches', () => {
+    expect(classifyError('MyTimeout', 0)['error.type']).toBe('MyTimeout');
+    expect(classifyError('ServerErr', 500)['error.type']).toBe('ServerErr');
+    expect(classifyError('ClientErr', 404)['error.type']).toBe('ClientErr');
+    expect(classifyError('Unknown', 200)['error.type']).toBe('Unknown');
+  });
+});
+
+describe('recordRedMetrics — status boundary 499 vs 500', () => {
+  it('status 499 does NOT trigger error counter', () => {
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 499, durationMs: 1 });
+    const names = spy.mock.calls.map((c) => c[0]);
+    expect(names).not.toContain('http.errors.total');
+    vi.restoreAllMocks();
+  });
+
+  it('status 500 triggers error counter', () => {
+    _resetSloForTests();
+    const spy = vi.spyOn(metricsModule, 'counter');
+    recordRedMetrics({ route: '/test', method: 'GET', statusCode: 500, durationMs: 1 });
+    const names = spy.mock.calls.map((c) => c[0]);
+    expect(names).toContain('http.errors.total');
+    vi.restoreAllMocks();
+  });
+});
+
 describe('_resetSloForTests', () => {
   it('clears instruments so counter is recreated after reset', () => {
     recordRedMetrics({ route: '/x', method: 'GET', statusCode: 200, durationMs: 1 });
