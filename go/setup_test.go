@@ -49,8 +49,8 @@ func TestSetupTelemetryIdempotent(t *testing.T) {
 		t.Fatalf("second setup failed: %v", err)
 	}
 
-	if cfg1 != cfg2 {
-		t.Error("expected the same config pointer on second call (idempotent)")
+	if cfg1.ServiceName != cfg2.ServiceName {
+		t.Error("expected equivalent config values on second call (idempotent)")
 	}
 }
 
@@ -239,5 +239,36 @@ func TestSetupWithProviderOptions(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
+	}
+}
+
+func TestSetupTelemetryIdempotentReturnsCopy(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	cfg1, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("first setup failed: %v", err)
+	}
+
+	cfg2, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("second setup failed: %v", err)
+	}
+
+	// The idempotent path should return a clone, not the live pointer.
+	if cfg1 == cfg2 {
+		t.Error("expected different pointers from idempotent SetupTelemetry calls")
+	}
+
+	// Mutating the returned config should not affect internal state.
+	cfg2.ServiceName = "mutated-via-setup-return"
+
+	cfg3 := GetRuntimeConfig()
+	if cfg3 == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg3.ServiceName == "mutated-via-setup-return" {
+		t.Fatal("mutating SetupTelemetry return value should not affect internal state")
 	}
 }
