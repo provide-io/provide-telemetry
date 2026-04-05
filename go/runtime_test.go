@@ -54,6 +54,45 @@ func TestUpdateRuntimeConfigUpdatesField(t *testing.T) {
 	}
 }
 
+func TestUpdateRuntimeConfigReappliesRuntimePolicies(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	err := UpdateRuntimeConfig(func(cfg *TelemetryConfig) {
+		cfg.Sampling.LogsRate = 0.25
+		cfg.Backpressure.LogsMaxSize = 17
+		cfg.Exporter.LogsRetries = 2
+		cfg.Exporter.LogsBackoffSeconds = 1.5
+		cfg.Exporter.LogsTimeoutSeconds = 22
+		cfg.Exporter.LogsFailOpen = false
+		cfg.StrictSchema = true
+		cfg.Logging.Level = "DEBUG"
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if p, err := GetSamplingPolicy(signalLogs); err != nil {
+		t.Fatal(err)
+	} else if p.DefaultRate != 0.25 {
+		t.Fatalf("sampling policy not updated, got %v", p.DefaultRate)
+	}
+	if got := GetQueuePolicy().LogsMaxSize; got != 17 {
+		t.Fatalf("queue policy not updated, got %d", got)
+	}
+	exporter := GetExporterPolicy(signalLogs)
+	if exporter.Retries != 2 || exporter.BackoffSeconds != 1.5 || exporter.TimeoutSeconds != 22 || exporter.FailOpen {
+		t.Fatalf("exporter policy not updated, got %+v", exporter)
+	}
+	if !_strictSchema {
+		t.Fatal("strict schema flag not updated")
+	}
+}
+
 func TestUpdateRuntimeConfigErrorWhenNotSetUp(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
@@ -86,6 +125,43 @@ func TestReloadRuntimeFromEnvUpdatesConfig(t *testing.T) {
 	}
 	if cfg.ServiceName != "reloaded-service" {
 		t.Errorf("expected ServiceName=%q after reload, got %q", "reloaded-service", cfg.ServiceName)
+	}
+}
+
+func TestReloadRuntimeFromEnvReappliesRuntimePolicies(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "0.4")
+	t.Setenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE", "9")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_RETRIES", "4")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.5")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "7.5")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "false")
+	t.Setenv("PROVIDE_TELEMETRY_STRICT_SCHEMA", "true")
+
+	if err := ReloadRuntimeFromEnv(); err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+
+	if p, err := GetSamplingPolicy(signalLogs); err != nil {
+		t.Fatal(err)
+	} else if p.DefaultRate != 0.4 {
+		t.Fatalf("sampling policy not reloaded, got %v", p.DefaultRate)
+	}
+	if got := GetQueuePolicy().LogsMaxSize; got != 9 {
+		t.Fatalf("queue policy not reloaded, got %d", got)
+	}
+	exporter := GetExporterPolicy(signalLogs)
+	if exporter.Retries != 4 || exporter.BackoffSeconds != 0.5 || exporter.TimeoutSeconds != 7.5 || exporter.FailOpen {
+		t.Fatalf("exporter policy not reloaded, got %+v", exporter)
+	}
+	if !_strictSchema {
+		t.Fatal("strict schema flag not reloaded")
 	}
 }
 
