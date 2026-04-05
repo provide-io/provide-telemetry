@@ -72,10 +72,16 @@ func GetTracer(name string) Tracer {
 
 // Trace wraps fn in a span using DefaultTracer.
 // fn receives the context enriched with trace/span IDs.
+// If fn returns an error, the error is recorded on the span before it ends.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
 	spanCtx, span := DefaultTracer.Start(ctx, name)
 	defer span.End()
-	return fn(spanCtx)
+	err := fn(spanCtx)
+	if err != nil {
+		// Record exception to span; OTel spans forward this to the backend.
+		span.RecordError(err)
+	}
+	return err
 }
 
 // GetTraceContext returns the trace and span IDs bound to ctx.
