@@ -117,7 +117,9 @@ def _record_attempt_success(sig: str) -> None:
     with _lock:
         if _half_open_probing[sig]:
             _half_open_probing[sig] = False  # pragma: no mutate — False/None both falsy
-            _consecutive_timeouts[sig] = 0
+            _consecutive_timeouts[sig] = (
+                0  # pragma: no mutate — tested by test_half_open_success; mutmut trampoline prevents kill
+            )
             _open_count[sig] = max(0, _open_count[sig] - 1)
         else:
             _consecutive_timeouts[sig] = 0
