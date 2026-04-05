@@ -68,6 +68,53 @@ Add `RuntimeOverrides` to `spec/telemetry-api.yaml` as a required type. Update `
 
 ## Sub-project 2: Data Governance at the Edge
 
+### Architecture: Hook-Based Integration & Strippable Files
+
+Governance features (classification, consent, receipts) integrate with the core library via **callback hooks**, not direct imports. This achieves two goals: zero overhead when unconfigured, and safe file deletion for space-restricted environments.
+
+#### Hook pattern
+
+The PII engine and signal emission paths expose optional callback slots:
+
+```
+# PII engine (pii.py / pii.go / pii.ts)
+_classification_hook: Callable | None = None   # called per field during traversal
+_receipt_hook: Callable | None = None           # called per redaction action
+
+# Signal paths (logger, tracing, metrics)
+_consent_hook: Callable | None = None           # called before signal construction
+```
+
+Governance modules register their hooks on first use (e.g., `register_classification_rules()` sets `_classification_hook`). If no hook is registered, the core code skips the call entirely — a single `if hook is not None` check.
+
+#### Strippable files
+
+Each governance feature lives in its own file:
+
+| File | Can be deleted? | What happens if deleted |
+|------|----------------|------------------------|
+| `classification.py/go/ts` | Yes | PII engine runs as today; `register_classification_rules` not exported |
+| `consent.py/go/ts` | Yes | All signals pass through; `set_consent_level` not exported |
+| `receipts.py/go/ts` | Yes | No receipts emitted; PII engine runs as today |
+| `config.py` masking methods | No | Core file — masking is ~20 LOC inline, not worth separating |
+
+#### Export handling for missing files
+
+- **Python:** `__init__.py` uses `try: from .classification import ... except ImportError: pass` — missing governance files produce no export, no error.
+- **Go:** Governance files are standalone `.go` files in the package. Deleting them removes the functions from the package. Consumers that don't call governance APIs need no changes. Consumers that do get a compile error (correct behavior — they depend on a feature that was stripped).
+- **TypeScript:** Governance exports are re-exported from `index.ts` via dynamic checks or separate entrypoints. Tree shaking eliminates unused governance code in bundled consumers automatically.
+
+#### Inert-by-default contract
+
+Even when governance files are present, features are inert until configured:
+
+- **Classification:** No rules registered = `_classification_hook` is `None` = zero overhead
+- **Consent:** Default `FULL` = `_consent_hook` fast-returns `true` = single comparison
+- **Receipts:** Default `PROVIDE_REDACTION_RECEIPTS=false` = `_receipt_hook` is `None` = zero overhead
+- **Config masking:** Only executes on `__repr__`/`String()`/`toString()` — never on hot path
+
+---
+
 ### 2A: Config Secret Masking
 
 #### Problem
@@ -121,9 +168,9 @@ ClassificationRule {
 }
 ```
 
-#### Integration with PII engine
+#### Integration with PII engine (via hook)
 
-Add optional `classification: DataClass` field to `PIIRule`. When a PII rule matches, the classification tag propagates alongside the redaction action.
+Add optional `classification: DataClass | None` field to `PIIRule` (default `None`). The classification module registers `_classification_hook` on the PII engine when `register_classification_rules()` is first called. If the classification file is deleted, `PIIRule.classification` remains `None` and the hook is never set — zero behavior change.
 
 #### Attribute tagging
 
@@ -186,12 +233,14 @@ ConsentLevel {
 
 Consent check is the **first gate** — before sampling, before PII scan, before backpressure. If consent says no, the signal is never constructed.
 
-#### Integration points
+#### Integration points (via hook)
 
-- `get_logger()` — returned logger checks consent before emitting
-- `@trace` decorator — checks consent before starting span
-- `counter()`/`gauge()`/`histogram()` — check consent before recording
-- `bind_session_context()` / `bind_context()` — no-op when consent < FULL
+The consent module registers `_consent_hook` on each signal path. If the consent file is deleted, the hook is `None` and all signals pass through unconditionally.
+
+- `get_logger()` — `if _consent_hook and not _consent_hook("logs", level): return`
+- `@trace` decorator — `if _consent_hook and not _consent_hook("traces"): return noop_span`
+- `counter()`/`gauge()`/`histogram()` — `if _consent_hook and not _consent_hook("metrics"): return`
+- `bind_session_context()` / `bind_context()` — `if _consent_hook and not _consent_hook("context"): return`
 
 #### Runtime behavior
 
@@ -233,9 +282,9 @@ RedactionReceipt {
 
 Receipts are emitted as structured log events at `DEBUG` level via the existing logger pipeline. Event name: `provide.pii.redaction_receipt`. They flow through the normal export path (OTLP, console, etc.).
 
-#### Opt-in
+#### Opt-in (via hook)
 
-`PROVIDE_REDACTION_RECEIPTS=true` (default `false`). When disabled, zero overhead — PII engine skips receipt construction entirely.
+`PROVIDE_REDACTION_RECEIPTS=true` (default `false`). When enabled, the receipts module registers `_receipt_hook` on the PII engine. When disabled (or when the receipts file is deleted), `_receipt_hook` is `None` — PII engine skips receipt construction entirely, zero overhead.
 
 #### Batch mode
 
@@ -292,9 +341,40 @@ New env vars:
 - Receipt HMAC tests must verify tamper detection (modify receipt, verify HMAC fails)
 - Classification + PII engine integration tests (classified field triggers correct policy action)
 
-### Performance
+### Performance & Size Overhead
 
-- Consent gate: single enum comparison — negligible overhead
-- Classification: runs during PII traversal — no additional pass needed
-- Receipts: SHA-256 + HMAC per redacted field (opt-in only)
-- Config masking: only on `__repr__`/`String()`/`toString()` — not on hot path
+#### Runtime cost when unconfigured (inert)
+
+| Feature | Hot-path cost | Mechanism |
+|---------|--------------|-----------|
+| RuntimeOverrides | Zero | Type change only |
+| Config masking | Zero | Only on repr/print |
+| Classification | `if hook is not None` per PII-scanned field | ~1ns branch |
+| Consent | `if hook is not None` per signal emission | ~1ns branch |
+| Receipts | `if hook is not None` per redaction | ~1ns branch |
+
+#### Runtime cost when active
+
+| Feature | Cost | Notes |
+|---------|------|-------|
+| Classification | Enum lookup per field during PII traversal | No additional pass — piggybacks on existing traversal |
+| Consent | Single enum comparison per signal | Fast-return on FULL (default) |
+| Receipts | SHA-256 + HMAC per redacted field | Only for fields actually redacted, opt-in |
+
+#### Code size per language
+
+| Configuration | New LOC | New files | % increase over current ~2500 LOC |
+|--------------|---------|-----------|-----------------------------------|
+| Full install (all governance) | ~510-710 | 3 new + 4 modified | ~20-25% |
+| Stripped (governance files deleted) | ~130-160 | 0 new + 4 modified | ~5-6% |
+| Sub-project 1 only (no governance) | ~70-90 | 0 new + 3 modified | ~3% |
+
+#### Strippability summary
+
+To reduce footprint in space-restricted environments, delete these files per language:
+
+- `classification.py` / `classification.go` / `classification.ts`
+- `consent.py` / `consent.go` / `consent.ts`
+- `receipts.py` / `receipts.go` / `receipts.ts`
+
+Result: library works identically to pre-governance behavior. No runtime errors, no missing imports (handled by try/except in Python, compile-time in Go, tree shaking in TS). Only consumers that explicitly call governance APIs will see breakage (correct — they depend on a stripped feature).
