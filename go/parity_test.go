@@ -531,3 +531,58 @@ func TestParity_Cardinality_ValidValuesUnchanged(t *testing.T) {
 		t.Fatalf("expected TTLSeconds 300.0, got %f", got.TTLSeconds)
 	}
 }
+
+// ── Schema Strict Mode ──────────────────────────────────────────────────────
+
+func TestParity_EventName_LenientAcceptsUppercase(t *testing.T) {
+	origStrict := _strictSchema
+	_strictSchema = false
+	t.Cleanup(func() { _strictSchema = origStrict })
+
+	name, err := EventName("A", "B", "C")
+	if err != nil {
+		t.Fatalf("lenient EventName should accept uppercase, got error: %v", err)
+	}
+	if name != "A.B.C" {
+		t.Fatalf("expected A.B.C, got %s", name)
+	}
+}
+
+func TestParity_EventName_LenientAcceptsMixedCase(t *testing.T) {
+	origStrict := _strictSchema
+	_strictSchema = false
+	t.Cleanup(func() { _strictSchema = origStrict })
+
+	name, err := EventName("User", "Login", "Ok")
+	if err != nil {
+		t.Fatalf("lenient EventName should accept mixed case, got error: %v", err)
+	}
+	if name != "User.Login.Ok" {
+		t.Fatalf("expected User.Login.Ok, got %s", name)
+	}
+}
+
+func TestParity_EventName_StrictRejectsUppercase(t *testing.T) {
+	origStrict := _strictSchema
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = origStrict })
+
+	_, err := EventName("User", "login", "ok")
+	if err == nil {
+		t.Fatal("strict EventName should reject uppercase segment")
+	}
+}
+
+func TestParity_EventName_StrictAcceptsValid(t *testing.T) {
+	origStrict := _strictSchema
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = origStrict })
+
+	name, err := EventName("user", "login", "ok")
+	if err != nil {
+		t.Fatalf("strict EventName should accept valid segments, got: %v", err)
+	}
+	if name != "user.login.ok" {
+		t.Fatalf("expected user.login.ok, got %s", name)
+	}
+}
