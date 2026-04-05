@@ -227,7 +227,8 @@ config_env_vars:
       - FORMAT
       - CALLER_INFO
       - SANITIZE_FIELDS
-  - prefix: UNDEF_TRACE_
+      - PII_MAX_DEPTH
+  - prefix: PROVIDE_TRACE_
     keys:
       - ENABLED
       - SAMPLE_RATE
@@ -334,6 +335,23 @@ behavioral_parity:
     rules:
       - size <= 0 treated as unlimited (no bounding)
       - bounded queues are explicit opt-in via positive size
+
+  health_snapshot_canonical:
+    description: >
+      Health snapshots return 25 canonical fields across all languages.
+    rules:
+      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 1 global (setup_error)
+      - circuit_state values are closed, open, half_open
+      - export_latency_ms is latest per export, not cumulative
+
+  pii_depth:
+    description: >
+      PII sanitization depth defaults to 8. Configurable via PROVIDE_LOG_PII_MAX_DEPTH.
+    rules:
+      - default max_depth is 8
+      - at depth >= max_depth, return value unchanged (no redaction)
+      - depth 0 is the top-level payload
+      - applies to all sanitization (default keys, custom rules, secret detection)
 
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"
