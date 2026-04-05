@@ -36,6 +36,7 @@ type LoggingConfig struct {
 	IncludeTimestamp  bool              // default true
 	IncludeCaller     bool              // default true
 	Sanitize          bool              // default true
+	PIIMaxDepth       int               // default 0 (use SanitizePayload default of 8)
 	OTLPEndpoint      string            // optional
 	OTLPHeaders       map[string]string // optional
 	LogCodeAttributes bool              // default false
@@ -251,6 +252,44 @@ func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
 	cfg.Logging.Sanitize = parseBool(env("PROVIDE_LOG_SANITIZE"), true)
 	cfg.Logging.LogCodeAttributes = parseBool(env("PROVIDE_LOG_CODE_ATTRIBUTES"), false)
 
+// applyLoggingBoolFlags handles the boolean PROVIDE_LOG_* env vars and PII depth.
+func applyLoggingBoolFlags(cfg *TelemetryConfig, env func(string) string) error {
+	var err error
+	cfg.Logging.IncludeTimestamp, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true, "PROVIDE_LOG_INCLUDE_TIMESTAMP")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.IncludeCaller, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_CALLER"), true, "PROVIDE_LOG_INCLUDE_CALLER")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.Sanitize, err = parseEnvBool(env("PROVIDE_LOG_SANITIZE"), true, "PROVIDE_LOG_SANITIZE")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.LogCodeAttributes, err = parseEnvBool(
+		env("PROVIDE_LOG_CODE_ATTRIBUTES"),
+		false,
+		"PROVIDE_LOG_CODE_ATTRIBUTES",
+	)
+	if err != nil {
+		return err
+	}
+	if v := env("PROVIDE_LOG_PII_MAX_DEPTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_LOG_PII_MAX_DEPTH")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_LOG_PII_MAX_DEPTH"); err != nil {
+			return err
+		}
+		cfg.Logging.PIIMaxDepth = n
+	}
+	return nil
+}
+
+// applyLoggingPrettyAndModules handles pretty-print and module-level env vars.
+func applyLoggingPrettyAndModules(cfg *TelemetryConfig, env func(string) string) error {
 	if v := env("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
 		cfg.Logging.PrettyKeyColor = v
 	}
