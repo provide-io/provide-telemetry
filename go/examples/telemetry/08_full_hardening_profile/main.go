@@ -113,8 +113,8 @@ func main() {
 	fmt.Println("\nHot-swapping sampling rate to 100%...")
 	before, _ := telemetry.GetSamplingPolicy("logs")
 	fmt.Printf("  Before: logs_rate=%.1f\n", before.DefaultRate)
-	err = telemetry.UpdateRuntimeConfig(func(c *telemetry.TelemetryConfig) {
-		c.Sampling.LogsRate = 1.0
+	err = telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{
+		Sampling: &telemetry.SamplingConfig{LogsRate: 1.0, TracesRate: 1.0, MetricsRate: 1.0},
 	})
 	if err != nil {
 		fmt.Printf("  UpdateRuntimeConfig error: %v\n", err)

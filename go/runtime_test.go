@@ -38,8 +38,8 @@ func TestUpdateRuntimeConfigUpdatesField(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	err := UpdateRuntimeConfig(func(cfg *TelemetryConfig) {
-		cfg.ServiceName = "updated-service"
+	err := UpdateRuntimeConfig(RuntimeOverrides{
+		Sampling: &SamplingConfig{LogsRate: 0.5, TracesRate: 1.0, MetricsRate: 1.0},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,8 +49,8 @@ func TestUpdateRuntimeConfigUpdatesField(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
 	}
-	if cfg.ServiceName != "updated-service" {
-		t.Errorf("expected ServiceName=%q, got %q", "updated-service", cfg.ServiceName)
+	if cfg.Sampling.LogsRate != 0.5 {
+		t.Errorf("expected Sampling.LogsRate=0.5, got %v", cfg.Sampling.LogsRate)
 	}
 }
 
@@ -62,15 +62,15 @@ func TestUpdateRuntimeConfigReappliesRuntimePolicies(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	err := UpdateRuntimeConfig(func(cfg *TelemetryConfig) {
-		cfg.Sampling.LogsRate = 0.25
-		cfg.Backpressure.LogsMaxSize = 17
-		cfg.Exporter.LogsRetries = 2
-		cfg.Exporter.LogsBackoffSeconds = 1.5
-		cfg.Exporter.LogsTimeoutSeconds = 22
-		cfg.Exporter.LogsFailOpen = false
-		cfg.StrictSchema = true
-		cfg.Logging.Level = "DEBUG"
+	err := UpdateRuntimeConfig(RuntimeOverrides{
+		Sampling:     &SamplingConfig{LogsRate: 0.25, TracesRate: 1.0, MetricsRate: 1.0},
+		Backpressure: &BackpressureConfig{LogsMaxSize: 17},
+		Exporter: &ExporterPolicyConfig{
+			LogsRetries:        2,
+			LogsBackoffSeconds: 1.5,
+			LogsTimeoutSeconds: 22,
+			LogsFailOpen:       false,
+		},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -88,17 +88,14 @@ func TestUpdateRuntimeConfigReappliesRuntimePolicies(t *testing.T) {
 	if exporter.Retries != 2 || exporter.BackoffSeconds != 1.5 || exporter.TimeoutSeconds != 22 || exporter.FailOpen {
 		t.Fatalf("exporter policy not updated, got %+v", exporter)
 	}
-	if !_strictSchema {
-		t.Fatal("strict schema flag not updated")
-	}
 }
 
 func TestUpdateRuntimeConfigErrorWhenNotSetUp(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	err := UpdateRuntimeConfig(func(cfg *TelemetryConfig) {
-		cfg.ServiceName = "should-not-apply"
+	err := UpdateRuntimeConfig(RuntimeOverrides{
+		Sampling: &SamplingConfig{LogsRate: 0.5, TracesRate: 1.0, MetricsRate: 1.0},
 	})
 	if err == nil {
 		t.Error("expected error when calling UpdateRuntimeConfig without setup")
@@ -213,5 +210,117 @@ func TestReconfigureTelemetryRerunsSetup(t *testing.T) {
 	}
 	if cfg2.ServiceName != "reconfigured-service" {
 		t.Errorf("expected ServiceName=%q after reconfigure, got %q", "reconfigured-service", cfg2.ServiceName)
+	}
+}
+
+func TestRuntimeOverridesAppliesHotFields(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	depth := 12
+	err := UpdateRuntimeConfig(RuntimeOverrides{
+		Sampling:     &SamplingConfig{LogsRate: 0.1, TracesRate: 0.2, MetricsRate: 0.3},
+		Backpressure: &BackpressureConfig{LogsMaxSize: 100, TracesMaxSize: 200, MetricsMaxSize: 300},
+		Security:     &SecurityConfig{MaxAttrValueLength: 512, MaxAttrCount: 32, MaxNestingDepth: 4},
+		SLO:          &SLOConfig{EnableREDMetrics: true, EnableUSEMetrics: true, IncludeErrorTaxonomy: false},
+		PIIMaxDepth:  &depth,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cfg := GetRuntimeConfig()
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg.Sampling.LogsRate != 0.1 || cfg.Sampling.TracesRate != 0.2 || cfg.Sampling.MetricsRate != 0.3 {
+		t.Fatalf("sampling not applied: %+v", cfg.Sampling)
+	}
+	if cfg.Backpressure.LogsMaxSize != 100 || cfg.Backpressure.TracesMaxSize != 200 || cfg.Backpressure.MetricsMaxSize != 300 {
+		t.Fatalf("backpressure not applied: %+v", cfg.Backpressure)
+	}
+	if cfg.Security.MaxAttrValueLength != 512 || cfg.Security.MaxAttrCount != 32 || cfg.Security.MaxNestingDepth != 4 {
+		t.Fatalf("security not applied: %+v", cfg.Security)
+	}
+	if !cfg.SLO.EnableREDMetrics || !cfg.SLO.EnableUSEMetrics || cfg.SLO.IncludeErrorTaxonomy {
+		t.Fatalf("SLO not applied: %+v", cfg.SLO)
+	}
+	if cfg.Logging.PIIMaxDepth != 12 {
+		t.Fatalf("PIIMaxDepth not applied: got %d", cfg.Logging.PIIMaxDepth)
+	}
+}
+
+func TestRuntimeOverridesPreservesUnsetFields(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	before := GetRuntimeConfig()
+	if before == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// Apply an empty overrides — nothing should change.
+	err := UpdateRuntimeConfig(RuntimeOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	after := GetRuntimeConfig()
+	if after == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// All fields should be preserved.
+	if after.Sampling != before.Sampling {
+		t.Errorf("Sampling changed: before=%+v after=%+v", before.Sampling, after.Sampling)
+	}
+	if after.Backpressure != before.Backpressure {
+		t.Errorf("Backpressure changed: before=%+v after=%+v", before.Backpressure, after.Backpressure)
+	}
+	if after.Security != before.Security {
+		t.Errorf("Security changed: before=%+v after=%+v", before.Security, after.Security)
+	}
+	if after.SLO != before.SLO {
+		t.Errorf("SLO changed: before=%+v after=%+v", before.SLO, after.SLO)
+	}
+	if after.ServiceName != before.ServiceName {
+		t.Errorf("ServiceName changed: before=%q after=%q", before.ServiceName, after.ServiceName)
+	}
+	if after.Logging.PIIMaxDepth != before.Logging.PIIMaxDepth {
+		t.Errorf("PIIMaxDepth changed: before=%d after=%d", before.Logging.PIIMaxDepth, after.Logging.PIIMaxDepth)
+	}
+}
+
+func TestReloadRuntimeFromEnvColdFieldDrift(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	// Change a cold field in the environment.
+	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "drifted-service")
+
+	// Reload should succeed (cold fields are still applied, just warned).
+	if err := ReloadRuntimeFromEnv(); err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+
+	cfg := GetRuntimeConfig()
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	// The cold field value IS applied to the in-memory config (reload replaces everything).
+	if cfg.ServiceName != "drifted-service" {
+		t.Errorf("expected ServiceName=%q after reload, got %q", "drifted-service", cfg.ServiceName)
 	}
 }
