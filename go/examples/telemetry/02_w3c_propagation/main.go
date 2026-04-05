@@ -68,11 +68,11 @@ func main() {
 	// Session context binding
 	fmt.Println("\nSession context binding")
 	ctx3 := telemetry.BindSessionContext(context.Background(), "session-42")
-	sessionID := telemetry.GetSessionID(ctx3)
+	sessionID, _ := telemetry.GetSessionID(ctx3)
 	fmt.Printf("  session_id=%s\n", sessionID)
 
 	ctx3 = telemetry.ClearSessionContext(ctx3)
-	afterSession := telemetry.GetSessionID(ctx3)
+	afterSession, _ := telemetry.GetSessionID(ctx3)
 	fmt.Printf("  After clear: session_id=%q\n", afterSession)
 
 	fmt.Println("\nDone!")
