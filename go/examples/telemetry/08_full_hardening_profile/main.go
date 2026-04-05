@@ -129,12 +129,14 @@ func main() {
 	fmt.Printf("\nHealth snapshot (service=%s):\n", cfg.ServiceName)
 	s := telemetry.GetHealthSnapshot()
 	fmt.Printf("  Dropped:         logs=%d  traces=%d  metrics=%d\n",
-		s.LogsDropped, s.SpansDropped, s.MetricsDropped)
-	fmt.Printf("  Retries:         %d\n", s.RetryAttempts)
+		s.LogsDropped, s.TracesDropped, s.MetricsDropped)
+	fmt.Printf("  Retries:         logs=%d  traces=%d  metrics=%d\n",
+		s.LogsRetries, s.TracesRetries, s.MetricsRetries)
 	fmt.Printf("  Export failures: logs=%d  traces=%d\n",
-		s.LogsExportErrors, s.SpansExportErrors)
-	fmt.Printf("  Circuit trips:   %d\n", s.CircuitBreakerTrips)
-	fmt.Printf("  Last error:      %q\n", s.LastError)
+		s.LogsExportFailures, s.TracesExportFailures)
+	fmt.Printf("  Circuit state:   logs=%s  traces=%s  metrics=%s\n",
+		s.LogsCircuitState, s.TracesCircuitState, s.MetricsCircuitState)
+	fmt.Printf("  Setup error:     %q\n", s.SetupError)
 
 	fmt.Println("\nAll guardrails active — production-ready!")
 }

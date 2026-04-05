@@ -94,11 +94,12 @@ func main() {
 	// Health snapshot
 	fmt.Println("\nHealth snapshot after all operations:")
 	snapshot := telemetry.GetHealthSnapshot()
-	fmt.Printf("  retries_total:          %d\n", snapshot.RetryAttempts)
-	fmt.Printf("  export_failures_logs:   %d\n", snapshot.LogsExportErrors)
-	fmt.Printf("  export_failures_traces: %d\n", snapshot.SpansExportErrors)
-	fmt.Printf("  circuit_breaker_trips:  %d\n", snapshot.CircuitBreakerTrips)
-	fmt.Printf("  last_error:             %s\n", snapshot.LastError)
+	fmt.Printf("  retries_logs:           %d\n", snapshot.LogsRetries)
+	fmt.Printf("  retries_traces:         %d\n", snapshot.TracesRetries)
+	fmt.Printf("  export_failures_logs:   %d\n", snapshot.LogsExportFailures)
+	fmt.Printf("  export_failures_traces: %d\n", snapshot.TracesExportFailures)
+	fmt.Printf("  circuit_state_logs:     %s\n", snapshot.LogsCircuitState)
+	fmt.Printf("  setup_error:            %s\n", snapshot.SetupError)
 
 	fmt.Println("\nDone!")
 }
