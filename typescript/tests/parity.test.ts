@@ -80,6 +80,19 @@ describe('parity: sampling', () => {
     expect(pct).toBeGreaterThanOrEqual(0);
     expect(pct).toBeLessThanOrEqual(1);
   });
+
+  it('rejects unknown signal name', () => {
+    expect(() => shouldSample('invalid')).toThrow();
+    expect(() => shouldSample('log')).toThrow();
+    expect(() => shouldSample('')).toThrow();
+  });
+
+  it('accepts valid signal names', () => {
+    setSamplingPolicy('logs', { defaultRate: 1.0 });
+    expect(() => shouldSample('logs')).not.toThrow();
+    expect(() => shouldSample('traces')).not.toThrow();
+    expect(() => shouldSample('metrics')).not.toThrow();
+  });
 });
 
 // ── PII Hash ────────────────────────────────────────────────────────────────

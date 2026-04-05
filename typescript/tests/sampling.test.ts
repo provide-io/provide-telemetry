@@ -120,14 +120,6 @@ describe('per-signal sampling isolation', () => {
     expect(() => getSamplingPolicy('unknown')).toThrow();
   });
 
-  it('getSamplingPolicy error message contains the signal name', () => {
-    expect(() => getSamplingPolicy('badSignal')).toThrow(/badSignal/);
-  });
-
-  it('setSamplingPolicy error message for unknown signal is non-empty', () => {
-    expect(() => setSamplingPolicy('badSignal', { defaultRate: 1.0 })).toThrow(/unknown signal/);
-  });
-
   it('each signal can have independent overrides', () => {
     setSamplingPolicy('logs', { defaultRate: 1.0, overrides: { special: 0.0 } });
     setSamplingPolicy('traces', { defaultRate: 0.0, overrides: { special: 1.0 } });

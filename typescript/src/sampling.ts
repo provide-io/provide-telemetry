@@ -6,7 +6,6 @@
  */
 
 import { ConfigurationError } from './exceptions';
-import { _droppedField, _incrementHealth } from './health';
 
 export interface SamplingPolicy {
   defaultRate: number;
