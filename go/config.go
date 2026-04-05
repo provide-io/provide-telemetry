@@ -198,10 +198,10 @@ func ConfigFromEnv() (*TelemetryConfig, error) {
 		applyLoggingEnv,
 		applyExporterEnv,
 		applyTracingEnv,
-		func(c *TelemetryConfig, e func(string) string) error { applyMetricsEnv(c, e); return nil },
+		applyMetricsEnv,
 		applySamplingEnv,
 		applyBackpressureEnv,
-		func(c *TelemetryConfig, e func(string) string) error { applySLOEnv(c, e); return nil },
+		applySLOEnv,
 		applySecurityEnv,
 	}
 	for _, fn := range helpers {
@@ -223,8 +223,19 @@ func applyTopLevelEnv(cfg *TelemetryConfig, env func(string) string) error {
 	if v := env("PROVIDE_TELEMETRY_VERSION"); v != "" {
 		cfg.Version = v
 	}
-	cfg.StrictSchema = parseBool(env("PROVIDE_TELEMETRY_STRICT_SCHEMA"), false)
-	cfg.EventSchema.StrictEventName = parseBool(env("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), false)
+	var err error
+	cfg.StrictSchema, err = parseEnvBool(env("PROVIDE_TELEMETRY_STRICT_SCHEMA"), false, "PROVIDE_TELEMETRY_STRICT_SCHEMA")
+	if err != nil {
+		return err
+	}
+	cfg.EventSchema.StrictEventName, err = parseEnvBool(
+		env("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"),
+		false,
+		"PROVIDE_TELEMETRY_STRICT_EVENT_NAME",
+	)
+	if err != nil {
+		return err
+	}
 	if v := env("PROVIDE_TELEMETRY_REQUIRED_KEYS"); v != "" {
 		cfg.EventSchema.RequiredKeys = splitTrimmed(v, ",")
 	}
@@ -246,10 +257,27 @@ func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
 		}
 		cfg.Logging.Format = v
 	}
-	cfg.Logging.IncludeTimestamp = parseBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true)
-	cfg.Logging.IncludeCaller = parseBool(env("PROVIDE_LOG_INCLUDE_CALLER"), true)
-	cfg.Logging.Sanitize = parseBool(env("PROVIDE_LOG_SANITIZE"), true)
-	cfg.Logging.LogCodeAttributes = parseBool(env("PROVIDE_LOG_CODE_ATTRIBUTES"), false)
+	var err error
+	cfg.Logging.IncludeTimestamp, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true, "PROVIDE_LOG_INCLUDE_TIMESTAMP")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.IncludeCaller, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_CALLER"), true, "PROVIDE_LOG_INCLUDE_CALLER")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.Sanitize, err = parseEnvBool(env("PROVIDE_LOG_SANITIZE"), true, "PROVIDE_LOG_SANITIZE")
+	if err != nil {
+		return err
+	}
+	cfg.Logging.LogCodeAttributes, err = parseEnvBool(
+		env("PROVIDE_LOG_CODE_ATTRIBUTES"),
+		false,
+		"PROVIDE_LOG_CODE_ATTRIBUTES",
+	)
+	if err != nil {
+		return err
+	}
 
 	if v := env("PROVIDE_LOG_PRETTY_KEY_COLOR"); v != "" {
 		cfg.Logging.PrettyKeyColor = v
@@ -272,7 +300,11 @@ func applyLoggingEnv(cfg *TelemetryConfig, env func(string) string) error {
 
 // applyTracingEnv reads tracing-related env vars into cfg.
 func applyTracingEnv(cfg *TelemetryConfig, env func(string) string) error {
-	cfg.Tracing.Enabled = parseBool(env("PROVIDE_TRACE_ENABLED"), true)
+	enabled, err := parseEnvBool(env("PROVIDE_TRACE_ENABLED"), true, "PROVIDE_TRACE_ENABLED")
+	if err != nil {
+		return err
+	}
+	cfg.Tracing.Enabled = enabled
 	if v := env("PROVIDE_TRACE_SAMPLE_RATE"); v != "" {
 		f, err := parseEnvFloat(v, "PROVIDE_TRACE_SAMPLE_RATE")
 		if err != nil {
@@ -287,8 +319,13 @@ func applyTracingEnv(cfg *TelemetryConfig, env func(string) string) error {
 }
 
 // applyMetricsEnv reads metrics-related env vars into cfg.
-func applyMetricsEnv(cfg *TelemetryConfig, env func(string) string) {
-	cfg.Metrics.Enabled = parseBool(env("PROVIDE_METRICS_ENABLED"), true)
+func applyMetricsEnv(cfg *TelemetryConfig, env func(string) string) error {
+	enabled, err := parseEnvBool(env("PROVIDE_METRICS_ENABLED"), true, "PROVIDE_METRICS_ENABLED")
+	if err != nil {
+		return err
+	}
+	cfg.Metrics.Enabled = enabled
+	return nil
 }
 
 // applySamplingEnv reads per-signal sampling rate env vars into cfg.
@@ -366,6 +403,7 @@ func applyExporterEnv(cfg *TelemetryConfig, env func(string) string) error {
 	// OTLP endpoints/headers — signal-specific fallback to generic
 	genericEndpoint := env("OTEL_EXPORTER_OTLP_ENDPOINT")
 	genericHeaders := env("OTEL_EXPORTER_OTLP_HEADERS")
+	var err error
 
 	cfg.Logging.OTLPEndpoint = firstNonEmpty(env("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"), genericEndpoint)
 	cfg.Logging.OTLPHeaders = parseOTLPHeaders(firstNonEmpty(env("OTEL_EXPORTER_OTLP_LOGS_HEADERS"), genericHeaders))
@@ -387,14 +425,52 @@ func applyExporterEnv(cfg *TelemetryConfig, env func(string) string) error {
 	}
 
 	// Fail-open
-	cfg.Exporter.LogsFailOpen = parseBool(env("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), true)
-	cfg.Exporter.TracesFailOpen = parseBool(env("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), true)
-	cfg.Exporter.MetricsFailOpen = parseBool(env("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), true)
+	cfg.Exporter.LogsFailOpen, err = parseEnvBool(env("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), true, "PROVIDE_EXPORTER_LOGS_FAIL_OPEN")
+	if err != nil {
+		return err
+	}
+	cfg.Exporter.TracesFailOpen, err = parseEnvBool(
+		env("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"),
+		true,
+		"PROVIDE_EXPORTER_TRACES_FAIL_OPEN",
+	)
+	if err != nil {
+		return err
+	}
+	cfg.Exporter.MetricsFailOpen, err = parseEnvBool(
+		env("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"),
+		true,
+		"PROVIDE_EXPORTER_METRICS_FAIL_OPEN",
+	)
+	if err != nil {
+		return err
+	}
 
 	// Allow-blocking
-	cfg.Exporter.LogsAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), false)
-	cfg.Exporter.TracesAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), false)
-	cfg.Exporter.MetricsAllowBlockingInEventLoop = parseBool(env("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), false)
+	cfg.Exporter.LogsAllowBlockingInEventLoop, err = parseEnvBool(
+		env("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"),
+		false,
+		"PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP",
+	)
+	if err != nil {
+		return err
+	}
+	cfg.Exporter.TracesAllowBlockingInEventLoop, err = parseEnvBool(
+		env("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"),
+		false,
+		"PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP",
+	)
+	if err != nil {
+		return err
+	}
+	cfg.Exporter.MetricsAllowBlockingInEventLoop, err = parseEnvBool(
+		env("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"),
+		false,
+		"PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP",
+	)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -505,10 +581,30 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 }
 
 // applySLOEnv reads SLO env vars into cfg.
-func applySLOEnv(cfg *TelemetryConfig, env func(string) string) {
-	cfg.SLO.EnableREDMetrics = parseBool(env("PROVIDE_SLO_ENABLE_RED_METRICS"), false)
-	cfg.SLO.EnableUSEMetrics = parseBool(env("PROVIDE_SLO_ENABLE_USE_METRICS"), false)
-	cfg.SLO.IncludeErrorTaxonomy = parseBool(env("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), true)
+func applySLOEnv(cfg *TelemetryConfig, env func(string) string) error {
+	var err error
+	cfg.SLO.EnableREDMetrics, err = parseEnvBool(
+		env("PROVIDE_SLO_ENABLE_RED_METRICS"),
+		false,
+		"PROVIDE_SLO_ENABLE_RED_METRICS",
+	)
+	if err != nil {
+		return err
+	}
+	cfg.SLO.EnableUSEMetrics, err = parseEnvBool(
+		env("PROVIDE_SLO_ENABLE_USE_METRICS"),
+		false,
+		"PROVIDE_SLO_ENABLE_USE_METRICS",
+	)
+	if err != nil {
+		return err
+	}
+	cfg.SLO.IncludeErrorTaxonomy, err = parseEnvBool(
+		env("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"),
+		true,
+		"PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY",
+	)
+	return err
 }
 
 // applySecurityEnv reads security limit env vars into cfg.
@@ -581,6 +677,23 @@ func parseBool(value string, defaultVal bool) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func parseEnvBool(value string, defaultVal bool, field string) (bool, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return defaultVal, nil
+	}
+	switch strings.ToLower(trimmed) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, NewConfigurationError(
+			fmt.Sprintf("invalid boolean for %s: %q (expected one of: 1,true,yes,on,0,false,no,off)", field, value),
+		)
 	}
 }
 
