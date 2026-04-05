@@ -25,7 +25,9 @@ func newTestLogger(buf *bytes.Buffer, cfg *TelemetryConfig, name string) *slog.L
 func setupFullSampling(t *testing.T) {
 	t.Helper()
 	_resetSamplingPolicies()
-	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.0})
+	if _, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.0}); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(_resetSamplingPolicies)
 }
 
@@ -162,7 +164,9 @@ func TestHandler_ContextFields(t *testing.T) {
 
 func TestHandler_SamplingDrop(t *testing.T) {
 	_resetSamplingPolicies()
-	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.0})
+	if _, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.0}); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(_resetSamplingPolicies)
 
 	cfg := DefaultTelemetryConfig()
