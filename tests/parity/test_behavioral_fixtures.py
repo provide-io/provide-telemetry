@@ -477,3 +477,22 @@ def test_parity_event_name_strict_accepts_valid(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: True)
     result = _events_mod.event_name("user", "login", "ok")
     assert result == "user.login.ok"
+
+
+def test_parity_required_keys_missing_key_error() -> None:
+    from provide.telemetry.schema.events import EventSchemaError, validate_required_keys
+
+    with pytest.raises(EventSchemaError):
+        validate_required_keys({"domain": "auth"}, ("domain", "action"))
+
+
+def test_parity_required_keys_all_present_ok() -> None:
+    from provide.telemetry.schema.events import validate_required_keys
+
+    validate_required_keys({"domain": "auth", "action": "login"}, ("domain", "action"))
+
+
+def test_parity_required_keys_empty_required_ok() -> None:
+    from provide.telemetry.schema.events import validate_required_keys
+
+    validate_required_keys({"domain": "auth"}, ())
