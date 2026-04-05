@@ -19,6 +19,9 @@ import {
   classifyError,
   parseOtlpHeaders,
   setupTelemetry,
+  getQueuePolicy,
+  computeErrorFingerprint,
+  reconfigureTelemetry,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -292,27 +295,140 @@ describe('parity: config_headers', () => {
   });
 });
 
+// ── Default sensitive keys ──────────────────────────────────────────────────
+
+describe('parity: default_sensitive_keys', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('redacts credential key', () => {
+    const obj: Record<string, unknown> = { credential: 'abc' };
+    sanitizePayload(obj);
+    expect(obj['credential']).toBe('***');
+  });
+  it('redacts cvv key', () => {
+    const obj: Record<string, unknown> = { cvv: '123' };
+    sanitizePayload(obj);
+    expect(obj['cvv']).toBe('***');
+  });
+  it('redacts pin key', () => {
+    const obj: Record<string, unknown> = { pin: '9876' };
+    sanitizePayload(obj);
+    expect(obj['pin']).toBe('***');
+  });
+  it('redacts account_number key', () => {
+    const obj: Record<string, unknown> = { account_number: '111' };
+    sanitizePayload(obj);
+    expect(obj['account_number']).toBe('***');
+  });
+  it('redacts cookie key', () => {
+    const obj: Record<string, unknown> = { cookie: 'sess=x' };
+    sanitizePayload(obj);
+    expect(obj['cookie']).toBe('***');
+  });
+  it('does NOT redact email key', () => {
+    const obj: Record<string, unknown> = { email: 'a@b.com' };
+    sanitizePayload(obj);
+    expect(obj['email']).toBe('a@b.com');
+  });
+});
+
+// ── Secret Detection ────────────────────────────────────────────────────────
+
+describe('parity: secret_detection', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('redacts AWS access key in value', () => {
+    const obj: Record<string, unknown> = { data: 'AKIAIOSFODNN7EXAMPLE' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+  });
+
+  it('redacts JWT in value', () => {
+    const obj: Record<string, unknown> = {
+      data: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0', // pragma: allowlist secret
+    };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('***');
+  });
+
+  it('does not redact short normal string', () => {
+    const obj: Record<string, unknown> = { data: 'not-a-secret' };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe('not-a-secret');
+  });
+});
+
+// ── Backpressure Default ─────────────────────────────────────────────────────
+
+describe('parity: backpressure_default', () => {
+  it('default queue policy is unlimited (0)', () => {
+    const policy = getQueuePolicy();
+    expect(policy.maxLogs).toBe(0);
+    expect(policy.maxTraces).toBe(0);
+    expect(policy.maxMetrics).toBe(0);
+  });
+});
+
+// ── Error Fingerprint Algorithm ──────────────────────────────────────────────
+
+describe('parity: error_fingerprint_algorithm', () => {
+  it('produces correct 12-char hex for error name only', () => {
+    const fp = computeErrorFingerprint('ValueError');
+    expect(fp).toHaveLength(12);
+    expect(fp).toBe('a50aba76697e');
+  });
+});
+
+// ── Reconfigure Provider Change ──────────────────────────────────────────────
+
+describe('parity: reconfigure_provider_change', () => {
+  it('allows provider-changing reconfigure without error', () => {
+    setupTelemetry({ otlpEndpoint: 'http://old:4318' });
+    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).not.toThrow();
+  });
+});
+
 // ── SLO Classify ────────────────────────────────────────────────────────────
 
 describe('parity: slo_classify', () => {
   it('status 400 = client_error', () => {
-    const c = classifyError(400);
+    const c = classifyError('ClientError', 400);
     expect(c.category).toBe('client_error');
   });
 
   it('status 500 = server_error', () => {
-    const c = classifyError(500);
+    const c = classifyError('ServerError', 500);
     expect(c.category).toBe('server_error');
   });
 
   it('status 429 = client_error with critical severity', () => {
-    const c = classifyError(429);
+    const c = classifyError('RateLimitError', 429);
     expect(c.category).toBe('client_error');
     expect(c.severity).toBe('critical');
   });
 
   it('status 0 = timeout', () => {
-    const c = classifyError(0);
+    const c = classifyError('TimeoutError', 0);
     expect(c.category).toBe('timeout');
+  });
+
+  it('OTel-aligned keys match Go/Python parity', () => {
+    const c = classifyError('ServerError', 500);
+    expect(c['error.type']).toBe('ServerError');
+    expect(c['error.category']).toBe('server_error');
+    expect(c['error.severity']).toBe('critical');
+    expect(c['http.status_code']).toBe('500');
+  });
+
+  it('excName in errorName matches Go parity', () => {
+    const c = classifyError('MyException', 503);
+    expect(c.errorName).toBe('MyException');
+    expect(c['error.type']).toBe('MyException');
+  });
+
+  it('timeout detection by excName matches Go parity', () => {
+    const c = classifyError('ConnectionTimeoutError', 503);
+    expect(c.category).toBe('timeout');
+    expect(c['error.category']).toBe('timeout');
   });
 });

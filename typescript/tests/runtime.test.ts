@@ -3,7 +3,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig } from '../src/config';
-import { ConfigurationError } from '../src/exceptions';
 import {
   _areProvidersRegistered,
   _markProvidersRegistered,
@@ -79,10 +78,11 @@ describe('reconfigureTelemetry', () => {
     expect(getRuntimeConfig().serviceName).toBe('updated');
   });
 
-  it('throws ConfigurationError when provider fields change after providers are registered', () => {
+  it('allows provider fields to change after providers are registered (restart)', () => {
     updateRuntimeConfig({ otelEnabled: false });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(ConfigurationError);
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
+    expect(getRuntimeConfig().otelEnabled).toBe(true);
   });
 
   it('allows provider field changes when providers are NOT registered', () => {
@@ -96,12 +96,11 @@ describe('reconfigureTelemetry', () => {
     expect(() => reconfigureTelemetry({ logLevel: 'debug' })).not.toThrow();
   });
 
-  it('throws when otlpEndpoint changes after registration', () => {
+  it('allows otlpEndpoint to change after registration and applies new value', () => {
     updateRuntimeConfig({ otlpEndpoint: 'http://old:4318' });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).toThrow(
-      ConfigurationError,
-    );
+    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).not.toThrow();
+    expect(getRuntimeConfig().otlpEndpoint).toBe('http://new:4318');
   });
 });
 
@@ -122,25 +121,22 @@ describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => 
   });
 });
 
-describe('reconfigureTelemetry — otlpHeaders change throws after init (kills StringLiteral otlpHeaders)', () => {
-  it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
+describe('reconfigureTelemetry — otlpHeaders change after init triggers restart (kills StringLiteral otlpHeaders)', () => {
+  it('allows otlpHeaders to change after providers initialized (restart path)', () => {
     updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
-      ConfigurationError,
-    );
+    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).not.toThrow();
+    expect(getRuntimeConfig().otlpHeaders).toEqual({ 'x-api-key': 'new' });
   });
 });
 
-describe('reconfigureTelemetry — error message content (kills StringLiteral on error message)', () => {
-  it('error message contains "Cannot change"', () => {
+describe('reconfigureTelemetry — provider change after init resets registered flag (kills StringLiteral on field list)', () => {
+  it('providers are no longer registered after a provider-changing reconfigure', () => {
     _markProvidersRegistered();
-    let message = '';
-    try {
-      reconfigureTelemetry({ otelEnabled: true });
-    } catch (e) {
-      message = (e as Error).message;
-    }
-    expect(message).toContain('Cannot change');
+    expect(_areProvidersRegistered()).toBe(true);
+    reconfigureTelemetry({ otelEnabled: true });
+    // After restart path, providers are re-setup; _providersRegistered resets then setupTelemetry runs
+    // Since there are no real providers in tests, it stays false after reset
+    expect(_areProvidersRegistered()).toBe(false);
   });
 });

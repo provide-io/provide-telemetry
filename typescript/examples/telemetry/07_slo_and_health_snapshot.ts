@@ -60,8 +60,8 @@ async function main(): Promise<void> {
     ['NullPointerError', 200],
   ];
   for (const [excName, code] of cases) {
-    const taxonomy = classifyError(code);
-    const icon: Record<string, string> = { server: '🔴', client: '🟡', none: '⚫' };
+    const taxonomy = classifyError(excName, code);
+    const icon: Record<string, string> = { server: '🔴', client: '🟡', unknown: '⚫' };
     console.log(
       `  ${icon[taxonomy.errorType] ?? '❓'} ${excName}(status=${code}) → type=${taxonomy.errorType}, code=${taxonomy.errorCode}`,
     );

@@ -768,6 +768,77 @@ func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	}
 }
 
+// ── Error fingerprint injection ───────────────────────────────────────────────
+
+func TestHandler_ErrorFingerprint_Added(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("error occurred", slog.String("exc_name", "ValueError"))
+
+	out := buf.String()
+	if !strings.Contains(out, "error_fingerprint") {
+		t.Errorf("expected error_fingerprint in output: %s", out)
+	}
+}
+
+func TestHandler_ErrorFingerprint_NotAdded_WhenNoError(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("normal message")
+
+	if strings.Contains(buf.String(), "error_fingerprint") {
+		t.Errorf("unexpected error_fingerprint in output: %s", buf.String())
+	}
+}
+
+// ── Schema strict: required keys drop / pass ──────────────────────────────────
+
+func TestHandler_SchemaStrict_RequiredKeys_Drop(t *testing.T) {
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.EventSchema.RequiredKeys = []string{"domain"}
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("user.auth.login")
+
+	if buf.Len() != 0 {
+		t.Errorf("expected record dropped for missing required key, got: %s", buf.String())
+	}
+}
+
+func TestHandler_SchemaStrict_RequiredKeys_Pass(t *testing.T) {
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.EventSchema.RequiredKeys = []string{"domain"}
+	cfg.Logging.Sanitize = false
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	l.Info("user.auth.login", slog.String("domain", "user"))
+
+	if buf.Len() == 0 {
+		t.Error("expected record to pass when required key is present")
+	}
+}
+
 // ── GetLogger produces JSON output when format=json ─────────────────────────
 func TestGetLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	setupFullSampling(t)

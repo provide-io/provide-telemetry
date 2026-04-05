@@ -271,3 +271,169 @@ func TestParity_ClassifyError_0(t *testing.T) {
 		t.Errorf("0 category: want timeout, got %s", m["error.category"])
 	}
 }
+
+// ── Secret Detection ──────────────────────────────────────────────────────────
+
+func TestParity_SecretDetection_AWSKey(t *testing.T) {
+	payload := map[string]any{"data": "AKIAIOSFODNN7EXAMPLE"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected AWS key redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_JWT(t *testing.T) {
+	payload := map[string]any{"data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected JWT redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_GitHubToken(t *testing.T) {
+	payload := map[string]any{"data": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != _piiRedacted {
+		t.Errorf("expected GitHub token redacted, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_ShortString_NotRedacted(t *testing.T) {
+	payload := map[string]any{"data": "not-a-secret"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != "not-a-secret" {
+		t.Errorf("expected short string unchanged, got %v", result["data"])
+	}
+}
+
+func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
+	payload := map[string]any{"data": "hello world this is normal text"}
+	result := SanitizePayload(payload, true, 0)
+	if result["data"] != "hello world this is normal text" {
+		t.Errorf("expected normal string unchanged, got %v", result["data"])
+	}
+}
+
+// ── Backpressure Parity ───────────────────────────────────────────────────────
+
+func TestParity_Backpressure_DefaultUnlimited(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+
+	policy := GetQueuePolicy()
+	if policy.LogsMaxSize != 0 {
+		t.Errorf("expected default LogsMaxSize=0 (unlimited), got %d", policy.LogsMaxSize)
+	}
+	if policy.TracesMaxSize != 0 {
+		t.Errorf("expected default TracesMaxSize=0 (unlimited), got %d", policy.TracesMaxSize)
+	}
+	if policy.MetricsMaxSize != 0 {
+		t.Errorf("expected default MetricsMaxSize=0 (unlimited), got %d", policy.MetricsMaxSize)
+	}
+}
+
+func TestParity_Backpressure_UnlimitedAlwaysAcquires(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+
+	for i := 0; i < 5000; i++ {
+		if !TryAcquire(signalLogs) {
+			t.Fatalf("TryAcquire failed at iteration %d with unlimited queue", i)
+		}
+	}
+}
+
+// ── Error Fingerprint ─────────────────────────────────────────────────────────
+
+func TestParity_ErrorFingerprint_NoFrames(t *testing.T) {
+	fp := _computeErrorFingerprint("ValueError", nil)
+	if len(fp) != 12 {
+		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
+	}
+	expected := "a50aba76697e"
+	if fp != expected {
+		t.Errorf("fingerprint mismatch: got %q, want %q", fp, expected)
+	}
+}
+
+func TestParity_ErrorFingerprint_WithParts(t *testing.T) {
+	fp := _computeErrorFingerprintFromParts("TypeError", []string{"module:main", "handler:process"})
+	if len(fp) != 12 {
+		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
+	}
+}
+
+// ── PII Truncate — non-string conversion ─────────────────────────────────────
+
+func TestParity_PIITruncate_NonString(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"count"}, Mode: PIIModeTruncate, TruncateTo: 3}})
+	result := SanitizePayload(map[string]any{"count": 12345}, true, 0)
+	if result["count"] != "123..." {
+		t.Errorf("expected truncated non-string '123...', got %v", result["count"])
+	}
+}
+
+// ── PII Drop — removes key ────────────────────────────────────────────────────
+
+func TestParity_PIIDrop_RemovesKey(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"secret_data"}, Mode: PIIModeDrop}})
+	result := SanitizePayload(map[string]any{"secret_data": "top-secret", "keep": "visible"}, true, 0) // pragma: allowlist secret
+	if _, exists := result["secret_data"]; exists {
+		t.Error("expected 'secret_data' to be dropped entirely")
+	}
+	if result["keep"] != "visible" {
+		t.Errorf("expected 'keep' unchanged, got %v", result["keep"])
+	}
+}
+
+// ── Propagation Guards — baggage limits ──────────────────────────────────────
+
+func TestParity_Propagation_BaggageAtLimit_Accepted(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Baggage", strings.Repeat("x", 8192))
+	pc := ExtractW3CContext(headers)
+	if pc.Baggage == "" {
+		t.Error("expected baggage at limit (8192) to be accepted")
+	}
+}
+
+func TestParity_Propagation_BaggageOverLimit_Discarded(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Baggage", strings.Repeat("x", 8193))
+	pc := ExtractW3CContext(headers)
+	if pc.Baggage != "" {
+		t.Error("expected baggage over limit (8193) to be discarded")
+	}
+}
+
+// ── SLO Classify — edge cases ─────────────────────────────────────────────────
+
+func TestParity_ClassifyError_200_Unknown(t *testing.T) {
+	result := ClassifyError("", 200)
+	if result["error.category"] != "unknown" {
+		t.Errorf("expected unknown for 200, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_301_Unknown(t *testing.T) {
+	result := ClassifyError("", 301)
+	if result["error.category"] != "unknown" {
+		t.Errorf("expected unknown for 301, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_TimeoutByExcName(t *testing.T) {
+	result := ClassifyError("ConnectionTimeoutError", 503)
+	if result["error.category"] != "timeout" {
+		t.Errorf("expected timeout by exc name, got %s", result["error.category"])
+	}
+}
+
+func TestParity_ClassifyError_599_ServerError(t *testing.T) {
+	result := ClassifyError("ServerError", 599)
+	if result["error.category"] != "server_error" {
+		t.Errorf("expected server_error for 599, got %s", result["error.category"])
+	}
+}
