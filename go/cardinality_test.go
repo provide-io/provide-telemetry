@@ -85,7 +85,10 @@ func TestGuardAttributes_TTLExpiry_SlotFreed(t *testing.T) {
 	_resetCardinalityLimits()
 	t.Cleanup(_resetCardinalityLimits)
 
-	SetCardinalityLimit("session", CardinalityLimit{MaxValues: 1, TTLSeconds: 0.05}) // 50ms TTL
+	// Write directly to bypass clamping so we can use a short TTL in tests.
+	_cardinalityMu.Lock()
+	_cardinalityLimits["session"] = CardinalityLimit{MaxValues: 1, TTLSeconds: 0.05} // 50ms TTL
+	_cardinalityMu.Unlock()
 
 	// Fill the single slot.
 	r1 := GuardAttributes(map[string]string{"session": "s1"})
