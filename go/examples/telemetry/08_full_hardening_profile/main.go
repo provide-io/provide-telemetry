@@ -74,11 +74,11 @@ func main() {
 
 	// Sampling policies
 	fmt.Println("\nSampling: logs=50%, traces=100%, critical overrides=100%")
-	telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
+	_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
 		DefaultRate: 0.5,
 		Overrides:   map[string]float64{"example.critical": 1.0},
 	})
-	telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	_, _ = telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
 
 	// Backpressure
 	fmt.Println("\nBackpressure: traces queue max=2")
@@ -111,7 +111,7 @@ func main() {
 
 	// Runtime reconfiguration
 	fmt.Println("\nHot-swapping sampling rate to 100%...")
-	before := telemetry.GetSamplingPolicy("logs")
+	before, _ := telemetry.GetSamplingPolicy("logs")
 	fmt.Printf("  Before: logs_rate=%.1f\n", before.DefaultRate)
 	err = telemetry.UpdateRuntimeConfig(func(c *telemetry.TelemetryConfig) {
 		c.Sampling.LogsRate = 1.0
@@ -120,8 +120,8 @@ func main() {
 		fmt.Printf("  UpdateRuntimeConfig error: %v\n", err)
 	} else {
 		// re-apply sampling policy to reflect the new rate
-		telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.0})
-		after := telemetry.GetSamplingPolicy("logs")
+		_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.0})
+		after, _ := telemetry.GetSamplingPolicy("logs")
 		fmt.Printf("  After:  logs_rate=%.1f\n", after.DefaultRate)
 	}
 

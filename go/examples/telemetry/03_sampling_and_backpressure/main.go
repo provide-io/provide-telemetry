@@ -44,23 +44,25 @@ func main() {
 
 	// Sampling policies with overrides
 	fmt.Println("Setting sampling policies...")
-	telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
+	_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{
 		DefaultRate: 0.0,
 		Overrides:   map[string]float64{"example.critical": 1.0},
 	})
-	telemetry.SetSamplingPolicy("metrics", telemetry.SamplingPolicy{DefaultRate: 1.0})
-	telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	_, _ = telemetry.SetSamplingPolicy("metrics", telemetry.SamplingPolicy{DefaultRate: 1.0})
+	_, _ = telemetry.SetSamplingPolicy("traces", telemetry.SamplingPolicy{DefaultRate: 1.0})
 
 	// Inspect active policies
-	logsPolicy := telemetry.GetSamplingPolicy("logs")
+	logsPolicy, _ := telemetry.GetSamplingPolicy("logs")
 	fmt.Printf("  logs:    default_rate=%.1f, overrides=%v\n", logsPolicy.DefaultRate, logsPolicy.Overrides)
-	fmt.Printf("  metrics: default_rate=%.1f\n", telemetry.GetSamplingPolicy("metrics").DefaultRate)
-	fmt.Printf("  traces:  default_rate=%.1f\n", telemetry.GetSamplingPolicy("traces").DefaultRate)
+	metricsPolicy, _ := telemetry.GetSamplingPolicy("metrics")
+	fmt.Printf("  metrics: default_rate=%.1f\n", metricsPolicy.DefaultRate)
+	tracesPolicy, _ := telemetry.GetSamplingPolicy("traces")
+	fmt.Printf("  traces:  default_rate=%.1f\n", tracesPolicy.DefaultRate)
 
 	// should_sample with overrides
 	fmt.Println("\nShouldSample() decisions:")
 	for _, key := range []string{"example.routine", "example.critical"} {
-		sampled := telemetry.ShouldSample("logs", key)
+		sampled, _ := telemetry.ShouldSample("logs", key)
 		mark := "NO"
 		if sampled {
 			mark = "YES"

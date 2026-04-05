@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -12,6 +13,23 @@ const (
 	signalTraces  = "traces"
 	signalMetrics = "metrics"
 )
+
+// _validSignals is the set of allowed signal names.
+var _validSignals = map[string]struct{}{
+	signalLogs:    {},
+	signalTraces:  {},
+	signalMetrics: {},
+}
+
+// _validateSignal returns a ConfigurationError if signal is not in the valid set.
+func _validateSignal(signal string) error {
+	if _, ok := _validSignals[signal]; !ok {
+		return NewConfigurationError(
+			fmt.Sprintf("unknown signal %q, expected one of [logs, metrics, traces]", signal),
+		)
+	}
+	return nil
+}
 
 // SamplingPolicy defines per-signal sampling configuration.
 type SamplingPolicy struct {
@@ -26,22 +44,30 @@ var (
 )
 
 // SetSamplingPolicy registers a sampling policy for a signal.
-// signal should be "logs", "traces", or "metrics".
-func SetSamplingPolicy(signal string, policy SamplingPolicy) {
+// signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
+func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, error) {
+	if err := _validateSignal(signal); err != nil {
+		return SamplingPolicy{}, err
+	}
 	_samplingMu.Lock()
 	defer _samplingMu.Unlock()
 	_samplingPolicies[signal] = policy
+	return policy, nil
 }
 
 // GetSamplingPolicy returns the current policy for a signal.
 // Returns SamplingPolicy{DefaultRate: 1.0} if no policy is set.
-func GetSamplingPolicy(signal string) SamplingPolicy {
+// signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
+func GetSamplingPolicy(signal string) (SamplingPolicy, error) {
+	if err := _validateSignal(signal); err != nil {
+		return SamplingPolicy{}, err
+	}
 	_samplingMu.RLock()
 	defer _samplingMu.RUnlock()
 	if policy, ok := _samplingPolicies[signal]; ok {
-		return policy
+		return policy, nil
 	}
-	return SamplingPolicy{DefaultRate: 1.0}
+	return SamplingPolicy{DefaultRate: 1.0}, nil
 }
 
 // ShouldSample returns true if the given key (usually event name or span name)
@@ -53,8 +79,11 @@ func GetSamplingPolicy(signal string) SamplingPolicy {
 //   - otherwise: rand.Float64() < rate
 //
 // Key lookup: if policy.Overrides[key] exists, use that rate; otherwise use DefaultRate.
-func ShouldSample(signal, key string) bool {
-	policy := GetSamplingPolicy(signal)
+func ShouldSample(signal, key string) (bool, error) {
+	policy, err := GetSamplingPolicy(signal)
+	if err != nil {
+		return false, err
+	}
 
 	rate := policy.DefaultRate
 	if policy.Overrides != nil {
@@ -75,7 +104,7 @@ func ShouldSample(signal, key string) bool {
 
 	_recordSampleDecision(signal, sampled)
 
-	return sampled
+	return sampled, nil
 }
 
 // _recordSampleDecision increments the appropriate counter based on the signal and sampling outcome.
