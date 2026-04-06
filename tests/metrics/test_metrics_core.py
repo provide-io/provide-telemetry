@@ -183,6 +183,8 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         provider_mod, "_load_otel_metrics_components", lambda: (provider_cls, resource_cls, reader_cls, exporter_cls)
     )
+    # Bypass resilience layer to avoid mutmut trampoline interference during clean test
+    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _sig, op: op())
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"})
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
