@@ -180,7 +180,7 @@ func runEmitBinary(runID string) error {
 	emitBin := os.Getenv("EMIT_BINARY")
 	var cmd *exec.Cmd
 	if emitBin != "" {
-		cmd = exec.Command(emitBin) //nolint:gosec // controlled input from env
+		cmd = exec.Command(emitBin) //#nosec G204,G702 -- controlled input from env
 	} else {
 		// go run the emit example relative to this file's location.
 		cmd = exec.Command("go", "run",
