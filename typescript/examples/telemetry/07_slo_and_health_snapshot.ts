@@ -75,12 +75,10 @@ async function main(): Promise<void> {
   const s = getHealthSnapshot();
   console.log(`  📉 Dropped:         logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
   console.log(`  📦 Emitted:         logs=${s.logsEmitted}  traces=${s.tracesEmitted}  metrics=${s.metricsEmitted}`);
-  console.log(`  🔄 exportRetries:   ${s.exportRetries}`);
-  console.log(`  ❌ exportFailures:  ${s.exportFailures}`);
-  console.log(`  ⚠️  asyncBlockingRisk: ${s.asyncBlockingRisk}`);
-  console.log(`  🔬 exemplarUnsupported: ${s.exemplarUnsupported}`);
-  console.log(`  💬 lastExportError: ${s.lastExportError}`);
-  console.log(`  ⏱️  exportLatencyMs: ${s.exportLatencyMs}`);
+  console.log(`  🔄 retriesLogs:            ${s.retriesLogs}`);
+  console.log(`  ❌ exportFailuresLogs:     ${s.exportFailuresLogs}`);
+  console.log(`  ⚠️  asyncBlockingRiskLogs: ${s.asyncBlockingRiskLogs}`);
+  console.log(`  ⏱️  exportLatencyMsLogs:   ${s.exportLatencyMsLogs}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

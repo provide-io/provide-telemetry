@@ -14,12 +14,11 @@ from provide.telemetry.health import (
     get_health_snapshot,
     increment_async_blocking_risk,
     increment_dropped,
-    increment_exemplar_unsupported,
+    increment_emitted,
     increment_retries,
     record_export_failure,
-    record_export_success,
+    record_export_latency,
     reset_health_for_tests,
-    set_queue_depth,
 )
 
 
@@ -51,39 +50,58 @@ class TestKnownSignal:
             _known_signal("")
 
 
-# ── set_queue_depth ────────────────────────────────────────────
+# ── increment_emitted ─────────────────────────────────────────
 
 
-class TestSetQueueDepth:
-    def test_set_queue_depth_logs(self) -> None:
-        set_queue_depth("logs", 5)
+class TestIncrementEmitted:
+    def test_default_amount_is_one(self) -> None:
+        increment_emitted("logs")
         snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 5
+        assert snap.emitted_logs == 1
 
-    def test_set_queue_depth_traces(self) -> None:
-        set_queue_depth("traces", 7)
+    def test_cumulative_across_calls(self) -> None:
+        increment_emitted("logs")
+        increment_emitted("logs")
         snap = get_health_snapshot()
-        assert snap.queue_depth_traces == 7
+        assert snap.emitted_logs == 2
 
-    def test_set_queue_depth_metrics(self) -> None:
-        set_queue_depth("metrics", 3)
+    def test_traces_signal(self) -> None:
+        increment_emitted("traces")
         snap = get_health_snapshot()
-        assert snap.queue_depth_metrics == 3
+        assert snap.emitted_traces == 1
 
-    def test_clamps_negative_to_zero(self) -> None:
-        set_queue_depth("logs", -10)
+    def test_metrics_signal(self) -> None:
+        increment_emitted("metrics")
         snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 0
+        assert snap.emitted_metrics == 1
 
-    def test_zero_depth_accepted(self) -> None:
-        set_queue_depth("logs", 5)
-        set_queue_depth("logs", 0)
+    def test_negative_amount_clamped_to_zero(self) -> None:
+        increment_emitted("logs", -5)
         snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 0
+        assert snap.emitted_logs == 0
+
+    def test_zero_amount_no_change(self) -> None:
+        increment_emitted("logs", 0)
+        snap = get_health_snapshot()
+        assert snap.emitted_logs == 0
+
+    def test_custom_amount(self) -> None:
+        increment_emitted("logs", 10)
+        snap = get_health_snapshot()
+        assert snap.emitted_logs == 10
+
+    def test_signals_are_independent(self) -> None:
+        increment_emitted("logs", 3)
+        increment_emitted("traces", 5)
+        increment_emitted("metrics", 7)
+        snap = get_health_snapshot()
+        assert snap.emitted_logs == 3
+        assert snap.emitted_traces == 5
+        assert snap.emitted_metrics == 7
 
     def test_unknown_signal_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="unknown signal"):
-            set_queue_depth("bogus", 42)
+            increment_emitted("bogus")
 
 
 # ── increment_dropped ─────────────────────────────────────────
@@ -236,22 +254,6 @@ class TestRecordExportFailure:
         snap = get_health_snapshot()
         assert snap.export_failures_traces == 2
 
-    def test_stores_error_string_not_none(self) -> None:
-        exc = ValueError("test error")
-        record_export_failure("logs", exc)
-        snap = get_health_snapshot()
-        assert snap.last_error_logs == "test error"
-
-    def test_traces_error_stored(self) -> None:
-        record_export_failure("traces", RuntimeError("trace err"))
-        snap = get_health_snapshot()
-        assert snap.last_error_traces == "trace err"
-
-    def test_metrics_error_stored(self) -> None:
-        record_export_failure("metrics", RuntimeError("metric err"))
-        snap = get_health_snapshot()
-        assert snap.last_error_metrics == "metric err"
-
     def test_signals_are_independent(self) -> None:
         record_export_failure("logs", RuntimeError("log err"))
         record_export_failure("traces", RuntimeError("trace err"))
@@ -259,108 +261,54 @@ class TestRecordExportFailure:
         assert snap.export_failures_logs == 1
         assert snap.export_failures_traces == 1
         assert snap.export_failures_metrics == 0
-        assert snap.last_error_logs == "log err"
-        assert snap.last_error_traces == "trace err"
-        assert snap.last_error_metrics is None
 
 
-# ── record_export_success ──────────────────────────────────────
+# ── record_export_latency ─────────────────────────────────────
 
 
-class TestRecordExportSuccess:
-    def test_records_timestamp(self) -> None:
-        record_export_success("logs", latency_ms=1.5)
-        snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_logs, (int, float))
-        assert snap.last_successful_export_logs > 0
-
+class TestRecordExportLatency:
     def test_records_latency(self) -> None:
-        record_export_success("traces", latency_ms=42.0)
+        record_export_latency("traces", latency_ms=42.0)
         snap = get_health_snapshot()
         assert snap.export_latency_ms_traces == 42.0
 
     def test_clamps_negative_latency_to_zero(self) -> None:
-        record_export_success("logs", latency_ms=-5.0)
+        record_export_latency("logs", latency_ms=-5.0)
         snap = get_health_snapshot()
         assert snap.export_latency_ms_logs == 0.0
 
     def test_zero_latency_accepted(self) -> None:
-        record_export_success("logs", latency_ms=0.0)
+        record_export_latency("logs", latency_ms=0.0)
         snap = get_health_snapshot()
         assert snap.export_latency_ms_logs == 0.0
 
     def test_default_latency_is_zero(self) -> None:
         """Kills latency_ms: float = 0.0 -> 1.0 default arg mutant."""
-        record_export_success("logs")
+        record_export_latency("logs")
         snap = get_health_snapshot()
         assert snap.export_latency_ms_logs == 0.0
 
-    def test_clears_last_error_to_none(self) -> None:
-        record_export_failure("logs", RuntimeError("err"))
+    def test_traces_latency(self) -> None:
+        record_export_latency("traces", latency_ms=10.0)
         snap = get_health_snapshot()
-        assert snap.last_error_logs == "err"
-
-        record_export_success("logs", latency_ms=1.0)
-        snap = get_health_snapshot()
-        assert snap.last_error_logs is None
-        # Ensure it's actually None, not empty string
-        assert snap.last_error_logs != ""
-
-    def test_traces_success(self) -> None:
-        record_export_success("traces", latency_ms=10.0)
-        snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_traces, (int, float))
-        assert snap.last_successful_export_traces > 0
         assert snap.export_latency_ms_traces == 10.0
 
-    def test_metrics_success(self) -> None:
-        record_export_success("metrics", latency_ms=20.0)
+    def test_metrics_latency(self) -> None:
+        record_export_latency("metrics", latency_ms=20.0)
         snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_metrics, (int, float))
-        assert snap.last_successful_export_metrics > 0
         assert snap.export_latency_ms_metrics == 20.0
 
     def test_signals_are_independent(self) -> None:
-        record_export_success("logs", latency_ms=1.0)
-        record_export_success("traces", latency_ms=2.0)
+        record_export_latency("logs", latency_ms=1.0)
+        record_export_latency("traces", latency_ms=2.0)
         snap = get_health_snapshot()
-        assert isinstance(snap.last_successful_export_logs, (int, float))
-        assert isinstance(snap.last_successful_export_traces, (int, float))
-        assert snap.last_successful_export_metrics is None
         assert snap.export_latency_ms_logs == 1.0
         assert snap.export_latency_ms_traces == 2.0
         assert snap.export_latency_ms_metrics == 0.0
 
-
-# ── increment_exemplar_unsupported ─────────────────────────────
-
-
-class TestIncrementExemplarUnsupported:
-    def test_default_amount_is_one(self) -> None:
-        increment_exemplar_unsupported()
-        snap = get_health_snapshot()
-        assert snap.exemplar_unsupported_total == 1
-
-    def test_cumulative_across_calls(self) -> None:
-        increment_exemplar_unsupported()
-        increment_exemplar_unsupported()
-        snap = get_health_snapshot()
-        assert snap.exemplar_unsupported_total == 2
-
-    def test_negative_amount_clamped_to_zero(self) -> None:
-        increment_exemplar_unsupported(-3)
-        snap = get_health_snapshot()
-        assert snap.exemplar_unsupported_total == 0
-
-    def test_zero_amount_no_change(self) -> None:
-        increment_exemplar_unsupported(0)
-        snap = get_health_snapshot()
-        assert snap.exemplar_unsupported_total == 0
-
-    def test_custom_amount(self) -> None:
-        increment_exemplar_unsupported(5)
-        snap = get_health_snapshot()
-        assert snap.exemplar_unsupported_total == 5
+    def test_unknown_signal_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="unknown signal"):
+            record_export_latency("bogus", latency_ms=1.0)
 
 
 # TestHealthSnapshotFieldMapping and TestResetHealthForTests

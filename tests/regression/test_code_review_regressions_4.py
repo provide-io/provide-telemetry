@@ -17,7 +17,6 @@ from provide.telemetry.health import (
     get_health_snapshot,
     increment_dropped,
     reset_health_for_tests,
-    set_queue_depth,
 )
 from provide.telemetry.resilience import reset_resilience_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
@@ -51,10 +50,6 @@ class TestHealthKnownSignalRaises:
     def test_increment_dropped_unknown_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown signal"):
             increment_dropped("typo_signal")
-
-    def test_set_queue_depth_unknown_raises(self) -> None:
-        with pytest.raises(ValueError, match="unknown signal"):
-            set_queue_depth("typo_signal", 5)
 
     def test_valid_signals_work_correctly(self) -> None:
         increment_dropped("logs", 2)

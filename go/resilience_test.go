@@ -83,8 +83,8 @@ func TestRunWithResilience_SucceedsFirstTry(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.LogsExportedOK != 1 {
-		t.Errorf("LogsExportedOK: want 1, got %d", snap.LogsExportedOK)
+	if snap.LogsExportFailures != 0 {
+		t.Errorf("LogsExportFailures: want 0 (success), got %d", snap.LogsExportFailures)
 	}
 }
 
@@ -113,11 +113,12 @@ func TestRunWithResilience_RetriesOnTransientError(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.SpansExportedOK != 1 {
-		t.Errorf("SpansExportedOK: want 1, got %d", snap.SpansExportedOK)
+	// 2 failures before success.
+	if snap.TracesExportFailures != 2 {
+		t.Errorf("TracesExportFailures: want 2, got %d", snap.TracesExportFailures)
 	}
-	if snap.RetryAttempts != 2 {
-		t.Errorf("RetryAttempts: want 2, got %d", snap.RetryAttempts)
+	if snap.TracesRetries != 2 {
+		t.Errorf("TracesRetries: want 2, got %d", snap.TracesRetries)
 	}
 }
 
@@ -140,8 +141,8 @@ func TestRunWithResilience_FailsAfterAllRetries(t *testing.T) {
 
 	snap := GetHealthSnapshot()
 	// 3 attempts total (1 + 2 retries), each increments failure counter.
-	if snap.MetricsExportErrors != 3 {
-		t.Errorf("MetricsExportErrors: want 3, got %d", snap.MetricsExportErrors)
+	if snap.MetricsExportFailures != 3 {
+		t.Errorf("MetricsExportFailures: want 3, got %d", snap.MetricsExportFailures)
 	}
 }
 
@@ -217,8 +218,8 @@ func TestCB_TripsAfterThreeTimeouts(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.CircuitBreakerTrips != 1 {
-		t.Errorf("CircuitBreakerTrips: want 1, got %d", snap.CircuitBreakerTrips)
+	if snap.LogsCircuitState != "open" {
+		t.Errorf("LogsCircuitState: want open, got %s", snap.LogsCircuitState)
 	}
 
 	// FailOpen=false, so we should get an error.
@@ -284,8 +285,11 @@ func TestCB_FailOpen_CircuitOpen_ReturnsNil(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.CircuitBreakerTrips != 1 {
-		t.Errorf("CircuitBreakerTrips: want 1, got %d", snap.CircuitBreakerTrips)
+	if snap.LogsCircuitState != "open" {
+		t.Errorf("LogsCircuitState: want open, got %s", snap.LogsCircuitState)
+	}
+	if snap.LogsCircuitOpenCount < 1 {
+		t.Errorf("LogsCircuitOpenCount: want >= 1, got %d", snap.LogsCircuitOpenCount)
 	}
 }
 
@@ -520,14 +524,15 @@ func TestRunWithResilience_AllSignals_SuccessCounters(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.LogsExportedOK != 1 {
-		t.Errorf("LogsExportedOK: want 1, got %d", snap.LogsExportedOK)
+	// Success counters were removed; verify no failures occurred.
+	if snap.LogsExportFailures != 0 {
+		t.Errorf("LogsExportFailures: want 0, got %d", snap.LogsExportFailures)
 	}
-	if snap.SpansExportedOK != 1 {
-		t.Errorf("SpansExportedOK: want 1, got %d", snap.SpansExportedOK)
+	if snap.TracesExportFailures != 0 {
+		t.Errorf("TracesExportFailures: want 0, got %d", snap.TracesExportFailures)
 	}
-	if snap.MetricsExportedOK != 1 {
-		t.Errorf("MetricsExportedOK: want 1, got %d", snap.MetricsExportedOK)
+	if snap.MetricsExportFailures != 0 {
+		t.Errorf("MetricsExportFailures: want 0, got %d", snap.MetricsExportFailures)
 	}
 }
 
@@ -549,14 +554,14 @@ func TestRunWithResilience_AllSignals_FailureCounters(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.LogsExportErrors != 1 {
-		t.Errorf("LogsExportErrors: want 1, got %d", snap.LogsExportErrors)
+	if snap.LogsExportFailures != 1 {
+		t.Errorf("LogsExportFailures: want 1, got %d", snap.LogsExportFailures)
 	}
-	if snap.SpansExportErrors != 1 {
-		t.Errorf("SpansExportErrors: want 1, got %d", snap.SpansExportErrors)
+	if snap.TracesExportFailures != 1 {
+		t.Errorf("TracesExportFailures: want 1, got %d", snap.TracesExportFailures)
 	}
-	if snap.MetricsExportErrors != 1 {
-		t.Errorf("MetricsExportErrors: want 1, got %d", snap.MetricsExportErrors)
+	if snap.MetricsExportFailures != 1 {
+		t.Errorf("MetricsExportFailures: want 1, got %d", snap.MetricsExportFailures)
 	}
 }
 
@@ -585,8 +590,8 @@ func TestRunWithResilience_RetryAttempts_ExactCount(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.RetryAttempts != 2 {
-		t.Errorf("RetryAttempts: want exactly 2, got %d", snap.RetryAttempts)
+	if snap.LogsRetries != 2 {
+		t.Errorf("LogsRetries: want exactly 2, got %d", snap.LogsRetries)
 	}
 }
 
@@ -606,8 +611,8 @@ func TestRunWithResilience_NoRetries_RetryCounterIsZero(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.RetryAttempts != 0 {
-		t.Errorf("RetryAttempts: want 0 (no retries needed), got %d", snap.RetryAttempts)
+	if snap.LogsRetries != 0 {
+		t.Errorf("LogsRetries: want 0 (no retries needed), got %d", snap.LogsRetries)
 	}
 }
 
@@ -759,8 +764,8 @@ func TestRunWithResilience_ZeroTimeout_NoContextWrapping(t *testing.T) {
 	}
 
 	snap := GetHealthSnapshot()
-	if snap.LogsExportedOK != 1 {
-		t.Errorf("LogsExportedOK: want 1, got %d", snap.LogsExportedOK)
+	if snap.LogsExportFailures != 0 {
+		t.Errorf("LogsExportFailures: want 0 (success), got %d", snap.LogsExportFailures)
 	}
 }
 
