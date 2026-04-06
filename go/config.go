@@ -770,11 +770,14 @@ func parseOTLPHeaders(raw string) map[string]string {
 		}
 		rawKey := strings.TrimSpace(pair[:idx])
 		rawVal := strings.TrimSpace(pair[idx+1:])
-		key, err := url.QueryUnescape(rawKey)
+		// Use PathUnescape so that '+' is preserved as a literal character
+		// (QueryUnescape decodes '+' as space, which breaks header names like
+		// "x-api+json").
+		key, err := url.PathUnescape(rawKey)
 		if err != nil || key == "" {
 			continue
 		}
-		val, err := url.QueryUnescape(rawVal)
+		val, err := url.PathUnescape(rawVal)
 		if err != nil {
 			continue
 		}

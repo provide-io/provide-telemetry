@@ -14,6 +14,7 @@ import {
   resetPiiRulesForTests,
   sanitizePayload,
   event,
+  eventName,
   EventSchemaError,
   extractW3cContext,
   classifyError,
@@ -22,6 +23,10 @@ import {
   getQueuePolicy,
   computeErrorFingerprint,
   reconfigureTelemetry,
+  registerCardinalityLimit,
+  getCardinalityLimits,
+  clearCardinalityLimits,
+  validateRequiredKeys,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -79,6 +84,19 @@ describe('parity: sampling', () => {
     const pct = (count / trials) * 100;
     expect(pct).toBeGreaterThanOrEqual(0);
     expect(pct).toBeLessThanOrEqual(1);
+  });
+
+  it('rejects unknown signal name', () => {
+    expect(() => shouldSample('invalid')).toThrow();
+    expect(() => shouldSample('log')).toThrow();
+    expect(() => shouldSample('')).toThrow();
+  });
+
+  it('accepts valid signal names', () => {
+    setSamplingPolicy('logs', { defaultRate: 1.0 });
+    expect(() => shouldSample('logs')).not.toThrow();
+    expect(() => shouldSample('traces')).not.toThrow();
+    expect(() => shouldSample('metrics')).not.toThrow();
   });
 });
 
@@ -264,9 +282,9 @@ describe('parity: propagation_guards', () => {
 // ── Config Headers ──────────────────────────────────────────────────────────
 
 describe('parity: config_headers', () => {
-  it('normal key=value parsed', () => {
+  it('plus sign preserved as literal (not space)', () => {
     expect(parseOtlpHeaders('Authorization=Bearer+token')).toEqual({
-      Authorization: 'Bearer token',
+      Authorization: 'Bearer+token',
     });
   });
 
@@ -274,6 +292,14 @@ describe('parity: config_headers', () => {
     expect(parseOtlpHeaders('my%20key=my%20value')).toEqual({
       'my key': 'my value',
     });
+  });
+
+  it('plus sign preserved as literal', () => {
+    expect(parseOtlpHeaders('a+b=c+d')).toEqual({ 'a+b': 'c+d' });
+  });
+
+  it('percent-encoded spaces decoded', () => {
+    expect(parseOtlpHeaders('a%20b=c%20d')).toEqual({ 'a b': 'c d' });
   });
 
   it('empty key (=value) skipped', () => {
@@ -430,5 +456,114 @@ describe('parity: slo_classify', () => {
     const c = classifyError('ConnectionTimeoutError', 503);
     expect(c.category).toBe('timeout');
     expect(c['error.category']).toBe('timeout');
+  });
+});
+
+// ── Cardinality Clamping ────────────────────────────────────────────────────
+
+describe('parity: cardinality clamping', () => {
+  afterEach(() => clearCardinalityLimits());
+
+  it('zero maxValues clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 0, ttlSeconds: 10 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(1);
+    expect(limits.get('k')?.ttlSeconds).toBe(10);
+  });
+
+  it('negative maxValues clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: -5, ttlSeconds: 10 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(1);
+  });
+
+  it('zero ttlSeconds clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 10, ttlSeconds: 0 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.ttlSeconds).toBe(1);
+  });
+
+  it('negative ttlSeconds clamped to 1', () => {
+    registerCardinalityLimit('k', { maxValues: 10, ttlSeconds: -3 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.ttlSeconds).toBe(1);
+  });
+
+  it('valid values unchanged', () => {
+    registerCardinalityLimit('k', { maxValues: 50, ttlSeconds: 300 });
+    const limits = getCardinalityLimits();
+    expect(limits.get('k')?.maxValues).toBe(50);
+    expect(limits.get('k')?.ttlSeconds).toBe(300);
+  });
+});
+
+// ── Schema Strict Mode ──────────────────────────────────────────────────────
+
+describe('parity: schema strict mode', () => {
+  afterEach(() => setupTelemetry({ strictSchema: false }));
+
+  it('lenient mode accepts uppercase segments', () => {
+    // eventName with strict=false should accept any segments
+    // Need to ensure strict mode is off (default is false)
+    expect(() => eventName('A', 'B', 'C')).not.toThrow();
+    expect(eventName('A', 'B', 'C')).toBe('A.B.C');
+  });
+
+  it('lenient mode accepts mixed case', () => {
+    expect(eventName('User', 'Login', 'Ok')).toBe('User.Login.Ok');
+  });
+
+  it('strict mode rejects uppercase', () => {
+    setupTelemetry({ strictSchema: true });
+    expect(() => eventName('User', 'login', 'ok')).toThrow(EventSchemaError);
+  });
+
+  it('strict mode accepts valid lowercase', () => {
+    setupTelemetry({ strictSchema: true });
+    expect(eventName('user', 'login', 'ok')).toBe('user.login.ok');
+  });
+});
+
+// ── Default Sensitive Keys (parity) ─────────────────────────────────────────
+
+describe('parity: default sensitive keys', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('cookie is auto-redacted', () => {
+    const obj: Record<string, unknown> = { cookie: 'session=abc123' };
+    sanitizePayload(obj);
+    expect(obj['cookie']).toBe('***');
+  });
+
+  it('cvv is auto-redacted', () => {
+    const obj: Record<string, unknown> = { cvv: '123' };
+    sanitizePayload(obj);
+    expect(obj['cvv']).toBe('***');
+  });
+
+  it('pin is auto-redacted', () => {
+    const obj: Record<string, unknown> = { pin: '9876' };
+    sanitizePayload(obj);
+    expect(obj['pin']).toBe('***');
+  });
+});
+
+// ── Required Keys Validation (parity) ───────────────────────────────────────
+
+describe('parity: required keys validation', () => {
+  it('missing required key throws EventSchemaError', () => {
+    expect(() => validateRequiredKeys({ domain: 'auth' }, ['domain', 'action'])).toThrow(
+      EventSchemaError,
+    );
+  });
+
+  it('all required keys present does not throw', () => {
+    expect(() =>
+      validateRequiredKeys({ domain: 'auth', action: 'login' }, ['domain', 'action']),
+    ).not.toThrow();
+  });
+
+  it('empty required keys does not throw', () => {
+    expect(() => validateRequiredKeys({ domain: 'auth' }, [])).not.toThrow();
   });
 });

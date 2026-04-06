@@ -621,7 +621,7 @@ func TestApplyExporterEnv_PopulatesFields(t *testing.T) {
 	err := applyExporterEnv(cfg, func(key string) string {
 		values := map[string]string{
 			"OTEL_EXPORTER_OTLP_ENDPOINT":                        "http://collector:4318",
-			"OTEL_EXPORTER_OTLP_HEADERS":                         "Authorization=Bearer+token",
+			"OTEL_EXPORTER_OTLP_HEADERS":                         "Authorization=Bearer%20token",
 			"PROVIDE_EXPORTER_LOGS_FAIL_OPEN":                    "false",
 			"PROVIDE_EXPORTER_TRACES_FAIL_OPEN":                  "false",
 			"PROVIDE_EXPORTER_METRICS_FAIL_OPEN":                 "false",
@@ -731,7 +731,8 @@ func TestApplySLOEnv_PopulatesFields(t *testing.T) {
 // ---- OTLP header parsing ----
 
 func TestParseOTLPHeaders_Normal(t *testing.T) {
-	got := parseOTLPHeaders("Authorization=Bearer+token,X-Tenant=abc")
+	// '+' is preserved as a literal character; use %20 for spaces.
+	got := parseOTLPHeaders("Authorization=Bearer%20token,X-Tenant=abc")
 	if got["Authorization"] != "Bearer token" {
 		t.Errorf("Authorization: got %q", got["Authorization"])
 	}
@@ -923,7 +924,7 @@ func TestConfigFromEnv_OTLPEndpointSignalSpecificTakesPriority(t *testing.T) {
 }
 
 func TestConfigFromEnv_OTLPHeadersFallback(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer+generic")
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer%20generic")
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -937,7 +938,7 @@ func TestConfigFromEnv_OTLPHeadersFallback(t *testing.T) {
 }
 
 func TestConfigFromEnv_OTLPHeadersSignalSpecific(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer+generic")
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer%20generic")
 	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "X-Token=logs-token")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_HEADERS", "X-Token=traces-token")
 	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_HEADERS", "X-Token=metrics-token")
