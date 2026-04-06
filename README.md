@@ -2,10 +2,10 @@
 
 Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, and Go. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
 
-[![1. 🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
-[![2. 🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
+[![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
+[![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
 [![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml)
-[![5. 🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
+[![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
