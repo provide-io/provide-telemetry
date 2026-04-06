@@ -1,6 +1,6 @@
 # Go Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the full `provide-telemetry` API surface in Go, passing `spec/validate_conformance.py` and sharing major.minor from `VERSION`.
 
@@ -162,203 +162,203 @@ func (e *ConfigurationError) Unwrap() error { return e.cause }
 
 **Files:** Create: `go/go.mod`, `go/VERSION`, `go/config.go`, `go/config_test.go`, `go/errors.go`, `go/errors_test.go`
 
-- [ ] Initialize `go.mod` with `module github.com/provide-io/provide-telemetry/go`, Go 1.22
-- [ ] Create `VERSION` file with `0.4.2`
-- [ ] Implement `TelemetryConfig` struct with all fields from `config_env_vars` in spec
-- [ ] Implement `ConfigFromEnv()` parsing all `PROVIDE_*` and `OTEL_*` env vars
-- [ ] Implement error types: `TelemetryError`, `ConfigurationError`, `EventSchemaError`
-- [ ] Write tests for config parsing, defaults, validation
-- [ ] Commit
+- [x] Initialize `go.mod` with `module github.com/provide-io/provide-telemetry/go`, Go 1.22
+- [x] Create `VERSION` file with `0.4.2`
+- [x] Implement `TelemetryConfig` struct with all fields from `config_env_vars` in spec
+- [x] Implement `ConfigFromEnv()` parsing all `PROVIDE_*` and `OTEL_*` env vars
+- [x] Implement error types: `TelemetryError`, `ConfigurationError`, `EventSchemaError`
+- [x] Write tests for config parsing, defaults, validation
+- [x] Commit
 
 ### Task 2: Health + schema
 
 **Files:** Create: `go/health.go`, `go/health_test.go`, `go/schema.go`, `go/schema_test.go`
 
-- [ ] Implement `HealthSnapshot` struct with all 25 per-signal fields
-- [ ] Implement `GetHealthSnapshot()` with `sync.Mutex`-protected counters
-- [ ] Implement internal counter increment functions (exported for internal use)
-- [ ] Implement `EventName(*segments)` with strict/relaxed mode
-- [ ] Write tests including boundary cases (0 segments, 6 segments, uppercase in strict mode)
-- [ ] Commit
+- [x] Implement `HealthSnapshot` struct with all 25 per-signal fields
+- [x] Implement `GetHealthSnapshot()` with `sync.Mutex`-protected counters
+- [x] Implement internal counter increment functions (exported for internal use)
+- [x] Implement `EventName(*segments)` with strict/relaxed mode
+- [x] Write tests including boundary cases (0 segments, 6 segments, uppercase in strict mode)
+- [x] Commit
 
 ### Task 3: Context + session
 
 **Files:** Create: `go/context.go`, `go/context_test.go`, `go/session.go`, `go/session_test.go`
 
-- [ ] Define context keys using unexported `type contextKey struct{}`
-- [ ] Implement `BindContext(ctx, fields) context.Context`
-- [ ] Implement `UnbindContext(ctx, keys...) context.Context`
-- [ ] Implement `ClearContext(ctx) context.Context`
-- [ ] Implement `BindSessionContext(ctx, sessionID) context.Context`
-- [ ] Implement `GetSessionID(ctx) string`
-- [ ] Implement `ClearSessionContext(ctx) context.Context`
-- [ ] Write tests verifying context isolation across goroutines
-- [ ] Commit
+- [x] Define context keys using unexported `type contextKey struct{}`
+- [x] Implement `BindContext(ctx, fields) context.Context`
+- [x] Implement `UnbindContext(ctx, keys...) context.Context`
+- [x] Implement `ClearContext(ctx) context.Context`
+- [x] Implement `BindSessionContext(ctx, sessionID) context.Context`
+- [x] Implement `GetSessionID(ctx) string`
+- [x] Implement `ClearSessionContext(ctx) context.Context`
+- [x] Write tests verifying context isolation across goroutines
+- [x] Commit
 
 ### Task 4: Sampling
 
 **Files:** Create: `go/sampling.go`, `go/sampling_test.go`
 
-- [ ] Implement `SamplingPolicy` struct (DefaultRate float64, Overrides map[string]float64)
-- [ ] Implement `SetSamplingPolicy(signal, policy)`, `GetSamplingPolicy(signal)` with `sync.RWMutex`
-- [ ] Implement `ShouldSample(signal, key)` with `math/rand` and fast-paths for rate 0.0/1.0
-- [ ] Wire drop counter to health module
-- [ ] Write tests including concurrency stress test
-- [ ] Commit
+- [x] Implement `SamplingPolicy` struct (DefaultRate float64, Overrides map[string]float64)
+- [x] Implement `SetSamplingPolicy(signal, policy)`, `GetSamplingPolicy(signal)` with `sync.RWMutex`
+- [x] Implement `ShouldSample(signal, key)` with `math/rand` and fast-paths for rate 0.0/1.0
+- [x] Wire drop counter to health module
+- [x] Write tests including concurrency stress test
+- [x] Commit
 
 ### Task 5: Backpressure
 
 **Files:** Create: `go/backpressure.go`, `go/backpressure_test.go`
 
-- [ ] Implement `QueuePolicy` struct (LogsMaxSize, TracesMaxSize, MetricsMaxSize int)
-- [ ] Implement ticket-based bounded queue using `chan struct{}` (buffered channel = natural semaphore)
-- [ ] Implement `SetQueuePolicy`, `GetQueuePolicy`
-- [ ] Implement `TryAcquire(signal) bool`, `Release(signal)`
-- [ ] Wire to health counters
-- [ ] Write tests
-- [ ] Commit
+- [x] Implement `QueuePolicy` struct (LogsMaxSize, TracesMaxSize, MetricsMaxSize int)
+- [x] Implement ticket-based bounded queue using `chan struct{}` (buffered channel = natural semaphore)
+- [x] Implement `SetQueuePolicy`, `GetQueuePolicy`
+- [x] Implement `TryAcquire(signal) bool`, `Release(signal)`
+- [x] Wire to health counters
+- [x] Write tests
+- [x] Commit
 
 ### Task 6: Resilience
 
 **Files:** Create: `go/resilience.go`, `go/resilience_test.go`
 
-- [ ] Add `go get github.com/sony/gobreaker github.com/cenkalti/backoff/v4`
-- [ ] Implement `ExporterPolicy` struct (Retries, BackoffSeconds, TimeoutSeconds, FailOpen, AllowBlockingInEventLoop)
-- [ ] Implement `SetExporterPolicy(signal, policy)`, `GetExporterPolicy(signal)`
-- [ ] Implement `RunWithResilience(ctx, signal, fn)` using gobreaker for circuit breaker, backoff for retry, `context.WithTimeout` for timeouts
-- [ ] Per-signal gobreaker instances (isolation)
-- [ ] Wire to health counters (retries, export failures, export latency, last error)
-- [ ] Write tests including circuit breaker trip/half-open/reset cycle
-- [ ] Commit
+- [x] Add `go get github.com/sony/gobreaker github.com/cenkalti/backoff/v4`
+- [x] Implement `ExporterPolicy` struct (Retries, BackoffSeconds, TimeoutSeconds, FailOpen, AllowBlockingInEventLoop)
+- [x] Implement `SetExporterPolicy(signal, policy)`, `GetExporterPolicy(signal)`
+- [x] Implement `RunWithResilience(ctx, signal, fn)` using gobreaker for circuit breaker, backoff for retry, `context.WithTimeout` for timeouts
+- [x] Per-signal gobreaker instances (isolation)
+- [x] Wire to health counters (retries, export failures, export latency, last error)
+- [x] Write tests including circuit breaker trip/half-open/reset cycle
+- [x] Commit
 
 ### Task 7: PII sanitization
 
 **Files:** Create: `go/pii.go`, `go/pii_test.go`
 
-- [ ] Implement `PIIRule` struct (Path []string, Mode string, TruncateTo int)
-- [ ] Implement `RegisterPIIRule`, `ReplacePIIRules`, `GetPIIRules`
-- [ ] Implement `SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any`
-- [ ] Rule matching with wildcard `*` segments
-- [ ] Modes: drop, redact ("***"), hash (sha256[:12]), truncate
-- [ ] Default sensitive key detection (password, token, authorization, api_key, secret — case-insensitive)
-- [ ] Recursive traversal of nested maps and slices with depth limit (32)
-- [ ] Write tests including nested structures, all modes, depth limit
-- [ ] Commit
+- [x] Implement `PIIRule` struct (Path []string, Mode string, TruncateTo int)
+- [x] Implement `RegisterPIIRule`, `ReplacePIIRules`, `GetPIIRules`
+- [x] Implement `SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any`
+- [x] Rule matching with wildcard `*` segments
+- [x] Modes: drop, redact ("***"), hash (sha256[:12]), truncate
+- [x] Default sensitive key detection (password, token, authorization, api_key, secret — case-insensitive)
+- [x] Recursive traversal of nested maps and slices with depth limit (32)
+- [x] Write tests including nested structures, all modes, depth limit
+- [x] Commit
 
 ### Task 8: Cardinality guards
 
 **Files:** Create: `go/cardinality.go`, `go/cardinality_test.go`
 
-- [ ] Add `go get github.com/hashicorp/golang-lru/v2`
-- [ ] Implement `CardinalityLimit` struct (MaxValues int, TTLSeconds float64)
-- [ ] Implement `RegisterCardinalityLimit`, `GetCardinalityLimits`, `ClearCardinalityLimits`
-- [ ] Implement `GuardAttributes(attrs map[string]string) map[string]string` using expirable LRU
-- [ ] Overflow value: `"__overflow__"`
-- [ ] Write tests including TTL expiry
-- [ ] Commit
+- [x] Add `go get github.com/hashicorp/golang-lru/v2`
+- [x] Implement `CardinalityLimit` struct (MaxValues int, TTLSeconds float64)
+- [x] Implement `RegisterCardinalityLimit`, `GetCardinalityLimits`, `ClearCardinalityLimits`
+- [x] Implement `GuardAttributes(attrs map[string]string) map[string]string` using expirable LRU
+- [x] Overflow value: `"__overflow__"`
+- [x] Write tests including TTL expiry
+- [x] Commit
 
 ### Task 9: Logger (slog Handler chain)
 
 **Files:** Create: `go/logger.go`, `go/logger_test.go`
 
-- [ ] Implement custom `slog.Handler` that composes middleware processors
-- [ ] Processor chain: merge context → add standard fields → apply sampling → enforce schema → sanitize PII → output handler
-- [ ] `GetLogger(name)` returns `*slog.Logger` with the custom handler
-- [ ] Package-level `Logger` var (lazy-initialized default)
-- [ ] JSON and text output modes controlled by config
-- [ ] Wire context fields from `context.Context` into log records
-- [ ] Write tests
-- [ ] Commit
+- [x] Implement custom `slog.Handler` that composes middleware processors
+- [x] Processor chain: merge context → add standard fields → apply sampling → enforce schema → sanitize PII → output handler
+- [x] `GetLogger(name)` returns `*slog.Logger` with the custom handler
+- [x] Package-level `Logger` var (lazy-initialized default)
+- [x] JSON and text output modes controlled by config
+- [x] Wire context fields from `context.Context` into log records
+- [x] Write tests
+- [x] Commit
 
 ### Task 10: Tracing
 
 **Files:** Create: `go/tracing.go`, `go/tracing_test.go`
 
-- [ ] Define `Tracer` interface and no-op implementation
-- [ ] Implement `GetTracer(name)`, package-level `Tracer` var
-- [ ] Implement `Trace(ctx, name, fn)` — wraps fn in a span (real or no-op)
-- [ ] Implement `GetTraceContext(ctx)`, `SetTraceContext(ctx, traceID, spanID)`
-- [ ] Store trace/span IDs in context.Context
-- [ ] Write tests
-- [ ] Commit
+- [x] Define `Tracer` interface and no-op implementation
+- [x] Implement `GetTracer(name)`, package-level `Tracer` var
+- [x] Implement `Trace(ctx, name, fn)` — wraps fn in a span (real or no-op)
+- [x] Implement `GetTraceContext(ctx)`, `SetTraceContext(ctx, traceID, spanID)`
+- [x] Store trace/span IDs in context.Context
+- [x] Write tests
+- [x] Commit
 
 ### Task 11: Metrics
 
 **Files:** Create: `go/metrics.go`, `go/metrics_test.go`
 
-- [ ] Define instrument interfaces and in-process fallback implementations
-- [ ] `Counter(name, opts...)` — returns named counter (fallback: atomic int64)
-- [ ] `Gauge(name, opts...)` — returns named gauge (fallback: atomic float64 via math.Float64bits)
-- [ ] `Histogram(name, opts...)` — returns named histogram (fallback: append to slice)
-- [ ] `GetMeter(name)` — returns OTel meter if available, nil otherwise
-- [ ] Wire sampling and backpressure checks
-- [ ] Write tests
-- [ ] Commit
+- [x] Define instrument interfaces and in-process fallback implementations
+- [x] `Counter(name, opts...)` — returns named counter (fallback: atomic int64)
+- [x] `Gauge(name, opts...)` — returns named gauge (fallback: atomic float64 via math.Float64bits)
+- [x] `Histogram(name, opts...)` — returns named histogram (fallback: append to slice)
+- [x] `GetMeter(name)` — returns OTel meter if available, nil otherwise
+- [x] Wire sampling and backpressure checks
+- [x] Write tests
+- [x] Commit
 
 ### Task 12: Propagation
 
 **Files:** Create: `go/propagation.go`, `go/propagation_test.go`
 
-- [ ] Implement `PropagationContext` struct (Traceparent, Tracestate, Baggage, TraceID, SpanID)
-- [ ] Implement `ExtractW3CContext(headers http.Header) PropagationContext`
-- [ ] Parse traceparent format: `00-{trace_id}-{span_id}-{flags}`
-- [ ] Size guards: 512 byte max for traceparent/tracestate, 8192 for baggage, 32 max tracestate pairs
-- [ ] Implement `BindPropagationContext(ctx, pc) context.Context`
-- [ ] Write tests including boundary size tests
-- [ ] Commit
+- [x] Implement `PropagationContext` struct (Traceparent, Tracestate, Baggage, TraceID, SpanID)
+- [x] Implement `ExtractW3CContext(headers http.Header) PropagationContext`
+- [x] Parse traceparent format: `00-{trace_id}-{span_id}-{flags}`
+- [x] Size guards: 512 byte max for traceparent/tracestate, 8192 for baggage, 32 max tracestate pairs
+- [x] Implement `BindPropagationContext(ctx, pc) context.Context`
+- [x] Write tests including boundary size tests
+- [x] Commit
 
 ### Task 13: Runtime + setup/shutdown
 
 **Files:** Create: `go/runtime.go`, `go/runtime_test.go`, `go/setup.go`, `go/setup_test.go`
 
-- [ ] Implement `SetupTelemetry(opts ...Option) (*TelemetryConfig, error)` with `sync.Mutex` guard
-- [ ] Implement `ShutdownTelemetry(ctx context.Context) error`
-- [ ] Implement `GetRuntimeConfig`, `UpdateRuntimeConfig`, `ReloadRuntimeFromEnv`, `ReconfigureTelemetry`
-- [ ] Hot/cold config split (policies hot-reloadable, providers require restart)
-- [ ] Write tests including concurrent setup/shutdown
-- [ ] Commit
+- [x] Implement `SetupTelemetry(opts ...Option) (*TelemetryConfig, error)` with `sync.Mutex` guard
+- [x] Implement `ShutdownTelemetry(ctx context.Context) error`
+- [x] Implement `GetRuntimeConfig`, `UpdateRuntimeConfig`, `ReloadRuntimeFromEnv`, `ReconfigureTelemetry`
+- [x] Hot/cold config split (policies hot-reloadable, providers require restart)
+- [x] Write tests including concurrent setup/shutdown
+- [x] Commit
 
 ### Task 14: OTel integration
 
 **Files:** Create: `go/otel.go`, `go/otel_test.go`
 
-- [ ] Implement OTel provider setup via functional options
-- [ ] `WithTracerProvider`, `WithMeterProvider` options
-- [ ] Bridge slog → OTel logs via `otelslog`
-- [ ] W3C propagation via `otel/propagation.TraceContext`
-- [ ] Real tracer/meter wiring when providers are supplied
-- [ ] Write tests (with and without OTel)
-- [ ] Commit
+- [x] Implement OTel provider setup via functional options
+- [x] `WithTracerProvider`, `WithMeterProvider` options
+- [x] Bridge slog → OTel logs via `otelslog`
+- [x] W3C propagation via `otel/propagation.TraceContext`
+- [x] Real tracer/meter wiring when providers are supplied
+- [x] Write tests (with and without OTel)
+- [x] Commit
 
 ### Task 15: SLO helpers (optional)
 
 **Files:** Create: `go/slo.go`, `go/slo_test.go`
 
-- [ ] Implement `ClassifyError(excName string, statusCode int) map[string]string`
-- [ ] Implement `RecordREDMetrics(route, method string, statusCode int, durationMs float64)`
-- [ ] Implement `RecordUSEMetrics(resource string, utilizationPercent int)`
-- [ ] Write tests
-- [ ] Commit
+- [x] Implement `ClassifyError(excName string, statusCode int) map[string]string`
+- [x] Implement `RecordREDMetrics(route, method string, statusCode int, durationMs float64)`
+- [x] Implement `RecordUSEMetrics(resource string, utilizationPercent int)`
+- [x] Write tests
+- [x] Commit
 
 ### Task 16: Public facade + testing helpers
 
 **Files:** Create: `go/telemetry.go`, `go/testing.go`, `go/README.md`
 
-- [ ] Create `telemetry.go` that re-exports all public symbols (verify against spec)
-- [ ] Create `testing.go` with `ResetForTests()` functions
-- [ ] Run `spec/validate_conformance.py` — must pass for Go
-- [ ] Run `scripts/check_version_sync.py` — must pass
-- [ ] Write README.md following typescript/README.md structure
-- [ ] Commit
+- [x] Create `telemetry.go` that re-exports all public symbols (verify against spec)
+- [x] Create `testing.go` with `ResetForTests()` functions
+- [x] Run `spec/validate_conformance.py` — must pass for Go
+- [x] Run `scripts/check_version_sync.py` — must pass
+- [x] Write README.md following typescript/README.md structure
+- [x] Commit
 
 ### Task 17: CI integration
 
 **Files:** Modify: `.github/workflows/ci-go.yml` (new)
 
-- [ ] Create Go CI workflow: `go test ./go/...`, `go vet`, `staticcheck`, `golangci-lint`
-- [ ] Add to branch protection required checks
-- [ ] Run full test suite, verify all pass
-- [ ] Commit
+- [x] Create Go CI workflow: `go test ./go/...`, `go vet`, `staticcheck`, `golangci-lint`
+- [x] Add to branch protection required checks
+- [x] Run full test suite, verify all pass
+- [x] Commit
 
 ---
 

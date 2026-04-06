@@ -1,6 +1,6 @@
 # Cross-Language Parity Phase 2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix 5 additional cross-language behavioral divergences (OTLP header `+` parsing, Go backpressure 0=unlimited, Go cardinality clamping, sampling signal validation, Go EventName strict mode) so the same input produces the same output in all three languages.
 
@@ -22,7 +22,7 @@
 - Modify: `src/provide/telemetry/config.py:412,415`
 - Modify: `tests/parity/test_behavioral_fixtures.py`
 
-- [ ] **Step 1: Update parity test to assert `+` is literal**
+- [x] **Step 1: Update parity test to assert `+` is literal**
 
 In `tests/parity/test_behavioral_fixtures.py`, find the existing `config_headers` parity tests. Add two new test cases:
 
@@ -45,12 +45,12 @@ def test_parity_config_headers_normal_kv() -> None:
     assert result == {"Authorization": "Bearer+token"}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_config_headers_plus" --no-cov -q`
 Expected: FAIL — `unquote_plus` converts `+` to space.
 
-- [ ] **Step 3: Fix `_parse_otlp_headers` to use `unquote` instead of `unquote_plus`**
+- [x] **Step 3: Fix `_parse_otlp_headers` to use `unquote` instead of `unquote_plus`**
 
 In `src/provide/telemetry/config.py`, change the import and two call sites:
 
@@ -67,17 +67,17 @@ headers[key] = unquote(raw.strip())
 
 Verify `unquote_plus` is no longer imported anywhere in the file. If it was imported alongside other names, just remove `unquote_plus` from the import list.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_config_headers" --no-cov -q`
 Expected: All config_headers parity tests PASS.
 
-- [ ] **Step 5: Run full Python test suite**
+- [x] **Step 5: Run full Python test suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass with 100% coverage.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/provide/telemetry/config.py tests/parity/test_behavioral_fixtures.py
@@ -92,7 +92,7 @@ git commit -m "fix(python): use percent-encoding for OTLP header parsing, preser
 - Modify: `typescript/src/config.ts:487,490`
 - Modify: `typescript/tests/parity.test.ts`
 
-- [ ] **Step 1: Update parity test to assert `+` is literal**
+- [x] **Step 1: Update parity test to assert `+` is literal**
 
 In `typescript/tests/parity.test.ts`, find the `config_headers` describe block. Add two new test cases:
 
@@ -116,12 +116,12 @@ it('plus sign preserved as literal (not space)', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "plus sign preserved"`
 Expected: FAIL — `.replace(/\+/g, ' ')` converts `+` to space.
 
-- [ ] **Step 3: Remove `.replace(/\+/g, ' ')` from `parseOtlpHeaders`**
+- [x] **Step 3: Remove `.replace(/\+/g, ' ')` from `parseOtlpHeaders`**
 
 In `typescript/src/config.ts`, lines ~487 and ~490, remove the `.replace(/\+/g, ' ')` calls:
 
@@ -133,17 +133,17 @@ const key = decodeURIComponent(rawKey);
 const val = decodeURIComponent(rawVal);
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "config_headers"`
 Expected: All config_headers parity tests PASS.
 
-- [ ] **Step 5: Run full TypeScript test suite**
+- [x] **Step 5: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/src/config.ts typescript/tests/parity.test.ts
@@ -158,7 +158,7 @@ git commit -m "fix(typescript): use percent-encoding for OTLP header parsing, pr
 - Modify: `go/backpressure.go:29-35`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add parity test for unlimited backpressure**
+- [x] **Step 1: Add parity test for unlimited backpressure**
 
 In `go/parity_test.go`, add:
 
@@ -195,12 +195,12 @@ func TestParity_Backpressure_BoundedRejects(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestParity_Backpressure_ZeroIsUnlimited -v -count=1`
 Expected: FAIL at acquire 1 — `_buildQueue(0)` creates channel of size 1, so only one acquire succeeds.
 
-- [ ] **Step 3: Fix `_buildQueue` to return nil for unlimited**
+- [x] **Step 3: Fix `_buildQueue` to return nil for unlimited**
 
 In `go/backpressure.go`, change `_buildQueue`:
 
@@ -216,22 +216,22 @@ func _buildQueue(size int) chan struct{} {
 
 The `TryAcquire` function (lines 98-128) already handles `maxSize <= 0` with an early return on line 115-117, bypassing the channel. The `Release` function (lines 131-154) already checks `maxSize <= 0 || ch == nil` on line 146. So a `nil` channel from `_buildQueue` is already safe — `TryAcquire` never reaches the `select` for unlimited queues, and `Release` no-ops.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd go && go test -run TestParity_Backpressure -v -count=1`
 Expected: Both backpressure parity tests PASS.
 
-- [ ] **Step 5: Run full Go test suite with race detector**
+- [x] **Step 5: Run full Go test suite with race detector**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass, no races.
 
-- [ ] **Step 6: Run Go coverage gate**
+- [x] **Step 6: Run Go coverage gate**
 
 Run: `cd go && go test -coverprofile=coverage.out -count=1 ./... && go tool cover -func=coverage.out | tail -1`
 Expected: 100% coverage.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/backpressure.go go/parity_test.go
@@ -246,7 +246,7 @@ git commit -m "fix(go): backpressure size 0 is truly unlimited, not capacity 1"
 - Modify: `go/cardinality.go:44-49`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add parity tests for cardinality clamping**
+- [x] **Step 1: Add parity tests for cardinality clamping**
 
 In `go/parity_test.go`, add:
 
@@ -315,12 +315,12 @@ func TestParity_Cardinality_ValidValuesUnchanged(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify clamping tests fail**
+- [x] **Step 2: Run tests to verify clamping tests fail**
 
 Run: `cd go && go test -run TestParity_Cardinality_ZeroMaxValues -v -count=1`
 Expected: FAIL — `MaxValues` stored as 0, not clamped to 1.
 
-- [ ] **Step 3: Add clamping to `SetCardinalityLimit`**
+- [x] **Step 3: Add clamping to `SetCardinalityLimit`**
 
 In `go/cardinality.go`, modify `SetCardinalityLimit`:
 
@@ -338,17 +338,17 @@ func SetCardinalityLimit(key string, limit CardinalityLimit) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd go && go test -run TestParity_Cardinality -v -count=1`
 Expected: All 5 cardinality clamping tests PASS.
 
-- [ ] **Step 5: Run full Go test suite with race detector**
+- [x] **Step 5: Run full Go test suite with race detector**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add go/cardinality.go go/parity_test.go
@@ -363,7 +363,7 @@ git commit -m "fix(go): clamp cardinality limit inputs to min 1/1.0, matching Py
 - Modify: `go/sampling.go:28-44`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add parity tests for signal validation**
+- [x] **Step 1: Add parity tests for signal validation**
 
 In `go/parity_test.go`, add:
 
@@ -413,12 +413,12 @@ func TestParity_ShouldSample_InvalidSignalErrors(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd go && go test -run TestParity_Sampling_InvalidSignal -v -count=1`
 Expected: FAIL — compilation error because `SetSamplingPolicy` doesn't return error yet.
 
-- [ ] **Step 3: Add signal validation to Go sampling functions**
+- [x] **Step 3: Add signal validation to Go sampling functions**
 
 In `go/sampling.go`, add a validation helper and update all three public functions. Note: changing `SetSamplingPolicy`, `GetSamplingPolicy`, and `ShouldSample` signatures to return errors is a **breaking API change**. All callers in the codebase and tests must be updated.
 
@@ -513,7 +513,7 @@ func ShouldSample(signal, key string) (bool, error) {
 }
 ```
 
-- [ ] **Step 4: Fix all callers of the changed signatures**
+- [x] **Step 4: Fix all callers of the changed signatures**
 
 Search the Go codebase for all calls to `SetSamplingPolicy`, `GetSamplingPolicy`, and `ShouldSample`. Update each to handle the new error return. Common patterns:
 
@@ -539,17 +539,17 @@ if sampled {
 Run: `cd go && grep -rn 'SetSamplingPolicy\|GetSamplingPolicy\|ShouldSample' --include='*.go' | grep -v '_test.go'`
 to find non-test callers that also need updating (e.g., in `setup.go`, `logger.go`, etc.).
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cd go && go test -run TestParity_Sampling -v -count=1`
 Expected: All sampling parity tests PASS (including the new signal validation tests).
 
-- [ ] **Step 6: Run full Go test suite with race detector**
+- [x] **Step 6: Run full Go test suite with race detector**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/sampling.go go/parity_test.go go/sampling_test.go
@@ -565,7 +565,7 @@ git commit -m "feat(go): add sampling signal validation, reject unknown signal n
 - Modify: `typescript/src/sampling.ts`
 - Modify: `typescript/tests/parity.test.ts`
 
-- [ ] **Step 1: Add parity tests for signal validation**
+- [x] **Step 1: Add parity tests for signal validation**
 
 In `typescript/tests/parity.test.ts`, add inside the `parity: sampling` describe block:
 
@@ -584,12 +584,12 @@ it('accepts valid signal names', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "rejects unknown signal"`
 Expected: FAIL — `shouldSample('invalid')` doesn't throw, returns `true` (default policy).
 
-- [ ] **Step 3: Add signal validation to TypeScript sampling**
+- [x] **Step 3: Add signal validation to TypeScript sampling**
 
 In `typescript/src/sampling.ts`, add validation:
 
@@ -626,17 +626,17 @@ export function shouldSample(signal: string, key?: string): boolean {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "sampling"`
 Expected: All sampling parity tests PASS.
 
-- [ ] **Step 5: Run full TypeScript test suite**
+- [x] **Step 5: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/src/sampling.ts typescript/tests/parity.test.ts
@@ -651,7 +651,7 @@ git commit -m "feat(typescript): add sampling signal validation, reject unknown 
 - Modify: `go/schema.go:103-109`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add parity tests for lenient EventName**
+- [x] **Step 1: Add parity tests for lenient EventName**
 
 In `go/parity_test.go`, add:
 
@@ -713,12 +713,12 @@ func TestParity_EventName_StrictAcceptsValid(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify lenient tests fail**
+- [x] **Step 2: Run tests to verify lenient tests fail**
 
 Run: `cd go && go test -run TestParity_EventName_LenientAcceptsUppercase -v -count=1`
 Expected: FAIL — `EventName` always validates, rejects uppercase `"A"`.
 
-- [ ] **Step 3: Gate `validateSegments` behind `_strictSchema` in `EventName`**
+- [x] **Step 3: Gate `validateSegments` behind `_strictSchema` in `EventName`**
 
 In `go/schema.go`, modify `EventName` (lines 103-109):
 
@@ -775,22 +775,22 @@ func ValidateEventName(name string) error {
 
 The old `validateSegments` helper can be removed if no other callers remain. Check with: `cd go && grep -rn 'validateSegments' --include='*.go'`. If only `EventName` and `ValidateEventName` used it, delete the function.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd go && go test -run TestParity_EventName -v -count=1`
 Expected: All 4 EventName parity tests PASS.
 
-- [ ] **Step 5: Run full Go test suite with race detector**
+- [x] **Step 5: Run full Go test suite with race detector**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass. Some existing schema tests may need updating if they relied on `EventName` always validating — check for failures and update assertions.
 
-- [ ] **Step 6: Run Go coverage gate**
+- [x] **Step 6: Run Go coverage gate**
 
 Run: `cd go && go test -coverprofile=coverage.out -count=1 ./... && go tool cover -func=coverage.out | tail -1`
 Expected: 100% coverage. If the removed `validateSegments` function was the only thing covering certain branches, the inlined code should cover them. If coverage drops, add a test for the missing branch.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/schema.go go/parity_test.go
@@ -805,7 +805,7 @@ git commit -m "fix(go): gate EventName format validation behind strict mode, mat
 **Files:**
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add header `+` parity tests to Go**
+- [x] **Step 1: Add header `+` parity tests to Go**
 
 Go already preserves `+` as literal (no fix needed), but we need parity tests to lock this in. In `go/parity_test.go`, add:
 
@@ -829,12 +829,12 @@ func TestParity_ConfigHeaders_PercentSpace(t *testing.T) {
 
 Note: Check the exact function name for Go's header parser — it may be `ParseOTLPHeaders` or `_parseOTLPHeaders`. Search with: `cd go && grep -rn 'func.*[Pp]arse.*[Hh]eader' --include='*.go'`
 
-- [ ] **Step 2: Run tests to verify they pass**
+- [x] **Step 2: Run tests to verify they pass**
 
 Run: `cd go && go test -run TestParity_ConfigHeaders -v -count=1`
 Expected: PASS — Go already uses `url.QueryUnescape` which preserves `+`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add go/parity_test.go
@@ -847,22 +847,22 @@ git commit -m "test(go): add parity tests for OTLP header + literal preservation
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run full Python suite**
+- [x] **Step 1: Run full Python suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass, 100% coverage.
 
-- [ ] **Step 2: Run full TypeScript suite**
+- [x] **Step 2: Run full TypeScript suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass.
 
-- [ ] **Step 3: Run full Go suite with race detector and coverage**
+- [x] **Step 3: Run full Go suite with race detector and coverage**
 
 Run: `cd go && go test -race -coverprofile=coverage.out -count=1 ./... && go tool cover -func=coverage.out | tail -1`
 Expected: All tests pass, 100% coverage.
 
-- [ ] **Step 4: Run lint across all languages**
+- [x] **Step 4: Run lint across all languages**
 
 ```bash
 uv run ruff format --check . && uv run ruff check . && uv run mypy src tests
@@ -871,7 +871,7 @@ cd go && golangci-lint run ./...
 ```
 Expected: All linters pass.
 
-- [ ] **Step 5: Verify parity fixture coverage**
+- [x] **Step 5: Verify parity fixture coverage**
 
 Count the parity test cases across all three languages and verify they match. Each language should have tests for:
 - `config_headers` including `+` literal (3+ cases)
