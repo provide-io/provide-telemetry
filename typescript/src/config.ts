@@ -178,13 +178,9 @@ export interface RuntimeOverrides {
 
   // PII
   piiMaxDepth?: number;
-
-  // Schema
-  strictSchema?: boolean;
-  strictEventName?: boolean;
 }
 
-export const DEFAULTS: TelemetryConfig = {
+const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
   environment: 'dev',
   version: '0.0.0',
