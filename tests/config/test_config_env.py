@@ -27,6 +27,50 @@ def test_parse_bool() -> None:
     assert _parse_bool("0", True) is False
 
 
+class TestParseEnvBoolTrueVariants:
+    """Kill mutants on truthy string literals in _parse_env_bool."""
+
+    def test_1_is_true(self) -> None:
+        assert _parse_env_bool("1", False, "f") is True
+
+    def test_true_is_true(self) -> None:
+        assert _parse_env_bool("true", False, "f") is True
+
+    def test_yes_is_true(self) -> None:
+        assert _parse_env_bool("yes", False, "f") is True
+
+    def test_on_is_true(self) -> None:
+        assert _parse_env_bool("on", False, "f") is True
+
+    def test_uppercase_yes_lowered_is_true(self) -> None:
+        assert _parse_env_bool("YES", False, "f") is True
+
+    def test_uppercase_on_lowered_is_true(self) -> None:
+        assert _parse_env_bool("ON", False, "f") is True
+
+
+class TestParseEnvBoolFalseVariants:
+    """Kill mutants on falsy string literals in _parse_env_bool."""
+
+    def test_0_is_false(self) -> None:
+        assert _parse_env_bool("0", True, "f") is False
+
+    def test_false_is_false(self) -> None:
+        assert _parse_env_bool("false", True, "f") is False
+
+    def test_no_is_false(self) -> None:
+        assert _parse_env_bool("no", True, "f") is False
+
+    def test_off_is_false(self) -> None:
+        assert _parse_env_bool("off", True, "f") is False
+
+    def test_uppercase_no_lowered_is_false(self) -> None:
+        assert _parse_env_bool("NO", True, "f") is False
+
+    def test_uppercase_off_lowered_is_false(self) -> None:
+        assert _parse_env_bool("OFF", True, "f") is False
+
+
 def test_parse_env_bool_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="invalid boolean for PROVIDE_TRACE_ENABLED"):
         _parse_env_bool("invalid-boolean", True, "PROVIDE_TRACE_ENABLED")
