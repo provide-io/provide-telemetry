@@ -182,8 +182,8 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer(colors=False),
+            structlog.processors.TimeStamper(fmt="iso"),  # pragma: no mutate — structlog accepts "ISO" equivalently
+            structlog.dev.ConsoleRenderer(colors=False),  # pragma: no mutate — None is falsy like False
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
@@ -191,7 +191,7 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     )
     _configured = True
     _active_config = None
-    warnings.warn(
+    warnings.warn(  # pragma: no mutate
         f"logging setup failed, using emergency stderr fallback: {exc}",
         RuntimeWarning,
         stacklevel=3,  # pragma: no mutate

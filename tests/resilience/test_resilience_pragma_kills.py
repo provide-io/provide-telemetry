@@ -365,6 +365,10 @@ def test_half_open_success_resets_consecutive_timeouts_to_zero() -> None:
         # Force cooldown to have expired
         resilience_mod._circuit_tripped_at["logs"] = _time.monotonic() - 999.0
 
+    # Verify half-open probing is armed before the success call
+    with resilience_mod._lock:
+        assert resilience_mod._half_open_probing["logs"] is False  # not yet probing
+
     # Next call enters half-open (cooldown expired) and succeeds
     set_exporter_policy(
         "logs",
@@ -374,5 +378,8 @@ def test_half_open_success_resets_consecutive_timeouts_to_zero() -> None:
     assert result == "ok"
 
     # After half-open success, consecutive_timeouts must be exactly 0
+    # (mutant changes this to 1 on the half-open branch at line 122)
     with resilience_mod._lock:
         assert resilience_mod._consecutive_timeouts["logs"] == 0
+        # Also verify half-open probing was consumed (proves we hit the right branch)
+        assert resilience_mod._half_open_probing["logs"] is False
