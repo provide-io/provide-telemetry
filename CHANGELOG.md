@@ -2,7 +2,32 @@
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Both packages (`provide-telemetry` / `@provide-io/telemetry`) share a version number.
+All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provide-io/provide-telemetry/go`) share a version number.
+
+---
+
+## [0.2.2] — 2026-04-06
+
+### Features
+
+- **Go: control-plane integrity** — `RuntimeOverrides` type; `UpdateRuntimeConfig` accepts hot-field-only overrides; `ReloadRuntimeFromEnv` warns on cold-field drift; `ReconfigureTelemetry` for full restart
+- **Go: data governance** — `ClassificationPolicy`, `ConsentLevel`/`ShouldAllow`, cryptographic redaction receipts with HMAC signing (strippable modules)
+- **Go: config masking** — `TelemetryConfig.String()` masks OTLP header values and endpoint passwords
+- **Go: PII depth** — `PROVIDE_LOG_PII_MAX_DEPTH` env var; default max depth 8; depth limit applied across all rule types
+- **All: canonical 25-field `HealthSnapshot`** — per-signal fields aligned across Go, TypeScript, and Python
+
+### Improvements
+
+- **Go: golangci-lint v2** — full linter suite now runs in CI against Go 1.25
+- **Go: parity alignment** — sampling signal validation, backpressure unlimited default, cardinality clamping, OTLP header `+` preservation, event name strict mode
+- **CI: npm publish** — `@provide-io/telemetry` now publishes to npm on GitHub release via `NPM_TOKEN`
+
+### Bug Fixes
+
+- Go: `UpdateRuntimeConfig` TOCTOU race in frozen idempotent path
+- Go: `golangci-lint` v1/v2 config format mismatch (switched to v2 module path)
+- Go: gosec `#nosec` directive format corrected in OpenObserve example
+- Go: `_receiptsEnabled` unused field removed; `consent.go` exhaustive switch; `ReloadRuntimeFromEnv` cyclomatic complexity reduced
 
 ---
 
