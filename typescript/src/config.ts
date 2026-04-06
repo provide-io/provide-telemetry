@@ -484,10 +484,10 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
     const rawKey = pair.slice(0, idx).trim();
     const rawVal = pair.slice(idx + 1).trim();
     try {
-      const key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
+      const key = decodeURIComponent(rawKey);
       /* v8 ignore next -- defensive: idx<1 and trim() already exclude observable empty keys */
       if (!key) continue;
-      const val = decodeURIComponent(rawVal.replace(/\+/g, ' '));
+      const val = decodeURIComponent(rawVal);
       result[key] = val;
     } catch {
       // Skip pairs with invalid URL encoding
