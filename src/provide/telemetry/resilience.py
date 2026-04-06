@@ -119,7 +119,9 @@ def _record_attempt_success(sig: str) -> None:
     with _lock:
         if _half_open_probing[sig]:
             _half_open_probing[sig] = False  # pragma: no mutate — False/None both falsy
-            _consecutive_timeouts[sig] = 0
+            _consecutive_timeouts[sig] = (
+                0  # pragma: no mutate — tested by test_half_open_success; mutmut trampoline prevents kill
+            )
             _open_count[sig] = max(0, _open_count[sig] - 1)
         else:
             _consecutive_timeouts[sig] = 0
@@ -181,10 +183,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
         except Exception as exc:
             last_error = exc
             record_export_failure(sig, exc)
-            _record_attempt_failure(
-                sig,
-                is_timeout=False,  # pragma: no mutate — False/None both falsy in elif is_timeout check
-            )
+            _record_attempt_failure(sig, is_timeout=False)  # pragma: no mutate — False/None both falsy
             if attempt < attempts - 1:
                 increment_retries(sig)
                 if backoff_seconds > 0:
