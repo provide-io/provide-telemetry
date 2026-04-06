@@ -141,8 +141,6 @@ export let _classificationHook: ((key: string, value: unknown) => string | null)
 export let _receiptHook:
   | ((fieldPath: string, action: string, originalValue: unknown) => void)
   | null = null;
-/** Policy hook — returns the action ('drop'|'redact'|'hash'|'truncate'|'pass') for a label. */
-export let _policyHook: ((label: string) => string) | null = null;
 
 export function setClassificationHook(
   fn: ((key: string, value: unknown) => string | null) | null,
@@ -154,10 +152,6 @@ export function setReceiptHook(
   fn: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
 ): void {
   _receiptHook = fn;
-}
-
-export function setPolicyHook(fn: ((label: string) => string) | null): void {
-  _policyHook = fn;
 }
 
 // Overridable hash function — allows tests to exercise the fallback path.
@@ -209,6 +203,7 @@ function _applyRuleFull(
   currentPath: string[],
   maxDepth: number = _DEFAULT_MAX_DEPTH,
   depth: number = 0,
+  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null = null,
 ): unknown {
   if (typeof node !== 'object' || node === null) return node;
   if (depth >= maxDepth) return node;
@@ -216,7 +211,7 @@ function _applyRuleFull(
   if (Array.isArray(node)) {
     // Stryker disable next-line StringLiteral: '*' wildcard in VALUE path is irrelevant because _matches checks RULE segment, not value segment, for wildcards
     return node.map((item) =>
-      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1),
+      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1, receiptHook),
     );
   }
   const obj = node as Record<string, unknown>;
@@ -229,7 +224,7 @@ function _applyRuleFull(
       const { keep, value } = _applyMode(val, rule);
       if (keep) result[key] = value;
     } else {
-      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1);
+      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1, receiptHook);
     }
   }
   return result;
@@ -245,6 +240,7 @@ function _applyDefaultSensitiveKeyRedaction(
   blocked: Set<string>,
   ruleTargets: Set<string | undefined>,
   maxDepth: number,
+  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
   depth: number = 0,
 ): unknown {
   if (depth >= maxDepth) return node;
@@ -258,6 +254,7 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
+        receiptHook,
         depth + 1,
       ),
     );
@@ -277,10 +274,10 @@ function _applyDefaultSensitiveKeyRedaction(
         result[key] = val;
       } else {
         result[key] = REDACTED;
+        if (receiptHook !== null) receiptHook(key, 'redact', origVal);
       }
     } else if (typeof val === 'string' && _detectSecretInValue(val)) {
       result[key] = REDACTED;
-      // Stryker disable next-line StringLiteral: 'redact' action label is verified by receipt tests — Stryker's perTest coverage misattributes
       if (receiptHook !== null) receiptHook(key, 'redact', val);
     } else {
       result[key] = _applyDefaultSensitiveKeyRedaction(
@@ -289,6 +286,7 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
+        receiptHook,
         depth + 1,
       );
     }
@@ -314,14 +312,6 @@ export function resetPiiRulesForTests(): void {
   _hashFnOverride = null;
   _classificationHook = null;
   _receiptHook = null;
-  _policyHook = null;
-  _customSecretPatterns.clear();
-}
-
-/** Options for sanitizePayload. */
-export interface SanitizePayloadOptions {
-  /** Maximum recursion depth for nested traversal. Default 8. */
-  maxDepth?: number;
 }
 
 /** Options for sanitizePayload. */
@@ -341,11 +331,14 @@ export function sanitizePayload(
   options?: SanitizePayloadOptions,
 ): void {
   const maxDepth = options?.maxDepth ?? _DEFAULT_MAX_DEPTH;
+  // Capture hooks once at call time to avoid repeated reads.
+  const receiptHook = _receiptHook;
+  const classHook = _classificationHook;
   let current: unknown = obj;
 
   // Apply registered rules first.
   for (const rule of _rules) {
-    current = _applyRuleFull(current, rule, [], maxDepth);
+    current = _applyRuleFull(current, rule, [], maxDepth, 0, receiptHook);
   }
 
   // Apply default field-name redaction + secret detection recursively with depth limit.
@@ -365,6 +358,7 @@ export function sanitizePayload(
       blocked,
       ruleTargets,
       maxDepth,
+      receiptHook,
     ) as Record<string, unknown>;
     // Update the original object in-place.
     for (const key of Object.keys(obj)) {
@@ -383,34 +377,12 @@ export function sanitizePayload(
     }
     // Stryker enable all
 
-    // Apply classification tags and policy actions for top-level keys if hook is registered.
+    // Apply classification tags for top-level keys if hook is registered.
     if (classHook !== null) {
       for (const key of Object.keys(obj)) {
         const label = classHook(key, obj[key]);
         if (label !== null) {
-          const action = policyHook !== null ? policyHook(label) : 'pass';
-          if (action === 'drop') {
-            delete obj[key];
-            // No class tag for dropped keys — key no longer exists in payload.
-          } else {
-            obj[`__${key}__class`] = label;
-            if (
-              (action === 'redact' || action === 'hash' || action === 'truncate') &&
-              obj[key] !== REDACTED
-            ) {
-              const limit = 8;
-              const val = obj[key];
-              if (action === 'redact') {
-                obj[key] = REDACTED;
-              } else if (action === 'hash') {
-                obj[key] = _hashValue(String(val));
-              } else {
-                // truncate
-                const text = String(val);
-                obj[key] = text.length > limit ? text.slice(0, limit) + '...' : text;
-              }
-            }
-          }
+          obj[`__${key}__class`] = label;
         }
       }
     }
