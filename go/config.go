@@ -118,6 +118,17 @@ type SecurityConfig struct {
 	MaxNestingDepth    int // default 8
 }
 
+// RuntimeOverrides contains only hot-reloadable fields.
+// Nil pointer fields mean "keep current value".
+type RuntimeOverrides struct {
+	Sampling     *SamplingConfig
+	Backpressure *BackpressureConfig
+	Exporter     *ExporterPolicyConfig
+	Security     *SecurityConfig
+	SLO          *SLOConfig
+	PIIMaxDepth  *int
+}
+
 // TelemetryConfig is the top-level configuration for provide-telemetry.
 type TelemetryConfig struct {
 	ServiceName  string // default "provide-service"
