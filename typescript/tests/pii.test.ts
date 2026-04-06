@@ -419,3 +419,39 @@ describe('sanitizePayload — secret detection (nested)', () => {
     expect(outer['inner']).toBe('safe value');
   });
 });
+
+describe('sanitize — non-string values NOT treated as secrets (kills typeof guard mutation)', () => {
+  it('does not redact number values even in non-blocked keys', () => {
+    const obj: Record<string, unknown> = { count: 42, name: 'safe' };
+    sanitize(obj);
+    expect(obj['count']).toBe(42);
+    expect(obj['name']).toBe('safe');
+  });
+
+  it('does not redact boolean values', () => {
+    const obj: Record<string, unknown> = { active: true };
+    sanitize(obj);
+    expect(obj['active']).toBe(true);
+  });
+
+  it('does not redact object values', () => {
+    const obj: Record<string, unknown> = { data: { nested: 'value' } };
+    sanitize(obj);
+    expect(obj['data']).toEqual({ nested: 'value' });
+  });
+});
+
+describe('_applyRuleFull — depth limit (kills line 173 depth >= maxDepth branch)', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('stops recursing at maxDepth and leaves nested value unredacted', () => {
+    registerPiiRule({ path: 'a.b.email', mode: 'redact' });
+    const obj: Record<string, unknown> = { a: { b: { email: 'alice@example.com' } } };
+    // maxDepth=1: _applyRuleFull reaches depth=1 at 'a' dict and returns without traversing further
+    sanitizePayload(obj, [], { maxDepth: 1 });
+    // The email is NOT redacted because depth limit was hit before the rule path matched
+    const a = obj['a'] as Record<string, unknown>;
+    const b = a['b'] as Record<string, unknown>;
+    expect(b['email']).toBe('alice@example.com');
+  });
+});
