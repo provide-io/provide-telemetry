@@ -6,7 +6,12 @@
  * Mirrors Python provide.telemetry.runtime.
  */
 
-import { type TelemetryConfig, configFromEnv, setupTelemetry } from './config';
+import {
+  type RuntimeOverrides,
+  type TelemetryConfig,
+  configFromEnv,
+  setupTelemetry,
+} from './config';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -40,22 +45,86 @@ export function _areProvidersRegistered(): boolean {
   return _providersRegistered;
 }
 
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+  for (const val of Object.values(obj)) {
+    if (typeof val === 'object' && val !== null && !Object.isFrozen(val)) {
+      deepFreeze(val as object);
+    }
+  }
+  return Object.freeze(obj);
+}
+
 /** Return the active runtime config (or env-derived defaults if none set). */
-export function getRuntimeConfig(): TelemetryConfig {
-  return _activeConfig ?? configFromEnv();
+export function getRuntimeConfig(): Readonly<TelemetryConfig> {
+  const cfg = _activeConfig ?? configFromEnv();
+  return deepFreeze({ ...cfg });
 }
 
-/** Merge overrides into the active config and call setupTelemetry. */
-export function updateRuntimeConfig(overrides: Partial<TelemetryConfig>): void {
-  const base = getRuntimeConfig();
-  _activeConfig = { ...base, ...overrides };
+/** Merge hot-reloadable overrides into the active config and re-apply policies. */
+export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
+  const base = _activeConfig ?? configFromEnv();
+  const merged: TelemetryConfig = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value !== undefined) {
+      (merged as unknown as Record<string, unknown>)[key] = value;
+    }
+  }
+  _activeConfig = merged;
   setupTelemetry(_activeConfig);
 }
 
-/** Reload config from env vars and apply it. */
+const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
+  'serviceName',
+  'environment',
+  'version',
+  'otelEnabled',
+  'otlpEndpoint',
+  'otlpHeaders',
+];
+
+/** Reload config from env vars and apply only hot-reloadable fields. */
 export function reloadRuntimeFromEnv(): void {
-  _activeConfig = configFromEnv();
-  setupTelemetry(_activeConfig);
+  const fresh = configFromEnv();
+  const current = _activeConfig;
+  if (current) {
+    const drifted = _COLD_FIELDS.filter(
+      (k) => JSON.stringify(current[k]) !== JSON.stringify(fresh[k]),
+    );
+    if (drifted.length > 0) {
+      console.warn(
+        '[provide-telemetry] runtime.cold_field_drift:',
+        drifted.join(', '),
+        '— restart required to apply',
+      );
+    }
+  }
+  // Apply only hot fields via overrides
+  const overrides: RuntimeOverrides = {
+    samplingLogsRate: fresh.samplingLogsRate,
+    samplingTracesRate: fresh.samplingTracesRate,
+    samplingMetricsRate: fresh.samplingMetricsRate,
+    backpressureLogsMaxsize: fresh.backpressureLogsMaxsize,
+    backpressureTracesMaxsize: fresh.backpressureTracesMaxsize,
+    backpressureMetricsMaxsize: fresh.backpressureMetricsMaxsize,
+    exporterLogsRetries: fresh.exporterLogsRetries,
+    exporterLogsBackoffMs: fresh.exporterLogsBackoffMs,
+    exporterLogsTimeoutMs: fresh.exporterLogsTimeoutMs,
+    exporterLogsFailOpen: fresh.exporterLogsFailOpen,
+    exporterTracesRetries: fresh.exporterTracesRetries,
+    exporterTracesBackoffMs: fresh.exporterTracesBackoffMs,
+    exporterTracesTimeoutMs: fresh.exporterTracesTimeoutMs,
+    exporterTracesFailOpen: fresh.exporterTracesFailOpen,
+    exporterMetricsRetries: fresh.exporterMetricsRetries,
+    exporterMetricsBackoffMs: fresh.exporterMetricsBackoffMs,
+    exporterMetricsTimeoutMs: fresh.exporterMetricsTimeoutMs,
+    exporterMetricsFailOpen: fresh.exporterMetricsFailOpen,
+    securityMaxAttrValueLength: fresh.securityMaxAttrValueLength,
+    securityMaxAttrCount: fresh.securityMaxAttrCount,
+    sloEnableRedMetrics: fresh.sloEnableRedMetrics,
+    sloEnableUseMetrics: fresh.sloEnableUseMetrics,
+    piiMaxDepth: fresh.piiMaxDepth,
+  };
+  updateRuntimeConfig(overrides);
 }
 
 const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
