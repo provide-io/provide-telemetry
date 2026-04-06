@@ -324,3 +324,30 @@ func TestReloadRuntimeFromEnvColdFieldDrift(t *testing.T) {
 		t.Errorf("expected ServiceName=%q after reload, got %q", "drifted-service", cfg.ServiceName)
 	}
 }
+
+func TestReloadRuntimeFromEnvAllColdFieldsDrift(t *testing.T) {
+	// Covers the Environment/Version/Tracing.Enabled/Metrics.Enabled drift branches.
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Setenv("PROVIDE_TELEMETRY_ENV", "drifted-env")
+	t.Setenv("PROVIDE_TELEMETRY_VERSION", "9.9.9")
+	t.Setenv("PROVIDE_TRACE_ENABLED", "false")
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+
+	if err := ReloadRuntimeFromEnv(); err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+
+	cfg := GetRuntimeConfig()
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg.Environment != "drifted-env" {
+		t.Errorf("expected Environment=%q, got %q", "drifted-env", cfg.Environment)
+	}
+}
