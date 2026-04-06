@@ -326,3 +326,43 @@ def test_release_token_one_removes_from_queue() -> None:
     release(ticket)
     snap = get_health_snapshot()
     assert snap.queue_depth_logs == 0
+
+
+# ── reset_queues_for_tests mutation kills ────────────────────────────
+
+
+def test_reset_queues_token_counter_starts_at_1() -> None:
+    """Kills: itertools.count(1) -> itertools.count(2).
+
+    After reset, the first token acquired must be 1, not 2.
+    """
+    set_queue_policy(QueuePolicy(logs_maxsize=10))
+    # Consume some tokens
+    try_acquire("logs")
+    try_acquire("logs")
+    # Reset
+    reset_queues_for_tests()
+    reset_health_for_tests()
+    # First token after reset should be 1
+    set_queue_policy(QueuePolicy(logs_maxsize=10))
+    ticket = try_acquire("logs")
+    assert isinstance(ticket, QueueTicket) and ticket.signal == "logs"
+    assert ticket.token == 1
+
+
+def test_reset_queues_sets_queue_depth_to_zero() -> None:
+    """Kills: set_queue_depth(signal, 0) -> set_queue_depth(signal, 1).
+
+    After reset, queue depth for all signals must be exactly 0.
+    """
+    set_queue_policy(QueuePolicy(logs_maxsize=10, traces_maxsize=10, metrics_maxsize=10))
+    try_acquire("logs")
+    try_acquire("traces")
+    try_acquire("metrics")
+    reset_queues_for_tests()
+    reset_health_for_tests()
+    reset_queues_for_tests()  # Double reset to ensure depth is set properly
+    snap = get_health_snapshot()
+    assert snap.queue_depth_logs == 0
+    assert snap.queue_depth_traces == 0
+    assert snap.queue_depth_metrics == 0
