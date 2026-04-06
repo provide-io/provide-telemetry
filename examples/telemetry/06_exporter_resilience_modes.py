@@ -95,8 +95,6 @@ def main() -> None:
     print(f"  🔄 retries_logs:          {snapshot.retries_logs}")
     print(f"  ❌ export_failures_logs:   {snapshot.export_failures_logs}")
     print(f"  ❌ export_failures_traces:  {snapshot.export_failures_traces}")
-    print(f"  💬 last_error_logs:        {snapshot.last_error_logs}")
-    print(f"  💬 last_error_traces:      {snapshot.last_error_traces}")
     print(f"  ⏱️  latency_ms_traces:     {snapshot.export_latency_ms_traces}")
     print(f"  🔌 circuit_state_metrics:  {snapshot.circuit_state_metrics}")
     print(f"  📈 circuit_open_count:     {snapshot.circuit_open_count_metrics}")
