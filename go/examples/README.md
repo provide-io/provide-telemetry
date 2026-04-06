@@ -1,5 +1,8 @@
 # Go Examples
 
+SPDX-License-Identifier: Apache-2.0
+SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+
 Run any example from the repo root:
 
 ```bash
@@ -21,7 +24,6 @@ cd go && go run ./examples/telemetry/01_basic_telemetry
 - **`11_lazy_loading_proof`** — optional OTel wiring with graceful degradation to no-op when SDK absent.
 - **`12_error_fingerprint_and_sessions`** — SHA-256 error fingerprinting and session correlation across spans.
 - **`13_security_hardening`** — input sanitization, secret detection, and W3C protocol size guards.
-- **`14_data_governance`** — consent levels, data classification with sensitivity labels, and cryptographic redaction receipts.
 
 ## OpenObserve Integration
 

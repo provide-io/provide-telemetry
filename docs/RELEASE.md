@@ -84,6 +84,30 @@ Release steps:
 2. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
 3. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
 
+### Go (pkg.go.dev)
+
+Go modules publish automatically when a git tag is pushed — no explicit upload step.
+
+Prerequisites (one-time setup):
+- Ensure `go/VERSION` and `go/CHANGELOG.md` are updated.
+- The `go/LICENSE` file must be present at the module root (already committed).
+
+Release steps:
+1. Same tag `vX.Y.Z` as Python/TypeScript — `go get github.com/provide-io/provide-telemetry/go@vX.Y.Z` will resolve once the tag is pushed.
+2. pkg.go.dev picks up the new version automatically within a few minutes of the tag being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
+
+### Go validation before release
+
+```bash
+cd go
+go build ./...
+go test -race -count=1 -coverprofile=coverage.out .
+go tool cover -func=coverage.out | grep total   # must be 100.0%
+go vet ./...
+golangci-lint run
+govulncheck ./...
+```
+
 ### TypeScript validation before release
 
 ```bash
