@@ -54,11 +54,11 @@ export function sha256Hex(input: string): string {
 
     // Stryker disable next-line EqualityOperator: Uint32Array(64) silently ignores writes to index 64 — the extra iteration is a no-op
     for (let i = 16; i < 64; i++) {
-      const w15 = words[i - 15]!;
-      const w2 = words[i - 2]!;
+      const w15 = words[i - 15] as number;
+      const w2 = words[i - 2] as number;
       const sigma0 = rotateRight(w15, 7) ^ rotateRight(w15, 18) ^ (w15 >>> 3);
       const sigma1 = rotateRight(w2, 17) ^ rotateRight(w2, 19) ^ (w2 >>> 10);
-      words[i] = add32(words[i - 16]!, sigma0, words[i - 7]!, sigma1);
+      words[i] = add32(words[i - 16] as number, sigma0, words[i - 7] as number, sigma1);
     }
 
     let a = h0;
@@ -73,7 +73,7 @@ export function sha256Hex(input: string): string {
     for (let i = 0; i < 64; i++) {
       const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
       const choose = (e & f) ^ (~e & g);
-      const temp1 = add32(h, sum1, choose, ROUND_CONSTANTS[i]!, words[i]!);
+      const temp1 = add32(h, sum1, choose, ROUND_CONSTANTS[i] as number, words[i] as number);
       const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
       const majority = (a & b) ^ (a & c) ^ (b & c);
       const temp2 = add32(sum0, majority);
