@@ -71,36 +71,43 @@ func ReloadRuntimeFromEnv() error {
 	}
 
 	// Warn on cold-field drift.
-	if _runtimeCfg != nil {
-		var drifted []string
-		if cfg.ServiceName != _runtimeCfg.ServiceName {
-			drifted = append(drifted, "ServiceName")
-		}
-		if cfg.Environment != _runtimeCfg.Environment {
-			drifted = append(drifted, "Environment")
-		}
-		if cfg.Version != _runtimeCfg.Version {
-			drifted = append(drifted, "Version")
-		}
-		if cfg.Tracing.Enabled != _runtimeCfg.Tracing.Enabled {
-			drifted = append(drifted, "Tracing.Enabled")
-		}
-		if cfg.Metrics.Enabled != _runtimeCfg.Metrics.Enabled {
-			drifted = append(drifted, "Metrics.Enabled")
-		}
-		if len(drifted) > 0 {
-			if Logger != nil {
-				Logger.Warn("runtime.cold_field_drift",
-					slog.String("fields", strings.Join(drifted, ",")),
-					slog.String("action", "restart required to apply"),
-				)
-			}
-		}
-	}
+	_warnColdFieldDrift(cfg)
 
 	_applyRuntimePolicies(cfg)
 	_runtimeCfg = cfg
 	return nil
+}
+
+// _warnColdFieldDrift logs a warning if cold fields in next differ from the live config.
+func _warnColdFieldDrift(next *TelemetryConfig) {
+	if _runtimeCfg != nil {
+		_checkColdDrift(next)
+	}
+}
+
+func _checkColdDrift(next *TelemetryConfig) {
+	var drifted []string
+	if next.ServiceName != _runtimeCfg.ServiceName {
+		drifted = append(drifted, "ServiceName")
+	}
+	if next.Environment != _runtimeCfg.Environment {
+		drifted = append(drifted, "Environment")
+	}
+	if next.Version != _runtimeCfg.Version {
+		drifted = append(drifted, "Version")
+	}
+	if next.Tracing.Enabled != _runtimeCfg.Tracing.Enabled {
+		drifted = append(drifted, "Tracing.Enabled")
+	}
+	if next.Metrics.Enabled != _runtimeCfg.Metrics.Enabled {
+		drifted = append(drifted, "Metrics.Enabled")
+	}
+	if len(drifted) > 0 && Logger != nil {
+		Logger.Warn("runtime.cold_field_drift",
+			slog.String("fields", strings.Join(drifted, ",")),
+			slog.String("action", "restart required to apply"),
+		)
+	}
 }
 
 // ReconfigureTelemetry performs a full shutdown followed by a fresh setup using current
