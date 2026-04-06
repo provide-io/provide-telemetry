@@ -11,6 +11,7 @@ import copy
 import hashlib
 import re as _re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -68,6 +69,11 @@ _DEFAULT_SENSITIVE_KEYS = {
 _lock = threading.Lock()
 _rules: list[PIIRule] = []
 
+# Governance hooks — set by classification.py / receipts.py if present.
+# None = feature not loaded (zero overhead).
+_classification_hook: Callable[[str, Any], str | None] | None = None
+_receipt_hook: Callable[[str, str, Any], None] | None = None
+
 
 def replace_pii_rules(rules: list[PIIRule]) -> None:
     with _lock:
@@ -120,6 +126,8 @@ def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), de
                 masked = _mask(value, rule.mode, rule.truncate_to)
                 if masked is not None:
                     output[key] = masked
+                if _receipt_hook is not None:
+                    _receipt_hook(".".join(child_path), rule.mode, value)
             else:
                 output[key] = _apply_rule(value, rule, child_path, depth=depth + 1)
         return output
@@ -147,8 +155,12 @@ def _apply_default_sensitive_key_redaction(
                     output[key] = value
                 else:
                     output[key] = _REDACTED
+                    if _receipt_hook is not None:
+                        _receipt_hook(key, "redact", orig_value)
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
+                if _receipt_hook is not None:
+                    _receipt_hook(key, "redact", value)
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
                     value, orig_value, rule_targeted_keys, depth=depth + 1, max_depth=max_depth
@@ -181,10 +193,18 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         cleaned = _apply_rule(cleaned, rule)
     rule_targeted_keys = _collect_rule_leaf_keys(rules)
     cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys, max_depth=max_depth)
+    if _classification_hook is not None and isinstance(cleaned, dict):
+        for key, value in list(cleaned.items()):
+            label = _classification_hook(key, value)
+            if label is not None:
+                cleaned[f"__{key}__class"] = label
     if isinstance(cleaned, dict):
         return cleaned
     return {}
 
 
 def reset_pii_rules_for_tests() -> None:
+    global _classification_hook, _receipt_hook
     replace_pii_rules([])
+    _classification_hook = None
+    _receipt_hook = None

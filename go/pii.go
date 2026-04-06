@@ -41,9 +41,27 @@ var _defaultSensitiveKeys = []string{
 }
 
 var (
-	_piiMu    sync.RWMutex
-	_piiRules []PIIRule
+	_piiMu              sync.RWMutex
+	_piiRules           []PIIRule
+	_classificationHook func(key string, value any) string
+	_receiptHook        func(fieldPath string, action string, originalValue any)
 )
+
+// SetClassificationHook registers a classification callback on the PII engine.
+// Pass nil to deregister.
+func SetClassificationHook(fn func(string, any) string) {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	_classificationHook = fn
+}
+
+// SetReceiptHook registers a redaction receipt callback on the PII engine.
+// Pass nil to deregister.
+func SetReceiptHook(fn func(string, string, any)) {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	_receiptHook = fn
+}
 
 // SetPIIRules replaces the global PII rule list.
 func SetPIIRules(rules []PIIRule) {
@@ -63,11 +81,13 @@ func GetPIIRules() []PIIRule {
 	return cp
 }
 
-// _resetPIIRules clears all custom PII rules (for test cleanup).
+// _resetPIIRules clears all custom PII rules and hooks (for test cleanup).
 func _resetPIIRules() {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	_piiRules = nil
+	_classificationHook = nil
+	_receiptHook = nil
 }
 
 // SanitizePayload applies PII sanitization to the given payload map and returns
@@ -83,7 +103,20 @@ func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[str
 		maxDepth = _piiDefaultMax
 	}
 	rules := GetPIIRules()
-	return _sanitizeMap(payload, []string{}, rules, maxDepth)
+	result := _sanitizeMap(payload, []string{}, rules, maxDepth)
+
+	// Apply classification tags for top-level keys if hook is registered.
+	_piiMu.RLock()
+	classHook := _classificationHook
+	_piiMu.RUnlock()
+	if classHook != nil {
+		for k, v := range result {
+			if label := classHook(k, v); label != "" {
+				result["__"+k+"__class"] = label
+			}
+		}
+	}
+	return result
 }
 
 // _shallowCopy returns a shallow copy of m.
@@ -121,23 +154,38 @@ func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
 	return out
 }
 
+// _fireReceiptHook calls the hook if non-nil — extracted to reduce cyclomatic complexity.
+func _fireReceiptHook(hook func(string, string, any), fieldPath, action string, original any) {
+	if hook != nil {
+		hook(fieldPath, action, original)
+	}
+}
+
 // _sanitizeValue applies custom rules then default key detection to a single value.
 // Returns (sanitized value, should_drop).
 func _sanitizeValue(key string, value any, path []string, rules []PIIRule, depth int) (any, bool) {
+	// Read receipt hook once under read lock to avoid repeated locking.
+	_piiMu.RLock()
+	receiptHook := _receiptHook
+	_piiMu.RUnlock()
+
 	// Apply custom rules first.
 	for _, rule := range rules {
 		if _applyRule(rule, path) {
+			_fireReceiptHook(receiptHook, strings.Join(path, "."), rule.Mode, value)
 			return _applyMode(value, rule.Mode, rule.TruncateTo)
 		}
 	}
 
 	// Apply default sensitive key detection.
 	if _isDefaultSensitiveKey(key) {
+		_fireReceiptHook(receiptHook, key, PIIModeRedact, value)
 		return _piiRedacted, false
 	}
 
 	// Scan string values for known secret patterns.
 	if str, ok := value.(string); ok && _detectSecretInValue(str) {
+		_fireReceiptHook(receiptHook, key, PIIModeRedact, value)
 		return _piiRedacted, false
 	}
 
