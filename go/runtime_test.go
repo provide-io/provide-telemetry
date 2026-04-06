@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"math"
 	"testing"
 )
 
@@ -169,6 +170,7 @@ func TestReloadRuntimeFromEnvUpdatesConfig(t *testing.T) {
 	}
 
 	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "reloaded-service")
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "0.5")
 
 	if err := ReloadRuntimeFromEnv(); err != nil {
 		t.Fatalf("reload failed: %v", err)
@@ -178,8 +180,11 @@ func TestReloadRuntimeFromEnvUpdatesConfig(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected non-nil config after reload")
 	}
-	if cfg.ServiceName != "reloaded-service" {
-		t.Errorf("expected ServiceName=%q after reload, got %q", "reloaded-service", cfg.ServiceName)
+	if cfg.ServiceName == "reloaded-service" {
+		t.Errorf("cold ServiceName should not change on hot reload, got %q", cfg.ServiceName)
+	}
+	if cfg.Sampling.LogsRate != 0.5 {
+		t.Errorf("expected hot Sampling.LogsRate=0.5 after reload, got %v", cfg.Sampling.LogsRate)
 	}
 }
 
@@ -280,12 +285,14 @@ func TestRuntimeOverridesAppliesHotFields(t *testing.T) {
 	}
 
 	depth := 12
+	strict := true
 	err := UpdateRuntimeConfig(RuntimeOverrides{
 		Sampling:     &SamplingConfig{LogsRate: 0.1, TracesRate: 0.2, MetricsRate: 0.3},
 		Backpressure: &BackpressureConfig{LogsMaxSize: 100, TracesMaxSize: 200, MetricsMaxSize: 300},
 		Security:     &SecurityConfig{MaxAttrValueLength: 512, MaxAttrCount: 32, MaxNestingDepth: 4},
 		SLO:          &SLOConfig{EnableREDMetrics: true, EnableUSEMetrics: true, IncludeErrorTaxonomy: false},
 		PIIMaxDepth:  &depth,
+		StrictSchema: &strict,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -309,6 +316,9 @@ func TestRuntimeOverridesAppliesHotFields(t *testing.T) {
 	}
 	if cfg.Logging.PIIMaxDepth != 12 {
 		t.Fatalf("PIIMaxDepth not applied: got %d", cfg.Logging.PIIMaxDepth)
+	}
+	if !cfg.StrictSchema {
+		t.Fatal("StrictSchema not applied")
 	}
 }
 
@@ -368,7 +378,7 @@ func TestReloadRuntimeFromEnvColdFieldDrift(t *testing.T) {
 	// Change a cold field in the environment.
 	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "drifted-service")
 
-	// Reload should succeed (cold fields are still applied, just warned).
+	// Reload should succeed, warn, and preserve the live cold field.
 	if err := ReloadRuntimeFromEnv(); err != nil {
 		t.Fatalf("reload failed: %v", err)
 	}
@@ -377,9 +387,8 @@ func TestReloadRuntimeFromEnvColdFieldDrift(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
 	}
-	// The cold field value IS applied to the in-memory config (reload replaces everything).
-	if cfg.ServiceName != "drifted-service" {
-		t.Errorf("expected ServiceName=%q after reload, got %q", "drifted-service", cfg.ServiceName)
+	if cfg.ServiceName == "drifted-service" {
+		t.Errorf("cold ServiceName should not change on hot reload, got %q", cfg.ServiceName)
 	}
 }
 
@@ -405,7 +414,57 @@ func TestReloadRuntimeFromEnvAllColdFieldsDrift(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
 	}
-	if cfg.Environment != "drifted-env" {
-		t.Errorf("expected Environment=%q, got %q", "drifted-env", cfg.Environment)
+	if cfg.Environment == "drifted-env" {
+		t.Errorf("cold Environment should not change on hot reload, got %q", cfg.Environment)
 	}
+	if !cfg.Tracing.Enabled {
+		t.Error("cold Tracing.Enabled should not change on hot reload")
+	}
+	if !cfg.Metrics.Enabled {
+		t.Error("cold Metrics.Enabled should not change on hot reload")
+	}
+}
+
+func TestUpdateRuntimeConfigRejectsInvalidOverrides(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	invalid := []RuntimeOverrides{
+		{Sampling: &SamplingConfig{LogsRate: -0.1}},
+		{Sampling: &SamplingConfig{LogsRate: 1.1}},
+		{Sampling: &SamplingConfig{LogsRate: math.NaN()}},
+		{Sampling: &SamplingConfig{LogsRate: 0.5, TracesRate: -0.1}},
+		{Sampling: &SamplingConfig{LogsRate: 0.5, TracesRate: 0.5, MetricsRate: 1.1}},
+		{Backpressure: &BackpressureConfig{LogsMaxSize: -1}},
+		{Backpressure: &BackpressureConfig{LogsMaxSize: 1, TracesMaxSize: -1}},
+		{Backpressure: &BackpressureConfig{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: -1}},
+		{Exporter: &ExporterPolicyConfig{LogsRetries: -1}},
+		{Exporter: &ExporterPolicyConfig{TracesRetries: -1}},
+		{Exporter: &ExporterPolicyConfig{MetricsRetries: -1}},
+		{Exporter: &ExporterPolicyConfig{LogsBackoffSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{TracesBackoffSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{MetricsBackoffSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{LogsTimeoutSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{TracesTimeoutSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{MetricsTimeoutSeconds: -1}},
+		{Exporter: &ExporterPolicyConfig{LogsTimeoutSeconds: math.Inf(1)}},
+		{Security: &SecurityConfig{MaxAttrValueLength: -1}},
+		{Security: &SecurityConfig{MaxAttrValueLength: 1, MaxAttrCount: -1}},
+		{Security: &SecurityConfig{MaxAttrValueLength: 1, MaxAttrCount: 1, MaxNestingDepth: -1}},
+		{PIIMaxDepth: ptrInt(-1)},
+	}
+
+	for _, overrides := range invalid {
+		if err := UpdateRuntimeConfig(overrides); err == nil {
+			t.Fatalf("expected invalid overrides to be rejected: %+v", overrides)
+		}
+	}
+}
+
+func ptrInt(v int) *int {
+	return &v
 }
