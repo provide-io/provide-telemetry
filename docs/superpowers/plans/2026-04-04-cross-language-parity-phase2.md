@@ -16,7 +16,7 @@
 
 ---
 
-### Task 1: Fix Python OTLP header `+` parsing
+## Task 1: Fix Python OTLP header `+` parsing
 
 **Files:**
 - Modify: `src/provide/telemetry/config.py:412,415`
@@ -86,7 +86,7 @@ git commit -m "fix(python): use percent-encoding for OTLP header parsing, preser
 
 ---
 
-### Task 2: Fix TypeScript OTLP header `+` parsing
+## Task 2: Fix TypeScript OTLP header `+` parsing
 
 **Files:**
 - Modify: `typescript/src/config.ts:487,490`
@@ -152,7 +152,7 @@ git commit -m "fix(typescript): use percent-encoding for OTLP header parsing, pr
 
 ---
 
-### Task 3: Fix Go backpressure — 0 means truly unlimited
+## Task 3: Fix Go backpressure — 0 means truly unlimited
 
 **Files:**
 - Modify: `go/backpressure.go:29-35`
@@ -240,7 +240,7 @@ git commit -m "fix(go): backpressure size 0 is truly unlimited, not capacity 1"
 
 ---
 
-### Task 4: Fix Go cardinality input clamping
+## Task 4: Fix Go cardinality input clamping
 
 **Files:**
 - Modify: `go/cardinality.go:44-49`
@@ -357,7 +357,7 @@ git commit -m "fix(go): clamp cardinality limit inputs to min 1/1.0, matching Py
 
 ---
 
-### Task 5: Add sampling signal validation to Go
+## Task 5: Add sampling signal validation to Go
 
 **Files:**
 - Modify: `go/sampling.go:28-44`
@@ -559,7 +559,7 @@ git commit -m "feat(go): add sampling signal validation, reject unknown signal n
 
 ---
 
-### Task 6: Add sampling signal validation to TypeScript
+## Task 6: Add sampling signal validation to TypeScript
 
 **Files:**
 - Modify: `typescript/src/sampling.ts`
@@ -645,7 +645,7 @@ git commit -m "feat(typescript): add sampling signal validation, reject unknown 
 
 ---
 
-### Task 7: Fix Go EventName strict mode consistency
+## Task 7: Fix Go EventName strict mode consistency
 
 **Files:**
 - Modify: `go/schema.go:103-109`
@@ -800,7 +800,7 @@ git commit -m "fix(go): gate EventName format validation behind strict mode, mat
 
 ---
 
-### Task 8: Add Go parity test for header `+` parsing
+## Task 8: Add Go parity test for header `+` parsing
 
 **Files:**
 - Modify: `go/parity_test.go`
@@ -843,7 +843,7 @@ git commit -m "test(go): add parity tests for OTLP header + literal preservation
 
 ---
 
-### Task 9: Final cross-language verification
+## Task 9: Final cross-language verification
 
 **Files:** None (verification only)
 

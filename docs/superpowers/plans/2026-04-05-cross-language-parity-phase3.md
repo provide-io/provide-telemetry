@@ -14,7 +14,7 @@
 
 ---
 
-### Task 1: Rewrite Go HealthSnapshot to canonical 25-field layout
+## Task 1: Rewrite Go HealthSnapshot to canonical 25-field layout
 
 **Files:**
 - Modify: `go/health.go`
@@ -294,7 +294,7 @@ git commit -m "refactor(go): rewrite HealthSnapshot to canonical 25-field layout
 
 ---
 
-### Task 2: Align TypeScript HealthSnapshot to canonical 25 fields
+## Task 2: Align TypeScript HealthSnapshot to canonical 25 fields
 
 **Files:**
 - Modify: `typescript/src/health.ts`
@@ -450,7 +450,7 @@ git commit -m "refactor(typescript): align HealthSnapshot to canonical 25-field 
 
 ---
 
-### Task 3: Trim Python HealthSnapshot to canonical 25 fields
+## Task 3: Trim Python HealthSnapshot to canonical 25 fields
 
 **Files:**
 - Modify: `src/provide/telemetry/health.py`
@@ -523,7 +523,7 @@ git commit -m "refactor(python): trim HealthSnapshot to canonical 25-field layou
 
 ---
 
-### Task 4: Add PII max depth to TypeScript
+## Task 4: Add PII max depth to TypeScript
 
 **Files:**
 - Modify: `typescript/src/pii.ts`
@@ -609,7 +609,7 @@ git commit -m "feat(typescript): add pii max depth parameter, default 8, env var
 
 ---
 
-### Task 5: Change Go PII default depth from 32 to 8
+## Task 5: Change Go PII default depth from 32 to 8
 
 **Files:**
 - Modify: `go/pii.go` (change `_piiDefaultMax`)
@@ -700,7 +700,7 @@ git commit -m "fix(go): change PII default max depth from 32 to 8, add PROVIDE_L
 
 ---
 
-### Task 6: Add PROVIDE_LOG_PII_MAX_DEPTH env var to Python
+## Task 6: Add PROVIDE_LOG_PII_MAX_DEPTH env var to Python
 
 **Files:**
 - Modify: `src/provide/telemetry/config.py`
@@ -745,7 +745,7 @@ git commit -m "feat(python): add PROVIDE_LOG_PII_MAX_DEPTH env var support"
 
 ---
 
-### Task 7: Update behavioral fixtures and API spec
+## Task 7: Update behavioral fixtures and API spec
 
 **Files:**
 - Modify: `spec/behavioral_fixtures.yaml`
@@ -833,7 +833,7 @@ git commit -m "spec: add health snapshot and PII depth behavioral fixtures"
 
 ---
 
-### Task 8: Final cross-language verification
+## Task 8: Final cross-language verification
 
 **Files:** None (verification only)
 
