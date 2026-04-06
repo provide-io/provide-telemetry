@@ -57,6 +57,10 @@ func TestEventName_Valid(t *testing.T) {
 }
 
 func TestEventName_Invalid(t *testing.T) {
+	// Format validation (segment content) requires strict mode.
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+
 	cases := []struct {
 		name        string
 		segments    []string
@@ -146,6 +150,10 @@ func TestValidateEventName_Valid(t *testing.T) {
 }
 
 func TestValidateEventName_Invalid(t *testing.T) {
+	// Format validation (segment content) requires strict mode.
+	_strictSchema = true
+	t.Cleanup(func() { _strictSchema = false })
+
 	cases := []struct {
 		name        string
 		errContains string

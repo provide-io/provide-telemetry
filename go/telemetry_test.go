@@ -130,7 +130,9 @@ func TestResetForTests(t *testing.T) {
 	// Pollute state across multiple subsystems.
 	SetCardinalityLimit("x", CardinalityLimit{MaxValues: 99})
 	RegisterPIIRule(PIIRule{Path: []string{"secret"}, Mode: PIIModeRedact})
-	SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.1})
+	if _, err := SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.1}); err != nil {
+		t.Fatal(err)
+	}
 	SetExporterPolicy("traces", ExporterPolicy{Retries: 10})
 
 	ResetForTests()
@@ -144,7 +146,9 @@ func TestResetForTests(t *testing.T) {
 		t.Error("expected PII rules cleared")
 	}
 	// Sampling reset (default rate = 1.0 when nothing registered).
-	if p := GetSamplingPolicy("logs"); p.DefaultRate != 1.0 {
+	if p, err := GetSamplingPolicy("logs"); err != nil {
+		t.Fatal(err)
+	} else if p.DefaultRate != 1.0 {
 		t.Errorf("expected sampling DefaultRate=1.0, got %v", p.DefaultRate)
 	}
 	// Resilience reset (default retries).

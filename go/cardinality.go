@@ -41,9 +41,12 @@ func _resetCardinalityLimits() {
 }
 
 // SetCardinalityLimit configures the max-values and TTL for a specific attribute key.
+// Inputs are clamped: MaxValues to min 1, TTLSeconds to min 1.0.
 func SetCardinalityLimit(key string, limit CardinalityLimit) {
 	_cardinalityMu.Lock()
 	defer _cardinalityMu.Unlock()
+	limit.MaxValues = max(1, limit.MaxValues)
+	limit.TTLSeconds = max(1.0, limit.TTLSeconds)
 	_cardinalityLimits[key] = limit
 	// Evict any existing cache so it is rebuilt with the new limit.
 	delete(_cardinalityCaches, key)

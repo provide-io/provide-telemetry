@@ -112,10 +112,8 @@ describe('per-signal sampling isolation', () => {
     expect(shouldSample('traces')).toBe(false);
   });
 
-  it('getSamplingPolicy for unknown signal returns the default policy', () => {
-    const p = getSamplingPolicy('unknown');
-    expect(p.defaultRate).toBe(1.0);
-    expect(p.overrides).toBeUndefined();
+  it('getSamplingPolicy for unknown signal throws ConfigurationError', () => {
+    expect(() => getSamplingPolicy('unknown')).toThrow();
   });
 
   it('each signal can have independent overrides', () => {

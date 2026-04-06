@@ -98,35 +98,32 @@ func Event(segments ...string) (EventRecord, error) {
 }
 
 // EventName validates and returns a dotted event name from segments.
-// Returns an *EventSchemaError if the segment count or format is invalid.
-// Accepts 3–5 segments. Format validation is always applied.
+// Accepts 3–5 segments. Format validation is only applied when _strictSchema is true.
 func EventName(segments ...string) (string, error) {
-	name := strings.Join(segments, ".")
-	if err := validateSegments(segments); err != nil {
-		return "", err
+	n := len(segments)
+	if n < _minSegments || n > _maxSegments {
+		return "", NewEventSchemaError(fmt.Sprintf(
+			"event name must have %d–%d segments, got %d",
+			_minSegments, _maxSegments, n,
+		))
 	}
-	return name, nil
+	if _strictSchema {
+		for _, seg := range segments {
+			if !_segmentRe.MatchString(seg) {
+				return "", NewEventSchemaError(fmt.Sprintf(
+					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
+				))
+			}
+		}
+	}
+	return strings.Join(segments, "."), nil
 }
 
 // ValidateEventName splits a dotted event name string and validates its segments.
 // Returns an *EventSchemaError if invalid, nil otherwise.
+// Segment count is always enforced; format validation only applies when _strictSchema is true.
 func ValidateEventName(name string) error {
 	segments := strings.Split(name, ".")
-	return validateSegments(segments)
-}
-
-// ValidateRequiredKeys returns an EventSchemaError if any required key is missing from attrs.
-func ValidateRequiredKeys(attrs map[string]any, requiredKeys []string) error {
-	for _, key := range requiredKeys {
-		if _, ok := attrs[key]; !ok {
-			return NewEventSchemaError("missing required key: " + key)
-		}
-	}
-	return nil
-}
-
-// validateSegments checks segment count and per-segment format rules.
-func validateSegments(segments []string) error {
 	n := len(segments)
 	if n < _minSegments || n > _maxSegments {
 		return NewEventSchemaError(fmt.Sprintf(
@@ -134,11 +131,23 @@ func validateSegments(segments []string) error {
 			_minSegments, _maxSegments, n,
 		))
 	}
-	for _, seg := range segments {
-		if !_segmentRe.MatchString(seg) {
-			return NewEventSchemaError(fmt.Sprintf(
-				"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
-			))
+	if _strictSchema {
+		for _, seg := range segments {
+			if !_segmentRe.MatchString(seg) {
+				return NewEventSchemaError(fmt.Sprintf(
+					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
+				))
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateRequiredKeys returns an EventSchemaError if any required key is missing from attrs.
+func ValidateRequiredKeys(attrs map[string]any, requiredKeys []string) error {
+	for _, key := range requiredKeys {
+		if _, ok := attrs[key]; !ok {
+			return NewEventSchemaError("missing required key: " + key)
 		}
 	}
 	return nil

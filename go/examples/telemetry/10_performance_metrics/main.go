@@ -115,7 +115,7 @@ func main() {
 	}, _defaultIterations))})
 
 	rows = append(rows, row{`ShouldSample("logs","x")`, fmtNs(bench(func() {
-		_ = telemetry.ShouldSample("logs", "perf.test")
+		_, _ = telemetry.ShouldSample("logs", "perf.test")
 	}, _defaultIterations))})
 
 	rows = append(rows, row{`Event("a","b","c")`, fmtNs(bench(func() {

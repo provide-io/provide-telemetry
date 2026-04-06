@@ -121,7 +121,7 @@ describe('configFromEnv', () => {
 
   it('URL-decodes OTLP header keys and values from env', () => {
     process.env['OTEL_EXPORTER_OTLP_HEADERS'] =
-      'Authorization=Bearer%20token%3D123,X-Custom+Key=value+with+spaces';
+      'Authorization=Bearer%20token%3D123,X-Custom%20Key=value%20with%20spaces';
     try {
       const cfg = configFromEnv();
       expect(cfg.otlpHeaders).toEqual({

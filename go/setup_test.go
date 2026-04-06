@@ -107,7 +107,10 @@ func TestSetupAppliesSamplingFromEnv(t *testing.T) {
 		t.Errorf("expected LogsRate=0.5, got %v", cfg.Sampling.LogsRate)
 	}
 
-	policy := GetSamplingPolicy(signalLogs)
+	policy, err := GetSamplingPolicy(signalLogs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if policy.DefaultRate != 0.5 {
 		t.Errorf("expected sampling policy DefaultRate=0.5, got %v", policy.DefaultRate)
 	}

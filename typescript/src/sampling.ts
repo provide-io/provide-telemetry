@@ -5,6 +5,8 @@
  * Runtime sampling policy — mirrors Python provide.telemetry.sampling.
  */
 
+import { ConfigurationError } from './exceptions';
+
 export interface SamplingPolicy {
   defaultRate: number;
   overrides?: Record<string, number>;
@@ -13,11 +15,22 @@ export interface SamplingPolicy {
 const DEFAULT_POLICY: SamplingPolicy = { defaultRate: 1.0 };
 let _policies: Record<string, SamplingPolicy> = {};
 
+const VALID_SIGNALS = new Set(['logs', 'traces', 'metrics']);
+
+function _validateSignal(signal: string): void {
+  if (!VALID_SIGNALS.has(signal)) {
+    throw new ConfigurationError(
+      `unknown signal "${signal}", expected one of [logs, metrics, traces]`,
+    );
+  }
+}
+
 function _clamp(rate: number): number {
   return Math.max(0, Math.min(1, rate));
 }
 
 export function setSamplingPolicy(signal: string, policy: SamplingPolicy): void {
+  _validateSignal(signal);
   _policies[signal] = {
     defaultRate: _clamp(policy.defaultRate),
     overrides: policy.overrides
@@ -27,6 +40,7 @@ export function setSamplingPolicy(signal: string, policy: SamplingPolicy): void 
 }
 
 export function getSamplingPolicy(signal: string): SamplingPolicy {
+  _validateSignal(signal);
   const _policy = _policies[signal] ?? DEFAULT_POLICY;
   return {
     defaultRate: _policy.defaultRate,
@@ -35,6 +49,7 @@ export function getSamplingPolicy(signal: string): SamplingPolicy {
 }
 
 export function shouldSample(signal: string, key?: string): boolean {
+  _validateSignal(signal);
   const _policy = _policies[signal] ?? DEFAULT_POLICY;
   const overrides = _policy.overrides;
   const lookupKey = key ?? signal;

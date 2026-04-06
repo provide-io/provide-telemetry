@@ -134,8 +134,10 @@ func TestUpdateRuntimeConfigReappliesRuntimePolicies(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := GetSamplingPolicy(signalLogs).DefaultRate; got != 0.25 {
-		t.Fatalf("sampling policy not updated, got %v", got)
+	if p, err := GetSamplingPolicy(signalLogs); err != nil {
+		t.Fatal(err)
+	} else if p.DefaultRate != 0.25 {
+		t.Fatalf("sampling policy not updated, got %v", p.DefaultRate)
 	}
 	if got := GetQueuePolicy().LogsMaxSize; got != 17 {
 		t.Fatalf("queue policy not updated, got %d", got)
@@ -204,8 +206,10 @@ func TestReloadRuntimeFromEnvReappliesRuntimePolicies(t *testing.T) {
 		t.Fatalf("reload failed: %v", err)
 	}
 
-	if got := GetSamplingPolicy(signalLogs).DefaultRate; got != 0.4 {
-		t.Fatalf("sampling policy not reloaded, got %v", got)
+	if p, err := GetSamplingPolicy(signalLogs); err != nil {
+		t.Fatal(err)
+	} else if p.DefaultRate != 0.4 {
+		t.Fatalf("sampling policy not reloaded, got %v", p.DefaultRate)
 	}
 	if got := GetQueuePolicy().LogsMaxSize; got != 9 {
 		t.Fatalf("queue policy not reloaded, got %d", got)
