@@ -147,6 +147,7 @@ class TelemetryConfig:
     environment: str = "dev"
     version: str = "0.0.0"
     strict_schema: bool = False
+    pii_max_depth: int = 8
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     tracing: TracingConfig = field(default_factory=TracingConfig)
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
@@ -156,6 +157,9 @@ class TelemetryConfig:
     exporter: ExporterPolicyConfig = field(default_factory=ExporterPolicyConfig)
     slo: SLOConfig = field(default_factory=SLOConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+
+    def __post_init__(self) -> None:
+        _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
@@ -167,6 +171,7 @@ class TelemetryConfig:
             strict_schema=_parse_env_bool(
                 data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False, "PROVIDE_TELEMETRY_STRICT_SCHEMA"
             ),
+            pii_max_depth=_parse_env_int(data.get("PROVIDE_LOG_PII_MAX_DEPTH", "8"), "PROVIDE_LOG_PII_MAX_DEPTH"),
             logging=LoggingConfig(
                 level=data.get("PROVIDE_LOG_LEVEL", "INFO"),
                 fmt=data.get("PROVIDE_LOG_FORMAT", "console"),

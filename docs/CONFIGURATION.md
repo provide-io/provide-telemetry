@@ -27,6 +27,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 | `PROVIDE_LOG_INCLUDE_TIMESTAMP` | bool | `true` | Add ISO-8601 timestamp to each log event |
 | `PROVIDE_LOG_INCLUDE_CALLER` | bool | `true` | Add filename and line number to each log event |
 | `PROVIDE_LOG_SANITIZE` | bool | `true` | Enable PII/sensitive field redaction in log output |
+| `PROVIDE_LOG_PII_MAX_DEPTH` | int | `8` | Maximum nesting depth for PII/sensitive field traversal during sanitization |
 | `PROVIDE_LOG_CODE_ATTRIBUTES` | bool | `false` | Attach code attributes to OTel log records |
 | `PROVIDE_LOG_PRETTY_KEY_COLOR` | str | `dim` | ANSI color name for keys in `pretty` format (see named colors below) |
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | str | `""` | ANSI color name for values in `pretty` format (empty = default) |

@@ -21,7 +21,7 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 
-from provide.telemetry.health import increment_dropped, set_queue_depth
+from provide.telemetry.health import increment_dropped
 
 Signal = str
 
@@ -60,8 +60,6 @@ def set_queue_policy(policy: QueuePolicy) -> None:
     global _policy
     with _lock:
         _policy = policy
-        for signal in ("logs", "traces", "metrics"):
-            set_queue_depth(signal, len(_queues[signal]))
 
 
 def get_queue_policy() -> QueuePolicy:
@@ -89,7 +87,6 @@ def try_acquire(signal: Signal) -> QueueTicket | None:
             return None
         token = next(_tokens)
         queue.append(token)
-        set_queue_depth(signal, len(queue))
         return QueueTicket(signal=signal, token=token)
 
 
@@ -104,7 +101,6 @@ def release(ticket: QueueTicket | None) -> None:
             queue.remove(ticket.token)
         except ValueError:
             return
-        set_queue_depth(ticket.signal, len(queue))
 
 
 def reset_queues_for_tests() -> None:
@@ -114,4 +110,3 @@ def reset_queues_for_tests() -> None:
         _tokens = itertools.count(1)
         for signal in ("logs", "traces", "metrics"):
             _queues[signal].clear()
-            set_queue_depth(signal, 0)

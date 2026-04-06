@@ -7,7 +7,6 @@ import {
   _recordExportLatency,
   _registerCircuitStateFn,
   _resetHealthForTests,
-  _setLastExportError,
   getHealthSnapshot,
   setSetupError,
 } from '../src/health';
@@ -18,9 +17,8 @@ describe('getHealthSnapshot', () => {
   it('returns zeroed snapshot initially', () => {
     const s = getHealthSnapshot();
     expect(s.logsEmitted).toBe(0);
-    expect(s.exportFailures).toBe(0);
-    expect(s.lastExportError).toBeNull();
-    expect(s.exportLatencyMs).toBe(0);
+    expect(s.exportFailuresLogs).toBe(0);
+    expect(s.exportLatencyMsLogs).toBe(0);
   });
 
   it('returns a copy (mutations do not affect internal state)', () => {
@@ -37,8 +35,8 @@ describe('_incrementHealth', () => {
   });
 
   it('increments by a custom amount', () => {
-    _incrementHealth('exportFailures', 5);
-    expect(getHealthSnapshot().exportFailures).toBe(5);
+    _incrementHealth('exportFailuresLogs', 5);
+    expect(getHealthSnapshot().exportFailuresLogs).toBe(5);
   });
 
   it('accumulates multiple increments', () => {
@@ -56,10 +54,18 @@ describe('_incrementHealth', () => {
       'tracesDropped',
       'metricsEmitted',
       'metricsDropped',
-      'exportFailures',
-      'exportRetries',
-      'asyncBlockingRisk',
-      'exemplarUnsupported',
+      'exportFailuresLogs',
+      'exportFailuresTraces',
+      'exportFailuresMetrics',
+      'retriesLogs',
+      'retriesTraces',
+      'retriesMetrics',
+      'exportLatencyMsLogs',
+      'exportLatencyMsTraces',
+      'exportLatencyMsMetrics',
+      'asyncBlockingRiskLogs',
+      'asyncBlockingRiskTraces',
+      'asyncBlockingRiskMetrics',
     ] as const;
     for (const f of fields) {
       _incrementHealth(f, 2);
@@ -72,63 +78,70 @@ describe('_incrementHealth', () => {
 });
 
 describe('_recordExportLatency', () => {
-  it('sets exportLatencyMs', () => {
-    _recordExportLatency(42.5);
-    expect(getHealthSnapshot().exportLatencyMs).toBe(42.5);
-  });
-});
-
-describe('_setLastExportError', () => {
-  it('sets a string error message', () => {
-    _setLastExportError('connection refused');
-    expect(getHealthSnapshot().lastExportError).toBe('connection refused');
+  it('sets per-signal exportLatencyMs', () => {
+    _recordExportLatency('logs', 42.5);
+    expect(getHealthSnapshot().exportLatencyMsLogs).toBe(42.5);
+    expect(getHealthSnapshot().exportLatencyMsTraces).toBe(0);
   });
 
-  it('clears the error with null', () => {
-    _setLastExportError('err');
-    _setLastExportError(null);
-    expect(getHealthSnapshot().lastExportError).toBeNull();
+  it('sets traces latency independently', () => {
+    _recordExportLatency('traces', 10);
+    _recordExportLatency('metrics', 20);
+    expect(getHealthSnapshot().exportLatencyMsTraces).toBe(10);
+    expect(getHealthSnapshot().exportLatencyMsMetrics).toBe(20);
+    expect(getHealthSnapshot().exportLatencyMsLogs).toBe(0);
   });
 });
 
 describe('_resetHealthForTests', () => {
   it('resets all state to zero', () => {
     _incrementHealth('logsEmitted', 10);
-    _setLastExportError('oops');
-    _recordExportLatency(100);
+    _recordExportLatency('logs', 100);
     _resetHealthForTests();
     const s = getHealthSnapshot();
     expect(s.logsEmitted).toBe(0);
-    expect(s.lastExportError).toBeNull();
-    expect(s.exportLatencyMs).toBe(0);
+    expect(s.exportLatencyMsLogs).toBe(0);
   });
 });
 
-describe('getHealthSnapshot — all fields present', () => {
+describe('getHealthSnapshot — all 25 fields present', () => {
   it('returns all expected fields with correct types', () => {
     const s = getHealthSnapshot();
-    // Numeric counter fields
+    // Per-signal counter fields (logs)
     expect(typeof s.logsEmitted).toBe('number');
     expect(typeof s.logsDropped).toBe('number');
+    expect(typeof s.exportFailuresLogs).toBe('number');
+    expect(typeof s.retriesLogs).toBe('number');
+    expect(typeof s.exportLatencyMsLogs).toBe('number');
+    expect(typeof s.asyncBlockingRiskLogs).toBe('number');
+    expect(typeof s.circuitStateLogs).toBe('string');
+    expect(typeof s.circuitOpenCountLogs).toBe('number');
+    // Per-signal counter fields (traces)
     expect(typeof s.tracesEmitted).toBe('number');
     expect(typeof s.tracesDropped).toBe('number');
+    expect(typeof s.exportFailuresTraces).toBe('number');
+    expect(typeof s.retriesTraces).toBe('number');
+    expect(typeof s.exportLatencyMsTraces).toBe('number');
+    expect(typeof s.asyncBlockingRiskTraces).toBe('number');
+    expect(typeof s.circuitStateTraces).toBe('string');
+    expect(typeof s.circuitOpenCountTraces).toBe('number');
+    // Per-signal counter fields (metrics)
     expect(typeof s.metricsEmitted).toBe('number');
     expect(typeof s.metricsDropped).toBe('number');
-    expect(typeof s.exportFailures).toBe('number');
-    expect(typeof s.exportRetries).toBe('number');
-    expect(typeof s.asyncBlockingRisk).toBe('number');
-    expect(typeof s.exemplarUnsupported).toBe('number');
-    expect(typeof s.exportLatencyMs).toBe('number');
-    // Circuit state fields
-    expect(typeof s.circuitStateLogs).toBe('string');
-    expect(typeof s.circuitStateTraces).toBe('string');
+    expect(typeof s.exportFailuresMetrics).toBe('number');
+    expect(typeof s.retriesMetrics).toBe('number');
+    expect(typeof s.exportLatencyMsMetrics).toBe('number');
+    expect(typeof s.asyncBlockingRiskMetrics).toBe('number');
     expect(typeof s.circuitStateMetrics).toBe('string');
-    expect(typeof s.circuitOpenCountLogs).toBe('number');
-    expect(typeof s.circuitOpenCountTraces).toBe('number');
     expect(typeof s.circuitOpenCountMetrics).toBe('number');
-    expect(typeof s.circuitCooldownRemainingLogs).toBe('number');
-    expect(typeof s.circuitCooldownRemainingTraces).toBe('number');
-    expect(typeof s.circuitCooldownRemainingMetrics).toBe('number');
+    // Global
+    // setupError is string | null — check it exists
+    expect('setupError' in s).toBe(true);
+  });
+
+  it('has exactly 25 fields', () => {
+    const s = getHealthSnapshot();
+    expect(Object.keys(s).length).toBe(25);
   });
 
   it('default circuit state is "closed" with zero counts', () => {
@@ -139,9 +152,6 @@ describe('getHealthSnapshot — all fields present', () => {
     expect(s.circuitOpenCountLogs).toBe(0);
     expect(s.circuitOpenCountTraces).toBe(0);
     expect(s.circuitOpenCountMetrics).toBe(0);
-    expect(s.circuitCooldownRemainingLogs).toBe(0);
-    expect(s.circuitCooldownRemainingTraces).toBe(0);
-    expect(s.circuitCooldownRemainingMetrics).toBe(0);
   });
 });
 
@@ -163,13 +173,10 @@ describe('getHealthSnapshot — custom circuit state function', () => {
     const s = getHealthSnapshot();
     expect(s.circuitStateLogs).toBe('open');
     expect(s.circuitOpenCountLogs).toBe(3);
-    expect(s.circuitCooldownRemainingLogs).toBe(5000);
     expect(s.circuitStateTraces).toBe('half-open');
     expect(s.circuitOpenCountTraces).toBe(1);
-    expect(s.circuitCooldownRemainingTraces).toBe(2000);
     expect(s.circuitStateMetrics).toBe('probing');
     expect(s.circuitOpenCountMetrics).toBe(2);
-    expect(s.circuitCooldownRemainingMetrics).toBe(1000);
   });
 });
 
@@ -199,12 +206,18 @@ describe('getHealthSnapshot — counter values reflect increments', () => {
     _incrementHealth('tracesDropped', 1);
     _incrementHealth('metricsEmitted', 7);
     _incrementHealth('metricsDropped', 3);
-    _incrementHealth('exportFailures', 4);
-    _incrementHealth('exportRetries', 6);
-    _incrementHealth('asyncBlockingRisk', 8);
-    _incrementHealth('exemplarUnsupported', 9);
-    _recordExportLatency(42);
-    _setLastExportError('timeout');
+    _incrementHealth('exportFailuresLogs', 4);
+    _incrementHealth('exportFailuresTraces', 11);
+    _incrementHealth('exportFailuresMetrics', 12);
+    _incrementHealth('retriesLogs', 6);
+    _incrementHealth('retriesTraces', 13);
+    _incrementHealth('retriesMetrics', 14);
+    _incrementHealth('asyncBlockingRiskLogs', 8);
+    _incrementHealth('asyncBlockingRiskTraces', 15);
+    _incrementHealth('asyncBlockingRiskMetrics', 16);
+    _recordExportLatency('logs', 42);
+    _recordExportLatency('traces', 43);
+    _recordExportLatency('metrics', 44);
 
     const s = getHealthSnapshot();
     expect(s.logsEmitted).toBe(10);
@@ -213,11 +226,17 @@ describe('getHealthSnapshot — counter values reflect increments', () => {
     expect(s.tracesDropped).toBe(1);
     expect(s.metricsEmitted).toBe(7);
     expect(s.metricsDropped).toBe(3);
-    expect(s.exportFailures).toBe(4);
-    expect(s.exportRetries).toBe(6);
-    expect(s.asyncBlockingRisk).toBe(8);
-    expect(s.exemplarUnsupported).toBe(9);
-    expect(s.exportLatencyMs).toBe(42);
-    expect(s.lastExportError).toBe('timeout');
+    expect(s.exportFailuresLogs).toBe(4);
+    expect(s.exportFailuresTraces).toBe(11);
+    expect(s.exportFailuresMetrics).toBe(12);
+    expect(s.retriesLogs).toBe(6);
+    expect(s.retriesTraces).toBe(13);
+    expect(s.retriesMetrics).toBe(14);
+    expect(s.asyncBlockingRiskLogs).toBe(8);
+    expect(s.asyncBlockingRiskTraces).toBe(15);
+    expect(s.asyncBlockingRiskMetrics).toBe(16);
+    expect(s.exportLatencyMsLogs).toBe(42);
+    expect(s.exportLatencyMsTraces).toBe(43);
+    expect(s.exportLatencyMsMetrics).toBe(44);
   });
 });

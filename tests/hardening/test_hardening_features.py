@@ -344,7 +344,7 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
 
     # Unknown signals now raise ValueError instead of falling back to logs
     with pytest.raises(ValueError, match="unknown signal"):
-        health_mod.set_queue_depth("unknown", 2)
+        health_mod.increment_emitted("unknown", 2)
     with pytest.raises(ValueError, match="unknown signal"):
         health_mod.increment_dropped("unknown", 2)
     with pytest.raises(ValueError, match="unknown signal"):
@@ -352,17 +352,14 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
     with pytest.raises(ValueError, match="unknown signal"):
         health_mod.record_export_failure("unknown", RuntimeError("nope"))
     with pytest.raises(ValueError, match="unknown signal"):
-        health_mod.record_export_success("unknown", 3.4)
-    health_mod.increment_exemplar_unsupported(2)
-    snap = health_mod.get_health_snapshot()
-    assert snap.exemplar_unsupported_total == 2
+        health_mod.record_export_latency("unknown", 3.4)
     # Valid signals still work
-    health_mod.set_queue_depth("logs", 2)
+    health_mod.increment_emitted("logs", 2)
     health_mod.increment_dropped("logs", 2)
     health_mod.increment_retries("logs", 1)
-    health_mod.record_export_success("logs", 3.4)
+    health_mod.record_export_latency("logs", latency_ms=3.4)
     snap = health_mod.get_health_snapshot()
-    assert snap.queue_depth_logs == 2
+    assert snap.emitted_logs >= 2
     assert snap.dropped_logs >= 2
     assert snap.retries_logs >= 1
     assert snap.export_latency_ms_logs == 3.4
