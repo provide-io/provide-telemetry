@@ -1,6 +1,6 @@
 # Cross-Language Parity Phase 3 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Align health snapshot structure (25 canonical fields) and PII depth handling (default 8, env var configurable) across Go, TypeScript, and Python.
 
@@ -21,7 +21,7 @@
 - Modify: `go/health_test.go`
 - Modify: all Go files that call health increment functions (search for `_inc`, `_addExportLatency`, `_setLastError`)
 
-- [ ] **Step 1: Write parity test for canonical health fields**
+- [x] **Step 1: Write parity test for canonical health fields**
 
 Add to `go/parity_health_test.go` (new file):
 
@@ -99,12 +99,12 @@ func TestParity_HealthSnapshot_ExportLatencyIsLatest(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails (struct fields don't exist yet)**
+- [x] **Step 2: Run test to verify it fails (struct fields don't exist yet)**
 
 Run: `cd go && go test -run TestParity_HealthSnapshot -v -count=1`
 Expected: Compilation error — fields like `LogsExportFailures`, `LogsCircuitState` don't exist.
 
-- [ ] **Step 3: Rewrite HealthSnapshot struct**
+- [x] **Step 3: Rewrite HealthSnapshot struct**
 
 Replace the entire `HealthSnapshot` struct in `go/health.go` with:
 
@@ -147,7 +147,7 @@ type HealthSnapshot struct {
 }
 ```
 
-- [ ] **Step 4: Update module-level state and increment functions**
+- [x] **Step 4: Update module-level state and increment functions**
 
 Replace the module-level `_health` variable and all increment functions. The key changes:
 
@@ -243,7 +243,7 @@ func GetHealthSnapshot() HealthSnapshot {
 }
 ```
 
-- [ ] **Step 5: Update all callers of old health functions**
+- [x] **Step 5: Update all callers of old health functions**
 
 Search: `cd go && grep -rn '_incLogsExport\|_incSpansExport\|_incMetricsExport\|_addExportLatency\|_setLastError\|_incCircuitBreakerTrips\|_incRetryAttempts\|_incSetupCount\|_incShutdownCount\|\.LogsExportErrors\|\.SpansExportErrors\|\.MetricsExportErrors\|\.LogsExportedOK\|\.SpansExportedOK\|\.MetricsExportedOK\|\.CircuitBreakerTrips\|\.RetryAttempts\|\.ExportLatencyMs\|\.SetupCount\|\.ShutdownCount\|\.LastError' --include='*.go'`
 
@@ -256,7 +256,7 @@ Update each caller:
 - `_incSetupCount()` / `_incShutdownCount()` → remove (not in canonical set)
 - References to old struct fields in tests: `snap.LogsExportErrors` → `snap.LogsExportFailures`, etc.
 
-- [ ] **Step 6: Update `_resetHealth()`**
+- [x] **Step 6: Update `_resetHealth()`**
 
 ```go
 func _resetHealth() {
@@ -274,17 +274,17 @@ func _resetHealth() {
 }
 ```
 
-- [ ] **Step 7: Run full Go test suite**
+- [x] **Step 7: Run full Go test suite**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass. Fix any remaining references to old field names.
 
-- [ ] **Step 8: Run Go coverage gate**
+- [x] **Step 8: Run Go coverage gate**
 
 Run: `cd go && go test -coverprofile=coverage.out -count=1 . && go tool cover -func=coverage.out | tail -1`
 Expected: 100% coverage. Remove dead code (old compat wrappers) if all callers are updated.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add go/health.go go/health_test.go go/parity_health_test.go
@@ -301,7 +301,7 @@ git commit -m "refactor(go): rewrite HealthSnapshot to canonical 25-field layout
 - Modify: `typescript/tests/health.test.ts`
 - Modify: any TS files that reference old field names (exportFailures, exportRetries, asyncBlockingRisk, exportLatencyMs)
 
-- [ ] **Step 1: Write parity test for canonical per-signal fields**
+- [x] **Step 1: Write parity test for canonical per-signal fields**
 
 Add to `typescript/tests/parity.test.ts`:
 
@@ -345,12 +345,12 @@ describe('parity: health snapshot canonical fields', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "canonical fields"`
 Expected: FAIL — fields like `exportFailuresLogs` don't exist yet.
 
-- [ ] **Step 3: Update HealthSnapshot interface to per-signal fields**
+- [x] **Step 3: Update HealthSnapshot interface to per-signal fields**
 
 In `typescript/src/health.ts`, replace the `HealthSnapshot` interface:
 
@@ -391,7 +391,7 @@ export interface HealthSnapshot {
 }
 ```
 
-- [ ] **Step 4: Update _state object and increment functions to per-signal**
+- [x] **Step 4: Update _state object and increment functions to per-signal**
 
 Replace the `_state` object with per-signal fields:
 
@@ -424,7 +424,7 @@ Update `getHealthSnapshot()` to spread the new `_state` fields.
 
 Update `_resetHealthForTests()` to reset all new fields.
 
-- [ ] **Step 5: Update all callers of old aggregate fields**
+- [x] **Step 5: Update all callers of old aggregate fields**
 
 Search: `cd typescript && grep -rn 'exportFailures\b\|exportRetries\b\|asyncBlockingRisk\b\|exportLatencyMs\b\|exemplarUnsupported\b\|lastExportError' --include='*.ts' | grep -v node_modules`
 
@@ -436,12 +436,12 @@ For each caller, update to the per-signal variant. For example:
 
 Remove `exemplarUnsupported` and `lastExportError` from the canonical interface (keep internally if needed).
 
-- [ ] **Step 6: Run full TypeScript test suite**
+- [x] **Step 6: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass. Fix any remaining references to old field names in tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add typescript/src/health.ts typescript/tests/
@@ -456,7 +456,7 @@ git commit -m "refactor(typescript): align HealthSnapshot to canonical 25-field 
 - Modify: `src/provide/telemetry/health.py`
 - Modify: `tests/health/` test files
 
-- [ ] **Step 1: Write parity test for canonical fields**
+- [x] **Step 1: Write parity test for canonical fields**
 
 Add to `tests/parity/test_behavioral_fixtures.py`:
 
@@ -479,12 +479,12 @@ def test_parity_health_snapshot_has_25_canonical_fields() -> None:
     assert snap.setup_error is None
 ```
 
-- [ ] **Step 2: Run test — should pass (Python already has these fields)**
+- [x] **Step 2: Run test — should pass (Python already has these fields)**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_health_snapshot_has_25" --no-cov -q`
 Expected: PASS — Python already has all canonical fields plus extras.
 
-- [ ] **Step 3: Remove non-canonical fields from HealthSnapshot**
+- [x] **Step 3: Remove non-canonical fields from HealthSnapshot**
 
 In `src/provide/telemetry/health.py`, remove from the dataclass:
 - `queue_depth_logs`, `queue_depth_traces`, `queue_depth_metrics`
@@ -503,18 +503,18 @@ Update `get_health_snapshot()` to not populate removed fields.
 
 Update `reset_health_for_tests()` to not reset removed dicts.
 
-- [ ] **Step 4: Update all Python callers of removed functions/fields**
+- [x] **Step 4: Update all Python callers of removed functions/fields**
 
 Search: `grep -rn 'queue_depth\|last_error_\|last_successful_export\|exemplar_unsupported\|circuit_cooldown_remaining\|set_queue_depth\|increment_exemplar_unsupported\|record_export_success' src/ tests/`
 
 Update each caller. Some callers may need to be removed (e.g., tests that only test removed fields).
 
-- [ ] **Step 5: Run full Python test suite**
+- [x] **Step 5: Run full Python test suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass with 100% coverage.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/provide/telemetry/health.py tests/
@@ -530,7 +530,7 @@ git commit -m "refactor(python): trim HealthSnapshot to canonical 25-field layou
 - Modify: `typescript/src/config.ts`
 - Modify: `typescript/tests/parity.test.ts`
 
-- [ ] **Step 1: Write parity test for depth limiting**
+- [x] **Step 1: Write parity test for depth limiting**
 
 Add to `typescript/tests/parity.test.ts`:
 
@@ -577,30 +577,30 @@ describe('parity: pii depth limiting', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts -t "pii depth"`
 Expected: FAIL — `sanitizePayload` doesn't accept `maxDepth` option.
 
-- [ ] **Step 3: Add maxDepth parameter to sanitizePayload**
+- [x] **Step 3: Add maxDepth parameter to sanitizePayload**
 
 In `typescript/src/pii.ts`, modify `sanitizePayload` to accept an options object or a maxDepth parameter. Add depth tracking to all recursive helpers (`_redactSecrets`, `_applyRuleFull`). At depth >= maxDepth, return the value unchanged.
 
 The signature change: `sanitizePayload(payload: Record<string, unknown>, options?: { maxDepth?: number })`. Default maxDepth = 8.
 
-- [ ] **Step 4: Add PROVIDE_LOG_PII_MAX_DEPTH to config**
+- [x] **Step 4: Add PROVIDE_LOG_PII_MAX_DEPTH to config**
 
 In `typescript/src/config.ts`:
 - Add `piiMaxDepth: number` to `TelemetryConfig` interface (default 8)
 - Add `piiMaxDepth: envNonNegativeInt('PROVIDE_LOG_PII_MAX_DEPTH', DEFAULTS.piiMaxDepth)` to `fromEnv()`
 - Wire through to `sanitizePayload` calls in the logger/middleware
 
-- [ ] **Step 5: Run full TypeScript test suite**
+- [x] **Step 5: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/src/pii.ts typescript/src/config.ts typescript/tests/
@@ -616,7 +616,7 @@ git commit -m "feat(typescript): add pii max depth parameter, default 8, env var
 - Modify: `go/config.go` (add PROVIDE_LOG_PII_MAX_DEPTH env var)
 - Modify: `go/parity_pii_test.go`
 
-- [ ] **Step 1: Write parity test for depth=8 default**
+- [x] **Step 1: Write parity test for depth=8 default**
 
 Add to `go/parity_pii_test.go`:
 
@@ -672,12 +672,12 @@ func TestParity_PIIDepth_DefaultIs8(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestParity_PIIDepth_DefaultIs8 -v -count=1`
 Expected: FAIL — current default is 32, so depth 8 is still redacted.
 
-- [ ] **Step 3: Change default from 32 to 8**
+- [x] **Step 3: Change default from 32 to 8**
 
 In `go/pii.go`, change:
 ```go
@@ -686,12 +686,12 @@ const _piiDefaultMax = 8  // was: 32
 
 Also add PROVIDE_LOG_PII_MAX_DEPTH env var parsing in `go/config.go` `DefaultTelemetryConfig()` or the config loading path.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd go && go test -race -count=1 ./...`
 Expected: All tests pass. Some existing tests that rely on depth > 8 may need updating.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add go/pii.go go/config.go go/parity_pii_test.go
@@ -706,7 +706,7 @@ git commit -m "fix(go): change PII default max depth from 32 to 8, add PROVIDE_L
 - Modify: `src/provide/telemetry/config.py`
 - Modify: `tests/parity/test_behavioral_fixtures.py`
 
-- [ ] **Step 1: Write parity test for env var**
+- [x] **Step 1: Write parity test for env var**
 
 Add to `tests/parity/test_behavioral_fixtures.py`:
 
@@ -719,24 +719,24 @@ def test_parity_pii_max_depth_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.pii_max_depth == 3
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_pii_max_depth_env" --no-cov -q`
 Expected: FAIL — `pii_max_depth` field doesn't exist on `TelemetryConfig`.
 
-- [ ] **Step 3: Add pii_max_depth to TelemetryConfig**
+- [x] **Step 3: Add pii_max_depth to TelemetryConfig**
 
 In `src/provide/telemetry/config.py`:
 - Add `pii_max_depth: int = 8` field to `TelemetryConfig` dataclass
 - Add `pii_max_depth=_parse_env_int(os.environ.get("PROVIDE_LOG_PII_MAX_DEPTH"), 8, "PROVIDE_LOG_PII_MAX_DEPTH")` to `from_env()`
 - Wire through to `sanitize_payload` calls in the logger pipeline (pass `config.pii_max_depth` as the `max_depth` argument)
 
-- [ ] **Step 4: Run full Python test suite**
+- [x] **Step 4: Run full Python test suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass with 100% coverage.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/provide/telemetry/config.py tests/parity/test_behavioral_fixtures.py
@@ -751,7 +751,7 @@ git commit -m "feat(python): add PROVIDE_LOG_PII_MAX_DEPTH env var support"
 - Modify: `spec/behavioral_fixtures.yaml`
 - Modify: `spec/telemetry-api.yaml`
 
-- [ ] **Step 1: Add health snapshot and PII depth fixtures**
+- [x] **Step 1: Add health snapshot and PII depth fixtures**
 
 Append to `spec/behavioral_fixtures.yaml`:
 
@@ -801,7 +801,7 @@ pii_depth:
       expected: "untouched"
 ```
 
-- [ ] **Step 2: Update telemetry-api.yaml**
+- [x] **Step 2: Update telemetry-api.yaml**
 
 Add to the `behavioral_parity` section:
 
@@ -824,7 +824,7 @@ Add to the `behavioral_parity` section:
       - applies to all sanitization (default keys, custom rules, secret detection)
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add spec/behavioral_fixtures.yaml spec/telemetry-api.yaml
@@ -837,7 +837,7 @@ git commit -m "spec: add health snapshot and PII depth behavioral fixtures"
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run all test suites**
+- [x] **Step 1: Run all test suites**
 
 ```bash
 uv run python scripts/run_pytest_gate.py
@@ -846,10 +846,10 @@ cd go && go test -race -count=1 ./...
 ```
 Expected: All pass.
 
-- [ ] **Step 2: Verify health snapshot field count parity**
+- [x] **Step 2: Verify health snapshot field count parity**
 
 In each language, call `getHealthSnapshot()` / `get_health_snapshot()` / `GetHealthSnapshot()` and verify exactly 25 fields are returned (8 per signal × 3 + 1 global).
 
-- [ ] **Step 3: Verify PII depth parity**
+- [x] **Step 3: Verify PII depth parity**
 
 In each language, sanitize a 10-level nested payload with default depth (8) and verify depths 0-7 are redacted, depth 8+ is untouched.

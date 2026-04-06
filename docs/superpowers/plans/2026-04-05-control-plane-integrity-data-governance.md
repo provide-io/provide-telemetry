@@ -1,6 +1,6 @@
 # Control-Plane Integrity & Data Governance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Enforce hot/cold config boundary via `RuntimeOverrides` type across Python/Go/TypeScript, then add strippable data governance features (classification, consent, receipts, config masking) via callback hooks.
 
@@ -50,7 +50,7 @@
 - Modify: `src/provide/telemetry/__init__.py`
 - Create: `tests/runtime/test_runtime_overrides.py`
 
-- [ ] **Step 1: Write failing test for RuntimeOverrides type**
+- [x] **Step 1: Write failing test for RuntimeOverrides type**
 
 ```python
 # tests/runtime/test_runtime_overrides.py
@@ -97,12 +97,12 @@ def test_runtime_overrides_all_fields_optional() -> None:
     assert overrides.pii_max_depth is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_runtime_overrides"`
 Expected: FAIL — `RuntimeOverrides` not defined.
 
-- [ ] **Step 3: Implement RuntimeOverrides in config.py**
+- [x] **Step 3: Implement RuntimeOverrides in config.py**
 
 Add to `src/provide/telemetry/config.py` after the `SecurityConfig` class, before `TelemetryConfig`:
 
@@ -125,12 +125,12 @@ class RuntimeOverrides:
 
 Add `"RuntimeOverrides"` to the `__all__` list in `config.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_runtime_overrides"`
 Expected: PASS
 
-- [ ] **Step 5: Write failing test for update_runtime_config accepting RuntimeOverrides**
+- [x] **Step 5: Write failing test for update_runtime_config accepting RuntimeOverrides**
 
 Add to `tests/runtime/test_runtime_overrides.py`:
 
@@ -186,12 +186,12 @@ def test_update_runtime_config_preserves_unset_fields() -> None:
     assert result.backpressure.logs_maxsize == 100
 ```
 
-- [ ] **Step 6: Run test to verify it fails**
+- [x] **Step 6: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_update_runtime_config_accepts"`
 Expected: FAIL — `update_runtime_config` currently expects `TelemetryConfig`.
 
-- [ ] **Step 7: Implement update_runtime_config with RuntimeOverrides**
+- [x] **Step 7: Implement update_runtime_config with RuntimeOverrides**
 
 Modify `src/provide/telemetry/runtime.py`:
 
@@ -229,12 +229,12 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     return get_runtime_config()
 ```
 
-- [ ] **Step 8: Run test to verify it passes**
+- [x] **Step 8: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_update_runtime_config"`
 Expected: PASS
 
-- [ ] **Step 9: Write failing test for reload_runtime_from_env cold-field warning**
+- [x] **Step 9: Write failing test for reload_runtime_from_env cold-field warning**
 
 Add to `tests/runtime/test_runtime_overrides.py`:
 
@@ -261,7 +261,7 @@ def test_reload_runtime_from_env_warns_on_cold_change(caplog: pytest.LogCaptureF
     assert result is not None
 ```
 
-- [ ] **Step 10: Implement reload_runtime_from_env with cold-field warning**
+- [x] **Step 10: Implement reload_runtime_from_env with cold-field warning**
 
 Modify `reload_runtime_from_env` in `src/provide/telemetry/runtime.py`:
 
@@ -295,12 +295,12 @@ def reload_runtime_from_env() -> TelemetryConfig:
     return update_runtime_config(overrides)
 ```
 
-- [ ] **Step 11: Run all runtime tests**
+- [x] **Step 11: Run all runtime tests**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "runtime"`
 Expected: PASS
 
-- [ ] **Step 12: Update __init__.py exports**
+- [x] **Step 12: Update __init__.py exports**
 
 Add `RuntimeOverrides` to the lazy registry in `src/provide/telemetry/__init__.py`:
 
@@ -315,11 +315,11 @@ from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 # Add "RuntimeOverrides" to __all__ list
 ```
 
-- [ ] **Step 13: Update existing tests that pass TelemetryConfig to update_runtime_config**
+- [x] **Step 13: Update existing tests that pass TelemetryConfig to update_runtime_config**
 
 Search for all test files that call `update_runtime_config` with a `TelemetryConfig` and update them to use `RuntimeOverrides`. Check `tests/runtime/test_runtime_mutations.py` — if it passes `TelemetryConfig` to `update_runtime_config`, change it.
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add src/provide/telemetry/config.py src/provide/telemetry/runtime.py \
@@ -339,7 +339,7 @@ git commit -m "feat(python): add RuntimeOverrides type, enforce hot/cold config 
 - Modify: `go/runtime_test.go`
 - Modify: `go/setup_test.go`
 
-- [ ] **Step 1: Write failing test for RuntimeOverrides type**
+- [x] **Step 1: Write failing test for RuntimeOverrides type**
 
 Add to `go/runtime_test.go`:
 
@@ -392,12 +392,12 @@ func TestRuntimeOverridesPreservesUnsetFields(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run "TestRuntimeOverrides" -v ./...`
 Expected: FAIL — `RuntimeOverrides` not defined.
 
-- [ ] **Step 3: Implement RuntimeOverrides in config.go**
+- [x] **Step 3: Implement RuntimeOverrides in config.go**
 
 Add to `go/config.go` after `SecurityConfig`:
 
@@ -414,7 +414,7 @@ type RuntimeOverrides struct {
 }
 ```
 
-- [ ] **Step 4: Change UpdateRuntimeConfig signature in runtime.go**
+- [x] **Step 4: Change UpdateRuntimeConfig signature in runtime.go**
 
 Replace the existing `UpdateRuntimeConfig` in `go/runtime.go`:
 
@@ -454,7 +454,7 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 }
 ```
 
-- [ ] **Step 5: Fix SetupTelemetry idempotent path to return clone**
+- [x] **Step 5: Fix SetupTelemetry idempotent path to return clone**
 
 In `go/setup.go`, change line 99 from:
 
@@ -468,7 +468,7 @@ to:
 return cloneTelemetryConfig(_runtimeCfg), nil
 ```
 
-- [ ] **Step 6: Write test for SetupTelemetry idempotent path returning clone**
+- [x] **Step 6: Write test for SetupTelemetry idempotent path returning clone**
 
 Add to `go/setup_test.go`:
 
@@ -495,7 +495,7 @@ func TestSetupTelemetryIdempotentReturnsCopy(t *testing.T) {
 }
 ```
 
-- [ ] **Step 7: Add ReloadRuntimeFromEnv cold-field warning**
+- [x] **Step 7: Add ReloadRuntimeFromEnv cold-field warning**
 
 Update `ReloadRuntimeFromEnv` in `go/runtime.go`:
 
@@ -546,16 +546,16 @@ func ReloadRuntimeFromEnv() error {
 }
 ```
 
-- [ ] **Step 8: Update existing tests that use old UpdateRuntimeConfig signature**
+- [x] **Step 8: Update existing tests that use old UpdateRuntimeConfig signature**
 
 Search `go/runtime_test.go` and `go/setup_test.go` for calls to `UpdateRuntimeConfig` that pass a mutator function, and update them to use the new `RuntimeOverrides` struct.
 
-- [ ] **Step 9: Run all Go tests**
+- [x] **Step 9: Run all Go tests**
 
 Run: `cd go && go test -race -v ./...`
 Expected: PASS
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add go/config.go go/runtime.go go/setup.go go/runtime_test.go go/setup_test.go
@@ -573,7 +573,7 @@ git commit -m "feat(go): add RuntimeOverrides type, freeze SetupTelemetry idempo
 - Modify: `typescript/package.json`
 - Modify: `typescript/tests/runtime.test.ts`
 
-- [ ] **Step 1: Write failing test for RuntimeOverrides**
+- [x] **Step 1: Write failing test for RuntimeOverrides**
 
 Add to `typescript/tests/runtime.test.ts`:
 
@@ -596,12 +596,12 @@ describe('RuntimeOverrides', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npx vitest run tests/runtime.test.ts`
 Expected: FAIL — `RuntimeOverrides` not exported.
 
-- [ ] **Step 3: Implement RuntimeOverrides interface in config.ts**
+- [x] **Step 3: Implement RuntimeOverrides interface in config.ts**
 
 Add to `typescript/src/config.ts` after the `TelemetryConfig` interface:
 
@@ -648,7 +648,7 @@ export interface RuntimeOverrides {
 }
 ```
 
-- [ ] **Step 4: Change updateRuntimeConfig in runtime.ts**
+- [x] **Step 4: Change updateRuntimeConfig in runtime.ts**
 
 Replace `updateRuntimeConfig` in `typescript/src/runtime.ts`:
 
@@ -685,7 +685,7 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
 }
 ```
 
-- [ ] **Step 5: Write test for frozen getRuntimeConfig**
+- [x] **Step 5: Write test for frozen getRuntimeConfig**
 
 Add to `typescript/tests/runtime.test.ts`:
 
@@ -705,7 +705,7 @@ describe('getRuntimeConfig frozen return', () => {
 });
 ```
 
-- [ ] **Step 6: Add reloadRuntimeFromEnv cold-field warning**
+- [x] **Step 6: Add reloadRuntimeFromEnv cold-field warning**
 
 Update `reloadRuntimeFromEnv` in `typescript/src/runtime.ts`:
 
@@ -763,7 +763,7 @@ export function reloadRuntimeFromEnv(): void {
 }
 ```
 
-- [ ] **Step 7: Fix lint gate — add --max-warnings=0**
+- [x] **Step 7: Fix lint gate — add --max-warnings=0**
 
 In `typescript/package.json`, change:
 
@@ -777,7 +777,7 @@ to:
 "lint": "eslint src tests --max-warnings=0",
 ```
 
-- [ ] **Step 8: Export RuntimeOverrides from index.ts**
+- [x] **Step 8: Export RuntimeOverrides from index.ts**
 
 Add to `typescript/src/index.ts`:
 
@@ -785,21 +785,21 @@ Add to `typescript/src/index.ts`:
 export type { RuntimeOverrides } from './config';
 ```
 
-- [ ] **Step 9: Update existing tests using old updateRuntimeConfig signature**
+- [x] **Step 9: Update existing tests using old updateRuntimeConfig signature**
 
 Search `typescript/tests/runtime.test.ts` for calls passing `Partial<TelemetryConfig>` with cold fields (like `serviceName`) and update them to pass `RuntimeOverrides` with only hot fields.
 
-- [ ] **Step 10: Run all TypeScript tests**
+- [x] **Step 10: Run all TypeScript tests**
 
 Run: `cd typescript && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 11: Run lint to verify --max-warnings=0 is enforced**
+- [x] **Step 11: Run lint to verify --max-warnings=0 is enforced**
 
 Run: `cd typescript && npm run lint`
 Expected: PASS with zero warnings (or fail if existing warnings need fixing).
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add typescript/src/config.ts typescript/src/runtime.ts typescript/src/index.ts \
@@ -814,7 +814,7 @@ git commit -m "feat(typescript): add RuntimeOverrides type, frozen returns, stri
 **Files:**
 - Modify: `spec/telemetry-api.yaml`
 
-- [ ] **Step 1: Add RuntimeOverrides to spec**
+- [x] **Step 1: Add RuntimeOverrides to spec**
 
 Add under `types:` section in `spec/telemetry-api.yaml`:
 
@@ -834,12 +834,12 @@ Update `update_runtime_config` note:
       note: "Accepts RuntimeOverrides (hot fields only), not full TelemetryConfig"
 ```
 
-- [ ] **Step 2: Run conformance validator**
+- [x] **Step 2: Run conformance validator**
 
 Run: `uv run python spec/validate_conformance.py`
 Expected: PASS — all three languages export `RuntimeOverrides`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add spec/telemetry-api.yaml
@@ -857,7 +857,7 @@ git commit -m "spec: add RuntimeOverrides type, update update_runtime_config sig
 - Modify: `go/pii.go`
 - Modify: `typescript/src/pii.ts`
 
-- [ ] **Step 1: Write failing test for classification hook slot (Python)**
+- [x] **Step 1: Write failing test for classification hook slot (Python)**
 
 Create `tests/governance/test_classification.py`:
 
@@ -915,12 +915,12 @@ def test_receipt_hook_called_on_redaction() -> None:
         pii_mod._receipt_hook = None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_classification_hook"`
 Expected: FAIL — `_classification_hook` not defined.
 
-- [ ] **Step 3: Add hook slots to Python pii.py**
+- [x] **Step 3: Add hook slots to Python pii.py**
 
 Add module-level hooks after `_rules`:
 
@@ -962,12 +962,12 @@ def reset_pii_rules_for_tests() -> None:
     _receipt_hook = None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_classification_hook or test_receipt_hook"`
 Expected: PASS
 
-- [ ] **Step 5: Add hook slots to Go pii.go**
+- [x] **Step 5: Add hook slots to Go pii.go**
 
 Add to `go/pii.go`:
 
@@ -995,7 +995,7 @@ func SetReceiptHook(fn func(string, string, any)) {
 
 Call `_receiptHook` in `_sanitizeValue` when a redaction occurs, and `_classificationHook` during key traversal.
 
-- [ ] **Step 6: Add hook slots to TypeScript pii.ts**
+- [x] **Step 6: Add hook slots to TypeScript pii.ts**
 
 Add to `typescript/src/pii.ts`:
 
@@ -1014,11 +1014,11 @@ export function setReceiptHook(fn: ((fieldPath: string, action: string, original
 
 Call hooks in `sanitizePayload` and `_applyMode` similar to Python.
 
-- [ ] **Step 7: Write Go and TS tests for hooks**
+- [x] **Step 7: Write Go and TS tests for hooks**
 
 Create `go/pii_hooks_test.go` and add hook tests to `typescript/tests/pii.test.ts` following the same patterns as the Python tests.
 
-- [ ] **Step 8: Run all tests in all 3 languages**
+- [x] **Step 8: Run all tests in all 3 languages**
 
 ```bash
 uv run python scripts/run_pytest_gate.py --no-cov -q
@@ -1028,7 +1028,7 @@ cd typescript && npx vitest run
 
 Expected: PASS in all three.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/provide/telemetry/pii.py go/pii.go typescript/src/pii.ts \
@@ -1048,7 +1048,7 @@ git commit -m "feat: add classification and receipt hook slots to PII engine (al
 - Create: `go/config_masking_test.go`
 - Create: `typescript/tests/config-masking.test.ts`
 
-- [ ] **Step 1: Write failing test (Python)**
+- [x] **Step 1: Write failing test (Python)**
 
 ```python
 # tests/governance/test_config_masking.py
@@ -1106,12 +1106,12 @@ def test_short_header_value_fully_masked() -> None:
     assert "****" in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_config_masking"`
 Expected: FAIL — `__repr__` not defined, `redacted_repr` not found.
 
-- [ ] **Step 3: Implement masking in Python config.py**
+- [x] **Step 3: Implement masking in Python config.py**
 
 Add helper functions and `__repr__`/`redacted_repr` to `config.py`:
 
@@ -1159,12 +1159,12 @@ def __repr__(self) -> str:
 
 Add similar `__repr__` to `LoggingConfig`, `TracingConfig`, `MetricsConfig` that mask their own `otlp_headers` and `otlp_endpoint`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_config_masking"`
 Expected: PASS
 
-- [ ] **Step 5: Implement masking in Go config.go**
+- [x] **Step 5: Implement masking in Go config.go**
 
 Add `String()` and `GoString()` to `TelemetryConfig`:
 
@@ -1207,11 +1207,11 @@ func (c *TelemetryConfig) String() string  { return c.RedactedString() }
 func (c *TelemetryConfig) GoString() string { return c.RedactedString() }
 ```
 
-- [ ] **Step 6: Write Go tests**
+- [x] **Step 6: Write Go tests**
 
 Create `go/config_masking_test.go` with tests mirroring the Python ones.
 
-- [ ] **Step 7: Implement masking in TypeScript config.ts**
+- [x] **Step 7: Implement masking in TypeScript config.ts**
 
 Add `redactedString()` and `toJSON()` as standalone functions (TS uses interfaces, not classes):
 
@@ -1245,15 +1245,15 @@ function maskEndpointUrl(raw: string): string {
 }
 ```
 
-- [ ] **Step 8: Write TypeScript tests**
+- [x] **Step 8: Write TypeScript tests**
 
 Create `typescript/tests/config-masking.test.ts` mirroring the Python patterns.
 
-- [ ] **Step 9: Run all tests in all 3 languages**
+- [x] **Step 9: Run all tests in all 3 languages**
 
 Expected: PASS
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/provide/telemetry/config.py go/config.go typescript/src/config.ts \
@@ -1275,7 +1275,7 @@ git commit -m "feat: add config secret masking to __repr__/String/redactConfig (
 - Modify: `src/provide/telemetry/__init__.py`
 - Modify: `typescript/src/index.ts`
 
-- [ ] **Step 1: Write failing test (Python)**
+- [x] **Step 1: Write failing test (Python)**
 
 ```python
 # tests/governance/test_classification_module.py
@@ -1352,12 +1352,12 @@ def test_no_rules_registered_means_no_overhead() -> None:
     assert "__email__class" not in result
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_classification_module"`
 Expected: FAIL — `classification` module not found.
 
-- [ ] **Step 3: Implement Python classification.py**
+- [x] **Step 3: Implement Python classification.py**
 
 Create `src/provide/telemetry/classification.py`:
 
@@ -1457,28 +1457,28 @@ def _reset_classification_for_tests() -> None:
     pii_mod._classification_hook = None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_classification_module"`
 Expected: PASS
 
-- [ ] **Step 5: Implement Go classification.go**
+- [x] **Step 5: Implement Go classification.go**
 
 Create `go/classification.go` with the same types and hook registration pattern, using `sync.RWMutex` and `filepath.Match` for glob patterns.
 
-- [ ] **Step 6: Write Go tests in go/classification_test.go**
+- [x] **Step 6: Write Go tests in go/classification_test.go**
 
 Mirror the Python test patterns.
 
-- [ ] **Step 7: Implement TypeScript classification.ts**
+- [x] **Step 7: Implement TypeScript classification.ts**
 
 Create `typescript/src/classification.ts` with the same types. Use `minimatch` or simple glob matching. Register hook on `_classificationHook`.
 
-- [ ] **Step 8: Write TypeScript tests in typescript/tests/classification.test.ts**
+- [x] **Step 8: Write TypeScript tests in typescript/tests/classification.test.ts**
 
 Mirror the Python test patterns.
 
-- [ ] **Step 9: Update exports — Python __init__.py and TypeScript index.ts**
+- [x] **Step 9: Update exports — Python __init__.py and TypeScript index.ts**
 
 Python — add to `__init__.py` with `try/except ImportError` for strippability:
 
@@ -1499,11 +1499,11 @@ except Exception:
 
 TypeScript — add conditional re-export in `index.ts`.
 
-- [ ] **Step 10: Run all tests in all 3 languages**
+- [x] **Step 10: Run all tests in all 3 languages**
 
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/provide/telemetry/classification.py go/classification.go \
@@ -1525,7 +1525,7 @@ git commit -m "feat: add data classification module with hook-based PII integrat
 - Create: `go/consent_test.go`
 - Create: `typescript/tests/consent.test.ts`
 
-- [ ] **Step 1: Write failing test (Python)**
+- [x] **Step 1: Write failing test (Python)**
 
 ```python
 # tests/governance/test_consent.py
@@ -1596,12 +1596,12 @@ def test_set_consent_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_consent_level() == ConsentLevel.MINIMAL
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_consent"`
 Expected: FAIL — `consent` module not found.
 
-- [ ] **Step 3: Implement Python consent.py**
+- [x] **Step 3: Implement Python consent.py**
 
 Create `src/provide/telemetry/consent.py`:
 
@@ -1688,36 +1688,36 @@ def _reset_consent_for_tests() -> None:
         _level = ConsentLevel.FULL
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_consent"`
 Expected: PASS
 
-- [ ] **Step 5: Implement Go consent.go**
+- [x] **Step 5: Implement Go consent.go**
 
 Create `go/consent.go` with the same enum, `ShouldAllow`, and `SetConsentLevel` using `sync.RWMutex`.
 
-- [ ] **Step 6: Write Go tests in go/consent_test.go**
+- [x] **Step 6: Write Go tests in go/consent_test.go**
 
 Mirror the Python test patterns.
 
-- [ ] **Step 7: Implement TypeScript consent.ts**
+- [x] **Step 7: Implement TypeScript consent.ts**
 
 Create `typescript/src/consent.ts` with the same logic. Export from `index.ts`.
 
-- [ ] **Step 8: Write TypeScript tests in typescript/tests/consent.test.ts**
+- [x] **Step 8: Write TypeScript tests in typescript/tests/consent.test.ts**
 
 Mirror the Python test patterns.
 
-- [ ] **Step 9: Update exports — Python __init__.py and TypeScript index.ts**
+- [x] **Step 9: Update exports — Python __init__.py and TypeScript index.ts**
 
 Same pattern as classification — `try/except` in Python, conditional re-export in TS.
 
-- [ ] **Step 10: Run all tests in all 3 languages**
+- [x] **Step 10: Run all tests in all 3 languages**
 
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/provide/telemetry/consent.py go/consent.go typescript/src/consent.ts \
@@ -1738,7 +1738,7 @@ git commit -m "feat: add consent-aware collection module (all languages)"
 - Create: `go/receipts_test.go`
 - Create: `typescript/tests/receipts.test.ts`
 
-- [ ] **Step 1: Write failing test (Python)**
+- [x] **Step 1: Write failing test (Python)**
 
 ```python
 # tests/governance/test_receipts.py
@@ -1826,12 +1826,12 @@ def test_receipt_tamper_detection() -> None:
     assert r.hmac != tampered_hmac
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_receipts"`
 Expected: FAIL — `receipts` module not found.
 
-- [ ] **Step 3: Implement Python receipts.py**
+- [x] **Step 3: Implement Python receipts.py**
 
 Create `src/provide/telemetry/receipts.py`:
 
@@ -1956,36 +1956,36 @@ def _reset_receipts_for_tests() -> None:
     pii_mod._receipt_hook = None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_receipts"`
 Expected: PASS
 
-- [ ] **Step 5: Implement Go receipts.go**
+- [x] **Step 5: Implement Go receipts.go**
 
 Create `go/receipts.go` with the same `RedactionReceipt` struct, HMAC signing, and hook registration using `crypto/hmac` and `crypto/sha256` from stdlib.
 
-- [ ] **Step 6: Write Go tests in go/receipts_test.go**
+- [x] **Step 6: Write Go tests in go/receipts_test.go**
 
 Mirror the Python test patterns — verify HMAC correctness, tamper detection, disabled-by-default.
 
-- [ ] **Step 7: Implement TypeScript receipts.ts**
+- [x] **Step 7: Implement TypeScript receipts.ts**
 
 Create `typescript/src/receipts.ts` using Node.js `crypto.createHmac` and `crypto.createHash`. Register hook on `_receiptHook`.
 
-- [ ] **Step 8: Write TypeScript tests in typescript/tests/receipts.test.ts**
+- [x] **Step 8: Write TypeScript tests in typescript/tests/receipts.test.ts**
 
 Mirror the Python test patterns.
 
-- [ ] **Step 9: Update exports**
+- [x] **Step 9: Update exports**
 
 Same pattern — `try/except` in Python `__init__.py`, conditional re-export in TS `index.ts`.
 
-- [ ] **Step 10: Run all tests in all 3 languages**
+- [x] **Step 10: Run all tests in all 3 languages**
 
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/provide/telemetry/receipts.py go/receipts.go typescript/src/receipts.ts \
@@ -2003,7 +2003,7 @@ git commit -m "feat: add cryptographic redaction receipts module (all languages)
 **Files:**
 - Modify: `spec/telemetry-api.yaml`
 
-- [ ] **Step 1: Add governance types and APIs to spec**
+- [x] **Step 1: Add governance types and APIs to spec**
 
 Add under appropriate sections in `spec/telemetry-api.yaml`:
 
@@ -2060,12 +2060,12 @@ Add new config env vars:
       - REDACTION_RECEIPT_MODE
 ```
 
-- [ ] **Step 2: Run conformance validator**
+- [x] **Step 2: Run conformance validator**
 
 Run: `uv run python spec/validate_conformance.py`
 Expected: PASS (governance symbols are `required: false`).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add spec/telemetry-api.yaml
@@ -2081,7 +2081,7 @@ git commit -m "spec: add governance types (classification, consent, receipts) as
 - Create: `e2e/governance_integration_test.go`
 - Create: `e2e/governance-integration.test.ts`
 
-- [ ] **Step 1: Write Python integration test**
+- [x] **Step 1: Write Python integration test**
 
 ```python
 # e2e/test_governance_integration.py
@@ -2164,15 +2164,15 @@ def test_consent_blocks_before_classification() -> None:
     assert should_allow("metrics") is False
 ```
 
-- [ ] **Step 2: Write Go integration test**
+- [x] **Step 2: Write Go integration test**
 
 Create `e2e/governance_integration_test.go` following the same pattern — register classification rules, enable receipts, run `SanitizePayload`, verify tags + receipts + HMAC.
 
-- [ ] **Step 3: Write TypeScript integration test**
+- [x] **Step 3: Write TypeScript integration test**
 
 Create `e2e/governance-integration.test.ts` following the same pattern.
 
-- [ ] **Step 4: Run all integration tests**
+- [x] **Step 4: Run all integration tests**
 
 ```bash
 uv run python scripts/run_pytest_gate.py --no-cov -q e2e/test_governance_integration.py
@@ -2182,7 +2182,7 @@ cd typescript && npx vitest run e2e/governance-integration.test.ts
 
 Expected: PASS in all three.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add e2e/test_governance_integration.py e2e/governance_integration_test.go \
@@ -2197,7 +2197,7 @@ git commit -m "test: add cross-language governance integration tests"
 **Files:**
 - Create: `tests/governance/test_strippability.py`
 
-- [ ] **Step 1: Write strippability test**
+- [x] **Step 1: Write strippability test**
 
 ```python
 # tests/governance/test_strippability.py
@@ -2243,12 +2243,12 @@ def test_library_works_without_receipts_module() -> None:
         assert result["password"] == "***"
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `uv run python scripts/run_pytest_gate.py --no-cov -q -k "test_strippability"`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/governance/test_strippability.py
@@ -2259,12 +2259,12 @@ git commit -m "test: verify governance modules are safely strippable"
 
 ### Task 13: Full coverage and quality gates
 
-- [ ] **Step 1: Run Python full coverage gate**
+- [x] **Step 1: Run Python full coverage gate**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: 100% branch coverage, all tests pass.
 
-- [ ] **Step 2: Run Python linting and type checking**
+- [x] **Step 2: Run Python linting and type checking**
 
 ```bash
 uv run ruff format --check .
@@ -2276,27 +2276,27 @@ uv run codespell
 
 Expected: PASS
 
-- [ ] **Step 3: Run Go full test suite**
+- [x] **Step 3: Run Go full test suite**
 
 Run: `cd go && go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
 Expected: All tests pass, high coverage.
 
-- [ ] **Step 4: Run TypeScript full test suite**
+- [x] **Step 4: Run TypeScript full test suite**
 
 Run: `cd typescript && npx vitest run --coverage`
 Expected: All tests pass.
 
-- [ ] **Step 5: Run LOC gate**
+- [x] **Step 5: Run LOC gate**
 
 Run: `uv run python scripts/check_max_loc.py --max-lines 500`
 Expected: PASS — no file exceeds 500 lines.
 
-- [ ] **Step 6: Run SPDX header check**
+- [x] **Step 6: Run SPDX header check**
 
 Run: `uv run python scripts/check_spdx_headers.py`
 Expected: PASS — all new files have headers.
 
-- [ ] **Step 7: Fix any failures, commit**
+- [x] **Step 7: Fix any failures, commit**
 
 ```bash
 git add -A

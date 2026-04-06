@@ -1,6 +1,6 @@
 # Enterprise Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add enterprise governance, automated releases, supply chain security, and operational hardening to provide-telemetry.
 
@@ -17,7 +17,7 @@
 **Files:**
 - Create: `.github/CODEOWNERS`
 
-- [ ] **Step 1: Create the CODEOWNERS file**
+- [x] **Step 1: Create the CODEOWNERS file**
 
 ```
 # Default owner for everything
@@ -34,7 +34,7 @@
 /spec/ @tim
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/CODEOWNERS
@@ -48,23 +48,23 @@ git commit -m "ci: add CODEOWNERS for code review assignment"
 **Files:**
 - Create: `.github/PULL_REQUEST_TEMPLATE.md`
 
-- [ ] **Step 1: Create the PR template**
+- [x] **Step 1: Create the PR template**
 
 ```markdown
 ## Summary
 <!-- What changed and why -->
 
 ## Test Plan
-- [ ] Tests pass locally (`uv run python scripts/run_pytest_gate.py`)
-- [ ] TypeScript tests pass (`cd typescript && npm run test:coverage`)
-- [ ] Lint/type checks clean (`uv run ruff check . && uv run mypy src tests && uv run ty check src tests`)
+- [x] Tests pass locally (`uv run python scripts/run_pytest_gate.py`)
+- [x] TypeScript tests pass (`cd typescript && npm run test:coverage`)
+- [x] Lint/type checks clean (`uv run ruff check . && uv run mypy src tests && uv run ty check src tests`)
 
 ## Breaking Changes
 <!-- List any breaking changes, or "None" -->
 None
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/PULL_REQUEST_TEMPLATE.md
@@ -78,7 +78,7 @@ git commit -m "ci: add pull request template"
 **Files:**
 - Modify: `.github/workflows/ci-python.yml`
 
-- [ ] **Step 1: Add the mutation-pr job**
+- [x] **Step 1: Add the mutation-pr job**
 
 Add this job after the existing `mutation-gate` job in `.github/workflows/ci-python.yml`:
 
@@ -125,7 +125,7 @@ Add this job after the existing `mutation-gate` job in `.github/workflows/ci-pyt
           echo "All mutants killed in changed files"
 ```
 
-- [ ] **Step 2: Verify YAML syntax**
+- [x] **Step 2: Verify YAML syntax**
 
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci-python.yml'))"
@@ -133,7 +133,7 @@ python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci-python.yml'))
 
 Expected: No errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/ci-python.yml
@@ -147,7 +147,7 @@ git commit -m "ci: add changed-files mutation gate for Python PRs"
 **Files:**
 - Modify: `.github/workflows/ci-typescript.yml`
 
-- [ ] **Step 1: Add the typescript-mutation-pr job**
+- [x] **Step 1: Add the typescript-mutation-pr job**
 
 Add this job after the existing `typescript-mutation-gate` job in `.github/workflows/ci-typescript.yml`:
 
@@ -183,13 +183,13 @@ Add this job after the existing `typescript-mutation-gate` job in `.github/workf
         run: npx stryker run --mutate "${{ steps.changed.outputs.files }}"
 ```
 
-- [ ] **Step 2: Verify YAML syntax**
+- [x] **Step 2: Verify YAML syntax**
 
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci-typescript.yml'))"
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/ci-typescript.yml
@@ -203,7 +203,7 @@ git commit -m "ci: add changed-files mutation gate for TypeScript PRs"
 **Files:**
 - Create: `docs/BRANCH_PROTECTION.md`
 
-- [ ] **Step 1: Create the branch protection documentation**
+- [x] **Step 1: Create the branch protection documentation**
 
 ```markdown
 # Branch Protection Configuration
@@ -257,7 +257,7 @@ EOF
 ```
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/BRANCH_PROTECTION.md
@@ -274,7 +274,7 @@ git commit -m "docs: add branch protection configuration guide"
 - Create: `commitlint.config.js`
 - Modify: `.pre-commit-config.yaml`
 
-- [ ] **Step 1: Create commitlint config**
+- [x] **Step 1: Create commitlint config**
 
 ```javascript
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
@@ -294,7 +294,7 @@ export default {
 };
 ```
 
-- [ ] **Step 2: Install commitlint as a dev dependency**
+- [x] **Step 2: Install commitlint as a dev dependency**
 
 ```bash
 npm install --save-dev @commitlint/cli @commitlint/config-conventional --prefix .
@@ -304,7 +304,7 @@ Note: This creates a root-level `package.json` for commitlint only. Alternativel
 
 Actually, a simpler approach: use `npx` in the pre-commit hook — no install needed.
 
-- [ ] **Step 3: Add commitlint hook to pre-commit**
+- [x] **Step 3: Add commitlint hook to pre-commit**
 
 Add this to `.pre-commit-config.yaml` after the `codespell` repo:
 
@@ -317,7 +317,7 @@ Add this to `.pre-commit-config.yaml` after the `codespell` repo:
         additional_dependencies: ['@commitlint/config-conventional']
 ```
 
-- [ ] **Step 4: Test the hook locally**
+- [x] **Step 4: Test the hook locally**
 
 ```bash
 echo "bad commit message" | npx commitlint
@@ -331,7 +331,7 @@ echo "feat: add commitlint" | npx commitlint
 
 Expected: Pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add commitlint.config.js .pre-commit-config.yaml
@@ -347,7 +347,7 @@ git commit -m "ci: add commitlint for conventional commit enforcement"
 - Create: `.release-please-manifest.json`
 - Create: `.github/workflows/release-please.yml`
 
-- [ ] **Step 1: Create release-please config**
+- [x] **Step 1: Create release-please config**
 
 Create `.release-please-config.json`:
 
@@ -382,7 +382,7 @@ Create `.release-please-config.json`:
 }
 ```
 
-- [ ] **Step 2: Create the manifest (current versions)**
+- [x] **Step 2: Create the manifest (current versions)**
 
 Create `.release-please-manifest.json`:
 
@@ -393,7 +393,7 @@ Create `.release-please-manifest.json`:
 }
 ```
 
-- [ ] **Step 3: Create the release-please workflow**
+- [x] **Step 3: Create the release-please workflow**
 
 Create `.github/workflows/release-please.yml`:
 
@@ -418,7 +418,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .release-please-config.json .release-please-manifest.json .github/workflows/release-please.yml
@@ -434,7 +434,7 @@ git commit -m "ci: configure release-please for automated releases"
 **Files:**
 - Create: `.github/dependabot.yml`
 
-- [ ] **Step 1: Create Dependabot config**
+- [x] **Step 1: Create Dependabot config**
 
 ```yaml
 version: 2
@@ -470,7 +470,7 @@ updates:
     labels: ["dependencies", "ci"]
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/dependabot.yml
@@ -484,7 +484,7 @@ git commit -m "ci: add Dependabot for automated dependency updates"
 **Files:**
 - Create: `.github/workflows/codeql.yml`
 
-- [ ] **Step 1: Create CodeQL workflow**
+- [x] **Step 1: Create CodeQL workflow**
 
 ```yaml
 name: CodeQL
@@ -520,7 +520,7 @@ jobs:
           category: "/language:${{ matrix.language }}"
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/workflows/codeql.yml
@@ -534,7 +534,7 @@ git commit -m "ci: add CodeQL SAST scanning for Python and TypeScript"
 **Files:**
 - Modify: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Add SBOM step to Python build job**
+- [x] **Step 1: Add SBOM step to Python build job**
 
 In the `build` job of `release.yml`, add after the `uv run twine check dist/*` step:
 
@@ -551,7 +551,7 @@ In the `build` job of `release.yml`, add after the `uv run twine check dist/*` s
 
 Replace the existing `upload-artifact` step (don't duplicate).
 
-- [ ] **Step 2: Add SBOM step to TypeScript build job**
+- [x] **Step 2: Add SBOM step to TypeScript build job**
 
 In the `build-typescript` job, add after `npm run build`:
 
@@ -566,7 +566,7 @@ In the `build-typescript` job, add after `npm run build`:
 
 Replace the existing `upload-artifact` step.
 
-- [ ] **Step 3: Add SBOM upload to GitHub Release**
+- [x] **Step 3: Add SBOM upload to GitHub Release**
 
 Add a new job after `publish-npm`:
 
@@ -596,7 +596,7 @@ Add a new job after `publish-npm`:
             --clobber
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/release.yml
@@ -610,7 +610,7 @@ git commit -m "ci: add CycloneDX SBOM generation to release pipeline"
 **Files:**
 - Modify: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Add signing step to the upload-sboms job**
+- [x] **Step 1: Add signing step to the upload-sboms job**
 
 Rename the job to `sign-and-upload` and add signing before upload:
 
@@ -645,7 +645,7 @@ Rename the job to `sign-and-upload` and add signing before upload:
             --clobber
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/workflows/release.yml
@@ -667,7 +667,7 @@ git commit -m "ci: add Sigstore artifact signing to release pipeline"
 - Modify: `.github/workflows/release-please.yml`
 - Modify: `.github/workflows/codeql.yml`
 
-- [ ] **Step 1: Replace all action references with SHA pins**
+- [x] **Step 1: Replace all action references with SHA pins**
 
 Apply these replacements across ALL workflow files:
 
@@ -698,7 +698,7 @@ gh api repos/sigstore/gh-action-sigstore-python/git/ref/tags/v3 --jq '.object.sh
 
 Apply the same pattern: `owner/action@<full-sha>  # <tag>`.
 
-- [ ] **Step 2: Verify all workflow files parse correctly**
+- [x] **Step 2: Verify all workflow files parse correctly**
 
 ```bash
 for f in .github/workflows/*.yml; do
@@ -708,7 +708,7 @@ done
 
 Expected: All OK.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/
@@ -723,7 +723,7 @@ git commit -m "ci: pin all GitHub Actions to SHA for supply chain security"
 - Modify: `pyproject.toml` (add pytest-rerunfailures dependency)
 - Modify: `tests/performance/test_performance_smoke.py`
 
-- [ ] **Step 1: Add pytest-rerunfailures to dev dependencies**
+- [x] **Step 1: Add pytest-rerunfailures to dev dependencies**
 
 In `pyproject.toml`, add to the `[dependency-groups] dev` list:
 
@@ -731,7 +731,7 @@ In `pyproject.toml`, add to the `[dependency-groups] dev` list:
   "pytest-rerunfailures>=14.0",
 ```
 
-- [ ] **Step 2: Restore tight performance threshold and add flaky marker**
+- [x] **Step 2: Restore tight performance threshold and add flaky marker**
 
 In `tests/performance/test_performance_smoke.py`, change:
 
@@ -754,13 +754,13 @@ class TestEventNamePerformance:
 
 This requires importing or registering the marker. `pytest-rerunfailures` auto-registers it.
 
-- [ ] **Step 3: Sync dependencies**
+- [x] **Step 3: Sync dependencies**
 
 ```bash
 uv sync --group dev
 ```
 
-- [ ] **Step 4: Run performance tests to verify**
+- [x] **Step 4: Run performance tests to verify**
 
 ```bash
 uv run python scripts/run_pytest_gate.py -k "TestEventNamePerformance" --no-cov -q
@@ -768,7 +768,7 @@ uv run python scripts/run_pytest_gate.py -k "TestEventNamePerformance" --no-cov 
 
 Expected: PASS (with potential reruns shown).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml uv.lock tests/performance/test_performance_smoke.py
@@ -779,7 +779,7 @@ git commit -m "test: add pytest-rerunfailures for flaky performance tests"
 
 ### Task 14: Final verification
 
-- [ ] **Step 1: Run full Python test suite**
+- [x] **Step 1: Run full Python test suite**
 
 ```bash
 uv run python scripts/run_pytest_gate.py
@@ -787,7 +787,7 @@ uv run python scripts/run_pytest_gate.py
 
 Expected: PASS with 100% coverage.
 
-- [ ] **Step 2: Run full TypeScript test suite**
+- [x] **Step 2: Run full TypeScript test suite**
 
 ```bash
 cd typescript && npm run test:coverage && cd ..
@@ -795,7 +795,7 @@ cd typescript && npm run test:coverage && cd ..
 
 Expected: PASS.
 
-- [ ] **Step 3: Run all linters**
+- [x] **Step 3: Run all linters**
 
 ```bash
 uv run ruff check .
@@ -806,7 +806,7 @@ uv run vulture src/ tests/
 
 Expected: All clean.
 
-- [ ] **Step 4: Validate all workflow YAML**
+- [x] **Step 4: Validate all workflow YAML**
 
 ```bash
 for f in .github/workflows/*.yml; do
@@ -816,7 +816,7 @@ done
 
 Expected: All OK.
 
-- [ ] **Step 5: List all new/modified files**
+- [x] **Step 5: List all new/modified files**
 
 ```bash
 git diff --stat origin/main...HEAD

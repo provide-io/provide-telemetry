@@ -1,6 +1,6 @@
 # Slim Core: Lazy Loading for FaaS
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Reduce `import provide.telemetry` from 34 eagerly-loaded modules to ~8 for the core path (logger + trace + config), with all other modules loaded lazily on first access. TypeScript gets the same benefit via ESM tree-shaking (already mostly works, just needs SLO to stop being eagerly imported).
 
@@ -17,7 +17,7 @@
 
 The end state: only `setup_telemetry`, `shutdown_telemetry`, `get_logger`, `logger`, `bind_context`, `unbind_context`, `clear_context`, `trace`, `tracer`, `get_tracer`, `get_trace_context`, `set_trace_context`, `TelemetryError`, `ConfigurationError`, `EventSchemaError`, `event_name`, `__version__` are eagerly imported. Everything else is lazy.
 
-- [ ] **Step 1: Write the test that verifies lazy loading**
+- [x] **Step 1: Write the test that verifies lazy loading**
 
 Create `tests/test_lazy_import.py`:
 
@@ -122,12 +122,12 @@ def test_lazy_access_nonexistent_raises_attribute_error() -> None:
         from provide.telemetry import no_such_symbol  # type: ignore[attr-defined]  # noqa: F401
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_lazy_import.py -v --no-cov`
 Expected: `test_bare_import_does_not_load_heavy_modules` FAIL (18 unexpected modules loaded eagerly)
 
-- [ ] **Step 3: Rewrite `__init__.py` as lazy facade**
+- [x] **Step 3: Rewrite `__init__.py` as lazy facade**
 
 Replace the entire content of `src/provide/telemetry/__init__.py` with:
 
@@ -291,17 +291,17 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run lazy import tests**
+- [x] **Step 4: Run lazy import tests**
 
 Run: `uv run python -m pytest tests/test_lazy_import.py -v --no-cov`
 Expected: All 6 tests PASS
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: 100% coverage, all tests pass (1298+)
 
-- [ ] **Step 6: Verify module count dropped**
+- [x] **Step 6: Verify module count dropped**
 
 Run:
 ```bash
@@ -317,12 +317,12 @@ for m in loaded: print(f'  {m}')
 ```
 Expected: ~10-12 modules (down from 34)
 
-- [ ] **Step 7: Run mutation gate**
+- [x] **Step 7: Run mutation gate**
 
 Run: `uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100`
 Expected: 0 surviving mutants
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/provide/telemetry/__init__.py tests/test_lazy_import.py
@@ -343,7 +343,7 @@ Reduces import from 34 modules to ~10 for consumers who only need logging + trac
 - Modify: `typescript/package.json`
 - Create: `typescript/tests/treeshake.test.ts`
 
-- [ ] **Step 1: Write the test that verifies sideEffects is set**
+- [x] **Step 1: Write the test that verifies sideEffects is set**
 
 Create `typescript/tests/treeshake.test.ts`:
 
@@ -365,12 +365,12 @@ describe('tree-shaking support', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npm test -- tests/treeshake.test.ts`
 Expected: `sideEffects` test FAIL (field not present yet)
 
-- [ ] **Step 3: Add `sideEffects: false` to `package.json`**
+- [x] **Step 3: Add `sideEffects: false` to `package.json`**
 
 In `typescript/package.json`, add at the top level (after `"type": "module"`):
 
@@ -378,17 +378,17 @@ In `typescript/package.json`, add at the top level (after `"type": "module"`):
 "sideEffects": false,
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd typescript && npm test -- tests/treeshake.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Run full TypeScript test suite with coverage**
+- [x] **Step 5: Run full TypeScript test suite with coverage**
 
 Run: `cd typescript && npm test -- --coverage`
 Expected: 804+ tests pass, 100% coverage
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/package.json typescript/tests/treeshake.test.ts
@@ -401,7 +401,7 @@ git commit -m "perf(ts): add sideEffects: false for tree-shaking in FaaS bundler
 
 **Files:** None modified — verification only.
 
-- [ ] **Step 1: Run Python OpenObserve examples**
+- [x] **Step 1: Run Python OpenObserve examples**
 
 ```bash
 OPENOBSERVE_URL=http://localhost:5080/api/default \
@@ -411,7 +411,7 @@ uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.
 ```
 Expected: `verification passed`
 
-- [ ] **Step 2: Run TypeScript OpenObserve examples**
+- [x] **Step 2: Run TypeScript OpenObserve examples**
 
 ```bash
 cd typescript
@@ -423,13 +423,13 @@ npx tsx examples/openobserve/02_verify_ingestion.ts
 ```
 Expected: `verification passed`
 
-- [ ] **Step 3: Run spec conformance**
+- [x] **Step 3: Run spec conformance**
 
 ```bash
 uv run python spec/validate_conformance.py
 ```
 Expected: `PASSED — all languages conform to spec.`
 
-- [ ] **Step 4: Final commit with E2E proof**
+- [x] **Step 4: Final commit with E2E proof**
 
 No code changes — just verification that lazy loading didn't break anything.

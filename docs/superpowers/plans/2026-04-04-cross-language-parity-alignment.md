@@ -1,6 +1,6 @@
 # Cross-Language Parity Alignment Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Align observable behavior across Go, TypeScript, and Python so the same input produces the same output regardless of language.
 
@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `spec/behavioral_fixtures.yaml`
 
-- [ ] **Step 1: Add secret detection fixtures**
+- [x] **Step 1: Add secret detection fixtures**
 
 Append to `spec/behavioral_fixtures.yaml`:
 
@@ -81,7 +81,7 @@ Append to `spec/behavioral_fixtures.yaml`:
         note: "One frame — hash of 'typeerror:module:main'"
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add spec/behavioral_fixtures.yaml
@@ -96,7 +96,7 @@ git commit -m "spec: add secret detection, sensitive keys, and fingerprint fixtu
 - Modify: `src/provide/telemetry/pii.py` (line 58)
 - Test: `tests/parity/test_behavioral_fixtures.py`
 
-- [ ] **Step 1: Write failing parity test**
+- [x] **Step 1: Write failing parity test**
 
 Add to `tests/parity/test_behavioral_fixtures.py`:
 
@@ -122,12 +122,12 @@ def test_parity_default_sensitive_keys_pin():
     assert result["pin"] == "***"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_default_sensitive_keys" --no-cov -q`
 Expected: FAIL — `cookie`, `cvv`, `pin` not in Python's current 5-key list
 
-- [ ] **Step 3: Expand Python default sensitive keys**
+- [x] **Step 3: Expand Python default sensitive keys**
 
 In `src/provide/telemetry/pii.py`, replace line 58:
 
@@ -139,17 +139,17 @@ _DEFAULT_SENSITIVE_KEYS = {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity_default_sensitive_keys" --no-cov -q`
 Expected: PASS
 
-- [ ] **Step 5: Run full Python test suite**
+- [x] **Step 5: Run full Python test suite**
 
 Run: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass, 100% coverage
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/provide/telemetry/pii.py tests/parity/test_behavioral_fixtures.py
@@ -164,7 +164,7 @@ git commit -m "fix(python): expand default sensitive keys from 5 to 17 for cross
 - Modify: `typescript/src/pii.ts` (lines 19-31)
 - Test: `typescript/tests/parity.test.ts`
 
-- [ ] **Step 1: Write failing parity test**
+- [x] **Step 1: Write failing parity test**
 
 Add to `typescript/tests/parity.test.ts` in the parity test section:
 
@@ -191,12 +191,12 @@ describe('parity: default_sensitive_keys', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts`
 Expected: FAIL — `credential`, `cvv`, `pin`, `account_number` not in current TS list; `email` currently redacted but test expects it NOT to be
 
-- [ ] **Step 3: Update TypeScript default sensitive keys**
+- [x] **Step 3: Update TypeScript default sensitive keys**
 
 In `typescript/src/pii.ts`, replace `DEFAULT_SANITIZE_FIELDS` (lines 19-31):
 
@@ -222,17 +222,17 @@ export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
 ];
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Run full TypeScript test suite**
+- [x] **Step 5: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/src/pii.ts typescript/tests/parity.test.ts
@@ -248,7 +248,7 @@ git commit -m "fix(typescript): align default sensitive keys to canonical 17-key
 - Modify: `go/pii_test.go` (or create if absent)
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Write failing parity tests**
+- [x] **Step 1: Write failing parity tests**
 
 Add to `go/parity_test.go`:
 
@@ -294,12 +294,12 @@ func TestParity_SecretDetection_LongNormalString_NotRedacted(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestParity_SecretDetection -v .`
 Expected: FAIL — Go doesn't detect secrets in values
 
-- [ ] **Step 3: Add secret detection to Go pii.go**
+- [x] **Step 3: Add secret detection to Go pii.go**
 
 Add after `_isDefaultSensitiveKey` function (around line 194):
 
@@ -339,17 +339,17 @@ Then modify `_sanitizeValue` — add secret detection after default key check (a
 	}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd go && go test -run TestParity_SecretDetection -v .`
 Expected: PASS
 
-- [ ] **Step 5: Run full Go test suite + lint**
+- [x] **Step 5: Run full Go test suite + lint**
 
 Run: `cd go && go test -race -coverprofile=coverage.out . && go tool cover -func=coverage.out | grep "^total" && golangci-lint run ./...`
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add go/pii.go go/parity_test.go
@@ -365,7 +365,7 @@ git commit -m "feat(go): add secret pattern detection matching Python/TypeScript
 - Modify: `go/backpressure_test.go`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Write failing parity test**
+- [x] **Step 1: Write failing parity test**
 
 Add to `go/parity_test.go`:
 
@@ -399,12 +399,12 @@ func TestParity_Backpressure_UnlimitedAlwaysAcquires(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestParity_Backpressure -v .`
 Expected: FAIL — default is 1000, not 0; TryAcquire fails after 1000
 
-- [ ] **Step 3: Change default to 0 and handle unlimited in TryAcquire**
+- [x] **Step 3: Change default to 0 and handle unlimited in TryAcquire**
 
 In `go/backpressure.go`:
 
@@ -479,21 +479,21 @@ func Release(signal string) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd go && go test -run TestParity_Backpressure -v .`
 Expected: PASS
 
-- [ ] **Step 5: Update any tests that assert default=1000**
+- [x] **Step 5: Update any tests that assert default=1000**
 
 Search for tests asserting `_defaultQueueSize` or `1000` in backpressure tests and update them.
 
-- [ ] **Step 6: Run full Go test suite + lint**
+- [x] **Step 6: Run full Go test suite + lint**
 
 Run: `cd go && go test -race -coverprofile=coverage.out . && go tool cover -func=coverage.out | grep "^total" && golangci-lint run ./...`
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/backpressure.go go/backpressure_test.go go/parity_test.go
@@ -510,7 +510,7 @@ git commit -m "fix(go): default backpressure to unlimited (0) matching TypeScrip
 - Test: `go/fingerprint_test.go`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Write failing parity test**
+- [x] **Step 1: Write failing parity test**
 
 Add to `go/parity_test.go`:
 
@@ -536,12 +536,12 @@ func TestParity_ErrorFingerprint_WithFrames(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestParity_ErrorFingerprint -v .`
 Expected: FAIL — function not defined
 
-- [ ] **Step 3: Create go/fingerprint.go**
+- [x] **Step 3: Create go/fingerprint.go**
 
 ```go
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
@@ -621,12 +621,12 @@ func _extractFuncName(fn string) string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd go && go test -run TestParity_ErrorFingerprint -v .`
 Expected: PASS
 
-- [ ] **Step 5: Wire into logger Handle method**
+- [x] **Step 5: Wire into logger Handle method**
 
 Add `applyErrorFingerprint` method to `go/logger.go` after `applyCallerFields`:
 
@@ -664,7 +664,7 @@ r = h.applyErrorFingerprint(r)
 
 Add `"fmt"` to logger.go imports if not already present.
 
-- [ ] **Step 6: Write test for logger integration**
+- [x] **Step 6: Write test for logger integration**
 
 Add to `go/logger_test.go`:
 
@@ -701,12 +701,12 @@ func TestHandler_ErrorFingerprint_NotAdded_WhenNoError(t *testing.T) {
 }
 ```
 
-- [ ] **Step 7: Run full Go test suite + lint**
+- [x] **Step 7: Run full Go test suite + lint**
 
 Run: `cd go && go test -race -coverprofile=coverage.out . && go tool cover -func=coverage.out | grep "^total" && golangci-lint run ./...`
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add go/fingerprint.go go/fingerprint_test.go go/logger.go go/logger_test.go go/parity_test.go
@@ -723,7 +723,7 @@ git commit -m "feat(go): add error fingerprinting matching Python/TypeScript alg
 - Modify: `go/schema_test.go`
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add to `go/schema_test.go` (or `go/parity_test.go`):
 
@@ -753,12 +753,12 @@ func TestValidateRequiredKeys_EmptyRequired(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd go && go test -run TestValidateRequiredKeys -v .`
 Expected: FAIL — function not defined
 
-- [ ] **Step 3: Add ValidateRequiredKeys to schema.go**
+- [x] **Step 3: Add ValidateRequiredKeys to schema.go**
 
 Add to `go/schema.go` after `ValidateEventName`:
 
@@ -774,7 +774,7 @@ func ValidateRequiredKeys(attrs map[string]any, requiredKeys []string) error {
 }
 ```
 
-- [ ] **Step 4: Wire into applySchema in logger.go**
+- [x] **Step 4: Wire into applySchema in logger.go**
 
 Modify `applySchema` in `go/logger.go`:
 
@@ -794,7 +794,7 @@ func (h *_telemetryHandler) applySchema(r slog.Record) error {
 }
 ```
 
-- [ ] **Step 5: Write logger integration test**
+- [x] **Step 5: Write logger integration test**
 
 Add to `go/logger_test.go`:
 
@@ -837,12 +837,12 @@ func TestHandler_SchemaStrict_RequiredKeys_Pass(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Run full Go test suite + lint**
+- [x] **Step 6: Run full Go test suite + lint**
 
 Run: `cd go && go test -race -coverprofile=coverage.out . && go tool cover -func=coverage.out | grep "^total" && golangci-lint run ./...`
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/schema.go go/schema_test.go go/logger.go go/logger_test.go
@@ -857,7 +857,7 @@ git commit -m "feat(go): add required-keys schema validation matching Python/Typ
 - Modify: `typescript/src/runtime.ts` (lines 73-90)
 - Modify: `typescript/tests/runtime.test.ts`
 
-- [ ] **Step 1: Update tests from "throws" to "succeeds"**
+- [x] **Step 1: Update tests from "throws" to "succeeds"**
 
 In `typescript/tests/runtime.test.ts`, update the three tests that assert `ConfigurationError`:
 
@@ -896,12 +896,12 @@ Also update the error message content test:
   });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd typescript && npx vitest run tests/runtime.test.ts`
 Expected: FAIL — `reconfigureTelemetry` still throws `ConfigurationError`
 
-- [ ] **Step 3: Modify reconfigureTelemetry to allow restart**
+- [x] **Step 3: Modify reconfigureTelemetry to allow restart**
 
 In `typescript/src/runtime.ts`, replace the `reconfigureTelemetry` function (lines 73-90):
 
@@ -928,17 +928,17 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 
 Ensure `shutdownTelemetry` is imported (check existing imports in the file).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd typescript && npx vitest run tests/runtime.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Run full TypeScript test suite**
+- [x] **Step 5: Run full TypeScript test suite**
 
 Run: `cd typescript && npx vitest run`
 Expected: All tests pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/src/runtime.ts typescript/tests/runtime.test.ts
@@ -952,7 +952,7 @@ git commit -m "fix(typescript): allow reconfigureTelemetry to restart providers,
 **Files:**
 - Modify: `go/parity_test.go`
 
-- [ ] **Step 1: Add PII truncate parity tests (non-string conversion)**
+- [x] **Step 1: Add PII truncate parity tests (non-string conversion)**
 
 Add to `go/parity_test.go`:
 
@@ -971,7 +971,7 @@ func TestParity_PIITruncate_NonString(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add PII drop parity test**
+- [x] **Step 2: Add PII drop parity test**
 
 ```go
 func TestParity_PIIDrop_RemovesKey(t *testing.T) {
@@ -990,7 +990,7 @@ func TestParity_PIIDrop_RemovesKey(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Add propagation guard parity tests**
+- [x] **Step 3: Add propagation guard parity tests**
 
 ```go
 func TestParity_Propagation_BaggageAtLimit_Accepted(t *testing.T) {
@@ -1012,7 +1012,7 @@ func TestParity_Propagation_BaggageOverLimit_Discarded(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Add SLO classify parity tests**
+- [x] **Step 4: Add SLO classify parity tests**
 
 ```go
 func TestParity_ClassifyError_200_Unknown(t *testing.T) {
@@ -1044,17 +1044,17 @@ func TestParity_ClassifyError_599_ServerError(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Run all parity tests**
+- [x] **Step 5: Run all parity tests**
 
 Run: `cd go && go test -run TestParity -v .`
 Expected: All PASS
 
-- [ ] **Step 6: Run full Go test suite + lint**
+- [x] **Step 6: Run full Go test suite + lint**
 
 Run: `cd go && go test -race -coverprofile=coverage.out . && go tool cover -func=coverage.out | grep "^total" && golangci-lint run ./...`
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go/parity_test.go
@@ -1069,7 +1069,7 @@ git commit -m "test(go): add 15 missing parity test cases for cross-language ali
 - Modify: `typescript/tests/parity.test.ts`
 - Modify: `tests/parity/test_behavioral_fixtures.py`
 
-- [ ] **Step 1: Add TypeScript parity tests for new behaviors**
+- [x] **Step 1: Add TypeScript parity tests for new behaviors**
 
 Add to `typescript/tests/parity.test.ts`:
 
@@ -1119,12 +1119,12 @@ describe('parity: reconfigure_provider_change', () => {
 
 Ensure the needed imports are added at the top of the file (`sanitizePayload`, `getQueuePolicy`, `computeErrorFingerprint`, `reconfigureTelemetry`, `setupTelemetry`).
 
-- [ ] **Step 2: Run TypeScript parity tests**
+- [x] **Step 2: Run TypeScript parity tests**
 
 Run: `cd typescript && npx vitest run tests/parity.test.ts`
 Expected: All PASS
 
-- [ ] **Step 3: Add Python parity tests for new behaviors**
+- [x] **Step 3: Add Python parity tests for new behaviors**
 
 Add to `tests/parity/test_behavioral_fixtures.py`:
 
@@ -1155,18 +1155,18 @@ def test_parity_error_fingerprint_no_frames():
     assert len(fp) == 12
 ```
 
-- [ ] **Step 4: Run Python parity tests**
+- [x] **Step 4: Run Python parity tests**
 
 Run: `uv run python scripts/run_pytest_gate.py -k "test_parity" --no-cov -q`
 Expected: All PASS
 
-- [ ] **Step 5: Run full test suites**
+- [x] **Step 5: Run full test suites**
 
 Run TypeScript: `cd typescript && npx vitest run`
 Run Python: `uv run python scripts/run_pytest_gate.py`
 Expected: All tests pass in both
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add typescript/tests/parity.test.ts tests/parity/test_behavioral_fixtures.py
@@ -1177,7 +1177,7 @@ git commit -m "test: add cross-language parity tests for secret detection, finge
 
 ## Task 11: Final validation pass
 
-- [ ] **Step 1: Run Go full gate**
+- [x] **Step 1: Run Go full gate**
 
 ```bash
 cd go
@@ -1188,7 +1188,7 @@ golangci-lint run ./...
 
 Expected: 100% coverage, 0 lint issues
 
-- [ ] **Step 2: Run Go mutation testing**
+- [x] **Step 2: Run Go mutation testing**
 
 ```bash
 cd go && ~/go/bin/gremlins unleash .
@@ -1196,7 +1196,7 @@ cd go && ~/go/bin/gremlins unleash .
 
 Expected: 100% test efficacy (0 lived)
 
-- [ ] **Step 3: Run TypeScript full gate**
+- [x] **Step 3: Run TypeScript full gate**
 
 ```bash
 cd typescript && npx vitest run
@@ -1204,7 +1204,7 @@ cd typescript && npx vitest run
 
 Expected: All tests pass
 
-- [ ] **Step 4: Run Python full gate**
+- [x] **Step 4: Run Python full gate**
 
 ```bash
 uv run python scripts/run_pytest_gate.py
@@ -1215,7 +1215,7 @@ uv run mypy src tests
 
 Expected: All pass, 100% coverage
 
-- [ ] **Step 5: Count Go parity tests**
+- [x] **Step 5: Count Go parity tests**
 
 ```bash
 cd go && go test -run TestParity -v . 2>&1 | grep -c "PASS:"
@@ -1223,7 +1223,7 @@ cd go && go test -run TestParity -v . 2>&1 | grep -c "PASS:"
 
 Expected: 39+ (up from 24)
 
-- [ ] **Step 6: Final commit if any cleanup needed**
+- [x] **Step 6: Final commit if any cleanup needed**
 
 ```bash
 git add -A
