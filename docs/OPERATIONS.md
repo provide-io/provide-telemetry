@@ -35,7 +35,7 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
 - `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
 - After `shutdown_telemetry()`, package-local setup state is cleared. If real OTel providers had been installed, provider-changing lifecycle transitions still require a full process restart before `setup_telemetry()`.
-- `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot, not a caller-owned mutable config reference.
+- Runtime reconfiguration APIs mutate internal process state only. Read back the active snapshot via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than assuming the caller still owns a live config object.
 
 ## Local Health Check
 
