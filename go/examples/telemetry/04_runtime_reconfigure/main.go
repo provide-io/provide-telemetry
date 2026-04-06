@@ -41,8 +41,8 @@ func main() {
 
 	// Hot-swap sampling rate to 0%
 	fmt.Println("\nHot-swapping sampling rate to 0%...")
-	err = telemetry.UpdateRuntimeConfig(func(cfg *telemetry.TelemetryConfig) {
-		cfg.Sampling.LogsRate = 0.0
+	err = telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{
+		Sampling: &telemetry.SamplingConfig{LogsRate: 0.0, TracesRate: 1.0, MetricsRate: 1.0},
 	})
 	if err != nil {
 		log.ErrorContext(ctx, "update failed", "err", err)

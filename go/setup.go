@@ -96,7 +96,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	defer _setupMu.Unlock()
 
 	if _setupDone {
-		return _runtimeCfg, nil
+		return cloneTelemetryConfig(_runtimeCfg), nil
 	}
 
 	cfg, err := ConfigFromEnv()
