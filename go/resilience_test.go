@@ -799,3 +799,10 @@ func TestRunWithResilience_BackoffApplied(t *testing.T) {
 		t.Errorf("expected backoff to add >= 80ms, but total elapsed was %v", elapsed)
 	}
 }
+
+func TestIncExportSuccessIsNoOp(t *testing.T) {
+	// _incExportSuccess is a no-op — ensure it does not panic and can be called.
+	_incExportSuccess("logs")
+	_incExportSuccess("traces")
+	_incExportSuccess("metrics")
+}

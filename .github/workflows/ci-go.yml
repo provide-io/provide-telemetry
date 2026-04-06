@@ -46,6 +46,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v6  # TODO: pin to SHA when stable SHA is known
         with:
           working-directory: go
+          version: latest
 
   security:
     runs-on: ubuntu-latest
