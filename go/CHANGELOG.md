@@ -1,8 +1,3 @@
-<!--
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-SPDX-License-Identifier: Apache-2.0
--->
-
 # Go Changelog
 
 All notable changes to `github.com/provide-io/provide-telemetry/go`.
