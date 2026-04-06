@@ -96,6 +96,7 @@ def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
         security=cfg.security,
         slo=cfg.slo,
         pii_max_depth=cfg.pii_max_depth,
+        strict_schema=cfg.strict_schema,
     )
 
 
@@ -114,6 +115,8 @@ def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> Tele
         merged.slo = overrides.slo
     if overrides.pii_max_depth is not None:
         merged.pii_max_depth = overrides.pii_max_depth
+    if overrides.strict_schema is not None:
+        merged.strict_schema = overrides.strict_schema
     return merged
 
 
