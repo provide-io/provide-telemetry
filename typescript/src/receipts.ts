@@ -82,6 +82,7 @@ function _onRedaction(fieldPath: string, action: string, originalValue: unknown)
     hmac: hmacValue,
   };
 
+  /* v8 ignore next 3: production-mode receipt emission — not exercised in test mode */
   if (_testMode) {
     _testReceipts.push(receipt);
   }

@@ -53,6 +53,7 @@ export type PropagationALS = {
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
+let _AlsConstructor: (new () => PropagationALS) | null = null;
 // Stryker disable BlockStatement: module-level try/catch runs once at import time — cannot be tested by unit tests
 try {
   // Dynamic ESM import so this works in both Node ESM (where `require` is
@@ -298,15 +299,7 @@ export function _resetPropagationForTests(): void {
   // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
   /* v8 ignore next */
   _als = _AlsConstructor ? new _AlsConstructor() : null;
-  _fallbackStore = {
-    active: {},
-    stack: [],
-    otelCtxStack: [],
-    baggagePriorStack: [],
-    // Stryker disable next-line ArrayDeclaration: equivalent mutant — any non-object stale entry (e.g. "Stryker was here") has undefined .traceId/.spanId, producing the same setTraceContext(undefined,undefined) no-op as an empty array
-    traceCtxStack: [],
-  };
-  _fallbackWarned = false;
+  _fallbackStore = { active: {}, stack: [], otelCtxStack: [] };
 }
 
 /** Disable AsyncLocalStorage for testing the module-level fallback path. */
