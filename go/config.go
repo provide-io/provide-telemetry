@@ -127,6 +127,7 @@ type RuntimeOverrides struct {
 	Security     *SecurityConfig
 	SLO          *SLOConfig
 	PIIMaxDepth  *int
+	StrictSchema *bool
 }
 
 // TelemetryConfig is the top-level configuration for provide-telemetry.

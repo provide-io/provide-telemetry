@@ -147,6 +147,19 @@ describe('updateRuntimeConfig', () => {
     expect(getRuntimeConfig().samplingLogsRate).toBe(0.5);
     expect(getRuntimeConfig().samplingTracesRate).toBe(before);
   });
+
+  it('rejects invalid override values before applying them', () => {
+    updateRuntimeConfig({ samplingLogsRate: 0.5, backpressureLogsMaxsize: 5 });
+    expect(() => updateRuntimeConfig({ samplingLogsRate: -0.1 })).toThrow();
+    expect(() => updateRuntimeConfig({ samplingLogsRate: 1.1 })).toThrow();
+    expect(() => updateRuntimeConfig({ backpressureLogsMaxsize: -1 })).toThrow();
+    expect(() => updateRuntimeConfig({ exporterLogsRetries: -1 })).toThrow();
+    expect(() => updateRuntimeConfig({ exporterLogsBackoffMs: -1 })).toThrow();
+    expect(() => updateRuntimeConfig({ exporterLogsTimeoutMs: -1 })).toThrow();
+    expect(() => updateRuntimeConfig({ securityMaxAttrCount: -1 })).toThrow();
+    expect(getRuntimeConfig().samplingLogsRate).toBe(0.5);
+    expect(getRuntimeConfig().backpressureLogsMaxsize).toBe(5);
+  });
 });
 
 describe('RuntimeOverrides', () => {
@@ -163,6 +176,7 @@ describe('RuntimeOverrides', () => {
       sloEnableRedMetrics: true,
       sloEnableUseMetrics: true,
       piiMaxDepth: 4,
+      strictSchema: true,
     };
     updateRuntimeConfig(overrides);
     const cfg = getRuntimeConfig();
@@ -172,6 +186,7 @@ describe('RuntimeOverrides', () => {
     expect(cfg.securityMaxAttrValueLength).toBe(512);
     expect(cfg.sloEnableRedMetrics).toBe(true);
     expect(cfg.piiMaxDepth).toBe(4);
+    expect(cfg.strictSchema).toBe(true);
   });
 
   it('all fields are optional — empty object is valid', () => {
@@ -386,11 +401,13 @@ describe('reconfigureTelemetry', () => {
     expect(getRuntimeConfig().serviceName).toBe('updated');
   });
 
-  it('allows provider fields to change after providers are registered (restart)', () => {
+  it('rejects provider fields after providers are registered', () => {
     reconfigureTelemetry({ otelEnabled: false });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
-    expect(getRuntimeConfig().otelEnabled).toBe(true);
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().otelEnabled).toBe(false);
   });
 
   it('allows provider field changes when providers are NOT registered', () => {
@@ -404,69 +421,49 @@ describe('reconfigureTelemetry', () => {
     expect(() => reconfigureTelemetry({ logLevel: 'debug' })).not.toThrow();
   });
 
-  it('allows otlpEndpoint to change after registration and applies new value', () => {
+  it('rejects otlpEndpoint changes after registration', () => {
     reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).not.toThrow();
-    expect(getRuntimeConfig().otlpEndpoint).toBe('http://new:4318');
+    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().otlpEndpoint).toBe('http://old:4318');
   });
 });
 
 describe('reconfigureTelemetry — otlpHeaders change after init triggers restart (kills StringLiteral otlpHeaders)', () => {
-  it('allows otlpHeaders to change after providers initialized (restart path)', () => {
+  it('rejects otlpHeaders changes after providers initialized', () => {
     reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).not.toThrow();
-    expect(getRuntimeConfig().otlpHeaders).toEqual({ 'x-api-key': 'new' });
+    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().otlpHeaders).toEqual({ 'x-api-key': 'old' });
   });
 });
 
 describe('reconfigureTelemetry — provider change after init resets registered flag (kills StringLiteral on field list)', () => {
-  it('providers are no longer registered after a provider-changing reconfigure', () => {
+  it('providers remain registered after a rejected provider-changing reconfigure', () => {
     _markProvidersRegistered();
     expect(_areProvidersRegistered()).toBe(true);
-    reconfigureTelemetry({ otelEnabled: true });
-    // After restart path, providers are re-setup; _providersRegistered resets then setupTelemetry runs
-    // Since there are no real providers in tests, it stays false after reset
-    expect(_areProvidersRegistered()).toBe(false);
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow();
+    expect(_areProvidersRegistered()).toBe(true);
   });
 });
 
-describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
-  it('calls forceFlush then shutdown on registered providers when provider fields change', async () => {
+describe('reconfigureTelemetry — provider lifecycle safety', () => {
+  it('does not flush, shutdown, or clear providers when provider-field changes are rejected', () => {
     const flushFn = vi.fn().mockResolvedValue(undefined);
     const shutdownFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
     _markProvidersRegistered();
-    reconfigureTelemetry({ otelEnabled: true });
-    // Wait for fire-and-forget promises
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flushFn).toHaveBeenCalledTimes(1);
-    expect(shutdownFn).toHaveBeenCalledTimes(1);
-  });
-
-  it('handles providers with only forceFlush (no shutdown)', async () => {
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([{ forceFlush: flushFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flushFn).toHaveBeenCalledTimes(1);
-  });
-
-  it('handles providers with only shutdown (no forceFlush)', async () => {
-    const shutdownFn = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([{ shutdown: shutdownFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(shutdownFn).toHaveBeenCalledTimes(1);
-  });
-
-  it('handles providers with neither forceFlush nor shutdown', async () => {
-    _storeRegisteredProviders([{}]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(flushFn).not.toHaveBeenCalled();
+    expect(shutdownFn).not.toHaveBeenCalled();
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(1);
   });
 
   it('does NOT call flush/shutdown when provider fields are unchanged', async () => {
@@ -484,31 +481,6 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
     expect(_areProvidersRegistered()).toBe(true);
   });
 
-  it('clears registered providers list after provider-changing reconfigure', () => {
-    _storeRegisteredProviders([{ forceFlush: vi.fn().mockResolvedValue(undefined) }]);
-    _markProvidersRegistered();
-    reconfigureTelemetry({ otelEnabled: true });
-    expect(_getRegisteredProviders()).toHaveLength(0);
-  });
-
-  it('flushes and shuts down multiple providers', async () => {
-    const flush1 = vi.fn().mockResolvedValue(undefined);
-    const shutdown1 = vi.fn().mockResolvedValue(undefined);
-    const flush2 = vi.fn().mockResolvedValue(undefined);
-    const shutdown2 = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([
-      { forceFlush: flush1, shutdown: shutdown1 },
-      { forceFlush: flush2, shutdown: shutdown2 },
-    ]);
-    _markProvidersRegistered();
-    reconfigureTelemetry({ otelEnabled: true });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flush1).toHaveBeenCalledTimes(1);
-    expect(flush2).toHaveBeenCalledTimes(1);
-    expect(shutdown1).toHaveBeenCalledTimes(1);
-    expect(shutdown2).toHaveBeenCalledTimes(1);
-  });
-
   it('JSON.stringify deep comparison detects equivalent objects as unchanged', () => {
     // Same content, different references — should NOT trigger restart
     const flushFn = vi.fn().mockResolvedValue(undefined);
@@ -520,20 +492,23 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
     expect(_areProvidersRegistered()).toBe(true);
   });
 
-  it('JSON.stringify deep comparison detects different objects as changed', async () => {
+  it('JSON.stringify deep comparison detects different objects as rejected provider changes', () => {
     const flushFn = vi.fn().mockResolvedValue(undefined);
     reconfigureTelemetry({ otlpHeaders: { key: 'old' } });
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
-    reconfigureTelemetry({ otlpHeaders: { key: 'new' } });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flushFn).toHaveBeenCalledTimes(1);
+    expect(() => reconfigureTelemetry({ otlpHeaders: { key: 'new' } })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(flushFn).not.toHaveBeenCalled();
   });
 
-  it('empty providers array does not throw on provider-changing reconfigure', () => {
+  it('rejects provider-changing reconfigure even when the registered provider list is empty', () => {
     _storeRegisteredProviders([]);
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
   });
 
   it('does not clear stored providers when _providersRegistered is false (kills ConditionalExpression→true)', () => {
@@ -546,26 +521,27 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
     expect(_getRegisteredProviders()).toHaveLength(1);
   });
 
-  it('otlpHeaders specifically triggers restart (kills StringLiteral→"" on field name)', () => {
+  it('otlpHeaders specifically triggers rejection (kills StringLiteral→"" on field name)', () => {
     reconfigureTelemetry({ otlpHeaders: { old: 'val' } });
     const flushFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
-    // Only change otlpHeaders (not otelEnabled or otlpEndpoint)
-    reconfigureTelemetry({ otlpHeaders: { new: 'val' } });
-    // Providers should be cleared because otlpHeaders is in PROVIDER_CHANGING_FIELDS
-    expect(_areProvidersRegistered()).toBe(false);
-    expect(_getRegisteredProviders()).toHaveLength(0);
+    expect(() => reconfigureTelemetry({ otlpHeaders: { new: 'val' } })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(1);
   });
 
-  it('otlpEndpoint specifically triggers restart (kills StringLiteral→"" on field name)', () => {
+  it('otlpEndpoint specifically triggers rejection (kills StringLiteral→"" on field name)', () => {
     reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
     const flushFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
-    // Only change otlpEndpoint (not otelEnabled or otlpHeaders)
-    reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' });
-    expect(_areProvidersRegistered()).toBe(false);
-    expect(_getRegisteredProviders()).toHaveLength(0);
+    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(1);
   });
 });
