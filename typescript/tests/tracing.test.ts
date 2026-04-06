@@ -135,6 +135,51 @@ describe('withTrace', () => {
     expect(result).toBe('ok');
     expect(called).toBe(true);
   });
+
+  it('provides random hex trace IDs via getTraceContext() inside a noop span', () => {
+    // When no OTel SDK is registered, withTrace should generate synthetic random IDs
+    // so that callers can get non-zero trace context (parity with Python/Go).
+    let capturedCtx: { trace_id?: string; span_id?: string } = {};
+    withTrace('no-sdk-ids', () => {
+      capturedCtx = getTraceContext();
+    });
+    expect(capturedCtx.trace_id).toBeDefined();
+    expect(capturedCtx.span_id).toBeDefined();
+    expect(capturedCtx.trace_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(capturedCtx.span_id).toMatch(/^[0-9a-f]{16}$/);
+    expect(capturedCtx.trace_id).not.toBe('00000000000000000000000000000000');
+  });
+
+  it('clears synthetic trace context after noop span completes', () => {
+    _resetTraceContext();
+    withTrace('no-sdk-cleanup', () => {
+      /* nothing */
+    });
+    // After the span ends, getTraceContext should return empty (no manual context leaked)
+    const ctx = getTraceContext();
+    expect(ctx.trace_id).toBeUndefined();
+    expect(ctx.span_id).toBeUndefined();
+  });
+
+  it('provides random hex trace IDs for async noop spans', async () => {
+    let capturedCtx: { trace_id?: string; span_id?: string } = {};
+    await withTrace('no-sdk-async', async () => {
+      await Promise.resolve();
+      capturedCtx = getTraceContext();
+    });
+    expect(capturedCtx.trace_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(capturedCtx.span_id).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('clears synthetic context after async noop span resolves', async () => {
+    _resetTraceContext();
+    await withTrace('no-sdk-async-cleanup', async () => {
+      await Promise.resolve();
+    });
+    const ctx = getTraceContext();
+    expect(ctx.trace_id).toBeUndefined();
+    expect(ctx.span_id).toBeUndefined();
+  });
 });
 
 describe('getTraceContext', () => {
@@ -211,6 +256,10 @@ describe('withTrace — span.setStatus called on error', () => {
       end: vi.fn(),
       recordException: vi.fn(),
       setStatus: mockSetStatus,
+      spanContext: () => ({
+        traceId: 'aabbccddeeff00112233445566778899',
+        spanId: 'aabbccdd11223344',
+      }),
     };
     const mockTracer = {
       startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
@@ -240,6 +289,10 @@ describe('withTrace — span.setStatus called on error', () => {
       end: vi.fn(),
       recordException: vi.fn(),
       setStatus: mockSetStatus,
+      spanContext: () => ({
+        traceId: 'aabbccddeeff00112233445566778899',
+        spanId: 'aabbccdd11223344',
+      }),
     };
     const mockTracer = {
       startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
