@@ -101,9 +101,6 @@ class TestBackpressureConcurrency:
             for f in as_completed(futures):
                 f.result()
 
-        snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 0
-
     def test_concurrent_acquire_all_signals(self) -> None:
         """All three signal queues maintain independent correctness."""
         set_queue_policy(QueuePolicy(logs_maxsize=30, traces_maxsize=30, metrics_maxsize=30))
@@ -130,11 +127,6 @@ class TestBackpressureConcurrency:
         # Release everything
         for ticket in all_tickets:
             release(ticket)
-
-        snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 0
-        assert snap.queue_depth_traces == 0
-        assert snap.queue_depth_metrics == 0
 
     def test_concurrent_set_policy_while_acquiring(self) -> None:
         """Policy changes during active acquisition must not corrupt state."""
@@ -319,7 +311,6 @@ class TestHealthConcurrency:
             try:
                 for _ in range(ITERATIONS):
                     snap = get_health_snapshot()
-                    assert snap.queue_depth_logs >= 0
                     assert snap.dropped_logs >= 0
             except Exception as exc:
                 errors.append(exc)

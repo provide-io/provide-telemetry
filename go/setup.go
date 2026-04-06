@@ -116,9 +116,6 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	// Wire OTel providers if any were supplied.
 	_applyOTelProviders(state, cfg)
 
-	// Record setup in health counters.
-	_incSetupCount()
-
 	_runtimeCfg = cfg
 	_setupDone = true
 
@@ -137,7 +134,6 @@ func ShutdownTelemetry(ctx context.Context) error {
 
 	_setupDone = false
 	_runtimeCfg = nil
-	_incShutdownCount()
 
 	return _shutdownOTelProviders(ctx)
 }

@@ -116,7 +116,7 @@ async function main(): Promise<void> {
 
   // Health snapshot shows the state
   const health = getHealthSnapshot();
-  console.log(`  📊 Health: exportFailures=${health.exportFailures}, logsDropped=${health.logsDropped}`);
+  console.log(`  📊 Health: exportFailuresLogs=${health.exportFailuresLogs}, logsDropped=${health.logsDropped}`);
 
   // ── ⚠️  Sampling rate clamping diagnostic ────────────────
   console.log('\n⚠️  Sampling rate clamping (rate clamped to [0,1]):\n');

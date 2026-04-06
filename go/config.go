@@ -36,6 +36,7 @@ type LoggingConfig struct {
 	IncludeTimestamp  bool              // default true
 	IncludeCaller     bool              // default true
 	Sanitize          bool              // default true
+	PIIMaxDepth       int               // default 0 (use SanitizePayload default of 8)
 	OTLPEndpoint      string            // optional
 	OTLPHeaders       map[string]string // optional
 	LogCodeAttributes bool              // default false
@@ -271,7 +272,7 @@ func applyLoggingLevelFormat(cfg *TelemetryConfig, env func(string) string) erro
 	return nil
 }
 
-// applyLoggingBoolFlags handles the four boolean PROVIDE_LOG_* env vars.
+// applyLoggingBoolFlags handles the boolean PROVIDE_LOG_* env vars and PII depth.
 func applyLoggingBoolFlags(cfg *TelemetryConfig, env func(string) string) error {
 	var err error
 	cfg.Logging.IncludeTimestamp, err = parseEnvBool(env("PROVIDE_LOG_INCLUDE_TIMESTAMP"), true, "PROVIDE_LOG_INCLUDE_TIMESTAMP")
@@ -291,7 +292,20 @@ func applyLoggingBoolFlags(cfg *TelemetryConfig, env func(string) string) error 
 		false,
 		"PROVIDE_LOG_CODE_ATTRIBUTES",
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if v := env("PROVIDE_LOG_PII_MAX_DEPTH"); v != "" {
+		n, err := parseEnvInt(v, "PROVIDE_LOG_PII_MAX_DEPTH")
+		if err != nil {
+			return err
+		}
+		if err := validateNonNegative(n, "PROVIDE_LOG_PII_MAX_DEPTH"); err != nil {
+			return err
+		}
+		cfg.Logging.PIIMaxDepth = n
+	}
+	return nil
 }
 
 // applyLoggingPrettyAndModules handles pretty-print and module-level env vars.

@@ -548,6 +548,58 @@ describe('parity: default sensitive keys', () => {
   });
 });
 
+// ── PII Depth Limiting (parity) ──────────────────────────────────────────────
+
+describe('parity: pii depth limiting', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('redacts at depth < maxDepth, leaves depth >= maxDepth untouched', () => {
+    const payload: Record<string, unknown> = {
+      password: 'top', // pragma: allowlist secret
+      nested: {
+        password: 'mid', // pragma: allowlist secret
+        deep: {
+          password: 'bottom', // pragma: allowlist secret
+          tooDeep: {
+            password: 'should_survive', // pragma: allowlist secret
+          },
+        },
+      },
+    };
+    sanitizePayload(payload, [], { maxDepth: 3 });
+    expect(payload['password']).toBe('***');
+    expect((payload['nested'] as Record<string, unknown>)['password']).toBe('***');
+    expect(
+      ((payload['nested'] as Record<string, unknown>)['deep'] as Record<string, unknown>)[
+        'password'
+      ],
+    ).toBe('***');
+    expect(
+      (
+        ((payload['nested'] as Record<string, unknown>)['deep'] as Record<string, unknown>)[
+          'tooDeep'
+        ] as Record<string, unknown>
+      )['password'],
+    ).toBe('should_survive');
+  });
+
+  it('uses default maxDepth of 8 when not specified', () => {
+    // Build a deeply nested structure — depth 7 should be redacted, depth 8 should not
+    let inner: Record<string, unknown> = { password: 'deepest' }; // pragma: allowlist secret
+    for (let i = 0; i < 8; i++) {
+      inner = { child: inner };
+    }
+    const payload: Record<string, unknown> = { ...inner };
+    sanitizePayload(payload);
+    // Navigate 8 levels deep — should survive
+    let node: unknown = payload;
+    for (let i = 0; i < 8; i++) {
+      node = (node as Record<string, unknown>)['child'];
+    }
+    expect((node as Record<string, unknown>)['password']).toBe('deepest');
+  });
+});
+
 // ── Required Keys Validation (parity) ───────────────────────────────────────
 
 describe('parity: required keys validation', () => {

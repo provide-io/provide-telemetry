@@ -115,8 +115,8 @@ fmt.Println()
 
 	// Health snapshot shows the state
 	health := telemetry.GetHealthSnapshot()
-	fmt.Printf("  Health: logs_dropped=%d, spans_dropped=%d\n",
-		health.LogsDropped, health.SpansDropped)
+	fmt.Printf("  Health: logs_dropped=%d, traces_dropped=%d\n",
+		health.LogsDropped, health.TracesDropped)
 
 	// Validate event name helper
 	fmt.Println("\nValidateEventName helper:")

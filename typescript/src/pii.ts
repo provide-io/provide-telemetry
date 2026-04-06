@@ -39,6 +39,9 @@ export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
 
 const REDACTED = '***';
 
+/** Default maximum recursion depth for PII sanitization. */
+const _DEFAULT_MAX_DEPTH = 8;
+
 const _MIN_SECRET_LENGTH = 20;
 /* Stryker disable all: regex quantifier mutations produce patterns that still match test values */
 export const _SECRET_PATTERNS: RegExp[] = [
@@ -139,12 +142,21 @@ function _matches(ruleSegs: string[], valueSegs: string[]): boolean {
   return ruleSegs.every((seg, i) => seg === '*' || seg === valueSegs[i]);
 }
 
-function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): unknown {
+function _applyRuleFull(
+  node: unknown,
+  rule: PIIRule,
+  currentPath: string[],
+  maxDepth: number = _DEFAULT_MAX_DEPTH,
+  depth: number = 0,
+): unknown {
   if (typeof node !== 'object' || node === null) return node;
+  if (depth >= maxDepth) return node;
   // Stryker disable next-line ConditionalExpression,BlockStatement: when array is treated as object, numeric string indices still match wildcard '*' rule segments — equivalent
   if (Array.isArray(node)) {
     // Stryker disable next-line StringLiteral: '*' wildcard in VALUE path is irrelevant because _matches checks RULE segment, not value segment, for wildcards
-    return node.map((item) => _applyRuleFull(item, rule, [...currentPath, '*']));
+    return node.map((item) =>
+      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1),
+    );
   }
   const obj = node as Record<string, unknown>;
   const ruleSegs = _pathSegments(rule.path);
@@ -155,27 +167,66 @@ function _applyRuleFull(node: unknown, rule: PIIRule, currentPath: string[]): un
       const { keep, value } = _applyMode(val, rule);
       if (keep) result[key] = value;
     } else {
-      result[key] = _applyRuleFull(val, rule, childPath);
+      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1);
     }
   }
   return result;
 }
 
-function _redactSecrets(node: unknown): unknown {
-  /* Stryker disable ConditionalExpression,BlockStatement: non-object guard — removing causes crash on primitives, but test inputs are always objects */
+/**
+ * Recursively redact keys matching blocked field names and secret patterns,
+ * respecting depth limits. Mirrors Python _apply_default_sensitive_key_redaction.
+ */
+function _applyDefaultSensitiveKeyRedaction(
+  node: unknown,
+  original: unknown,
+  blocked: Set<string>,
+  ruleTargets: Set<string | undefined>,
+  maxDepth: number,
+  depth: number = 0,
+): unknown {
+  if (depth >= maxDepth) return node;
   if (typeof node !== 'object' || node === null) return node;
-  /* Stryker disable ConditionalExpression,BlockStatement */
   if (Array.isArray(node)) {
-    /* Stryker restore ConditionalExpression,BlockStatement */
-    return node.map((item) => _redactSecrets(item));
+    const origArr = Array.isArray(original) ? original : [];
+    return node.map((item, i) =>
+      _applyDefaultSensitiveKeyRedaction(
+        item,
+        origArr[i],
+        blocked,
+        ruleTargets,
+        maxDepth,
+        depth + 1,
+      ),
+    );
   }
   const obj = node as Record<string, unknown>;
+  const orig =
+    typeof original === 'object' && original !== null && !Array.isArray(original)
+      ? (original as Record<string, unknown>)
+      : obj;
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
-    if (typeof val === 'string' && _detectSecretInValue(val)) {
+    const lk = key.toLowerCase();
+    const origVal = orig[key];
+    if (blocked.has(lk) && !ruleTargets.has(lk)) {
+      // If a custom rule already changed the value, keep the rule's result.
+      if (val !== origVal) {
+        result[key] = val;
+      } else {
+        result[key] = REDACTED;
+      }
+    } else if (typeof val === 'string' && _detectSecretInValue(val)) {
       result[key] = REDACTED;
     } else {
-      result[key] = _redactSecrets(val);
+      result[key] = _applyDefaultSensitiveKeyRedaction(
+        val,
+        origVal,
+        blocked,
+        ruleTargets,
+        maxDepth,
+        depth + 1,
+      );
     }
   }
   return result;
@@ -199,6 +250,12 @@ export function resetPiiRulesForTests(): void {
   _hashFnOverride = null;
 }
 
+/** Options for sanitizePayload. */
+export interface SanitizePayloadOptions {
+  /** Maximum recursion depth for nested traversal. Default 8. */
+  maxDepth?: number;
+}
+
 /**
  * Apply all registered PII rules to a payload object recursively.
  * Also redacts top-level keys that match DEFAULT_SANITIZE_FIELDS unless a rule already handled them.
@@ -207,18 +264,17 @@ export function sanitizePayload(
   obj: Record<string, unknown>,
   // Stryker disable next-line ArrayDeclaration
   extraFields: string[] = [],
+  options?: SanitizePayloadOptions,
 ): void {
+  const maxDepth = options?.maxDepth ?? _DEFAULT_MAX_DEPTH;
   let current: unknown = obj;
 
   // Apply registered rules first.
   for (const rule of _rules) {
-    current = _applyRuleFull(current, rule, []);
+    current = _applyRuleFull(current, rule, [], maxDepth);
   }
 
-  // Apply secret detection recursively.
-  current = _redactSecrets(current);
-
-  // Then apply default field redaction (case-insensitive, top-level only).
+  // Apply default field-name redaction + secret detection recursively with depth limit.
   // v8 ignore: current is always a non-null object here; null/array branches are defensive.
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */
@@ -229,13 +285,13 @@ export function sanitizePayload(
       ...DEFAULT_SANITIZE_FIELDS.map((f) => f.toLowerCase()),
       ...extraFields.map((f) => f.toLowerCase()),
     ]);
-    const c = current as Record<string, unknown>;
-    for (const key of Object.keys(c)) {
-      const lk = key.toLowerCase();
-      if (blocked.has(lk) && !ruleTargets.has(lk)) {
-        c[key] = REDACTED;
-      }
-    }
+    const c = _applyDefaultSensitiveKeyRedaction(
+      current,
+      obj,
+      blocked,
+      ruleTargets,
+      maxDepth,
+    ) as Record<string, unknown>;
     // Update the original object in-place.
     for (const key of Object.keys(obj)) {
       /* Stryker disable ConditionalExpression: false mutation deletes all keys — equivalent when no 'drop' rules are active */

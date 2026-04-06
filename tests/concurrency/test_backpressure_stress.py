@@ -56,13 +56,11 @@ class TestBackpressureSaturation:
 
         snap = get_health_snapshot()
         assert snap.dropped_logs == 100
-        assert snap.queue_depth_logs == 3
 
         # Release one — next acquire should succeed
         release(tickets[0])
         t = try_acquire("logs")
         assert isinstance(t, QueueTicket) and t.signal == "logs"
-        assert snap.queue_depth_logs == 3  # snap is frozen at read time
 
     def test_rapid_saturate_drain_cycles(self) -> None:
         """Repeatedly fill and drain the queue to max capacity."""
@@ -82,7 +80,6 @@ class TestBackpressureSaturation:
                 release(t)
 
         snap = get_health_snapshot()
-        assert snap.queue_depth_metrics == 0
         assert snap.dropped_metrics == 50  # one drop per cycle
 
     def test_concurrent_saturation_total_consistency(self) -> None:
@@ -119,7 +116,6 @@ class TestBackpressureSaturation:
 
         snap = get_health_snapshot()
         assert snap.dropped_logs == total_dropped
-        assert snap.queue_depth_logs == 0
 
     def test_all_signals_saturate_independently(self) -> None:
         """Saturating one signal does not affect another signal's queue."""
@@ -147,9 +143,6 @@ class TestBackpressureSaturation:
         assert snap.dropped_logs == 1
         assert snap.dropped_traces == 1
         assert snap.dropped_metrics == 1
-        assert snap.queue_depth_logs == 2
-        assert snap.queue_depth_traces == 3
-        assert snap.queue_depth_metrics == 4
 
     def test_concurrent_mixed_signals_no_cross_contamination(self) -> None:
         """Threads operating on different signals don't interfere."""
@@ -187,9 +180,6 @@ class TestBackpressureSaturation:
         assert len(all_tokens) == len(set(all_tokens)), "Tokens must be globally unique"
 
         snap = get_health_snapshot()
-        assert snap.queue_depth_logs == 0
-        assert snap.queue_depth_traces == 0
-        assert snap.queue_depth_metrics == 0
         assert snap.dropped_logs == 0
         assert snap.dropped_traces == 0
         assert snap.dropped_metrics == 0

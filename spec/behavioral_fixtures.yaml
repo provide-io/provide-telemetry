@@ -349,3 +349,47 @@ schema_strict_mode:
       strict: true
       segments: ["user", "login", "ok"]
       expected_error: false
+
+health_snapshot:
+  description: >
+    Canonical 25-field health snapshot layout. All languages must return
+    these fields with these default values after reset.
+  canonical_fields:
+    per_signal:
+      - emitted
+      - dropped
+      - export_failures
+      - retries
+      - export_latency_ms
+      - async_blocking_risk
+      - circuit_state
+      - circuit_open_count
+    global:
+      - setup_error
+  defaults:
+    emitted: 0
+    dropped: 0
+    export_failures: 0
+    retries: 0
+    export_latency_ms: 0.0
+    async_blocking_risk: 0
+    circuit_state: "closed"
+    circuit_open_count: 0
+    setup_error: null
+  circuit_state_values: ["closed", "open", "half_open"]
+
+pii_depth:
+  description: >
+    PII sanitization respects max_depth. Default 8.
+    Configurable via PROVIDE_LOG_PII_MAX_DEPTH env var.
+  default_max_depth: 8
+  env_var: PROVIDE_LOG_PII_MAX_DEPTH
+  cases:
+    - description: "depth < maxDepth is redacted"
+      max_depth: 3
+      input_depth: 2
+      expected: "redacted"
+    - description: "depth >= maxDepth is untouched"
+      max_depth: 3
+      input_depth: 3
+      expected: "untouched"

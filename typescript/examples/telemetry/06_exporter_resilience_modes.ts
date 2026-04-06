@@ -11,7 +11,7 @@
  * - timeoutMs for deadline enforcement
  * - getExporterPolicy to inspect active policy
  * - runWithResilience for resilient async exports
- * - Health snapshot: exportRetries, exportFailures, exportLatencyMs, lastExportError
+ * - Health snapshot: per-signal retries, exportFailures, exportLatencyMs
  *
  * Run: npx tsx examples/telemetry/06_exporter_resilience_modes.ts
  */
@@ -89,10 +89,9 @@ async function main(): Promise<void> {
   // ── 📊 Health snapshot ────────────────────────────────
   console.log('\n📊 Health snapshot after all operations:');
   const snapshot = getHealthSnapshot();
-  console.log(`  🔄 exportRetries:       ${snapshot.exportRetries}`);
-  console.log(`  ❌ exportFailures:      ${snapshot.exportFailures}`);
-  console.log(`  💬 lastExportError:     ${snapshot.lastExportError}`);
-  console.log(`  ⏱️  exportLatencyMs:    ${snapshot.exportLatencyMs}`);
+  console.log(`  🔄 retriesMetrics:          ${snapshot.retriesMetrics}`);
+  console.log(`  ❌ exportFailuresMetrics:   ${snapshot.exportFailuresMetrics}`);
+  console.log(`  ⏱️  exportLatencyMsMetrics: ${snapshot.exportLatencyMsMetrics}`);
   console.log(`  🔌 circuitStateMetrics: ${snapshot.circuitStateMetrics}`);
   console.log(`  📈 circuitOpenCount:    ${snapshot.circuitOpenCountMetrics}`);
   console.log(`  🛑 setupError:          ${snapshot.setupError}`);

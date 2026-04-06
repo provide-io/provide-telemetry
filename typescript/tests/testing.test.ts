@@ -16,9 +16,9 @@ describe('resetTelemetryState', () => {
   });
 
   it('resets health counters', () => {
-    _incrementHealth('exportFailures', 5);
+    _incrementHealth('exportFailuresLogs', 5);
     resetTelemetryState();
-    expect(getHealthSnapshot().exportFailures).toBe(0);
+    expect(getHealthSnapshot().exportFailuresLogs).toBe(0);
   });
 
   it('does not throw when called multiple times', () => {

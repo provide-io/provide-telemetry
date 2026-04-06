@@ -104,10 +104,9 @@ async function main(): Promise<void> {
   console.log('\n🩺 Health snapshot summary:');
   const s = getHealthSnapshot();
   console.log(`  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
-  console.log(`  🔄 exportRetries:  ${s.exportRetries}`);
-  console.log(`  ❌ exportFailures: ${s.exportFailures}`);
-  console.log(`  ⚠️  asyncRisk:     ${s.asyncBlockingRisk}`);
-  console.log(`  💬 lastError:      ${s.lastExportError}`);
+  console.log(`  🔄 retriesLogs:            ${s.retriesLogs}`);
+  console.log(`  ❌ exportFailuresLogs:     ${s.exportFailuresLogs}`);
+  console.log(`  ⚠️  asyncRiskLogs:         ${s.asyncBlockingRiskLogs}`);
 
   console.log('\n🏁 All guardrails active — production-ready!');
   await shutdownTelemetry();

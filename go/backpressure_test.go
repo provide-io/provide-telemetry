@@ -95,11 +95,11 @@ func TestTryAcquire_HealthCounters_AcquireSuccess(t *testing.T) {
 	if snap.LogsEmitted != 1 {
 		t.Errorf("LogsEmitted: want 1, got %d", snap.LogsEmitted)
 	}
-	if snap.SpansStarted != 1 {
-		t.Errorf("SpansStarted: want 1, got %d", snap.SpansStarted)
+	if snap.TracesEmitted != 1 {
+		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
 	}
-	if snap.MetricsRecorded != 1 {
-		t.Errorf("MetricsRecorded: want 1, got %d", snap.MetricsRecorded)
+	if snap.MetricsEmitted != 1 {
+		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
 	}
 }
 
@@ -121,8 +121,8 @@ func TestTryAcquire_HealthCounters_AcquireFailure(t *testing.T) {
 	if snap.LogsDropped != 1 {
 		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
 	}
-	if snap.SpansDropped != 1 {
-		t.Errorf("SpansDropped: want 1, got %d", snap.SpansDropped)
+	if snap.TracesDropped != 1 {
+		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
 	}
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
