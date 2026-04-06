@@ -16,6 +16,7 @@ import {
   context as otelContext,
 } from '@opentelemetry/api';
 import { getActiveOtelContext } from './propagation';
+import { randomHex } from './hash';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -80,6 +81,46 @@ export function getActiveTraceIds(): { trace_id?: string; span_id?: string } {
   return { trace_id: ctx.traceId, span_id: ctx.spanId };
 }
 
+const NOOP_TRACE_ID = '00000000000000000000000000000000';
+
+/**
+ * Return true if the given span is a no-op (all-zero trace ID).
+ * Used to decide whether to inject synthetic random IDs.
+ */
+function _isNoopSpan(span: Span): boolean {
+  return span.spanContext().traceId === NOOP_TRACE_ID;
+}
+
+/**
+ * Execute fn with random synthetic trace/span IDs set as manual context,
+ * then restore the previous manual context when done.
+ * Handles both sync and async results.
+ */
+function _withSyntheticIds<T>(fn: () => T): T {
+  const prevTraceId = _manualTraceId;
+  const prevSpanId = _manualSpanId;
+  // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
+  setTraceContext(randomHex(16), randomHex(8));
+  const result = fn();
+  if (result instanceof Promise) {
+    return result.then(
+      (value) => {
+        _manualTraceId = prevTraceId;
+        _manualSpanId = prevSpanId;
+        return value;
+      },
+      (err: unknown) => {
+        _manualTraceId = prevTraceId;
+        _manualSpanId = prevSpanId;
+        throw err;
+      },
+    ) as T;
+  }
+  _manualTraceId = prevTraceId;
+  _manualSpanId = prevSpanId;
+  return result;
+}
+
 /** Shared span handler for withTrace — records exceptions and sets ERROR status. */
 function _spanHandler<T>(fn: () => T, span: Span): T {
   try {
@@ -121,14 +162,22 @@ export function withTrace<T>(name: string, fn: () => T): T {
     const activeCtx = getActiveOtelContext();
     if (activeCtx) {
       return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
-        tracer.startActiveSpan(name, (span: Span) => _spanHandler(fn, span)),
+        tracer.startActiveSpan(name, (span: Span) => {
+          // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+          if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+          return _spanHandler(fn, span);
+        }),
       );
     }
   } catch {
     // Graceful degradation — fall through to default behaviour.
   }
 
-  return tracer.startActiveSpan(name, (span: Span) => _spanHandler(fn, span));
+  return tracer.startActiveSpan(name, (span: Span) => {
+    // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+    if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+    return _spanHandler(fn, span);
+  });
 }
 
 /**

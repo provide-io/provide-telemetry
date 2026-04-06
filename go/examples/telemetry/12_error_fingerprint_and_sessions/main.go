@@ -78,10 +78,12 @@ fmt.Println()
 
 	log := telemetry.GetLogger(ctx, "examples.session")
 
-	fmt.Printf("  Session before bind: %q\n", telemetry.GetSessionID(ctx))
+	sessionBefore, _ := telemetry.GetSessionID(ctx)
+	fmt.Printf("  Session before bind: %q\n", sessionBefore)
 
 	ctx = telemetry.BindSessionContext(ctx, "sess-demo-42")
-	fmt.Printf("  Session after bind:  %q\n", telemetry.GetSessionID(ctx))
+	sessionAfterBind, _ := telemetry.GetSessionID(ctx)
+	fmt.Printf("  Session after bind:  %q\n", sessionAfterBind)
 
 	boundEvt, _ := telemetry.Event("app", "session", "bound")
 	log.InfoContext(ctx, boundEvt.Event, append(boundEvt.Attrs(), "msg", "session is active")...)
@@ -90,7 +92,8 @@ fmt.Println()
 	log.InfoContext(ctx, actionEvt.Event, append(actionEvt.Attrs(), "action", "page_view", "path", "/dashboard")...)
 
 	ctx = telemetry.ClearSessionContext(ctx)
-	fmt.Printf("  Session after clear: %q\n\n", telemetry.GetSessionID(ctx))
+	sessionAfterClear, _ := telemetry.GetSessionID(ctx)
+	fmt.Printf("  Session after clear: %q\n\n", sessionAfterClear)
 }
 
 func main() {

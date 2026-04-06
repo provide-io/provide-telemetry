@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { sha256Hex, shortHash12 } from '../src/hash';
+import { randomHex, sha256Hex, shortHash12 } from '../src/hash';
 
 describe('hash helpers', () => {
   it('computes the standard SHA-256 digest for ascii input', () => {
@@ -64,5 +64,24 @@ describe('shortHash12 — output format', () => {
   it('is the first 12 characters of sha256Hex', () => {
     const full = sha256Hex('myinput');
     expect(shortHash12('myinput')).toBe(full.slice(0, 12));
+  });
+});
+
+describe('randomHex', () => {
+  it('returns a string of exactly 2*numBytes hex characters', () => {
+    expect(randomHex(16)).toHaveLength(32);
+    expect(randomHex(8)).toHaveLength(16);
+  });
+
+  it('output is lowercase hex only', () => {
+    expect(randomHex(16)).toMatch(/^[0-9a-f]{32}$/);
+    expect(randomHex(8)).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('returns different values on successive calls (not deterministic)', () => {
+    const a = randomHex(16);
+    const b = randomHex(16);
+    // Probabilistically impossible for two independent 128-bit random values to collide
+    expect(a).not.toBe(b);
   });
 });

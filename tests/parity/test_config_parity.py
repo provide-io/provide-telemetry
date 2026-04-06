@@ -14,11 +14,8 @@ import pytest
 
 
 def test_parity_pii_max_depth_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    import importlib
-
-    import provide.telemetry.config as cfg_mod
+    from provide.telemetry.config import TelemetryConfig
 
     monkeypatch.setenv("PROVIDE_LOG_PII_MAX_DEPTH", "3")
-    importlib.reload(cfg_mod)
-    cfg = cfg_mod.TelemetryConfig.from_env()
+    cfg = TelemetryConfig.from_env()
     assert cfg.pii_max_depth == 3
