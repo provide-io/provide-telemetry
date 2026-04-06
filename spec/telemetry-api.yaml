@@ -175,6 +175,7 @@ api:
     - name: update_runtime_config
       kind: function
       required: true
+      note: "Accepts RuntimeOverrides (hot fields only), not full TelemetryConfig"
     - name: reload_runtime_from_env
       kind: function
       required: true
@@ -212,6 +213,10 @@ api:
     - name: HealthSnapshot
       kind: type
       required: true
+    - name: RuntimeOverrides
+      kind: type
+      required: true
+      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth"
 
 config_env_vars:
   - prefix: UNDEF_TELEMETRY_
