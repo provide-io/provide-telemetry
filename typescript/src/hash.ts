@@ -37,8 +37,10 @@ export function sha256Hex(input: string): string {
   padded[bytes.length] = 0x80;
 
   const view = new DataView(padded.buffer);
+  // Stryker disable next-line ArithmeticOperator: highBits is always 0 for inputs under 512 MB — division vs multiplication both produce 0 after ToUint32 coercion
   const highBits = Math.floor(bitLength / 0x100000000);
   const lowBits = bitLength >>> 0;
+  // Stryker disable next-line BooleanLiteral: highBits is 0 for all testable inputs — big-endian vs little-endian of 0 is identical
   view.setUint32(paddedLength - 8, highBits, false);
   view.setUint32(paddedLength - 4, lowBits, false);
 
@@ -50,6 +52,7 @@ export function sha256Hex(input: string): string {
       words[i] = view.getUint32(offset + i * 4, false);
     }
 
+    // Stryker disable next-line EqualityOperator: Uint32Array(64) silently ignores writes to index 64 — the extra iteration is a no-op
     for (let i = 16; i < 64; i++) {
       const w15 = words[i - 15]!;
       const w2 = words[i - 2]!;

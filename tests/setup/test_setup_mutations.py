@@ -359,6 +359,98 @@ def test_reconfigure_telemetry_error_message_exact(monkeypatch: pytest.MonkeyPat
 # ── runtime.py: reconfigure_telemetry or-logic for all three providers
 
 
+# ── setup.py: warning type and fallback configure_logging in error path ──
+
+
+def test_setup_telemetry_error_warning_is_runtime_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: RuntimeWarning -> None or removal of RuntimeWarning arg."""
+    _reset_setup_state_for_tests()
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _, **kw: None)
+    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.warns(RuntimeWarning, match="degraded mode"):
+        setup_telemetry()
+
+
+def test_setup_telemetry_fallback_configure_logging_uses_correct_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kills: 'configure_logging' -> 'XXconfigure_loggingXX' or 'CONFIGURE_LOGGING'.
+
+    When configure_logging itself fails (not in completed), the fallback path
+    must call configure_logging(cfg, force=True).
+    """
+    _reset_setup_state_for_tests()
+    fallback_calls: list[tuple[object, bool]] = []
+
+    def _fail_configure(cfg: object, *, force: bool = False) -> None:
+        if not fallback_calls:
+            # First call (normal path) - fail to NOT add to completed
+            raise RuntimeError("config failed")
+        fallback_calls.append((cfg, force))
+
+    def _spy_configure(cfg: object, *, force: bool = False) -> None:
+        fallback_calls.append((cfg, force))
+
+    first_call = {"count": 0}
+
+    def _configure_that_fails_then_succeeds(cfg: object, *, force: bool = False) -> None:
+        first_call["count"] += 1
+        if first_call["count"] == 1:
+            raise RuntimeError("initial config failed")
+        fallback_calls.append((cfg, force))
+
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("provide.telemetry.setup.configure_logging", _configure_that_fails_then_succeeds)
+    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        cfg = TelemetryConfig()
+        setup_telemetry(cfg)
+
+    # Fallback configure_logging must be called with force=True
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0][1] is True  # force=True
+
+
+def test_setup_telemetry_fallback_passes_cfg_not_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kills: configure_logging(cfg, ...) -> configure_logging(None, ...)."""
+    _reset_setup_state_for_tests()
+    fallback_cfgs: list[object] = []
+    first_call = {"count": 0}
+
+    def _configure_spy(cfg: object, *, force: bool = False) -> None:
+        first_call["count"] += 1
+        if first_call["count"] == 1:
+            raise RuntimeError("initial failed")
+        fallback_cfgs.append(cfg)
+
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _: None)
+    monkeypatch.setattr("provide.telemetry.setup.configure_logging", _configure_spy)
+    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _: None)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        cfg = TelemetryConfig()
+        setup_telemetry(cfg)
+
+    assert len(fallback_cfgs) == 1
+    assert fallback_cfgs[0] is not None
+    assert isinstance(fallback_cfgs[0], TelemetryConfig)
+
+
 def test_reconfigure_telemetry_raises_when_only_metrics_provider_set(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kills mutant that changes `or` to `and` in the provider-installed guard."""
     from provide.telemetry import runtime as runtime_mod

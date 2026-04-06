@@ -303,3 +303,72 @@ class TestHealthSnapshotCircuitState:
         set_setup_error(None)
         snap = get_health_snapshot()
         assert snap.setup_error is None
+
+    def test_circuit_open_count_distinct_from_cooldown(self) -> None:
+        """Kill mutant: cs_logs[1] -> cs_logs[2] (swaps open_count with cooldown).
+
+        Trip the circuit breaker to get non-zero open_count and positive cooldown,
+        then verify they are placed in the correct snapshot fields.
+        """
+        import time
+
+        from provide.telemetry.resilience import (
+            _CIRCUIT_BREAKER_THRESHOLD,
+            ExporterPolicy,
+            reset_resilience_for_tests,
+            run_with_resilience,
+            set_exporter_policy,
+        )
+
+        reset_resilience_for_tests()
+        reset_health_for_tests()
+        # Trip the circuit for "logs" signal
+        set_exporter_policy(
+            "logs",
+            ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+        )
+        for _ in range(_CIRCUIT_BREAKER_THRESHOLD):
+            run_with_resilience("logs", lambda: time.sleep(1.0))
+
+        snap = get_health_snapshot()
+        # Circuit is open: open_count >= 1 (integer), cooldown_remaining > 0 (float)
+        assert snap.circuit_state_logs == "open"
+        assert isinstance(snap.circuit_open_count_logs, int)
+        assert snap.circuit_open_count_logs >= 1
+        assert isinstance(snap.circuit_cooldown_remaining_logs, float)
+        assert snap.circuit_cooldown_remaining_logs > 0.0
+        # The values must be different types/magnitudes (int vs float > 1.0)
+        # so swapping indices would produce wrong types or values
+        assert snap.circuit_open_count_logs != snap.circuit_cooldown_remaining_logs
+
+    def test_circuit_open_count_per_signal_mapping(self) -> None:
+        """Kill mutants swapping indices for traces and metrics signals."""
+        import time
+
+        from provide.telemetry.resilience import (
+            _CIRCUIT_BREAKER_THRESHOLD,
+            ExporterPolicy,
+            reset_resilience_for_tests,
+            run_with_resilience,
+            set_exporter_policy,
+        )
+
+        reset_resilience_for_tests()
+        reset_health_for_tests()
+        for sig in ("traces", "metrics"):
+            set_exporter_policy(
+                sig,
+                ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+            )
+            for _ in range(_CIRCUIT_BREAKER_THRESHOLD):
+                run_with_resilience(sig, lambda: time.sleep(1.0))
+
+        snap = get_health_snapshot()
+        assert snap.circuit_state_traces == "open"
+        assert snap.circuit_open_count_traces >= 1
+        assert snap.circuit_cooldown_remaining_traces > 0.0
+        assert snap.circuit_open_count_traces != snap.circuit_cooldown_remaining_traces
+        assert snap.circuit_state_metrics == "open"
+        assert snap.circuit_open_count_metrics >= 1
+        assert snap.circuit_cooldown_remaining_metrics > 0.0
+        assert snap.circuit_open_count_metrics != snap.circuit_cooldown_remaining_metrics

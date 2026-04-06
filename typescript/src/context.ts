@@ -135,6 +135,7 @@ export function clearSessionContext(): void {
 
 /** Reset to empty context (used in tests). */
 export function _resetContext(): void {
+  // Stryker disable next-line OptionalChaining: _asyncLocalStorage is always non-null in Node.js/test environments — ?. vs . is equivalent
   const store = _asyncLocalStorage?.getStore();
   if (store) {
     for (const key of Object.keys(store)) delete store[key];

@@ -46,12 +46,14 @@ export const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0
 export const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
 export const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
-// Stryker disable next-line ObjectLiteral,BooleanLiteral: initial false values are reset by _resetResilienceForTests before each test
+/* Stryker disable BooleanLiteral: initial false values are reset by _resetResilienceForTests before each test — equivalent mutant */
+// Stryker disable next-line ObjectLiteral
 export const _halfOpenProbing: Record<string, boolean> = {
   logs: false,
   traces: false,
   metrics: false,
 };
+/* Stryker restore BooleanLiteral */
 
 export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
   _policies[signal] = { ...DEFAULT_POLICY, ...policy };

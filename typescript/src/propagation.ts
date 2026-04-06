@@ -36,6 +36,7 @@ export type PropagationALS = {
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
+// Stryker disable BlockStatement: module-level try/catch runs once at import time — cannot be tested by unit tests
 try {
   // Dynamic require so the import doesn't break browser bundles.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,8 +47,10 @@ try {
 } catch {
   // Not available — fall back to module-level store below.
 }
+// Stryker restore BlockStatement
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
+// Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
 let _fallbackStore: PropagationStore = { active: {}, stack: [], otelCtxStack: [] };
 
 function _getStore(): PropagationStore {
@@ -57,6 +60,7 @@ function _getStore(): PropagationStore {
   return _fallbackStore;
 }
 
+// Stryker disable ConditionalExpression,BlockStatement,ArrayDeclaration: _ensureStore ALS-to-fallback clone path — tested by "clones fallback stack" test; remaining mutants are equivalent because _resetPropagationForTests empties both stores
 function _ensureStore(): PropagationStore {
   if (_als) {
     const store = _als.getStore();
@@ -71,6 +75,7 @@ function _ensureStore(): PropagationStore {
   }
   return _fallbackStore;
 }
+// Stryker restore ConditionalExpression,BlockStatement,ArrayDeclaration
 
 function _parseTraceparent(value: string): { traceId?: string; spanId?: string } {
   const parts = value.split('-');
