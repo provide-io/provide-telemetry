@@ -6,7 +6,12 @@
  * Mirrors Python provide.telemetry.runtime.
  */
 
-import { type TelemetryConfig, configFromEnv, setupTelemetry } from './config';
+import {
+  type RuntimeOverrides,
+  type TelemetryConfig,
+  configFromEnv,
+  setupTelemetry,
+} from './config';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -40,35 +45,8 @@ export function _areProvidersRegistered(): boolean {
   return _providersRegistered;
 }
 
-export function _setProviderSignalInstalled(
-  signal: 'logs' | 'traces' | 'metrics',
-  installed: boolean,
-): void {
-  _providerSignals[signal] = installed;
-}
-
-export function getRuntimeStatus(): RuntimeStatus {
-  const cfg = resolveEffectiveConfig();
-  return {
-    setupDone: _activeConfig !== null,
-    signals: {
-      logs: true,
-      traces: cfg.tracingEnabled,
-      metrics: cfg.metricsEnabled,
-    },
-    providers: { ..._providerSignals },
-    fallback: {
-      logs: !_providerSignals.logs,
-      traces: !_providerSignals.traces,
-      metrics: !_providerSignals.metrics,
-    },
-    setupError: getHealthSnapshot().setupError,
-  };
-}
-
 function deepFreeze<T extends object>(obj: T): Readonly<T> {
   for (const val of Object.values(obj)) {
-    // Stryker disable next-line ConditionalExpression,EqualityOperator,LogicalOperator: frozen-object guard — all sub-conditions required but only observable with deeply nested mutable objects
     if (typeof val === 'object' && val !== null && !Object.isFrozen(val)) {
       deepFreeze(val as object);
     }
@@ -76,15 +54,14 @@ function deepFreeze<T extends object>(obj: T): Readonly<T> {
   return Object.freeze(obj);
 }
 
-/** Return the active runtime config (or live setupTelemetry config if none explicitly set via updateRuntimeConfig). */
+/** Return the active runtime config (or env-derived defaults if none set). */
 export function getRuntimeConfig(): Readonly<TelemetryConfig> {
-  const cfg = resolveEffectiveConfig();
+  const cfg = _activeConfig ?? configFromEnv();
   return deepFreeze({ ...cfg });
 }
 
 /** Merge hot-reloadable overrides into the active config and re-apply policies. */
 export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
-  validateRuntimeOverrides(overrides);
   const base = _activeConfig ?? configFromEnv();
   const merged: TelemetryConfig = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
@@ -96,68 +73,13 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
   setupTelemetry(_activeConfig);
 }
 
-function validateRate(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be in [0, 1], got ${String(value)}`);
-  }
-}
-
-function validateNonNegativeInteger(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isInteger(value) || value < 0) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(value)}`);
-  }
-}
-
-function validateNonNegativeNumber(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isFinite(value) || value < 0) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be >= 0, got ${String(value)}`);
-  }
-}
-
-/* Stryker disable StringLiteral: field names in validation calls are only used in error messages — mutating them does not change validation behavior */
-function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
-  validateRate('samplingLogsRate', overrides.samplingLogsRate);
-  validateRate('samplingTracesRate', overrides.samplingTracesRate);
-  validateRate('samplingMetricsRate', overrides.samplingMetricsRate);
-  validateNonNegativeInteger('backpressureLogsMaxsize', overrides.backpressureLogsMaxsize);
-  validateNonNegativeInteger('backpressureTracesMaxsize', overrides.backpressureTracesMaxsize);
-  validateNonNegativeInteger('backpressureMetricsMaxsize', overrides.backpressureMetricsMaxsize);
-  validateNonNegativeInteger('exporterLogsRetries', overrides.exporterLogsRetries);
-  validateNonNegativeInteger('exporterTracesRetries', overrides.exporterTracesRetries);
-  validateNonNegativeInteger('exporterMetricsRetries', overrides.exporterMetricsRetries);
-  validateNonNegativeNumber('exporterLogsBackoffMs', overrides.exporterLogsBackoffMs);
-  validateNonNegativeNumber('exporterTracesBackoffMs', overrides.exporterTracesBackoffMs);
-  validateNonNegativeNumber('exporterMetricsBackoffMs', overrides.exporterMetricsBackoffMs);
-  validateNonNegativeNumber('exporterLogsTimeoutMs', overrides.exporterLogsTimeoutMs);
-  validateNonNegativeNumber('exporterTracesTimeoutMs', overrides.exporterTracesTimeoutMs);
-  validateNonNegativeNumber('exporterMetricsTimeoutMs', overrides.exporterMetricsTimeoutMs);
-  validateNonNegativeInteger('securityMaxAttrValueLength', overrides.securityMaxAttrValueLength);
-  validateNonNegativeInteger('securityMaxAttrCount', overrides.securityMaxAttrCount);
-  validateNonNegativeInteger('piiMaxDepth', overrides.piiMaxDepth);
-}
-/* Stryker restore StringLiteral */
-
 const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'serviceName',
   'environment',
   'version',
   'otelEnabled',
-  'tracingEnabled',
-  'metricsEnabled',
   'otlpEndpoint',
   'otlpHeaders',
-  'otlpLogsEndpoint',
-  'otlpLogsHeaders',
-  'otlpTracesEndpoint',
-  'otlpTracesHeaders',
-  'otlpMetricsEndpoint',
-  'otlpMetricsHeaders',
 ];
 
 /** Reload config from env vars and apply only hot-reloadable fields. */
@@ -169,13 +91,11 @@ export function reloadRuntimeFromEnv(): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(fresh[k]),
     );
     if (drifted.length > 0) {
-      /* Stryker disable StringLiteral: warning message content */
       console.warn(
         '[provide-telemetry] runtime.cold_field_drift:',
         drifted.join(', '),
         '— restart required to apply',
       );
-      /* Stryker restore StringLiteral */
     }
   }
   // Apply only hot fields via overrides
@@ -203,8 +123,6 @@ export function reloadRuntimeFromEnv(): void {
     sloEnableRedMetrics: fresh.sloEnableRedMetrics,
     sloEnableUseMetrics: fresh.sloEnableUseMetrics,
     piiMaxDepth: fresh.piiMaxDepth,
-    strictSchema: fresh.strictSchema,
-    strictEventName: fresh.strictEventName,
   };
   updateRuntimeConfig(overrides);
 }
