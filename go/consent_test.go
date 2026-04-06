@@ -141,7 +141,6 @@ func TestConsentMinimalBlocksTracesMetricsContext(t *testing.T) {
 
 func TestLoadConsentFromEnvFull(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "FULL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFull {
@@ -151,7 +150,6 @@ func TestLoadConsentFromEnvFull(t *testing.T) {
 
 func TestLoadConsentFromEnvFunctional(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "FUNCTIONAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFunctional {
@@ -161,7 +159,6 @@ func TestLoadConsentFromEnvFunctional(t *testing.T) {
 
 func TestLoadConsentFromEnvMinimal(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "MINIMAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentMinimal {
@@ -171,7 +168,6 @@ func TestLoadConsentFromEnvMinimal(t *testing.T) {
 
 func TestLoadConsentFromEnvNone(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentNone {
@@ -181,7 +177,6 @@ func TestLoadConsentFromEnvNone(t *testing.T) {
 
 func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
 	LoadConsentFromEnv()
 	// invalid value leaves level unchanged (FULL)
@@ -192,7 +187,6 @@ func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 
 func TestLoadConsentFromEnvEmpty(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "")
 	LoadConsentFromEnv()
 	// empty env var leaves level unchanged
@@ -230,7 +224,6 @@ func TestSetGetConsentLevel(t *testing.T) {
 
 func TestShouldAllowUnknownConsentLevelReturnsFalse(t *testing.T) {
 	ResetConsentForTests()
-	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentLevel(99))
 	if ShouldAllow("logs", "INFO") {
 		t.Error("expected unknown ConsentLevel to deny all signals")
