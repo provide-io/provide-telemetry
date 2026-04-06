@@ -113,3 +113,26 @@ func TestMaskHeaderValueLongViaString(t *testing.T) {
 		t.Errorf("expected Bear**** in masked output, got: %s", s)
 	}
 }
+
+func TestEndpointWithUsernameNoPassword(t *testing.T) {
+	// URL with username but no password — hasPass is false → maskEndpointURL returns raw.
+	cfg := &telemetry.TelemetryConfig{}
+	cfg.Tracing.OTLPEndpoint = "https://user@otel.example.com/v1/traces"
+	s := cfg.String()
+	if !strings.Contains(s, "otel.example.com") {
+		t.Errorf("String() stripped non-secret endpoint: %s", s)
+	}
+}
+
+func TestEndpointWithPasswordAndPort(t *testing.T) {
+	// URL with password AND explicit port — exercises the port branch in maskEndpointURL.
+	cfg := &telemetry.TelemetryConfig{}
+	cfg.Tracing.OTLPEndpoint = "https://user:s3cr3t@otel.example.com:4318/v1/traces" // pragma: allowlist secret
+	s := cfg.String()
+	if strings.Contains(s, "s3cr3t") {
+		t.Errorf("String() leaked password in port URL: %s", s)
+	}
+	if !strings.Contains(s, "4318") {
+		t.Errorf("String() dropped port from masked URL: %s", s)
+	}
+}
