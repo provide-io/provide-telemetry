@@ -43,10 +43,13 @@ jobs:
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.25"
-      - uses: golangci/golangci-lint-action@v6  # TODO: pin to SHA when stable SHA is known
-        with:
-          working-directory: go
-          version: latest
+      # Build golangci-lint from source with the installed Go 1.25 toolchain so it can
+      # lint Go 1.25+ code (pre-built binaries are built with Go 1.24 and refuse Go 1.25).
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run golangci-lint
+        run: golangci-lint run --path-prefix=go
+        working-directory: go
 
   security:
     runs-on: ubuntu-latest
