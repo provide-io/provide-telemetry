@@ -44,14 +44,12 @@ async def _run() -> None:
     log.info(event("example", "sampling", "done"))
 
     snapshot = get_health_snapshot()
-    print(
-        {
-            "dropped_logs": snapshot.dropped_logs,
-            "dropped_traces": snapshot.dropped_traces,
-            "dropped_metrics": snapshot.dropped_metrics,
-            "queue_depth_traces": snapshot.queue_depth_traces,
-        }
-    )
+    print(f"  📉 dropped_logs:         {snapshot.dropped_logs}")
+    print(f"  📉 dropped_traces:       {snapshot.dropped_traces}")
+    print(f"  📉 dropped_metrics:      {snapshot.dropped_metrics}")
+    print(f"  📤 export_failures_traces: {snapshot.export_failures_traces}")
+
+    print("\n🏁 Done!")
 
 
 def main() -> None:
