@@ -10,13 +10,12 @@
  * - getRuntimeConfig / updateRuntimeConfig for hot updates
  * - reconfigureTelemetry for provider-safe reconfiguration
  * - reloadRuntimeFromEnv to re-read environment variables
- * - ConfigurationError when attempting to change OTEL provider fields post-init
+ * - provider-changing OTEL fields requiring restart after live registration
  *
  * Run: npx tsx examples/telemetry/04_runtime_reconfigure.ts
  */
 
 import {
-  ConfigurationError,
   event,
   getLogger,
   getRuntimeConfig,
@@ -56,27 +55,17 @@ async function main(): Promise<void> {
   log.info({ ...event('example', 'runtime', 'reconfigured') });
 
   // ── 🌍 Reload from environment ───────────────────────
-  console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env...');
+  console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env hot fields only...');
   reloadRuntimeFromEnv();
   const cfgReloaded = getRuntimeConfig();
   console.log(`  ✅ Reloaded: logLevel=${cfgReloaded.logLevel}`);
 
-  // ── 🚫 ConfigurationError on provider-changing fields ──
-  console.log('\n🚫 Attempting to change otelEnabled after providers registered...');
-  // Simulate providers being registered by marking them (normally done by registerOtelProviders)
-  // This is commented out in this example since we don't want to actually register providers:
-  //   import { _markProvidersRegistered } from '../../src/runtime.js';
-  //   _markProvidersRegistered();
-  //   try { reconfigureTelemetry({ otelEnabled: true }); }
-  //   catch (err) { ... }
-  // Instead, show the error class is catchable:
-  try {
-    throw new ConfigurationError('Cannot change OTEL provider config after providers are initialized');
-  } catch (err) {
-    if (err instanceof ConfigurationError) {
-      console.log(`  💥 ConfigurationError: ${err.message}`);
-    }
-  }
+  // ── 🚫 Provider-changing fields after live registration ───────────────
+  console.log('\n🚫 Provider-changing fields are rejected after OTEL providers are live.');
+  console.log(
+    '  Reconfigure with otelEnabled / otlpEndpoint / otlpHeaders only before registerOtelProviders(),',
+  );
+  console.log('  or restart the process and call setupTelemetry() with the new provider config.');
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();
