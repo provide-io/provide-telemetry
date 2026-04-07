@@ -1,4 +1,4 @@
-name: Go CI
+name: 🐹 CI — Go
 
 on:
   push:
@@ -68,7 +68,8 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run gosec
-        run: gosec ./...
+        # Exclude cmd/e2e_cross_language_client — separate module requiring Go 1.26, only used for E2E
+        run: gosec -exclude-dir=cmd/e2e_cross_language_client ./...
       - name: Run govulncheck
         run: govulncheck ./...
 
