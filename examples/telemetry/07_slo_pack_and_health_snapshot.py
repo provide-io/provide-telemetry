@@ -51,13 +51,21 @@ def main() -> None:
     # ── 🩺 Full health snapshot ──────────────────────────────
     print("\n🩺 Full HealthSnapshot (all 25 fields):")
     s = get_health_snapshot()
+    print(f"  📉 Dropped:            logs={s.dropped_logs}  traces={s.dropped_traces}  metrics={s.dropped_metrics}")
+    print(f"  🔄 Retries:            logs={s.retries_logs}  traces={s.retries_traces}  metrics={s.retries_metrics}")
     print(
-        {
-            "taxonomy": taxonomy,
-            "last_successful_export_metrics": snapshot.last_successful_export_metrics,
-            "export_failures_metrics": snapshot.export_failures_metrics,
-        }
+        f"  ⚠️  Async block risk:  logs={s.async_blocking_risk_logs}  traces={s.async_blocking_risk_traces}  metrics={s.async_blocking_risk_metrics}"
     )
+    print(
+        f"  ❌ Export failures:    logs={s.export_failures_logs}  traces={s.export_failures_traces}  metrics={s.export_failures_metrics}"
+    )
+    print(
+        f"  ⏱️  Export latency(ms): logs={s.export_latency_ms_logs}  traces={s.export_latency_ms_traces}  metrics={s.export_latency_ms_metrics}"
+    )
+    print(
+        f"  🔌 Circuit state:      logs={s.circuit_state_logs}  traces={s.circuit_state_traces}  metrics={s.circuit_state_metrics}"
+    )
+    print(f"  🛑 Setup error:        {s.setup_error}")
 
     shutdown_telemetry()
 
