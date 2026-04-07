@@ -1,10 +1,11 @@
 # Undef Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python and TypeScript. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, and Go. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
 
-[![1. 🐍 CI — Python](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-python.yml)
-[![2. 🟦 CI — TypeScript](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/ci-typescript.yml)
-[![5. 🔒 CodeQL](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/undef-games/undef-telemetry/actions/workflows/codeql.yml)
+[![1. 🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
+[![2. 🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
+[![Go CI](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml)
+[![5. 🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
@@ -100,19 +101,20 @@ Full reference: [Python API](https://github.com/undef-games/undef-telemetry/blob
 ## Polyglot Architecture
 
 ```
-undef-telemetry/
-  src/undef/telemetry/    # Python package
-  typescript/             # TypeScript package (@undef/telemetry)
+provide-telemetry/
+  src/provide/telemetry/    # Python package
+  typescript/             # TypeScript package (@provide-io/telemetry)
+  go/                     # Go module (github.com/provide-io/provide-telemetry/go)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```
 
-A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that both Python and TypeScript exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
+A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, and Go exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
 
 ## Quality
 
-- 100% branch coverage (Python + TypeScript)
-- 100% mutation kill score (mutmut + Stryker)
+- 100% branch coverage (Python + TypeScript + Go)
+- 100% mutation kill score (mutmut + Stryker + gremlins)
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
 - SHA-pinned GitHub Actions
@@ -121,16 +123,17 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Documentation
 
-- [Configuration Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) — Python function signatures and examples
-- [Architecture](https://github.com/undef-games/undef-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
-- [Internals](https://github.com/undef-games/undef-telemetry/blob/main/docs/INTERNALS.md) — implementation details
-- [Conventions](https://github.com/undef-games/undef-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
-- [Operations Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
-- [Production Profiles](https://github.com/undef-games/undef-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
-- [Release Runbook](https://github.com/undef-games/undef-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
-- [TypeScript README](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
-- [Examples](https://github.com/undef-games/undef-telemetry/blob/main/examples/README.md) — Python and TypeScript examples
+- [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
+- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — Python function signatures and examples
+- [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
+- [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
+- [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
+- [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
+- [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
+- [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
+- [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
+- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for all three languages
 
 ## License
 

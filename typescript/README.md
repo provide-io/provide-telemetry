@@ -177,12 +177,12 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `UNDEF_TELEMETRY_SERVICE_NAME` | `undef-service` | Service identity |
-| `UNDEF_ENV` | `development` | Deployment environment |
-| `UNDEF_VERSION` | `unknown` | Service version |
-| `UNDEF_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
-| `UNDEF_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
-| `UNDEF_TRACE_ENABLED` | `false` | Enable OTLP export |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
+| `PROVIDE_TELEMETRY_ENV` | `development` | Deployment environment (fallback: `PROVIDE_ENV`) |
+| `PROVIDE_VERSION` | `unknown` | Service version |
+| `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
+| `PROVIDE_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
+| `PROVIDE_TRACE_ENABLED` | `false` | Enable OTLP export |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
 
