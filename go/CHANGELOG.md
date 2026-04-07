@@ -1,40 +1,14 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Go Changelog
 
-All notable changes to `github.com/provide-io/provide-telemetry/go`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to `github.com/provide-io/provide-telemetry/go`.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-______________________________________________________________________
-
-## [0.2.4] — 2026-04-08
-
-### Features
-
-- **`RegisterSecretPattern`** — register custom secret detection patterns with name-based deduplication
-- **Benchmark suite** — `benchmark_test.go` with 13 `testing.B` benchmarks; `make bench` target
-- **Stress tests** — `scripts/stress/main.go` with 6 scenarios (logging, sampling, PII, backpressure, metrics, tracing)
-
-### Bug Fixes
-
-- **Health tracking double-count** — `TryAcquire` no longer increments `emitted_*` (was double-counting with `ShouldSample`)
-- **`export_latency_ms` always 0** — wired `_recordExportLatencyForSignal` into `RunWithResilience` on success
-- **`validateRuntimeOverrides` cyclomatic complexity** — extracted sub-validators to reduce complexity from 17 → 8
-
-______________________________________________________________________
-
-## [0.2.3] — 2026-04-06
-
-### Features
-
-- **`StrictSchema` in `RuntimeOverrides`** — `StrictSchema *bool` field added; hot-reloadable via `UpdateRuntimeConfig`
-
-### Improvements
-
-- **`UpdateRuntimeConfig` input validation** — rates validated to `[0, 1]`; sizes, retries, and backoff/timeout floats validated non-negative and finite; matches Python/TypeScript behaviour
-
-### Bug Fixes
-
-- **CI: gosec submodule exclusion** — `cmd/e2e_cross_language_client` excluded from gosec scan (separate module requiring Go 1.26); fixes failures on Dependabot action-bump PRs
-
-______________________________________________________________________
+---
 
 ## [0.2.2] — 2026-04-06
 
@@ -63,7 +37,7 @@ ______________________________________________________________________
 - 100% statement coverage enforced on every push
 - `-race` flag on all test runs
 
-______________________________________________________________________
+---
 
 ## [0.2.0] — 2026-04-01
 
