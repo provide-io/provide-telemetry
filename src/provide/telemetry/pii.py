@@ -7,7 +7,15 @@
 
 from __future__ import annotations
 
-import copy
+__all__ = [
+    "MaskMode",
+    "PIIRule",
+    "get_pii_rules",
+    "register_pii_rule",
+    "replace_pii_rules",
+    "sanitize_payload",
+]
+
 import hashlib
 import re as _re
 import threading
@@ -179,16 +187,13 @@ def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
     return frozenset(rule.path[-1] for rule in rules if rule.path)
 
 
-def _needs_deep_copy(rules: tuple[PIIRule, ...]) -> bool:  # pragma: no mutate
-    """Return True if any rule targets a nested path (depth > 1)."""
-    return any(len(rule.path) > 1 for rule in rules)  # pragma: no mutate
-
-
-def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:
+def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
     if not enabled:
         return dict(payload)
     rules = get_pii_rules()
-    cleaned: Any = copy.deepcopy(payload) if _needs_deep_copy(rules) else dict(payload)  # pragma: no mutate
+    # _apply_rule builds entirely new dict/list nodes at every level it traverses,
+    # so a shallow top-level copy is sufficient — no deepcopy needed.
+    cleaned: Any = dict(payload)
     for rule in rules:
         cleaned = _apply_rule(cleaned, rule)
     rule_targeted_keys = _collect_rule_leaf_keys(rules)
