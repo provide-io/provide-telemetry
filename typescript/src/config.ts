@@ -167,6 +167,9 @@ export interface RuntimeOverrides {
 
   // PII
   piiMaxDepth?: number;
+
+  // Schema
+  strictSchema?: boolean;
 }
 
 const DEFAULTS: TelemetryConfig = {
