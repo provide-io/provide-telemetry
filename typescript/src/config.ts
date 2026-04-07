@@ -535,8 +535,8 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
     const rawVal = pair.slice(idx + 1).trim();
     try {
       const key = decodeURIComponent(rawKey);
-      /* v8 ignore next -- defensive: idx<1 and trim() already exclude observable empty keys */
       // Stryker disable next-line ConditionalExpression: defensive guard — unreachable because idx<1 check and trim() already exclude empty keys
+      /* v8 ignore next: defensive — idx<1 and trim() already exclude observable empty keys */
       if (!key) continue;
       const val = decodeURIComponent(rawVal);
       result[key] = val;
