@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.3] — 2026-04-06
+
+### Features
+
+- **`StrictSchema` in `RuntimeOverrides`** — `StrictSchema *bool` field added; hot-reloadable via `UpdateRuntimeConfig`
+
+### Improvements
+
+- **`UpdateRuntimeConfig` input validation** — rates validated to `[0, 1]`; sizes, retries, and backoff/timeout floats validated non-negative and finite; matches Python/TypeScript behaviour
+
+### Bug Fixes
+
+- **CI: gosec submodule exclusion** — `cmd/e2e_cross_language_client` excluded from gosec scan (separate module requiring Go 1.26); fixes failures on Dependabot action-bump PRs
+
+---
+
 ## [0.2.2] — 2026-04-06
 
 ### Features
