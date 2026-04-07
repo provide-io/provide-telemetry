@@ -220,7 +220,7 @@ secret_detection:
 
 default_sensitive_keys:
   description: >
-    Canonical set of 17 default sensitive key names. Case-insensitive substring match.
+    Canonical set of 17 default sensitive key names. Case-insensitive exact match.
   keys:
     - password
     - passwd

@@ -81,8 +81,9 @@ logger.Info("request.received.ok", slog.Int("status", 200))
 logger.Error("db.query.error", slog.String("table", "users"))
 ```
 
-Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or
-4–5 segments (`domain.action.resource.status`).
+Event names follow the DA(R)S pattern: `Event()` accepts exactly 3 segments
+(`domain.action.status`) or 4 segments (`domain.action.resource.status`).
+`EventName()` accepts 3–5 segments.
 
 ### Tracing
 
@@ -168,7 +169,7 @@ safe := telemetry.GuardAttributes(map[string]string{
 
 ```go
 snap := telemetry.GetHealthSnapshot()
-fmt.Println(snap.LogsEmitted, snap.SpansStarted, snap.CircuitBreakerTrips)
+fmt.Println(snap.LogsEmitted, snap.TracesEmitted, snap.LogsCircuitOpenCount)
 ```
 
 ### Schema validation

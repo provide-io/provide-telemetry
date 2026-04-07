@@ -109,50 +109,74 @@ func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 }
 
 func validateRuntimeOverrides(overrides RuntimeOverrides) error {
-	if overrides.Sampling != nil {
-		if err := validateRateFinite(overrides.Sampling.LogsRate, "RuntimeOverrides.Sampling.LogsRate"); err != nil {
-			return err
-		}
-		if err := validateRateFinite(overrides.Sampling.TracesRate, "RuntimeOverrides.Sampling.TracesRate"); err != nil {
-			return err
-		}
-		if err := validateRateFinite(overrides.Sampling.MetricsRate, "RuntimeOverrides.Sampling.MetricsRate"); err != nil {
-			return err
-		}
+	validators := []func() error{
+		func() error {
+			if overrides.Sampling != nil {
+				return _validateSamplingOverride(*overrides.Sampling)
+			}
+			return nil
+		},
+		func() error {
+			if overrides.Backpressure != nil {
+				return _validateBackpressureOverride(*overrides.Backpressure)
+			}
+			return nil
+		},
+		func() error {
+			if overrides.Exporter != nil {
+				return validateExporterPolicyOverride(*overrides.Exporter)
+			}
+			return nil
+		},
+		func() error {
+			if overrides.Security != nil {
+				return _validateSecurityOverride(*overrides.Security)
+			}
+			return nil
+		},
+		func() error {
+			if overrides.PIIMaxDepth != nil {
+				return validateNonNegative(*overrides.PIIMaxDepth, "RuntimeOverrides.PIIMaxDepth")
+			}
+			return nil
+		},
 	}
-	if overrides.Backpressure != nil {
-		if err := validateNonNegative(overrides.Backpressure.LogsMaxSize, "RuntimeOverrides.Backpressure.LogsMaxSize"); err != nil {
-			return err
-		}
-		if err := validateNonNegative(overrides.Backpressure.TracesMaxSize, "RuntimeOverrides.Backpressure.TracesMaxSize"); err != nil {
-			return err
-		}
-		if err := validateNonNegative(overrides.Backpressure.MetricsMaxSize, "RuntimeOverrides.Backpressure.MetricsMaxSize"); err != nil {
-			return err
-		}
-	}
-	if overrides.Exporter != nil {
-		if err := validateExporterPolicyOverride(*overrides.Exporter); err != nil {
-			return err
-		}
-	}
-	if overrides.Security != nil {
-		if err := validateNonNegative(overrides.Security.MaxAttrValueLength, "RuntimeOverrides.Security.MaxAttrValueLength"); err != nil {
-			return err
-		}
-		if err := validateNonNegative(overrides.Security.MaxAttrCount, "RuntimeOverrides.Security.MaxAttrCount"); err != nil {
-			return err
-		}
-		if err := validateNonNegative(overrides.Security.MaxNestingDepth, "RuntimeOverrides.Security.MaxNestingDepth"); err != nil {
-			return err
-		}
-	}
-	if overrides.PIIMaxDepth != nil {
-		if err := validateNonNegative(*overrides.PIIMaxDepth, "RuntimeOverrides.PIIMaxDepth"); err != nil {
+	for _, v := range validators {
+		if err := v(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func _validateSamplingOverride(s SamplingConfig) error {
+	if err := validateRateFinite(s.LogsRate, "RuntimeOverrides.Sampling.LogsRate"); err != nil {
+		return err
+	}
+	if err := validateRateFinite(s.TracesRate, "RuntimeOverrides.Sampling.TracesRate"); err != nil {
+		return err
+	}
+	return validateRateFinite(s.MetricsRate, "RuntimeOverrides.Sampling.MetricsRate")
+}
+
+func _validateBackpressureOverride(b BackpressureConfig) error {
+	if err := validateNonNegative(b.LogsMaxSize, "RuntimeOverrides.Backpressure.LogsMaxSize"); err != nil {
+		return err
+	}
+	if err := validateNonNegative(b.TracesMaxSize, "RuntimeOverrides.Backpressure.TracesMaxSize"); err != nil {
+		return err
+	}
+	return validateNonNegative(b.MetricsMaxSize, "RuntimeOverrides.Backpressure.MetricsMaxSize")
+}
+
+func _validateSecurityOverride(s SecurityConfig) error {
+	if err := validateNonNegative(s.MaxAttrValueLength, "RuntimeOverrides.Security.MaxAttrValueLength"); err != nil {
+		return err
+	}
+	if err := validateNonNegative(s.MaxAttrCount, "RuntimeOverrides.Security.MaxAttrCount"); err != nil {
+		return err
+	}
+	return validateNonNegative(s.MaxNestingDepth, "RuntimeOverrides.Security.MaxNestingDepth")
 }
 
 func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
