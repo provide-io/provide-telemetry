@@ -45,10 +45,10 @@ jobs:
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.25"
-      # Build golangci-lint from source with the installed Go 1.25 toolchain so it can
-      # lint Go 1.25+ code (pre-built binaries are built with Go 1.24 and refuse Go 1.25).
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      # Build golangci-lint v2 from source — v2 module path supports Go 1.25 and the v2 config format.
+      # Pre-built binaries are Go 1.24 and refuse Go 1.25; v1 module path ignores v2 config.
+      - name: Install golangci-lint (v2)
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
       - name: Run golangci-lint
         run: golangci-lint run --path-prefix=go
         working-directory: go

@@ -65,13 +65,14 @@ func ShouldAllow(signal string, logLevel string) bool {
 			return false
 		}
 		return true
-	default: // ConsentMinimal
+	case ConsentMinimal:
 		if signal == "logs" {
 			order := _logLevelOrder[strings.ToUpper(logLevel)]
 			return order >= _logLevelOrder["ERROR"]
 		}
 		return false
 	}
+	return false
 }
 
 // LoadConsentFromEnv reads PROVIDE_CONSENT_LEVEL and sets the consent level.
