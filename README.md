@@ -96,7 +96,7 @@ Both languages export equivalent APIs:
 | Health | `get_health_snapshot()` |
 | Runtime | `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/undef-games/undef-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/undef-games/undef-telemetry/blob/main/typescript/README.md)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md)
 
 ## Polyglot Architecture
 
