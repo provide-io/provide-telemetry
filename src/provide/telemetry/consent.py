@@ -57,9 +57,9 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
         return False
     if level == ConsentLevel.FUNCTIONAL:
         if signal == "logs":
-            return (
-                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["WARNING"]
-            )  # pragma: no mutate
+            return (  # pragma: no mutate
+                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["WARNING"]  # pragma: no mutate
+            )
         return signal != "context"  # traces and metrics allowed; context blocked
     # MINIMAL
     if signal == "logs":

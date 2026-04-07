@@ -79,7 +79,9 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
     if key:
         payload = f"{receipt_id}|{timestamp}|{field_path}|{action}|{original_hash}"
         hmac_value = hmac_mod.new(
-            key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+            key.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
+            payload.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
+            hashlib.sha256,
         ).hexdigest()  # pragma: no mutate
 
     receipt = RedactionReceipt(
