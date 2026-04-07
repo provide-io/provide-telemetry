@@ -182,7 +182,6 @@ func TestReceiptsProductionMode(t *testing.T) {
 	_resetPIIRules()
 	// Set production mode (test mode off) manually.
 	_receiptsMu.Lock()
-	_receiptsEnabled = false
 	_receiptsKey = ""
 	_receiptsStore = nil
 	_receiptsTestMode = false

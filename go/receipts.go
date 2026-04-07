@@ -31,7 +31,6 @@ type RedactionReceipt struct {
 
 var (
 	_receiptsMu       sync.RWMutex
-	_receiptsEnabled  bool
 	_receiptsKey      string
 	_receiptsService  string
 	_receiptsTestMode bool
@@ -43,7 +42,6 @@ var (
 // serviceName identifies the service in each receipt.
 func EnableReceipts(enabled bool, signingKey string, serviceName string) {
 	_receiptsMu.Lock()
-	_receiptsEnabled = enabled
 	_receiptsKey = signingKey
 	_receiptsService = serviceName
 	_receiptsMu.Unlock()
@@ -67,7 +65,6 @@ func GetEmittedReceiptsForTests() []RedactionReceipt {
 // ResetReceiptsForTests clears all receipt state and enables test-mode collection.
 func ResetReceiptsForTests() {
 	_receiptsMu.Lock()
-	_receiptsEnabled = false
 	_receiptsKey = ""
 	_receiptsStore = nil
 	_receiptsTestMode = true

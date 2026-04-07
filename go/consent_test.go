@@ -5,7 +5,6 @@
 package telemetry
 
 import (
-	"os"
 	"testing"
 )
 
@@ -132,8 +131,7 @@ func TestConsentMinimalBlocksTracesMetricsContext(t *testing.T) {
 
 func TestLoadConsentFromEnvFull(t *testing.T) {
 	ResetConsentForTests()
-	os.Setenv("PROVIDE_CONSENT_LEVEL", "FULL")
-	defer os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "FULL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFull {
 		t.Errorf("expected ConsentFull, got %v", got)
@@ -142,8 +140,7 @@ func TestLoadConsentFromEnvFull(t *testing.T) {
 
 func TestLoadConsentFromEnvFunctional(t *testing.T) {
 	ResetConsentForTests()
-	os.Setenv("PROVIDE_CONSENT_LEVEL", "FUNCTIONAL")
-	defer os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "FUNCTIONAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFunctional {
 		t.Errorf("expected ConsentFunctional, got %v", got)
@@ -152,8 +149,7 @@ func TestLoadConsentFromEnvFunctional(t *testing.T) {
 
 func TestLoadConsentFromEnvMinimal(t *testing.T) {
 	ResetConsentForTests()
-	os.Setenv("PROVIDE_CONSENT_LEVEL", "MINIMAL")
-	defer os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "MINIMAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentMinimal {
 		t.Errorf("expected ConsentMinimal, got %v", got)
@@ -162,8 +158,7 @@ func TestLoadConsentFromEnvMinimal(t *testing.T) {
 
 func TestLoadConsentFromEnvNone(t *testing.T) {
 	ResetConsentForTests()
-	os.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
-	defer os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentNone {
 		t.Errorf("expected ConsentNone, got %v", got)
@@ -172,8 +167,7 @@ func TestLoadConsentFromEnvNone(t *testing.T) {
 
 func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 	ResetConsentForTests()
-	os.Setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
-	defer os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
 	LoadConsentFromEnv()
 	// invalid value leaves level unchanged (FULL)
 	if got := GetConsentLevel(); got != ConsentFull {
@@ -183,7 +177,7 @@ func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 
 func TestLoadConsentFromEnvEmpty(t *testing.T) {
 	ResetConsentForTests()
-	os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "")
 	LoadConsentFromEnv()
 	// empty env var leaves level unchanged
 	if got := GetConsentLevel(); got != ConsentFull {
@@ -212,5 +206,13 @@ func TestSetGetConsentLevel(t *testing.T) {
 	SetConsentLevel(ConsentFunctional)
 	if got := GetConsentLevel(); got != ConsentFunctional {
 		t.Errorf("expected ConsentFunctional, got %v", got)
+	}
+}
+
+func TestShouldAllowUnknownConsentLevelReturnsFalse(t *testing.T) {
+	ResetConsentForTests()
+	SetConsentLevel(ConsentLevel(99))
+	if ShouldAllow("logs", "INFO") {
+		t.Error("expected unknown ConsentLevel to deny all signals")
 	}
 }
