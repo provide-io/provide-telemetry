@@ -61,7 +61,7 @@ jobs:
       - name: Performance smoke test
         run: npx tsx scripts/perf-smoke.ts
 
-  typescript-openobserve-smoke:
+  typescript-examples-smoke:
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -74,8 +74,17 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
+      # Run all standalone telemetry examples (no live backend required)
+      - name: Run telemetry examples
+        run: |
+          set -euo pipefail
+          for f in examples/telemetry/*.ts; do
+            echo "running $f"
+            npx tsx "$f"
+          done
       - name: Setup OpenObserve
         uses: ./.github/actions/setup-openobserve
+      # Run OpenObserve examples against a live local instance
       - name: Run OpenObserve examples
         env:
           OPENOBSERVE_REQUIRED_SIGNALS: logs,traces,metrics

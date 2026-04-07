@@ -69,9 +69,9 @@ async function main(): Promise<void> {
 
   // ── 🎲 Sampling policies ───────────────────────────────
   console.log('\n🎲 Sampling: 50% default, critical overrides=100%');
-  setSamplingPolicy({ defaultRate: 0.5, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('logs', { defaultRate: 0.5, overrides: { 'example.critical': 1.0 } });
   // Reset to 100% so rest of example emits all events
-  setSamplingPolicy({ defaultRate: 1.0 });
+  setSamplingPolicy('logs', { defaultRate: 1.0 });
 
   // ── 🚧 Backpressure ────────────────────────────────────
   console.log('\n🚧 Backpressure: traces queue max=2');

@@ -85,6 +85,25 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+  examples:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.25"
+      # Build and run each standalone telemetry example (no live backend required)
+      - name: Run telemetry examples
+        run: |
+          set -euo pipefail
+          for d in examples/telemetry/*/; do
+            echo "running $d"
+            go run ./"$d"
+          done
+
   mutation:
     runs-on: ubuntu-latest
     needs: test

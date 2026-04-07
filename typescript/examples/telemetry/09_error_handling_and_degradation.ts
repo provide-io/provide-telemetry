@@ -121,13 +121,13 @@ async function main(): Promise<void> {
   // ── ⚠️  Sampling rate clamping diagnostic ────────────────
   console.log('\n⚠️  Sampling rate clamping (rate clamped to [0,1]):\n');
 
-  setSamplingPolicy({ defaultRate: 1.5 });
+  setSamplingPolicy('logs', { defaultRate: 1.5 });
   console.log('  1️⃣  Set rate=1.5 → clamped to 1.0');
 
-  setSamplingPolicy({ defaultRate: -0.5 });
+  setSamplingPolicy('logs', { defaultRate: -0.5 });
   console.log('  2️⃣  Set rate=-0.5 → clamped to 0.0');
 
-  setSamplingPolicy({ defaultRate: 1.0 }); // restore
+  setSamplingPolicy('logs', { defaultRate: 1.0 }); // restore
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

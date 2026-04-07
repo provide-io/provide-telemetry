@@ -122,7 +122,7 @@ def main() -> None:
     print(f"  🔄 Retries:         logs={s.retries_logs}  traces={s.retries_traces}")
     print(f"  ❌ Export failures: logs={s.export_failures_logs}  traces={s.export_failures_traces}")
     print(f"  ⚠️  Async risks:    logs={s.async_blocking_risk_logs}  traces={s.async_blocking_risk_traces}")
-    print(f"  💬 Last errors:     logs={s.last_error_logs}  traces={s.last_error_traces}")
+    print(f"  🔌 Circuit state:   logs={s.circuit_state_logs}  traces={s.circuit_state_traces}")
 
     print("\n🏁 All guardrails active — production-ready!")
     shutdown_telemetry()

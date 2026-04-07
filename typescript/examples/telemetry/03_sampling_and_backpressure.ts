@@ -45,21 +45,23 @@ async function run(): Promise<void> {
 
   // ── 🎲 Sampling policies with overrides ─────────────────
   console.log('🎲 Setting sampling policies...');
-  setSamplingPolicy({ defaultRate: 0.0, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('logs', { defaultRate: 0.0, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('traces', { defaultRate: 1.0 });
+  setSamplingPolicy('metrics', { defaultRate: 1.0 });
 
-  const logsPolicy = getSamplingPolicy();
+  const logsPolicy = getSamplingPolicy('logs');
   console.log(`  📋 defaultRate=${logsPolicy.defaultRate}, overrides=${JSON.stringify(logsPolicy.overrides)}`);
 
   // ── 🎯 shouldSample with overrides ─────────────────────
   console.log('\n🎯 shouldSample() decisions:');
   for (const key of ['example.routine', 'example.critical']) {
-    const sampled = shouldSample(key);
+    const sampled = shouldSample('logs', key);
     const icon = sampled ? '✅' : '❌';
-    console.log(`  ${icon} ${key}: sampled=${sampled}`);
+    console.log(`  ${icon} logs/${key}: sampled=${sampled}`);
   }
 
   // Reset to full sampling for the work below
-  setSamplingPolicy({ defaultRate: 1.0 });
+  setSamplingPolicy('logs', { defaultRate: 1.0 });
 
   // ── 🚧 Backpressure queue limits ────────────────────────
   console.log('\n🚧 Setting queue policy (maxTraces=1)...');

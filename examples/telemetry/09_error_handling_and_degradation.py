@@ -117,7 +117,7 @@ def main() -> None:
 
     # Health snapshot shows the state
     health = get_health_snapshot()
-    print(f"  📊 Health: queue_depth_logs={health.queue_depth_logs}, dropped_logs={health.dropped_logs}")
+    print(f"  📊 Health: dropped_logs={health.dropped_logs}, export_failures_logs={health.export_failures_logs}")
 
     # ── ⚠️  Diagnostic warnings ──────────────────────────────
     print("\n⚠️  Diagnostic Warning Examples\n")
