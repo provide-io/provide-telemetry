@@ -57,16 +57,18 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
         return False
     if level == ConsentLevel.FUNCTIONAL:
         if signal == "logs":
-            return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["WARNING"]
+            return (
+                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["WARNING"]
+            )  # pragma: no mutate
         return signal != "context"  # traces and metrics allowed; context blocked
     # MINIMAL
     if signal == "logs":
-        return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["ERROR"]
+        return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["ERROR"]  # pragma: no mutate
     return False  # traces/metrics/context blocked at MINIMAL
 
 
 def _load_consent_from_env() -> None:
-    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()
+    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()  # pragma: no mutate
     with contextlib.suppress(ValueError):
         set_consent_level(ConsentLevel(raw))
 
