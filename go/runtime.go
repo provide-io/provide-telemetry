@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 )
 
@@ -29,25 +30,11 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 		return fmt.Errorf("telemetry not set up: call SetupTelemetry first")
 	}
 
+	if err := validateRuntimeOverrides(overrides); err != nil {
+		return err
+	}
 	next := cloneTelemetryConfig(_runtimeCfg)
-	if overrides.Sampling != nil {
-		next.Sampling = *overrides.Sampling
-	}
-	if overrides.Backpressure != nil {
-		next.Backpressure = *overrides.Backpressure
-	}
-	if overrides.Exporter != nil {
-		next.Exporter = *overrides.Exporter
-	}
-	if overrides.Security != nil {
-		next.Security = *overrides.Security
-	}
-	if overrides.SLO != nil {
-		next.SLO = *overrides.SLO
-	}
-	if overrides.PIIMaxDepth != nil {
-		next.Logging.PIIMaxDepth = *overrides.PIIMaxDepth
-	}
+	applyRuntimeOverrides(next, overrides)
 	_applyRuntimePolicies(next)
 	_runtimeCfg = next
 	return nil
@@ -73,9 +60,136 @@ func ReloadRuntimeFromEnv() error {
 	// Warn on cold-field drift.
 	_warnColdFieldDrift(cfg)
 
-	_applyRuntimePolicies(cfg)
-	_runtimeCfg = cfg
+	overrides := runtimeOverridesFromConfig(cfg)
+	next := cloneTelemetryConfig(_runtimeCfg)
+	applyRuntimeOverrides(next, overrides)
+	_applyRuntimePolicies(next)
+	_runtimeCfg = next
 	return nil
+}
+
+func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
+	return RuntimeOverrides{
+		Sampling:     &cfg.Sampling,
+		Backpressure: &cfg.Backpressure,
+		Exporter:     &cfg.Exporter,
+		Security:     &cfg.Security,
+		SLO:          &cfg.SLO,
+		PIIMaxDepth:  &cfg.Logging.PIIMaxDepth,
+		StrictSchema: &cfg.StrictSchema,
+	}
+}
+
+func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
+	if overrides.Sampling != nil {
+		cfg.Sampling = *overrides.Sampling
+	}
+	if overrides.Backpressure != nil {
+		cfg.Backpressure = *overrides.Backpressure
+	}
+	if overrides.Exporter != nil {
+		cfg.Exporter = *overrides.Exporter
+	}
+	if overrides.Security != nil {
+		cfg.Security = *overrides.Security
+	}
+	if overrides.SLO != nil {
+		cfg.SLO = *overrides.SLO
+	}
+	if overrides.PIIMaxDepth != nil {
+		cfg.Logging.PIIMaxDepth = *overrides.PIIMaxDepth
+	}
+	if overrides.StrictSchema != nil {
+		cfg.StrictSchema = *overrides.StrictSchema
+	}
+}
+
+func validateRuntimeOverrides(overrides RuntimeOverrides) error {
+	if overrides.Sampling != nil {
+		if err := validateRateFinite(overrides.Sampling.LogsRate, "RuntimeOverrides.Sampling.LogsRate"); err != nil {
+			return err
+		}
+		if err := validateRateFinite(overrides.Sampling.TracesRate, "RuntimeOverrides.Sampling.TracesRate"); err != nil {
+			return err
+		}
+		if err := validateRateFinite(overrides.Sampling.MetricsRate, "RuntimeOverrides.Sampling.MetricsRate"); err != nil {
+			return err
+		}
+	}
+	if overrides.Backpressure != nil {
+		if err := validateNonNegative(overrides.Backpressure.LogsMaxSize, "RuntimeOverrides.Backpressure.LogsMaxSize"); err != nil {
+			return err
+		}
+		if err := validateNonNegative(overrides.Backpressure.TracesMaxSize, "RuntimeOverrides.Backpressure.TracesMaxSize"); err != nil {
+			return err
+		}
+		if err := validateNonNegative(overrides.Backpressure.MetricsMaxSize, "RuntimeOverrides.Backpressure.MetricsMaxSize"); err != nil {
+			return err
+		}
+	}
+	if overrides.Exporter != nil {
+		if err := validateExporterPolicyOverride(*overrides.Exporter); err != nil {
+			return err
+		}
+	}
+	if overrides.Security != nil {
+		if err := validateNonNegative(overrides.Security.MaxAttrValueLength, "RuntimeOverrides.Security.MaxAttrValueLength"); err != nil {
+			return err
+		}
+		if err := validateNonNegative(overrides.Security.MaxAttrCount, "RuntimeOverrides.Security.MaxAttrCount"); err != nil {
+			return err
+		}
+		if err := validateNonNegative(overrides.Security.MaxNestingDepth, "RuntimeOverrides.Security.MaxNestingDepth"); err != nil {
+			return err
+		}
+	}
+	if overrides.PIIMaxDepth != nil {
+		if err := validateNonNegative(*overrides.PIIMaxDepth, "RuntimeOverrides.PIIMaxDepth"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
+	ints := map[string]int{
+		"LogsRetries":    policy.LogsRetries,
+		"TracesRetries":  policy.TracesRetries,
+		"MetricsRetries": policy.MetricsRetries,
+	}
+	for field, value := range ints {
+		if err := validateNonNegative(value, "RuntimeOverrides.Exporter."+field); err != nil {
+			return err
+		}
+	}
+	floats := map[string]float64{
+		"LogsBackoffSeconds":    policy.LogsBackoffSeconds,
+		"TracesBackoffSeconds":  policy.TracesBackoffSeconds,
+		"MetricsBackoffSeconds": policy.MetricsBackoffSeconds,
+		"LogsTimeoutSeconds":    policy.LogsTimeoutSeconds,
+		"TracesTimeoutSeconds":  policy.TracesTimeoutSeconds,
+		"MetricsTimeoutSeconds": policy.MetricsTimeoutSeconds,
+	}
+	for field, value := range floats {
+		if err := validateNonNegativeFloatFinite(value, "RuntimeOverrides.Exporter."+field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRateFinite(v float64, field string) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
+	}
+	return validateRate(v, field)
+}
+
+func validateNonNegativeFloatFinite(v float64, field string) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
+	}
+	return validateNonNegativeFloat(v, field)
 }
 
 // _warnColdFieldDrift logs a warning if cold fields in next differ from the live config.

@@ -16,7 +16,7 @@ const (
 	_defaultTimeoutSeconds = 10.0
 	_defaultFailOpen       = true
 
-	_cbThreshold   = 3
+	_cbThreshold    = 3
 	_cbBaseCooldown = 30 * time.Second
 	_cbMaxCooldown  = 1024 * time.Second
 )
@@ -205,7 +205,9 @@ func RunWithResilience(ctx context.Context, signal string, fn func(context.Conte
 }
 
 // _incExportSuccess is a no-op — success counters were removed from the canonical layout.
-func _incExportSuccess(_ string) {}
+func _incExportSuccess(signal string) {
+	_ = signal
+}
 
 // _incExportFailure increments the per-signal export-failure counter.
 func _incExportFailure(signal string) {
