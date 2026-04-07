@@ -353,9 +353,6 @@ behavioral_parity:
       tracestate_max_pairs: 32
       baggage_max_bytes: 8192
     oversize_behavior: discard
-    note: >
-      Go currently truncates instead of discarding (known divergence).
-      All languages should converge on discard in a future release.
 
   event_dars:
     description: >
