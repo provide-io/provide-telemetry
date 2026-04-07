@@ -80,12 +80,6 @@ def increment_emitted(signal: Signal, amount: int = 1) -> None:  # pragma: no mu
         _emitted[sig] += max(0, amount)
 
 
-def _increment_emitted_unchecked(sig: Signal) -> None:
-    """Hot-path emitted counter — caller must pass a validated signal."""
-    with _lock:
-        _emitted[sig] += 1
-
-
 def increment_dropped(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:

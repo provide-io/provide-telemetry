@@ -12,7 +12,6 @@ from typing import Any
 
 from provide.telemetry.backpressure import _try_acquire_unchecked, release
 from provide.telemetry.cardinality import guard_attributes
-from provide.telemetry.health import _increment_emitted_unchecked
 from provide.telemetry.sampling import _should_sample_unchecked
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
@@ -38,7 +37,6 @@ class Counter:
         self.name = name
         self._otel_counter = otel_counter
         self._resolved = otel_counter is not None
-        self._lock = threading.Lock()
         self.value = 0
 
     def _resolve_otel(self) -> Any | None:
@@ -66,9 +64,10 @@ class Counter:
         if ticket is None:
             return
         try:
-            with self._lock:
-                self.value += amount
-            _increment_emitted_unchecked(_SIGNAL)
+            # No lock: CPython's GIL makes int += atomic (single INPLACE_ADD
+            # bytecode).  Matches Go's atomic.Int64.Add — no lock, no health
+            # tracking per call (parity with Go/TypeScript).
+            self.value += amount
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -117,7 +116,6 @@ class Gauge:
         if ticket is None:
             return
         try:
-            _increment_emitted_unchecked(_SIGNAL)
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
             with self._lock:
@@ -134,7 +132,6 @@ class Gauge:
         if ticket is None:
             return
         try:
-            _increment_emitted_unchecked(_SIGNAL)
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
             with self._lock:
@@ -189,7 +186,6 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
-            _increment_emitted_unchecked(_SIGNAL)
             otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})
