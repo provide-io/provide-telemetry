@@ -246,7 +246,7 @@ api:
     - name: RuntimeOverrides
       kind: type
       required: true
-      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth"
+      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth, strict_schema"
     - name: DataClass
       kind: type
       required: false
@@ -280,8 +280,8 @@ config_env_vars:
     keys:
       - LEVEL
       - FORMAT
-      - CALLER_INFO
-      - SANITIZE_FIELDS
+      - INCLUDE_CALLER
+      - SANITIZE
       - PII_MAX_DEPTH
   - prefix: PROVIDE_TRACE_
     keys:
@@ -293,9 +293,6 @@ config_env_vars:
   - prefix: PROVIDE_
     keys:
       - CONSENT_LEVEL
-      - REDACTION_RECEIPTS
-      - REDACTION_RECEIPT_KEY
-      - REDACTION_RECEIPT_MODE
 
 required_behaviors:
   - id: graceful_degradation
@@ -399,7 +396,7 @@ behavioral_parity:
       Health snapshots return 25 canonical fields across all languages.
     rules:
       - 8 per-signal fields x 3 signals (logs, traces, metrics) + 1 global (setup_error)
-      - circuit_state values are closed, open, half_open
+      - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
 
   health_counters:

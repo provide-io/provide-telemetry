@@ -96,7 +96,8 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     A["merge_contextvars"] --> B["merge_runtime_context"]
-    B --> C["add_log_level"]
+    B --> B2["inject_das_fields"]
+    B2 --> C["add_log_level"]
     C --> D{"include_timestamp?"}
     D -->|yes| E["TimeStamper"]
     D -->|no| F["harden_input"]
@@ -154,7 +155,7 @@ flowchart TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `__init__.py` | Public API facade, 73 exports |
+| `__init__.py` | Public API facade, 95 exports |
 | `setup.py` | Lock-protected init/shutdown coordinator with rollback |
 | `config.py` | Pydantic-free dataclass config, env var parsing |
 | `runtime.py` | Hot-reload API, provider-change detection |
@@ -169,6 +170,9 @@ flowchart TD
 | `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
 | `metrics/instruments.py` | Re-export shim for Counter/Gauge/Histogram (delegates to `fallback.py`) |
 | `metrics/fallback.py` | In-process fallback Counter/Gauge/Histogram with sampling, backpressure, exemplar, and cardinality guard |
+| `classification.py` | Data classification engine with per-field sensitivity rules |
+| `consent.py` | Consent-aware telemetry collection gate |
+| `receipts.py` | Cryptographic redaction receipts for audit trails |
 | `schema/events.py` | Event name validation, required-key enforcement |
 | `sampling.py` | Per-signal probabilistic sampling with overrides |
 | `backpressure.py` | Bounded queue ticket system |
