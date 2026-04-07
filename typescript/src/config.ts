@@ -128,6 +128,47 @@ export interface TelemetryConfig {
   securityMaxAttrCount: number;
 }
 
+/**
+ * Hot-reloadable config subset. Only fields that can be changed at runtime
+ * without restarting providers. All fields are optional.
+ */
+export interface RuntimeOverrides {
+  // Sampling
+  samplingLogsRate?: number;
+  samplingTracesRate?: number;
+  samplingMetricsRate?: number;
+
+  // Backpressure
+  backpressureLogsMaxsize?: number;
+  backpressureTracesMaxsize?: number;
+  backpressureMetricsMaxsize?: number;
+
+  // Exporter resilience
+  exporterLogsRetries?: number;
+  exporterLogsBackoffMs?: number;
+  exporterLogsTimeoutMs?: number;
+  exporterLogsFailOpen?: boolean;
+  exporterTracesRetries?: number;
+  exporterTracesBackoffMs?: number;
+  exporterTracesTimeoutMs?: number;
+  exporterTracesFailOpen?: boolean;
+  exporterMetricsRetries?: number;
+  exporterMetricsBackoffMs?: number;
+  exporterMetricsTimeoutMs?: number;
+  exporterMetricsFailOpen?: boolean;
+
+  // Security
+  securityMaxAttrValueLength?: number;
+  securityMaxAttrCount?: number;
+
+  // SLO
+  sloEnableRedMetrics?: boolean;
+  sloEnableUseMetrics?: boolean;
+
+  // PII
+  piiMaxDepth?: number;
+}
+
 const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
   environment: 'development',
