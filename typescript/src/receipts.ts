@@ -8,8 +8,24 @@
  * If this file is deleted, the PII engine runs unchanged (hook stays null).
  */
 
-import { createHash, createHmac, randomUUID } from 'crypto';
 import { setReceiptHook } from './pii';
+
+// Lazy-loaded Node.js crypto functions — avoids breaking browser bundles
+// (Vite externalizes 'crypto' for browser compatibility).
+let _createHash: typeof import('crypto').createHash;
+let _createHmac: typeof import('crypto').createHmac;
+let _randomUUID: typeof import('crypto').randomUUID;
+let _cryptoLoaded = false;
+
+function _loadCrypto(): void {
+  if (_cryptoLoaded) return;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const crypto = require('crypto') as typeof import('crypto');
+  _createHash = crypto.createHash;
+  _createHmac = crypto.createHmac;
+  _randomUUID = crypto.randomUUID;
+  _cryptoLoaded = true;
+}
 
 /** An immutable audit record for a single PII redaction event. */
 export interface RedactionReceipt {
@@ -53,14 +69,15 @@ export function enableReceipts(options: EnableReceiptsOptions): void {
 }
 
 function _onRedaction(fieldPath: string, action: string, originalValue: unknown): void {
-  const receiptId = randomUUID();
+  _loadCrypto();
+  const receiptId = _randomUUID();
   const timestamp = new Date().toISOString();
-  const originalHash = createHash('sha256').update(String(originalValue)).digest('hex');
+  const originalHash = _createHash('sha256').update(String(originalValue)).digest('hex');
 
   let hmacValue = '';
   if (_signingKey) {
     const payload = `${receiptId}|${timestamp}|${fieldPath}|${action}|${originalHash}`;
-    hmacValue = createHmac('sha256', _signingKey).update(payload).digest('hex');
+    hmacValue = _createHmac('sha256', _signingKey).update(payload).digest('hex');
   }
 
   const receipt: RedactionReceipt = {
