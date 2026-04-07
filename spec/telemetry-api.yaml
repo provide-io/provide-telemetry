@@ -246,7 +246,7 @@ api:
     - name: RuntimeOverrides
       kind: type
       required: true
-      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth"
+      note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth, strict_schema"
     - name: DataClass
       kind: type
       required: false
@@ -280,8 +280,8 @@ config_env_vars:
     keys:
       - LEVEL
       - FORMAT
-      - CALLER_INFO
-      - SANITIZE_FIELDS
+      - INCLUDE_CALLER
+      - SANITIZE
       - PII_MAX_DEPTH
   - prefix: PROVIDE_TRACE_
     keys:
@@ -293,9 +293,6 @@ config_env_vars:
   - prefix: PROVIDE_
     keys:
       - CONSENT_LEVEL
-      - REDACTION_RECEIPTS
-      - REDACTION_RECEIPT_KEY
-      - REDACTION_RECEIPT_MODE
 
 required_behaviors:
   - id: graceful_degradation
@@ -353,9 +350,6 @@ behavioral_parity:
       tracestate_max_pairs: 32
       baggage_max_bytes: 8192
     oversize_behavior: discard
-    note: >
-      Go currently truncates instead of discarding (known divergence).
-      All languages should converge on discard in a future release.
 
   event_dars:
     description: >
@@ -402,8 +396,21 @@ behavioral_parity:
       Health snapshots return 25 canonical fields across all languages.
     rules:
       - 8 per-signal fields x 3 signals (logs, traces, metrics) + 1 global (setup_error)
-      - circuit_state values are closed, open, half_open
+      - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
+
+  health_counters:
+    description: >
+      Health counter increment semantics — when emitted/dropped counters fire.
+    rules:
+      - emitted_* incremented once per signal event that passes sampling (in shouldSample or equivalent gate)
+      - dropped_* incremented once per signal event rejected by sampling (rate drop) OR by backpressure (queue full)
+      - a single event MUST NOT increment both emitted and dropped
+      - a single event MUST NOT increment emitted more than once (no double-counting across gates)
+      - retries_* incremented once per retry attempt in the resilience/export path
+      - export_failures_* incremented once per failed export attempt (including circuit breaker rejections)
+      - export_latency_ms_* set to elapsed milliseconds on successful export (latest value, not cumulative)
+      - async_blocking_risk_* is language-specific (Python event loop detection); may be 0 in languages without event loops
 
   pii_depth:
     description: >

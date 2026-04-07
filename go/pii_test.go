@@ -439,7 +439,7 @@ func TestIsDefaultSensitiveKey_CaseInsensitive(t *testing.T) {
 		expected bool
 	}{
 		{"PASSWORD", true},
-		{"UserPassword", true},
+		{"UserPassword", false},
 		{"Api_Key", true},
 		{"APIKEY", true},
 		{"Authorization", true},

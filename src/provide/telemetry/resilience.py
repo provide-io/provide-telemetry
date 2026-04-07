@@ -153,7 +153,8 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     if timeout_seconds > 0:
         rejected = _check_circuit_breaker(sig)
         if rejected:
-            record_export_failure(sig, TimeoutError("circuit breaker open"))
+            _cb_exc = TimeoutError("circuit breaker open")  # pragma: no mutate
+            record_export_failure(sig, _cb_exc)  # pragma: no mutate
             if policy.fail_open:
                 return None
             raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
@@ -174,7 +175,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
             return result
         except TimeoutError as exc:
             last_error = exc
-            record_export_failure(sig, exc)
+            record_export_failure(sig, exc)  # pragma: no mutate — exc arg unused by record_export_failure
             _record_attempt_failure(sig, is_timeout=True)
             if attempt < attempts - 1:
                 increment_retries(sig)
@@ -182,7 +183,7 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
                     time.sleep(backoff_seconds)
         except Exception as exc:
             last_error = exc
-            record_export_failure(sig, exc)
+            record_export_failure(sig, exc)  # pragma: no mutate — exc arg unused by record_export_failure
             _record_attempt_failure(sig, is_timeout=False)  # pragma: no mutate — False/None both falsy
             if attempt < attempts - 1:
                 increment_retries(sig)

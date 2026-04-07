@@ -6,6 +6,7 @@
  */
 
 import { ConfigurationError } from './exceptions';
+import { _droppedField, _emittedField, _incrementHealth } from './health';
 
 export interface SamplingPolicy {
   defaultRate: number;
@@ -56,11 +57,19 @@ export function shouldSample(signal: string, key?: string): boolean {
   const rate = overrides && lookupKey in overrides ? overrides[lookupKey] : _policy.defaultRate;
   const clamped = _clamp(rate);
   // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutant — Math.random() in [0,1) so boundary is not observable
-  if (clamped <= 0) return false;
+  if (clamped <= 0) {
+    _incrementHealth(_droppedField(signal));
+    return false;
+  }
   // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutant — Math.random() in [0,1) so boundary is not observable
-  if (clamped >= 1) return true;
+  if (clamped >= 1) {
+    _incrementHealth(_emittedField(signal));
+    return true;
+  }
   // Stryker disable next-line EqualityOperator: Math.random() is in [0,1) so < 1.0 and <= 1.0 are equivalent (random never equals 1.0)
-  return Math.random() < clamped;
+  const sampled = Math.random() < clamped;
+  _incrementHealth(sampled ? _emittedField(signal) : _droppedField(signal));
+  return sampled;
 }
 
 export function _resetSamplingForTests(): void {

@@ -131,12 +131,9 @@ class TestHealthSnapshotFieldMapping:
 
     def test_snapshot_has_exactly_25_fields(self) -> None:
         """Canonical 25-field layout: 8 per signal * 3 + 1 global."""
-        import dataclasses
-
         from provide.telemetry.health import HealthSnapshot
 
-        fields = dataclasses.fields(HealthSnapshot)
-        assert len(fields) == 25
+        assert len(HealthSnapshot._fields) == 25
 
 
 # -- reset_health_for_tests --
@@ -236,6 +233,22 @@ class TestHealthSnapshotCircuitState:
         assert snap.circuit_open_count_traces == 0
         assert snap.circuit_open_count_metrics == 0
 
+    def test_resilience_module_cache_initialized_correctly(self) -> None:
+        """Kill mutmut_1 (is None -> is not None) and mutmut_2 (_resilience_mod = resilience -> None).
+
+        Reset the module cache to None, then verify get_health_snapshot still works.
+        Mutmut_1 would skip the import when _resilience_mod IS None, causing AttributeError.
+        Mutmut_2 would never cache the module, re-importing every call (but functionally works).
+        """
+        import provide.telemetry.health as health_mod
+
+        # Force _resilience_mod to None so the cache-init branch must run
+        health_mod._resilience_mod = None
+        snap = get_health_snapshot()
+        # If the caching worked, _resilience_mod should now be set (not None)
+        assert health_mod._resilience_mod is not None
+        assert snap.circuit_state_logs == "closed"
+
     def test_setup_error_none_by_default(self) -> None:
         snap = get_health_snapshot()
         assert snap.setup_error is None
@@ -304,3 +317,60 @@ class TestHealthSnapshotCircuitState:
         assert snap.circuit_open_count_traces >= 1
         assert snap.circuit_state_metrics == "open"
         assert snap.circuit_open_count_metrics >= 1
+
+    def test_circuit_open_count_traces_is_count_not_cooldown(self) -> None:
+        """Kill mutmut_106: cs_traces[1] -> cs_traces[2].
+
+        Index 1 is open_count (small int), index 2 is cooldown_remaining (large float).
+        Assert the value is exactly an int and small.
+        """
+        import time
+
+        from provide.telemetry.resilience import (
+            _CIRCUIT_BREAKER_THRESHOLD,
+            ExporterPolicy,
+            reset_resilience_for_tests,
+            run_with_resilience,
+            set_exporter_policy,
+        )
+
+        reset_resilience_for_tests()
+        reset_health_for_tests()
+        set_exporter_policy(
+            "traces",
+            ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+        )
+        for _ in range(_CIRCUIT_BREAKER_THRESHOLD):
+            run_with_resilience("traces", lambda: time.sleep(1.0))
+
+        snap = get_health_snapshot()
+        assert snap.circuit_state_traces == "open"
+        # open_count is a small int (1); cooldown_remaining is a large float (~60.0)
+        assert type(snap.circuit_open_count_traces) is int
+        assert snap.circuit_open_count_traces == 1
+
+    def test_circuit_open_count_metrics_is_count_not_cooldown(self) -> None:
+        """Kill mutmut_107: cs_metrics[1] -> cs_metrics[2]."""
+        import time
+
+        from provide.telemetry.resilience import (
+            _CIRCUIT_BREAKER_THRESHOLD,
+            ExporterPolicy,
+            reset_resilience_for_tests,
+            run_with_resilience,
+            set_exporter_policy,
+        )
+
+        reset_resilience_for_tests()
+        reset_health_for_tests()
+        set_exporter_policy(
+            "metrics",
+            ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
+        )
+        for _ in range(_CIRCUIT_BREAKER_THRESHOLD):
+            run_with_resilience("metrics", lambda: time.sleep(1.0))
+
+        snap = get_health_snapshot()
+        assert snap.circuit_state_metrics == "open"
+        assert type(snap.circuit_open_count_metrics) is int
+        assert snap.circuit_open_count_metrics == 1
