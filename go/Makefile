@@ -1,4 +1,4 @@
-.PHONY: help lint vet test coverage mutation security fmt fmt-check bench check
+.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -38,5 +38,8 @@ fmt-check: ## Check formatting (fail if any files need formatting)
 
 bench: ## Run benchmarks
 	go test -bench=. -benchmem -count=1 ./...
+
+stress: ## Run stress tests
+	go run ./scripts/stress
 
 check: fmt-check vet lint security test coverage ## Run all quality gates
