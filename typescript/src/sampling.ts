@@ -6,6 +6,7 @@
  */
 
 import { ConfigurationError } from './exceptions';
+import { _droppedField, _emittedField, _incrementHealth } from './health';
 
 export interface SamplingPolicy {
   defaultRate: number;
@@ -58,22 +59,19 @@ export function shouldSample(signal: string, key?: string): boolean {
   // Stryker disable next-line ConditionalExpression: equivalent mutant — `true && overrides && key in overrides` short-circuits identically to `key != null && ...` because null/undefined are never valid string keys in overrides
   const rate = key != null && overrides && key in overrides ? overrides[key] : _policy.defaultRate;
   const clamped = _clamp(rate);
-  /* Stryker disable ConditionalExpression,EqualityOperator,BlockStatement: boundary not observable (Math.random [0,1)); health counter updates tested but perTest coverage misattributes */
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutant — Math.random() in [0,1) so boundary is not observable
   if (clamped <= 0) {
     _incrementHealth(_droppedField(signal));
     return false;
   }
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutant — Math.random() in [0,1) so boundary is not observable
   if (clamped >= 1) {
-    // Do not increment emitted here — emitted is incremented downstream at the actual
-    // emission site (logger, tracer, etc.) to avoid double-counting.
+    _incrementHealth(_emittedField(signal));
     return true;
   }
-  /* Stryker restore ConditionalExpression,EqualityOperator,BlockStatement */
   // Stryker disable next-line EqualityOperator: Math.random() is in [0,1) so < 1.0 and <= 1.0 are equivalent (random never equals 1.0)
   const sampled = Math.random() < clamped;
-  if (!sampled) {
-    _incrementHealth(_droppedField(signal));
-  }
+  _incrementHealth(sampled ? _emittedField(signal) : _droppedField(signal));
   return sampled;
 }
 

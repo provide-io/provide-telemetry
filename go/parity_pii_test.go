@@ -81,7 +81,7 @@ func TestParity_PIITruncate_ShorterThanLimit_Unchanged(t *testing.T) {
 func TestParity_PIIRedact_SensitiveKey(t *testing.T) {
 	resetPII(t)
 	r := SanitizePayload(map[string]any{"password": "s3cret"}, true, 32) // pragma: allowlist secret
-	if r["password"] != "***" {                                           // pragma: allowlist secret
+	if r["password"] != "***" {                                          // pragma: allowlist secret
 		t.Errorf("redact(password): want ***, got %v", r["password"])
 	}
 }
@@ -184,6 +184,25 @@ func TestParity_DefaultSensitiveKeys_PIN(t *testing.T) {
 	result := SanitizePayload(map[string]any{"pin": "9876"}, true, 32)
 	if result["pin"] != _piiRedacted {
 		t.Errorf("expected 'pin' auto-redacted, got %v", result["pin"])
+	}
+}
+
+func TestParity_DefaultSensitiveKeys_ExactMatchOnly(t *testing.T) {
+	resetPII(t)
+	payload := map[string]any{
+		"author_id":      "safe-author",
+		"spinning_wheel": "safe-spin",
+		"glassness":      "safe-word",
+	}
+	result := SanitizePayload(payload, true, 32)
+	if result["author_id"] != payload["author_id"] {
+		t.Errorf("expected author_id unchanged, got %v", result["author_id"])
+	}
+	if result["spinning_wheel"] != payload["spinning_wheel"] {
+		t.Errorf("expected spinning_wheel unchanged, got %v", result["spinning_wheel"])
+	}
+	if result["glassness"] != payload["glassness"] {
+		t.Errorf("expected glassness unchanged, got %v", result["glassness"])
 	}
 }
 

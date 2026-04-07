@@ -367,13 +367,13 @@ def test_metric_exception_fallback_preserves_name() -> None:
 
 def test_metric_sampling_and_backpressure_drop_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: False)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback._should_sample_unchecked", lambda _signal, _name: False)
     c = counter("c")
     c.add(5)
     assert c.value == 0
 
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.try_acquire", lambda _signal: None)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback._should_sample_unchecked", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback._try_acquire_unchecked", lambda _signal: None)
     g = gauge("g")
     g.add(3)
     assert g.value == 0
@@ -405,9 +405,9 @@ def test_metric_exemplar_and_resilience_paths(monkeypatch: pytest.MonkeyPatch) -
     hist_impl = _Histogram()
     c = instruments_mod.Counter("ctr", counter_impl)
     h = instruments_mod.Histogram("hist", hist_impl)
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback._should_sample_unchecked", lambda _signal, _name: True)
     monkeypatch.setattr(
-        "provide.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback._try_acquire_unchecked",
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda _ticket: None)
@@ -438,9 +438,9 @@ def test_metric_exemplar_supported_branch(monkeypatch: pytest.MonkeyPatch) -> No
     hist_impl = _Histogram()
     c = instruments_mod.Counter("ctr", counter_impl)
     h = instruments_mod.Histogram("hist", hist_impl)
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, _name: True)
+    monkeypatch.setattr("provide.telemetry.metrics.fallback._should_sample_unchecked", lambda _signal, _name: True)
     monkeypatch.setattr(
-        "provide.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback._try_acquire_unchecked",
         lambda _signal: SimpleNamespace(signal="metrics", token=1),
     )
     monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda _ticket: None)
@@ -461,9 +461,11 @@ def test_metric_exemplar_empty_context_branch(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_metric_early_return_branches_for_sampling_and_queue(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", lambda _signal, name: name != "no-sample")
     monkeypatch.setattr(
-        "provide.telemetry.metrics.fallback.try_acquire",
+        "provide.telemetry.metrics.fallback._should_sample_unchecked", lambda _signal, name: name != "no-sample"
+    )
+    monkeypatch.setattr(
+        "provide.telemetry.metrics.fallback._try_acquire_unchecked",
         lambda _signal: None,
     )
 

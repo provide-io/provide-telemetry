@@ -38,6 +38,19 @@ _queues: dict[Signal, deque[int]] = {
     "traces": deque(),
     "metrics": deque(),
 }
+_VALID_SIGNALS = frozenset(_queues)
+
+# Pre-allocated tickets for unlimited queues — avoid allocation per call.
+_UNLIMITED_TICKETS: dict[Signal, QueueTicket] = {
+    sig: QueueTicket(signal=sig, token=0)
+    for sig in _queues  # pragma: no mutate
+}
+
+
+def _validate_signal(signal: Signal) -> Signal:
+    if signal not in _VALID_SIGNALS:
+        raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS)}")
+    return signal
 
 
 def set_queue_policy(policy: QueuePolicy) -> None:
@@ -60,11 +73,18 @@ def _maxsize(signal: Signal) -> int:
 
 
 def try_acquire(signal: Signal) -> QueueTicket | None:
-    signal = signal if signal in _queues else "logs"
+    signal = _validate_signal(signal)
+    return _try_acquire_unchecked(signal)
+
+
+def _try_acquire_unchecked(signal: Signal) -> QueueTicket | None:
+    """Hot-path acquire — caller must pass a validated signal."""
+    # Fast path: unlimited queue — no lock, no allocation.
+    # GIL makes _policy reference read + frozen dataclass field read atomic.
+    maxsize = _maxsize(signal)
+    if maxsize <= 0:
+        return _UNLIMITED_TICKETS[signal]
     with _lock:
-        maxsize = _maxsize(signal)
-        if maxsize <= 0:
-            return QueueTicket(signal=signal, token=0)
         queue = _queues[signal]
         if len(queue) >= maxsize:
             increment_dropped(signal)
