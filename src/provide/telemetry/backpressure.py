@@ -77,10 +77,12 @@ def _maxsize(signal: Signal) -> int:
 
 def try_acquire(signal: Signal) -> QueueTicket | None:
     signal = _validate_signal(signal)
+    # Fast path: unlimited queue — no lock needed.
+    # GIL makes _policy reference read + frozen dataclass field read atomic.
+    maxsize = _maxsize(signal)
+    if maxsize <= 0:
+        return QueueTicket(signal=signal, token=0)  # pragma: no mutate
     with _lock:
-        maxsize = _maxsize(signal)
-        if maxsize <= 0:
-            return QueueTicket(signal=signal, token=0)  # pragma: no mutate
         queue = _queues[signal]
         if len(queue) >= maxsize:
             increment_dropped(signal)

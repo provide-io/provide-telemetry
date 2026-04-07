@@ -73,8 +73,9 @@ def get_sampling_policy(signal: Signal) -> SamplingPolicy:
 
 def should_sample(signal: Signal, key: str | None = None) -> bool:
     sig = _validate_signal(signal)
-    with _lock:
-        policy = _policies[sig]
+    # No lock needed: CPython's GIL makes dict reads atomic, and
+    # SamplingPolicy is a frozen dataclass (immutable after creation).
+    policy = _policies[sig]
     rate = policy.default_rate
     if key is not None and key in policy.overrides:
         rate = policy.overrides[key]
