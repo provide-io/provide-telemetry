@@ -21,15 +21,52 @@ __all__ = [
     "TracingConfig",
 ]
 
+import dataclasses
 import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse, urlunparse
 
 from provide.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
+
+
+def _mask_header_value(value: str) -> str:
+    """Mask a header value: show first 4 chars + **** if >= 8 chars, else ****."""
+    if len(value) < 8:
+        return "****"
+    return value[:4] + "****"
+
+
+def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {k: _mask_header_value(v) for k, v in headers.items()}
+
+
+def _mask_endpoint_url(url: str) -> str:
+    """Mask password in URL userinfo (user:password@host)."""
+    parsed = urlparse(url)
+    if parsed.password:
+        masked_netloc = f"{parsed.username}:****@{parsed.hostname}"
+        if parsed.port:
+            masked_netloc += f":{parsed.port}"
+        return urlunparse(parsed._replace(netloc=masked_netloc))
+    return url
+
+
+def _masked_dataclass_repr(obj: object) -> str:
+    """Return repr() for an otlp-bearing dataclass, masking headers/endpoint."""
+    parts = []
+    for f in dataclasses.fields(obj):  # type: ignore[arg-type]
+        val = getattr(obj, f.name)
+        if f.name == "otlp_headers":
+            val = _mask_headers(val)
+        elif f.name == "otlp_endpoint" and val is not None:
+            val = _mask_endpoint_url(val)
+        parts.append(f"{f.name}={val!r}")
+    return f"{obj.__class__.__name__}({', '.join(parts)})"
+
 
 _VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
 
@@ -55,6 +92,9 @@ class LoggingConfig:
         _validate_color(self.pretty_key_color, "pretty_key_color")
         _validate_color(self.pretty_value_color, "pretty_value_color")
 
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
+
 
 @dataclass(slots=True)
 class TracingConfig:
@@ -66,12 +106,18 @@ class TracingConfig:
     def __post_init__(self) -> None:
         _validate_rate(self.sample_rate, "sample_rate must be between 0 and 1")
 
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
+
 
 @dataclass(slots=True)
 class MetricsConfig:
     enabled: bool = True
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
 
 
 @dataclass(slots=True)
@@ -181,6 +227,17 @@ class TelemetryConfig:
 
     def __post_init__(self) -> None:
         _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
+
+    def redacted_repr(self) -> str:
+        """Return a string representation with secrets masked."""
+        return repr(self)  # sub-configs mask themselves
+
+    def __repr__(self) -> str:
+        fields_repr = []
+        for f in dataclasses.fields(self):
+            val = getattr(self, f.name)
+            fields_repr.append(f"{f.name}={val!r}")
+        return f"{self.__class__.__name__}({', '.join(fields_repr)})"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:

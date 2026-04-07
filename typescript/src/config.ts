@@ -548,6 +548,42 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
   return result;
 }
 
+/** Mask a single header value: show first 4 chars + **** if >= 8 chars, else ****. */
+function maskHeaderValue(v: string): string {
+  return v.length < 8 ? '****' : v.slice(0, 4) + '****';
+}
+
+/** Mask the password component of a URL's userinfo, if present. */
+function maskEndpointUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (u.password) {
+      u.password = '****';
+      return u.toString();
+    }
+  } catch {
+    /* not a valid URL — return as-is */
+  }
+  return raw;
+}
+
+/**
+ * Return a copy of the config with OTLP secrets masked.
+ * Safe to log or serialize — never leaks header values or endpoint credentials.
+ */
+export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...config };
+  if (config.otlpHeaders && Object.keys(config.otlpHeaders).length > 0) {
+    result.otlpHeaders = Object.fromEntries(
+      Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
+    );
+  }
+  if (config.otlpEndpoint) {
+    result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
+  }
+  return result;
+}
+
 /** Package version — mirrors Python __version__. */
 export const version = '0.2.0';
 export const __version__ = version;
