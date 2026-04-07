@@ -221,7 +221,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
-| `PROVIDE_ENV` | `development` | Deployment environment |
+| `PROVIDE_TELEMETRY_ENV` | `development` | Deployment environment (fallback: `PROVIDE_ENV`) |
 | `PROVIDE_VERSION` | `unknown` | Service version |
 | `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
 | `PROVIDE_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
