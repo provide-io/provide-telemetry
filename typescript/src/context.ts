@@ -23,11 +23,13 @@ type ALS = {
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _asyncLocalStorage: ALS | null = null;
+let _AlsConstructor: (new () => ALS) | null = null;
 try {
   // Dynamic require so the import doesn't break browser bundles.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const als = require('node:async_hooks') as { AsyncLocalStorage: new () => ALS };
-  _asyncLocalStorage = new als.AsyncLocalStorage();
+  _AlsConstructor = als.AsyncLocalStorage;
+  _asyncLocalStorage = new _AlsConstructor();
 } catch {
   // Not available — fall back to module-level context below.
 }
@@ -135,11 +137,10 @@ export function clearSessionContext(): void {
 
 /** Reset to empty context (used in tests). */
 export function _resetContext(): void {
-  // Stryker disable next-line OptionalChaining: _asyncLocalStorage is always non-null in Node.js/test environments — ?. vs . is equivalent
-  const store = _asyncLocalStorage?.getStore();
-  if (store) {
-    for (const key of Object.keys(store)) delete store[key];
-  }
+  // Recreate ALS so no enterWith-seeded store leaks between tests.
+  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
+  /* v8 ignore next */
+  _asyncLocalStorage = _AlsConstructor ? new _AlsConstructor() : null;
   _moduleCtx = {};
 }
 

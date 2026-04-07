@@ -7,7 +7,7 @@
 
 import { createHash, createHmac } from 'crypto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sanitizePayload, resetPiiRulesForTests } from '../src/pii';
+import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii';
 import { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from '../src/receipts';
 
 beforeEach(() => {
@@ -123,5 +123,41 @@ describe('service name is set in receipt', () => {
     const receipts = getEmittedReceiptsForTests();
     expect(receipts).toHaveLength(1);
     expect(receipts[0].serviceName).toBe('my-service');
+  });
+});
+
+describe('receipts from custom PII rules (covers _applyRuleFull receipt hook path)', () => {
+  it('emits a receipt when a custom rule matches a field', () => {
+    enableReceipts({ enabled: true, serviceName: 'rule-svc' });
+    registerPiiRule({ path: 'user.email', mode: 'redact' });
+    const obj = { user: { email: 'alice@example.com' } };
+    sanitizePayload(obj);
+    const receipts = getEmittedReceiptsForTests();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].fieldPath).toBe('user.email');
+    expect(receipts[0].action).toBe('redact');
+  });
+});
+
+describe('receipts emitted for secret detection in non-blocked keys (covers _applyDefaultSensitiveKeyRedaction secret path)', () => {
+  it('emits a receipt when a secret pattern is detected in an unblocked field', () => {
+    enableReceipts({ enabled: true });
+    // 'custom_field' is not a blocked key — secret is detected by VALUE pattern (40+ hex chars)
+    const obj = { custom_field: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    const receipts = getEmittedReceiptsForTests();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].fieldPath).toBe('custom_field');
+  });
+});
+
+describe('receipts emitted for sensitive keys inside arrays (covers array branch in _applyDefaultSensitiveKeyRedaction)', () => {
+  it('emits receipts for sensitive fields inside array items', () => {
+    enableReceipts({ enabled: true });
+    const obj = { users: [{ password: 'pass1' }, { password: 'pass2' }] }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    const receipts = getEmittedReceiptsForTests();
+    expect(receipts.length).toBeGreaterThanOrEqual(2);
+    expect(receipts.every((r) => r.action === 'redact')).toBe(true);
   });
 });

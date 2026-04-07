@@ -36,6 +36,7 @@ export type PropagationALS = {
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
+let _AlsConstructor: (new () => PropagationALS) | null = null;
 // Stryker disable BlockStatement: module-level try/catch runs once at import time — cannot be tested by unit tests
 try {
   // Dynamic require so the import doesn't break browser bundles.
@@ -43,7 +44,8 @@ try {
   const als = require('node:async_hooks') as {
     AsyncLocalStorage: new () => PropagationALS;
   };
-  _als = new als.AsyncLocalStorage();
+  _AlsConstructor = als.AsyncLocalStorage;
+  _als = new _AlsConstructor();
 } catch {
   // Not available — fall back to module-level store below.
 }
@@ -200,12 +202,10 @@ export function getActiveOtelContext(): unknown | undefined {
 }
 
 export function _resetPropagationForTests(): void {
-  const store = _als?.getStore();
-  if (store) {
-    store.active = {};
-    store.stack.length = 0;
-    store.otelCtxStack.length = 0;
-  }
+  // Recreate the ALS instance so no enterWith-seeded store leaks between tests.
+  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
+  /* v8 ignore next */
+  _als = _AlsConstructor ? new _AlsConstructor() : null;
   _fallbackStore = { active: {}, stack: [], otelCtxStack: [] };
 }
 

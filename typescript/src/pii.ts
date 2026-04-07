@@ -210,6 +210,7 @@ function _applyDefaultSensitiveKeyRedaction(
   if (depth >= maxDepth) return node;
   if (typeof node !== 'object' || node === null) return node;
   if (Array.isArray(node)) {
+    /* v8 ignore next: [] fallback — original always matches node's array type through recursive calls */
     const origArr = Array.isArray(original) ? original : [];
     return node.map((item, i) =>
       _applyDefaultSensitiveKeyRedaction(
@@ -224,16 +225,19 @@ function _applyDefaultSensitiveKeyRedaction(
     );
   }
   const obj = node as Record<string, unknown>;
+  /* v8 ignore start: original always mirrors node's object structure through recursive calls — : obj fallback is defensive */
   const orig =
     typeof original === 'object' && original !== null && !Array.isArray(original)
       ? (original as Record<string, unknown>)
       : obj;
+  /* v8 ignore stop */
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
     const lk = key.toLowerCase();
     const origVal = orig[key];
     if (blocked.has(lk) && !ruleTargets.has(lk)) {
       // If a custom rule already changed the value, keep the rule's result.
+      /* v8 ignore next 2: defensive guard for value modified before sanitizePayload — not reachable via normal API */
       if (val !== origVal) {
         result[key] = val;
       } else {
