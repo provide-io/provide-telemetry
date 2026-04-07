@@ -6,6 +6,25 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.2.3] — 2026-04-06
+
+### Features
+
+- **All: `StrictSchema` in `RuntimeOverrides`** — `strict_schema` / `StrictSchema` / `strictSchema` is now hot-reloadable via `update_runtime_config` / `UpdateRuntimeConfig` / `updateRuntimeConfig`
+
+### Improvements
+
+- **Python: PII `deepcopy` removed** — `sanitize_payload` no longer calls `copy.deepcopy` for nested rules; traversal already builds new nodes, so a shallow top-level copy is sufficient
+- **TypeScript: `updateRuntimeConfig` validation** — rates, sizes, retries, and timeouts validated on call; rejects NaN, negatives, and out-of-range rates
+- **Go: `UpdateRuntimeConfig` validation** — input validation added matching Python/TypeScript behaviour
+- **React: `useTelemetryContext` key ownership** — documented that sibling components must not bind the same key in browser environments
+
+### Bug Fixes
+
+- **CI: Go workflow** — renamed to `🐹 CI — Go`; gosec excludes `cmd/e2e_cross_language_client` (separate Go 1.26 module) to fix Dependabot PR failures
+
+---
+
 ## [0.2.2] — 2026-04-06
 
 ### Features
