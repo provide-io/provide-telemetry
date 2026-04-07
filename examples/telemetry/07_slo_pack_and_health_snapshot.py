@@ -79,9 +79,6 @@ def main() -> None:
     # ── 🩺 Full health snapshot ──────────────────────────────
     print("\n🩺 Full HealthSnapshot (all 25 fields):")
     s = get_health_snapshot()
-    print(
-        f"  📦 Queue depths:       logs={s.queue_depth_logs}  traces={s.queue_depth_traces}  metrics={s.queue_depth_metrics}"
-    )
     print(f"  📉 Dropped:            logs={s.dropped_logs}  traces={s.dropped_traces}  metrics={s.dropped_metrics}")
     print(f"  🔄 Retries:            logs={s.retries_logs}  traces={s.retries_traces}  metrics={s.retries_metrics}")
     print(
@@ -90,16 +87,13 @@ def main() -> None:
     print(
         f"  ❌ Export failures:    logs={s.export_failures_logs}  traces={s.export_failures_traces}  metrics={s.export_failures_metrics}"
     )
-    print(f"  🔬 Exemplar unsupported: {s.exemplar_unsupported_total}")
-    print(
-        f"  💬 Last errors:        logs={s.last_error_logs}  traces={s.last_error_traces}  metrics={s.last_error_metrics}"
-    )
-    print(
-        f"  ✅ Last success:       logs={s.last_successful_export_logs}  traces={s.last_successful_export_traces}  metrics={s.last_successful_export_metrics}"
-    )
     print(
         f"  ⏱️  Export latency(ms): logs={s.export_latency_ms_logs}  traces={s.export_latency_ms_traces}  metrics={s.export_latency_ms_metrics}"
     )
+    print(
+        f"  🔌 Circuit state:      logs={s.circuit_state_logs}  traces={s.circuit_state_traces}  metrics={s.circuit_state_metrics}"
+    )
+    print(f"  🛑 Setup error:        {s.setup_error}")
 
     print("\n🏁 Done!")
     shutdown_telemetry()
