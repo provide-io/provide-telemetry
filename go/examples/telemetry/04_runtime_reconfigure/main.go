@@ -72,8 +72,9 @@ func main() {
 	restartedEvt, _ := telemetry.Event("example", "runtime", "restarted")
 	log.InfoContext(ctx, restartedEvt.Event, restartedEvt.Attrs()...)
 
-	// Reload from environment
-	fmt.Println("\nReloadRuntimeFromEnv() — re-reads os.Environ...")
+	// Reload hot policy fields from environment. Cold/provider fields are preserved and
+	// only reported via warning if they drift from the live config.
+	fmt.Println("\nReloadRuntimeFromEnv() — re-reads os.Environ() for hot fields...")
 	if reloadErr := telemetry.ReloadRuntimeFromEnv(); reloadErr != nil {
 		log.ErrorContext(ctx, "reload failed", "err", reloadErr)
 	} else {

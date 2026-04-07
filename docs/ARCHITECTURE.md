@@ -44,8 +44,8 @@ flowchart TD
 - `shutdown_telemetry` marks setup state as not-ready before provider teardown.
 - Runtime policy changes (`sampling`, `backpressure`, `exporter`) are hot-reloadable in-process.
 - Provider-changing reconfiguration is constrained by OpenTelemetry's process-global providers; after real OTel providers are installed, those changes require process restart rather than in-process replacement.
-- Runtime policy updates snapshot (`deepcopy`) the provided `TelemetryConfig` before storing/applying it.
-- Runtime update/reload APIs return the applied runtime snapshot (not the caller-owned config object).
+- Runtime policy updates snapshot runtime state before storing/applying it.
+- Active runtime state is read back via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than by mutating a caller-owned config object.
 - All context propagation uses `contextvars` for async task safety.
 
 ## Async Safety

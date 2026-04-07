@@ -43,10 +43,11 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 	return nil
 }
 
-// ReloadRuntimeFromEnv re-parses all environment variables and replaces the in-memory
-// config snapshot. No subsystems are restarted; use ReconfigureTelemetry for a full
-// restart. Cold fields (ServiceName, Environment, Version, Tracing.Enabled,
-// Metrics.Enabled) that have drifted from the current config are logged as warnings.
+// ReloadRuntimeFromEnv re-parses all environment variables, applies only hot-reloadable
+// fields, and preserves the live cold/provider config. No subsystems are restarted; use
+// ReconfigureTelemetry for a full restart. Cold fields (ServiceName, Environment, Version,
+// Tracing.Enabled, Metrics.Enabled) that have drifted from the current config are logged
+// as warnings.
 func ReloadRuntimeFromEnv() error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()

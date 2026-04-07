@@ -18,13 +18,13 @@ Flush and tear down all providers and reset runtime policies. This clears the pa
 
 ## Runtime Configuration
 
-### `update_runtime_config(config: TelemetryConfig) -> TelemetryConfig`
+### `update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig`
 
-Apply a config snapshot to runtime signal policies (sampling, backpressure, exporter). Returns the active runtime snapshot.
+Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded from `RuntimeOverrides`. Returns the applied runtime snapshot.
 
 ### `reload_runtime_from_env() -> TelemetryConfig`
 
-Reload config from environment variables, apply it, and return the active snapshot.
+Reload config from environment variables, apply only hot-reloadable fields, warn on cold-field drift, and return the active snapshot.
 
 ### `get_runtime_config() -> TelemetryConfig`
 
