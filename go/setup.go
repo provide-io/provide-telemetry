@@ -119,7 +119,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	_runtimeCfg = cfg
 	_setupDone = true
 
-	return cfg, nil
+	return cloneTelemetryConfig(cfg), nil
 }
 
 // ShutdownTelemetry tears down all telemetry subsystems and resets the setup sentinel.
