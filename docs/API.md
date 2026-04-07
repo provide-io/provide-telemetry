@@ -284,15 +284,17 @@ Remove all cardinality limits and reset seen-value tracking.
 
 Frozen dataclass with per-signal counters:
 
-- `queue_depth_{logs,traces,metrics}` — current backpressure queue depth
+Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, and Go:
+
+- `emitted_{logs,traces,metrics}` — events accepted and forwarded
 - `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
-- `retries_{logs,traces,metrics}` — exporter retry count
-- `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran inside an event loop
 - `export_failures_{logs,traces,metrics}` — failed export attempts
-- `exemplar_unsupported_total` — exemplar attachment attempts on unsupported instruments
-- `last_error_{logs,traces,metrics}` — most recent error message (or None)
-- `last_successful_export_{logs,traces,metrics}` — epoch timestamp of last success (or None)
-- `export_latency_ms_{logs,traces,metrics}` — last successful export latency in ms
+- `retries_{logs,traces,metrics}` — exporter retry count
+- `export_latency_ms_{logs,traces,metrics}` — latest export latency in ms
+- `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran inside an event loop
+- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half_open"`
+- `circuit_open_count_{logs,traces,metrics}` — number of times circuit has opened
+- `setup_error` — error message from `setup_telemetry()`, or `None`
 
 ### `get_health_snapshot() -> HealthSnapshot`
 
