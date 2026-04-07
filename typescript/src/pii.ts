@@ -99,6 +99,25 @@ export interface PIIRule {
 // Stryker disable next-line ArrayDeclaration
 const _rules: PIIRule[] = [];
 
+// Governance hooks — set by classification / receipts modules if present.
+// null = feature not loaded (zero overhead).
+export let _classificationHook: ((key: string, value: unknown) => string | null) | null = null;
+export let _receiptHook:
+  | ((fieldPath: string, action: string, originalValue: unknown) => void)
+  | null = null;
+
+export function setClassificationHook(
+  fn: ((key: string, value: unknown) => string | null) | null,
+): void {
+  _classificationHook = fn;
+}
+
+export function setReceiptHook(
+  fn: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
+): void {
+  _receiptHook = fn;
+}
+
 // Overridable hash function — allows tests to exercise the fallback path.
 let _hashFnOverride: ((val: string) => string) | null = null;
 
@@ -148,6 +167,7 @@ function _applyRuleFull(
   currentPath: string[],
   maxDepth: number = _DEFAULT_MAX_DEPTH,
   depth: number = 0,
+  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null = null,
 ): unknown {
   if (typeof node !== 'object' || node === null) return node;
   if (depth >= maxDepth) return node;
@@ -155,7 +175,7 @@ function _applyRuleFull(
   if (Array.isArray(node)) {
     // Stryker disable next-line StringLiteral: '*' wildcard in VALUE path is irrelevant because _matches checks RULE segment, not value segment, for wildcards
     return node.map((item) =>
-      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1),
+      _applyRuleFull(item, rule, [...currentPath, '*'], maxDepth, depth + 1, receiptHook),
     );
   }
   const obj = node as Record<string, unknown>;
@@ -164,10 +184,11 @@ function _applyRuleFull(
   for (const [key, val] of Object.entries(obj)) {
     const childPath = [...currentPath, key];
     if (_matches(ruleSegs, childPath)) {
+      if (receiptHook !== null) receiptHook(childPath.join('.'), rule.mode, val);
       const { keep, value } = _applyMode(val, rule);
       if (keep) result[key] = value;
     } else {
-      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1);
+      result[key] = _applyRuleFull(val, rule, childPath, maxDepth, depth + 1, receiptHook);
     }
   }
   return result;
@@ -183,6 +204,7 @@ function _applyDefaultSensitiveKeyRedaction(
   blocked: Set<string>,
   ruleTargets: Set<string | undefined>,
   maxDepth: number,
+  receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
   depth: number = 0,
 ): unknown {
   if (depth >= maxDepth) return node;
@@ -196,6 +218,7 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
+        receiptHook,
         depth + 1,
       ),
     );
@@ -215,9 +238,11 @@ function _applyDefaultSensitiveKeyRedaction(
         result[key] = val;
       } else {
         result[key] = REDACTED;
+        if (receiptHook !== null) receiptHook(key, 'redact', origVal);
       }
     } else if (typeof val === 'string' && _detectSecretInValue(val)) {
       result[key] = REDACTED;
+      if (receiptHook !== null) receiptHook(key, 'redact', val);
     } else {
       result[key] = _applyDefaultSensitiveKeyRedaction(
         val,
@@ -225,6 +250,7 @@ function _applyDefaultSensitiveKeyRedaction(
         blocked,
         ruleTargets,
         maxDepth,
+        receiptHook,
         depth + 1,
       );
     }
@@ -248,6 +274,8 @@ export function replacePiiRules(rules: PIIRule[]): void {
 export function resetPiiRulesForTests(): void {
   _rules.length = 0;
   _hashFnOverride = null;
+  _classificationHook = null;
+  _receiptHook = null;
 }
 
 /** Options for sanitizePayload. */
@@ -267,11 +295,14 @@ export function sanitizePayload(
   options?: SanitizePayloadOptions,
 ): void {
   const maxDepth = options?.maxDepth ?? _DEFAULT_MAX_DEPTH;
+  // Capture hooks once at call time to avoid repeated reads.
+  const receiptHook = _receiptHook;
+  const classHook = _classificationHook;
   let current: unknown = obj;
 
   // Apply registered rules first.
   for (const rule of _rules) {
-    current = _applyRuleFull(current, rule, [], maxDepth);
+    current = _applyRuleFull(current, rule, [], maxDepth, 0, receiptHook);
   }
 
   // Apply default field-name redaction + secret detection recursively with depth limit.
@@ -291,6 +322,7 @@ export function sanitizePayload(
       blocked,
       ruleTargets,
       maxDepth,
+      receiptHook,
     ) as Record<string, unknown>;
     // Update the original object in-place.
     for (const key of Object.keys(obj)) {
@@ -308,5 +340,15 @@ export function sanitizePayload(
       if (!(key in obj)) obj[key] = c[key];
     }
     // Stryker enable all
+
+    // Apply classification tags for top-level keys if hook is registered.
+    if (classHook !== null) {
+      for (const key of Object.keys(obj)) {
+        const label = classHook(key, obj[key]);
+        if (label !== null) {
+          obj[`__${key}__class`] = label;
+        }
+      }
+    }
   }
 }

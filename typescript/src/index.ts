@@ -24,7 +24,7 @@ export {
   version,
   __version__,
 } from './config';
-export type { TelemetryConfig } from './config';
+export type { TelemetryConfig, RuntimeOverrides } from './config';
 
 // Logger
 export { getLogger, logger } from './logger';

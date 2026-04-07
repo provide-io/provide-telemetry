@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig } from '../src/config';
+import { _resetConfig, setupTelemetry } from '../src/config';
+import type { RuntimeOverrides } from '../src/config';
 import {
   _areProvidersRegistered,
   _getRegisteredProviders,
@@ -31,29 +32,128 @@ describe('getRuntimeConfig', () => {
     expect(cfg.logLevel).toBeDefined();
     expect(typeof cfg.otelEnabled).toBe('boolean');
   });
+
+  it('returns a frozen object', () => {
+    const cfg = getRuntimeConfig();
+    expect(Object.isFrozen(cfg)).toBe(true);
+  });
+
+  it('throws when mutating a frozen config property', () => {
+    const cfg = getRuntimeConfig();
+    expect(() => {
+      (cfg as Record<string, unknown>)['samplingLogsRate'] = 0.5;
+    }).toThrow();
+  });
+
+  it('deep-freezes nested objects', () => {
+    setupTelemetry({ logModuleLevels: { 'my.mod': 'debug' } });
+    updateRuntimeConfig({ samplingLogsRate: 1.0 });
+    const cfg = getRuntimeConfig();
+    expect(Object.isFrozen(cfg.logModuleLevels)).toBe(true);
+    expect(() => {
+      (cfg.logModuleLevels as Record<string, string>)['new.mod'] = 'info';
+    }).toThrow();
+  });
 });
 
 describe('updateRuntimeConfig', () => {
   it('merges overrides into active config', () => {
-    updateRuntimeConfig({ serviceName: 'my-service', logLevel: 'debug' });
+    updateRuntimeConfig({ samplingLogsRate: 0.5, samplingTracesRate: 0.3 });
     const cfg = getRuntimeConfig();
-    expect(cfg.serviceName).toBe('my-service');
-    expect(cfg.logLevel).toBe('debug');
+    expect(cfg.samplingLogsRate).toBe(0.5);
+    expect(cfg.samplingTracesRate).toBe(0.3);
   });
 
   it('persists across subsequent getRuntimeConfig calls', () => {
-    updateRuntimeConfig({ version: '2.0.0' });
-    expect(getRuntimeConfig().version).toBe('2.0.0');
+    updateRuntimeConfig({ samplingMetricsRate: 0.7 });
+    expect(getRuntimeConfig().samplingMetricsRate).toBe(0.7);
+  });
+
+  it('ignores undefined values in overrides', () => {
+    updateRuntimeConfig({ samplingLogsRate: 0.5 });
+    const before = getRuntimeConfig().samplingTracesRate;
+    updateRuntimeConfig({ samplingLogsRate: undefined, samplingTracesRate: undefined });
+    expect(getRuntimeConfig().samplingLogsRate).toBe(0.5);
+    expect(getRuntimeConfig().samplingTracesRate).toBe(before);
+  });
+});
+
+describe('RuntimeOverrides', () => {
+  it('accepts only hot-reloadable fields', () => {
+    const overrides: RuntimeOverrides = {
+      samplingLogsRate: 0.5,
+      backpressureLogsMaxsize: 100,
+      exporterLogsRetries: 3,
+      exporterLogsBackoffMs: 200,
+      exporterLogsTimeoutMs: 5000,
+      exporterLogsFailOpen: false,
+      securityMaxAttrValueLength: 512,
+      securityMaxAttrCount: 32,
+      sloEnableRedMetrics: true,
+      sloEnableUseMetrics: true,
+      piiMaxDepth: 4,
+    };
+    updateRuntimeConfig(overrides);
+    const cfg = getRuntimeConfig();
+    expect(cfg.samplingLogsRate).toBe(0.5);
+    expect(cfg.backpressureLogsMaxsize).toBe(100);
+    expect(cfg.exporterLogsRetries).toBe(3);
+    expect(cfg.securityMaxAttrValueLength).toBe(512);
+    expect(cfg.sloEnableRedMetrics).toBe(true);
+    expect(cfg.piiMaxDepth).toBe(4);
+  });
+
+  it('all fields are optional — empty object is valid', () => {
+    const overrides: RuntimeOverrides = {};
+    expect(() => updateRuntimeConfig(overrides)).not.toThrow();
   });
 });
 
 describe('reloadRuntimeFromEnv', () => {
-  it('resets to env-derived config', () => {
-    updateRuntimeConfig({ serviceName: 'overridden' });
+  it('resets hot fields to env-derived config', () => {
+    updateRuntimeConfig({ samplingLogsRate: 0.1 });
     reloadRuntimeFromEnv();
-    // After reload, serviceName should come from env (not 'overridden')
+    // After reload, samplingLogsRate should come from env (default 1.0)
     const cfg = getRuntimeConfig();
-    expect(cfg.serviceName).toBeDefined(); // just verify it doesn't throw
+    expect(cfg.samplingLogsRate).toBe(1.0);
+  });
+
+  it('warns on cold-field drift', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Set up active config with a specific serviceName via reconfigureTelemetry (which sets _activeConfig)
+    reconfigureTelemetry({ serviceName: 'custom-service' });
+    // Now reload from env — serviceName will differ (env default is 'provide-service')
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('serviceName'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when cold fields have not drifted', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Set up with defaults — reloading from env should produce same cold fields
+    updateRuntimeConfig({ samplingLogsRate: 0.5 });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when no active config exists', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // No prior updateRuntimeConfig call, _activeConfig is null
+    reloadRuntimeFromEnv();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('preserves cold fields from prior config (does not overwrite serviceName)', () => {
+    reconfigureTelemetry({ serviceName: 'locked-service' });
+    reloadRuntimeFromEnv();
+    // serviceName should stay as 'locked-service' because reload only applies hot fields
+    expect(getRuntimeConfig().serviceName).toBe('locked-service');
   });
 });
 
@@ -81,51 +181,34 @@ describe('reconfigureTelemetry', () => {
   });
 
   it('allows provider fields to change after providers are registered (restart)', () => {
-    updateRuntimeConfig({ otelEnabled: false });
+    reconfigureTelemetry({ otelEnabled: false });
     _markProvidersRegistered();
     expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
     expect(getRuntimeConfig().otelEnabled).toBe(true);
   });
 
   it('allows provider field changes when providers are NOT registered', () => {
-    updateRuntimeConfig({ otelEnabled: false });
+    reconfigureTelemetry({ otelEnabled: false });
     expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
   });
 
   it('allows non-provider field changes even when providers are registered', () => {
-    updateRuntimeConfig({ otelEnabled: false });
+    reconfigureTelemetry({ otelEnabled: false });
     _markProvidersRegistered();
     expect(() => reconfigureTelemetry({ logLevel: 'debug' })).not.toThrow();
   });
 
   it('allows otlpEndpoint to change after registration and applies new value', () => {
-    updateRuntimeConfig({ otlpEndpoint: 'http://old:4318' });
+    reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
     _markProvidersRegistered();
     expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).not.toThrow();
     expect(getRuntimeConfig().otlpEndpoint).toBe('http://new:4318');
   });
 });
 
-describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => {
-  it('clears custom serviceName after reload', () => {
-    updateRuntimeConfig({ serviceName: 'overridden-service' });
-    expect(getRuntimeConfig().serviceName).toBe('overridden-service');
-    reloadRuntimeFromEnv();
-    // After reload, should come from env (default when no env var set)
-    expect(getRuntimeConfig().serviceName).toBe('provide-service');
-  });
-
-  it('re-reads env-derived config after reload', () => {
-    updateRuntimeConfig({ logLevel: 'error', version: '99.0.0' });
-    reloadRuntimeFromEnv();
-    expect(getRuntimeConfig().logLevel).toBe('info');
-    expect(getRuntimeConfig().version).toBe('unknown');
-  });
-});
-
 describe('reconfigureTelemetry — otlpHeaders change after init triggers restart (kills StringLiteral otlpHeaders)', () => {
   it('allows otlpHeaders to change after providers initialized (restart path)', () => {
-    updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
+    reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'old' } });
     _markProvidersRegistered();
     expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).not.toThrow();
     expect(getRuntimeConfig().otlpHeaders).toEqual({ 'x-api-key': 'new' });
@@ -183,7 +266,7 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
   it('does NOT call flush/shutdown when provider fields are unchanged', async () => {
     const flushFn = vi.fn().mockResolvedValue(undefined);
     const shutdownFn = vi.fn().mockResolvedValue(undefined);
-    updateRuntimeConfig({ otelEnabled: false });
+    reconfigureTelemetry({ otelEnabled: false });
     _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
     _markProvidersRegistered();
     // Change a non-provider field
@@ -223,7 +306,7 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
   it('JSON.stringify deep comparison detects equivalent objects as unchanged', () => {
     // Same content, different references — should NOT trigger restart
     const flushFn = vi.fn().mockResolvedValue(undefined);
-    updateRuntimeConfig({ otlpHeaders: { key: 'value' } });
+    reconfigureTelemetry({ otlpHeaders: { key: 'value' } });
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
     reconfigureTelemetry({ otlpHeaders: { key: 'value' } });
@@ -233,7 +316,7 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
 
   it('JSON.stringify deep comparison detects different objects as changed', async () => {
     const flushFn = vi.fn().mockResolvedValue(undefined);
-    updateRuntimeConfig({ otlpHeaders: { key: 'old' } });
+    reconfigureTelemetry({ otlpHeaders: { key: 'old' } });
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
     reconfigureTelemetry({ otlpHeaders: { key: 'new' } });
@@ -258,7 +341,7 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
   });
 
   it('otlpHeaders specifically triggers restart (kills StringLiteral→"" on field name)', () => {
-    updateRuntimeConfig({ otlpHeaders: { old: 'val' } });
+    reconfigureTelemetry({ otlpHeaders: { old: 'val' } });
     const flushFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
@@ -270,7 +353,7 @@ describe('reconfigureTelemetry — mock provider flush/shutdown calls', () => {
   });
 
   it('otlpEndpoint specifically triggers restart (kills StringLiteral→"" on field name)', () => {
-    updateRuntimeConfig({ otlpEndpoint: 'http://old:4318' });
+    reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
     const flushFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn }]);
     _markProvidersRegistered();
