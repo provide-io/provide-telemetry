@@ -46,6 +46,7 @@ def test_runtime_overrides_accepts_hot_fields() -> None:
         security=SecurityConfig(max_attr_count=32),
         slo=SLOConfig(enable_red_metrics=True),
         pii_max_depth=4,
+        strict_schema=True,
     )
     assert overrides.sampling is not None
     assert overrides.sampling.logs_rate == 0.5
@@ -58,6 +59,7 @@ def test_runtime_overrides_accepts_hot_fields() -> None:
     assert overrides.slo is not None
     assert overrides.slo.enable_red_metrics is True
     assert overrides.pii_max_depth == 4
+    assert overrides.strict_schema is True
 
 
 def test_runtime_overrides_has_no_cold_fields() -> None:
@@ -77,6 +79,7 @@ def test_runtime_overrides_all_fields_optional() -> None:
     assert overrides.security is None
     assert overrides.slo is None
     assert overrides.pii_max_depth is None
+    assert overrides.strict_schema is None
 
 
 def test_runtime_overrides_validates_pii_max_depth() -> None:
@@ -144,11 +147,13 @@ def test_update_runtime_config_overrides_each_field_independently() -> None:
     overrides = RuntimeOverrides(
         security=SecurityConfig(max_attr_count=128),
         pii_max_depth=12,
+        strict_schema=True,
     )
     result = runtime_mod.update_runtime_config(overrides)
 
     assert result.security.max_attr_count == 128
     assert result.pii_max_depth == 12
+    assert result.strict_schema is True
     # Others unchanged
     assert result.sampling.logs_rate == pytest.approx(0.1)
     assert result.backpressure.logs_maxsize == 10

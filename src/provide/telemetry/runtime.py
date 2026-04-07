@@ -32,47 +32,22 @@ _active_config = TelemetryConfig.from_env({})
 def apply_runtime_config(config: TelemetryConfig) -> None:
     global _active_config
     with _lock:
-        _active_config = config
-        set_sampling_policy("logs", SamplingPolicy(default_rate=config.sampling.logs_rate))
-        set_sampling_policy("traces", SamplingPolicy(default_rate=config.sampling.traces_rate))
-        set_sampling_policy("metrics", SamplingPolicy(default_rate=config.sampling.metrics_rate))
-        set_queue_policy(
-            QueuePolicy(
-                logs_maxsize=config.backpressure.logs_maxsize,
-                traces_maxsize=config.backpressure.traces_maxsize,
-                metrics_maxsize=config.backpressure.metrics_maxsize,
-            )
-        )
-        set_exporter_policy(
-            "logs",
-            ExporterPolicy(
-                retries=config.exporter.logs_retries,
-                backoff_seconds=config.exporter.logs_backoff_seconds,
-                timeout_seconds=config.exporter.logs_timeout_seconds,
-                fail_open=config.exporter.logs_fail_open,
-                allow_blocking_in_event_loop=config.exporter.logs_allow_blocking_in_event_loop,
-            ),
-        )
-        set_exporter_policy(
-            "traces",
-            ExporterPolicy(
-                retries=config.exporter.traces_retries,
-                backoff_seconds=config.exporter.traces_backoff_seconds,
-                timeout_seconds=config.exporter.traces_timeout_seconds,
-                fail_open=config.exporter.traces_fail_open,
-                allow_blocking_in_event_loop=config.exporter.traces_allow_blocking_in_event_loop,
-            ),
-        )
-        set_exporter_policy(
-            "metrics",
-            ExporterPolicy(
-                retries=config.exporter.metrics_retries,
-                backoff_seconds=config.exporter.metrics_backoff_seconds,
-                timeout_seconds=config.exporter.metrics_timeout_seconds,
-                fail_open=config.exporter.metrics_fail_open,
-                allow_blocking_in_event_loop=config.exporter.metrics_allow_blocking_in_event_loop,
-            ),
-        )
+        snapshot = copy.deepcopy(config)
+        _active_config = snapshot
+    _apply_policies(snapshot)
+
+
+def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
+    """Extract the hot-reloadable fields from a full TelemetryConfig."""
+    return RuntimeOverrides(
+        sampling=cfg.sampling,
+        backpressure=cfg.backpressure,
+        exporter=cfg.exporter,
+        security=cfg.security,
+        slo=cfg.slo,
+        pii_max_depth=cfg.pii_max_depth,
+        strict_schema=cfg.strict_schema,
+    )
 
 
 def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> TelemetryConfig:
@@ -90,6 +65,8 @@ def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> Tele
         merged.slo = overrides.slo
     if overrides.pii_max_depth is not None:
         merged.pii_max_depth = overrides.pii_max_depth
+    if overrides.strict_schema is not None:
+        merged.strict_schema = overrides.strict_schema
     return merged
 
 

@@ -12,6 +12,7 @@ import {
   configFromEnv,
   setupTelemetry,
 } from './config';
+import { ConfigurationError } from './exceptions';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -62,6 +63,7 @@ export function getRuntimeConfig(): Readonly<TelemetryConfig> {
 
 /** Merge hot-reloadable overrides into the active config and re-apply policies. */
 export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
+  validateRuntimeOverrides(overrides);
   const base = _activeConfig ?? configFromEnv();
   const merged: TelemetryConfig = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
@@ -71,6 +73,48 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
   }
   _activeConfig = merged;
   setupTelemetry(_activeConfig);
+}
+
+function validateRate(name: string, value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new ConfigurationError(`${name} must be in [0, 1], got ${String(value)}`);
+  }
+}
+
+function validateNonNegativeInteger(name: string, value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(value)}`);
+  }
+}
+
+function validateNonNegativeNumber(name: string, value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ConfigurationError(`${name} must be >= 0, got ${String(value)}`);
+  }
+}
+
+function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
+  validateRate('samplingLogsRate', overrides.samplingLogsRate);
+  validateRate('samplingTracesRate', overrides.samplingTracesRate);
+  validateRate('samplingMetricsRate', overrides.samplingMetricsRate);
+  validateNonNegativeInteger('backpressureLogsMaxsize', overrides.backpressureLogsMaxsize);
+  validateNonNegativeInteger('backpressureTracesMaxsize', overrides.backpressureTracesMaxsize);
+  validateNonNegativeInteger('backpressureMetricsMaxsize', overrides.backpressureMetricsMaxsize);
+  validateNonNegativeInteger('exporterLogsRetries', overrides.exporterLogsRetries);
+  validateNonNegativeInteger('exporterTracesRetries', overrides.exporterTracesRetries);
+  validateNonNegativeInteger('exporterMetricsRetries', overrides.exporterMetricsRetries);
+  validateNonNegativeNumber('exporterLogsBackoffMs', overrides.exporterLogsBackoffMs);
+  validateNonNegativeNumber('exporterTracesBackoffMs', overrides.exporterTracesBackoffMs);
+  validateNonNegativeNumber('exporterMetricsBackoffMs', overrides.exporterMetricsBackoffMs);
+  validateNonNegativeNumber('exporterLogsTimeoutMs', overrides.exporterLogsTimeoutMs);
+  validateNonNegativeNumber('exporterTracesTimeoutMs', overrides.exporterTracesTimeoutMs);
+  validateNonNegativeNumber('exporterMetricsTimeoutMs', overrides.exporterMetricsTimeoutMs);
+  validateNonNegativeInteger('securityMaxAttrValueLength', overrides.securityMaxAttrValueLength);
+  validateNonNegativeInteger('securityMaxAttrCount', overrides.securityMaxAttrCount);
+  validateNonNegativeInteger('piiMaxDepth', overrides.piiMaxDepth);
 }
 
 const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
@@ -123,6 +167,7 @@ export function reloadRuntimeFromEnv(): void {
     sloEnableRedMetrics: fresh.sloEnableRedMetrics,
     sloEnableUseMetrics: fresh.sloEnableUseMetrics,
     piiMaxDepth: fresh.piiMaxDepth,
+    strictSchema: fresh.strictSchema,
   };
   updateRuntimeConfig(overrides);
 }
@@ -146,8 +191,8 @@ const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
 
 /**
  * Apply config changes.
- * If provider-changing fields differ and providers are already registered, performs a
- * best-effort shutdown (fire-and-forget) then re-initialises — matching Go/Python behaviour.
+ * If provider-changing fields differ and providers are already registered, fail fast:
+ * provider replacement requires explicit process restart to avoid async export loss.
  * Otherwise delegates to setupTelemetry.
  */
 export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
@@ -159,15 +204,9 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(proposed[k]),
     );
     if (changed) {
-      // Best-effort async shutdown — fire-and-forget, errors ignored (mirrors Go's `_ = ShutdownTelemetry(ctx)`)
-      const providers = _getRegisteredProviders();
-      // Stryker disable LogicalOperator: ?? vs && is equivalent here — forceFlush/shutdown return Promise (truthy) so && still resolves; when undefined, Promise.allSettled wraps both in Promise.resolve
-      void Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve())).then(
-        () => Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve())),
+      throw new ConfigurationError(
+        'provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; restart the process and call setupTelemetry() with the new config',
       );
-      // Stryker restore LogicalOperator
-      _providersRegistered = false;
-      _registeredProviders = [];
     }
   }
 
