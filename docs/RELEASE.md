@@ -7,7 +7,7 @@
 
 ## Release Notes Checklist
 
-- Document runtime API contract: `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot.
+- Document runtime API contract: runtime update/reload mutates internal state only; read the applied snapshot back via the language-specific `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` accessor.
 
 ## Release Validation
 
