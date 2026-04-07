@@ -18,6 +18,15 @@ import { getLogger } from './logger';
 /**
  * Bind key/value pairs into telemetry context for the lifetime of the component.
  * Cleans up on unmount. Re-runs when values change (content-compared, not by reference).
+ *
+ * **Key ownership**: In browser environments, context is module-global (no
+ * AsyncLocalStorage). Do not bind the same key from sibling components — when
+ * either sibling unmounts it will delete the key for both. Intended usage:
+ *   - App-level keys (userId, sessionId): bind once at the root component.
+ *   - Page/component-level keys: bind keys that only that component owns.
+ *
+ * In Node.js / SSR contexts, AsyncLocalStorage provides per-request isolation
+ * so this restriction does not apply.
  */
 export function useTelemetryContext(values: Record<string, unknown>): void {
   // Content-stable dep: avoids re-running when the object reference changes but values are equal.
