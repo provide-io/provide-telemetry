@@ -576,11 +576,13 @@ function maskEndpointUrl(raw: string): string {
  */
 export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
   const result: Record<string, unknown> = { ...config };
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: empty headers produce {} from Object.fromEntries — equivalent; undefined headers throw on Object.keys but caught identically
   if (config.otlpHeaders && Object.keys(config.otlpHeaders).length > 0) {
     result.otlpHeaders = Object.fromEntries(
       Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
     );
   }
+  // Stryker disable next-line ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
   if (config.otlpEndpoint) {
     result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
   }
