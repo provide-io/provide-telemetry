@@ -93,6 +93,9 @@ def test_setup_tracing_already_configured_branch(monkeypatch: pytest.MonkeyPatch
 
 
 def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.resilience import reset_resilience_for_tests
+
+    reset_resilience_for_tests()
     _reset_tracing_for_tests()
     provider = Mock()
     mock_otel = SimpleNamespace(set_tracer_provider=Mock(), get_tracer_provider=lambda: None)
