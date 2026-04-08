@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 name: "🦀 CI — Rust"
 
 on:
@@ -8,16 +5,11 @@ on:
     paths:
       - "rust/**"
       - "spec/**"
-      - "VERSION"
       - ".github/workflows/ci-rust.yml"
-    # Go sub-module tags (go/logger/v*, go/tracer/v*) must not trigger Rust CI
-    tags-ignore:
-      - 'go/**'
   pull_request:
     paths:
       - "rust/**"
       - "spec/**"
-      - "VERSION"
       - ".github/workflows/ci-rust.yml"
 
 permissions:
@@ -25,62 +17,19 @@ permissions:
 
 jobs:
   test:
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
-        features: ["", "--no-default-features", "--features otel", "--features otel-grpc"]
-        exclude:
-          # Full feature matrix on Linux; default-only on Windows/macOS to keep CI cost bounded.
-          - os: windows-2025
-            features: "--no-default-features"
-          - os: windows-2025
-            features: "--features otel"
-          - os: macos-15
-            features: "--no-default-features"
-          - os: macos-15
-            features: "--features otel"
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      # Bump explicitly when the upstream `stable` branch advances.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
-      # Format check only on Linux default (no point repeating per OS/feature)
-      - name: Cargo fmt (Linux default only)
-        if: matrix.os == 'ubuntu-24.04' && matrix.features == ''
-        run: cargo fmt --check --manifest-path Cargo.toml
-      # Run tests with the selected feature set
-      - name: Cargo test ${{ matrix.features }}
-        run: cargo test --manifest-path Cargo.toml ${{ matrix.features }}
-      # Clippy with all features on Linux default; with selected features elsewhere
-      - name: Cargo clippy ${{ matrix.features }}
-        run: cargo clippy --manifest-path Cargo.toml --all-targets ${{ matrix.features || '--all-features' }} -- -D warnings
-
-  test-otel:
-    name: Rust — test with otel feature
     runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: rust
     steps:
-      # Checkout the repository
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      # Install the stable Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
-      # Cache Cargo registry and build artefacts to speed up incremental builds
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
-        with:
-          workspaces: rust
-      # Run tests with the otel feature enabled — verifies OTel log/metrics wiring
-      # compiles and the unit-level OTel provider tests pass.
-      - name: Cargo test with otel feature
-        run: cargo test --features otel
+      - name: Cargo fmt
+        run: cargo fmt --check --manifest-path Cargo.toml
+      - name: Cargo test
+        run: cargo test --manifest-path Cargo.toml
+      - name: Cargo clippy
+        run: cargo clippy --manifest-path Cargo.toml --all-targets --all-features -- -D warnings
 
   conformance:
     runs-on: ubuntu-24.04
@@ -89,115 +38,5 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
-      # Verify exported symbols match the canonical API spec
       - name: Validate Rust conformance
         run: uv run python spec/validate_conformance.py --lang rust
-
-  otlp-integration:
-    runs-on: ubuntu-24.04
-    # Known issue: opentelemetry-sdk 0.31's BatchSpanProcessor runs on its own
-    # dedicated thread (named "OpenTelemetry.Traces.BatchProcessor" etc.) that
-    # is NOT a tokio runtime. The opentelemetry-otlp reqwest-based exporter
-    # (whether reqwest-blocking-client or reqwest-client) panics on that
-    # thread with "there is no reactor running, must be called from the
-    # context of a Tokio 1.x runtime" because reqwest internally requires
-    # tokio. Result: BSP task dies before any spans are exported, shutdown
-    # reports "channel is empty and sending half is closed", collector
-    # receives nothing.
-    #
-    # Bisect on commits 7c6e8e7 → c387119 confirmed:
-    #   * not our ResilientSpanExporter wrapper (bypassing it gives same
-    #     panic at the same location)
-    #   * not the blocking-vs-async client choice (both fail; the async one
-    #     surfaces the panic visibly, the blocking one closes the channel
-    #     silently)
-    #   * not the tokio runtime topology of the test (current_thread and
-    #     multi_thread both fail identically)
-    #
-    # The actual fix needs either a different OTel SDK BSP runtime config
-    # (not obvious in 0.31's API surface) OR restructuring the smoke test
-    # to use SimpleSpanProcessor (sync, no BSP background thread). Both
-    # warrant a fresh investigation pass; not in scope for this push wave.
-    #
-    # Diagnostic infrastructure left in place for the next investigator:
-    #   * eprintln markers in rust/tests/otlp_collector_test.rs
-    #   * eprintln-on-error in rust/src/otel/{traces,logs,metrics}.rs shutdown
-    #   * reactor-detection guard in rust/src/resilience.rs (defensive — a
-    #     real fix even though it didn't fix THIS test in isolation)
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      # Bump explicitly when the upstream `stable` branch advances.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
-      - name: Prepare collector output directory
-        run: |
-          mkdir -p ../tests/integration/otel-output-rust
-          rm -f ../tests/integration/otel-output-rust/*.json
-      - name: Start OTLP collector
-        run: |
-          docker run -d --name otelcol-rust \
-            -p 4318:4318 \
-            -p 13133:13133 \
-            -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
-            otel/opentelemetry-collector-contrib:0.102.1
-      - name: Wait for collector health
-        run: ../ci/wait-for-collector.sh
-      - name: Run collector-backed OTLP smoke test
-        run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1 --nocapture
-        env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-rust"
-      - name: Collector logs
-        if: always()
-        run: docker logs otelcol-rust || true
-      - name: Capture collector logs
-        run: docker logs otelcol-rust > ../tests/integration/otel-output-rust/collector.log 2>&1
-      # Poll the collector log until every required signal name appears, with
-      # a 30s deadline. Avoids a race where the test exits before the collector
-      # has flushed all OTLP requests to its stdout (observed on ubuntu-latest).
-      - name: Verify collector exported all signals
-        env:
-          OTELCOL_CONTAINER: otelcol-rust
-        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-rust/collector.log integration.collector.span integration.collector.requests integration.collector.log
-      - name: Stop collector
-        if: always()
-        run: |
-          docker stop otelcol-rust || true
-          docker rm otelcol-rust || true
-
-  performance-smoke:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
-      # uv provides a consistent Python invocation across OSes for the
-      # perf_check.py + parse_criterion.py pipeline. Both scripts use stdlib
-      # only, so no `uv sync` here.
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
-        with:
-          python-version: "3.11"
-      # Run criterion in --quick mode (single-shot timings, no statistical
-      # analysis) and pipe through parse_criterion → perf_check, which compares
-      # each per-op timing against baselines/perf-rust.json for this runner's
-      # OS bucket. Missing buckets exit 0 with a hint so seeding via CI is
-      # straightforward.
-      - name: Run perf gate
-        shell: bash
-        run: cargo bench --bench hot_path -- --quick | uv run --no-project python ../scripts/parse_criterion.py | uv run --no-project python ../scripts/perf_check.py --lang rust

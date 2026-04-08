@@ -3,12 +3,10 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 
 use crate::context::{bind_context, ContextGuard};
-use crate::tracer::set_trace_context;
+use crate::tracing::set_trace_context;
 
 const MAX_HEADER_LENGTH: usize = 512;
 const MAX_TRACESTATE_PAIRS: usize = 32;
@@ -29,28 +27,10 @@ pub struct PropagationGuard {
 }
 
 impl Drop for PropagationGuard {
-    #[cfg_attr(test, mutants::skip)] // Equivalent mutant: fields still drop after an empty body.
     fn drop(&mut self) {
         drop(self.trace_guard.take());
         drop(self.context_guard.take());
     }
-}
-
-/// Parse a W3C baggage header into key-value pairs.
-/// Properties after `;` are stripped. Empty keys are skipped.
-pub fn parse_baggage(raw: &str) -> BTreeMap<String, String> {
-    let mut result = BTreeMap::new();
-    for member in raw.split(',') {
-        let kv = member.split(';').next().unwrap_or("");
-        if let Some(eq_idx) = kv.find('=') {
-            let key = kv[..eq_idx].trim();
-            if !key.is_empty() {
-                let value = kv[eq_idx + 1..].trim();
-                result.insert(key.to_string(), value.to_string());
-            }
-        }
-    }
-    result
 }
 
 fn parse_traceparent(value: Option<&str>) -> (Option<String>, Option<String>, Option<String>) {
@@ -132,11 +112,8 @@ pub fn bind_propagation_context(context: PropagationContext) -> PropagationGuard
     if let Some(tracestate) = context.tracestate.clone() {
         fields.push(("tracestate".to_string(), Value::String(tracestate)));
     }
-    if let Some(ref baggage) = context.baggage {
-        fields.push(("baggage".to_string(), Value::String(baggage.clone())));
-        for (k, v) in parse_baggage(baggage) {
-            fields.push((format!("baggage.{k}"), Value::String(v)));
-        }
+    if let Some(baggage) = context.baggage.clone() {
+        fields.push(("baggage".to_string(), Value::String(baggage)));
     }
 
     let context_guard = if fields.is_empty() {
