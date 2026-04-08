@@ -525,15 +525,6 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
       Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
     );
   }
-  // Mask per-signal headers
-  for (const field of ['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const) {
-    const hdrs = config[field];
-    if (hdrs && Object.keys(hdrs).length > 0) {
-      result[field] = Object.fromEntries(
-        Object.entries(hdrs).map(([k, v]) => [k, maskHeaderValue(v)]),
-      );
-    }
-  }
   // Stryker disable next-line ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
   if (config.otlpEndpoint) {
     result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);

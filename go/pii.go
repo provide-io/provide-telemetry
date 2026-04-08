@@ -53,12 +53,52 @@ var _defaultSensitiveKeys = map[string]struct{}{
 	"cookie":         {},
 }
 
+// SecretPattern pairs a diagnostic name with a compiled regexp.
+type SecretPattern struct {
+	Name    string
+	Pattern *regexp.Regexp
+}
+
 var (
 	_piiMu              sync.RWMutex
 	_piiRules           []PIIRule
 	_classificationHook func(key string, value any) string
 	_receiptHook        func(fieldPath string, action string, originalValue any)
+	_customSecretPats   map[string]*regexp.Regexp
 )
+
+// RegisterSecretPattern registers a custom secret detection pattern.
+// If a pattern with the same name already exists, it is replaced.
+// The name is for diagnostics only.
+func RegisterSecretPattern(name string, pattern *regexp.Regexp) {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	if _customSecretPats == nil { // pragma: allowlist secret
+		_customSecretPats = make(map[string]*regexp.Regexp) // pragma: allowlist secret
+	}
+	_customSecretPats[name] = pattern
+}
+
+// GetSecretPatterns returns all secret patterns (built-in + custom).
+func GetSecretPatterns() []SecretPattern {
+	_piiMu.RLock()
+	defer _piiMu.RUnlock()
+	out := make([]SecretPattern, 0, len(_secretPatterns)+len(_customSecretPats))
+	for i, re := range _secretPatterns {
+		out = append(out, SecretPattern{Name: fmt.Sprintf("builtin-%d", i), Pattern: re})
+	}
+	for name, re := range _customSecretPats {
+		out = append(out, SecretPattern{Name: name, Pattern: re})
+	}
+	return out
+}
+
+// _resetSecretPatterns clears all custom secret patterns (for test cleanup).
+func _resetSecretPatterns() {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	_customSecretPats = nil // pragma: allowlist secret
+}
 
 // SetClassificationHook registers a classification callback on the PII engine.
 // Pass nil to deregister.
@@ -279,5 +319,14 @@ func _detectSecretInValue(s string) bool {
 			return true
 		}
 	}
+	_piiMu.RLock()
+	customs := _customSecretPats
+	for _, re := range customs {
+		if re.MatchString(s) {
+			_piiMu.RUnlock()
+			return true
+		}
+	}
+	_piiMu.RUnlock()
 	return false
 }
