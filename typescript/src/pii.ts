@@ -255,8 +255,8 @@ function _applyDefaultSensitiveKeyRedaction(
   if (typeof node !== 'object' || node === null) return node;
   // Stryker disable next-line ConditionalExpression,BlockStatement,ArrayDeclaration: array items are recursed as objects — when Array.isArray is skipped, for..of on array indices still redacts nested keys identically
   if (Array.isArray(node)) {
-    /* v8 ignore next: [] fallback — original always matches node's array type through recursive calls */
     // Stryker disable next-line ArrayDeclaration: [] fallback for original — defensive, original always mirrors node shape
+    /* v8 ignore next */
     const origArr = Array.isArray(original) ? original : [];
     return node.map((item, i) =>
       _applyDefaultSensitiveKeyRedaction(
@@ -286,8 +286,8 @@ function _applyDefaultSensitiveKeyRedaction(
     const origVal = orig[key];
     if (blocked.has(lk) && !ruleTargets.has(lk)) {
       // If a custom rule already changed the value, keep the rule's result.
-      /* v8 ignore next 2: defensive guard for value modified before sanitizePayload — not reachable via normal API */
-      // Stryker disable next-line ConditionalExpression,BlockStatement: defensive guard — val always equals origVal through normal API; removing the branch is equivalent
+      // Stryker disable next-line ConditionalExpression,BlockStatement: defensive guard — val always equals origVal; removing branch is equivalent
+      /* v8 ignore next 2 */
       if (val !== origVal) {
         result[key] = val;
       } else {

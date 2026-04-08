@@ -82,8 +82,6 @@ function _onRedaction(fieldPath: string, action: string, originalValue: unknown)
     hmac: hmacValue,
   };
 
-  /* v8 ignore next 3: production-mode receipt emission — not exercised in test mode */
-  // Stryker disable next-line ConditionalExpression: _testMode is always true during tests (set by resetReceiptsForTests) — equivalent mutant
   if (_testMode) {
     _testReceipts.push(receipt);
   }
@@ -94,6 +92,11 @@ function _onRedaction(fieldPath: string, action: string, originalValue: unknown)
 /** Returns receipts collected during test mode. */
 export function getEmittedReceiptsForTests(): RedactionReceipt[] {
   return [..._testReceipts];
+}
+
+/** Override _testMode for coverage testing. */
+export function _setTestModeForTests(mode: boolean): void {
+  _testMode = mode;
 }
 
 /** Resets all receipt state and enables test-mode collection. */
