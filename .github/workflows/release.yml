@@ -27,6 +27,13 @@ jobs:
           path: dist/*
       - name: Generate Python SBOM
         run: uvx cyclonedx-py environment --output-format json -o sbom-python.cdx.json
+      - name: Generate TypeScript SBOM
+        # Install deps first — cyclonedx-npm requires node_modules for npm-ls
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          cd typescript
+          npm ci
+          cyclonedx-npm --output-file ../sbom-typescript.cdx.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: sbom-python
