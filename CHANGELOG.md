@@ -2,7 +2,81 @@
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Both packages (`provide-telemetry` / `@provide-io/telemetry`) share a version number.
+All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provide-io/provide-telemetry/go`) share a version number.
+
+---
+
+## [0.2.4] — 2026-04-08
+
+### Features
+
+- **All: `register_secret_pattern` API** — register custom secret detection patterns for PII sanitization; name-based deduplication, thread-safe, near-zero overhead
+- **All: cross-language benchmark suite** — `scripts/bench.sh` with normalized output across Python, TypeScript, Go; `make bench` targets
+- **All: stress test parity** — 6 scenarios (logging, sampling, PII, backpressure, metrics, tracing) across all three languages
+
+### Performance
+
+- **Python: hot-path optimization** — `event_name` 22x faster (cached deferred import), `counter.add` 3.3x faster (unchecked fast paths, no per-call health tracking), `shouldSample` 2.8x faster (lock-free read), `getHealthSnapshot` 1.7x faster (NamedTuple)
+- **Python: `_resolve_otel` caching** — cache "no OTel provider" result to avoid repeated deferred imports (963ns → 20ns per call)
+
+### Bug Fixes
+
+- **Go: health tracking double-count** — `TryAcquire` no longer increments `emitted_*` (was double-counting with `ShouldSample`)
+- **Go: `export_latency_ms` always 0** — wired `_recordExportLatencyForSignal` into `RunWithResilience` on success
+- **TypeScript: `emitted_*`/`dropped_*` always 0** — added health counter calls to `shouldSample` and `tryAcquire`
+- **TypeScript: browser crash on import** — `receipts.ts` replaced Node.js `crypto` with pure-JS `hash.ts` (SHA-256, randomHex)
+- **Spec: removed stale Go W3C propagation divergence note** — Go already discards oversized headers
+- **Docs: 13 inaccuracies fixed** — spec env var names, circuit state hyphen, HealthSnapshot type, export counts, field names, processor pipeline
+
+### Quality
+
+- **Python: 100% mutation kill** (3022 mutants, 0 survivors)
+- **TypeScript: 100% mutation kill** (1762 mutants, 0 survivors — was 93.81%)
+- **Spec: `health_counters` behavioral parity section** — defines when emitted/dropped/retries/failures/latency counters fire
+
+---
+
+## [0.2.3] — 2026-04-06
+
+### Features
+
+- **All: `StrictSchema` in `RuntimeOverrides`** — `strict_schema` / `StrictSchema` / `strictSchema` is now hot-reloadable via `update_runtime_config` / `UpdateRuntimeConfig` / `updateRuntimeConfig`
+
+### Improvements
+
+- **Python: PII `deepcopy` removed** — `sanitize_payload` no longer calls `copy.deepcopy` for nested rules; traversal already builds new nodes, so a shallow top-level copy is sufficient
+- **TypeScript: `updateRuntimeConfig` validation** — rates, sizes, retries, and timeouts validated on call; rejects NaN, negatives, and out-of-range rates
+- **Go: `UpdateRuntimeConfig` validation** — input validation added matching Python/TypeScript behaviour
+- **React: `useTelemetryContext` key ownership** — documented that sibling components must not bind the same key in browser environments
+
+### Bug Fixes
+
+- **CI: Go workflow** — renamed to `🐹 CI — Go`; gosec excludes `cmd/e2e_cross_language_client` (separate Go 1.26 module) to fix Dependabot PR failures
+
+---
+
+## [0.2.2] — 2026-04-06
+
+### Features
+
+- **Go: control-plane integrity** — `RuntimeOverrides` type; `UpdateRuntimeConfig` accepts hot-field-only overrides; `ReloadRuntimeFromEnv` warns on cold-field drift; `ReconfigureTelemetry` for full restart
+- **Go: data governance** — `ClassificationPolicy`, `ConsentLevel`/`ShouldAllow`, cryptographic redaction receipts with HMAC signing (strippable modules)
+- **Go: config masking** — `TelemetryConfig.String()` masks OTLP header values and endpoint passwords
+- **Go: PII depth** — `PROVIDE_LOG_PII_MAX_DEPTH` env var; default max depth 8; depth limit applied across all rule types
+- **All: canonical 25-field `HealthSnapshot`** — per-signal fields aligned across Go, TypeScript, and Python
+
+### Improvements
+
+- **Go: golangci-lint v2** — full linter suite now runs in CI against Go 1.25
+- **Go: parity alignment** — sampling signal validation, backpressure unlimited default, cardinality clamping, OTLP header `+` preservation, event name strict mode
+- **CI: npm publish** — `@provide-io/telemetry` now publishes to npm on GitHub release via `NPM_TOKEN`
+
+### Bug Fixes
+
+- Go: `UpdateRuntimeConfig` TOCTOU race in frozen idempotent path
+- Go: `golangci-lint` v1/v2 config format mismatch (switched to v2 module path)
+- Go: gosec `#nosec` directive format corrected in OpenObserve example
+- Go: `_receiptsEnabled` unused field removed; `consent.go` exhaustive switch; `ReloadRuntimeFromEnv` cyclomatic complexity reduced
 
 ---
 

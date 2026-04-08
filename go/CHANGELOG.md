@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.4] — 2026-04-08
+
+### Features
+
+- **`RegisterSecretPattern`** — register custom secret detection patterns with name-based deduplication
+- **Benchmark suite** — `benchmark_test.go` with 13 `testing.B` benchmarks; `make bench` target
+- **Stress tests** — `scripts/stress/main.go` with 6 scenarios (logging, sampling, PII, backpressure, metrics, tracing)
+
+### Bug Fixes
+
+- **Health tracking double-count** — `TryAcquire` no longer increments `emitted_*` (was double-counting with `ShouldSample`)
+- **`export_latency_ms` always 0** — wired `_recordExportLatencyForSignal` into `RunWithResilience` on success
+- **`validateRuntimeOverrides` cyclomatic complexity** — extracted sub-validators to reduce complexity from 17 → 8
+
+---
+
 ## [0.2.3] — 2026-04-06
 
 ### Features
