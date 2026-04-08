@@ -208,7 +208,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
             cleaned = _apply_rule(cleaned, rule)
         rule_targeted_keys = _collect_rule_leaf_keys(rules)
     else:
-        rule_targeted_keys = frozenset()
+        rule_targeted_keys = frozenset()  # pragma: no mutate — None also accepted by callee
     cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys, max_depth=max_depth)
     if _classification_hook is not None and isinstance(cleaned, dict):
         for key, value in list(cleaned.items()):

@@ -130,3 +130,14 @@ def test_minimal_unknown_signal_blocked() -> None:
     set_consent_level(ConsentLevel.MINIMAL)
     # Any signal that is not "logs" is blocked at MINIMAL
     assert should_allow("custom_signal") is False
+
+
+def test_load_consent_from_env_unset_defaults_to_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When PROVIDE_CONSENT_LEVEL is unset, _load_consent_from_env defaults to FULL."""
+    from provide.telemetry.consent import _load_consent_from_env
+
+    monkeypatch.delenv("PROVIDE_CONSENT_LEVEL", raising=False)
+    # Set level to something other than FULL first
+    set_consent_level(ConsentLevel.MINIMAL)
+    _load_consent_from_env()
+    assert get_consent_level() == ConsentLevel.FULL

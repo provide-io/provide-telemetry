@@ -174,6 +174,21 @@ def test_metrics_config_repr_none_endpoint() -> None:
     assert "None" in text
 
 
+def test_masked_dataclass_repr_uses_comma_space_separator() -> None:
+    """Kill mutmut_22: ', '.join(parts) -> 'XX, XX'.join(parts).
+
+    Verify the repr uses standard comma-space separators between fields.
+    """
+    mc = MetricsConfig(otlp_endpoint=None, otlp_headers={})
+    text = repr(mc)
+    # The repr should contain ", " between fields, not "XX, XX"
+    assert "XX, XX" not in text
+    # Should look like: MetricsConfig(enabled=True, otlp_endpoint=None, otlp_headers={})
+    assert ", " in text
+    assert text.startswith("MetricsConfig(")
+    assert text.endswith(")")
+
+
 @pytest.mark.parametrize(
     "value,expected",
     [
