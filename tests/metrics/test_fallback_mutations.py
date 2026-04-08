@@ -19,13 +19,13 @@ from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram, _exemp
 @pytest.fixture(autouse=True)
 def _patch_sampling_and_backpressure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default: allow all sampling/backpressure so we test deeper logic."""
-    monkeypatch.setattr(fallback_mod, "should_sample", lambda signal, name: True)
+    monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", lambda signal, name: True)
     monkeypatch.setattr(
         fallback_mod,
-        "try_acquire",
+        "_try_acquire_unchecked",
         lambda signal: SimpleNamespace(signal=signal, token=1),
     )
-    monkeypatch.setattr(fallback_mod, "release", lambda ticket: None)
+    monkeypatch.setattr(fallback_mod, "release", lambda ticket: None)  # release is still public
 
 
 # ── should_sample receives exact args ────────────────────────────────
@@ -41,7 +41,7 @@ class TestShouldSampleArgs:
             calls.append((signal, name))
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Counter("my.counter").add(1)
         assert calls == [("metrics", "my.counter")]
 
@@ -52,7 +52,7 @@ class TestShouldSampleArgs:
             calls.append((signal, name))
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Gauge("my.gauge").add(1)
         assert calls == [("metrics", "my.gauge")]
 
@@ -63,7 +63,7 @@ class TestShouldSampleArgs:
             calls.append((signal, name))
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Histogram("my.hist").record(1.0)
         assert calls == [("metrics", "my.hist")]
 
@@ -79,7 +79,7 @@ class TestTryAcquireArgs:
             signals.append(signal)
             return SimpleNamespace(signal=signal, token=1)
 
-        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", _spy)
         Counter("c").add(1)
         assert signals == ["metrics"]
 
@@ -90,7 +90,7 @@ class TestTryAcquireArgs:
             signals.append(signal)
             return SimpleNamespace(signal=signal, token=1)
 
-        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", _spy)
         Gauge("g").add(1)
         assert signals == ["metrics"]
 
@@ -101,7 +101,7 @@ class TestTryAcquireArgs:
             signals.append(signal)
             return SimpleNamespace(signal=signal, token=1)
 
-        monkeypatch.setattr(fallback_mod, "try_acquire", _spy)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", _spy)
         Histogram("h").record(1.0)
         assert signals == ["metrics"]
 
@@ -112,7 +112,7 @@ class TestTryAcquireArgs:
 class TestReleaseArgs:
     def test_counter_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ticket = SimpleNamespace(signal="metrics", token=42)
-        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", lambda _: ticket)
         released: list[object] = []
         monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
         Counter("c").add(1)
@@ -121,7 +121,7 @@ class TestReleaseArgs:
 
     def test_gauge_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ticket = SimpleNamespace(signal="metrics", token=42)
-        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", lambda _: ticket)
         released: list[object] = []
         monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
         Gauge("g").add(1)
@@ -130,7 +130,7 @@ class TestReleaseArgs:
 
     def test_histogram_releases_correct_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ticket = SimpleNamespace(signal="metrics", token=42)
-        monkeypatch.setattr(fallback_mod, "try_acquire", lambda _: ticket)
+        monkeypatch.setattr(fallback_mod, "_try_acquire_unchecked", lambda _: ticket)
         released: list[object] = []
         monkeypatch.setattr(fallback_mod, "release", lambda t: released.append(t))
         Histogram("h").record(1.0)
@@ -216,7 +216,7 @@ class TestSelfNameUsed:
             names.append(n)
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Counter("specific.counter.name").add(1)
         assert names == ["specific.counter.name"]
 
@@ -227,7 +227,7 @@ class TestSelfNameUsed:
             names.append(n)
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Gauge("specific.gauge.name").add(1)
         assert names == ["specific.gauge.name"]
 
@@ -238,7 +238,7 @@ class TestSelfNameUsed:
             names.append(n)
             return True
 
-        monkeypatch.setattr(fallback_mod, "should_sample", _spy)
+        monkeypatch.setattr(fallback_mod, "_should_sample_unchecked", _spy)
         Histogram("specific.hist.name").record(1.0)
         assert names == ["specific.hist.name"]
 

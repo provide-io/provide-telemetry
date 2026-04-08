@@ -20,6 +20,7 @@ __all__ = [
 ]
 
 import threading
+import types
 from dataclasses import dataclass
 
 Signal = str
@@ -79,6 +80,12 @@ def increment_emitted(signal: Signal, amount: int = 1) -> None:  # pragma: no mu
         _emitted[sig] += max(0, amount)
 
 
+def _increment_emitted_unchecked(sig: Signal) -> None:
+    """Hot-path emitted counter — caller must pass a validated signal."""
+    with _lock:
+        _emitted[sig] += 1
+
+
 def increment_dropped(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
@@ -115,10 +122,18 @@ def set_setup_error(error: str | None) -> None:
         _setup_error = error
 
 
-def get_health_snapshot() -> HealthSnapshot:
-    # Acquire resilience._lock BEFORE health._lock to prevent deadlock.
-    from provide.telemetry.resilience import get_circuit_state
+_resilience_mod: types.ModuleType | None = None
 
+
+def get_health_snapshot() -> HealthSnapshot:
+    global _resilience_mod
+    # Cache the module import to avoid per-call import overhead.
+    if _resilience_mod is None:
+        from provide.telemetry import resilience
+
+        _resilience_mod = resilience
+    # Acquire resilience._lock BEFORE health._lock to prevent deadlock.
+    get_circuit_state = _resilience_mod.get_circuit_state
     cs_logs = get_circuit_state("logs")
     cs_traces = get_circuit_state("traces")
     cs_metrics = get_circuit_state("metrics")

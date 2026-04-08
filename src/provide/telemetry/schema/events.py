@@ -17,6 +17,7 @@ __all__ = [
 ]
 
 import re
+import types
 
 from provide.telemetry.exceptions import TelemetryError
 
@@ -25,6 +26,21 @@ _EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG}){{2,4}}$")
 _SEGMENT_RE = re.compile(rf"^{_SEG}$")
 _MIN_SEGMENTS = 3
 _MAX_SEGMENTS = 5
+
+# Cached module reference to avoid per-call deferred import overhead.
+# We cache the module (not the function) so that unittest.mock.patch
+# on the function attribute still works.
+_runtime_mod: types.ModuleType | None = None
+
+
+def _get_strict_check() -> bool:
+    """Return strict-event-name flag, caching the module import on first call."""
+    global _runtime_mod
+    if _runtime_mod is None:
+        from provide.telemetry import runtime
+
+        _runtime_mod = runtime
+    return _runtime_mod._is_strict_event_name()  # type: ignore[no-any-return]
 
 
 class EventSchemaError(TelemetryError, ValueError):
@@ -48,9 +64,7 @@ class Event(str):
         if len(segments) not in (3, 4):
             raise EventSchemaError(f"event() requires 3 or 4 segments (DA[R]S), got {len(segments)}")
 
-        from provide.telemetry.runtime import _is_strict_event_name
-
-        if _is_strict_event_name():
+        if _get_strict_check():
             for i, seg in enumerate(segments):
                 if not _SEGMENT_RE.match(seg):
                     raise EventSchemaError(f"invalid event segment: segment[{i}]={seg}")
@@ -100,9 +114,7 @@ def event_name(*segments: str) -> str:
     lowercase/underscore segments.  In relaxed mode (default): accepts 1+
     segments with no format validation.
     """
-    from provide.telemetry.runtime import _is_strict_event_name
-
-    strict = _is_strict_event_name()
+    strict = _get_strict_check()
     if strict:
         if not (_MIN_SEGMENTS <= len(segments) <= _MAX_SEGMENTS):
             raise EventSchemaError(f"expected {_MIN_SEGMENTS}-{_MAX_SEGMENTS} segments, got {len(segments)}")
