@@ -47,6 +47,7 @@ class Counter:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -97,6 +98,7 @@ class Gauge:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -160,6 +162,7 @@ class Histogram:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True
             return None
         with _RESOLVE_LOCK:
             if self._resolved:

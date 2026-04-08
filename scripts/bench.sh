@@ -20,8 +20,8 @@ run_python() {
   echo "🐍 Python"
   echo "$SEP"
   uv run python -c "
-import time
-from provide.telemetry import event_name
+import os, time
+from provide.telemetry import setup_telemetry, shutdown_telemetry, event_name, get_logger
 from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy, should_sample, reset_sampling_for_tests
 from provide.telemetry.schema.events import validate_event_name
 from provide.telemetry.logger.processors import sanitize_sensitive_fields
@@ -29,6 +29,14 @@ from provide.telemetry.pii import reset_pii_rules_for_tests
 from provide.telemetry.backpressure import QueuePolicy, set_queue_policy, try_acquire, release, reset_queues_for_tests
 from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram
+
+# Initialize telemetry only when OTel endpoint is configured.
+# Without OTel, we measure raw function throughput (no provider overhead).
+import os
+os.environ['PROVIDE_LOG_LEVEL'] = 'ERROR'  # suppress log noise during benchmarks
+if os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT'):
+    setup_telemetry()
+log = get_logger('bench')
 
 N = 50_000
 
@@ -74,6 +82,9 @@ g = Gauge('bench.gauge')
 bench('gauge.set', lambda: g.set(42.0))
 h = Histogram('bench.histogram')
 bench('histogram.record', lambda: h.record(3.14))
+
+log.info('bench.python.complete', extra={'language': 'python'})
+shutdown_telemetry()
 "
   echo ""
 }
@@ -92,7 +103,8 @@ import { tryAcquire, release, setQueuePolicy, _resetBackpressureForTests } from 
 import { getHealthSnapshot, _resetHealthForTests } from './src/health.ts';
 import { counter, gauge, histogram } from './src/metrics.ts';
 import { setupTelemetry, _resetConfig } from './src/config.ts';
-import { _resetRootLogger } from './src/logger.ts';
+import { shutdownTelemetry } from './src/shutdown.ts';
+import { getLogger, _resetRootLogger } from './src/logger.ts';
 
 _resetConfig();
 _resetRootLogger();
@@ -100,7 +112,7 @@ _resetSamplingForTests();
 _resetBackpressureForTests();
 _resetHealthForTests();
 resetPiiRulesForTests();
-setupTelemetry({ serviceName: 'bench', logLevel: 'silent' });
+setupTelemetry({ serviceName: 'bench-ts', logLevel: 'silent' });
 
 const N = 50_000;
 
@@ -143,6 +155,10 @@ const g = gauge('bench_gauge');
 bench('gauge.set', () => g.set(42.0));
 const h = histogram('bench_histogram');
 bench('histogram.record', () => h.record(3.14));
+
+const log = getLogger('bench');
+log.info({ event: 'bench.typescript.complete', language: 'typescript' });
+shutdownTelemetry().catch(() => {});
 "
   cd ..
   echo ""
