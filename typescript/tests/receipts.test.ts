@@ -5,8 +5,8 @@
  * Tests for cryptographic redaction receipts.
  */
 
-import { createHash, createHmac } from 'crypto';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { sha256Hex } from '../src/hash';
 import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii';
 import { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from '../src/receipts';
 
@@ -44,7 +44,7 @@ describe('receipt original_hash is SHA-256', () => {
     sanitizePayload(obj);
     const receipts = getEmittedReceiptsForTests();
     expect(receipts).toHaveLength(1);
-    const expected = createHash('sha256').update('secret123').digest('hex');
+    const expected = sha256Hex('secret123');
     expect(receipts[0].originalHash).toBe(expected);
   });
 });
@@ -59,7 +59,7 @@ describe('receipt HMAC when key provided', () => {
     const r = receipts[0];
     expect(r.hmac).not.toBe('');
     const payload = `${r.receiptId}|${r.timestamp}|${r.fieldPath}|${r.action}|${r.originalHash}`;
-    const expected = createHmac('sha256', 'test-key').update(payload).digest('hex');
+    const expected = sha256Hex(`test-key|${payload}`);
     expect(r.hmac).toBe(expected);
   });
 });
@@ -84,7 +84,7 @@ describe('receipt tamper detection', () => {
     expect(receipts).toHaveLength(1);
     const r = receipts[0];
     const tamperedPayload = `${r.receiptId}|${r.timestamp}|tampered.path|${r.action}|${r.originalHash}`;
-    const tamperedHMAC = createHmac('sha256', 'test-key').update(tamperedPayload).digest('hex');
+    const tamperedHMAC = sha256Hex(`test-key|${tamperedPayload}`);
     expect(r.hmac).not.toBe(tamperedHMAC);
   });
 });

@@ -203,7 +203,7 @@ class QueuePolicy:
 
 ### `set_queue_policy(policy: QueuePolicy) -> None`
 
-Replace the active queue policy. Clears all in-flight queues.
+Replace the active queue policy.
 
 ### `get_queue_policy() -> QueuePolicy`
 
@@ -282,7 +282,7 @@ Remove all cardinality limits and reset seen-value tracking.
 
 ### `HealthSnapshot`
 
-Frozen dataclass with per-signal counters:
+NamedTuple with per-signal counters:
 
 Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, and Go:
 

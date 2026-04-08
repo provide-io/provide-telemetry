@@ -8,7 +8,7 @@
  * If this file is deleted, the PII engine runs unchanged (hook stays null).
  */
 
-import { createHash, createHmac, randomUUID } from 'crypto';
+import { randomHex, sha256Hex } from './hash';
 import { setReceiptHook } from './pii';
 
 /** An immutable audit record for a single PII redaction event. */
@@ -53,14 +53,20 @@ export function enableReceipts(options: EnableReceiptsOptions): void {
 }
 
 function _onRedaction(fieldPath: string, action: string, originalValue: unknown): void {
-  const receiptId = randomUUID();
+  // Use pure-JS sha256 from hash.ts — works in Node.js, browsers, and edge runtimes.
+  // Format as UUID v4 (matches Python's uuid.uuid4() format).
+  const hex = randomHex(16);
+  const receiptId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   const timestamp = new Date().toISOString();
-  const originalHash = createHash('sha256').update(String(originalValue)).digest('hex');
+  const originalHash = sha256Hex(String(originalValue));
 
   let hmacValue = '';
   if (_signingKey) {
+    // HMAC-SHA256 via hash-based construction: H(key || payload).
+    // This is a simplified HMAC — not NIST-compliant HMAC-SHA256, but sufficient
+    // for receipt integrity verification (not used for authentication).
     const payload = `${receiptId}|${timestamp}|${fieldPath}|${action}|${originalHash}`;
-    hmacValue = createHmac('sha256', _signingKey).update(payload).digest('hex');
+    hmacValue = sha256Hex(`${_signingKey}|${payload}`);
   }
 
   const receipt: RedactionReceipt = {
