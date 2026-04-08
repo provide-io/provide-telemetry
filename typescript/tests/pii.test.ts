@@ -6,9 +6,12 @@ import {
   DEFAULT_SANITIZE_FIELDS,
   _setHashFnForTest,
   getPiiRules,
+  getSecretPatterns,
   registerPiiRule,
+  registerSecretPattern,
   replacePiiRules,
   resetPiiRulesForTests,
+  resetSecretPatternsForTests,
   sanitize,
   sanitizePayload,
 } from '../src/pii';
@@ -453,5 +456,85 @@ describe('_applyRuleFull — depth limit (kills line 173 depth >= maxDepth branc
     const a = obj['a'] as Record<string, unknown>;
     const b = a['b'] as Record<string, unknown>;
     expect(b['email']).toBe('alice@example.com');
+  });
+});
+
+describe('registerSecretPattern — custom secret detection', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('custom pattern detects a secret', () => {
+    // Register a pattern that matches Stripe-style keys
+    registerSecretPattern('stripe-key', /xk_test_[A-Za-z0-9]{24,}/);
+    const value = 'xk_test_abcdefghijklmnopqrstuvwx'; // pragma: allowlist secret
+    expect(value.length).toBeGreaterThanOrEqual(20);
+    expect(_detectSecretInValue(value)).toBe(true);
+  });
+
+  it('same name replaces previous pattern', () => {
+    registerSecretPattern('my-pat', /NEVER_MATCH_THIS_PATTERN_XYZZY/);
+    registerSecretPattern('my-pat', /xk_test_[A-Za-z0-9]{24,}/);
+    const patterns = getSecretPatterns();
+    const custom = patterns.filter((p) => p.name === 'my-pat');
+    expect(custom).toHaveLength(1);
+    expect(custom[0].pattern.source).toBe('xk_test_[A-Za-z0-9]{24,}');
+  });
+
+  it('getSecretPatterns returns built-in + custom', () => {
+    const beforeCount = getSecretPatterns().length;
+    registerSecretPattern('custom-1', /CUSTOM_1/);
+    registerSecretPattern('custom-2', /CUSTOM_2/);
+    const after = getSecretPatterns();
+    expect(after.length).toBe(beforeCount + 2);
+    // Built-in patterns have names starting with 'built-in-'
+    const builtInNames = after.filter((p) => p.name.startsWith('built-in-'));
+    expect(builtInNames.length).toBe(_SECRET_PATTERNS.length);
+    // Custom patterns are present
+    expect(after.some((p) => p.name === 'custom-1')).toBe(true);
+    expect(after.some((p) => p.name === 'custom-2')).toBe(true);
+  });
+
+  it('resetSecretPatternsForTests clears custom patterns', () => {
+    registerSecretPattern('temp', /TEMP_PATTERN/);
+    expect(getSecretPatterns().length).toBe(_SECRET_PATTERNS.length + 1);
+    resetSecretPatternsForTests();
+    expect(getSecretPatterns().length).toBe(_SECRET_PATTERNS.length);
+  });
+
+  it('resetPiiRulesForTests also clears custom secret patterns', () => {
+    registerSecretPattern('temp', /TEMP_PATTERN/);
+    resetPiiRulesForTests();
+    expect(getSecretPatterns().length).toBe(_SECRET_PATTERNS.length);
+  });
+
+  it('short strings are skipped even with custom patterns', () => {
+    registerSecretPattern('short-match', /sk_/);
+    expect(_detectSecretInValue('sk_abc')).toBe(false); // too short (< 20 chars)
+  });
+
+  it('returns false when custom pattern does not match a long value', () => {
+    registerSecretPattern('nope', /WILL_NOT_MATCH_ANYTHING/);
+    // 20+ chars, no built-in match, no custom match
+    const safeValue = 'this is a safe value that is long enough';
+    expect(safeValue.length).toBeGreaterThanOrEqual(20);
+    expect(_detectSecretInValue(safeValue)).toBe(false);
+  });
+
+  it('sanitize redacts values matching custom pattern', () => {
+    registerSecretPattern('stripe-key', /xk_test_[A-Za-z0-9]{24,}/);
+    const obj: Record<string, unknown> = {
+      apiData: 'xk_test_abcdefghijklmnopqrstuvwx', // pragma: allowlist secret
+    };
+    sanitize(obj);
+    expect(obj['apiData']).toBe('***');
+  });
+
+  it('sanitizePayload redacts values matching custom pattern', () => {
+    registerSecretPattern('stripe-key', /xk_test_[A-Za-z0-9]{24,}/);
+    const obj: Record<string, unknown> = {
+      nested: { key: 'xk_test_abcdefghijklmnopqrstuvwx' }, // pragma: allowlist secret
+    };
+    sanitizePayload(obj);
+    const nested = obj['nested'] as Record<string, unknown>;
+    expect(nested['key']).toBe('***');
   });
 });

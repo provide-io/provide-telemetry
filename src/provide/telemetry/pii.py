@@ -11,7 +11,9 @@ __all__ = [
     "MaskMode",
     "PIIRule",
     "get_pii_rules",
+    "get_secret_patterns",
     "register_pii_rule",
+    "register_secret_pattern",
     "replace_pii_rules",
     "sanitize_payload",
 ]
@@ -44,12 +46,40 @@ _SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
 
 _MIN_SECRET_LENGTH = 20  # shortest pattern (AKIA + 16) is 20 chars
 
+_custom_secret_patterns: list[tuple[str, _re.Pattern[str]]] = []
+
+
+def register_secret_pattern(name: str, pattern: _re.Pattern[str]) -> None:
+    """Register a custom secret detection pattern.
+
+    If *name* already exists, the previous pattern is replaced (deduplication).
+    The *name* is for diagnostics only and is not used during matching.
+    """
+    with _lock:
+        for idx, (existing_name, _pat) in enumerate(_custom_secret_patterns):
+            if existing_name == name:
+                _custom_secret_patterns[idx] = (name, pattern)
+                return
+        _custom_secret_patterns.append((name, pattern))
+
+
+def get_secret_patterns() -> tuple[tuple[str, _re.Pattern[str]], ...]:
+    """Return all secret patterns (built-in and custom)."""
+    with _lock:
+        return _SECRET_PATTERNS + tuple(_custom_secret_patterns)
+
 
 def _detect_secret_in_value(value: str) -> bool:
     """Return True if value matches a known secret pattern."""
     if len(value) < _MIN_SECRET_LENGTH:
         return False
-    for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate  # noqa: SIM110
+    # Thread-safe snapshot — list may be mutated by register_secret_pattern.
+    with _lock:
+        custom = list(_custom_secret_patterns)
+    for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate
+        if pattern.search(value):
+            return True
+    for _name, pattern in custom:  # pragma: no mutate  # noqa: SIM110
         if pattern.search(value):
             return True
     return False
@@ -217,5 +247,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
 def reset_pii_rules_for_tests() -> None:
     global _classification_hook, _receipt_hook
     replace_pii_rules([])
+    with _lock:
+        _custom_secret_patterns.clear()
     _classification_hook = None
     _receipt_hook = None

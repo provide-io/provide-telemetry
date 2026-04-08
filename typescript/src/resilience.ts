@@ -100,7 +100,9 @@ export async function runWithResilience<T>(
   const attempts = Math.max(1, policy.retries + 1);
 
   // Ensure per-signal dicts are initialized for custom signals.
+  // Stryker disable next-line ConditionalExpression: custom signal init — skipping leaves _openCount[signal] as undefined; 2**undefined=NaN makes cooldown NaN which fails < comparison identically
   if (!(signal in _openCount)) _openCount[signal] = 0;
+  // Stryker disable next-line ConditionalExpression,BooleanLiteral: custom signal init — skipping is equivalent since undefined is falsy like false; true init only matters inside circuit-breaker block which requires consecutiveTimeouts >= 3
   if (!(signal in _halfOpenProbing)) _halfOpenProbing[signal] = false;
 
   // Circuit breaker check.
