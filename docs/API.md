@@ -6,6 +6,8 @@ All public symbols are exported from `provide.telemetry`. Import everything from
 from provide.telemetry import setup_telemetry, get_logger, trace
 ```
 
+Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
+
 ## Setup and Lifecycle
 
 ### `setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
@@ -284,7 +286,7 @@ Remove all cardinality limits and reset seen-value tracking.
 
 NamedTuple with per-signal counters:
 
-Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, and Go:
+Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, Go, and Rust:
 
 - `emitted_{logs,traces,metrics}` — events accepted and forwarded
 - `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
@@ -344,3 +346,9 @@ All config models are `@dataclass(slots=True)` and are constructed via `Telemetr
 - **`SecurityConfig`** — secret detection patterns, header size guards, protocol limits
 
 See [Configuration Reference](CONFIGURATION.md) for the environment variables that drive each field.
+
+## Rust Notes
+
+- `bind_context`, `unbind_context`, `clear_context`, `bind_session_context`, `clear_session_context`, `set_trace_context`, and `bind_propagation_context` return guard objects in Rust. Drop restores the previous snapshot.
+- `trace` is exposed as a wrapper function in Rust rather than a decorator.
+- `get_meter()` returns a fallback meter wrapper in Rust; fallback `counter()`, `gauge()`, and `histogram()` remain callable without OTel setup.
