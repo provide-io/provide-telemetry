@@ -184,6 +184,18 @@ describe('sanitizePayload — default sensitive keys', () => {
     sanitizePayload(obj);
     expect('token' in obj).toBe(false); // rule says drop
   });
+
+  it('uses exact-match default key detection instead of substring matching', () => {
+    const obj: Record<string, unknown> = {
+      author_id: 'safe-author',
+      spinning_wheel: 'safe-spin',
+      glassness: 'safe-word',
+    };
+    sanitizePayload(obj);
+    expect(obj['author_id']).toBe('safe-author');
+    expect(obj['spinning_wheel']).toBe('safe-spin');
+    expect(obj['glassness']).toBe('safe-word');
+  });
 });
 
 describe('DEFAULT_SANITIZE_FIELDS — complete coverage', () => {
