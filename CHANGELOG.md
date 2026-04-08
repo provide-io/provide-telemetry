@@ -6,6 +6,36 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.2.4] — 2026-04-08
+
+### Features
+
+- **All: `register_secret_pattern` API** — register custom secret detection patterns for PII sanitization; name-based deduplication, thread-safe, near-zero overhead
+- **All: cross-language benchmark suite** — `scripts/bench.sh` with normalized output across Python, TypeScript, Go; `make bench` targets
+- **All: stress test parity** — 6 scenarios (logging, sampling, PII, backpressure, metrics, tracing) across all three languages
+
+### Performance
+
+- **Python: hot-path optimization** — `event_name` 22x faster (cached deferred import), `counter.add` 3.3x faster (unchecked fast paths, no per-call health tracking), `shouldSample` 2.8x faster (lock-free read), `getHealthSnapshot` 1.7x faster (NamedTuple)
+- **Python: `_resolve_otel` caching** — cache "no OTel provider" result to avoid repeated deferred imports (963ns → 20ns per call)
+
+### Bug Fixes
+
+- **Go: health tracking double-count** — `TryAcquire` no longer increments `emitted_*` (was double-counting with `ShouldSample`)
+- **Go: `export_latency_ms` always 0** — wired `_recordExportLatencyForSignal` into `RunWithResilience` on success
+- **TypeScript: `emitted_*`/`dropped_*` always 0** — added health counter calls to `shouldSample` and `tryAcquire`
+- **TypeScript: browser crash on import** — `receipts.ts` replaced Node.js `crypto` with pure-JS `hash.ts` (SHA-256, randomHex)
+- **Spec: removed stale Go W3C propagation divergence note** — Go already discards oversized headers
+- **Docs: 13 inaccuracies fixed** — spec env var names, circuit state hyphen, HealthSnapshot type, export counts, field names, processor pipeline
+
+### Quality
+
+- **Python: 100% mutation kill** (3022 mutants, 0 survivors)
+- **TypeScript: 100% mutation kill** (1762 mutants, 0 survivors — was 93.81%)
+- **Spec: `health_counters` behavioral parity section** — defines when emitted/dropped/retries/failures/latency counters fire
+
+---
+
 ## [0.2.3] — 2026-04-06
 
 ### Features
