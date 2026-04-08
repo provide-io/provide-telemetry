@@ -45,7 +45,7 @@ const _DEFAULT_POLICY: ClassificationPolicy = {
 };
 
 // Stryker disable next-line ArrayDeclaration
-const _rules: _CompiledRule[] = [];
+const _rules: ClassificationRule[] = [];
 // Stryker disable next-line ObjectLiteral: initial _policy is tested by default-policy test; Stryker's perTest coverage misattributes the test that checks all six fields
 let _policy: ClassificationPolicy = { ..._DEFAULT_POLICY };
 

@@ -11,6 +11,7 @@ import {
   _recordExportLatency,
   _registerCircuitStateFn,
   _resetHealthForTests,
+  _retriesField,
   getHealthSnapshot,
   setSetupError,
 } from '../src/health';
@@ -199,6 +200,96 @@ describe('getHealthSnapshot — setupError field', () => {
     setSetupError('err');
     setSetupError(null);
     expect(getHealthSnapshot().setupError).toBeNull();
+  });
+});
+
+describe('_emittedField', () => {
+  it('returns logsEmitted for "logs"', () => {
+    expect(_emittedField('logs')).toBe('logsEmitted');
+  });
+
+  it('returns tracesEmitted for "traces"', () => {
+    expect(_emittedField('traces')).toBe('tracesEmitted');
+  });
+
+  it('returns metricsEmitted for "metrics"', () => {
+    expect(_emittedField('metrics')).toBe('metricsEmitted');
+  });
+
+  it('returns logsEmitted as default fallback for unknown signal', () => {
+    expect(_emittedField('unknown')).toBe('logsEmitted');
+  });
+});
+
+describe('_droppedField', () => {
+  it('returns logsDropped for "logs"', () => {
+    expect(_droppedField('logs')).toBe('logsDropped');
+  });
+
+  it('returns tracesDropped for "traces"', () => {
+    expect(_droppedField('traces')).toBe('tracesDropped');
+  });
+
+  it('returns metricsDropped for "metrics"', () => {
+    expect(_droppedField('metrics')).toBe('metricsDropped');
+  });
+
+  it('returns logsDropped as default fallback for unknown signal', () => {
+    expect(_droppedField('unknown')).toBe('logsDropped');
+  });
+});
+
+describe('_exportFailuresField', () => {
+  it('returns exportFailuresLogs for "logs"', () => {
+    expect(_exportFailuresField('logs')).toBe('exportFailuresLogs');
+  });
+
+  it('returns exportFailuresTraces for "traces"', () => {
+    expect(_exportFailuresField('traces')).toBe('exportFailuresTraces');
+  });
+
+  it('returns exportFailuresMetrics for "metrics"', () => {
+    expect(_exportFailuresField('metrics')).toBe('exportFailuresMetrics');
+  });
+
+  it('returns exportFailuresLogs as default fallback for unknown signal', () => {
+    expect(_exportFailuresField('unknown')).toBe('exportFailuresLogs');
+  });
+});
+
+describe('_retriesField', () => {
+  it('returns retriesLogs for "logs"', () => {
+    expect(_retriesField('logs')).toBe('retriesLogs');
+  });
+
+  it('returns retriesTraces for "traces"', () => {
+    expect(_retriesField('traces')).toBe('retriesTraces');
+  });
+
+  it('returns retriesMetrics for "metrics"', () => {
+    expect(_retriesField('metrics')).toBe('retriesMetrics');
+  });
+
+  it('returns retriesLogs as default fallback for unknown signal', () => {
+    expect(_retriesField('unknown')).toBe('retriesLogs');
+  });
+});
+
+describe('_exportLatencyField', () => {
+  it('returns exportLatencyMsLogs for "logs"', () => {
+    expect(_exportLatencyField('logs')).toBe('exportLatencyMsLogs');
+  });
+
+  it('returns exportLatencyMsTraces for "traces"', () => {
+    expect(_exportLatencyField('traces')).toBe('exportLatencyMsTraces');
+  });
+
+  it('returns exportLatencyMsMetrics for "metrics"', () => {
+    expect(_exportLatencyField('metrics')).toBe('exportLatencyMsMetrics');
+  });
+
+  it('returns exportLatencyMsLogs as default fallback for unknown signal', () => {
+    expect(_exportLatencyField('unknown')).toBe('exportLatencyMsLogs');
   });
 });
 

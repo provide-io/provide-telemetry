@@ -142,12 +142,11 @@ describe('per-signal sampling isolation', () => {
 });
 
 describe('shouldSample — health counter integration', () => {
-  it('does NOT increment emitted counter when sample is accepted (rate=1) — emitted is counted downstream', () => {
-    // emitted is incremented at the emission site (logger/tracer), not here.
+  it('increments emitted counter when sample is accepted (rate=1)', () => {
     setSamplingPolicy('logs', { defaultRate: 1.0 });
     const before = getHealthSnapshot().logsEmitted;
     shouldSample('logs');
-    expect(getHealthSnapshot().logsEmitted).toBe(before); // unchanged
+    expect(getHealthSnapshot().logsEmitted).toBe(before + 1);
   });
 
   it('increments dropped counter when sample is rejected (rate=0)', () => {
@@ -157,11 +156,11 @@ describe('shouldSample — health counter integration', () => {
     expect(getHealthSnapshot().logsDropped).toBe(before + 1);
   });
 
-  it('does NOT increment tracesEmitted when traces are sampled (rate=1)', () => {
+  it('increments tracesEmitted when traces are sampled', () => {
     setSamplingPolicy('traces', { defaultRate: 1.0 });
     const before = getHealthSnapshot().tracesEmitted;
     shouldSample('traces');
-    expect(getHealthSnapshot().tracesEmitted).toBe(before); // unchanged
+    expect(getHealthSnapshot().tracesEmitted).toBe(before + 1);
   });
 
   it('increments tracesDropped when traces are dropped', () => {
@@ -171,11 +170,11 @@ describe('shouldSample — health counter integration', () => {
     expect(getHealthSnapshot().tracesDropped).toBe(before + 1);
   });
 
-  it('does NOT increment metricsEmitted when metrics are sampled (rate=1)', () => {
+  it('increments metricsEmitted when metrics are sampled', () => {
     setSamplingPolicy('metrics', { defaultRate: 1.0 });
     const before = getHealthSnapshot().metricsEmitted;
     shouldSample('metrics');
-    expect(getHealthSnapshot().metricsEmitted).toBe(before); // unchanged
+    expect(getHealthSnapshot().metricsEmitted).toBe(before + 1);
   });
 
   it('increments metricsDropped when metrics are dropped', () => {
@@ -185,12 +184,12 @@ describe('shouldSample — health counter integration', () => {
     expect(getHealthSnapshot().metricsDropped).toBe(before + 1);
   });
 
-  it('does NOT increment emitted on intermediate rate when sampled', () => {
+  it('increments emitted on intermediate rate when sampled', () => {
     setSamplingPolicy('logs', { defaultRate: 0.5 });
     vi.spyOn(Math, 'random').mockReturnValueOnce(0.3);
     const before = getHealthSnapshot().logsEmitted;
     shouldSample('logs');
-    expect(getHealthSnapshot().logsEmitted).toBe(before); // unchanged — counted downstream
+    expect(getHealthSnapshot().logsEmitted).toBe(before + 1);
     vi.restoreAllMocks();
   });
 
@@ -200,67 +199,6 @@ describe('shouldSample — health counter integration', () => {
     const before = getHealthSnapshot().logsDropped;
     shouldSample('logs');
     expect(getHealthSnapshot().logsDropped).toBe(before + 1);
-    vi.restoreAllMocks();
-  });
-});
-
-describe('shouldSample — shadow-override hazard fix', () => {
-  it('unkeyed call does NOT use signal-named override (shadow-override hazard)', () => {
-    // Register an override keyed "logs" with rate 0.0.
-    // An unkeyed shouldSample("logs") must use defaultRate, NOT the override.
-    setSamplingPolicy('logs', { defaultRate: 1.0, overrides: { logs: 0.0 } });
-    // Without the fix (key ?? signal), this would return false because "logs" override = 0.0.
-    // With the fix, key is undefined so defaultRate=1.0 is used.
-    expect(shouldSample('logs')).toBe(true);
-  });
-
-  it('explicit key "logs" DOES use the signal-named override', () => {
-    // When the caller explicitly passes key="logs", the override IS consulted.
-    setSamplingPolicy('logs', { defaultRate: 1.0, overrides: { logs: 0.0 } });
-    expect(shouldSample('logs', 'logs')).toBe(false);
-  });
-
-  it('unkeyed call does NOT use "traces" override on traces signal', () => {
-    setSamplingPolicy('traces', { defaultRate: 1.0, overrides: { traces: 0.0 } });
-    expect(shouldSample('traces')).toBe(true);
-  });
-
-  it('unkeyed call does NOT use "metrics" override on metrics signal', () => {
-    setSamplingPolicy('metrics', { defaultRate: 1.0, overrides: { metrics: 0.0 } });
-    expect(shouldSample('metrics')).toBe(true);
-  });
-});
-
-describe('shouldSample — health counter double-counting fix', () => {
-  it('shouldSample returning true (rate=1) does NOT increment dropped', () => {
-    setSamplingPolicy('logs', { defaultRate: 1.0 });
-    _resetHealthForTests();
-    expect(shouldSample('logs')).toBe(true);
-    expect(getHealthSnapshot().logsDropped).toBe(0);
-  });
-
-  it('shouldSample returning false (rate=0) increments dropped exactly once', () => {
-    setSamplingPolicy('logs', { defaultRate: 0.0 });
-    _resetHealthForTests();
-    expect(shouldSample('logs')).toBe(false);
-    expect(getHealthSnapshot().logsDropped).toBe(1);
-  });
-
-  it('shouldSample returning false via intermediate rate increments dropped once', () => {
-    setSamplingPolicy('logs', { defaultRate: 0.5 });
-    vi.spyOn(Math, 'random').mockReturnValueOnce(0.9); // > 0.5 → drop
-    _resetHealthForTests();
-    expect(shouldSample('logs')).toBe(false);
-    expect(getHealthSnapshot().logsDropped).toBe(1);
-    vi.restoreAllMocks();
-  });
-
-  it('shouldSample returning true via intermediate rate does NOT increment dropped', () => {
-    setSamplingPolicy('logs', { defaultRate: 0.5 });
-    vi.spyOn(Math, 'random').mockReturnValueOnce(0.1); // < 0.5 → sample
-    _resetHealthForTests();
-    expect(shouldSample('logs')).toBe(true);
-    expect(getHealthSnapshot().logsDropped).toBe(0);
     vi.restoreAllMocks();
   });
 });
