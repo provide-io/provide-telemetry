@@ -148,7 +148,9 @@ jobs:
           path: npm-pack
       # Publish the packed tarball — NPM_TOKEN must be set as a repo secret
       - name: Publish to npm
-        run: npm publish npm-pack/*.tgz --access public
+        run: |
+          ls -la npm-pack/
+          npm publish npm-pack/provide-io-telemetry-*.tgz --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
