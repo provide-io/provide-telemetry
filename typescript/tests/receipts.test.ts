@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { sha256Hex } from '../src/hash';
 import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii';
 import { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from '../src/receipts';
 

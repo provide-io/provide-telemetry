@@ -156,6 +156,19 @@ def get_runtime_config() -> TelemetryConfig:
         return copy.deepcopy(_active_config)
 
 
+def _is_strict_event_name() -> bool:
+    """Check strict event-name mode without deepcopy (hot-path optimised).
+
+    No lock needed: CPython's GIL makes single reference reads atomic.
+    Worst case we read a slightly stale config, which is acceptable for
+    a boolean configuration flag.
+    """
+    cfg = _active_config
+    if cfg is None:
+        return False
+    return cfg.strict_schema or cfg.event_schema.strict_event_name
+
+
 def reset_runtime_for_tests() -> None:
     """Clear the cached runtime config snapshot."""
     global _active_config
