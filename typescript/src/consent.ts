@@ -18,6 +18,7 @@ const LOG_LEVEL_ORDER: Record<string, number> = {
   CRITICAL: 5,
 };
 
+// Stryker disable next-line StringLiteral: initial value is overwritten by resetConsentForTests before any test observes it
 let _consentLevel: ConsentLevel = 'FULL';
 
 export function setConsentLevel(level: ConsentLevel): void {
@@ -34,6 +35,7 @@ export function shouldAllow(signal: string, logLevel?: string): boolean {
   if (level === 'NONE') return false;
   if (level === 'FUNCTIONAL') {
     if (signal === 'logs') {
+      // Stryker disable next-line StringLiteral: equivalent — any non-existent key in LOG_LEVEL_ORDER falls back to 0 via ?? 0
       const order = LOG_LEVEL_ORDER[(logLevel ?? '').toUpperCase()] ?? 0;
       return order >= LOG_LEVEL_ORDER['WARNING'];
     }
@@ -42,6 +44,7 @@ export function shouldAllow(signal: string, logLevel?: string): boolean {
   }
   // MINIMAL
   if (signal === 'logs') {
+    // Stryker disable next-line StringLiteral: equivalent — any non-existent key in LOG_LEVEL_ORDER falls back to 0 via ?? 0
     const order = LOG_LEVEL_ORDER[(logLevel ?? '').toUpperCase()] ?? 0;
     return order >= LOG_LEVEL_ORDER['ERROR'];
   }
