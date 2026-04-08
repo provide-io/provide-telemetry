@@ -32,12 +32,25 @@ const (
 	_piiDefaultMax       = 8
 )
 
-// _defaultSensitiveKeys lists substrings matched case-insensitively against key names.
-var _defaultSensitiveKeys = []string{
-	"password", "passwd", "secret", "token", "api_key", "apikey",
-	"auth", "authorization", "credential", "private_key", "ssn",
-	"credit_card", "creditcard", "cvv", "pin", "account_number",
-	"cookie",
+// _defaultSensitiveKeys lists case-insensitive exact-match key names.
+var _defaultSensitiveKeys = map[string]struct{}{
+	"password":       {},
+	"passwd":         {},
+	"secret":         {},
+	"token":          {},
+	"api_key":        {},
+	"apikey":         {},
+	"auth":           {},
+	"authorization":  {},
+	"credential":     {},
+	"private_key":    {},
+	"ssn":            {},
+	"credit_card":    {},
+	"creditcard":     {},
+	"cvv":            {},
+	"pin":            {},
+	"account_number": {},
+	"cookie":         {},
 }
 
 var (
@@ -236,16 +249,11 @@ func _applyMode(value any, mode string, truncateTo int) (any, bool) {
 	}
 }
 
-// _isDefaultSensitiveKey returns true if key contains any default sensitive substring
-// (case-insensitive).
+// _isDefaultSensitiveKey returns true if key exactly matches a default
+// sensitive key name, case-insensitively.
 func _isDefaultSensitiveKey(key string) bool {
-	lower := strings.ToLower(key)
-	for _, sensitive := range _defaultSensitiveKeys {
-		if strings.Contains(lower, sensitive) {
-			return true
-		}
-	}
-	return false
+	_, ok := _defaultSensitiveKeys[strings.ToLower(key)]
+	return ok
 }
 
 const _minSecretLength = 20
