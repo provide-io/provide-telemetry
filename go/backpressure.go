@@ -113,13 +113,11 @@ func TryAcquire(signal string) bool {
 		return false
 	}
 	if maxSize <= 0 {
-		_incAcquired(signal)
 		return true
 	}
 
 	select {
 	case ch <- struct{}{}:
-		_incAcquired(signal)
 		return true
 	default:
 		_incDropped(signal)
@@ -150,18 +148,6 @@ func Release(signal string) {
 	select {
 	case <-ch:
 	default:
-	}
-}
-
-// _incAcquired increments the appropriate "emitted/started/recorded" counter.
-func _incAcquired(signal string) {
-	switch signal {
-	case signalLogs:
-		_incLogsEmitted()
-	case signalTraces:
-		_incSpansStarted()
-	case signalMetrics:
-		_incMetricsRecorded()
 	}
 }
 
