@@ -131,12 +131,9 @@ class TestHealthSnapshotFieldMapping:
 
     def test_snapshot_has_exactly_25_fields(self) -> None:
         """Canonical 25-field layout: 8 per signal * 3 + 1 global."""
-        import dataclasses
-
         from provide.telemetry.health import HealthSnapshot
 
-        fields = dataclasses.fields(HealthSnapshot)
-        assert len(fields) == 25
+        assert len(HealthSnapshot._fields) == 25
 
 
 # -- reset_health_for_tests --

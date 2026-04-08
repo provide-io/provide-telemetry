@@ -405,6 +405,19 @@ behavioral_parity:
       - circuit_state values are closed, open, half_open
       - export_latency_ms is latest per export, not cumulative
 
+  health_counters:
+    description: >
+      Health counter increment semantics — when emitted/dropped counters fire.
+    rules:
+      - emitted_* incremented once per signal event that passes sampling (in shouldSample or equivalent gate)
+      - dropped_* incremented once per signal event rejected by sampling (rate drop) OR by backpressure (queue full)
+      - a single event MUST NOT increment both emitted and dropped
+      - a single event MUST NOT increment emitted more than once (no double-counting across gates)
+      - retries_* incremented once per retry attempt in the resilience/export path
+      - export_failures_* incremented once per failed export attempt (including circuit breaker rejections)
+      - export_latency_ms_* set to elapsed milliseconds on successful export (latest value, not cumulative)
+      - async_blocking_risk_* is language-specific (Python event loop detection); may be 0 in languages without event loops
+
   pii_depth:
     description: >
       PII sanitization depth defaults to 8. Configurable via PROVIDE_LOG_PII_MAX_DEPTH.

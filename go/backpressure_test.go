@@ -79,7 +79,8 @@ func TestRelease_FreesSlot(t *testing.T) {
 	}
 }
 
-func TestTryAcquire_HealthCounters_AcquireSuccess(t *testing.T) {
+func TestTryAcquire_HealthCounters_AcquireSuccess_NoEmittedIncrement(t *testing.T) {
+	// TryAcquire no longer increments emitted — emitted is tracked by ShouldSample only.
 	_resetQueuePolicy()
 	_resetHealth()
 	t.Cleanup(_resetQueuePolicy)
@@ -92,14 +93,14 @@ func TestTryAcquire_HealthCounters_AcquireSuccess(t *testing.T) {
 	TryAcquire(signalMetrics)
 
 	snap := GetHealthSnapshot()
-	if snap.LogsEmitted != 1 {
-		t.Errorf("LogsEmitted: want 1, got %d", snap.LogsEmitted)
+	if snap.LogsEmitted != 0 {
+		t.Errorf("LogsEmitted: want 0, got %d", snap.LogsEmitted)
 	}
-	if snap.TracesEmitted != 1 {
-		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
+	if snap.TracesEmitted != 0 {
+		t.Errorf("TracesEmitted: want 0, got %d", snap.TracesEmitted)
 	}
-	if snap.MetricsEmitted != 1 {
-		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
+	if snap.MetricsEmitted != 0 {
+		t.Errorf("MetricsEmitted: want 0, got %d", snap.MetricsEmitted)
 	}
 }
 
