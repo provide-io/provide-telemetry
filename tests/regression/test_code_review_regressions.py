@@ -284,7 +284,7 @@ class TestGaugeSetMethod:
             sampled_keys.append(key)
             return original_should_sample(signal, key)
 
-        monkeypatch.setattr("provide.telemetry.metrics.fallback.should_sample", _spy_sample)
+        monkeypatch.setattr("provide.telemetry.metrics.fallback._should_sample_unchecked", _spy_sample)
         g = Gauge("my.gauge.name")
         g.set(42)
         assert "my.gauge.name" in sampled_keys
@@ -294,7 +294,7 @@ class TestGaugeSetMethod:
         released: list[object] = []
         sentinel = object()
 
-        monkeypatch.setattr("provide.telemetry.metrics.fallback.try_acquire", lambda _s: sentinel)
+        monkeypatch.setattr("provide.telemetry.metrics.fallback._try_acquire_unchecked", lambda _s: sentinel)
         monkeypatch.setattr("provide.telemetry.metrics.fallback.release", lambda t: released.append(t))
 
         g = Gauge("test.gauge")
