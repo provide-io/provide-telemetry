@@ -97,3 +97,55 @@ def test_no_hooks_no_overhead() -> None:
     assert result["password"] == "***"
     assert result["name"] == "Alice"
     assert not any(k.startswith("__") for k in result)
+
+
+def test_receipt_hook_custom_rule_receives_original_value() -> None:
+    """Verify custom rule receipt hook receives the original (pre-mask) value, not None."""
+    from provide.telemetry.pii import PIIRule
+
+    pii_mod.register_pii_rule(PIIRule(path=("email",), mode="hash"))
+    receipts: list[tuple[str, str, object]] = []
+    pii_mod._receipt_hook = lambda path, action, orig: receipts.append((path, action, orig))
+    pii_mod.sanitize_payload({"email": "alice@example.com"}, enabled=True)
+    matched = [r for r in receipts if "email" in r[0] and r[1] == "hash"]
+    assert len(matched) >= 1
+    assert matched[0][2] == "alice@example.com"
+
+
+def test_receipt_hook_custom_rule_path_uses_dot_separator() -> None:
+    """Verify receipt hook path joins segments with dots, not other separators."""
+    from provide.telemetry.pii import PIIRule
+
+    pii_mod.register_pii_rule(PIIRule(path=("user", "email"), mode="redact"))
+    receipts: list[tuple[str, str, object]] = []
+    pii_mod._receipt_hook = lambda path, action, orig: receipts.append((path, action, orig))
+    pii_mod.sanitize_payload({"user": {"email": "alice@example.com"}}, enabled=True)
+    matched = [r for r in receipts if r[1] == "redact"]
+    assert len(matched) >= 1
+    assert matched[0][0] == "user.email"
+
+
+def test_receipt_hook_secret_detection_receives_original_value() -> None:
+    """Verify secret-detection receipt hook receives the original value, not None."""
+    receipts: list[tuple[str, str, object]] = []
+    pii_mod._receipt_hook = lambda path, action, orig: receipts.append((path, action, orig))
+    secret_val = "a" * 40  # triggers long_hex secret detection
+    pii_mod.sanitize_payload({"log_entry": secret_val}, enabled=True)
+    matched = [r for r in receipts if r[0] == "log_entry" and r[1] == "redact"]
+    assert len(matched) >= 1
+    assert matched[0][2] == secret_val
+
+
+def test_classification_hook_receives_actual_value() -> None:
+    """Verify classification hook receives the actual value, not None."""
+    calls: list[tuple[str, object]] = []
+
+    def _hook(k: str, v: object) -> str | None:
+        calls.append((k, v))
+        return None
+
+    pii_mod._classification_hook = _hook
+    pii_mod.sanitize_payload({"username": "alice"}, enabled=True)
+    matched = [c for c in calls if c[0] == "username"]
+    assert len(matched) >= 1
+    assert matched[0][1] == "alice"
