@@ -154,7 +154,7 @@ jobs:
           tar xzf *.tgz
           cd package
           cat package.json | head -5
-          npm publish --access public
+          npm publish --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
