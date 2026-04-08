@@ -124,6 +124,15 @@ describe('service name is set in receipt', () => {
     expect(receipts).toHaveLength(1);
     expect(receipts[0].serviceName).toBe('my-service');
   });
+
+  it('receipt.serviceName defaults to "unknown" when not specified', () => {
+    enableReceipts({ enabled: true });
+    const obj = { password: 'secret123' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    const receipts = getEmittedReceiptsForTests();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].serviceName).toBe('unknown');
+  });
 });
 
 describe('receipts from custom PII rules (covers _applyRuleFull receipt hook path)', () => {

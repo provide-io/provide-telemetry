@@ -139,6 +139,18 @@ describe('wildcard patterns', () => {
   });
 });
 
+// ── Regex special char escaping in glob pattern ─────────────────────────────
+
+describe('glob pattern escaping', () => {
+  it('dot in pattern is escaped and matched literally (not as regex wildcard)', () => {
+    registerClassificationRules([{ pattern: 'user.email', classification: 'PII' }]);
+    // 'user.email' should match literally — dot is NOT a wildcard
+    expect(_classifyField('user.email', 'a@b.com')).toBe('PII');
+    // If dot is not escaped, 'userXemail' would also match — should NOT
+    expect(_classifyField('userXemail', 'a@b.com')).toBeNull();
+  });
+});
+
 // ── No match → null ───────────────────────────────────────────────────────────
 
 describe('no match', () => {

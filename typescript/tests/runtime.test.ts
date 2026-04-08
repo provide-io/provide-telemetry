@@ -89,6 +89,15 @@ describe('updateRuntimeConfig', () => {
     expect(getRuntimeConfig().samplingLogsRate).toBe(0.5);
     expect(getRuntimeConfig().backpressureLogsMaxsize).toBe(5);
   });
+
+  it('accepts boundary value 0 for rate fields (kills < 0 → <= 0 mutation)', () => {
+    expect(() => updateRuntimeConfig({ samplingLogsRate: 0 })).not.toThrow();
+    expect(getRuntimeConfig().samplingLogsRate).toBe(0);
+    expect(() => updateRuntimeConfig({ samplingTracesRate: 0 })).not.toThrow();
+    expect(getRuntimeConfig().samplingTracesRate).toBe(0);
+    expect(() => updateRuntimeConfig({ samplingMetricsRate: 0 })).not.toThrow();
+    expect(getRuntimeConfig().samplingMetricsRate).toBe(0);
+  });
 });
 
 describe('RuntimeOverrides', () => {
@@ -169,6 +178,66 @@ describe('reloadRuntimeFromEnv', () => {
     reloadRuntimeFromEnv();
     // serviceName should stay as 'locked-service' because reload only applies hot fields
     expect(getRuntimeConfig().serviceName).toBe('locked-service');
+  });
+
+  it('warns on environment cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ environment: 'custom-env' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('environment'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on version cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ version: 'custom-version' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('version'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otelEnabled cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otelEnabled: true });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otelEnabled'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otlpEndpoint cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpEndpoint: 'http://custom:4318' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpEndpoint'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otlpHeaders cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'secret' } });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpHeaders'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
   });
 });
 
