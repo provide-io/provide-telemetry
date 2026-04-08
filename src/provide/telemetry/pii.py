@@ -196,13 +196,19 @@ def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
 def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
     if not enabled:
         return dict(payload)
-    rules = get_pii_rules()
+    # GIL-safe snapshot: reading the list reference is atomic.  If no custom
+    # rules are registered (common case), skip tuple copy + rule application.
+    rules_snapshot = _rules
     # _apply_rule builds entirely new dict/list nodes at every level it traverses,
     # so a shallow top-level copy is sufficient — no deepcopy needed.
     cleaned: Any = dict(payload)
-    for rule in rules:
-        cleaned = _apply_rule(cleaned, rule)
-    rule_targeted_keys = _collect_rule_leaf_keys(rules)
+    if rules_snapshot:
+        rules = tuple(rules_snapshot)
+        for rule in rules:
+            cleaned = _apply_rule(cleaned, rule)
+        rule_targeted_keys = _collect_rule_leaf_keys(rules)
+    else:
+        rule_targeted_keys = frozenset()
     cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys, max_depth=max_depth)
     if _classification_hook is not None and isinstance(cleaned, dict):
         for key, value in list(cleaned.items()):
