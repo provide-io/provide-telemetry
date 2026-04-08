@@ -150,7 +150,9 @@ jobs:
       - name: Publish to npm
         run: |
           ls -la npm-pack/
-          npm publish npm-pack/provide-io-telemetry-*.tgz --access public
+          TARBALL=$(ls npm-pack/*.tgz)
+          echo "Publishing: $TARBALL"
+          npm publish "$TARBALL" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
