@@ -37,6 +37,7 @@ class Counter:
         self.name = name
         self._otel_counter = otel_counter
         self._resolved = otel_counter is not None
+        self._lock = threading.Lock()
         self.value = 0
 
     def _resolve_otel(self) -> Any | None:
@@ -64,10 +65,8 @@ class Counter:
         if ticket is None:
             return
         try:
-            # No lock: CPython's GIL makes int += atomic (single INPLACE_ADD
-            # bytecode).  Matches Go's atomic.Int64.Add — no lock, no health
-            # tracking per call (parity with Go/TypeScript).
-            self.value += amount
+            with self._lock:
+                self.value += amount
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})

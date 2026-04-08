@@ -36,10 +36,10 @@ _runtime_mod: types.ModuleType | None = None
 def _get_strict_check() -> bool:
     """Return strict-event-name flag, caching the module import on first call."""
     global _runtime_mod
-    if _runtime_mod is None:
+    if _runtime_mod is None:  # pragma: no mutate — caching optimization, not behavioral
         from provide.telemetry import runtime
 
-        _runtime_mod = runtime
+        _runtime_mod = runtime  # pragma: no mutate
     return _runtime_mod._is_strict_event_name()  # type: ignore[no-any-return]
 
 

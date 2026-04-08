@@ -223,3 +223,133 @@ def test_reload_runtime_from_env_no_warning_when_cold_unchanged(
 
     assert not any("runtime.cold_field_drift" in record.message for record in caplog.records)
     assert result.sampling.logs_rate == pytest.approx(0.5)
+
+
+def test_overrides_from_config_extracts_all_hot_fields() -> None:
+    """Kill mutants that set fields to None or remove them in _overrides_from_config.
+
+    Every hot-reloadable field must be faithfully extracted from the full
+    TelemetryConfig into RuntimeOverrides with distinct non-default values.
+    """
+    cfg = TelemetryConfig(
+        sampling=SamplingConfig(logs_rate=0.11, traces_rate=0.22, metrics_rate=0.33),
+        backpressure=BackpressureConfig(logs_maxsize=7, traces_maxsize=8, metrics_maxsize=9),
+        exporter=ExporterPolicyConfig(logs_retries=4),
+        security=SecurityConfig(max_attr_count=77),
+        slo=SLOConfig(enable_red_metrics=True, enable_use_metrics=True),
+        pii_max_depth=13,
+        strict_schema=True,
+    )
+    overrides = runtime_mod._overrides_from_config(cfg)
+
+    # Each field must match the source config (not None, not default)
+    assert overrides.sampling is cfg.sampling
+    assert overrides.backpressure is cfg.backpressure
+    assert overrides.exporter is cfg.exporter
+    assert overrides.security is cfg.security
+    assert overrides.slo is cfg.slo
+    assert overrides.pii_max_depth == 13
+    assert overrides.strict_schema is True
+
+
+def test_overrides_from_config_backpressure_not_none() -> None:
+    """Kill mutmut_2/9: backpressure=None or omitted."""
+    cfg = TelemetryConfig(
+        backpressure=BackpressureConfig(logs_maxsize=42),
+    )
+    overrides = runtime_mod._overrides_from_config(cfg)
+    assert overrides.backpressure is not None
+    assert overrides.backpressure.logs_maxsize == 42
+
+
+def test_overrides_from_config_security_not_none() -> None:
+    """Kill mutmut_4/11: security=None or omitted."""
+    cfg = TelemetryConfig(
+        security=SecurityConfig(max_attr_count=99),
+    )
+    overrides = runtime_mod._overrides_from_config(cfg)
+    assert overrides.security is not None
+    assert overrides.security.max_attr_count == 99
+
+
+def test_overrides_from_config_slo_not_none() -> None:
+    """Kill mutmut_5/12: slo=None or omitted."""
+    cfg = TelemetryConfig(
+        slo=SLOConfig(enable_red_metrics=True),
+    )
+    overrides = runtime_mod._overrides_from_config(cfg)
+    assert overrides.slo is not None
+    assert overrides.slo.enable_red_metrics is True
+
+
+def test_overrides_from_config_pii_max_depth_not_none() -> None:
+    """Kill mutmut_6/13: pii_max_depth=None or omitted."""
+    cfg = TelemetryConfig(pii_max_depth=17)
+    overrides = runtime_mod._overrides_from_config(cfg)
+    assert overrides.pii_max_depth == 17
+
+
+def test_overrides_from_config_strict_schema_not_none() -> None:
+    """Kill mutmut_7/14: strict_schema=None or omitted."""
+    cfg = TelemetryConfig(strict_schema=True)
+    overrides = runtime_mod._overrides_from_config(cfg)
+    assert overrides.strict_schema is True
+
+
+def test_apply_overrides_deepcopy_isolates_base() -> None:
+    """Kill mutmut_3: copy.deepcopy -> copy.copy.
+
+    With a shallow copy, mutating a nested config object on the merged result
+    would also mutate the base. A deepcopy prevents this.
+    """
+    base = TelemetryConfig(
+        sampling=SamplingConfig(logs_rate=0.1),
+    )
+    overrides = RuntimeOverrides()  # no overrides
+    merged = runtime_mod._apply_overrides(base, overrides)
+
+    # Mutate the merged result's nested sampling config
+    merged.sampling.logs_rate = 0.99
+
+    # Base must be unaffected (deepcopy isolates)
+    assert base.sampling.logs_rate == pytest.approx(0.1)
+
+
+def test_apply_overrides_slo_applied() -> None:
+    """Kill mutmut_13: merged.slo = overrides.slo -> merged.slo = None."""
+    base = TelemetryConfig(
+        slo=SLOConfig(enable_red_metrics=False),
+    )
+    new_slo = SLOConfig(enable_red_metrics=True, enable_use_metrics=True)
+    overrides = RuntimeOverrides(slo=new_slo)
+    merged = runtime_mod._apply_overrides(base, overrides)
+    assert merged.slo is not None
+    assert merged.slo.enable_red_metrics is True
+    assert merged.slo.enable_use_metrics is True
+
+
+def test_reload_runtime_from_env_warning_extra_keys(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Kill mutmut_18/22/23/24/25: exact message string and extra dict content."""
+    base = TelemetryConfig(service_name="old-svc", environment="prod")
+    runtime_mod.apply_runtime_config(base)
+
+    changed = TelemetryConfig(service_name="new-svc", environment="prod")
+    monkeypatch.setattr(
+        "provide.telemetry.runtime.TelemetryConfig.from_env",
+        classmethod(lambda cls: changed),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="provide.telemetry.runtime"):
+        runtime_mod.reload_runtime_from_env()
+
+    drift_records = [r for r in caplog.records if "cold_field_drift" in r.message]
+    assert len(drift_records) >= 1
+    rec = drift_records[0]
+    # Kill mutmut_18: exact message string
+    assert rec.message == "runtime.cold_field_drift"
+    # Kill mutmut_22/23: "action" key must exist (not "XXactionXX" or "ACTION")
+    assert hasattr(rec, "action"), "extra dict must contain 'action' key"
+    # Kill mutmut_24/25: exact value
+    assert rec.action == "restart required to apply"

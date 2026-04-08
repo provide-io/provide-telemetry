@@ -315,6 +315,27 @@ def test_reset_queues_token_counter_starts_at_1() -> None:
     assert ticket.token == 1
 
 
+def test_release_frees_slot_for_new_acquire() -> None:
+    """Kill mutmut_10 (queue.append(token) -> queue.append(None)) and
+    mutmut_4 (queue.remove(ticket.token) -> queue.remove(None)).
+
+    Both mutants break the round-trip: acquire puts a token in the queue,
+    release removes that token. If either is broken, releasing a ticket
+    won't actually free a slot, so a subsequent acquire at capacity fails.
+    """
+    set_queue_policy(QueuePolicy(logs_maxsize=1))
+    t1 = try_acquire("logs")
+    assert isinstance(t1, QueueTicket) and t1.signal == "logs"
+    # Queue is full (1/1)
+    assert try_acquire("logs") is None
+    # Release the ticket — should free the slot
+    release(t1)
+    # Now we should be able to acquire again
+    t2 = try_acquire("logs")
+    assert isinstance(t2, QueueTicket) and t2.signal == "logs"
+    assert t2.token > 0
+
+
 def test_reset_queues_sets_queue_depth_to_zero() -> None:
     """Kills: set_queue_depth(signal, 0) -> set_queue_depth(signal, 1).
 

@@ -103,7 +103,7 @@ act -W .github/workflows/ci.yml pull_request -j docs-quality \
   --container-daemon-socket -
 ```
 
-Add the above to `.actrc` for quieter commands and document any socket/mount errors.
+Document any socket/mount errors encountered.
 
 ## OpenObserve Validation
 

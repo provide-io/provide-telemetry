@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 
 import pytest
 
@@ -135,5 +136,85 @@ def test_receipts_not_emitted_outside_test_mode() -> None:
     # In non-test mode, receipts are logged, not stored
     with receipts_mod._lock:
         assert receipts_mod._test_receipts == []
+    # cleanup
+    enable_receipts(enabled=False)
+
+
+def test_enable_receipts_default_enabled_is_true() -> None:
+    """Calling enable_receipts() with no args enables receipts (default enabled=True)."""
+    enable_receipts()
+    assert pii_mod._receipt_hook is not None
+    payload = {"password": "secret123"}  # pragma: allowlist secret
+    pii_mod.sanitize_payload(payload, enabled=True)
+    receipts = get_emitted_receipts_for_tests()
+    assert len(receipts) == 1
+
+
+def test_enable_receipts_default_service_name() -> None:
+    """Default service_name is 'unknown' and appears on receipts."""
+    enable_receipts(enabled=True)
+    payload = {"password": "secret123"}  # pragma: allowlist secret
+    pii_mod.sanitize_payload(payload, enabled=True)
+    receipts = get_emitted_receipts_for_tests()
+    assert len(receipts) == 1
+    assert receipts[0].service_name == "unknown"
+
+
+def test_receipt_service_name_propagated() -> None:
+    """service_name passed to enable_receipts appears on each receipt."""
+    enable_receipts(enabled=True, signing_key=None, service_name="my-svc")
+    payload = {"password": "secret123"}  # pragma: allowlist secret
+    pii_mod.sanitize_payload(payload, enabled=True)
+    receipts = get_emitted_receipts_for_tests()
+    assert len(receipts) == 1
+    assert receipts[0].service_name == "my-svc"
+
+
+def test_receipt_timestamp_is_utc_iso_string() -> None:
+    """Receipt timestamp is a non-None ISO 8601 string with UTC offset."""
+    enable_receipts(enabled=True)
+    payload = {"password": "secret123"}  # pragma: allowlist secret
+    pii_mod.sanitize_payload(payload, enabled=True)
+    receipts = get_emitted_receipts_for_tests()
+    assert len(receipts) == 1
+    ts = receipts[0].timestamp
+    assert ts is not None
+    assert isinstance(ts, str)
+    assert "+00:00" in ts
+
+
+def test_reset_clears_signing_key_to_none() -> None:
+    """After _reset_receipts_for_tests, signing_key is None (not empty string)."""
+    import provide.telemetry.receipts as receipts_mod
+
+    enable_receipts(enabled=True, signing_key="some-key")
+    receipts_mod._reset_receipts_for_tests()
+    # Re-enable without explicit key — should use None from reset
+    enable_receipts(enabled=True)
+    payload = {"password": "secret123"}  # pragma: allowlist secret
+    pii_mod.sanitize_payload(payload, enabled=True)
+    receipts = get_emitted_receipts_for_tests()
+    assert len(receipts) == 1
+    # With signing_key=None, HMAC should be empty
+    assert receipts[0].hmac == ""
+
+
+def test_production_mode_log_message_and_extras(caplog: pytest.LogCaptureFixture) -> None:
+    """In production mode, receipt is logged with correct message and extra fields."""
+    import provide.telemetry.receipts as receipts_mod
+
+    with receipts_mod._lock:
+        receipts_mod._test_mode = False
+
+    with caplog.at_level(logging.DEBUG, logger="provide.telemetry.receipts"):
+        enable_receipts(enabled=True, signing_key=None, service_name="log-svc")
+        payload = {"password": "secret123"}  # pragma: allowlist secret
+        pii_mod.sanitize_payload(payload, enabled=True)
+
+    assert len(caplog.records) >= 1
+    record = caplog.records[0]
+    assert record.message == "provide.pii.redaction_receipt"
+    assert record.receipt_id is not None  # type: ignore[attr-defined]
+    assert record.field_path == "password"  # type: ignore[attr-defined]
     # cleanup
     enable_receipts(enabled=False)
