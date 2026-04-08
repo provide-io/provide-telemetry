@@ -168,7 +168,7 @@ registerPiiRule({ path: 'user.ssn', mode: 'redact' });
 import { getHealthSnapshot } from '@undef/telemetry';
 
 const snap = getHealthSnapshot();
-// snap.export_failures_logs, snap.queue_depth_traces, ...
+// snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
 
 ## Configuration
@@ -179,7 +179,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 |---------|---------|-------------|
 | `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
 | `PROVIDE_TELEMETRY_ENV` | `development` | Deployment environment (fallback: `PROVIDE_ENV`) |
-| `PROVIDE_VERSION` | `unknown` | Service version |
+| `PROVIDE_TELEMETRY_VERSION` | `unknown` | Service version (fallback: `PROVIDE_VERSION`) |
 | `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
 | `PROVIDE_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
 | `PROVIDE_TRACE_ENABLED` | `false` | Enable OTLP export |

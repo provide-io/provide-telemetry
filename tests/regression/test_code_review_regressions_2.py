@@ -86,7 +86,8 @@ class TestFallbackLazyResolve:
         monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: None)
         result = c._resolve_otel()
         assert result is None
-        assert c._resolved is False
+        # Caches "no provider" to avoid re-resolving on every call.
+        assert c._resolved is True
 
     def test_counter_resolve_handles_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from provide.telemetry.metrics.fallback import Counter

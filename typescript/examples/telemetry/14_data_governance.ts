@@ -20,14 +20,14 @@ import {
   sanitizePayload,
   setupTelemetry,
   shutdownTelemetry,
-} from '@provide-io/telemetry';
-import { setConsentLevel, shouldAllow } from '@provide-io/telemetry';
-import { registerClassificationRules } from '@provide-io/telemetry';
+} from '../../src/index.js';
+import { setConsentLevel, shouldAllow } from '../../src/index.js';
+import { registerClassificationRules } from '../../src/index.js';
 import {
   enableReceipts,
   getEmittedReceiptsForTests,
   resetReceiptsForTests,
-} from '@provide-io/telemetry';
+} from '../../src/index.js';
 
 // ── 1. Consent Levels ────────────────────────────────────────────────────────
 function demoConsent(): void {

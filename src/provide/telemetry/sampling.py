@@ -55,20 +55,27 @@ def get_sampling_policy(signal: Signal) -> SamplingPolicy:
 
 def should_sample(signal: Signal, key: str | None = None) -> bool:
     sig = _validate_signal(signal)
-    with _lock:
-        policy = _policies[sig]
+    return _should_sample_unchecked(sig, key)
+
+
+def _should_sample_unchecked(sig: Signal, key: str | None = None) -> bool:
+    """Hot-path sampling check — caller must pass a validated signal."""
+    # No lock needed: CPython's GIL makes dict reads atomic, and
+    # SamplingPolicy is a frozen dataclass (immutable after creation).
+    policy = _policies[sig]
     rate = policy.default_rate
     if key is not None and key in policy.overrides:
         rate = policy.overrides[key]
-    rate = _normalize_rate(rate)
+    # Fast path: rates stored via set_sampling_policy are already normalized,
+    # so skip _normalize_rate and test the common 1.0/0.0 cases first.
+    if rate >= 1.0:  # pragma: no mutate
+        return True
     if rate <= 0.0:  # pragma: no mutate
-        keep = False
-    elif rate >= 1.0:  # pragma: no mutate
-        keep = True
-    else:
-        keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.
+        increment_dropped(sig)
+        return False
+    keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.
     if not keep:
-        increment_dropped(signal)
+        increment_dropped(sig)
     return keep
 
 

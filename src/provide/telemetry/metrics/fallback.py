@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from provide.telemetry.backpressure import release, try_acquire
+from provide.telemetry.backpressure import _try_acquire_unchecked, release
 from provide.telemetry.cardinality import guard_attributes
-from provide.telemetry.health import increment_emitted
-from provide.telemetry.sampling import should_sample
+from provide.telemetry.sampling import _should_sample_unchecked
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
+
+_SIGNAL = "metrics"
 
 # Lazy re-binding support: when an instrument is created before
 # setup_telemetry(), its _otel_* handle is None.  After provider
@@ -45,6 +46,7 @@ class Counter:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True  # pragma: no mutate — caching optimization
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -57,15 +59,14 @@ class Counter:
         return self._otel_counter
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        if not should_sample("metrics", self.name):
+        if not _should_sample_unchecked(_SIGNAL, self.name):
             return
-        ticket = try_acquire("metrics")
+        ticket = _try_acquire_unchecked(_SIGNAL)
         if ticket is None:
             return
         try:
             with self._lock:
                 self.value += amount
-            increment_emitted("metrics")
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -96,6 +97,7 @@ class Gauge:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True  # pragma: no mutate — caching optimization
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -108,13 +110,12 @@ class Gauge:
         return self._otel_gauge
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        if not should_sample("metrics", self.name):
+        if not _should_sample_unchecked(_SIGNAL, self.name):
             return
-        ticket = try_acquire("metrics")
+        ticket = _try_acquire_unchecked(_SIGNAL)
         if ticket is None:
             return
         try:
-            increment_emitted("metrics")
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
             with self._lock:
@@ -127,13 +128,12 @@ class Gauge:
             release(ticket)
 
     def set(self, value: int, attributes: dict[str, str] | None = None) -> None:
-        if not should_sample("metrics", self.name):
+        if not _should_sample_unchecked(_SIGNAL, self.name):
             return
-        ticket = try_acquire("metrics")
+        ticket = _try_acquire_unchecked(_SIGNAL)
         if ticket is None:
             return
         try:
-            increment_emitted("metrics")
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
             with self._lock:
@@ -165,6 +165,7 @@ class Histogram:
 
         meter = get_meter()
         if meter is None:
+            self._resolved = True  # pragma: no mutate — caching optimization
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -177,9 +178,9 @@ class Histogram:
         return self._otel_histogram
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
-        if not should_sample("metrics", self.name):
+        if not _should_sample_unchecked(_SIGNAL, self.name):
             return
-        ticket = try_acquire("metrics")
+        ticket = _try_acquire_unchecked(_SIGNAL)
         if ticket is None:
             return
         try:
@@ -190,7 +191,6 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
-            increment_emitted("metrics")
             otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})

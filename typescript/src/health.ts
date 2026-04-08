@@ -123,6 +123,20 @@ export function _incrementHealth(field: NumericHealthField, by: number = 1): voi
   _state[field] += by;
 }
 
+/** Map a signal name to the per-signal emitted field. */
+export function _emittedField(signal: string): 'logsEmitted' | 'tracesEmitted' | 'metricsEmitted' {
+  if (signal === 'traces') return 'tracesEmitted';
+  if (signal === 'metrics') return 'metricsEmitted';
+  return 'logsEmitted';
+}
+
+/** Map a signal name to the per-signal dropped field. */
+export function _droppedField(signal: string): 'logsDropped' | 'tracesDropped' | 'metricsDropped' {
+  if (signal === 'traces') return 'tracesDropped';
+  if (signal === 'metrics') return 'metricsDropped';
+  return 'logsDropped';
+}
+
 /** Map a signal name to the per-signal export-failures field. */
 export function _exportFailuresField(
   signal: string,
