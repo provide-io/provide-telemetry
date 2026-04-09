@@ -186,9 +186,16 @@ func _sanitizeMap(m map[string]any, path []string, rules []PIIRule, depth int) m
 func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
 	out := make([]any, len(s))
 	for i, item := range s {
-		if inner, ok := item.(map[string]any); ok {
-			out[i] = _sanitizeMap(inner, path, rules, depth)
-		} else {
+		switch typed := item.(type) {
+		case map[string]any:
+			out[i] = _sanitizeMap(typed, path, rules, depth)
+		case string:
+			if _detectSecretInValue(typed) {
+				out[i] = _piiRedacted
+			} else {
+				out[i] = item
+			}
+		default:
 			out[i] = item
 		}
 	}
