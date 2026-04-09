@@ -351,3 +351,27 @@ func TestSetSamplingPolicy_ClampsBelowZero(t *testing.T) {
 		t.Errorf("expected rate clamped to 0.0, got %f", p.DefaultRate)
 	}
 }
+
+func TestSetSamplingPolicy_ClampsOverridesAboveOne(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5, Overrides: map[string]float64{"k": 1.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Overrides["k"] != 1.0 {
+		t.Errorf("expected override clamped to 1.0, got %f", p.Overrides["k"])
+	}
+}
+
+func TestSetSamplingPolicy_ClampsOverridesBelowZero(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5, Overrides: map[string]float64{"k": -0.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Overrides["k"] != 0.0 {
+		t.Errorf("expected override clamped to 0.0, got %f", p.Overrides["k"])
+	}
+}
