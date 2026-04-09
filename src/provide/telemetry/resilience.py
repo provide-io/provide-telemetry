@@ -341,6 +341,22 @@ def _warn_event_loop_setup(signal: Signal) -> None:
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
+    key = (signal, policy.allow_blocking_in_event_loop)
+    with _lock:
+        if signal in _async_setup_warned_signals:
+            return
+        _async_setup_warned_signals.add(signal)
+    warnings.warn(
+        f"telemetry {signal} export called from an active event loop with "
+        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "
+        "bypassing timeout executor to prevent event loop stall. "
+        "Call setup_telemetry() before starting the event loop.",
+        RuntimeWarning,
+        stacklevel=4,
+    )
+
+
+def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
     sig = signal if signal in {"logs", "traces", "metrics"} else "logs"
     with _lock:
         if sig in _async_warned_signals:

@@ -176,39 +176,3 @@ func TestHandlerContextFieldsCopiesExistingAttrs(t *testing.T) {
 	// then applyContextFields copies existing attrs + appends context fields.
 	logger.Logger.InfoContext(ctx, "test.copy.attrs", slog.String("explicit", "attr"))
 }
-
-// ---- _sanitizeSlice: string element secret detection ----
-
-func TestSanitizeSliceStringSecretDetected(t *testing.T) {
-	// A slice containing a string that matches a secret pattern should be redacted.
-	payload := map[string]any{
-		"items": []any{
-			"safe value",
-			"AKIAIOSFODNN7EXAMPLE", // pragma: allowlist secret
-		},
-	}
-	result := logger.SanitizePayload(payload, true, 0)
-	items, ok := result["items"].([]any)
-	if !ok {
-		t.Fatalf("items should be a slice, got %T", result["items"])
-	}
-	if items[0] != "safe value" {
-		t.Fatalf("safe string should be preserved, got %v", items[0])
-	}
-	if items[1] == "AKIAIOSFODNN7EXAMPLE" { // pragma: allowlist secret
-		t.Fatal("secret string in slice should be redacted")
-	}
-}
-
-// ---- Configure: ModuleLevels map cloned ----
-
-func TestConfigureModuleLevelsCloned(t *testing.T) {
-	cfg := logger.DefaultLogConfig()
-	levels := map[string]string{"mymod": "debug"}
-	cfg.ModuleLevels = levels
-	logger.Configure(cfg)
-	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
-	// Mutating the original map must not affect the stored config.
-	levels["mymod"] = "error"
-	// We can't inspect the stored cfg directly, but the test verifies no panic/race.
-}

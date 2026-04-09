@@ -28,6 +28,12 @@ npm install @undef/telemetry             # core (pino + @opentelemetry/api)
 cargo add provide-telemetry
 ```
 
+**Rust:**
+
+```bash
+cargo add provide-telemetry
+```
+
 ## Quick Start
 
 **Python:**
