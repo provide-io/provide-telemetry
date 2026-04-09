@@ -25,7 +25,7 @@ import {
   shutdownTelemetry,
 } from '../../src/index.js';
 
-function main(): void {
+async function main(): Promise<void> {
   setupTelemetry({ serviceName: 'ts-security-demo', logLevel: 'info' });
   const log = getLogger('security-demo');
 
@@ -73,8 +73,11 @@ function main(): void {
   console.log('   PROVIDE_SECURITY_MAX_ATTR_COUNT=128          (OTLP export layer)');
   console.log('   PROVIDE_SECURITY_MAX_NESTING_DEPTH=4');
 
-  shutdownTelemetry();
+  await shutdownTelemetry();
   console.log('\n=== Done ===');
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
