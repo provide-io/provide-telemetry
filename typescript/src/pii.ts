@@ -53,10 +53,52 @@ export const _SECRET_PATTERNS: RegExp[] = [
 ];
 /* Stryker restore all */
 
+/** Named secret pattern for diagnostics / deduplication. */
+export interface SecretPattern {
+  name: string;
+  pattern: RegExp;
+}
+
+const _customSecretPatterns: Map<string, RegExp> = new Map();
+
+/**
+ * Register a custom secret detection pattern.
+ * If a pattern with the same name already exists it is replaced.
+ * The name is for diagnostics only.
+ */
+export function registerSecretPattern(name: string, pattern: RegExp): void {
+  _customSecretPatterns.set(name, pattern);
+}
+
+/**
+ * Return all active secret patterns (built-in + custom).
+ */
+export function getSecretPatterns(): SecretPattern[] {
+  const builtIn: SecretPattern[] = _SECRET_PATTERNS.map((p, i) => ({
+    name: `built-in-${String(i)}`,
+    pattern: p,
+  }));
+  const custom: SecretPattern[] = Array.from(_customSecretPatterns.entries()).map(
+    ([name, pattern]) => ({ name, pattern }),
+  );
+  return [...builtIn, ...custom];
+}
+
+/**
+ * Remove all custom secret patterns. Built-in patterns are not affected.
+ */
+export function resetSecretPatternsForTests(): void {
+  _customSecretPatterns.clear();
+}
+
 export function _detectSecretInValue(value: string): boolean {
   // Stryker disable next-line ConditionalExpression: removing length check makes patterns match short strings — equivalent when all test secrets are ≥20 chars
   if (value.length < _MIN_SECRET_LENGTH) return false;
-  return _SECRET_PATTERNS.some((p) => p.test(value));
+  if (_SECRET_PATTERNS.some((p) => p.test(value))) return true;
+  for (const p of _customSecretPatterns.values()) {
+    if (p.test(value)) return true;
+  }
+  return false;
 }
 
 /**
@@ -280,6 +322,7 @@ export function resetPiiRulesForTests(): void {
   _hashFnOverride = null;
   _classificationHook = null;
   _receiptHook = null;
+  _customSecretPatterns.clear();
 }
 
 /** Options for sanitizePayload. */

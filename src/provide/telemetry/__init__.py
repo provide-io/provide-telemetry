@@ -56,7 +56,14 @@ if TYPE_CHECKING:
     )
     from provide.telemetry.health import HealthSnapshot, get_health_snapshot
     from provide.telemetry.metrics import counter, gauge, get_meter, histogram
-    from provide.telemetry.pii import PIIRule, get_pii_rules, register_pii_rule, replace_pii_rules
+    from provide.telemetry.pii import (
+        PIIRule,
+        get_pii_rules,
+        get_secret_patterns,
+        register_pii_rule,
+        register_secret_pattern,
+        replace_pii_rules,
+    )
     from provide.telemetry.propagation import bind_propagation_context, extract_w3c_context
     from provide.telemetry.receipts import RedactionReceipt, enable_receipts, get_emitted_receipts_for_tests
     from provide.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
@@ -106,7 +113,15 @@ _register(
 )
 _register("provide.telemetry.health", "HealthSnapshot", "get_health_snapshot")
 _register("provide.telemetry.metrics", "counter", "gauge", "get_meter", "histogram")
-_register("provide.telemetry.pii", "PIIRule", "get_pii_rules", "register_pii_rule", "replace_pii_rules")
+_register(
+    "provide.telemetry.pii",
+    "PIIRule",
+    "get_pii_rules",
+    "get_secret_patterns",
+    "register_pii_rule",
+    "register_secret_pattern",
+    "replace_pii_rules",
+)
 _register("provide.telemetry.propagation", "bind_propagation_context", "extract_w3c_context")
 _register("provide.telemetry.resilience", "ExporterPolicy", "get_exporter_policy", "set_exporter_policy")
 _register(
@@ -186,6 +201,7 @@ __all__ = [
     "get_queue_policy",
     "get_runtime_config",
     "get_sampling_policy",
+    "get_secret_patterns",
     "get_session_id",
     "get_trace_context",
     "get_tracer",
@@ -197,6 +213,7 @@ __all__ = [
     "register_cardinality_limit",
     "register_classification_rules",
     "register_pii_rule",
+    "register_secret_pattern",
     "reload_runtime_from_env",
     "replace_pii_rules",
     "set_classification_policy",
