@@ -130,6 +130,17 @@ async function main(): Promise<void> {
 
   setSamplingPolicy('logs', { defaultRate: 1.0 }); // restore
 
+  // ── 🔍 validateEventName helper ─────────────────────────
+  console.log('\n🔍 validateEventName helper:\n');
+  for (const name of ['valid.event.name', 'too_short', 'INVALID.uppercase.name']) {
+    try {
+      validateEventName(name);
+      console.log(`  ${JSON.stringify(name)} → valid`);
+    } catch (err) {
+      console.log(`  ${JSON.stringify(name)} → invalid: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   console.log('\n🏁 Done!');
   await shutdownTelemetry();
 }
