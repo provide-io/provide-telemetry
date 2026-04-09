@@ -14,9 +14,9 @@ var (
 	// TraceIDKey and SpanIDKey are the context keys used by SetTraceContext /
 	// GetTraceContext.  The tracer sub-package imports this package and writes
 	// to the same keys so that the logger sees trace IDs without an OTel dep.
-	TraceIDKey  = contextKey{"trace.id"} //nolint:gochecknoglobals
-	SpanIDKey   = contextKey{"span.id"}  //nolint:gochecknoglobals
-	_sessionKey = contextKey{"session"}  //nolint:gochecknoglobals
+	TraceIDKey = contextKey{"trace.id"} //nolint:gochecknoglobals
+	SpanIDKey  = contextKey{"span.id"}  //nolint:gochecknoglobals
+	_sessionKey = contextKey{"session"} //nolint:gochecknoglobals
 )
 
 // BindContext adds key-value fields to the context, merging with any existing fields.

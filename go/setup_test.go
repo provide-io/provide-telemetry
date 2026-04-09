@@ -252,3 +252,32 @@ func TestSetupTelemetryIdempotentReturnsCopy(t *testing.T) {
 		t.Fatal("mutating SetupTelemetry return value should not affect internal state")
 	}
 }
+
+func TestSetupTelemetry_AllowBlockingInEventLoopRoundTrip(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP", "true")
+	t.Setenv("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP", "false")
+	t.Setenv("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP", "true")
+
+	_, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	logs := GetExporterPolicy(signalLogs)
+	if !logs.AllowBlockingInEventLoop {
+		t.Error("expected logs AllowBlockingInEventLoop=true")
+	}
+
+	traces := GetExporterPolicy(signalTraces)
+	if traces.AllowBlockingInEventLoop {
+		t.Error("expected traces AllowBlockingInEventLoop=false")
+	}
+
+	metrics := GetExporterPolicy(signalMetrics)
+	if !metrics.AllowBlockingInEventLoop {
+		t.Error("expected metrics AllowBlockingInEventLoop=true")
+	}
+}

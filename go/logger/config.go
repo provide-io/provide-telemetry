@@ -3,8 +3,6 @@
 
 package logger
 
-import "io"
-
 // Log format constants.
 const (
 	LogFormatConsole = "console"
@@ -34,7 +32,6 @@ type LogConfig struct {
 	// Logging behaviour.
 	Level        string            // default "INFO"
 	Format       string            // "console" | "json" | "pretty"
-	Output       io.Writer         // log destination; nil → os.Stderr
 	Sanitize     bool              // PII sanitisation enabled
 	PIIMaxDepth  int               // 0 → use SanitizePayload default of 8
 	ModuleLevels map[string]string // per-module level overrides

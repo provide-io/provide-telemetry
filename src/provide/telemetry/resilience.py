@@ -13,6 +13,7 @@ __all__ = [
     "get_exporter_policy",
     "run_with_resilience",
     "set_exporter_policy",
+    "shutdown_timeout_executors",
 ]
 
 import asyncio
@@ -59,6 +60,8 @@ _circuit_tripped_at: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics
 _open_count: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _half_open_probing: dict[Signal, bool] = {"logs": False, "traces": False, "metrics": False}
 _async_warned_signals: set[tuple[Signal, bool]] = set()
+# Tracks signals for which the event-loop setup blocking warning has been emitted.
+_async_setup_warned_signals: set[Signal] = set()
 # Per-signal executors isolate failure domains so a timeout storm in one
 # signal (e.g. traces) cannot starve workers used by another (e.g. logs).
 _timeout_executors: dict[Signal, concurrent.futures.ThreadPoolExecutor] = {}
@@ -156,17 +159,50 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
             if policy.fail_open:
                 return None
             raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
-    if _is_running_in_event_loop() and (policy.retries > 0 or policy.backoff_seconds > 0):
-        increment_async_blocking_risk(sig)
+    attempts, backoff_seconds = _apply_event_loop_limits(sig, policy, attempts, backoff_seconds, timeout_seconds)
+    return _retry_loop(sig, operation, policy, attempts, backoff_seconds, timeout_seconds)
+
+
+def _apply_event_loop_limits(
+    sig: Signal,
+    policy: ExporterPolicy,
+    attempts: int,
+    backoff_seconds: float,
+    timeout_seconds: float,
+) -> tuple[int, float]:
+    """Detect event-loop context and suppress blocking/retries if needed."""
+    in_loop = _is_running_in_event_loop()
+    skip_executor = in_loop and not policy.allow_blocking_in_event_loop and timeout_seconds > 0
+    has_retries_in_loop = in_loop and (policy.retries > 0 or policy.backoff_seconds > 0)
+    if skip_executor or has_retries_in_loop:
+        increment_async_blocking_risk(sig)  # pragma: no mutate
+    if skip_executor:
+        _warn_event_loop_setup(sig)  # pragma: no mutate
+    if has_retries_in_loop:
         _warn_async_risk(sig, policy)  # pragma: no mutate
         if not policy.allow_blocking_in_event_loop:
-            attempts = 1
-            backoff_seconds = 0.0
-    last_error: Exception | None = None
+            return 1, 0.0  # pragma: no mutate
+    return attempts, backoff_seconds
+
+
+def _retry_loop(
+    sig: Signal,
+    operation: Callable[[], T],
+    policy: ExporterPolicy,
+    attempts: int,
+    backoff_seconds: float,
+    timeout_seconds: float,
+) -> T | None:
+    """Execute *operation* with retries, backoff, and timeout."""
+    in_loop = _is_running_in_event_loop()
+    skip_executor = in_loop and not policy.allow_blocking_in_event_loop and timeout_seconds > 0
+    last_error: Exception | None = None  # pragma: no mutate
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
-            result = _run_attempt_with_timeout(sig, operation, timeout_seconds)  # pragma: no mutate
+            result = _run_attempt_with_timeout(
+                sig, operation, timeout_seconds, skip_executor=skip_executor
+            )  # pragma: no mutate
             latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
             record_export_latency(sig, latency_ms=latency_ms)
             _record_attempt_success(sig)
@@ -175,18 +211,12 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
             last_error = exc
             record_export_failure(sig, exc)  # pragma: no mutate — exc arg unused by record_export_failure
             _record_attempt_failure(sig, is_timeout=True)
-            if attempt < attempts - 1:
-                increment_retries(sig)
-                if backoff_seconds > 0:
-                    time.sleep(backoff_seconds)
+            _maybe_backoff(sig, attempt, attempts, backoff_seconds)
         except Exception as exc:
             last_error = exc
             record_export_failure(sig, exc)  # pragma: no mutate — exc arg unused by record_export_failure
             _record_attempt_failure(sig, is_timeout=False)  # pragma: no mutate — False/None both falsy
-            if attempt < attempts - 1:
-                increment_retries(sig)
-                if backoff_seconds > 0:
-                    time.sleep(backoff_seconds)
+            _maybe_backoff(sig, attempt, attempts, backoff_seconds)
     if policy.fail_open:
         return None
     if last_error is not None:
@@ -194,7 +224,17 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover
 
 
-def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeout_seconds: float) -> T:
+def _maybe_backoff(sig: Signal, attempt: int, attempts: int, backoff_seconds: float) -> None:
+    """Increment retry counter and sleep if more attempts remain."""
+    if attempt < attempts - 1:
+        increment_retries(sig)
+        if backoff_seconds > 0:
+            time.sleep(backoff_seconds)
+
+
+def _run_attempt_with_timeout(
+    signal: Signal, operation: Callable[[], T], timeout_seconds: float, *, skip_executor: bool = False
+) -> T:
     """Run *operation* with a per-signal timeout executor.
 
     Each signal (logs, traces, metrics) gets its own 2-thread pool so that
@@ -204,7 +244,7 @@ def _run_attempt_with_timeout(signal: Signal, operation: Callable[[], T], timeou
     An already-running operation will continue on a daemon thread after
     the timeout fires.
     """
-    if timeout_seconds <= 0:
+    if timeout_seconds <= 0 or skip_executor:
         return operation()
     executor = _get_timeout_executor(signal)  # pragma: no mutate
     future = executor.submit(operation)
@@ -249,6 +289,19 @@ def get_circuit_state(signal: Signal) -> tuple[str, int, float]:
         return ("closed", _open_count[sig], 0.0)
 
 
+def shutdown_timeout_executors() -> None:
+    """Shut down all per-signal timeout executors.
+
+    Called during telemetry shutdown to release thread resources. Does not
+    reset circuit-breaker state or policies — use reset_resilience_for_tests()
+    in tests for a full state wipe.
+    """
+    with _lock:
+        for executor in _timeout_executors.values():
+            executor.shutdown(wait=False)
+        _timeout_executors.clear()
+
+
 def reset_resilience_for_tests() -> None:
     with _lock:
         for signal in ("logs", "traces", "metrics"):
@@ -258,6 +311,7 @@ def reset_resilience_for_tests() -> None:
             _open_count[signal] = 0
             _half_open_probing[signal] = False
         _async_warned_signals.clear()
+        _async_setup_warned_signals.clear()
         for executor in _timeout_executors.values():
             executor.shutdown(wait=False)
         _timeout_executors.clear()
@@ -269,6 +323,21 @@ def _is_running_in_event_loop() -> bool:
     except RuntimeError:
         return False
     return True
+
+
+def _warn_event_loop_setup(signal: Signal) -> None:
+    with _lock:
+        if signal in _async_setup_warned_signals:
+            return
+        _async_setup_warned_signals.add(signal)
+    warnings.warn(
+        f"telemetry {signal} export called from an active event loop with "
+        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "
+        "bypassing timeout executor to prevent event loop stall. "
+        "Call setup_telemetry() before starting the event loop.",
+        RuntimeWarning,
+        stacklevel=4,
+    )
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:

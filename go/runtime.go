@@ -250,10 +250,12 @@ func _checkColdDrift(next *TelemetryConfig) {
 
 // ReconfigureTelemetry performs a full shutdown followed by a fresh setup using current
 // environment variables. It is equivalent to calling ShutdownTelemetry then SetupTelemetry.
+// If ShutdownTelemetry returns an error (e.g. OTel exporter flush failed on context
+// deadline), ReconfigureTelemetry propagates it without proceeding to re-setup, so callers
+// can distinguish a clean reconfigure from one that may have lost in-flight telemetry data.
 func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryConfig, error) {
-	// TODO(Task-14): propagate this error once ShutdownTelemetry can fail
-	// (OTel TracerProvider/MeterProvider.Shutdown returns errors on context
-	// deadline or exporter flush failure).
-	_ = ShutdownTelemetry(ctx)
+	if err := ShutdownTelemetry(ctx); err != nil {
+		return nil, fmt.Errorf("shutdown: %w", err)
+	}
 	return SetupTelemetry(opts...)
 }

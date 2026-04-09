@@ -65,22 +65,25 @@ func _applyRuntimePolicies(cfg *TelemetryConfig) {
 	})
 
 	SetExporterPolicy(signalLogs, ExporterPolicy{
-		Retries:        cfg.Exporter.LogsRetries,
-		BackoffSeconds: cfg.Exporter.LogsBackoffSeconds,
-		TimeoutSeconds: cfg.Exporter.LogsTimeoutSeconds,
-		FailOpen:       cfg.Exporter.LogsFailOpen,
+		Retries:                  cfg.Exporter.LogsRetries,
+		BackoffSeconds:           cfg.Exporter.LogsBackoffSeconds,
+		TimeoutSeconds:           cfg.Exporter.LogsTimeoutSeconds,
+		FailOpen:                 cfg.Exporter.LogsFailOpen,
+		AllowBlockingInEventLoop: cfg.Exporter.LogsAllowBlockingInEventLoop,
 	})
 	SetExporterPolicy(signalTraces, ExporterPolicy{
-		Retries:        cfg.Exporter.TracesRetries,
-		BackoffSeconds: cfg.Exporter.TracesBackoffSeconds,
-		TimeoutSeconds: cfg.Exporter.TracesTimeoutSeconds,
-		FailOpen:       cfg.Exporter.TracesFailOpen,
+		Retries:                  cfg.Exporter.TracesRetries,
+		BackoffSeconds:           cfg.Exporter.TracesBackoffSeconds,
+		TimeoutSeconds:           cfg.Exporter.TracesTimeoutSeconds,
+		FailOpen:                 cfg.Exporter.TracesFailOpen,
+		AllowBlockingInEventLoop: cfg.Exporter.TracesAllowBlockingInEventLoop,
 	})
 	SetExporterPolicy(signalMetrics, ExporterPolicy{
-		Retries:        cfg.Exporter.MetricsRetries,
-		BackoffSeconds: cfg.Exporter.MetricsBackoffSeconds,
-		TimeoutSeconds: cfg.Exporter.MetricsTimeoutSeconds,
-		FailOpen:       cfg.Exporter.MetricsFailOpen,
+		Retries:                  cfg.Exporter.MetricsRetries,
+		BackoffSeconds:           cfg.Exporter.MetricsBackoffSeconds,
+		TimeoutSeconds:           cfg.Exporter.MetricsTimeoutSeconds,
+		FailOpen:                 cfg.Exporter.MetricsFailOpen,
+		AllowBlockingInEventLoop: cfg.Exporter.MetricsAllowBlockingInEventLoop,
 	})
 
 	_configureLogger(cfg)

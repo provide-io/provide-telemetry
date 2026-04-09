@@ -118,6 +118,7 @@ def _reset_all_for_tests() -> None:
 def shutdown_telemetry() -> None:
     """Flush and tear down telemetry providers and reset runtime policies."""
     from provide.telemetry.metrics.provider import shutdown_metrics
+    from provide.telemetry.resilience import shutdown_timeout_executors as _shutdown_executors
     from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
 
     global _setup_done
@@ -127,3 +128,4 @@ def shutdown_telemetry() -> None:
         shutdown_metrics()
         shutdown_logging()
         _reset_runtime()
+        _shutdown_executors()

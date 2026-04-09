@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import threading
-import uuid
+import warnings
 from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
@@ -68,7 +68,19 @@ def _load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
 def setup_tracing(config: TelemetryConfig) -> None:
     global _provider_configured, _provider_ref, _otel_global_set
     global _baseline_tracer_provider, _baseline_captured
-    if not config.tracing.enabled or not _HAS_OTEL:
+    if not config.tracing.enabled:
+        return
+    from provide.telemetry.resilience import _is_running_in_event_loop
+
+    if _is_running_in_event_loop():  # pragma: no mutate
+        warnings.warn(
+            "setup_tracing() called from an active event loop; "
+            "provider initialization may stall the event loop. "
+            "Call setup_telemetry() before starting the event loop.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    if not _HAS_OTEL:
         return
 
     with _provider_lock:

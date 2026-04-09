@@ -410,3 +410,63 @@ func TestUpdateRuntimeConfigRejectsInvalidOverrides(t *testing.T) {
 func ptrInt(v int) *int {
 	return &v
 }
+
+func TestReconfigureTelemetry_PropagatesShutdownError(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
+
+	// Install an SDK tracer provider, then use a cancelled context so Shutdown
+	// returns an error (flush timed out), and verify ReconfigureTelemetry surfaces it.
+	tp, _ := newInMemoryTP()
+	_, err := SetupTelemetry(WithTracerProvider(tp))
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately to force shutdown error
+
+	_, err = ReconfigureTelemetry(cancelledCtx)
+	if err == nil {
+		t.Error("expected ReconfigureTelemetry to propagate shutdown error, got nil")
+	}
+	if !containsSubstr(err.Error(), "shutdown") {
+		t.Errorf("expected error to contain 'shutdown', got: %v", err)
+	}
+}
+
+func TestReconfigureTelemetry_SucceedsWhenShutdownSucceeds(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
+
+	_, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	cfg, err := ReconfigureTelemetry(context.Background())
+	if err != nil {
+		t.Errorf("expected ReconfigureTelemetry to succeed, got: %v", err)
+	}
+	if cfg == nil {
+		t.Error("expected non-nil config from ReconfigureTelemetry")
+	}
+}
+
+func containsSubstr(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		}())
+}

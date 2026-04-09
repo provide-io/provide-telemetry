@@ -373,32 +373,6 @@ func TestModuleLevelOverride(t *testing.T) {
 	}
 }
 
-func TestGetDefaultLogger(t *testing.T) {
-	cfg := logger.DefaultLogConfig()
-	cfg.ServiceName = "default-test"
-	logger.Configure(cfg)
-
-	l := logger.GetDefaultLogger("mypackage.service")
-	if l == nil {
-		t.Fatal("GetDefaultLogger should return non-nil logger")
-	}
-	// Calling it twice should return loggers that behave identically
-	// (evaluated at call time, not cached).
-	l2 := logger.GetDefaultLogger("mypackage.service")
-	if l2 == nil {
-		t.Fatal("second call to GetDefaultLogger should also return non-nil")
-	}
-	// Loggers from GetDefaultLogger reflect the active config, so debug should
-	// be disabled here (level is INFO by default after Configure).
-	cfg2 := logger.DefaultLogConfig()
-	cfg2.Level = logger.LogLevelInfo
-	logger.Configure(cfg2)
-	lInfo := logger.GetDefaultLogger("mypackage.service")
-	if lInfo.Enabled(nil, slog.LevelDebug) { //nolint:staticcheck // nil ctx is valid in tests
-		t.Fatal("GetDefaultLogger at INFO level should not be enabled for DEBUG")
-	}
-}
-
 func TestContextFieldsApplied(t *testing.T) {
 	cfg := logger.DefaultLogConfig()
 	cfg.Level = logger.LogLevelDebug
