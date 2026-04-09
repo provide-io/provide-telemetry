@@ -7,19 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-pytestmark = pytest.mark.tooling
-
-
-def _find_repo_root() -> Path:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "VERSION").exists():
-            return parent
-    raise FileNotFoundError("Could not locate repo root (no VERSION file found)")
-
-
-REPO_ROOT = _find_repo_root()
+REPO_ROOT = Path(__file__).resolve().parents[2]
 RUST_CARGO = REPO_ROOT / "rust" / "Cargo.toml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
