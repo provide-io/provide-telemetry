@@ -65,8 +65,7 @@ act -W .github/workflows/ci.yml pull_request -j docs-quality \
   --container-daemon-socket -
 ```
 
-If you run `act` frequently, extend `.actrc` with the same options so every invocation reuses the
-configured socket and image. Document any socket/mount issues and rerun once host access is restored.
+Document any socket/mount issues and rerun once host access is restored.
 
 ## Publish Path
 

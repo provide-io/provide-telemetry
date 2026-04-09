@@ -318,11 +318,12 @@ func _detectSecretInValue(s string) bool {
 	}
 	_piiMu.RLock()
 	customs := _customSecretPats
-	_piiMu.RUnlock()
 	for _, re := range customs {
 		if re.MatchString(s) {
+			_piiMu.RUnlock()
 			return true
 		}
 	}
+	_piiMu.RUnlock()
 	return false
 }

@@ -8,7 +8,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { sha256Hex } from '../src/hash';
 import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii';
-import { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from '../src/receipts';
+import {
+  enableReceipts,
+  getEmittedReceiptsForTests,
+  resetReceiptsForTests,
+  _setTestModeForTests,
+} from '../src/receipts';
 
 beforeEach(() => {
   resetPiiRulesForTests();
@@ -123,6 +128,28 @@ describe('service name is set in receipt', () => {
     const receipts = getEmittedReceiptsForTests();
     expect(receipts).toHaveLength(1);
     expect(receipts[0].serviceName).toBe('my-service');
+  });
+
+  it('receipt.serviceName defaults to "unknown" when not specified', () => {
+    enableReceipts({ enabled: true });
+    const obj = { password: 'secret123' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    const receipts = getEmittedReceiptsForTests();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].serviceName).toBe('unknown');
+  });
+});
+
+describe('production mode (testMode=false) does not push to test receipts', () => {
+  it('receipt hook runs without storing when testMode is false', () => {
+    _setTestModeForTests(false);
+    enableReceipts({ enabled: true });
+    const obj = { password: 'secret123' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    // In production mode, receipt is not stored in test array.
+    expect(getEmittedReceiptsForTests()).toHaveLength(0);
+    // Restore test mode
+    _setTestModeForTests(true);
   });
 });
 
