@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"fmt"
+	"math"
 	"sync"
 )
 
@@ -43,11 +44,28 @@ var (
 	_samplingPolicies = make(map[string]SamplingPolicy) // keyed by signal: "logs", "traces", "metrics"
 )
 
+// _clampRate clamps a sampling rate to [0.0, 1.0], treating NaN as 0.0.
+func _clampRate(r float64) float64 {
+	if math.IsNaN(r) {
+		return 0.0
+	}
+	return max(0.0, min(1.0, r))
+}
+
 // SetSamplingPolicy registers a sampling policy for a signal.
 // signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
+// DefaultRate is clamped to [0.0, 1.0].
 func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, error) {
 	if err := _validateSignal(signal); err != nil {
 		return SamplingPolicy{}, err
+	}
+	policy.DefaultRate = _clampRate(policy.DefaultRate)
+	if policy.Overrides != nil {
+		clamped := make(map[string]float64, len(policy.Overrides))
+		for k, v := range policy.Overrides {
+			clamped[k] = _clampRate(v)
+		}
+		policy.Overrides = clamped
 	}
 	_samplingMu.Lock()
 	defer _samplingMu.Unlock()

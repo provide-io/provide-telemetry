@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"math"
 	"sync"
 	"testing"
 )
@@ -325,5 +326,65 @@ func TestShouldSample_LowRate_AlmostAlwaysFalse(t *testing.T) {
 	}
 	if count > 100 {
 		t.Errorf("at rate=0.01, expected <100 sampled out of %d, got %d", n, count)
+	}
+}
+
+func TestSetSamplingPolicy_ClampsAboveOne(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DefaultRate != 1.0 {
+		t.Errorf("expected rate clamped to 1.0, got %f", p.DefaultRate)
+	}
+}
+
+func TestSetSamplingPolicy_ClampsBelowZero(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: -0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DefaultRate != 0.0 {
+		t.Errorf("expected rate clamped to 0.0, got %f", p.DefaultRate)
+	}
+}
+
+func TestSetSamplingPolicy_ClampsOverridesAboveOne(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5, Overrides: map[string]float64{"k": 1.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Overrides["k"] != 1.0 {
+		t.Errorf("expected override clamped to 1.0, got %f", p.Overrides["k"])
+	}
+}
+
+func TestSetSamplingPolicy_ClampsOverridesBelowZero(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.5, Overrides: map[string]float64{"k": -0.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Overrides["k"] != 0.0 {
+		t.Errorf("expected override clamped to 0.0, got %f", p.Overrides["k"])
+	}
+}
+
+func TestSetSamplingPolicy_ClampsNaN(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+	p, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: math.NaN()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DefaultRate != 0.0 {
+		t.Errorf("expected NaN clamped to 0.0, got %f", p.DefaultRate)
 	}
 }
