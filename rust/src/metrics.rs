@@ -4,11 +4,14 @@
 //
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
+
+static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Meter {
@@ -181,6 +184,7 @@ pub fn get_meter(name: Option<&str>) -> Meter {
 }
 
 pub fn counter(name: &str, description: Option<&str>, unit: Option<&str>) -> Counter {
+    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Counter {
         name: name.to_string(),
         description: description.map(str::to_string),
@@ -190,6 +194,7 @@ pub fn counter(name: &str, description: Option<&str>, unit: Option<&str>) -> Cou
 }
 
 pub fn gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge {
+    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Gauge {
         name: name.to_string(),
         description: description.map(str::to_string),
@@ -199,10 +204,19 @@ pub fn gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge
 }
 
 pub fn histogram(name: &str, description: Option<&str>, unit: Option<&str>) -> Histogram {
+    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Histogram {
         name: name.to_string(),
         description: description.map(str::to_string),
         unit: unit.map(str::to_string),
         state: Arc::new(Mutex::new(HistogramState::default())),
     }
+}
+
+pub fn metrics_initialized_for_tests() -> bool {
+    METRICS_INITIALIZED.load(Ordering::SeqCst)
+}
+
+pub fn reset_metrics_for_tests() {
+    METRICS_INITIALIZED.store(false, Ordering::SeqCst);
 }
