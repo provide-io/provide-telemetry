@@ -157,11 +157,11 @@ def _get_rust_exports() -> set[str]:
         return set()
     text = lib_rs.read_text(encoding="utf-8")
     patterns = (
-        r"^pub\\s+fn\\s+([a-z_][a-z0-9_]*)",
-        r"^pub\\s+struct\\s+([A-Z][A-Za-z0-9]*)",
-        r"^pub\\s+enum\\s+([A-Z][A-Za-z0-9]*)",
-        r"^pub\\s+type\\s+([A-Z][A-Za-z0-9]*)",
-        r"^pub\\s+static\\s+([a-z_][a-z0-9_]*)",
+        r"^\s*pub\s+(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)",
+        r"^\s*pub\s+struct\s+([A-Z][A-Za-z0-9]*)",
+        r"^\s*pub\s+enum\s+([A-Z][A-Za-z0-9]*)",
+        r"^\s*pub\s+type\s+([A-Z][A-Za-z0-9]*)",
+        r"^\s*pub\s+static\s+([A-Z_][A-Z0-9_]*)",
     )
 ```
 
@@ -501,8 +501,8 @@ sampling -> schema -> pii -> renderer/export
 - [ ] **Step 2: Export package-level default instances**
 
 ```rust
-pub static logger: OnceLock<TelemetryLogger> = OnceLock::new();
-pub static tracer: OnceLock<TelemetryTracer> = OnceLock::new();
+pub static LOGGER: OnceLock<TelemetryLogger> = OnceLock::new();
+pub static TRACER: OnceLock<TelemetryTracer> = OnceLock::new();
 ```
 
 - [ ] **Step 3: Implement metrics fallback wrappers before real OTel**
