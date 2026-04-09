@@ -17,6 +17,35 @@ use provide_telemetry::{
 #[path = "../examples/support/e2e_shared.rs"]
 mod e2e_shared;
 
+#[path = "../examples/support/basic_telemetry.rs"]
+mod basic_telemetry;
+#[path = "../examples/support/data_governance.rs"]
+mod data_governance;
+#[path = "../examples/support/error_degradation.rs"]
+mod error_degradation;
+#[path = "../examples/support/error_sessions.rs"]
+mod error_sessions;
+#[path = "../examples/support/exporter_resilience.rs"]
+mod exporter_resilience;
+#[path = "../examples/support/full_hardening.rs"]
+mod full_hardening;
+#[path = "../examples/support/lazy_loading.rs"]
+mod lazy_loading;
+#[path = "../examples/support/performance_metrics.rs"]
+mod performance_metrics;
+#[path = "../examples/support/pii_cardinality.rs"]
+mod pii_cardinality;
+#[path = "../examples/support/runtime_reconfigure.rs"]
+mod runtime_reconfigure;
+#[path = "../examples/support/sampling_backpressure.rs"]
+mod sampling_backpressure;
+#[path = "../examples/support/security_hardening.rs"]
+mod security_hardening;
+#[path = "../examples/support/slo_health.rs"]
+mod slo_health;
+#[path = "../examples/support/w3c_propagation.rs"]
+mod w3c_propagation;
+
 static POLICY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn policy_lock() -> &'static Mutex<()> {
@@ -57,6 +86,178 @@ fn integration_test_e2e_tracer_provider_builds_with_http_exporter() {
         result.is_ok(),
         "expected OTLP tracer provider to build for E2E helper, got {result:?}"
     );
+}
+
+#[test]
+fn integration_test_basic_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = basic_telemetry::run_demo().expect("basic telemetry example should succeed");
+
+    assert_eq!(summary.iterations, 3);
+    assert_eq!(summary.logged_events, 6);
+    assert_eq!(summary.counter_total, 3.0);
+    assert_eq!(summary.gauge_value, 1.0);
+    assert_eq!(summary.histogram_count, 3);
+    assert_eq!(summary.histogram_total, 37.5);
+    assert_eq!(summary.context_keys_after_clear, 0);
+    assert_eq!(summary.unbound_key.as_deref(), Some("region"));
+}
+
+#[test]
+fn integration_test_w3c_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = w3c_propagation::run_demo().expect("w3c propagation example should succeed");
+
+    assert_eq!(
+        summary.http_trace_id.as_deref(),
+        Some("4bf92f3577b34da6a3ce929d0e0e4736") // pragma: allowlist secret
+    );
+    assert_eq!(summary.manual_trace_id_after_clear, None);
+    assert_eq!(
+        summary.nested_outer_restored.as_deref(),
+        Some("1111111111111111ffffffffffffffff")
+    );
+    assert_eq!(summary.nested_after_clear, None);
+}
+
+#[test]
+fn integration_test_sampling_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = sampling_backpressure::run_demo().expect("sampling example should succeed");
+
+    assert!(!summary.logs_routine_sampled);
+    assert!(summary.logs_critical_sampled);
+    assert!(summary.first_trace_ticket_acquired);
+    assert!(!summary.second_trace_ticket_acquired);
+    assert!(summary.third_trace_ticket_acquired);
+    assert!(summary.dropped_traces >= 1);
+}
+
+#[test]
+fn integration_test_runtime_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = runtime_reconfigure::run_demo().expect("runtime example should succeed");
+
+    assert_eq!(summary.before_logs_rate, 1.0);
+    assert_eq!(summary.after_update_logs_rate, 0.0);
+    assert_eq!(summary.after_reconfigure_logs_rate, 1.0);
+    assert_eq!(summary.after_reload_logs_rate, 1.0);
+}
+
+#[test]
+fn integration_test_pii_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = pii_cardinality::run_demo().expect("pii/cardinality example should succeed");
+
+    assert_eq!(summary.hashed_email_len, 12);
+    assert_eq!(summary.credit_card_removed, true);
+    assert_eq!(summary.truncated_password.as_deref(), Some("hunt..."));
+    assert_eq!(summary.cardinality_max_values, Some(1));
+    assert_eq!(summary.cardinality_ttl_seconds, Some(1.0));
+}
+
+#[test]
+fn integration_test_resilience_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = exporter_resilience::run_demo().expect("resilience example should succeed");
+
+    assert_eq!(summary.fail_open_result_is_none, true);
+    assert_eq!(summary.fail_closed_is_error, true);
+    assert_eq!(summary.timeout_result_is_none, true);
+    assert_eq!(summary.metrics_circuit_state.as_str(), "open");
+    assert!(summary.metrics_open_count >= 1);
+}
+
+#[test]
+fn integration_test_slo_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = slo_health::run_demo().expect("slo example should succeed");
+
+    assert_eq!(summary.classify_404.as_deref(), Some("client_error"));
+    assert_eq!(summary.classify_503.as_deref(), Some("server_error"));
+    assert_eq!(summary.classify_200.as_deref(), Some("ok"));
+}
+
+#[test]
+fn integration_test_full_hardening_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = full_hardening::run_demo().expect("hardening example should succeed");
+
+    assert_eq!(summary.pii_rules_active, 2);
+    assert_eq!(summary.cardinality_limit_max, Some(3));
+    assert_eq!(summary.queue_traces_maxsize, 2);
+    assert_eq!(summary.metrics_circuit_state.as_str(), "open");
+}
+
+#[test]
+fn integration_test_error_degradation_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = error_degradation::run_demo().expect("error/degradation example should succeed");
+
+    assert!(summary.configuration_error_seen);
+    assert!(summary.event_schema_error_seen);
+    assert!(summary.telemetry_error_catchall_count >= 2);
+}
+
+#[test]
+fn integration_test_performance_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = performance_metrics::run_demo().expect("performance example should succeed");
+
+    assert!(summary.event_ns > 0.0);
+    assert!(summary.counter_ns > 0.0);
+    assert!(summary.should_sample_ns > 0.0);
+}
+
+#[test]
+fn integration_test_lazy_loading_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = lazy_loading::run_demo().expect("lazy loading example should succeed");
+
+    assert!(!summary.slo_loaded_before_classify);
+    assert!(!summary.metrics_loaded_before_use);
+    assert!(summary.slo_loaded_after_classify);
+    assert!(summary.metrics_loaded_after_use);
+}
+
+#[test]
+fn integration_test_error_sessions_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = error_sessions::run_demo().expect("error/session example should succeed");
+
+    assert_eq!(summary.value_error_a, summary.value_error_b);
+    assert_ne!(summary.value_error_a, summary.type_error);
+    assert!(!summary.runtime_error_fingerprint.is_empty());
+    assert_eq!(summary.session_before, None);
+    assert_eq!(summary.session_after_bind.as_deref(), Some("sess-demo-42"));
+    assert_eq!(summary.session_after_clear, None);
+}
+
+#[test]
+fn integration_test_security_hardening_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = security_hardening::run_demo().expect("security example should succeed");
+
+    assert_eq!(summary.secret_redacted, true);
+    assert_eq!(summary.password_redacted, true);
+    assert_eq!(summary.depth_preserved_leaf.as_deref(), Some("deep"));
+}
+
+#[test]
+fn integration_test_data_governance_example_summary_matches_demo_flow() {
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let summary = data_governance::run_demo().expect("data governance example should succeed");
+
+    assert_eq!(summary.full_logs_debug_allowed, true);
+    assert_eq!(summary.none_traces_allowed, false);
+    assert_eq!(summary.redacted_ssn.as_deref(), Some("***"));
+    assert_eq!(summary.hashed_card_len, Some(12));
+    assert_eq!(summary.diagnosis_dropped, true);
+    assert_eq!(summary.api_key_dropped, true);
+    assert_eq!(summary.ssn_class.as_deref(), Some("PII"));
+    assert_eq!(summary.card_class.as_deref(), Some("PCI"));
+    assert_eq!(summary.receipt_action.as_deref(), Some("redact"));
+    assert!(summary.receipt_hmac_prefix_len >= 8);
 }
 
 #[cfg(feature = "otel")]

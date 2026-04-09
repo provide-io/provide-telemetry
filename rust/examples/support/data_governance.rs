@@ -91,7 +91,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 entry
                     .hmac
                     .as_ref()
-                    .map(|hmac: &String| hmac[..8.min(hmac.len())].len())
+                    .map(|hmac| hmac[..8.min(hmac.len())].len())
             })
             .unwrap_or(0),
     })
