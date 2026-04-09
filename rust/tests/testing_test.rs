@@ -28,7 +28,7 @@ fn testing_test_reset_telemetry_state_clears_context_and_health() {
 
     reset_telemetry_state();
 
-    assert!(get_context().get("user_id").is_none());
+    assert!(!get_context().contains_key("user_id"));
     assert_eq!(get_health_snapshot().export_failures_logs, 0);
 }
 
