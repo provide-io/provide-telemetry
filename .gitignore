@@ -27,3 +27,4 @@ go/coverage_new.out
 go/cover.out
 go/coverage_prop.out
 go/coverage.html
+.claude/settings.local.json
