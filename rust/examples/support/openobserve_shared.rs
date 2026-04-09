@@ -3,6 +3,7 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+#![cfg(feature = "otel")]
 #![allow(dead_code)]
 
 use std::collections::HashMap;
@@ -12,9 +13,7 @@ use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Seve
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry::trace::{Tracer as _, TracerProvider as _};
 use opentelemetry::KeyValue;
-use opentelemetry_otlp::{
-    LogExporter, MetricExporter, Protocol, SpanExporter, WithExportConfig, WithHttpConfig,
-};
+use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
@@ -75,11 +74,8 @@ fn otlp_headers(auth: &str) -> HashMap<String, String> {
 }
 
 fn resource(service_name: &str) -> Resource {
-    // Use Resource::builder() (not builder_empty()) so that SdkProvidedResourceDetector
-    // and TelemetryResourceDetector run automatically, populating telemetry.sdk.language,
-    // telemetry.sdk.name, and telemetry.sdk.version in exported signals.
-    Resource::builder()
-        .with_service_name(service_name.to_string())
+    Resource::builder_empty()
+        .with_attributes([KeyValue::new("service.name", service_name.to_string())])
         .build()
 }
 
@@ -123,7 +119,7 @@ pub fn build_tracer_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.traces.clone())
-        .with_timeout(Duration::from_secs(10))
+        .with_http_client(http_client()?)
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build trace exporter: {err}"))?;
@@ -143,7 +139,7 @@ pub fn build_logger_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.logs.clone())
-        .with_timeout(Duration::from_secs(10))
+        .with_http_client(http_client()?)
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build log exporter: {err}"))?;
@@ -163,7 +159,7 @@ pub fn build_meter_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.metrics.clone())
-        .with_timeout(Duration::from_secs(10))
+        .with_http_client(http_client()?)
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build metric exporter: {err}"))?;
@@ -193,10 +189,7 @@ pub fn send_openobserve_json_log(
         .send()
         .map_err(|err| format!("failed to send OpenObserve JSON log: {err}"))?;
     if !response.status().is_success() {
-        return Err(format!(
-            "OpenObserve API returned status {}",
-            response.status()
-        ));
+        return Err(format!("OpenObserve API returned status {}", response.status()));
     }
     Ok(())
 }
@@ -215,9 +208,7 @@ pub fn emit_all_signals(
     let logger = logger_provider.logger("examples.openobserve");
     let meter = meter_provider.meter("examples.openobserve");
     let requests = meter.u64_counter(names.metric_name.clone()).build();
-    let latency = meter
-        .f64_histogram(format!("example.openobserve.latency.{}", names.run_id))
-        .build();
+    let latency = meter.f64_histogram(format!("example.openobserve.latency.{}", names.run_id)).build();
 
     let names_owned = names.clone();
     tracer.in_span(names.trace_name.clone(), |_cx| {
@@ -245,25 +236,13 @@ pub fn emit_all_signals(
         }
     });
 
-    tracer_provider
-        .force_flush()
-        .map_err(|err| format!("trace flush failed: {err}"))?;
-    logger_provider
-        .force_flush()
-        .map_err(|err| format!("log flush failed: {err}"))?;
-    meter_provider
-        .force_flush()
-        .map_err(|err| format!("metric flush failed: {err}"))?;
+    tracer_provider.force_flush().map_err(|err| format!("trace flush failed: {err}"))?;
+    logger_provider.force_flush().map_err(|err| format!("log flush failed: {err}"))?;
+    meter_provider.force_flush().map_err(|err| format!("metric flush failed: {err}"))?;
 
-    tracer_provider
-        .shutdown()
-        .map_err(|err| format!("trace shutdown failed: {err}"))?;
-    logger_provider
-        .shutdown()
-        .map_err(|err| format!("log shutdown failed: {err}"))?;
-    meter_provider
-        .shutdown()
-        .map_err(|err| format!("metric shutdown failed: {err}"))?;
+    tracer_provider.shutdown().map_err(|err| format!("trace shutdown failed: {err}"))?;
+    logger_provider.shutdown().map_err(|err| format!("log shutdown failed: {err}"))?;
+    meter_provider.shutdown().map_err(|err| format!("metric shutdown failed: {err}"))?;
 
     send_openobserve_json_log(endpoints, auth, names)?;
 
@@ -344,11 +323,6 @@ pub fn metric_stream_names(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|entry| {
-            entry
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
+        .filter_map(|entry| entry.get("name").and_then(Value::as_str).map(str::to_string))
         .collect())
 }

@@ -131,6 +131,12 @@ cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_la
 - `openobserve/03_hardening_profile.py`
   - Uses hardening-focused config profile for sampling/backpressure/resilience/SLO.
   - Emits sanitized logs with W3C-ready tracing and metrics export.
+- `rust/examples/openobserve_01_emit_all_signals.rs`
+  - Emits Rust OTLP logs, traces, metrics, plus a baseline JSON log to OpenObserve.
+- `rust/examples/openobserve_02_verify_ingestion.rs`
+  - Captures pre/post ingestion counts from the OpenObserve API and waits for Rust signals to appear.
+- `rust/examples/openobserve_03_hardening_profile.rs`
+  - Applies Rust hardening policies, exports to OpenObserve, and prints the resulting health snapshot.
 
 Start the full dev stack (Grafana/LGTM + OpenObserve + Traefik gateway):
 
@@ -164,4 +170,7 @@ Run:
 uv run --group dev --extra otel python examples/openobserve/01_emit_all_signals.py
 uv run --group dev --extra otel python examples/openobserve/02_verify_ingestion.py
 uv run --group dev --extra otel python examples/openobserve/03_hardening_profile.py
+cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_01_emit_all_signals
+cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_02_verify_ingestion
+cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_03_hardening_profile
 ```

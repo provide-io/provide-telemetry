@@ -5,17 +5,27 @@
 use provide_telemetry::{
     bind_context, bind_propagation_context, extract_w3c_context, get_trace_context,
 };
+use rstest::rstest;
 use serde_json::json;
 
-#[test]
-fn propagation_test_traceparent_over_limit_is_discarded() {
-    let over_limit = "x".repeat(513);
-    let context = extract_w3c_context(Some(&over_limit), Some("k=v"), Some("a=b"));
+#[rstest]
+#[case(Some("x".repeat(513)), Some("k=v".to_string()), Some("a=b".to_string()))]
+#[case(Some("00-zzzz-zzzz-01".to_string()), Some("k=v".to_string()), None)]
+fn propagation_test_invalid_traceparent_is_discarded(
+    #[case] traceparent: Option<String>,
+    #[case] tracestate: Option<String>,
+    #[case] baggage: Option<String>,
+) {
+    let context = extract_w3c_context(
+        traceparent.as_deref(),
+        tracestate.as_deref(),
+        baggage.as_deref(),
+    );
 
     assert!(context.traceparent.is_none());
     assert!(context.trace_id.is_none());
     assert!(context.span_id.is_none());
-    assert_eq!(context.tracestate.as_deref(), Some("k=v"));
+    assert_eq!(context.tracestate.as_deref(), tracestate.as_deref());
 }
 
 #[test]

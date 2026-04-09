@@ -10,6 +10,7 @@ use provide_telemetry::{
     register_cardinality_limit, sanitize_payload, CardinalityLimit, EventSchemaError, PIIMode,
     PIIRule,
 };
+use rstest::rstest;
 
 static PARITY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -113,9 +114,14 @@ fn parity_test_propagation_limits_match_fixture() {
     assert!(discarded.baggage.is_none());
 }
 
-#[test]
-fn parity_test_slo_classification_matches_fixture() {
-    assert_eq!(classify_error(404), "client_error");
-    assert_eq!(classify_error(503), "server_error");
-    assert_eq!(classify_error(200), "ok");
+#[rstest]
+#[case(404, "client_error")]
+#[case(503, "server_error")]
+#[case(200, "ok")]
+#[case(0, "timeout")]
+fn parity_test_slo_classification_matches_fixture(
+    #[case] status_code: u16,
+    #[case] expected: &str,
+) {
+    assert_eq!(classify_error(status_code), expected);
 }

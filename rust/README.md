@@ -33,7 +33,10 @@ cargo build --manifest-path rust/Cargo.toml --features otel
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_12_error_fingerprint_and_sessions`
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_13_security_hardening`
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_14_data_governance`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_01_emit_all_signals`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_02_verify_ingestion`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_03_hardening_profile`
 - `cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_client`
 - `cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_server -- --port 18765`
 
-The Rust example suite now covers the same numbered telemetry examples as Python and TypeScript, plus the Rust OTLP E2E client/server pair used by the cross-language verification flow.
+The Rust example suite now covers the same numbered telemetry examples as Python and TypeScript, includes Rust OpenObserve examples, and keeps the OTLP E2E client/server pair used by the cross-language verification flow.
