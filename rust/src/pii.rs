@@ -108,14 +108,12 @@ fn mask_value(value: &Value, mode: &PIIMode, truncate_to: usize) -> Option<Value
                 Value::String(value) => value.clone(),
                 _ => value.to_string(),
             };
-            if text.len() <= truncate_to {
+            let char_count = text.chars().count();
+            if char_count <= truncate_to {
                 Some(Value::String(text))
             } else {
-                Some(Value::String(format!(
-                    "{}{}",
-                    &text[..truncate_to],
-                    TRUNC_SUFFIX
-                )))
+                let head: String = text.chars().take(truncate_to).collect();
+                Some(Value::String(format!("{head}{TRUNC_SUFFIX}")))
             }
         }
     }
