@@ -5,9 +5,11 @@
 package logger_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/provide-io/provide-telemetry/go/logger"
@@ -179,6 +181,21 @@ func TestHandlerContextFieldsCopiesExistingAttrs(t *testing.T) {
 
 // ---- _sanitizeSlice: string element secret detection ----
 
+func TestSanitizeSliceNonStringNonMapPassthrough(t *testing.T) {
+	// The default branch in _sanitizeSlice: integer elements pass through unchanged.
+	payload := map[string]any{
+		"counts": []any{1, 2, 3},
+	}
+	result := logger.SanitizePayload(payload, true, 0)
+	counts, ok := result["counts"].([]any)
+	if !ok {
+		t.Fatalf("counts should be a slice, got %T", result["counts"])
+	}
+	if counts[0] != 1 {
+		t.Fatalf("integer element should be preserved, got %v", counts[0])
+	}
+}
+
 func TestSanitizeSliceStringSecretDetected(t *testing.T) {
 	// A slice containing a string that matches a secret pattern should be redacted.
 	payload := map[string]any{
@@ -211,4 +228,92 @@ func TestConfigureModuleLevelsCloned(t *testing.T) {
 	// Mutating the original map must not affect the stored config.
 	levels["mymod"] = "error"
 	// We can't inspect the stored cfg directly, but the test verifies no panic/race.
+}
+
+// ---- NewNullLogger ----
+
+func TestNewNullLoggerDiscardsOutput(t *testing.T) {
+	logger.Configure(logger.DefaultLogConfig())
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	l := logger.NewNullLogger()
+	// Must not panic; output is silently discarded.
+	l.Info("should be discarded", slog.String("key", "value"))
+}
+
+// ---- NewBufferLogger ----
+
+func TestNewBufferLoggerCapturesOutput(t *testing.T) {
+	logger.Configure(logger.DefaultLogConfig())
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	var buf bytes.Buffer
+	l := logger.NewBufferLogger(&buf, slog.LevelInfo)
+	l.Info("hello buffer", slog.String("k", "v"))
+
+	if !strings.Contains(buf.String(), "hello buffer") {
+		t.Errorf("expected log message in buffer, got: %q", buf.String())
+	}
+}
+
+func TestNewBufferLoggerRespectsLevel(t *testing.T) {
+	logger.Configure(logger.DefaultLogConfig())
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	var buf bytes.Buffer
+	// Set level to WARN — INFO records should be dropped.
+	l := logger.NewBufferLogger(&buf, slog.LevelWarn)
+	l.Info("below threshold")
+	l.Warn("above threshold")
+
+	if strings.Contains(buf.String(), "below threshold") {
+		t.Errorf("INFO record should have been dropped by WARN-level buffer logger")
+	}
+	if !strings.Contains(buf.String(), "above threshold") {
+		t.Errorf("WARN record should have been captured")
+	}
+}
+
+func TestNewBufferLoggerTraceLevelCoversAllBranches(t *testing.T) {
+	logger.Configure(logger.DefaultLogConfig())
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	// Exercise the TRACE, DEBUG, and ERROR branches of _slogLevelToString.
+	var buf bytes.Buffer
+	for _, level := range []slog.Level{logger.LevelTrace, slog.LevelDebug, slog.LevelError} {
+		buf.Reset()
+		l := logger.NewBufferLogger(&buf, level)
+		_ = l // logger constructed; level mapping exercised
+	}
+}
+
+// ---- LogConfig.Output ----
+
+func TestConfigureWithOutputWriter(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := logger.DefaultLogConfig()
+	cfg.Output = &buf
+	logger.Configure(cfg)
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	logger.Logger.Info("to output writer")
+
+	if !strings.Contains(buf.String(), "to output writer") {
+		t.Errorf("expected log output in configured writer, got: %q", buf.String())
+	}
+}
+
+func TestGetLoggerWithOutputWriter(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := logger.DefaultLogConfig()
+	cfg.Output = &buf
+	logger.Configure(cfg)
+	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
+
+	l := logger.GetLogger(context.Background(), "test-module")
+	l.Info("getlogger output writer")
+
+	if !strings.Contains(buf.String(), "getlogger output writer") {
+		t.Errorf("expected GetLogger output in configured writer, got: %q", buf.String())
+	}
 }
