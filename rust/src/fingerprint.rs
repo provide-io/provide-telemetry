@@ -16,7 +16,7 @@ fn normalize_frames(stack: &str) -> Vec<String> {
             let normalized = trimmed
                 .replace('\\', "/")
                 .split('/')
-                .next_back()
+                .last()
                 .unwrap_or(trimmed)
                 .to_ascii_lowercase();
             Some(normalized)

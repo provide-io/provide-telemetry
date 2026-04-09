@@ -3,6 +3,8 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+use std::time::Duration;
+
 use provide_telemetry::{
     get_circuit_state, get_health_snapshot, run_with_resilience, set_exporter_policy,
     ExporterPolicy, Signal, TelemetryError,
@@ -39,7 +41,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 allow_blocking_in_event_loop: false,
             },
         )?;
-        let result: Option<()> = run_with_resilience(Signal::Logs, || async {
+        let result: Option<()> = run_with_resilience(Signal::Logs, async {
             Err(TelemetryError::new("fail-open"))
         })
         .await?;
@@ -58,7 +60,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             },
         )?;
         Ok::<bool, TelemetryError>(
-            run_with_resilience::<_, _, ()>(Signal::Logs, || async {
+            run_with_resilience::<_, ()>(Signal::Logs, async {
                 Err(TelemetryError::new("fail-closed"))
             })
             .await
@@ -72,15 +74,13 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.05,
+                timeout_seconds: 0.01,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
         )?;
-        // future::pending() never resolves, so the wrapper timeout MUST fire.
-        // Earlier `sleep(25ms) > timeout(10ms)` flaked on macOS-15 CI runners.
-        let result: Option<()> = run_with_resilience(Signal::Traces, || async {
-            std::future::pending::<()>().await;
+        let result: Option<()> = run_with_resilience(Signal::Traces, async {
+            tokio::time::sleep(Duration::from_millis(25)).await;
             Ok(())
         })
         .await?;
@@ -93,17 +93,14 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.05,
+                timeout_seconds: 0.01,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
         )?;
         for _ in 0..4 {
-            // Same pattern as above: pending future guarantees wrapper-imposed
-            // timeout fires; only real timeouts count toward the circuit breaker.
-            let _ = run_with_resilience::<_, _, ()>(Signal::Metrics, || async {
-                std::future::pending::<()>().await;
-                Ok(())
+            let _ = run_with_resilience::<_, ()>(Signal::Metrics, async {
+                Err(TelemetryError::new("timeout"))
             })
             .await?;
         }

@@ -3,11 +3,12 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+use std::time::Instant;
+
 use provide_telemetry::{
     counter, event, gauge, histogram, setup_telemetry, should_sample, shutdown_telemetry, Signal,
     TelemetryError,
 };
-use std::{f64::consts::PI, time::Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DemoSummary {
@@ -35,7 +36,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         || {
             c.add(1.0, None);
             g.set(42.0, None);
-            h.record(PI, None);
+            h.record(3.14, None);
         },
         500,
     );

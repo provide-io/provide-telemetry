@@ -56,8 +56,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         ExporterPolicy {
             retries: 2,
             backoff_seconds: 0.01,
-            // Short timeout so the wrapper-imposed deadline fires below.
-            timeout_seconds: 0.05,
+            timeout_seconds: 1.0,
             fail_open: true,
             allow_blocking_in_event_loop: false,
         },
@@ -69,12 +68,8 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         .map_err(|err| TelemetryError::new(format!("failed to build runtime: {err}")))?;
     runtime.block_on(async {
         for _ in 0..4 {
-            // future::pending() never resolves, so the wrapper-imposed timeout
-            // MUST fire. Earlier `sleep(50ms) > timeout(10ms)` flaked on
-            // macOS-15 CI runners with high scheduling jitter.
-            let _: Option<()> = run_with_resilience(Signal::Metrics, || async {
-                std::future::pending::<()>().await;
-                Ok(())
+            let _: Option<()> = run_with_resilience(Signal::Metrics, async {
+                Err(TelemetryError::new("hardening demo failure"))
             })
             .await?;
         }
