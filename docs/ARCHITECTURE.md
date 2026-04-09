@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Unified telemetry facade for all provide.telemetry Python packages.
+- Unified telemetry facade across the repo's Python, TypeScript, Go, and Rust implementations.
 - Safe defaults with optional OpenTelemetry runtime integration.
 - Strict event naming and schema validation for consistent analytics.
 - Predictable behavior under async workloads.
@@ -15,6 +15,7 @@
 4. Tracing: OTel provider if available, no-op tracer fallback otherwise.
 5. Metrics: OTel meter provider if available, in-process fallback wrappers otherwise.
 6. ASGI/WebSocket adapters: request context extraction and propagation.
+7. Rust crate (`rust/`): guard-based context API, fallback facades, and optional `otel` feature wiring.
 
 ## High-Level Component Flow
 
@@ -46,7 +47,7 @@ flowchart TD
 - Provider-changing reconfiguration is constrained by OpenTelemetry's process-global providers; after real OTel providers are installed, those changes require process restart rather than in-process replacement.
 - Runtime policy updates snapshot runtime state before storing/applying it.
 - Active runtime state is read back via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than by mutating a caller-owned config object.
-- All context propagation uses `contextvars` for async task safety.
+- Python uses `contextvars` for async task safety; Rust preserves the same behavior with scoped guards over task-local/thread-local snapshots.
 
 ## Async Safety
 
@@ -55,6 +56,7 @@ flowchart TD
 - Request context fields are isolated per task via `contextvars`.
 - Trace context remains stable across await boundaries inside traced async callables.
 - Setup and shutdown routines are race-safe for concurrent callers in the same process.
+- Rust guard-based context bindings restore prior request/session/trace state on `Drop`.
 
 ### Scope Limits
 
@@ -191,4 +193,4 @@ flowchart TD
 - Unit tests with branch coverage for all local logic and fallback paths.
 - Optional-extras tests to validate real OTel imports.
 - Integration smoke test with local OTLP collector (manual/nightly CI).
-- Full 3.11-3.14 quality matrix in CI.
+- Python, TypeScript, Go, and Rust each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`.

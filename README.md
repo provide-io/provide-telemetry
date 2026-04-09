@@ -1,6 +1,6 @@
 # Provide Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, and Go. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
 
 [![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
 [![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
@@ -20,6 +20,12 @@ pip install "provide-telemetry[otel]"      # + OpenTelemetry export
 
 ```bash
 npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
+```
+
+**Rust:**
+
+```bash
+cargo add provide-telemetry
 ```
 
 ## Quick Start
@@ -46,7 +52,7 @@ log.info({ event: 'app.start.ok', requestId: 'req-1' });
 await shutdownTelemetry();
 ```
 
-Both languages share the same API surface, event naming conventions, and configuration environment variables.
+All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration.
 
 ## Configuration
 
@@ -83,7 +89,7 @@ See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs
 
 ## API Surface
 
-Both languages export equivalent APIs:
+All implementations export equivalent APIs:
 
 | Category | Functions |
 |----------|-----------|
@@ -96,7 +102,7 @@ Both languages export equivalent APIs:
 | Health | `get_health_snapshot()` |
 | Runtime | `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
 
 ## Polyglot Architecture
 
@@ -105,15 +111,16 @@ provide-telemetry/
   src/provide/telemetry/    # Python package
   typescript/             # TypeScript package (@provide-io/telemetry)
   go/                     # Go module (github.com/provide-io/provide-telemetry/go)
+  rust/                   # Rust crate (provide-telemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```
 
-A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, and Go exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
+A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, Go, and Rust exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
 
 ## Quality
 
-- 100% branch coverage (Python + TypeScript + Go)
+- 100% branch coverage (Python + TypeScript + Go; Rust crate verified with `cargo test`)
 - 100% mutation kill score (mutmut + Stryker + gremlins)
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
@@ -133,7 +140,8 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 - [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
 - [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
 - [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
-- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for all three languages
+- [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) — Rust-specific source and examples
+- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for the polyglot repo
 
 ## License
 
