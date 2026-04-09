@@ -100,9 +100,13 @@ func main() {
 		FailOpen:       true,
 	})
 	for i := 0; i < 4; i++ {
-		_ = telemetry.RunWithResilience(ctx, "metrics", func(_ context.Context) error {
-			time.Sleep(200 * time.Millisecond) // always times out
-			return nil
+		_ = telemetry.RunWithResilience(ctx, "metrics", func(opCtx context.Context) error {
+			select {
+			case <-opCtx.Done():
+				return opCtx.Err() // context.DeadlineExceeded → counted as timeout
+			case <-time.After(200 * time.Millisecond):
+				return nil
+			}
 		})
 	}
 	cs := telemetry.GetCircuitState("metrics")
