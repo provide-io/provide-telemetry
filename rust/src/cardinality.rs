@@ -37,3 +37,27 @@ pub fn get_cardinality_limits() -> BTreeMap<String, CardinalityLimit> {
 pub fn clear_cardinality_limits() {
     limits().lock().expect("cardinality lock poisoned").clear();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn cardinality_test_clear_limits_removes_registered_entries() {
+        let _guard = acquire_test_state_lock();
+        clear_cardinality_limits();
+        register_cardinality_limit(
+            "user.id",
+            CardinalityLimit {
+                max_values: 5,
+                ttl_seconds: 60.0,
+            },
+        );
+        assert!(get_cardinality_limits().contains_key("user.id"));
+
+        clear_cardinality_limits();
+
+        assert!(get_cardinality_limits().is_empty());
+    }
+}
