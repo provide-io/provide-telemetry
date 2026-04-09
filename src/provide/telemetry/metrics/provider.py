@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import threading
+import warnings
 from typing import Any
 
 from provide.telemetry import _otel
@@ -58,7 +59,19 @@ def _has_meter_provider() -> bool:
 def setup_metrics(config: TelemetryConfig) -> None:
     global _meter_provider, _meter_global_set
     global _baseline_meter_provider, _baseline_captured
-    if not config.metrics.enabled or not _HAS_OTEL_METRICS:
+    if not config.metrics.enabled:
+        return
+    from provide.telemetry.resilience import _is_running_in_event_loop
+
+    if _is_running_in_event_loop():  # pragma: no mutate
+        warnings.warn(
+            "setup_metrics() called from an active event loop; "
+            "provider initialization may stall the event loop. "
+            "Call setup_telemetry() before starting the event loop.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    if not _HAS_OTEL_METRICS:
         return
 
     with _meter_lock:
