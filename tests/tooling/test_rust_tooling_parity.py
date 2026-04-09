@@ -27,3 +27,15 @@ def test_ci_mutation_workflow_includes_rust_job() -> None:
     assert "rust-mutation:" in workflow
     assert "cargo-mutants" in workflow
     assert "working-directory: rust" in workflow
+
+
+def test_ci_mutation_workflow_routes_jobs_by_language_changes() -> None:
+    workflow = (_REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml").read_text(encoding="utf-8")
+
+    assert "paths-filter" in workflow
+    assert "python-mutation" in workflow
+    assert "typescript-mutation" in workflow
+    assert "rust-mutation" in workflow
+    assert "needs.changes.outputs.python" in workflow
+    assert "needs.changes.outputs.typescript" in workflow
+    assert "needs.changes.outputs.rust" in workflow
