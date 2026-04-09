@@ -154,9 +154,11 @@ jobs:
       - name: Publish to npm
         run: |
           ls -la npm-pack/
-          TARBALL=$(ls npm-pack/*.tgz)
-          echo "Publishing: $TARBALL"
-          npm publish "$TARBALL" --access public
+          cd npm-pack
+          tar xzf *.tgz
+          cd package
+          cat package.json | head -5
+          npm publish --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
