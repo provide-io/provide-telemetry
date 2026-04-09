@@ -25,7 +25,7 @@ import {
   shutdownTelemetry,
 } from '../../src/index.js';
 
-function main(): void {
+async function main(): Promise<void> {
   setupTelemetry({ serviceName: 'ts-security-demo', logLevel: 'info' });
   const log = getLogger('security-demo');
 

@@ -59,15 +59,11 @@ func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, er
 	if err := _validateSignal(signal); err != nil {
 		return SamplingPolicy{}, err
 	}
-	if policy.DefaultRate < 0.0 {
-		policy.DefaultRate = 0.0
-	} else if policy.DefaultRate > 1.0 {
-		policy.DefaultRate = 1.0
-	}
+	policy.DefaultRate = _clampRate(policy.DefaultRate)
 	if len(policy.Overrides) > 0 {
 		clamped := make(map[string]float64, len(policy.Overrides))
 		for k, v := range policy.Overrides {
-			clamped[k] = max(0.0, min(1.0, v))
+			clamped[k] = _clampRate(v)
 		}
 		policy.Overrides = clamped
 	}
