@@ -25,7 +25,7 @@
       "Bash(go tool:*)",
       "Bash(go env:*)",
       "Bash(/Users/tim/go/bin/gremlins unleash:*)",
-      "Bash(OPENOBSERVE_USER=admin@provide.test OPENOBSERVE_PASSWORD=Complexpass#123 OPENOBSERVE_URL=http://localhost:5080/api/default OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5080/api/default npx tsx examples/openobserve/03_hardening_profile.ts)"
+      "Bash(npx tsx examples/openobserve/03_hardening_profile.ts)"
     ]
   }
 }
