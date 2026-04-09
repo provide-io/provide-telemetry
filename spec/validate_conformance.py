@@ -144,6 +144,50 @@ def _get_go_exports() -> set[str]:
     return exports
 
 
+def _parse_rust_use_exports(use_body: str) -> set[str]:
+    """Extract exported symbol names from a Rust ``pub use`` statement body."""
+    body = use_body.strip()
+    if "{" in body and "}" in body:
+        items = body[body.index("{") + 1 : body.rindex("}")]
+        exports = set()
+        for item in re.split(r"\s*,\s*", items.strip()):
+            if not item:
+                continue
+            if " as " in item:
+                exports.add(item.split(" as ")[1].strip())
+            else:
+                exports.add(item.rsplit("::", 1)[-1].strip())
+        return exports
+
+    target = body.rsplit("::", 1)[-1].strip()
+    if " as " in target:
+        return {target.split(" as ")[1].strip()}
+    return {target}
+
+
+def _get_rust_exports() -> set[str]:
+    """Parse exported symbol names from rust/src/lib.rs via regex."""
+    lib_path = _REPO_ROOT / "rust" / "src" / "lib.rs"
+    if not lib_path.exists():
+        return set()
+    text = lib_path.read_text(encoding="utf-8")
+    exports: set[str] = set()
+    patterns = (
+        r"^\s*pub\s+(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"^\s*pub\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"^\s*pub\s+enum\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"^\s*pub\s+type\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"^\s*pub\s+static\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"^\s*pub\s+const\s+([A-Za-z_][A-Za-z0-9_]*)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.MULTILINE):
+            exports.add(match.group(1))
+    for match in re.finditer(r"^\s*pub\s+use\s+(.+?);", text, re.MULTILINE | re.DOTALL):
+        exports.update(_parse_rust_use_exports(match.group(1)))
+    return exports
+
+
 def _get_typescript_exports() -> set[str]:
     """Parse TypeScript export names from index.ts via regex."""
     index_path = _REPO_ROOT / "typescript" / "src" / "index.ts"
@@ -171,6 +215,9 @@ def _check_language(
     if lang == "python":
         exports = _get_python_exports()
         transform = _identity
+    elif lang == "rust":
+        exports = _get_rust_exports()
+        transform = _identity
     elif lang == "typescript":
         exports = _get_typescript_exports()
         transform = _to_camel_case
@@ -194,14 +241,14 @@ def _check_language(
 def main() -> int:
     """Run conformance checks. Returns 0 on success, 1 on failure."""
     parser = argparse.ArgumentParser(description="Validate API conformance against spec.")
-    parser.add_argument("--lang", choices=["python", "typescript", "go"], action="append", default=None)
+    parser.add_argument("--lang", choices=["python", "rust", "typescript", "go"], action="append", default=None)
     parser.add_argument("--spec", type=Path, default=None, help="Path to spec YAML (default: spec/telemetry-api.yaml)")
     args = parser.parse_args()
 
     spec = _load_spec(args.spec)
     symbols = _collect_spec_symbols(spec)
 
-    langs = args.lang or ["python", "typescript", "go"]
+    langs = args.lang or ["python", "rust", "typescript", "go"]
     all_errors: list[str] = []
 
     for lang in langs:
