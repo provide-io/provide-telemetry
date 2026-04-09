@@ -67,13 +67,7 @@ func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, er
 	if len(policy.Overrides) > 0 {
 		clamped := make(map[string]float64, len(policy.Overrides))
 		for k, v := range policy.Overrides {
-			if v < 0.0 {
-				clamped[k] = 0.0
-			} else if v > 1.0 {
-				clamped[k] = 1.0
-			} else {
-				clamped[k] = v
-			}
+			clamped[k] = max(0.0, min(1.0, v))
 		}
 		policy.Overrides = clamped
 	}
