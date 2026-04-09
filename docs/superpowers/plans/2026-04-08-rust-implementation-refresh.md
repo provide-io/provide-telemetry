@@ -161,7 +161,7 @@ def _get_rust_exports() -> set[str]:
         r"^\s*pub\s+struct\s+([A-Z][A-Za-z0-9_]*)",
         r"^\s*pub\s+enum\s+([A-Z][A-Za-z0-9_]*)",
         r"^\s*pub\s+type\s+([A-Z][A-Za-z0-9_]*)",
-        r"^\s*pub\s+static\s+([A-Z_][A-Z0-9_]*)",
+        r"^\s*pub\s+(?:static|const)\s+([A-Z_][A-Z0-9_]*)",
     )
     exports: set[str] = set()
     for pattern in patterns:
@@ -323,11 +323,11 @@ pub struct ContextSnapshot {
 
 - [ ] **Step 2: Back the storage with a runtime-aware abstraction**
 
-Preferred approach (note: `RefCell` makes the task `!Send`; use `Mutex` or restructure to avoid interior mutability if tasks must cross thread boundaries on Tokio's multi-threaded scheduler):
+Preferred approach (use `tokio::sync::Mutex` — not `std::sync::Mutex` — to avoid blocking the async executor when acquiring the lock across await points):
 
 ```rust
 tokio::task_local! {
-    static TASK_CONTEXT: Mutex<ContextSnapshot>;
+    static TASK_CONTEXT: tokio::sync::Mutex<ContextSnapshot>;
 }
 ```
 
