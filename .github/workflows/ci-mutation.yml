@@ -6,6 +6,10 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "rust/src/**"
+      - "rust/tests/**"
+      - "rust/Cargo.toml"
+      - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
   pull_request:
@@ -13,6 +17,10 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "rust/src/**"
+      - "rust/tests/**"
+      - "rust/Cargo.toml"
+      - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
   workflow_dispatch:
@@ -45,3 +53,16 @@ jobs:
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
       - run: npm run test:mutation
+
+  rust-mutation:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+      - name: Run cargo-mutants
+        run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
