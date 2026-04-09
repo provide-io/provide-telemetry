@@ -157,10 +157,10 @@ def _get_rust_exports() -> set[str]:
         return set()
     text = lib_rs.read_text(encoding="utf-8")
     patterns = (
-        r"^\s*pub\s+(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)",
-        r"^\s*pub\s+struct\s+([A-Z][A-Za-z0-9]*)",
-        r"^\s*pub\s+enum\s+([A-Z][A-Za-z0-9]*)",
-        r"^\s*pub\s+type\s+([A-Z][A-Za-z0-9]*)",
+        r"^\s*pub\s+(?:async\s+)?fn\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+        r"^\s*pub\s+struct\s+([A-Z][A-Za-z0-9_]*)",
+        r"^\s*pub\s+enum\s+([A-Z][A-Za-z0-9_]*)",
+        r"^\s*pub\s+type\s+([A-Z][A-Za-z0-9_]*)",
         r"^\s*pub\s+static\s+([A-Z_][A-Z0-9_]*)",
     )
     exports: set[str] = set()
