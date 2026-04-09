@@ -163,6 +163,11 @@ def _get_rust_exports() -> set[str]:
         r"^\s*pub\s+type\s+([A-Z][A-Za-z0-9]*)",
         r"^\s*pub\s+static\s+([A-Z_][A-Z0-9_]*)",
     )
+    exports: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.MULTILINE):
+            exports.add(match.group(1))
+    return exports
 ```
 
 - [ ] **Step 4: Add `rust` to CLI choices and default language list**
@@ -318,11 +323,11 @@ pub struct ContextSnapshot {
 
 - [ ] **Step 2: Back the storage with a runtime-aware abstraction**
 
-Preferred approach:
+Preferred approach (note: `RefCell` makes the task `!Send`; use `Mutex` or restructure to avoid interior mutability if tasks must cross thread boundaries on Tokio's multi-threaded scheduler):
 
 ```rust
 tokio::task_local! {
-    static TASK_CONTEXT: RefCell<ContextSnapshot>;
+    static TASK_CONTEXT: Mutex<ContextSnapshot>;
 }
 ```
 
