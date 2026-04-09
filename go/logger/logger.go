@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"slices"
@@ -265,16 +266,56 @@ func _newTelemetryHandler(base slog.Handler, cfg LogConfig, name string) slog.Ha
 }
 
 func _configureLogger(cfg LogConfig) {
+	w := cfg.Output
+	if w == nil {
+		w = os.Stderr
+	}
 	opts := &slog.HandlerOptions{Level: LevelTrace}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
+		base = slog.NewJSONHandler(w, opts)
 	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
+		base = slog.NewTextHandler(w, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, "")
 	Logger = slog.New(h)
 	slog.SetDefault(Logger)
+}
+
+// NewNullLogger returns a logger that discards all output while still running
+// the full telemetry handler chain (PII sanitisation, schema validation, etc.).
+// Useful in tests that want to exercise the logging path without capturing output.
+func NewNullLogger() *slog.Logger {
+	opts := &slog.HandlerOptions{Level: LevelTrace}
+	base := slog.NewTextHandler(io.Discard, opts)
+	return slog.New(_newTelemetryHandler(base, _cfg, ""))
+}
+
+// NewBufferLogger returns a logger that writes through the full telemetry handler
+// chain to w at the given minimum level. Useful in tests that need to assert on
+// log output; records below level are dropped before reaching the chain.
+func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: level}
+	base := slog.NewTextHandler(w, opts)
+	cfg := _cfg
+	cfg.Level = _slogLevelToString(level)
+	return slog.New(_newTelemetryHandler(base, cfg, ""))
+}
+
+// _slogLevelToString maps a slog.Level to the nearest LogLevel* string constant.
+func _slogLevelToString(l slog.Level) string {
+	switch {
+	case l <= LevelTrace:
+		return LogLevelTrace
+	case l <= slog.LevelDebug:
+		return LogLevelDebug
+	case l <= slog.LevelInfo:
+		return LogLevelInfo
+	case l <= slog.LevelWarn:
+		return LogLevelWarn
+	default:
+		return LogLevelError
+	}
 }
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
@@ -282,12 +323,16 @@ func _configureLogger(cfg LogConfig) {
 // so they appear on every log line even when callers use the context-free form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
 	cfg := _cfg
+	w := cfg.Output
+	if w == nil {
+		w = os.Stderr
+	}
 	opts := &slog.HandlerOptions{Level: LevelTrace}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
+		base = slog.NewJSONHandler(w, opts)
 	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
+		base = slog.NewTextHandler(w, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, name)
 	l := slog.New(h)
