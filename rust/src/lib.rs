@@ -32,7 +32,6 @@ mod secret_patterns_generated;
 mod setup;
 pub mod slo;
 pub mod testing;
-pub mod tracer;
 pub mod tracing;
 
 pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire, QueuePolicy};
