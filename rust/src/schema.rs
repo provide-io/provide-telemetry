@@ -74,3 +74,33 @@ pub fn event_name(segments: &[&str], strict: bool) -> Result<String, EventSchema
     }
     Ok(segments.join("."))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_test_event_name_returns_exact_joined_value() {
+        assert_eq!(
+            event_name(&["auth", "login", "ok"], false).expect("name should build"),
+            "auth.login.ok"
+        );
+        assert_eq!(
+            event_name(&["a", "b", "c", "d", "e"], true).expect("strict name should build"),
+            "a.b.c.d.e"
+        );
+    }
+
+    #[test]
+    fn schema_test_event_name_validates_empty_and_invalid_strict_inputs() {
+        let err = event_name(&[], false).expect_err("empty non-strict name should fail");
+        assert_eq!(err.message, "event_name requires at least 1 segment");
+
+        let err = event_name(&["a", "b"], true).expect_err("strict arity should fail");
+        assert_eq!(err.message, "expected 3-5 segments, got 2");
+
+        let err =
+            event_name(&["valid", "not-valid", "ok"], true).expect_err("strict syntax should fail");
+        assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
+    }
+}
