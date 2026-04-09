@@ -45,9 +45,15 @@ var (
 
 // SetSamplingPolicy registers a sampling policy for a signal.
 // signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
+// DefaultRate is clamped to [0.0, 1.0].
 func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, error) {
 	if err := _validateSignal(signal); err != nil {
 		return SamplingPolicy{}, err
+	}
+	if policy.DefaultRate < 0.0 {
+		policy.DefaultRate = 0.0
+	} else if policy.DefaultRate > 1.0 {
+		policy.DefaultRate = 1.0
 	}
 	_samplingMu.Lock()
 	defer _samplingMu.Unlock()
