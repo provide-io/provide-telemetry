@@ -2,6 +2,17 @@
 
 How undef-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
 
+## Polyglot Note
+
+The Python modules below remain the behavioral reference, but the repo now also carries a Rust crate under `rust/`. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
+
+- `bind_context(...) -> ContextGuard`
+- `bind_session_context(...) -> ContextGuard`
+- `set_trace_context(...) -> ContextGuard`
+- `bind_propagation_context(...) -> PropagationGuard`
+
+Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
+
 ## Structlog Processor Pipeline
 
 Every log event passes through a linear chain of structlog processors configured in `logger/core.py`. The chain runs in order — each processor transforms the event dict and returns it (or raises `DropEvent` to discard).
@@ -181,3 +192,19 @@ These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 - Service name, environment, version
 
 `reconfigure_telemetry()` detects whether the config change affects providers. If so and providers are already installed, it raises `RuntimeError` rather than silently producing inconsistent state.
+
+## Rust Verification
+
+The Rust implementation is considered healthy when these commands pass:
+
+```bash
+cd rust
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+cargo test --features otel
+cargo build --examples --features otel
+uv run python spec/validate_conformance.py --lang rust
+uv run python scripts/check_version_sync.py
+uv run pytest -o addopts= e2e/test_cross_language_trace_e2e.py -q --no-cov
+```

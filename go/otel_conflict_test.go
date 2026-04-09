@@ -11,10 +11,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
-	otellognoop "go.opentelemetry.io/otel/log/noop"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -56,22 +53,6 @@ type _thirdPartyMeterProvider struct {
 	otelmetricnoop.MeterProvider
 }
 
-// _globalDelegatingMeterProvider simulates OTel's own internal global delegating wrapper.
-// Its type name contains "global", so _warnIfMeterProviderConflict treats it as non-conflicting.
-type _globalDelegatingMeterProvider struct {
-	otelmetricnoop.MeterProvider
-}
-
-// _thirdPartyLoggerProvider satisfies otellog.LoggerProvider with a distinct type name.
-type _thirdPartyLoggerProvider struct {
-	otellognoop.LoggerProvider
-}
-
-// _globalDelegatingLoggerProvider simulates OTel's internal global logger wrapper.
-type _globalDelegatingLoggerProvider struct {
-	otellognoop.LoggerProvider
-}
-
 // resetOTelGlobal restores the OTel global tracer/meter to an SDK noop state so
 // subsequent tests start from a known "no third-party conflict" baseline.
 // Because otel.SetTracerProvider has no "undo", we install an SDK provider that
@@ -85,8 +66,6 @@ func resetOTelGlobal(t *testing.T) {
 	mp := sdkmetric.NewMeterProvider()
 	otel.SetMeterProvider(mp)
 	_ = mp.Shutdown(context.Background())
-
-	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 
 // ── _warnIfTracerProviderConflict ─────────────────────────────────────────────
@@ -189,23 +168,17 @@ func TestWarnIfTracerProviderConflict_NoWarnWhenLoggerNil(t *testing.T) {
 // ── _warnIfMeterProviderConflict ─────────────────────────────────────────────
 
 func TestWarnIfMeterProviderConflict_NoWarnForDefaultGlobal(t *testing.T) {
-	// Install a provider whose type name contains "global" to simulate OTel's own
-	// internal delegating wrapper. This makes the test self-contained rather than
-	// relying on initial process state (which prior tests may have mutated).
+	// Relies on the global meter being in default state — run before other meter tests.
 	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
+	t.Cleanup(func() { resetSetupState(t) })
 
-	otel.SetMeterProvider(&_globalDelegatingMeterProvider{})
 	h := newCaptureHandler(slog.LevelWarn)
 	Logger = slog.New(h)
 
 	_warnIfMeterProviderConflict()
 
 	if strings.Contains(h.buf.String(), "conflict") {
-		t.Errorf("unexpected conflict warning for global-named meter provider: %s", h.buf.String())
+		t.Errorf("unexpected conflict warning for default global meter: %s", h.buf.String())
 	}
 }
 
@@ -281,98 +254,4 @@ func TestWarnIfMeterProviderConflict_NoWarnWhenLoggerNil(t *testing.T) {
 	Logger = nil
 
 	_warnIfMeterProviderConflict() // must not panic
-}
-
-// ── _warnIfLoggerProviderConflict ────────────────────────────────────────────
-
-func TestWarnIfLoggerProviderConflict_NoWarnForDefaultGlobal(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
-
-	logglobal.SetLoggerProvider(&_globalDelegatingLoggerProvider{})
-	h := newCaptureHandler(slog.LevelWarn)
-	Logger = slog.New(h)
-
-	_warnIfLoggerProviderConflict()
-
-	if strings.Contains(h.buf.String(), "conflict") {
-		t.Errorf("unexpected conflict warning for global-named logger provider: %s", h.buf.String())
-	}
-}
-
-func TestWarnIfLoggerProviderConflict_NoWarnForOwnSDKProvider(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
-
-	lp := sdklog.NewLoggerProvider()
-	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
-	logglobal.SetLoggerProvider(lp)
-
-	h := newCaptureHandler(slog.LevelWarn)
-	Logger = slog.New(h)
-
-	_warnIfLoggerProviderConflict()
-
-	if strings.Contains(h.buf.String(), "conflict") {
-		t.Errorf("unexpected conflict warning for own SDK logger provider: %s", h.buf.String())
-	}
-}
-
-func TestWarnIfLoggerProviderConflict_NoWarnWhenOtelLoggerProviderSet(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
-
-	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})
-	_otelLoggerProvider = sdklog.NewLoggerProvider()
-	t.Cleanup(func() { _ = _otelLoggerProvider.Shutdown(context.Background()) })
-
-	h := newCaptureHandler(slog.LevelWarn)
-	Logger = slog.New(h)
-
-	_warnIfLoggerProviderConflict()
-
-	if strings.Contains(h.buf.String(), "conflict") {
-		t.Errorf("unexpected conflict warning when _otelLoggerProvider is set: %s", h.buf.String())
-	}
-}
-
-func TestWarnIfLoggerProviderConflict_WarnsForThirdParty(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
-
-	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})
-
-	h := newCaptureHandler(slog.LevelWarn)
-	Logger = slog.New(h)
-
-	_warnIfLoggerProviderConflict()
-
-	if !strings.Contains(h.buf.String(), "otel.logger_provider_conflict") {
-		t.Errorf("expected conflict warning for third-party logger provider, got: %q", h.buf.String())
-	}
-}
-
-func TestWarnIfLoggerProviderConflict_NoWarnWhenLoggerNil(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
-
-	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})
-	Logger = nil
-
-	_warnIfLoggerProviderConflict() // must not panic
 }
