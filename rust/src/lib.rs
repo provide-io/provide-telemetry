@@ -26,6 +26,7 @@ pub mod sampling;
 pub mod schema;
 mod setup;
 pub mod slo;
+pub mod testing;
 pub mod tracing;
 
 pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire, QueuePolicy};
