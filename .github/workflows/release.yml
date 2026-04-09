@@ -127,6 +127,25 @@ jobs:
           name: npm-pack
           path: typescript/*.tgz
 
+  build-rust:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Rust tests
+        run: cargo test --locked --all-targets --all-features
+      - name: Package Rust crate
+        run: cargo package --locked
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: rust-package
+          path: rust/target/package/*.crate
+
   publish-npm:
     needs: build-npm
     if: github.event_name == 'release'
@@ -158,8 +177,28 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  publish-rust:
+    needs: build-rust
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/provide-telemetry
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish to crates.io
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
   sign-and-upload:
-    needs: build
+    needs: [build, build-rust]
     if: github.event_name == 'release'
     runs-on: ubuntu-24.04
     permissions:
@@ -174,6 +213,14 @@ jobs:
         with:
           name: sbom-python
           path: sbom
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: sbom-typescript
+          path: sbom
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: rust-package
+          path: rust-dist
       - uses: sigstore/gh-action-sigstore-python@f514d46b907ebcd5bedc05145c03b69c1edd8b46  # v3.0.0
         with:
           inputs: dist/*.whl dist/*.tar.gz
@@ -183,6 +230,7 @@ jobs:
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
+            rust-dist/*.crate \
             sbom/sbom-python.cdx.json \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
