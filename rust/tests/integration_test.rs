@@ -13,6 +13,10 @@ use provide_telemetry::{
     SamplingPolicy, Signal,
 };
 
+#[cfg(feature = "otel")]
+#[path = "../examples/support/e2e_shared.rs"]
+mod e2e_shared;
+
 static POLICY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn policy_lock() -> &'static Mutex<()> {
@@ -24,6 +28,35 @@ fn reset_policies() {
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     provide_telemetry::resilience::_reset_resilience_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
+}
+
+#[cfg(feature = "otel")]
+fn restore_var(key: &str, previous: Option<String>) {
+    match previous {
+        Some(value) => std::env::set_var(key, value),
+        None => std::env::remove_var(key),
+    }
+}
+
+#[cfg(feature = "otel")]
+#[test]
+fn integration_test_e2e_tracer_provider_builds_with_http_exporter() {
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    let headers_key = "OTEL_EXPORTER_OTLP_HEADERS";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
+    let previous_headers = std::env::var(headers_key).ok();
+    std::env::set_var(endpoint_key, "http://localhost:5080/api/default");
+    std::env::set_var(headers_key, "Authorization=Basic%20test");
+
+    let result = e2e_shared::init_tracer_provider("rust-e2e-test");
+
+    restore_var(endpoint_key, previous_endpoint);
+    restore_var(headers_key, previous_headers);
+
+    assert!(
+        result.is_ok(),
+        "expected OTLP tracer provider to build for E2E helper, got {result:?}"
+    );
 }
 
 #[cfg(feature = "otel")]
