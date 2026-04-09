@@ -53,6 +53,12 @@ type _thirdPartyMeterProvider struct {
 	otelmetricnoop.MeterProvider
 }
 
+// _globalDelegatingMeterProvider simulates OTel's own internal global delegating wrapper.
+// Its type name contains "global", so _warnIfMeterProviderConflict treats it as non-conflicting.
+type _globalDelegatingMeterProvider struct {
+	otelmetricnoop.MeterProvider
+}
+
 // resetOTelGlobal restores the OTel global tracer/meter to an SDK noop state so
 // subsequent tests start from a known "no third-party conflict" baseline.
 // Because otel.SetTracerProvider has no "undo", we install an SDK provider that
@@ -168,17 +174,23 @@ func TestWarnIfTracerProviderConflict_NoWarnWhenLoggerNil(t *testing.T) {
 // ── _warnIfMeterProviderConflict ─────────────────────────────────────────────
 
 func TestWarnIfMeterProviderConflict_NoWarnForDefaultGlobal(t *testing.T) {
-	// Relies on the global meter being in default state — run before other meter tests.
+	// Install a provider whose type name contains "global" to simulate OTel's own
+	// internal delegating wrapper. This makes the test self-contained rather than
+	// relying on initial process state (which prior tests may have mutated).
 	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
 
+	otel.SetMeterProvider(&_globalDelegatingMeterProvider{})
 	h := newCaptureHandler(slog.LevelWarn)
 	Logger = slog.New(h)
 
 	_warnIfMeterProviderConflict()
 
 	if strings.Contains(h.buf.String(), "conflict") {
-		t.Errorf("unexpected conflict warning for default global meter: %s", h.buf.String())
+		t.Errorf("unexpected conflict warning for global-named meter provider: %s", h.buf.String())
 	}
 }
 
