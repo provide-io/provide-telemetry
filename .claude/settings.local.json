@@ -14,7 +14,17 @@
       "Bash(npm update:*)",
       "Bash(npm outdated:*)",
       "Bash(do echo:*)",
-      "Bash(pre-commit --version)"
+      "Bash(pre-commit --version)",
+      "Bash(wc:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(go list:*)",
+      "Bash(ls /Users/tim/code/gh/provide-io/provide-telemetry/go/*.go)",
+      "Bash(go mod:*)",
+      "Bash(go vet:*)",
+      "Bash(go tool:*)",
+      "Bash(go env:*)",
+      "Bash(/Users/tim/go/bin/gremlins unleash:*)"
     ]
   }
 }

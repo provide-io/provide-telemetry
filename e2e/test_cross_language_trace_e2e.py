@@ -38,6 +38,93 @@ pytestmark = pytest.mark.e2e
 _REPO_ROOT = Path(__file__).parent.parent
 _SERVER_SCRIPT = _REPO_ROOT / "e2e" / "backends" / "cross_language_server.py"
 _TS_SCRIPT = _REPO_ROOT / "typescript" / "scripts" / "e2e_cross_language_client.ts"
+_RUST_DIR = _REPO_ROOT / "rust"
+
+
+def _start_backend(backend_lang: str, port: int, base_url: str, otlp_headers_value: str) -> subprocess.Popen[str]:
+    server_env = {
+        **os.environ,
+        "PROVIDE_TRACE_ENABLED": "true",
+        "PROVIDE_METRICS_ENABLED": "false",
+        "PROVIDE_TELEMETRY_VERSION": "e2e",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{base_url}/v1/traces",
+        "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
+        "OTEL_BSP_SCHEDULE_DELAY": "200",
+        "OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "1",
+    }
+    if backend_lang == "python":
+        server_env["PROVIDE_TELEMETRY_SERVICE_NAME"] = "py-e2e-backend"
+        command = [sys.executable, str(_SERVER_SCRIPT), "--port", str(port)]
+        cwd = str(_REPO_ROOT)
+    elif backend_lang == "rust":
+        server_env["PROVIDE_TELEMETRY_SERVICE_NAME"] = "rust-e2e-backend"
+        command = [
+            "cargo",
+            "run",
+            "--quiet",
+            "--features",
+            "otel",
+            "--example",
+            "e2e_cross_language_server",
+            "--",
+            "--port",
+            str(port),
+        ]
+        cwd = str(_RUST_DIR)
+    else:
+        raise AssertionError(f"unsupported backend_lang={backend_lang!r}")
+
+    return subprocess.Popen(
+        command,
+        env=server_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=cwd,
+    )
+
+
+def _run_client(client_lang: str, backend_url: str, base_url: str, auth: str) -> subprocess.CompletedProcess[str]:
+    if client_lang == "typescript":
+        client_env = {
+            **os.environ,
+            "E2E_BACKEND_URL": backend_url,
+            "OPENOBSERVE_USER": _require_env("OPENOBSERVE_USER"),
+            "OPENOBSERVE_PASSWORD": _require_env("OPENOBSERVE_PASSWORD"),
+            "OTEL_EXPORTER_OTLP_ENDPOINT": base_url,
+        }
+        return subprocess.run(
+            ["npx", "--yes", "tsx", str(_TS_SCRIPT)],
+            env=client_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(_REPO_ROOT / "typescript"),
+        )
+    if client_lang == "rust":
+        client_env = {
+            **os.environ,
+            "E2E_BACKEND_URL": backend_url,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": base_url,
+            "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={quote(auth, safe='')}",
+        }
+        return subprocess.run(
+            [
+                "cargo",
+                "run",
+                "--quiet",
+                "--features",
+                "otel",
+                "--example",
+                "e2e_cross_language_client",
+            ],
+            env=client_env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(_RUST_DIR),
+        )
+    raise AssertionError(f"unsupported client_lang={client_lang!r}")
 
 
 def _require_env(name: str) -> str:
@@ -83,7 +170,11 @@ def _search_total(
     return int(payload.get("total", 0))
 
 
-def test_cross_language_trace_links_ts_and_python_spans() -> None:
+@pytest.mark.parametrize(
+    ("backend_lang", "client_lang"),
+    [("python", "typescript"), ("rust", "typescript"), ("python", "rust")],
+)
+def test_cross_language_trace_links_spans(backend_lang: str, client_lang: str) -> None:
     pytest.importorskip("opentelemetry")
 
     user = _require_env("OPENOBSERVE_USER")
@@ -95,29 +186,9 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
     start_us = now_us - (2 * 60 * 60 * 1_000_000)  # 2-hour lookback window
 
     port = _find_free_port()
-    otlp_traces_endpoint = f"{base_url}/v1/traces"
     otlp_headers_value = f"Authorization={quote(auth, safe='')}"
 
-    # ── Start Python backend subprocess ──────────────────────────────────────
-    server_env = {
-        **os.environ,
-        "PROVIDE_TRACE_ENABLED": "true",
-        "PROVIDE_METRICS_ENABLED": "false",
-        "PROVIDE_TELEMETRY_SERVICE_NAME": "py-e2e-backend",
-        "PROVIDE_TELEMETRY_VERSION": "e2e",
-        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": otlp_traces_endpoint,
-        "OTEL_EXPORTER_OTLP_HEADERS": otlp_headers_value,
-        # Fast batch export so spans flush well within the 30-second deadline.
-        "OTEL_BSP_SCHEDULE_DELAY": "200",
-        "OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "1",
-    }
-    server_proc = subprocess.Popen(
-        [sys.executable, str(_SERVER_SCRIPT), "--port", str(port)],
-        env=server_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    server_proc = _start_backend(backend_lang, port, base_url, otlp_headers_value)
 
     try:
         # Wait for server to print "READY" (up to 10 seconds).
@@ -131,33 +202,18 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
                 break
         assert ready_line, "Python backend did not become ready in time"
 
-        # ── Run TypeScript client subprocess ─────────────────────────────────
-        ts_env = {
-            **os.environ,
-            "E2E_BACKEND_URL": f"http://127.0.0.1:{port}",
-            "OPENOBSERVE_USER": user,
-            "OPENOBSERVE_PASSWORD": password,
-            "OTEL_EXPORTER_OTLP_ENDPOINT": base_url,
-        }
-        ts_result = subprocess.run(
-            ["npx", "--yes", "tsx", str(_TS_SCRIPT)],
-            env=ts_env,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=str(_REPO_ROOT / "typescript"),
-        )
-        assert ts_result.returncode == 0, (
-            f"TS client failed (exit {ts_result.returncode}):\nstdout: {ts_result.stdout}\nstderr: {ts_result.stderr}"
+        result = _run_client(client_lang, f"http://127.0.0.1:{port}", base_url, auth)
+        assert result.returncode == 0, (
+            f"{client_lang} client failed (exit {result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        # Extract trace_id from TS client stdout.
+        # Extract trace_id from client stdout.
         trace_id: str | None = None
-        for line in ts_result.stdout.splitlines():
+        for line in result.stdout.splitlines():
             if line.startswith("TRACE_ID="):
                 trace_id = line.split("=", 1)[1].strip()
                 break
-        assert trace_id and len(trace_id) == 32, f"Expected 32-char trace_id in TS stdout, got: {ts_result.stdout!r}"
+        assert trace_id and len(trace_id) == 32, f"Expected 32-char trace_id in client stdout, got: {result.stdout!r}"
 
         # Ask the Python backend to flush and exit cleanly.
         try:
@@ -185,8 +241,8 @@ def test_cross_language_trace_links_ts_and_python_spans() -> None:
         assert span_count >= 2, (
             f"Expected at least 2 spans with trace_id={trace_id!r} in OpenObserve, "
             f"found {span_count}. "
-            f"TS stdout: {ts_result.stdout!r}\n"
-            f"TS stderr: {ts_result.stderr!r}"
+            f"client stdout: {result.stdout!r}\n"
+            f"client stderr: {result.stderr!r}"
         )
 
     finally:
