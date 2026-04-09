@@ -342,7 +342,7 @@ thread_local! {
 - [ ] **Step 3: Export required functions with Rust-safe signatures**
 
 ```rust
-pub fn bind_context(fields: impl IntoIterator<Item = (String, Value)>) -> ContextGuard;
+pub fn bind_context(fields: impl IntoIterator<Item = (String, serde_json::Value)>) -> ContextGuard;
 pub fn unbind_context(keys: &[&str]) -> ContextGuard;
 pub fn clear_context() -> ContextGuard;
 pub fn get_trace_context() -> BTreeMap<String, Option<String>>;
@@ -462,6 +462,7 @@ const DEFAULT_SENSITIVE: &[&str] = &[
 pub fn register_cardinality_limit(key: impl Into<String>, limit: CardinalityLimit) {
     let max_values = limit.max_values.max(1);
     let ttl_seconds = limit.ttl_seconds.max(1.0);
+    // store clamped values in the registry and initialise the seen-set for key
 }
 ```
 
@@ -553,7 +554,7 @@ git commit -m "feat: add rust fallback signal facades"
 default = []
 otel = [
   "dep:opentelemetry",
-  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-sdk",
   "dep:opentelemetry-otlp",
   "dep:tracing-opentelemetry",
 ]
