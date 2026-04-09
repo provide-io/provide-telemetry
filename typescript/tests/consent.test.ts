@@ -111,8 +111,16 @@ describe('ConsentLevel.MINIMAL', () => {
     expect(shouldAllow('logs', 'CRITICAL')).toBe(true);
   });
 
+  test('blocks traces even with ERROR-level logLevel argument', () => {
+    expect(shouldAllow('traces', 'ERROR')).toBe(false);
+  });
+
   test('blocks traces', () => {
     expect(shouldAllow('traces')).toBe(false);
+  });
+
+  test('blocks metrics even with ERROR-level logLevel argument', () => {
+    expect(shouldAllow('metrics', 'ERROR')).toBe(false);
   });
 
   test('blocks metrics', () => {
@@ -144,7 +152,8 @@ describe('setConsentLevel / getConsentLevel', () => {
 });
 
 describe('loadConsentFromEnv', () => {
-  test('loads FULL from env', () => {
+  test('loads FULL from env (overriding non-FULL state)', () => {
+    setConsentLevel('NONE');
     process.env['PROVIDE_CONSENT_LEVEL'] = 'FULL';
     loadConsentFromEnv();
     expect(getConsentLevel()).toBe('FULL');

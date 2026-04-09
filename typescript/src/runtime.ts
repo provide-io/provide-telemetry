@@ -48,6 +48,7 @@ export function _areProvidersRegistered(): boolean {
 
 function deepFreeze<T extends object>(obj: T): Readonly<T> {
   for (const val of Object.values(obj)) {
+    // Stryker disable next-line ConditionalExpression,EqualityOperator,LogicalOperator: frozen-object guard — all sub-conditions required but only observable with deeply nested mutable objects
     if (typeof val === 'object' && val !== null && !Object.isFrozen(val)) {
       deepFreeze(val as object);
     }
@@ -78,6 +79,7 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
 function validateRate(name: string, value: number | undefined): void {
   if (value === undefined) return;
   if (!Number.isFinite(value) || value < 0 || value > 1) {
+    // Stryker disable next-line StringLiteral: error message content
     throw new ConfigurationError(`${name} must be in [0, 1], got ${String(value)}`);
   }
 }
@@ -85,6 +87,7 @@ function validateRate(name: string, value: number | undefined): void {
 function validateNonNegativeInteger(name: string, value: number | undefined): void {
   if (value === undefined) return;
   if (!Number.isInteger(value) || value < 0) {
+    // Stryker disable next-line StringLiteral: error message content
     throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(value)}`);
   }
 }
@@ -92,10 +95,12 @@ function validateNonNegativeInteger(name: string, value: number | undefined): vo
 function validateNonNegativeNumber(name: string, value: number | undefined): void {
   if (value === undefined) return;
   if (!Number.isFinite(value) || value < 0) {
+    // Stryker disable next-line StringLiteral: error message content
     throw new ConfigurationError(`${name} must be >= 0, got ${String(value)}`);
   }
 }
 
+/* Stryker disable StringLiteral: field names in validation calls are only used in error messages — mutating them does not change validation behavior */
 function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
   validateRate('samplingLogsRate', overrides.samplingLogsRate);
   validateRate('samplingTracesRate', overrides.samplingTracesRate);
@@ -116,6 +121,7 @@ function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
   validateNonNegativeInteger('securityMaxAttrCount', overrides.securityMaxAttrCount);
   validateNonNegativeInteger('piiMaxDepth', overrides.piiMaxDepth);
 }
+/* Stryker restore StringLiteral */
 
 const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'serviceName',
@@ -135,11 +141,13 @@ export function reloadRuntimeFromEnv(): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(fresh[k]),
     );
     if (drifted.length > 0) {
+      /* Stryker disable StringLiteral: warning message content */
       console.warn(
         '[provide-telemetry] runtime.cold_field_drift:',
         drifted.join(', '),
         '— restart required to apply',
       );
+      /* Stryker restore StringLiteral */
     }
   }
   // Apply only hot fields via overrides

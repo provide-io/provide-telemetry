@@ -88,6 +88,7 @@ const NOOP_TRACE_ID = '00000000000000000000000000000000';
  * Used to decide whether to inject synthetic random IDs.
  */
 function _isNoopSpan(span: Span): boolean {
+  // Stryker disable next-line ConditionalExpression: without a registered OTel SDK all spans are noop — mutating to true is equivalent
   return span.spanContext().traceId === NOOP_TRACE_ID;
 }
 

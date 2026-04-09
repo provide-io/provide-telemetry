@@ -679,6 +679,22 @@ describe('configFromEnv — SLO', () => {
   });
 });
 
+describe('configFromEnv — PII', () => {
+  it('piiMaxDepth defaults to 8', () => {
+    expect(configFromEnv().piiMaxDepth).toBe(8);
+  });
+  it('piiMaxDepth reads PROVIDE_LOG_PII_MAX_DEPTH env var (kills StringLiteral on env var name)', () => {
+    withEnv({ PROVIDE_LOG_PII_MAX_DEPTH: '4' }, () => {
+      expect(configFromEnv().piiMaxDepth).toBe(4);
+    });
+  });
+  it('piiMaxDepth falls back on NaN', () => {
+    withEnv({ PROVIDE_LOG_PII_MAX_DEPTH: 'bad' }, () => {
+      expect(configFromEnv().piiMaxDepth).toBe(8);
+    });
+  });
+});
+
 describe('configFromEnv — security', () => {
   it('securityMaxAttrValueLength defaults to 1024', () => {
     expect(configFromEnv().securityMaxAttrValueLength).toBe(1024);

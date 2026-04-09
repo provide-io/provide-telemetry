@@ -152,6 +152,7 @@ export function _disableAsyncLocalStorageForTest(): ALS | null {
 }
 
 /** Re-enable AsyncLocalStorage after testing (pass value from _disable call). */
+// Stryker disable next-line BlockStatement: assignment-only body — removing leaves _asyncLocalStorage unchanged which is equivalent when tests always call _resetContext after restore
 export function _restoreAsyncLocalStorageForTest(saved: ALS | null): void {
   _asyncLocalStorage = saved;
 }

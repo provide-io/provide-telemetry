@@ -8,8 +8,12 @@ import {
   setSamplingPolicy,
   shouldSample,
 } from '../src/sampling';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 
-afterEach(() => _resetSamplingForTests());
+afterEach(() => {
+  _resetSamplingForTests();
+  _resetHealthForTests();
+});
 
 describe('setSamplingPolicy / getSamplingPolicy', () => {
   it('defaults to rate=1.0', () => {
@@ -134,5 +138,67 @@ describe('per-signal sampling isolation', () => {
     // logs default is 1.0, traces default is 0.0
     expect(shouldSample('logs')).toBe(true);
     expect(shouldSample('traces')).toBe(false);
+  });
+});
+
+describe('shouldSample — health counter integration', () => {
+  it('increments emitted counter when sample is accepted (rate=1)', () => {
+    setSamplingPolicy('logs', { defaultRate: 1.0 });
+    const before = getHealthSnapshot().logsEmitted;
+    shouldSample('logs');
+    expect(getHealthSnapshot().logsEmitted).toBe(before + 1);
+  });
+
+  it('increments dropped counter when sample is rejected (rate=0)', () => {
+    setSamplingPolicy('logs', { defaultRate: 0.0 });
+    const before = getHealthSnapshot().logsDropped;
+    shouldSample('logs');
+    expect(getHealthSnapshot().logsDropped).toBe(before + 1);
+  });
+
+  it('increments tracesEmitted when traces are sampled', () => {
+    setSamplingPolicy('traces', { defaultRate: 1.0 });
+    const before = getHealthSnapshot().tracesEmitted;
+    shouldSample('traces');
+    expect(getHealthSnapshot().tracesEmitted).toBe(before + 1);
+  });
+
+  it('increments tracesDropped when traces are dropped', () => {
+    setSamplingPolicy('traces', { defaultRate: 0.0 });
+    const before = getHealthSnapshot().tracesDropped;
+    shouldSample('traces');
+    expect(getHealthSnapshot().tracesDropped).toBe(before + 1);
+  });
+
+  it('increments metricsEmitted when metrics are sampled', () => {
+    setSamplingPolicy('metrics', { defaultRate: 1.0 });
+    const before = getHealthSnapshot().metricsEmitted;
+    shouldSample('metrics');
+    expect(getHealthSnapshot().metricsEmitted).toBe(before + 1);
+  });
+
+  it('increments metricsDropped when metrics are dropped', () => {
+    setSamplingPolicy('metrics', { defaultRate: 0.0 });
+    const before = getHealthSnapshot().metricsDropped;
+    shouldSample('metrics');
+    expect(getHealthSnapshot().metricsDropped).toBe(before + 1);
+  });
+
+  it('increments emitted on intermediate rate when sampled', () => {
+    setSamplingPolicy('logs', { defaultRate: 0.5 });
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.3);
+    const before = getHealthSnapshot().logsEmitted;
+    shouldSample('logs');
+    expect(getHealthSnapshot().logsEmitted).toBe(before + 1);
+    vi.restoreAllMocks();
+  });
+
+  it('increments dropped on intermediate rate when not sampled', () => {
+    setSamplingPolicy('logs', { defaultRate: 0.5 });
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.7);
+    const before = getHealthSnapshot().logsDropped;
+    shouldSample('logs');
+    expect(getHealthSnapshot().logsDropped).toBe(before + 1);
+    vi.restoreAllMocks();
   });
 });

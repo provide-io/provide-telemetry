@@ -73,8 +73,9 @@ def _detect_secret_in_value(value: str) -> bool:
     """Return True if value matches a known secret pattern."""
     if len(value) < _MIN_SECRET_LENGTH:
         return False
-    # GIL-safe snapshot of custom patterns list reference.
-    custom = _custom_secret_patterns
+    # Thread-safe snapshot — list may be mutated by register_secret_pattern.
+    with _lock:
+        custom = list(_custom_secret_patterns)
     for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate
         if pattern.search(value):
             return True
