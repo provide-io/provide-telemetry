@@ -68,7 +68,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         .map_err(|err| TelemetryError::new(format!("failed to build runtime: {err}")))?;
     runtime.block_on(async {
         for _ in 0..4 {
-            let _: Option<()> = run_with_resilience(Signal::Metrics, async {
+            let _: Option<()> = run_with_resilience(Signal::Metrics, || async {
                 Err(TelemetryError::new("hardening demo failure"))
             })
             .await?;
