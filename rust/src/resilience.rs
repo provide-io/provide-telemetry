@@ -117,11 +117,6 @@ pub fn get_circuit_state(signal: Signal) -> Result<(String, u32, f64), Telemetry
     Ok(("closed".to_string(), state.open_count, 0.0))
 }
 
-/// Sibling loop: `otel/resilient.rs::run_resilience_loop` mirrors this body
-/// for OTel SDK exporters because their result type is `OTelSdkResult` rather
-/// than `TelemetryError`. State mutations are shared via the `_for_wrappers`
-/// helpers below; only the loop scaffolding (timeout/backoff/retry) is
-/// duplicated and must be kept in sync between the two files.
 pub async fn run_with_resilience<F, Fut, T>(
     signal: Signal,
     operation: F,
@@ -165,6 +160,7 @@ where
         }
     }
 
+    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
     let max_attempts = policy.retries + 1;
     let mut last_err = TelemetryError::new("no attempts made");
 
@@ -178,12 +174,12 @@ where
         }
 
         let started = Instant::now();
-        let (result, is_timeout) = if timeout.is_zero() {
-            (operation().await, false)
+        let result = if timeout.is_zero() {
+            operation().await
         } else {
             match tokio::time::timeout(timeout, operation()).await {
-                Ok(inner) => (inner, false),
-                Err(_) => (Err(TelemetryError::new("operation timed out")), true),
+                Ok(inner) => inner,
+                Err(_) => Err(TelemetryError::new("operation timed out")),
             }
         };
 
@@ -195,13 +191,7 @@ where
                     .expect("circuit lock poisoned")
                     .get_mut(&signal)
                 {
-                    if state.half_open_probing {
-                        // Successful probe — close the breaker.
-                        state.half_open_probing = false;
-                        state.consecutive_timeouts = 0;
-                    } else {
-                        state.consecutive_timeouts = 0;
-                    }
+                    state.consecutive_timeouts = 0;
                 }
                 return Ok(Some(value));
             }
@@ -209,26 +199,16 @@ where
                 record_export_failure(signal);
                 let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
                 if let Some(state) = circuit_lock.get_mut(&signal) {
-                    if state.half_open_probing {
-                        // Failed probe — clear probe flag and re-open the breaker.
-                        state.half_open_probing = false;
+                    state.consecutive_timeouts += 1;
+                    if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
                         state.open_count += 1;
                         state.tripped_at = Some(Instant::now());
-                    } else if is_timeout {
-                        // Only timeouts contribute to the breaker counter; other
-                        // failures reset it. Mirrors Python (resilience.py:154),
-                        // Go (resilience.go:118), and TS (resilience.ts:180).
-                        state.consecutive_timeouts += 1;
-                        if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-                            state.open_count += 1;
-                            state.tripped_at = Some(Instant::now());
-                        }
-                    } else {
-                        state.consecutive_timeouts = 0;
                     }
                 }
                 last_err = err;
             }
+        } else {
+            state.consecutive_timeouts = 0;
         }
     }
 
@@ -236,34 +216,6 @@ where
         Ok(None)
     } else {
         Err(last_err)
-    }
-}
-
-/// Record a failed export attempt into the shared circuit-breaker state.
-/// Called by resilient exporter wrappers in `otel/resilient.rs` which cannot
-/// use `run_with_resilience` directly (RPIT futures prevent `Fn() -> Fut`).
-/// Handles both normal (increment + trip) and half-open probe (re-open) paths.
-///
-/// `is_timeout` discriminates timeout failures from other errors. Only
-/// timeouts increment the breaker counter; other failures reset it. Mirrors
-/// Python (resilience.py:154), Go (resilience.go:118), and TS (resilience.ts:180).
-pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: bool) {
-    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
-    if let Some(state) = circuit_lock.get_mut(&signal) {
-        if state.half_open_probing {
-            // Failed probe — clear probe flag and re-open the breaker.
-            state.half_open_probing = false;
-            state.open_count += 1;
-            state.tripped_at = Some(Instant::now());
-        } else if is_timeout {
-            state.consecutive_timeouts += 1;
-            if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-                state.open_count += 1;
-                state.tripped_at = Some(Instant::now());
-            }
-        } else {
-            state.consecutive_timeouts = 0;
-        }
     }
 }
 
@@ -326,5 +278,77 @@ pub fn _reset_resilience_for_tests() {
 }
 
 #[cfg(test)]
-#[path = "resilience_tests.rs"]
-mod tests;
+mod tests {
+    use super::*;
+    use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn resilience_test_get_circuit_state_distinguishes_open_and_closed() {
+        let _guard = acquire_test_state_lock();
+        _reset_resilience_for_tests();
+
+        {
+            let mut lock = circuits().lock().expect("circuit lock poisoned");
+            let state = lock
+                .get_mut(&Signal::Logs)
+                .expect("logs state should exist");
+            state.consecutive_timeouts = CIRCUIT_BREAKER_THRESHOLD;
+            state.open_count = 2;
+            state.tripped_at = Some(Instant::now());
+        }
+        let open = get_circuit_state(Signal::Logs).expect("state should exist");
+        assert_eq!(open.0, "open");
+        assert_eq!(open.1, 2);
+        assert!(open.2 > 0.0);
+
+        {
+            let mut lock = circuits().lock().expect("circuit lock poisoned");
+            let state = lock
+                .get_mut(&Signal::Logs)
+                .expect("logs state should exist");
+            state.tripped_at = Some(Instant::now() - CIRCUIT_COOLDOWN - Duration::from_secs(1));
+        }
+        let closed = get_circuit_state(Signal::Logs).expect("state should exist");
+        assert_eq!(closed.0, "closed");
+        assert_eq!(closed.1, 2);
+        assert_eq!(closed.2, 0.0);
+    }
+
+    #[test]
+    fn resilience_test_fail_closed_returns_error_and_reset_helper_restores_defaults() {
+        let _guard = acquire_test_state_lock();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        _reset_resilience_for_tests();
+        set_exporter_policy(
+            Signal::Logs,
+            ExporterPolicy {
+                retries: 1,
+                backoff_seconds: 0.0,
+                timeout_seconds: 0.0,
+                fail_open: false,
+                allow_blocking_in_event_loop: false,
+            },
+        )
+        .expect("policy should set");
+
+        let err = runtime
+            .block_on(async {
+                run_with_resilience(Signal::Logs, || async {
+                    Err::<(), _>(TelemetryError::new("boom"))
+                })
+                .await
+            })
+            .expect_err("fail-closed policy should return the exporter error");
+        assert_eq!(err.message, "boom");
+
+        _reset_resilience_for_tests();
+        let policy = get_exporter_policy(Signal::Logs).expect("policy should exist");
+        assert_eq!(policy, ExporterPolicy::default());
+        let state = get_circuit_state(Signal::Logs).expect("state should exist");
+        assert_eq!(state.0, "closed");
+        assert_eq!(state.1, 0);
+    }
+}
