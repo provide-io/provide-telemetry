@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.4] — 2026-04-08
+
+### Features
+
+- **`registerSecretPattern`** — register custom secret detection patterns with name-based deduplication
+- **Benchmark suite** — `tests/performance/benchmark.test.ts` with 12 vitest performance tests; `npm run test:bench`
+- **Stress tests** — 3 new scripts (sampling, PII, tracing); `npm run stress` runs all 6
+
+### Bug Fixes
+
+- **`emitted_*`/`dropped_*` always 0** — added health counter calls to `shouldSample` and `tryAcquire`
+- **Browser crash on import** — `receipts.ts` replaced Node.js `crypto` with pure-JS `hash.ts` (SHA-256, randomHex)
+- **macOS v8 coverage** — removed stale `v8 ignore` directives, added test for receipts production-mode path
+
+### Quality
+
+- **100% Stryker mutation kill** (1762 mutants, 0 survivors — was 93.81%)
+- 1232 tests, 100% coverage (lines, branches, functions, statements)
+
+---
+
 ## [0.4.2] — 2026-03-29
 
 ### Tests
