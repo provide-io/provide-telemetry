@@ -45,6 +45,7 @@ def clear_cardinality_limits() -> None:
 
 
 def _prune_expired(key: str, now: float) -> None:
+    """Prune expired entries for key in-place. Caller must hold _lock."""
     limit = _limits.get(key)
     seen = _seen.get(key)
     if limit is None or seen is None:
@@ -55,20 +56,65 @@ def _prune_expired(key: str, now: float) -> None:
             del seen[value]
 
 
+def _collect_expired(key: str, now: float) -> list[str]:
+    """Return expired value candidates. Caller must hold _lock."""
+    limit = _limits.get(key)
+    seen = _seen.get(key)
+    if limit is None or seen is None:
+        return []
+    threshold = now - limit.ttl_seconds
+    return [v for v, t in seen.items() if t < threshold]
+
+
+def _delete_expired(key: str, candidates: list[str], now: float) -> None:
+    """Re-verify and delete expired candidates. Caller must hold _lock.
+
+    Re-checks each candidate's timestamp — a concurrent caller may have
+    refreshed the entry between the snapshot (Phase 1) and this deletion
+    (Phase 2), in which case the entry is left intact.
+    """
+    limit = _limits.get(key)
+    seen = _seen.get(key)
+    if limit is None or seen is None:
+        return
+    threshold = now - limit.ttl_seconds
+    for v in candidates:
+        entry_time = seen.get(v)
+        if entry_time is not None and entry_time < threshold:
+            del seen[v]
+
+
 def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
+    """Guard attribute cardinality, releasing the lock between prune phases.
+
+    Per-key locking pattern:
+      Phase 0 — under lock: early exit if no limits registered.
+      Phase 1 — under lock: snapshot expired candidates and update prune timer.
+      (lock released between phases so concurrent callers can refresh timestamps)
+      Phase 2 — under lock: re-verify and delete candidates that are still expired.
+      Phase 3 — under lock: record the current value into the seen map.
+    """
     now = time.monotonic()
     with _lock:
         if not _limits:
             return attributes
-        guarded = dict(attributes)
-        for key, value in list(guarded.items()):
+    guarded = dict(attributes)
+    for key, value in list(guarded.items()):
+        expired: list[str] = []
+        with _lock:
+            if _limits.get(key) is None:
+                continue
+            if now - _last_prune.get(key, 0.0) >= _PRUNE_INTERVAL:  # pragma: no mutate
+                expired = _collect_expired(key, now)
+                _last_prune[key] = now  # pragma: no mutate
+        if expired:
+            with _lock:
+                _delete_expired(key, expired, now)
+        with _lock:
+            seen = _seen.setdefault(key, {})
             limit = _limits.get(key)
             if limit is None:
                 continue
-            if now - _last_prune.get(key, 0.0) >= _PRUNE_INTERVAL:  # pragma: no mutate
-                _prune_expired(key, now)
-                _last_prune[key] = now  # pragma: no mutate
-            seen = _seen.setdefault(key, {})
             if value in seen:
                 seen[value] = now  # pragma: no mutate
                 continue
@@ -76,4 +122,4 @@ def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
                 guarded[key] = OVERFLOW_VALUE
                 continue
             seen[value] = now  # pragma: no mutate
-        return guarded
+    return guarded

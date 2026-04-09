@@ -40,7 +40,7 @@ def _get_strict_check() -> bool:
         from provide.telemetry import runtime
 
         _runtime_mod = runtime  # pragma: no mutate
-    return _runtime_mod._is_strict_event_name()  # type: ignore[no-any-return]
+    return bool(_runtime_mod._is_strict_event_name())
 
 
 class EventSchemaError(ValueError):

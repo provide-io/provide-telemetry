@@ -27,6 +27,10 @@ type ExporterPolicy struct {
 	BackoffSeconds float64
 	TimeoutSeconds float64
 	FailOpen       bool
+	// AllowBlockingInEventLoop is accepted for cross-language config parity.
+	// It is a no-op in Go: goroutines are scheduled cooperatively and blocking
+	// in one goroutine does not stall the runtime, unlike Python's asyncio.
+	AllowBlockingInEventLoop bool
 }
 
 // CircuitState reports the current state of a signal's circuit breaker.

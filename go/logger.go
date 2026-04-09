@@ -264,8 +264,10 @@ func _configureLogger(cfg *TelemetryConfig) {
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
 // name is used for per-module level overrides (longest-prefix match).
+// If ctx carries an active trace context (OTel span or manual SetTraceContext), the
+// returned logger pre-attaches trace.id and span.id so they appear on every log line
+// even when callers use the context-free Logger.Info(...) form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	_ = ctx // TODO(Task-10): extract existing span from ctx and attach to returned logger
 	cfg := DefaultTelemetryConfig()
 	if Logger != nil {
 		if h, ok := Logger.Handler().(*_telemetryHandler); ok {
@@ -280,7 +282,19 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 		base = slog.NewTextHandler(os.Stderr, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, name)
-	return slog.New(h)
+	logger := slog.New(h)
+	traceID, spanID := _getTraceSpanFromContext(ctx)
+	if traceID != "" || spanID != "" {
+		var attrs []any
+		if traceID != "" {
+			attrs = append(attrs, slog.String("trace.id", traceID))
+		}
+		if spanID != "" {
+			attrs = append(attrs, slog.String("span.id", spanID))
+		}
+		return logger.With(attrs...)
+	}
+	return logger
 }
 
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.

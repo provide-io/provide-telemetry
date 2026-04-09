@@ -7,12 +7,10 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"slices"
 	"strings"
-	"sync"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
@@ -33,21 +31,8 @@ func SetSamplingFunc(fn func(signal, key string) bool) { _samplingFn = fn }
 // _cfg is the active logging configuration.
 var _cfg = DefaultLogConfig() //nolint:gochecknoglobals
 
-// _globalMu protects _cfg and Logger from concurrent Configure calls.
-var _globalMu sync.RWMutex //nolint:gochecknoglobals
-
 // Configure replaces the active logging configuration and rebuilds Logger.
 func Configure(cfg LogConfig) {
-	// Clone ModuleLevels so callers cannot mutate it after the fact.
-	if len(cfg.ModuleLevels) > 0 {
-		cloned := make(map[string]string, len(cfg.ModuleLevels))
-		for k, v := range cfg.ModuleLevels {
-			cloned[k] = v
-		}
-		cfg.ModuleLevels = cloned
-	}
-	_globalMu.Lock()
-	defer _globalMu.Unlock()
 	_cfg = cfg
 	_configureLogger(cfg)
 }
@@ -272,96 +257,29 @@ func _newTelemetryHandler(base slog.Handler, cfg LogConfig, name string) slog.Ha
 }
 
 func _configureLogger(cfg LogConfig) {
-	w := cfg.Output
-	if w == nil {
-		w = os.Stderr
-	}
-	opts := &slog.HandlerOptions{
-		Level: LevelTrace,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.MessageKey {
-				a.Key = "message"
-			}
-			return a
-		},
-	}
+	opts := &slog.HandlerOptions{Level: LevelTrace}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(w, opts)
+		base = slog.NewJSONHandler(os.Stderr, opts)
 	} else {
-		base = slog.NewTextHandler(w, opts)
+		base = slog.NewTextHandler(os.Stderr, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, "")
 	Logger = slog.New(h)
 	slog.SetDefault(Logger)
 }
 
-// NewNullLogger returns a logger that discards all output while still running
-// the full telemetry handler chain (PII sanitisation, schema validation, etc.).
-// Useful in tests that want to exercise the logging path without capturing output.
-func NewNullLogger() *slog.Logger {
-	_globalMu.RLock()
-	cfg := _cfg
-	_globalMu.RUnlock()
-	opts := &slog.HandlerOptions{Level: LevelTrace}
-	base := slog.NewTextHandler(io.Discard, opts)
-	return slog.New(_newTelemetryHandler(base, cfg, ""))
-}
-
-// NewBufferLogger returns a logger that writes through the full telemetry handler
-// chain to w at the given minimum level. Useful in tests that need to assert on
-// log output; records below level are dropped before reaching the chain.
-func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: level}
-	base := slog.NewTextHandler(w, opts)
-	_globalMu.RLock()
-	cfg := _cfg
-	_globalMu.RUnlock()
-	cfg.Level = _slogLevelToString(level)
-	return slog.New(_newTelemetryHandler(base, cfg, ""))
-}
-
-// _slogLevelToString maps a slog.Level to the nearest LogLevel* string constant.
-func _slogLevelToString(l slog.Level) string {
-	switch {
-	case l <= LevelTrace:
-		return LogLevelTrace
-	case l <= slog.LevelDebug:
-		return LogLevelDebug
-	case l <= slog.LevelInfo:
-		return LogLevelInfo
-	case l <= slog.LevelWarn:
-		return LogLevelWarn
-	default:
-		return LogLevelError
-	}
-}
-
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
 // If ctx carries trace/span IDs (written by SetTraceContext), they are pre-attached
 // so they appear on every log line even when callers use the context-free form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	_globalMu.RLock()
 	cfg := _cfg
-	_globalMu.RUnlock()
-	w := cfg.Output
-	if w == nil {
-		w = os.Stderr
-	}
-	opts := &slog.HandlerOptions{
-		Level: LevelTrace,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.MessageKey {
-				a.Key = "message"
-			}
-			return a
-		},
-	}
+	opts := &slog.HandlerOptions{Level: LevelTrace}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(w, opts)
+		base = slog.NewJSONHandler(os.Stderr, opts)
 	} else {
-		base = slog.NewTextHandler(w, opts)
+		base = slog.NewTextHandler(os.Stderr, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, name)
 	l := slog.New(h)
@@ -379,43 +297,18 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	return l
 }
 
-// Trace emits a TRACE-level record on logger. It is a convenience wrapper
-// matching the .trace() method available on Python and TypeScript loggers.
-func Trace(logger *slog.Logger, msg string, args ...any) {
-	logger.Log(context.Background(), LevelTrace, msg, args...)
-}
-
-// IsEnabled reports whether logger would emit records at level.
-func IsEnabled(logger *slog.Logger, level slog.Level) bool {
-	return logger.Enabled(context.Background(), level)
-}
-
-// GetDefaultLogger returns a named *slog.Logger using the current active configuration,
-// evaluated at call time rather than package init. Use this for package-level loggers
-// where a context is unavailable — it picks up whatever Configure last set, including
-// the correct format and level, with the component name preserved in the handler.
-func GetDefaultLogger(name string) *slog.Logger {
-	return GetLogger(context.Background(), name)
-}
-
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
 func IsDebugEnabled() bool {
-	_globalMu.RLock()
-	l := Logger
-	_globalMu.RUnlock()
-	if l == nil {
+	if Logger == nil {
 		return false
 	}
-	return l.Enabled(context.Background(), slog.LevelDebug)
+	return Logger.Enabled(context.Background(), slog.LevelDebug)
 }
 
 // IsTraceEnabled returns true if the package-level Logger would emit TRACE records.
 func IsTraceEnabled() bool {
-	_globalMu.RLock()
-	l := Logger
-	_globalMu.RUnlock()
-	if l == nil {
+	if Logger == nil {
 		return false
 	}
-	return l.Enabled(context.Background(), LevelTrace)
+	return Logger.Enabled(context.Background(), LevelTrace)
 }

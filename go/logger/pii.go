@@ -4,23 +4,54 @@
 package logger
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
-
-	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // PIIRule defines a rule for sanitizing a specific field path.
-type PIIRule = piicore.PIIRule
+type PIIRule struct {
+	Path       []string
+	Mode       string
+	TruncateTo int
+}
 
 // PII mode constants.
 const (
-	PIIModeRedact   = piicore.PIIModeRedact
-	PIIModeDrop     = piicore.PIIModeDrop
-	PIIModeHash     = piicore.PIIModeHash
-	PIIModeTruncate = piicore.PIIModeTruncate
+	PIIModeRedact   = "redact"
+	PIIModeDrop     = "drop"
+	PIIModeHash     = "hash"
+	PIIModeTruncate = "truncate"
 )
+
+const (
+	_piiRedacted         = "***"
+	_piiTruncationSuffix = "..."
+	_piiDefaultMax       = 8
+)
+
+// _defaultSensitiveKeys lists case-insensitive exact-match key names.
+var _defaultSensitiveKeys = map[string]struct{}{
+	"password":       {},
+	"passwd":         {},
+	"secret":         {},
+	"token":          {},
+	"api_key":        {},
+	"apikey":         {},
+	"auth":           {},
+	"authorization":  {},
+	"credential":     {},
+	"private_key":    {},
+	"ssn":            {},
+	"credit_card":    {},
+	"creditcard":     {},
+	"cvv":            {},
+	"pin":            {},
+	"account_number": {},
+	"cookie":         {},
+}
 
 // SecretPattern pairs a diagnostic name with a compiled regexp.
 type SecretPattern struct {
@@ -34,7 +65,6 @@ var (
 	_classificationHook func(key string, value any) string
 	_receiptHook        func(fieldPath string, action string, originalValue any)
 	_customSecretPats   map[string]*regexp.Regexp
-	_sanitizeDelegate   func(map[string]any, bool, int) map[string]any
 )
 
 // RegisterSecretPattern registers a custom secret detection pattern.
@@ -51,9 +81,8 @@ func RegisterSecretPattern(name string, pattern *regexp.Regexp) {
 func GetSecretPatterns() []SecretPattern {
 	_piiMu.RLock()
 	defer _piiMu.RUnlock()
-	builtins := piicore.BuiltinSecretPatterns
-	out := make([]SecretPattern, 0, len(builtins)+len(_customSecretPats))
-	for i, re := range builtins {
+	out := make([]SecretPattern, 0, len(_secretPatterns)+len(_customSecretPats))
+	for i, re := range _secretPatterns {
 		out = append(out, SecretPattern{Name: fmt.Sprintf("builtin-%d", i), Pattern: re})
 	}
 	for name, re := range _customSecretPats {
@@ -101,53 +130,26 @@ func GetPIIRules() []PIIRule {
 	return cp
 }
 
-// ResetPIIRules clears all custom PII rules, hooks, and the sanitize delegate (for test cleanup).
+// ResetPIIRules clears all custom PII rules and hooks (for test cleanup).
 func ResetPIIRules() {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	_piiRules = nil
 	_classificationHook = nil
 	_receiptHook = nil
-	_sanitizeDelegate = nil
-}
-
-// SetSanitizePayloadFunc registers an external sanitize function that SanitizePayload
-// will delegate to instead of using its own rule set. Pass nil to deregister and
-// fall back to the local rule set. This allows the top-level telemetry package to
-// wire its own PII engine into the logger sub-package without creating an import cycle.
-func SetSanitizePayloadFunc(fn func(map[string]any, bool, int) map[string]any) {
-	_piiMu.Lock()
-	defer _piiMu.Unlock()
-	_sanitizeDelegate = fn
 }
 
 // SanitizePayload applies PII sanitization to the given payload map.
-// If a delegate function has been registered via SetSanitizePayloadFunc, it is
-// called instead of the local rule set, allowing the top-level telemetry engine
-// to serve as the single source of truth for PII rules.
 // If enabled is false, a shallow copy is returned unchanged.
 func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any {
 	if !enabled {
-		return piicore.ShallowCopy(payload)
-	}
-	_piiMu.RLock()
-	delegate := _sanitizeDelegate
-	_piiMu.RUnlock()
-	if delegate != nil {
-		return delegate(payload, enabled, maxDepth)
+		return _shallowCopy(payload)
 	}
 	if maxDepth <= 0 {
-		maxDepth = piicore.DefaultMaxDepth
+		maxDepth = _piiDefaultMax
 	}
 	rules := GetPIIRules()
-
-	_piiMu.RLock()
-	receiptHook := _receiptHook
-	customs := _customSecretPats
-	_piiMu.RUnlock()
-
-	result := piicore.SanitizeMap(payload, []string{}, rules, maxDepth, receiptHook, customs)
-
+	result := _sanitizeMap(payload, []string{}, rules, maxDepth)
 	_piiMu.RLock()
 	classHook := _classificationHook
 	_piiMu.RUnlock()
@@ -159,4 +161,139 @@ func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[str
 		}
 	}
 	return result
+}
+
+func _shallowCopy(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func _sanitizeMap(m map[string]any, path []string, rules []PIIRule, depth int) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		childPath := append(path, k) //nolint:gocritic
+		sanitized, drop := _sanitizeValue(k, v, childPath, rules, depth)
+		if !drop {
+			out[k] = sanitized
+		}
+	}
+	return out
+}
+
+func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
+	out := make([]any, len(s))
+	for i, item := range s {
+		if inner, ok := item.(map[string]any); ok {
+			out[i] = _sanitizeMap(inner, path, rules, depth)
+		} else {
+			out[i] = item
+		}
+	}
+	return out
+}
+
+func _fireReceiptHook(hook func(string, string, any), fieldPath, action string, original any) {
+	if hook != nil {
+		hook(fieldPath, action, original)
+	}
+}
+
+func _sanitizeValue(key string, value any, path []string, rules []PIIRule, depth int) (any, bool) {
+	_piiMu.RLock()
+	receiptHook := _receiptHook
+	_piiMu.RUnlock()
+	for _, rule := range rules {
+		if _applyRule(rule, path) {
+			_fireReceiptHook(receiptHook, strings.Join(path, "."), rule.Mode, value)
+			return _applyMode(value, rule.Mode, rule.TruncateTo)
+		}
+	}
+	if _isDefaultSensitiveKey(key) {
+		_fireReceiptHook(receiptHook, key, PIIModeRedact, value)
+		return _piiRedacted, false
+	}
+	if str, ok := value.(string); ok && _detectSecretInValue(str) {
+		_fireReceiptHook(receiptHook, key, PIIModeRedact, value)
+		return _piiRedacted, false
+	}
+	if depth <= 1 {
+		return value, false
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return _sanitizeMap(typed, path, rules, depth-1), false
+	case []any:
+		return _sanitizeSlice(typed, path, rules, depth-1), false
+	}
+	return value, false
+}
+
+func _applyRule(rule PIIRule, path []string) bool {
+	if len(rule.Path) != len(path) {
+		return false
+	}
+	for i, seg := range rule.Path {
+		if seg != "*" && seg != path[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func _applyMode(value any, mode string, truncateTo int) (any, bool) {
+	switch mode {
+	case PIIModeDrop:
+		return nil, true
+	case PIIModeHash:
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%v", value)))
+		return fmt.Sprintf("%x", sum)[:12], false
+	case PIIModeTruncate:
+		s := fmt.Sprintf("%v", value)
+		runes := []rune(s)
+		if len(runes) >= truncateTo+1 {
+			return string(runes[:truncateTo]) + _piiTruncationSuffix, false
+		}
+		return s, false
+	default:
+		return _piiRedacted, false
+	}
+}
+
+func _isDefaultSensitiveKey(key string) bool {
+	_, ok := _defaultSensitiveKeys[strings.ToLower(key)]
+	return ok
+}
+
+const _minSecretLength = 20
+
+var _secretPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?:AKIA|ASIA)[A-Z0-9]{16}`),
+	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`),
+	regexp.MustCompile(`gh[pos]_[A-Za-z0-9_]{36,}`),
+	regexp.MustCompile(`[0-9a-fA-F]{40,}`),
+	regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`),
+}
+
+func _detectSecretInValue(s string) bool {
+	if len(s) < _minSecretLength {
+		return false
+	}
+	for _, re := range _secretPatterns {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	_piiMu.RLock()
+	customs := _customSecretPats
+	for _, re := range customs {
+		if re.MatchString(s) {
+			_piiMu.RUnlock()
+			return true
+		}
+	}
+	_piiMu.RUnlock()
+	return false
 }
