@@ -3,11 +3,11 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+#![cfg(feature = "otel")]
 #![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::env;
-use std::time::Duration;
 
 use opentelemetry::global;
 use opentelemetry::propagation::{Extractor, Injector};
@@ -92,7 +92,6 @@ pub fn init_tracer_provider(_service_name: &str) -> Result<SdkTracerProvider, St
     let exporter = SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
-        .with_timeout(Duration::from_secs(10))
         .with_headers(headers)
         .build()
         .map_err(|err| format!("failed to build OTLP exporter: {err}"))?;

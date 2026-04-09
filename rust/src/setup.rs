@@ -8,7 +8,6 @@ use std::sync::{Mutex, OnceLock};
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 use crate::otel::{setup_otel, shutdown_otel};
-use crate::policies::apply_policies;
 use crate::runtime::{get_runtime_config, set_active_config};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -31,7 +30,6 @@ pub fn setup_telemetry() -> Result<TelemetryConfig, TelemetryError> {
 
     let config = TelemetryConfig::from_env().map_err(|err| TelemetryError::new(err.message))?;
     setup_otel(&config)?;
-    apply_policies(&config);
     set_active_config(Some(config.clone()));
     state.done = true;
     Ok(config)

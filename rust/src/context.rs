@@ -5,7 +5,6 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use serde_json::Value;
@@ -27,7 +26,6 @@ enum ContextScopeKey {
 pub struct ContextGuard {
     key: ContextScopeKey,
     previous: ContextSnapshot,
-    epoch: u64,
 }
 
 thread_local! {
@@ -35,7 +33,6 @@ thread_local! {
 }
 
 static TASK_CONTEXTS: OnceLock<Mutex<HashMap<tokio::task::Id, ContextSnapshot>>> = OnceLock::new();
-static CONTEXT_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 fn task_contexts() -> &'static Mutex<HashMap<tokio::task::Id, ContextSnapshot>> {
     TASK_CONTEXTS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -62,13 +59,10 @@ fn current_snapshot() -> ContextSnapshot {
 fn set_snapshot_for_key(key: ContextScopeKey, snapshot: ContextSnapshot) {
     match key {
         ContextScopeKey::Task(task_id) => {
-            let mut map = task_contexts().lock().expect("task context lock poisoned");
-            if snapshot == ContextSnapshot::default() {
-                // Remove the entry when restoring to default to prevent unbounded growth
-                map.remove(&task_id);
-            } else {
-                map.insert(task_id, snapshot);
-            }
+            task_contexts()
+                .lock()
+                .expect("task context lock poisoned")
+                .insert(task_id, snapshot);
         }
         ContextScopeKey::Thread => {
             THREAD_CONTEXT.with(|ctx| {
@@ -81,13 +75,8 @@ fn set_snapshot_for_key(key: ContextScopeKey, snapshot: ContextSnapshot) {
 fn replace_snapshot(next: ContextSnapshot) -> ContextGuard {
     let key = current_scope_key();
     let previous = current_snapshot();
-    let epoch = CONTEXT_EPOCH.load(Ordering::SeqCst);
     set_snapshot_for_key(key, next);
-    ContextGuard {
-        key,
-        previous,
-        epoch,
-    }
+    ContextGuard { key, previous }
 }
 
 pub fn get_context() -> BTreeMap<String, Value> {
@@ -154,35 +143,8 @@ pub(crate) fn trace_snapshot() -> ContextSnapshot {
     current_snapshot()
 }
 
-pub(crate) fn reset_context_for_tests() {
-    CONTEXT_EPOCH.fetch_add(1, Ordering::SeqCst);
-    THREAD_CONTEXT.with(|ctx| {
-        *ctx.borrow_mut() = ContextSnapshot::default();
-    });
-    task_contexts()
-        .lock()
-        .expect("task context lock poisoned")
-        .clear();
-}
-
-pub(crate) fn reset_trace_context_for_tests() {
-    CONTEXT_EPOCH.fetch_add(1, Ordering::SeqCst);
-    THREAD_CONTEXT.with(|ctx| {
-        let mut snapshot = ctx.borrow_mut();
-        snapshot.trace_id = None;
-        snapshot.span_id = None;
-    });
-    let mut tasks = task_contexts().lock().expect("task context lock poisoned");
-    for snapshot in tasks.values_mut() {
-        snapshot.trace_id = None;
-        snapshot.span_id = None;
-    }
-}
-
 impl Drop for ContextGuard {
     fn drop(&mut self) {
-        if CONTEXT_EPOCH.load(Ordering::SeqCst) == self.epoch {
-            set_snapshot_for_key(self.key, self.previous.clone());
-        }
+        set_snapshot_for_key(self.key, self.previous.clone());
     }
 }

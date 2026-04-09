@@ -1,6 +1,6 @@
 # Provide Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`).
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
 
 [![1. 🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
 [![2. 🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
@@ -19,12 +19,6 @@ pip install "provide-telemetry[otel]"      # + OpenTelemetry export
 
 ```bash
 npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
-```
-
-**Rust:**
-
-```bash
-cargo add provide-telemetry
 ```
 
 **Rust:**
@@ -107,7 +101,7 @@ All implementations export equivalent APIs:
 | Health | `get_health_snapshot()` |
 | Runtime | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
 
 ## Polyglot Architecture
 
@@ -115,6 +109,8 @@ Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blo
 provide-telemetry/
   src/provide/telemetry/    # Python package
   typescript/             # TypeScript package (@provide-io/telemetry)
+  go/                     # Go module (github.com/provide-io/provide-telemetry/go)
+  rust/                   # Rust crate (provide-telemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```
@@ -142,7 +138,9 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 - [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
 - [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
 - [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
-- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — Python and TypeScript examples
+- [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
+- [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) — Rust-specific source and examples
+- [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for the polyglot repo
 
 ## License
 

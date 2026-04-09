@@ -4,10 +4,7 @@
 //
 
 use regex::Regex;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    OnceLock,
-};
+use std::sync::OnceLock;
 
 use crate::errors::EventSchemaError;
 
@@ -18,23 +15,6 @@ pub struct Event {
     pub action: String,
     pub resource: Option<String>,
     pub status: String,
-}
-
-static STRICT_SCHEMA: AtomicBool = AtomicBool::new(false);
-
-/// Enable or disable strict segment-format validation for `event()`. Thread-safe.
-pub fn set_strict_schema(enabled: bool) {
-    STRICT_SCHEMA.store(enabled, Ordering::Relaxed);
-}
-
-/// Return the current strict-schema flag value.
-pub fn get_strict_schema() -> bool {
-    STRICT_SCHEMA.load(Ordering::Relaxed)
-}
-
-/// Reset strict-schema flag to the default (false) for test isolation.
-pub fn _reset_schema_for_tests() {
-    STRICT_SCHEMA.store(false, Ordering::Relaxed);
 }
 
 fn segment_re() -> &'static Regex {
@@ -50,13 +30,11 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
         )));
     }
 
-    if get_strict_schema() {
-        for (idx, segment) in segments.iter().enumerate() {
-            if !segment_re().is_match(segment) {
-                return Err(EventSchemaError::new(format!(
-                    "invalid event segment: segment[{idx}]={segment}"
-                )));
-            }
+    for (idx, segment) in segments.iter().enumerate() {
+        if !segment_re().is_match(segment) {
+            return Err(EventSchemaError::new(format!(
+                "invalid event segment: segment[{idx}]={segment}"
+            )));
         }
     }
 
@@ -74,8 +52,7 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
     })
 }
 
-pub fn event_name(segments: &[&str]) -> Result<String, EventSchemaError> {
-    let strict = get_strict_schema();
+pub fn event_name(segments: &[&str], strict: bool) -> Result<String, EventSchemaError> {
     if strict {
         if !(3..=5).contains(&segments.len()) {
             return Err(EventSchemaError::new(format!(
@@ -96,91 +73,4 @@ pub fn event_name(segments: &[&str]) -> Result<String, EventSchemaError> {
         ));
     }
     Ok(segments.join("."))
-}
-
-pub fn validate_required_keys(
-    data: &std::collections::BTreeMap<String, serde_json::Value>,
-    required_keys: &[String],
-) -> Result<(), EventSchemaError> {
-    let mut missing: Vec<&str> = required_keys
-        .iter()
-        .map(String::as_str)
-        .filter(|key| !data.contains_key(*key))
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    missing.sort_unstable();
-    Err(EventSchemaError::new(format!(
-        "missing required keys: {}",
-        missing.join(", ")
-    )))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn schema_test_event_name_returns_exact_joined_value() {
-        set_strict_schema(false);
-        assert_eq!(
-            event_name(&["auth", "login", "ok"]).expect("name should build"),
-            "auth.login.ok"
-        );
-        set_strict_schema(true);
-        assert_eq!(
-            event_name(&["a", "b", "c", "d", "e"]).expect("strict name should build"),
-            "a.b.c.d.e"
-        );
-        set_strict_schema(false);
-    }
-
-    #[test]
-    fn schema_test_event_strict_gates_segment_format_validation() {
-        // Non-strict: invalid segment format is accepted by event()
-        set_strict_schema(false);
-        let ev = event(&["not-valid", "b", "c"]).expect("non-strict should accept invalid segment");
-        assert_eq!(ev.event, "not-valid.b.c");
-
-        // Strict: invalid segment format is rejected
-        set_strict_schema(true);
-        let err =
-            event(&["not-valid", "b", "c"]).expect_err("strict should reject invalid segment");
-        assert!(
-            err.message.contains("invalid event segment"),
-            "unexpected error: {}",
-            err.message
-        );
-        set_strict_schema(false);
-    }
-
-    #[test]
-    fn schema_test_event_name_validates_empty_and_invalid_strict_inputs() {
-        set_strict_schema(false);
-        let err = event_name(&[]).expect_err("empty non-strict name should fail");
-        assert_eq!(err.message, "event_name requires at least 1 segment");
-
-        set_strict_schema(true);
-        let err = event_name(&["a", "b"]).expect_err("strict arity should fail");
-        assert_eq!(err.message, "expected 3-5 segments, got 2");
-
-        let err = event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
-        assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
-        set_strict_schema(false);
-    }
-
-    #[test]
-    fn schema_test_validate_required_keys_matches_python_contract() {
-        let mut data = std::collections::BTreeMap::new();
-        data.insert(
-            "domain".to_string(),
-            serde_json::Value::String("auth".to_string()),
-        );
-        validate_required_keys(&data, &["domain".to_string()]).expect("key should exist");
-
-        let err = validate_required_keys(&data, &["domain".to_string(), "action".to_string()])
-            .expect_err("missing key should fail");
-        assert_eq!(err.message, "missing required keys: action");
-    }
 }

@@ -8,10 +8,6 @@ from provide.telemetry import setup_telemetry, get_logger, trace
 
 Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
 
-This document is the shared semantic contract for Python, TypeScript, Go, and
-Rust. Names and signatures vary by language, but the behavioral guarantees
-described here are the parity target.
-
 ## Setup and Lifecycle
 
 ### `setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`

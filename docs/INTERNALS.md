@@ -13,17 +13,6 @@ The Python modules below remain the behavioral reference, but the repo now also 
 
 Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
 
-## Polyglot Note
-
-The Python modules below remain the behavioral reference, but the repo now also carries a Rust crate under `rust/`. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
-
-- `bind_context(...) -> ContextGuard`
-- `bind_session_context(...) -> ContextGuard`
-- `set_trace_context(...) -> ContextGuard`
-- `bind_propagation_context(...) -> PropagationGuard`
-
-Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
-
 ## Structlog Processor Pipeline
 
 Every log event passes through a linear chain of structlog processors configured in `logger/core.py`. The chain runs in order — each processor transforms the event dict and returns it (or raises `DropEvent` to discard).

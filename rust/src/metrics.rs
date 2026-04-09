@@ -4,24 +4,11 @@
 //
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
-#[cfg(feature = "governance")]
-use crate::consent::should_allow;
-use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
-
-// When the governance feature is disabled, consent is unconditionally granted.
-#[cfg(not(feature = "governance"))]
-#[inline(always)]
-fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
-    true
-}
-
-static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Meter {
@@ -50,11 +37,8 @@ pub struct Counter {
 }
 
 impl Counter {
-    pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
+    pub fn add(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
-            return;
-        }
-        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -67,13 +51,6 @@ impl Counter {
             .lock()
             .expect("counter state lock poisoned")
             .value += value;
-        #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_counter_add(&self.name, value, attributes.as_ref());
-        }
-        #[cfg(not(feature = "otel"))]
-        let _ = &attributes;
-        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -101,11 +78,8 @@ pub struct Gauge {
 }
 
 impl Gauge {
-    pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
+    pub fn add(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
-            return;
-        }
-        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -114,27 +88,15 @@ impl Gauge {
         let Some(ticket) = try_acquire(Signal::Metrics) else {
             return;
         };
-        #[cfg_attr(not(feature = "otel"), allow(unused_variables))]
-        let new_absolute = {
-            let mut state = self.state.lock().expect("gauge state lock poisoned");
-            state.last_value += value;
-            state.last_value
-        };
-        #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_gauge_set(&self.name, new_absolute, attributes.as_ref());
-        }
-        #[cfg(not(feature = "otel"))]
-        let _ = &attributes;
-        increment_emitted(Signal::Metrics, 1);
+        self.state
+            .lock()
+            .expect("gauge state lock poisoned")
+            .last_value += value;
         release(ticket);
     }
 
-    pub fn set(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
+    pub fn set(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
-            return;
-        }
-        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -147,13 +109,6 @@ impl Gauge {
             .lock()
             .expect("gauge state lock poisoned")
             .last_value = value;
-        #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_gauge_set(&self.name, value, attributes.as_ref());
-        }
-        #[cfg(not(feature = "otel"))]
-        let _ = &attributes;
-        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -182,11 +137,8 @@ pub struct Histogram {
 }
 
 impl Histogram {
-    pub fn record(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
+    pub fn record(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
-            return;
-        }
-        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -198,14 +150,6 @@ impl Histogram {
         let mut state = self.state.lock().expect("histogram state lock poisoned");
         state.count += 1;
         state.total += value;
-        drop(state);
-        #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_histogram(&self.name, value, attributes.as_ref());
-        }
-        #[cfg(not(feature = "otel"))]
-        let _ = &attributes;
-        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -237,7 +181,6 @@ pub fn get_meter(name: Option<&str>) -> Meter {
 }
 
 pub fn counter(name: &str, description: Option<&str>, unit: Option<&str>) -> Counter {
-    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Counter {
         name: name.to_string(),
         description: description.map(str::to_string),
@@ -247,7 +190,6 @@ pub fn counter(name: &str, description: Option<&str>, unit: Option<&str>) -> Cou
 }
 
 pub fn gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge {
-    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Gauge {
         name: name.to_string(),
         description: description.map(str::to_string),
@@ -257,19 +199,10 @@ pub fn gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge
 }
 
 pub fn histogram(name: &str, description: Option<&str>, unit: Option<&str>) -> Histogram {
-    METRICS_INITIALIZED.store(true, Ordering::SeqCst);
     Histogram {
         name: name.to_string(),
         description: description.map(str::to_string),
         unit: unit.map(str::to_string),
         state: Arc::new(Mutex::new(HistogramState::default())),
     }
-}
-
-pub fn metrics_initialized_for_tests() -> bool {
-    METRICS_INITIALIZED.load(Ordering::SeqCst)
-}
-
-pub fn reset_metrics_for_tests() {
-    METRICS_INITIALIZED.store(false, Ordering::SeqCst);
 }

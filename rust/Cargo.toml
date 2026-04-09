@@ -4,47 +4,29 @@
 #
 [package]
 name = "provide-telemetry"
-version = "0.3.0"
+version = "0.2.4"
 edition = "2021"
 rust-version = "1.81"
-description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
-license = "Apache-2.0"
-readme = "README.md"
-repository = "https://github.com/provide-io/provide-telemetry"
-homepage = "https://github.com/provide-io/provide-telemetry"
-keywords = ["telemetry", "observability", "opentelemetry", "otlp"]
-categories = ["development-tools::debugging"]
+publish = false
 
 [lib]
 name = "provide_telemetry"
 path = "src/lib.rs"
 
 [features]
-default = ["governance"]
-governance = []
+default = []
 otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
-    "dep:opentelemetry-semantic-conventions",
-    "dep:reqwest",
     "dep:tracing-opentelemetry",
-    "dep:url",
 ]
-# OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
-otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic"]
 
 [dependencies]
-base64 = "0.22"
-hmac = "0.12"
-log = "0.4"
-mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
-opentelemetry-otlp = { version = "0.31", optional = true, default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace"] }
-opentelemetry-semantic-conventions = { version = "0.31", optional = true }
+opentelemetry-otlp = { version = "0.31", optional = true, features = ["http-proto", "reqwest-client"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio"] }
 percent-encoding = "2.3.1"
-reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
 regex = "1.11.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -52,29 +34,3 @@ sha2 = "0.10"
 thiserror = "1.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
 tracing-opentelemetry = { version = "0.32", optional = true }
-url = { version = "2", optional = true }
-uuid = { version = "1.18", features = ["v4"] }
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-proptest = "1"
-rstest = "0.25"
-serde_yaml = "0.9"
-tokio = { version = "1.44", features = ["macros"] }
-
-[[bench]]
-name = "hot_path"
-harness = false
-
-[[example]]
-name = "emit_log_probe"
-
-[[example]]
-name = "contract_probe"
-
-[[example]]
-name = "emit_log_probe"
-
-[[example]]
-name = "telemetry_14_data_governance"
-required-features = ["governance"]

@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Unified telemetry facade for all provide.telemetry Python packages.
+- Unified telemetry facade across the repo's Python, TypeScript, Go, and Rust implementations.
 - Safe defaults with optional OpenTelemetry runtime integration.
 - Strict event naming and schema validation for consistent analytics.
 - Predictable behavior under async workloads.
