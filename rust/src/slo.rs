@@ -4,7 +4,7 @@
 //
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use crate::metrics::{counter, gauge, histogram, Counter, Gauge, Histogram};
@@ -19,6 +19,49 @@ static RED_DURATION: OnceLock<Histogram> = OnceLock::new();
 static USE_UTILIZATION: OnceLock<Gauge> = OnceLock::new();
 
 pub fn record_red_metrics(route: &str, method: &str, status_code: u16, duration_ms: f64) {
+    SLO_INITIALIZED.store(true, Ordering::SeqCst);
+    let attrs: BTreeMap<String, String> = [
+        ("route".to_string(), route.to_string()),
+        ("method".to_string(), method.to_string()),
+        ("status_code".to_string(), status_code.to_string()),
+    ]
+    .into_iter()
+    .collect();
+    RED_REQUESTS
+        .get_or_init(|| counter("http.requests.total", Some("Total HTTP requests"), None))
+        .add(1.0, Some(attrs.clone()));
+    if method != "WS" && status_code >= 500 {
+        RED_ERRORS
+            .get_or_init(|| counter("http.errors.total", Some("Total HTTP errors"), None))
+            .add(1.0, Some(attrs.clone()));
+    }
+    RED_DURATION
+        .get_or_init(|| {
+            histogram(
+                "http.request.duration_ms",
+                Some("HTTP request latency"),
+                Some("ms"),
+            )
+        })
+        .record(duration_ms, Some(attrs));
+}
+
+pub fn record_use_metrics(resource: &str, utilization_percent: i32) {
+    SLO_INITIALIZED.store(true, Ordering::SeqCst);
+    let mut attrs = BTreeMap::new();
+    attrs.insert("resource".to_string(), resource.to_string());
+    USE_UTILIZATION
+        .get_or_init(|| {
+            gauge(
+                "resource.utilization.percent",
+                Some("Resource utilization"),
+                Some("%"),
+            )
+        })
+        .set(utilization_percent as f64, Some(attrs));
+}
+
+pub fn classify_error(status_code: u16) -> String {
     SLO_INITIALIZED.store(true, Ordering::SeqCst);
     let attrs: BTreeMap<String, String> = [
         ("route".to_string(), route.to_string()),

@@ -79,15 +79,16 @@ fn custom_secret_patterns() -> &'static Mutex<Vec<(String, Regex)>> {
 }
 
 fn builtin_secret_patterns() -> &'static [Regex] {
-    static COMPILED: OnceLock<Vec<Regex>> = OnceLock::new();
-    COMPILED
+    static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+    PATTERNS
         .get_or_init(|| {
-            crate::secret_patterns_generated::PATTERNS
-                .iter()
-                .map(|(_name, pattern)| {
-                    Regex::new(pattern).expect("generated pattern must be valid")
-                })
-                .collect()
+            vec![
+                Regex::new(r"(?:AKIA|ASIA)[A-Z0-9]{16}").expect("valid regex"),
+                Regex::new(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}").expect("valid regex"),
+                Regex::new(r"gh[pos]_[A-Za-z0-9_]{36,}").expect("valid regex"),
+                Regex::new(r"[0-9a-fA-F]{40,}").expect("valid regex"),
+                Regex::new(r"[A-Za-z0-9+/]{40,}={0,2}").expect("valid regex"),
+            ]
         })
         .as_slice()
 }
@@ -97,9 +98,6 @@ fn is_secret(value: &Value) -> bool {
         Value::String(s) => s,
         _ => return false,
     };
-    if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
-        return false;
-    }
     if builtin_secret_patterns().iter().any(|p| p.is_match(text)) {
         return true;
     }
@@ -125,11 +123,11 @@ pub fn register_secret_pattern(name: &str, pattern: Regex) {
 
 /// Return all secret patterns (built-in and custom).
 pub fn get_secret_patterns() -> Vec<SecretPattern> {
-    let mut out: Vec<SecretPattern> = crate::secret_patterns_generated::PATTERNS
+    let mut out: Vec<SecretPattern> = builtin_secret_patterns()
         .iter()
-        .zip(builtin_secret_patterns().iter())
-        .map(|((name, _), p)| SecretPattern {
-            name: name.to_string(),
+        .enumerate()
+        .map(|(i, p)| SecretPattern {
+            name: format!("builtin-{i}"),
             pattern: p.clone(),
         })
         .collect();
