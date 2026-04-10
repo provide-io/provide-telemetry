@@ -58,96 +58,22 @@ const DEFAULT_SENSITIVE: &[&str] = &[
     "cookie",
 ];
 
-/// A secret pattern with a diagnostic name and the compiled regex.
-#[derive(Clone, Debug)]
-pub struct SecretPattern {
-    pub name: String,
-    pub pattern: Regex,
-}
-
 static RULES: OnceLock<Mutex<Vec<PIIRule>>> = OnceLock::new();
-static CUSTOM_SECRET_PATTERNS: OnceLock<Mutex<Vec<(String, Regex)>>> = OnceLock::new();
 
 fn rules() -> &'static Mutex<Vec<PIIRule>> {
     RULES.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-fn custom_secret_patterns() -> &'static Mutex<Vec<(String, Regex)>> {
-    CUSTOM_SECRET_PATTERNS.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-fn builtin_secret_patterns() -> &'static [Regex] {
+fn secret_patterns() -> &'static [Regex] {
     static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
     PATTERNS
         .get_or_init(|| {
             vec![
                 Regex::new(r"(?:AKIA|ASIA)[A-Z0-9]{16}").expect("valid regex"),
                 Regex::new(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}").expect("valid regex"),
-                Regex::new(r"gh[pos]_[A-Za-z0-9_]{36,}").expect("valid regex"),
-                Regex::new(r"[0-9a-fA-F]{40,}").expect("valid regex"),
-                Regex::new(r"[A-Za-z0-9+/]{40,}={0,2}").expect("valid regex"),
             ]
         })
         .as_slice()
-}
-
-fn is_secret(value: &Value) -> bool {
-    let text = match value {
-        Value::String(s) => s,
-        _ => return false,
-    };
-    if builtin_secret_patterns().iter().any(|p| p.is_match(text)) {
-        return true;
-    }
-    custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned")
-        .iter()
-        .any(|(_, p)| p.is_match(text))
-}
-
-/// Register a custom secret detection pattern. If *name* already exists, the
-/// pattern is replaced.
-pub fn register_secret_pattern(name: &str, pattern: Regex) {
-    let mut patterns = custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned");
-    if let Some(entry) = patterns.iter_mut().find(|(n, _)| n == name) {
-        entry.1 = pattern;
-    } else {
-        patterns.push((name.to_string(), pattern));
-    }
-}
-
-/// Return all secret patterns (built-in and custom).
-pub fn get_secret_patterns() -> Vec<SecretPattern> {
-    let mut out: Vec<SecretPattern> = builtin_secret_patterns()
-        .iter()
-        .enumerate()
-        .map(|(i, p)| SecretPattern {
-            name: format!("builtin-{i}"),
-            pattern: p.clone(),
-        })
-        .collect();
-    for (name, pattern) in custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned")
-        .iter()
-    {
-        out.push(SecretPattern {
-            name: name.clone(),
-            pattern: pattern.clone(),
-        });
-    }
-    out
-}
-
-/// Reset custom secret patterns — for test isolation only.
-pub fn reset_secret_patterns_for_tests() {
-    custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned")
-        .clear();
 }
 
 pub fn register_pii_rule(rule: PIIRule) {
@@ -220,7 +146,7 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                 if DEFAULT_SENSITIVE
                     .iter()
                     .any(|candidate| candidate == &lowered)
-                    || is_secret(value)
+                    || matches!(value, Value::String(text) if secret_patterns().iter().any(|pattern| pattern.is_match(text)))
                 {
                     out.insert(key.clone(), Value::String(REDACTED.to_string()));
                     emit_receipt(&child_path.join("."), "redact", &value.to_string());
