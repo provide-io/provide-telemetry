@@ -92,13 +92,13 @@ def setup_tracing(config: TelemetryConfig) -> None:
     from provide.telemetry.resilience import _is_running_in_event_loop
 
     if _is_running_in_event_loop():  # pragma: no mutate
-        warnings.warn(
-            "setup_tracing() called from an active event loop; "
-            "provider initialization may stall the event loop. "
-            "Call setup_telemetry() before starting the event loop.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
+        warnings.warn(  # pragma: no mutate
+            "setup_tracing() called from an active event loop; "  # pragma: no mutate
+            "provider initialization may stall the event loop. "  # pragma: no mutate
+            "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate
+            RuntimeWarning,  # pragma: no mutate
+            stacklevel=2,  # pragma: no mutate
+        )  # pragma: no mutate
     if not _HAS_OTEL:
         return
 
