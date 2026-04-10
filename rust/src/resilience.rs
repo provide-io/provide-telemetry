@@ -109,12 +109,13 @@ pub fn get_circuit_state(signal: Signal) -> Result<(String, u32, f64), Telemetry
     Ok(("closed".to_string(), state.open_count, 0.0))
 }
 
-pub async fn run_with_resilience<F, T>(
+pub async fn run_with_resilience<F, Fut, T>(
     signal: Signal,
     operation: F,
 ) -> Result<Option<T>, TelemetryError>
 where
-    F: Future<Output = Result<T, TelemetryError>>,
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T, TelemetryError>>,
 {
     let policy = get_exporter_policy(signal)?;
     {
@@ -134,48 +135,60 @@ where
         }
     }
 
-    let started = Instant::now();
     let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
-    let result = if timeout.is_zero() {
-        operation.await
-    } else {
-        match tokio::time::timeout(timeout, operation).await {
-            Ok(inner) => inner,
-            Err(_) => Err(TelemetryError::new("operation timed out")),
-        }
-    };
+    let max_attempts = policy.retries + 1;
+    let mut last_err = TelemetryError::new("no attempts made");
 
-    match result {
-        Ok(value) => {
-            record_export_latency(signal, started.elapsed().as_secs_f64() * 1000.0);
-            if let Some(state) = circuits()
-                .lock()
-                .expect("circuit lock poisoned")
-                .get_mut(&signal)
-            {
-                state.consecutive_timeouts = 0;
+    for attempt in 0..max_attempts {
+        if attempt > 0 {
+            if policy.backoff_seconds > 0.0 {
+                let backoff = Duration::from_secs_f64(policy.backoff_seconds);
+                tokio::time::sleep(backoff).await;
             }
-            Ok(Some(value))
+            increment_retries(signal, 1);
         }
-        Err(err) => {
-            record_export_failure(signal);
-            let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
-            if let Some(state) = circuit_lock.get_mut(&signal) {
-                state.consecutive_timeouts += 1;
-                if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-                    state.open_count += 1;
-                    state.tripped_at = Some(Instant::now());
+
+        let started = Instant::now();
+        let result = if timeout.is_zero() {
+            operation().await
+        } else {
+            match tokio::time::timeout(timeout, operation()).await {
+                Ok(inner) => inner,
+                Err(_) => Err(TelemetryError::new("operation timed out")),
+            }
+        };
+
+        match result {
+            Ok(value) => {
+                record_export_latency(signal, started.elapsed().as_secs_f64() * 1000.0);
+                if let Some(state) = circuits()
+                    .lock()
+                    .expect("circuit lock poisoned")
+                    .get_mut(&signal)
+                {
+                    state.consecutive_timeouts = 0;
                 }
+                return Ok(Some(value));
             }
-            if policy.retries > 0 {
-                increment_retries(signal, 1);
-            }
-            if policy.fail_open {
-                Ok(None)
-            } else {
-                Err(err)
+            Err(err) => {
+                record_export_failure(signal);
+                let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+                if let Some(state) = circuit_lock.get_mut(&signal) {
+                    state.consecutive_timeouts += 1;
+                    if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+                        state.open_count += 1;
+                        state.tripped_at = Some(Instant::now());
+                    }
+                }
+                last_err = err;
             }
         }
+    }
+
+    if policy.fail_open {
+        Ok(None)
+    } else {
+        Err(last_err)
     }
 }
 
@@ -251,7 +264,7 @@ mod tests {
 
         let err = runtime
             .block_on(async {
-                run_with_resilience(Signal::Logs, async {
+                run_with_resilience(Signal::Logs, || async {
                     Err::<(), _>(TelemetryError::new("boom"))
                 })
                 .await

@@ -7,7 +7,13 @@ name = "provide-telemetry"
 version = "0.2.4"
 edition = "2021"
 rust-version = "1.81"
-publish = false
+description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/provide-io/provide-telemetry"
+homepage = "https://github.com/provide-io/provide-telemetry"
+keywords = ["telemetry", "observability", "opentelemetry", "otlp"]
+categories = ["development-tools::debugging"]
 
 [lib]
 name = "provide_telemetry"

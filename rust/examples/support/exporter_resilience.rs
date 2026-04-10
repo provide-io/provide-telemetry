@@ -41,7 +41,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 allow_blocking_in_event_loop: false,
             },
         )?;
-        let result: Option<()> = run_with_resilience(Signal::Logs, async {
+        let result: Option<()> = run_with_resilience(Signal::Logs, || async {
             Err(TelemetryError::new("fail-open"))
         })
         .await?;
@@ -60,7 +60,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             },
         )?;
         Ok::<bool, TelemetryError>(
-            run_with_resilience::<_, ()>(Signal::Logs, async {
+            run_with_resilience::<_, _, ()>(Signal::Logs, || async {
                 Err(TelemetryError::new("fail-closed"))
             })
             .await
@@ -79,7 +79,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 allow_blocking_in_event_loop: false,
             },
         )?;
-        let result: Option<()> = run_with_resilience(Signal::Traces, async {
+        let result: Option<()> = run_with_resilience(Signal::Traces, || async {
             tokio::time::sleep(Duration::from_millis(25)).await;
             Ok(())
         })
@@ -99,7 +99,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             },
         )?;
         for _ in 0..4 {
-            let _ = run_with_resilience::<_, ()>(Signal::Metrics, async {
+            let _ = run_with_resilience::<_, _, ()>(Signal::Metrics, || async {
                 Err(TelemetryError::new("timeout"))
             })
             .await?;
