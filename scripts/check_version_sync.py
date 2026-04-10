@@ -56,6 +56,22 @@ def _go_version() -> str | None:
     return None
 
 
+def _go_logger_version() -> str | None:
+    """Read version from go/logger/VERSION."""
+    v = _REPO_ROOT / "go" / "logger" / "VERSION"
+    if v.exists():
+        return v.read_text(encoding="utf-8").strip()
+    return None
+
+
+def _go_tracer_version() -> str | None:
+    """Read version from go/tracer/VERSION."""
+    v = _REPO_ROOT / "go" / "tracer" / "VERSION"
+    if v.exists():
+        return v.read_text(encoding="utf-8").strip()
+    return None
+
+
 def _rust_version() -> str | None:
     """Read version from rust/Cargo.toml."""
     cargo = _REPO_ROOT / "rust" / "Cargo.toml"
@@ -83,6 +99,8 @@ _LANG_READERS = {
     "python": _python_version,
     "typescript": _typescript_version,
     "go": _go_version,
+    "go/logger": _go_logger_version,
+    "go/tracer": _go_tracer_version,
     "rust": _rust_version,
     "csharp": _csharp_version,
 }
