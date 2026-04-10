@@ -65,3 +65,60 @@ def test_shutdown_telemetry_clears_executors() -> None:
     shutdown_telemetry()
     assert _timeout_executors == {}
     _reset_all_for_tests()
+
+
+# ── Mutation kill: shutdown(wait=False) vs wait=True ────────────────────────
+
+
+def test_shutdown_timeout_executors_calls_shutdown_with_wait_false() -> None:
+    """Kill mutant: executor.shutdown(wait=False) → wait=True.
+
+    Verifies that the ``wait`` keyword is exactly False so the call is
+    non-blocking (daemon threads are abandoned rather than joined).
+    """
+    for sig in ("logs", "traces", "metrics"):
+        _get_timeout_executor(sig)
+
+    from unittest.mock import patch
+
+    shutdown_calls: list[tuple[object, ...]] = []
+
+    original_shutdown = None
+
+    def _recording_shutdown(wait: bool) -> None:
+        shutdown_calls.append((wait,))
+        if original_shutdown is not None:
+            original_shutdown(wait=wait)
+
+    # Patch each executor's shutdown method to record the call
+    executors = list(_timeout_executors.values())
+    patches = []
+    for ex in executors:
+        p = patch.object(ex, "shutdown", side_effect=_recording_shutdown)
+        patches.append(p)
+
+    for p in patches:
+        p.start()
+
+    try:
+        shutdown_timeout_executors()
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert len(shutdown_calls) == 3, "Expected one shutdown() call per executor"
+    for args in shutdown_calls:
+        assert args == (False,), f"Expected wait=False, got wait={args[0]}"
+
+
+def test_shutdown_timeout_executors_clear_removes_all_entries() -> None:
+    """Kill mutant: _timeout_executors.clear() removed or no-op.
+
+    After shutdown, the dict must be empty so subsequent calls see no executors.
+    """
+    for sig in ("logs", "traces", "metrics"):
+        _get_timeout_executor(sig)
+
+    assert len(_timeout_executors) == 3
+    shutdown_timeout_executors()
+    assert len(_timeout_executors) == 0, "_timeout_executors must be empty after shutdown"

@@ -69,11 +69,8 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         .map_err(|err| TelemetryError::new(format!("failed to build runtime: {err}")))?;
     runtime.block_on(async {
         for _ in 0..4 {
-            // Sleep longer than timeout_seconds so tokio::time::timeout fires;
-            // only real timeouts count toward the circuit breaker.
             let _: Option<()> = run_with_resilience(Signal::Metrics, || async {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                Ok(())
+                Err(TelemetryError::new("hardening demo failure"))
             })
             .await?;
         }
