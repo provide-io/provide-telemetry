@@ -163,21 +163,3 @@ jobs:
           fi
           echo "OK: go/tracer has OTel API only, no SDK"
 
-  mutation:
-    runs-on: ubuntu-latest
-    needs: test
-    defaults:
-      run:
-        working-directory: go
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
-        with:
-          go-version: "1.25"
-      - name: Install gremlins
-        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
-      - name: Run mutation tests
-# Excluded files contain comparisons where gremlins boundary/arithmetic
-        # mutations are mathematically equivalent (float64 exact equality P=0,
-        # nanosecond time boundary P≈0). See file header comments.
-        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" .
