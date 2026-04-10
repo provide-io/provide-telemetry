@@ -45,9 +45,28 @@ var (
 
 // SetSamplingPolicy registers a sampling policy for a signal.
 // signal must be "logs", "traces", or "metrics"; other values return a ConfigurationError.
+// DefaultRate is clamped to [0.0, 1.0].
 func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, error) {
 	if err := _validateSignal(signal); err != nil {
 		return SamplingPolicy{}, err
+	}
+	if policy.DefaultRate < 0.0 {
+		policy.DefaultRate = 0.0
+	} else if policy.DefaultRate > 1.0 {
+		policy.DefaultRate = 1.0
+	}
+	if len(policy.Overrides) > 0 {
+		clamped := make(map[string]float64, len(policy.Overrides))
+		for k, v := range policy.Overrides {
+			if v < 0.0 {
+				clamped[k] = 0.0
+			} else if v > 1.0 {
+				clamped[k] = 1.0
+			} else {
+				clamped[k] = v
+			}
+		}
+		policy.Overrides = clamped
 	}
 	_samplingMu.Lock()
 	defer _samplingMu.Unlock()
