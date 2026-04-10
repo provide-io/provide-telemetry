@@ -10,6 +10,8 @@ on:
       - "typescript/src/**"
       - "e2e/**"
       - "examples/openobserve/**"
+      - "rust/examples/openobserve_*.rs"
+      - "rust/examples/support/openobserve_shared.rs"
       - "typescript/examples/openobserve/**"
   workflow_dispatch:
 
@@ -59,6 +61,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
         working-directory: typescript
       - run: uv sync --group dev --extra otel
@@ -70,3 +73,11 @@ jobs:
             exit 0
           fi
           uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+      - name: Run Rust OpenObserve verification example
+        working-directory: rust
+        run: |
+          if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
+            echo "OPENOBSERVE_* not configured; skipping Rust OpenObserve example."
+            exit 0
+          fi
+          cargo run --features otel --example openobserve_02_verify_ingestion
