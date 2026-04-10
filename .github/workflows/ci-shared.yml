@@ -63,7 +63,15 @@ jobs:
       - name: Run OpenObserve E2E
         run: |
           if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
-            echo "OPENOBSERVE_* not configured; skipping e2e run."
+            echo "::warning::OPENOBSERVE_* secrets not configured — E2E tests skipped. Set OPENOBSERVE_URL (var) and OPENOBSERVE_USER/PASSWORD (secrets) to enable."
             exit 0
           fi
           uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
+      - name: Run Rust OpenObserve verification example
+        working-directory: rust
+        run: |
+          if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
+            echo "::warning::OPENOBSERVE_* secrets not configured — Rust OpenObserve example skipped."
+            exit 0
+          fi
+          cargo run --features otel --example openobserve_02_verify_ingestion
