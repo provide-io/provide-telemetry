@@ -2,39 +2,48 @@
 // SPDX-License-Identifier: Apache-2.0
 // Mutation tests for consent.rs
 
-use provide_telemetry::{should_allow, get_consent_level, set_consent_level, ConsentLevel};
+use provide_telemetry::{
+    should_allow, get_consent_level, set_consent_level, reset_consent_for_tests, ConsentLevel,
+};
 
 #[test]
-fn test_should_allow_logs() {
-    let result = should_allow("logs", None);
-    assert!(result);
+fn test_should_allow_with_full_consent() {
+    reset_consent_for_tests();
+    assert!(should_allow("logs", None));
+    assert!(should_allow("traces", None));
+    assert!(should_allow("metrics", None));
 }
 
 #[test]
-fn test_should_allow_traces() {
-    let result = should_allow("traces", None);
-    assert!(result);
+fn test_should_allow_with_none_consent() {
+    set_consent_level(ConsentLevel::None);
+    assert!(!should_allow("logs", None));
+    assert!(!should_allow("traces", None));
+    assert!(!should_allow("metrics", None));
+    reset_consent_for_tests();
 }
 
 #[test]
-fn test_should_allow_metrics() {
-    let result = should_allow("metrics", None);
-    assert!(result);
-}
-
-#[test]
-fn test_should_allow_with_log_level() {
-    let result = should_allow("logs", Some("INFO"));
-    assert!(result);
+fn test_should_allow_log_level_with_functional_consent() {
+    set_consent_level(ConsentLevel::Functional);
+    // Functional: logs only at WARNING+ (order >= 3)
+    assert!(!should_allow("logs", Some("INFO")));   // INFO = order 2, blocked
+    assert!(should_allow("logs", Some("WARNING"))); // WARNING = order 3, allowed
+    assert!(should_allow("logs", Some("ERROR")));   // ERROR = order 4, allowed
+    reset_consent_for_tests();
 }
 
 #[test]
 fn test_consent_level_roundtrip() {
-    set_consent_level(ConsentLevel::Full);
-    let level = get_consent_level();
-    assert_eq!(level, ConsentLevel::Full);
+    reset_consent_for_tests();
+    assert_eq!(get_consent_level(), ConsentLevel::Full);
 
     set_consent_level(ConsentLevel::Minimal);
-    let level = get_consent_level();
-    assert_eq!(level, ConsentLevel::Minimal);
+    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+
+    set_consent_level(ConsentLevel::None);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    reset_consent_for_tests();
+    assert_eq!(get_consent_level(), ConsentLevel::Full);
 }
