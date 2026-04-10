@@ -36,7 +36,7 @@ def _mask_endpoint_url(url: str) -> str:
 def _masked_dataclass_repr(obj: object) -> str:
     """Return repr() for an otlp-bearing dataclass, masking headers/endpoint."""
     parts = []
-    for f in dataclasses.fields(obj):  # type: ignore
+    for f in dataclasses.fields(obj):  # type: ignore[arg-type]
         val = getattr(obj, f.name)
         if f.name == "otlp_headers":
             val = _mask_headers(val)

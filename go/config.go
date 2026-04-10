@@ -147,6 +147,85 @@ type TelemetryConfig struct {
 	Security     SecurityConfig
 }
 
+// maskHeaderValue masks a header value: shows first 4 chars + **** if >= 8 chars, else ****.
+func maskHeaderValue(v string) string {
+	if len(v) < 8 {
+		return "****"
+	}
+	return v[:4] + "****"
+}
+
+// maskHeaders returns a copy of h with all values masked.
+func maskHeaders(h map[string]string) map[string]string {
+	masked := make(map[string]string, len(h))
+	for k, v := range h {
+		masked[k] = maskHeaderValue(v)
+	}
+	return masked
+}
+
+// maskEndpointURL masks the password component of a URL's userinfo, if present.
+// We rebuild the string manually to avoid url.URL.String() percent-encoding the
+// asterisks in "****".
+func maskEndpointURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	pass, hasPass := u.User.Password()
+	if !hasPass || pass == "" {
+		return raw
+	}
+	// Reconstruct: scheme://user:****@host[:port]/path?query
+	host := u.Hostname()
+	if port := u.Port(); port != "" {
+		host = host + ":" + port
+	}
+	masked := u.Scheme + "://" + u.User.Username() + ":****@" + host + u.RequestURI()
+	return masked
+}
+
+// RedactedString returns a string representation of the config with secrets masked.
+func (c *TelemetryConfig) RedactedString() string {
+	return fmt.Sprintf(
+		"TelemetryConfig{ServiceName:%q, Environment:%q, Logging.OTLPHeaders:%v, Tracing.OTLPHeaders:%v, Tracing.OTLPEndpoint:%q, Metrics.OTLPHeaders:%v, Metrics.OTLPEndpoint:%q}",
+		c.ServiceName, c.Environment,
+		maskHeaders(c.Logging.OTLPHeaders),
+		maskHeaders(c.Tracing.OTLPHeaders),
+		maskEndpointURL(c.Tracing.OTLPEndpoint),
+		maskHeaders(c.Metrics.OTLPHeaders),
+		maskEndpointURL(c.Metrics.OTLPEndpoint),
+	)
+}
+
+// String implements fmt.Stringer and always returns a redacted representation.
+func (c *TelemetryConfig) String() string { return c.RedactedString() }
+
+// GoString implements fmt.GoStringer and always returns a redacted representation.
+func (c *TelemetryConfig) GoString() string { return c.RedactedString() }
+
+// RedactConfig returns the config fields as a map with OTLP headers and
+// endpoint passwords masked. Safe to log or store — no secrets are exposed.
+func RedactConfig(c *TelemetryConfig) map[string]interface{} {
+	return map[string]interface{}{
+		"service_name": c.ServiceName,
+		"environment":  c.Environment,
+		"version":      c.Version,
+		"logging": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Logging.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Logging.OTLPHeaders),
+		},
+		"tracing": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Tracing.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Tracing.OTLPHeaders),
+		},
+		"metrics": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Metrics.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Metrics.OTLPHeaders),
+		},
+	}
+}
+
 // DefaultTelemetryConfig returns a *TelemetryConfig with all defaults applied.
 func DefaultTelemetryConfig() *TelemetryConfig {
 	return &TelemetryConfig{
