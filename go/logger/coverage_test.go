@@ -5,6 +5,7 @@
 package logger_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -401,5 +402,26 @@ func TestComputeErrorFingerprintNoFrames(t *testing.T) {
 	fp := logger.ComputeErrorFingerprintFromParts("ValueError", nil)
 	if len(fp) != 12 {
 		t.Fatalf("fingerprint length = %d", len(fp))
+	}
+}
+
+// ---- Trace and IsEnabled helpers ----
+
+func TestTrace(t *testing.T) {
+	var buf bytes.Buffer
+	l := logger.NewBufferLogger(&buf, slog.LevelInfo)
+	logger.Trace(l, "trace-message", "key", "val")
+	// Trace is below INFO; output will be empty — just verify no panic.
+	_ = buf.String()
+}
+
+func TestIsEnabled(t *testing.T) {
+	var buf bytes.Buffer
+	l := logger.NewBufferLogger(&buf, slog.LevelInfo)
+	if !logger.IsEnabled(l, slog.LevelInfo) {
+		t.Error("expected INFO to be enabled")
+	}
+	if logger.IsEnabled(l, logger.LevelTrace) {
+		t.Error("expected TRACE to be disabled")
 	}
 }
