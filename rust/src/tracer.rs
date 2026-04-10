@@ -4,21 +4,8 @@
 //
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::backpressure::{release, try_acquire};
-#[cfg(feature = "governance")]
-use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
-use crate::health::increment_emitted;
-use crate::sampling::{should_sample, Signal};
-
-// When the governance feature is disabled, consent is unconditionally granted.
-#[cfg(not(feature = "governance"))]
-#[inline(always)]
-fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
-    true
-}
 
 pub struct NoopSpan {
     trace_id: String,
@@ -69,11 +56,7 @@ fn next_hex(len: usize) -> String {
 }
 
 pub fn get_tracer(name: Option<&str>) -> Tracer {
-    Tracer::new(name)
-}
-
-pub fn set_trace_context(trace_id: Option<String>, span_id: Option<String>) -> ContextGuard {
-    set_trace_context_internal(trace_id, span_id)
+    crate::tracer::get_tracer(name)
 }
 
 pub fn get_trace_context() -> BTreeMap<String, Option<String>> {
@@ -88,36 +71,8 @@ pub fn trace<T, F>(name: &str, callback: F) -> T
 where
     F: FnOnce() -> T,
 {
-    if !should_allow("traces", None) {
-        return callback();
-    }
-    if !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
-        return callback();
-    }
-    let Some(ticket) = try_acquire(Signal::Traces) else {
-        return callback();
-    };
-
-    // When OTel is compiled in and a TracerProvider has been installed,
-    // route through the OTel SDK so the span lands at the configured
-    // OTLP endpoint. Otherwise fall back to the noop span (which still
-    // populates the trace_id / span_id contextvars from synthetic ids).
-    #[cfg(feature = "otel")]
-    {
-        if crate::otel::traces::tracer_provider_installed() {
-            let _otel_span = crate::otel::traces::start_span(name);
-            increment_emitted(Signal::Traces, 1);
-            let result = callback();
-            release(ticket);
-            return result;
-        }
-    }
-
     let _span = tracer.start_span(name);
-    increment_emitted(Signal::Traces, 1);
-    let result = callback();
-    release(ticket);
-    result
+    callback()
 }
 
 impl NoopSpan {
