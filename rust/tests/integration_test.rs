@@ -306,6 +306,11 @@ fn integration_test_bounded_queue_drop_increments_health() {
     assert_eq!(snapshot.dropped_logs, 1);
 
     release(ticket);
+    let reacquired = try_acquire(Signal::Logs);
+    assert!(reacquired.is_some(), "release should restore queue capacity");
+    if let Some(ticket) = reacquired {
+        release(ticket);
+    }
 }
 
 #[test]

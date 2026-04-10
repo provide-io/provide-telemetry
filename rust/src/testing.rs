@@ -17,7 +17,7 @@ use crate::resilience::_reset_resilience_for_tests;
 use crate::sampling::_reset_sampling_for_tests;
 use crate::setup::shutdown_telemetry;
 use crate::slo::reset_slo_for_tests;
-use crate::tracer::set_trace_context;
+use crate::tracing::set_trace_context;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();

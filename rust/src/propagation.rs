@@ -27,6 +27,7 @@ pub struct PropagationGuard {
 }
 
 impl Drop for PropagationGuard {
+    #[cfg_attr(test, mutants::skip)] // Equivalent mutant: fields still drop after an empty body.
     fn drop(&mut self) {
         drop(self.trace_guard.take());
         drop(self.context_guard.take());

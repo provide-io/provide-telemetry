@@ -63,3 +63,28 @@ where
     let _guard = set_trace_context(Some(next_hex(32)), Some(next_hex(16)));
     callback()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracing_test_tracer_names_match_contract() {
+        assert_eq!(tracer.name(), "provide.telemetry");
+        assert_eq!(get_tracer(Some("custom.tracer")).name(), "custom.tracer");
+    }
+
+    #[test]
+    fn tracing_test_next_hex_respects_requested_length_and_advances() {
+        let first = next_hex(16);
+        let second = next_hex(16);
+        let long = next_hex(32);
+
+        assert_eq!(first.len(), 16);
+        assert_eq!(second.len(), 16);
+        assert_eq!(long.len(), 32);
+        assert_ne!(first, second);
+        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert!(long.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+}

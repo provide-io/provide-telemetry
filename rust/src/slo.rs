@@ -24,3 +24,22 @@ pub fn slo_initialized_for_tests() -> bool {
 pub fn reset_slo_for_tests() {
     SLO_INITIALIZED.store(false, Ordering::SeqCst);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn slo_test_reset_helper_clears_initialized_flag() {
+        let _guard = acquire_test_state_lock();
+        reset_slo_for_tests();
+        assert!(!slo_initialized_for_tests());
+
+        assert_eq!(classify_error(503), "server_error");
+        assert!(slo_initialized_for_tests());
+
+        reset_slo_for_tests();
+        assert!(!slo_initialized_for_tests());
+    }
+}
