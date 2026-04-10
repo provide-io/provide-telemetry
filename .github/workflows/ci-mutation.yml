@@ -15,6 +15,7 @@ on:
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "go/**"
       - ".github/workflows/ci-mutation.yml"
   pull_request:
     branches: [main]
@@ -30,6 +31,7 @@ on:
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "go/**"
       - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
 
@@ -43,6 +45,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       typescript: ${{ steps.filter.outputs.typescript }}
       rust: ${{ steps.filter.outputs.rust }}
+      go: ${{ steps.filter.outputs.go }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dorny/paths-filter@v3
@@ -64,6 +67,8 @@ jobs:
               - "rust/tests/**"
               - "rust/Cargo.toml"
               - "rust/Cargo.lock"
+            go:
+              - "go/**"
 
   python-mutation:
     needs: changes
@@ -110,3 +115,24 @@ jobs:
       # All mutants must be caught (100% kill rate enforced).
       - name: Run cargo-mutants (100% kill rate required)
         run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+
+  go-mutation:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.25"
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+      # Excluded files contain comparisons where gremlins boundary/arithmetic
+      # mutations are mathematically equivalent (float64 exact equality P=0,
+      # nanosecond time boundary P≈0). See file header comments.
+      # All surviving mutants fail the job (--threshold-efficacy=100).
+      - name: Run gremlins mutation tests (100% kill rate required)
+        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" .
