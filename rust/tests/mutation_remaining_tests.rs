@@ -58,23 +58,23 @@ fn test_buffer_logger() {
 #[test]
 fn test_compute_error_fingerprint() {
     use provide_telemetry::compute_error_fingerprint;
-    let fp = compute_error_fingerprint("ValueError", &[]);
+    let fp = compute_error_fingerprint("ValueError", None);
     assert!(!fp.is_empty());
 }
 
 #[test]
 fn test_fingerprint_deterministic() {
     use provide_telemetry::compute_error_fingerprint;
-    let fp1 = compute_error_fingerprint("ValueError", &[]);
-    let fp2 = compute_error_fingerprint("ValueError", &[]);
+    let fp1 = compute_error_fingerprint("ValueError", None);
+    let fp2 = compute_error_fingerprint("ValueError", None);
     assert_eq!(fp1, fp2);
 }
 
 #[test]
 fn test_fingerprint_different_errors() {
     use provide_telemetry::compute_error_fingerprint;
-    let fp1 = compute_error_fingerprint("ValueError", &[]);
-    let fp2 = compute_error_fingerprint("TypeError", &[]);
+    let fp1 = compute_error_fingerprint("ValueError", None);
+    let fp2 = compute_error_fingerprint("TypeError", None);
     assert_ne!(fp1, fp2);
 }
 

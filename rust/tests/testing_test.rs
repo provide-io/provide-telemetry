@@ -7,7 +7,7 @@ use provide_telemetry::context::{bind_context, get_context};
 use provide_telemetry::health::{get_health_snapshot, record_export_failure};
 use provide_telemetry::sampling::Signal;
 use provide_telemetry::testing::{reset_telemetry_state, reset_trace_context};
-use provide_telemetry::tracing::{get_trace_context, set_trace_context};
+use provide_telemetry::tracer::{get_trace_context, set_trace_context};
 use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 

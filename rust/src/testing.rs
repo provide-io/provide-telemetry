@@ -17,7 +17,19 @@ use crate::resilience::_reset_resilience_for_tests;
 use crate::sampling::_reset_sampling_for_tests;
 use crate::setup::shutdown_telemetry;
 use crate::slo::reset_slo_for_tests;
-use crate::tracing::set_trace_context;
+use crate::tracer::set_trace_context;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn test_state_lock() -> &'static Mutex<()> {
+    TEST_STATE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Serialize tests that mutate process-global telemetry state.
+pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
+    test_state_lock().lock().expect("test state lock poisoned")
+}
 
 /// Reset all telemetry state to keep tests isolated.
 pub fn reset_telemetry_state() {

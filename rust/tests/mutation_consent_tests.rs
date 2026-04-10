@@ -3,7 +3,7 @@
 // Mutation tests for consent.rs
 
 use provide_telemetry::{
-    should_allow, get_consent_level, set_consent_level, reset_consent_for_tests, ConsentLevel,
+    get_consent_level, reset_consent_for_tests, set_consent_level, should_allow, ConsentLevel,
 };
 
 #[test]
@@ -27,9 +27,9 @@ fn test_should_allow_with_none_consent() {
 fn test_should_allow_log_level_with_functional_consent() {
     set_consent_level(ConsentLevel::Functional);
     // Functional: logs only at WARNING+ (order >= 3)
-    assert!(!should_allow("logs", Some("INFO")));   // INFO = order 2, blocked
+    assert!(!should_allow("logs", Some("INFO"))); // INFO = order 2, blocked
     assert!(should_allow("logs", Some("WARNING"))); // WARNING = order 3, allowed
-    assert!(should_allow("logs", Some("ERROR")));   // ERROR = order 4, allowed
+    assert!(should_allow("logs", Some("ERROR"))); // ERROR = order 4, allowed
     reset_consent_for_tests();
 }
 
