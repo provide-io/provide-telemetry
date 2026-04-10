@@ -1,0 +1,63 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
+
+use provide_telemetry::context::{bind_context, get_context};
+use provide_telemetry::health::{get_health_snapshot, record_export_failure};
+use provide_telemetry::sampling::Signal;
+use provide_telemetry::testing::{reset_telemetry_state, reset_trace_context};
+use provide_telemetry::tracing::{get_trace_context, set_trace_context};
+use serde_json::json;
+use std::sync::{Mutex, OnceLock};
+
+static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn test_lock() -> &'static Mutex<()> {
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[test]
+fn testing_test_reset_telemetry_state_clears_context_and_health() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _context_guard = bind_context([("user_id", json!("u1"))]);
+    record_export_failure(Signal::Logs);
+
+    assert_eq!(get_context().get("user_id"), Some(&json!("u1")));
+    assert_eq!(get_health_snapshot().export_failures_logs, 1);
+
+    reset_telemetry_state();
+
+    assert!(!get_context().contains_key("user_id"));
+    assert_eq!(get_health_snapshot().export_failures_logs, 0);
+}
+
+#[test]
+fn testing_test_reset_trace_context_clears_manually_set_trace_context() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _trace_guard = set_trace_context(Some("abc123".to_string()), Some("def456".to_string()));
+    assert_eq!(
+        get_trace_context()
+            .get("trace_id")
+            .and_then(|value| value.clone()),
+        Some("abc123".to_string())
+    );
+
+    reset_trace_context();
+
+    assert_eq!(
+        get_trace_context()
+            .get("trace_id")
+            .and_then(|value| value.clone()),
+        None
+    );
+}
+
+#[test]
+fn testing_test_reset_helpers_are_idempotent() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    reset_telemetry_state();
+    reset_telemetry_state();
+    reset_trace_context();
+    reset_trace_context();
+}
