@@ -32,7 +32,7 @@ mod secret_patterns_generated;
 mod setup;
 pub mod slo;
 pub mod testing;
-pub mod tracing;
+pub mod tracer;
 
 pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire, QueuePolicy};
 pub use cardinality::{
@@ -61,12 +61,7 @@ pub use context::{
 pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
-pub use logger::{
-    buffer_logger, configure_logging, enable_console_capture_for_tests,
-    enable_json_capture_for_tests, get_logger, logger, null_logger, reset_logging_config_for_tests,
-    set_as_global_logger, take_console_capture, take_json_capture, BufferLogger, EventMetadata,
-    LogEvent, Logger, NullLogger,
-};
+pub use logger::{buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger};
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
@@ -98,10 +93,5 @@ pub use schema::{
     event, event_name, get_strict_schema, set_strict_schema, validate_required_keys, Event,
 };
 pub use setup::{setup_telemetry, shutdown_telemetry};
-pub use slo::{
-    classify_error, get_error_count_for_tests, get_request_count_for_tests, record_red_metrics,
-    record_use_metrics, reset_slo_for_tests, slo_initialized_for_tests,
-};
-pub use tracer::{
-    get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer,
-};
+pub use slo::{classify_error, record_red_metrics, record_use_metrics, reset_slo_for_tests};
+pub use tracer::{get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer};
