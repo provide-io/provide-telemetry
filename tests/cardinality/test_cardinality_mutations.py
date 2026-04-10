@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import time
+import unittest.mock
+
 import pytest
 
 from provide.telemetry import cardinality as cardinality_mod
@@ -171,3 +174,114 @@ class TestRegisterCardinalityLimit:
         register_cardinality_limit("real_key", max_values=5)
         assert "real_key" in cardinality_mod._seen
         assert None not in cardinality_mod._seen
+
+
+# ── two-phase prune: re-verification and edge cases ──────────────────────────
+
+
+class TestTwoPhaseProune:
+    def test_prune_re_verification_skips_refreshed_value(self) -> None:
+        """A value refreshed between snapshot and deletion must survive."""
+        register_cardinality_limit("k", max_values=10, ttl_seconds=1.0)
+        old_time = 0.0  # expired
+        cardinality_mod._seen["k"]["v"] = old_time
+        # Simulate refresh by updating the timestamp before _delete_expired runs.
+        cardinality_mod._seen["k"]["v"] = 9999.0
+        # Collect would mark "v" as expired (old_time=0 < threshold), but after refresh
+        # it should survive the delete phase.
+        from provide.telemetry.cardinality import _delete_expired
+
+        candidates = ["v"]
+        _delete_expired("k", candidates, now=9999.5)
+        assert "v" in cardinality_mod._seen["k"]
+
+    def test_prune_re_verification_deletes_truly_expired(self) -> None:
+        """A value that is still expired after the snapshot must be deleted."""
+        register_cardinality_limit("k", max_values=10, ttl_seconds=1.0)
+        cardinality_mod._seen["k"]["old"] = 0.0  # definitely expired
+        from provide.telemetry.cardinality import _delete_expired
+
+        _delete_expired("k", ["old"], now=9999.0)
+        assert "old" not in cardinality_mod._seen["k"]
+
+    def test_prune_handles_cleared_limit_between_phases(self) -> None:
+        """Clearing the limit between Phase 1 and Phase 2 must not crash."""
+        register_cardinality_limit("k", max_values=5, ttl_seconds=1.0)
+        cardinality_mod._seen["k"]["v"] = 0.0
+        from provide.telemetry.cardinality import _delete_expired
+
+        clear_cardinality_limits()  # simulates limit removed between phases
+        _delete_expired("k", ["v"], now=9999.0)  # must not raise
+
+    def test_prune_handles_cleared_seen_between_phases(self) -> None:
+        """Clearing _seen[key] between Phase 1 and Phase 2 must not crash."""
+        register_cardinality_limit("k", max_values=5, ttl_seconds=1.0)
+        cardinality_mod._seen["k"]["v"] = 0.0
+        from provide.telemetry.cardinality import _delete_expired
+
+        del cardinality_mod._seen["k"]  # simulates race where seen is gone
+        _delete_expired("k", ["v"], now=9999.0)  # must not raise
+
+    def test_guard_attributes_limit_cleared_before_phase3(self) -> None:
+        """Phase 3 skips key gracefully if limit is cleared after Phase 1 releases lock.
+
+        Simulates a threading race: limit registered, guard_attributes enters
+        Phase 1 (lock acquired+released), then limits are cleared, then Phase 3
+        re-acquires the lock and finds limit is None.
+        """
+        register_cardinality_limit("x", max_values=5)
+        # Set _last_prune to skip prune inside Phase 1 (no expired block).
+        cardinality_mod._last_prune["x"] = time.monotonic() + 1000.0
+
+        release_count = [0]
+        original_lock = cardinality_mod._lock
+
+        class _InterceptLock:
+            """Wraps the real lock and clears _limits after Phase 1 releases."""
+
+            def acquire(self, *args: object, **kwargs: object) -> bool:
+                return original_lock.acquire()
+
+            def release(self) -> None:
+                original_lock.release()
+                release_count[0] += 1
+                # Phase 0 = release 1, Phase 1 per key = release 2.
+                # Clear limits right after Phase 1 so Phase 3 sees None.
+                if release_count[0] == 2:
+                    cardinality_mod._limits.clear()
+
+            def __enter__(self) -> _InterceptLock:
+                self.acquire()
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                self.release()
+
+        with unittest.mock.patch.object(cardinality_mod, "_lock", _InterceptLock()):
+            result = guard_attributes({"x": "val"})
+
+        # With no limit, the value passes through unchanged.
+        assert result == {"x": "val"}
+
+    def test_guard_attributes_multiple_keys_independent_prunes(self) -> None:
+        """Two keys: one needs pruning, one does not — both handled correctly."""
+        import time
+
+        now = time.monotonic()
+        register_cardinality_limit("hot", max_values=5, ttl_seconds=1.0)
+        register_cardinality_limit("cold", max_values=5, ttl_seconds=300.0)
+        # Seed both keys with known values
+        cardinality_mod._seen["hot"]["old_val"] = 0.0  # expired (0 << now - 1.0)
+        cardinality_mod._seen["cold"]["fresh_val"] = now  # not expired
+        # Force prune interval to trigger on next call
+        cardinality_mod._last_prune["hot"] = 0.0
+        cardinality_mod._last_prune["cold"] = 0.0
+
+        result = guard_attributes({"hot": "new_val", "cold": "another_val"})
+
+        assert result["hot"] == "new_val"
+        assert result["cold"] == "another_val"
+        # old_val should have been pruned from hot
+        assert "old_val" not in cardinality_mod._seen.get("hot", {})
+        # fresh_val must still be present in cold (TTL=300, not expired)
+        assert "fresh_val" in cardinality_mod._seen.get("cold", {})

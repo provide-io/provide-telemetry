@@ -26,7 +26,6 @@ npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
 
 ```bash
 cargo add provide-telemetry
-cargo add provide-telemetry --features otel
 ```
 
 ## Quick Start

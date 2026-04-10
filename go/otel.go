@@ -6,7 +6,9 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
@@ -57,11 +59,60 @@ func (s *_otelSpanAdapter) SpanID() string { return s.inner.SpanContext().SpanID
 // TraceID returns the hex-encoded trace ID.
 func (s *_otelSpanAdapter) TraceID() string { return s.inner.SpanContext().TraceID().String() }
 
+// _warnIfTracerProviderConflict logs a warning when a third-party tracer provider is
+// already installed in the OTel global before we install ours.
+//
+// Detection logic:
+//   - When no custom provider has been set, otel.GetTracerProvider() returns the OTel
+//     internal delegating wrapper (type name contains "global"). This is the safe default.
+//   - After SetTracerProvider, the actual provider type is returned directly.
+//   - Our own *sdktrace.TracerProvider (from a previous cycle) is always acceptable.
+func _warnIfTracerProviderConflict() {
+	if _otelTracerProvider != nil {
+		return // we installed the global ourselves in an active setup cycle
+	}
+	existing := otel.GetTracerProvider()
+	if strings.Contains(fmt.Sprintf("%T", existing), "global") {
+		return // OTel default delegating wrapper — no custom provider set
+	}
+	if _, isSDK := existing.(*sdktrace.TracerProvider); isSDK {
+		return // SDK provider (ours from a prior cycle, or a compatible library)
+	}
+	if Logger != nil {
+		Logger.Warn("otel.tracer_provider_conflict",
+			slog.String("existing_type", fmt.Sprintf("%T", existing)),
+			slog.String("action", "overwriting with provide-telemetry tracer provider"),
+		)
+	}
+}
+
+// _warnIfMeterProviderConflict logs a warning when a third-party meter provider is
+// already installed in the OTel global before we install ours.
+func _warnIfMeterProviderConflict() {
+	if _otelMeterProvider != nil {
+		return // we installed the global ourselves in an active setup cycle
+	}
+	existing := otel.GetMeterProvider()
+	if strings.Contains(fmt.Sprintf("%T", existing), "global") {
+		return // OTel default delegating wrapper — no custom provider set
+	}
+	if _, isSDK := existing.(*sdkmetric.MeterProvider); isSDK {
+		return // SDK provider (ours from a prior cycle, or a compatible library)
+	}
+	if Logger != nil {
+		Logger.Warn("otel.meter_provider_conflict",
+			slog.String("existing_type", fmt.Sprintf("%T", existing)),
+			slog.String("action", "overwriting with provide-telemetry meter provider"),
+		)
+	}
+}
+
 // _applyOTelProviders wires real OTel providers from state into the package-level singletons.
 // It is called by SetupTelemetry when at least one provider option is present.
 func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 	if state.tracerProvider != nil {
 		if tp, ok := state.tracerProvider.(*sdktrace.TracerProvider); ok {
+			_warnIfTracerProviderConflict()
 			_otelTracerProvider = tp
 			otel.SetTracerProvider(tp)
 			tracer := tp.Tracer(cfg.ServiceName)
@@ -71,6 +122,7 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 
 	if state.meterProvider != nil {
 		if mp, ok := state.meterProvider.(*sdkmetric.MeterProvider); ok {
+			_warnIfMeterProviderConflict()
 			_otelMeterProvider = mp
 			otel.SetMeterProvider(mp)
 		}

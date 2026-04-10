@@ -47,6 +47,9 @@ path = [
   "go/VERSION",
   "go/go.mod",
   "go/go.sum",
+  "go/logger/go.mod",
+  "go/tracer/go.mod",
+  "go/tracer/go.sum",
   "go/cmd/e2e_cross_language_client/.gitignore",
   "go/cmd/e2e_cross_language_client/go.mod",
   "go/cmd/e2e_cross_language_client/go.sum",
@@ -93,6 +96,6 @@ SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-path = ["go/coverage_new.out", "go/coverage.out"]
+path = ["go/coverage_new.out", "go/coverage.out", "go/logger/coverage.out", "go/logger/cover.out", "go/tracer/cover.out"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"

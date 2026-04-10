@@ -129,5 +129,13 @@ fmt.Println()
 		fmt.Printf("  %q -> %s\n", name, status)
 	}
 
+	// Sampling rate clamping
+	fmt.Println("\nSampling rate clamping (rate clamped to [0,1]):")
+	p1, _ := telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.5})
+	fmt.Printf("  Set rate=1.5 → stored as %.1f\n", p1.DefaultRate)
+	p2, _ := telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: -0.5})
+	fmt.Printf("  Set rate=-0.5 → stored as %.1f\n", p2.DefaultRate)
+	_, _ = telemetry.SetSamplingPolicy("logs", telemetry.SamplingPolicy{DefaultRate: 1.0}) // restore
+
 	fmt.Println("\nDone!")
 }

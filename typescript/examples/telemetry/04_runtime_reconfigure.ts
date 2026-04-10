@@ -17,6 +17,7 @@
 
 import {
   event,
+  getHealthSnapshot,
   getLogger,
   getRuntimeConfig,
   reconfigureTelemetry,
@@ -53,6 +54,9 @@ async function main(): Promise<void> {
   console.log(`  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`);
 
   log.info({ ...event('example', 'runtime', 'reconfigured') });
+
+  const healthAfter = getHealthSnapshot();
+  console.log(`  📊 Health after reconfigure: logsDropped=${healthAfter.logsDropped} exportFailuresLogs=${healthAfter.exportFailuresLogs}`);
 
   // ── 🌍 Reload from environment ───────────────────────
   console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env hot fields only...');
