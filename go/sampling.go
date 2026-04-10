@@ -60,7 +60,7 @@ func SetSamplingPolicy(signal string, policy SamplingPolicy) (SamplingPolicy, er
 		return SamplingPolicy{}, err
 	}
 	policy.DefaultRate = _clampRate(policy.DefaultRate)
-	if len(policy.Overrides) > 0 {
+	if policy.Overrides != nil {
 		clamped := make(map[string]float64, len(policy.Overrides))
 		for k, v := range policy.Overrides {
 			clamped[k] = _clampRate(v)

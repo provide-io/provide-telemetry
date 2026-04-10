@@ -33,6 +33,14 @@ var _cfg = DefaultLogConfig() //nolint:gochecknoglobals
 
 // Configure replaces the active logging configuration and rebuilds Logger.
 func Configure(cfg LogConfig) {
+	// Clone ModuleLevels so callers cannot mutate it after the fact.
+	if len(cfg.ModuleLevels) > 0 {
+		cloned := make(map[string]string, len(cfg.ModuleLevels))
+		for k, v := range cfg.ModuleLevels {
+			cloned[k] = v
+		}
+		cfg.ModuleLevels = cloned
+	}
 	_cfg = cfg
 	_configureLogger(cfg)
 }
