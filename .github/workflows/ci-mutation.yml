@@ -6,22 +6,68 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "pyproject.toml"
+      - "scripts/run_mutation_gate.py"
+      - "scripts/_mutmut_shims/**"
+      - "rust/src/**"
+      - "rust/tests/**"
+      - "rust/Cargo.toml"
+      - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - ".github/workflows/ci-mutation.yml"
   pull_request:
     branches: [main]
     paths:
       - "src/**"
       - "tests/**"
+      - "pyproject.toml"
+      - "scripts/run_mutation_gate.py"
+      - "scripts/_mutmut_shims/**"
+      - "rust/src/**"
+      - "rust/tests/**"
+      - "rust/Cargo.toml"
+      - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      typescript: ${{ steps.filter.outputs.typescript }}
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - "src/**"
+              - "tests/**"
+              - "!tests/tooling/test_rust_*.py"
+              - "pyproject.toml"
+              - "scripts/run_mutation_gate.py"
+              - "scripts/_mutmut_shims/**"
+            typescript:
+              - "typescript/src/**"
+              - "typescript/tests/**"
+            rust:
+              - "rust/src/**"
+              - "rust/tests/**"
+              - "rust/Cargo.toml"
+              - "rust/Cargo.lock"
+
   python-mutation:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -32,6 +78,8 @@ jobs:
       - run: uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 2 --max-children 1 --min-mutation-score 100
 
   typescript-mutation:
+    needs: changes
+    if: needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -45,3 +93,18 @@ jobs:
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
       - run: npm run test:mutation
+
+  rust-mutation:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+      - name: Run cargo-mutants
+        run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
