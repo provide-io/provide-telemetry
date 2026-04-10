@@ -19,6 +19,7 @@ __all__ = [
     "SecurityConfig",
     "TelemetryConfig",
     "TracingConfig",
+    "redact_config",
 ]
 
 import logging
@@ -27,9 +28,34 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from provide.telemetry._masking import (
+    _mask_endpoint_url as _mask_endpoint_url,
+)
+from provide.telemetry._masking import (
+    _mask_header_value as _mask_header_value,
+)
+from provide.telemetry._masking import (
+    _mask_headers as _mask_headers,
+)
+from provide.telemetry._masking import (
+    _masked_dataclass_repr as _masked_dataclass_repr,
+)
 from provide.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
+
+
+def redact_config(config: TelemetryConfig) -> dict[str, object]:
+    """Return config fields as a dict with OTLP secrets masked."""
+    raw = dataclasses.asdict(config)
+    for v in raw.values():
+        if isinstance(v, dict):
+            if "otlp_headers" in v:
+                v["otlp_headers"] = _mask_headers(v["otlp_headers"])
+            if "otlp_endpoint" in v and v["otlp_endpoint"] is not None:
+                v["otlp_endpoint"] = _mask_endpoint_url(v["otlp_endpoint"])
+    return raw
+
 
 _VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
 
