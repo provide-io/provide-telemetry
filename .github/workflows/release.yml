@@ -193,7 +193,7 @@ jobs:
 
   publish-rust:
     needs: build-rust
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && secrets.CARGO_REGISTRY_TOKEN != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: read
