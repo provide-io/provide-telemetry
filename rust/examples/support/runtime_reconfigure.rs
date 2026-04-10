@@ -5,8 +5,7 @@
 
 use provide_telemetry::{
     get_runtime_config, reconfigure_telemetry, reload_runtime_from_env, setup_telemetry,
-    shutdown_telemetry, update_runtime_config, RuntimeOverrides, SamplingConfig, TelemetryConfig,
-    TelemetryError,
+    shutdown_telemetry, update_runtime_config, RuntimeOverrides, SamplingConfig, TelemetryError,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +42,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     .sampling
     .logs_rate;
 
-    let mut reconfigured = get_runtime_config().unwrap_or_else(TelemetryConfig::default);
+    let mut reconfigured = get_runtime_config().unwrap_or_default();
     reconfigured.sampling = SamplingConfig {
         logs_rate: 1.0,
         traces_rate: 1.0,

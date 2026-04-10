@@ -50,8 +50,10 @@ fn main() {
             .unwrap_or_default()
             .as_micros() as u64
             - (2 * 60 * 60 * 1_000_000);
-        let now_us =
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
+        let now_us = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
         let before_logs = count_log_hits(
             &openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, now_us)?,
             &names.run_id,
@@ -81,8 +83,10 @@ fn main() {
         let mut after_traces = before_traces;
         let mut after_metrics = before_metrics;
         while std::time::Instant::now() < deadline {
-            let end_us =
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
+            let end_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_micros() as u64;
             after_logs = count_log_hits(
                 &openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, end_us)?,
                 &names.run_id,
@@ -117,7 +121,10 @@ fn main() {
             missing.push("traces");
         }
         if !missing.is_empty() {
-            return Err(format!("ingestion did not increase for: {}", missing.join(", ")));
+            return Err(format!(
+                "ingestion did not increase for: {}",
+                missing.join(", ")
+            ));
         }
 
         println!("verification passed");

@@ -3,7 +3,6 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
-#![cfg(feature = "otel")]
 #![allow(dead_code)]
 
 use std::collections::HashMap;

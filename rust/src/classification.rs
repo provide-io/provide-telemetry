@@ -85,3 +85,21 @@ pub fn classify_key(key: &str) -> Option<String> {
         .find(|rule| match_glob(&rule.pattern, key))
         .map(|rule| rule.classification.as_str().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn classification_test_clear_rules_removes_registered_matches() {
+        let _guard = acquire_test_state_lock();
+        clear_classification_rules();
+        register_classification_rule(ClassificationRule::new("email*", DataClass::Pii));
+        assert_eq!(classify_key("email_address").as_deref(), Some("PII"));
+
+        clear_classification_rules();
+
+        assert_eq!(classify_key("email_address"), None);
+    }
+}

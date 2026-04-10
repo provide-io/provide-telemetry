@@ -150,7 +150,7 @@ fn integration_test_pii_example_summary_matches_demo_flow() {
     let summary = pii_cardinality::run_demo().expect("pii/cardinality example should succeed");
 
     assert_eq!(summary.hashed_email_len, 12);
-    assert_eq!(summary.credit_card_removed, true);
+    assert!(summary.credit_card_removed);
     assert_eq!(summary.truncated_password.as_deref(), Some("hunt..."));
     assert_eq!(summary.cardinality_max_values, Some(1));
     assert_eq!(summary.cardinality_ttl_seconds, Some(1.0));
@@ -161,9 +161,9 @@ fn integration_test_resilience_example_summary_matches_demo_flow() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     let summary = exporter_resilience::run_demo().expect("resilience example should succeed");
 
-    assert_eq!(summary.fail_open_result_is_none, true);
-    assert_eq!(summary.fail_closed_is_error, true);
-    assert_eq!(summary.timeout_result_is_none, true);
+    assert!(summary.fail_open_result_is_none);
+    assert!(summary.fail_closed_is_error);
+    assert!(summary.timeout_result_is_none);
     assert_eq!(summary.metrics_circuit_state.as_str(), "open");
     assert!(summary.metrics_open_count >= 1);
 }
@@ -238,8 +238,8 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     let summary = security_hardening::run_demo().expect("security example should succeed");
 
-    assert_eq!(summary.secret_redacted, true);
-    assert_eq!(summary.password_redacted, true);
+    assert!(summary.secret_redacted);
+    assert!(summary.password_redacted);
     assert_eq!(summary.depth_preserved_leaf.as_deref(), Some("deep"));
 }
 
@@ -248,12 +248,12 @@ fn integration_test_data_governance_example_summary_matches_demo_flow() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     let summary = data_governance::run_demo().expect("data governance example should succeed");
 
-    assert_eq!(summary.full_logs_debug_allowed, true);
-    assert_eq!(summary.none_traces_allowed, false);
+    assert!(summary.full_logs_debug_allowed);
+    assert!(!summary.none_traces_allowed);
     assert_eq!(summary.redacted_ssn.as_deref(), Some("***"));
     assert_eq!(summary.hashed_card_len, Some(12));
-    assert_eq!(summary.diagnosis_dropped, true);
-    assert_eq!(summary.api_key_dropped, true);
+    assert!(summary.diagnosis_dropped);
+    assert!(summary.api_key_dropped);
     assert_eq!(summary.ssn_class.as_deref(), Some("PII"));
     assert_eq!(summary.card_class.as_deref(), Some("PCI"));
     assert_eq!(summary.receipt_action.as_deref(), Some("redact"));
@@ -307,7 +307,10 @@ fn integration_test_bounded_queue_drop_increments_health() {
 
     release(ticket);
     let reacquired = try_acquire(Signal::Logs);
-    assert!(reacquired.is_some(), "release should restore queue capacity");
+    assert!(
+        reacquired.is_some(),
+        "release should restore queue capacity"
+    );
     if let Some(ticket) = reacquired {
         release(ticket);
     }
@@ -336,7 +339,7 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
         .expect("policy should set");
 
         for _ in 0..3 {
-            let result = run_with_resilience(Signal::Logs, async {
+            let result = run_with_resilience(Signal::Logs, || async {
                 tokio::time::sleep(Duration::from_millis(25)).await;
                 Ok::<_, provide_telemetry::TelemetryError>(())
             })
@@ -348,7 +351,7 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
         let state = get_circuit_state(Signal::Logs).expect("state should be available");
         assert_eq!(state.0, "open");
 
-        let short_circuit = run_with_resilience(Signal::Logs, async {
+        let short_circuit = run_with_resilience(Signal::Logs, || async {
             Ok::<_, provide_telemetry::TelemetryError>(())
         })
         .await
