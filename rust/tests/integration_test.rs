@@ -339,7 +339,7 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
         .expect("policy should set");
 
         for _ in 0..3 {
-            let result = run_with_resilience(Signal::Logs, async {
+            let result = run_with_resilience(Signal::Logs, || async {
                 tokio::time::sleep(Duration::from_millis(25)).await;
                 Ok::<_, provide_telemetry::TelemetryError>(())
             })
@@ -351,7 +351,7 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
         let state = get_circuit_state(Signal::Logs).expect("state should be available");
         assert_eq!(state.0, "open");
 
-        let short_circuit = run_with_resilience(Signal::Logs, async {
+        let short_circuit = run_with_resilience(Signal::Logs, || async {
             Ok::<_, provide_telemetry::TelemetryError>(())
         })
         .await
