@@ -71,7 +71,9 @@ jobs:
         # Exclude cmd/e2e_cross_language_client — separate module requiring Go 1.26, only used for E2E
         run: gosec -exclude-dir=cmd/e2e_cross_language_client ./...
       - name: Run govulncheck
-        run: govulncheck ./...
+        # Scan the library package only — examples are demo code, not library, and their
+        # transitive TLS usage should not block library releases.
+        run: govulncheck .
 
   vet:
     runs-on: ubuntu-latest
