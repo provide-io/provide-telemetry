@@ -95,6 +95,7 @@ pub fn try_acquire(signal: Signal) -> Option<QueueTicket> {
     }
 }
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutant: moving `ticket` into this function drops it at scope end.
 pub fn release(ticket: QueueTicket) {
     match ticket {
         QueueTicket::Unlimited => {}
@@ -104,4 +105,41 @@ pub fn release(ticket: QueueTicket) {
 
 pub fn _reset_backpressure_for_tests() {
     *queues().lock().expect("queue lock poisoned") = QueueState::default();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn backpressure_test_reset_helper_restores_default_policy() {
+        let _guard = acquire_test_state_lock();
+        set_queue_policy(QueuePolicy {
+            logs_maxsize: 3,
+            traces_maxsize: 4,
+            metrics_maxsize: 5,
+        });
+        assert_eq!(
+            get_queue_policy(),
+            QueuePolicy {
+                logs_maxsize: 3,
+                traces_maxsize: 4,
+                metrics_maxsize: 5,
+            }
+        );
+
+        _reset_backpressure_for_tests();
+
+        assert_eq!(get_queue_policy(), QueuePolicy::default());
+    }
+
+    #[test]
+    fn backpressure_test_queues_returns_shared_singleton() {
+        let _guard = acquire_test_state_lock();
+        let first = queues() as *const Mutex<QueueState>;
+        let second = queues() as *const Mutex<QueueState>;
+
+        assert_eq!(first, second);
+    }
 }

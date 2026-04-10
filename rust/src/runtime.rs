@@ -126,3 +126,52 @@ pub fn reconfigure_telemetry(
     set_active_config(Some(target.clone()));
     Ok(target)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_test_provider_config_changed_detects_each_provider_field() {
+        let current = TelemetryConfig::default();
+
+        let mut changed = current.clone();
+        changed.service_name = "svc-2".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.environment = "prod".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.version = "1.2.3".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.logging.otlp_headers.insert("x".into(), "1".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.tracing.enabled = !changed.tracing.enabled;
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.metrics.enabled = !changed.metrics.enabled;
+        assert!(provider_config_changed(&current, &changed));
+    }
+
+    #[test]
+    fn runtime_test_provider_config_changed_is_false_for_hot_only_changes() {
+        let current = TelemetryConfig::default();
+        let mut changed = current.clone();
+        changed.sampling.logs_rate = 0.25;
+        changed.backpressure.logs_maxsize = 9;
+        changed.exporter.logs_retries = 2;
+        changed.security.max_attr_count = 99;
+        changed.slo.enable_red_metrics = !changed.slo.enable_red_metrics;
+        changed.pii_max_depth = 3;
+        changed.strict_schema = true;
+
+        assert!(!provider_config_changed(&current, &changed));
+    }
+}
