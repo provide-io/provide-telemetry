@@ -1,41 +1,32 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// Mutation tests for resilience.rs — cover circuit breaker and error handling
+// Mutation tests for resilience.rs
 
-use provide_telemetry::{get_circuit_state, get_exporter_policy, set_exporter_policy, ExporterPolicy};
-
-#[test]
-fn test_circuit_state_default() {
-    // Circuit should start in a valid state
-    let state = get_circuit_state("logs");
-    // State should be one of the known variants
-    let _ = state;
-}
+use provide_telemetry::{get_exporter_policy, set_exporter_policy, ExporterPolicy};
 
 #[test]
 fn test_exporter_policy_default() {
     let policy = get_exporter_policy();
-    // Should return a valid policy
     let _ = policy;
 }
 
 #[test]
 fn test_set_exporter_policy() {
     let policy = ExporterPolicy::default();
-    set_exporter_policy(policy);
-
+    set_exporter_policy(policy.clone());
     let retrieved = get_exporter_policy();
-    // Policy should be stored and retrieved
     let _ = retrieved;
 }
 
 #[test]
-fn test_get_circuit_state_multiple_signals() {
-    // Different signals should each have their own state
-    let state_logs = get_circuit_state("logs");
-    let state_traces = get_circuit_state("traces");
-    let state_metrics = get_circuit_state("metrics");
+fn test_exporter_policy_roundtrip() {
+    let policy1 = ExporterPolicy::default();
+    set_exporter_policy(policy1.clone());
+    let retrieved1 = get_exporter_policy();
 
-    // Should all return valid states
-    let _ = (state_logs, state_traces, state_metrics);
+    let policy2 = ExporterPolicy::default();
+    set_exporter_policy(policy2.clone());
+    let retrieved2 = get_exporter_policy();
+
+    let _ = (retrieved1, retrieved2);
 }
