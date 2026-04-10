@@ -87,10 +87,24 @@ impl Logger {
     }
 
     pub fn log(&self, level: &str, message: &str) {
-        let event = new_event(&self.target, level, message);
-        let mut buf = events().lock().expect("logger event lock poisoned");
-        if buf.len() < MAX_FALLBACK_EVENTS {
-            buf.push(event);
+        // Push to test-capture buffer (preserves drain_events_for_tests API)
+        let evt = new_event(&self.target, level, message);
+        {
+            let mut buf = events().lock().expect("logger event lock poisoned");
+            if buf.len() < MAX_FALLBACK_EVENTS {
+                buf.push(evt);
+            }
+        }
+        // Emit through the active tracing subscriber.
+        // `target:` must be a string literal in tracing macros, so we carry the
+        // logger name as a structured "logger" field instead.
+        // Level must also be const — use individual macros via match.
+        let tgt = self.target.as_str();
+        match level {
+            "DEBUG" => tracing::debug!(logger = tgt, "{}", message),
+            "WARN" => tracing::warn!(logger = tgt, "{}", message),
+            "ERROR" => tracing::error!(logger = tgt, "{}", message),
+            _ => tracing::info!(logger = tgt, "{}", message),
         }
     }
 
