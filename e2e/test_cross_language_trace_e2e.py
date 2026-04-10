@@ -41,24 +41,6 @@ _TS_SCRIPT = _REPO_ROOT / "typescript" / "scripts" / "e2e_cross_language_client.
 _RUST_DIR = _REPO_ROOT / "rust"
 
 
-def _require_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        pytest.skip(f"{name} is not set")
-    return value
-
-
-def _auth_header(user: str, password: str) -> str:
-    token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
-    return f"Basic {token}"
-
-
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
-
-
 def _start_backend(backend_lang: str, port: int, base_url: str, otlp_headers_value: str) -> subprocess.Popen[str]:
     server_env = {
         **os.environ,
@@ -145,6 +127,24 @@ def _run_client(client_lang: str, backend_url: str, base_url: str, auth: str) ->
     raise AssertionError(f"unsupported client_lang={client_lang!r}")
 
 
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        pytest.skip(f"{name} is not set")
+    return value
+
+
+def _auth_header(user: str, password: str) -> str:
+    token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
+    return f"Basic {token}"
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
 def _search_total(
     base_url: str,
     stream_type: str,
@@ -187,6 +187,7 @@ def test_cross_language_trace_links_spans(backend_lang: str, client_lang: str) -
 
     port = _find_free_port()
     otlp_headers_value = f"Authorization={quote(auth, safe='')}"
+
     server_proc = _start_backend(backend_lang, port, base_url, otlp_headers_value)
 
     try:
