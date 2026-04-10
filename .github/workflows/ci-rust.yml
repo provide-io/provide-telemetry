@@ -7,6 +7,9 @@ on:
       - "spec/**"
       - "VERSION"
       - ".github/workflows/ci-rust.yml"
+    # Go sub-module tags (go/logger/v*, go/tracer/v*) must not trigger Rust CI
+    tags-ignore:
+      - 'go/**'
   pull_request:
     paths:
       - "rust/**"
