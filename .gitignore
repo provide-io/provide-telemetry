@@ -27,5 +27,7 @@ go/logger/coverage.out
 go/coverage_new.out
 go/cover.out
 go/coverage_prop.out
+coverage.out
+rust/target/
 go/coverage.html
 .claude/settings.local.json
