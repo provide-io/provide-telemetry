@@ -19,6 +19,7 @@ __all__ = [
     "SecurityConfig",
     "TelemetryConfig",
     "TracingConfig",
+    "redact_config",
 ]
 
 import dataclasses
@@ -26,46 +27,35 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from urllib.parse import unquote, urlparse, urlunparse
+from urllib.parse import unquote
 
+from provide.telemetry._masking import (
+    _mask_endpoint_url as _mask_endpoint_url,
+)
+from provide.telemetry._masking import (
+    _mask_header_value as _mask_header_value,
+)
+from provide.telemetry._masking import (
+    _mask_headers as _mask_headers,
+)
+from provide.telemetry._masking import (
+    _masked_dataclass_repr as _masked_dataclass_repr,
+)
 from provide.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
 
 
-def _mask_header_value(value: str) -> str:
-    """Mask a header value: show first 4 chars + **** if >= 8 chars, else ****."""
-    if len(value) < 8:
-        return "****"
-    return value[:4] + "****"
-
-
-def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
-    return {k: _mask_header_value(v) for k, v in headers.items()}
-
-
-def _mask_endpoint_url(url: str) -> str:
-    """Mask password in URL userinfo (user:password@host)."""
-    parsed = urlparse(url)
-    if parsed.password:
-        masked_netloc = f"{parsed.username}:****@{parsed.hostname}"
-        if parsed.port:
-            masked_netloc += f":{parsed.port}"
-        return urlunparse(parsed._replace(netloc=masked_netloc))
-    return url
-
-
-def _masked_dataclass_repr(obj: object) -> str:
-    """Return repr() for an otlp-bearing dataclass, masking headers/endpoint."""
-    parts = []
-    for f in dataclasses.fields(obj):  # type: ignore[arg-type]
-        val = getattr(obj, f.name)
-        if f.name == "otlp_headers":
-            val = _mask_headers(val)
-        elif f.name == "otlp_endpoint" and val is not None:
-            val = _mask_endpoint_url(val)
-        parts.append(f"{f.name}={val!r}")
-    return f"{obj.__class__.__name__}({', '.join(parts)})"
+def redact_config(config: TelemetryConfig) -> dict[str, object]:
+    """Return config fields as a dict with OTLP secrets masked."""
+    raw = dataclasses.asdict(config)
+    for v in raw.values():
+        if isinstance(v, dict):
+            if "otlp_headers" in v:
+                v["otlp_headers"] = _mask_headers(v["otlp_headers"])
+            if "otlp_endpoint" in v and v["otlp_endpoint"] is not None:
+                v["otlp_endpoint"] = _mask_endpoint_url(v["otlp_endpoint"])
+    return raw
 
 
 _VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
