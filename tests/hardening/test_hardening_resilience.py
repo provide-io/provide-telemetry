@@ -39,15 +39,25 @@ def _reset_state() -> None:
 
 
 def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
+    # allow_blocking_in_event_loop=True ensures the timeout executor is always used.
+    # Without it, pytest-asyncio auto mode can leave a running event loop in the
+    # test worker, causing _is_running_in_event_loop() to return True, which sets
+    # skip_executor=True and bypasses timeout enforcement entirely.
     resilience_mod.set_exporter_policy(
         "metrics",
-        resilience_mod.ExporterPolicy(retries=1, timeout_seconds=0.01, backoff_seconds=0.0, fail_open=True),
+        resilience_mod.ExporterPolicy(
+            retries=1,
+            timeout_seconds=0.01,
+            backoff_seconds=0.0,
+            fail_open=True,
+            allow_blocking_in_event_loop=True,
+        ),
     )
     calls = {"count": 0}
 
     def _too_slow() -> str:
         calls["count"] += 1
-        time.sleep(0.05)
+        time.sleep(0.3)  # 30x the timeout — reliable on loaded CI machines
         return "late"
 
     assert resilience_mod.run_with_resilience("metrics", _too_slow) is None
@@ -57,7 +67,12 @@ def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
 
     resilience_mod.set_exporter_policy(
         "logs",
-        resilience_mod.ExporterPolicy(retries=0, timeout_seconds=0.01, fail_open=False),
+        resilience_mod.ExporterPolicy(
+            retries=0,
+            timeout_seconds=0.01,
+            fail_open=False,
+            allow_blocking_in_event_loop=True,
+        ),
     )
     with pytest.raises(TimeoutError, match="operation timed out"):
         resilience_mod.run_with_resilience("logs", _too_slow)
