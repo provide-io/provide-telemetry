@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
+use provide_telemetry::testing::acquire_test_state_lock;
 use provide_telemetry::{
     bind_context, bind_propagation_context, extract_w3c_context, get_trace_context,
 };
-use provide_telemetry::testing::acquire_test_state_lock;
 use rstest::rstest;
 use serde_json::json;
 
