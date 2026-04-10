@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "go/**"
+      - "VERSION"
       - ".github/workflows/ci-go.yml"
   pull_request:
     paths:
       - "go/**"
+      - "VERSION"
       - ".github/workflows/ci-go.yml"
 
 permissions:
