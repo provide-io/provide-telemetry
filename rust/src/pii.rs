@@ -8,6 +8,9 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
+use crate::classification::classify_key;
+use crate::receipts::emit_receipt;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PIIMode {
     Drop,
@@ -133,6 +136,11 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     if let Some(masked) = mask_value(value, &rule.mode, rule.truncate_to) {
                         out.insert(key.clone(), masked);
                     }
+                    emit_receipt(
+                        &child_path.join("."),
+                        &format!("{:?}", rule.mode).to_ascii_lowercase(),
+                        &value.to_string(),
+                    );
                     continue;
                 }
 
@@ -143,6 +151,7 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     || matches!(value, Value::String(text) if secret_patterns().iter().any(|pattern| pattern.is_match(text)))
                 {
                     out.insert(key.clone(), Value::String(REDACTED.to_string()));
+                    emit_receipt(&child_path.join("."), "redact", &value.to_string());
                     continue;
                 }
 
@@ -168,5 +177,14 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
         return payload.clone();
     }
     let rules = get_pii_rules();
-    apply_rules(payload, &[], &rules, max_depth.max(1))
+    let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
+    if let (Value::Object(original), Value::Object(map)) = (payload, &mut cleaned) {
+        let keys: Vec<String> = original.keys().cloned().collect();
+        for key in keys {
+            if let Some(label) = classify_key(&key) {
+                map.insert(format!("__{key}__class"), Value::String(label));
+            }
+        }
+    }
+    cleaned
 }
