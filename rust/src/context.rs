@@ -62,10 +62,13 @@ fn current_snapshot() -> ContextSnapshot {
 fn set_snapshot_for_key(key: ContextScopeKey, snapshot: ContextSnapshot) {
     match key {
         ContextScopeKey::Task(task_id) => {
-            task_contexts()
-                .lock()
-                .expect("task context lock poisoned")
-                .insert(task_id, snapshot);
+            let mut map = task_contexts().lock().expect("task context lock poisoned");
+            if snapshot == ContextSnapshot::default() {
+                // Remove the entry when restoring to default to prevent unbounded growth
+                map.remove(&task_id);
+            } else {
+                map.insert(task_id, snapshot);
+            }
         }
         ContextScopeKey::Thread => {
             THREAD_CONTEXT.with(|ctx| {
