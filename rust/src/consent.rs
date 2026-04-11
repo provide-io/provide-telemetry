@@ -45,7 +45,7 @@ pub fn should_allow(signal: &str, log_level: Option<&str>) -> bool {
         ConsentLevel::None => false,
         ConsentLevel::Functional => match signal {
             "logs" => log_level_order(log_level) >= 3,
-             /* ~ changed by cargo-mutants ~ */
+            "context" => false,
             _ => true,
         },
         ConsentLevel::Minimal => match signal {

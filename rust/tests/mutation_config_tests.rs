@@ -40,7 +40,10 @@ fn test_percent_encoding_valid_is_accepted() {
     // %41 decodes to 'A'; the header value "hello%41world" = "helloAworld".
     let cfg = config_with_header("x-custom=hello%41world").expect("valid encoding must not fail");
     let logs_headers = &cfg.logging.otlp_headers;
-    assert_eq!(logs_headers.get("x-custom").map(|s| s.as_str()), Some("helloAworld"));
+    assert_eq!(
+        logs_headers.get("x-custom").map(|s| s.as_str()),
+        Some("helloAworld")
+    );
 }
 
 /// % at the very end of the string — too few chars → invalid.
