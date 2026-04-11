@@ -73,8 +73,8 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                     RuntimeWarning,
                     stacklevel=2,  # pragma: no mutate
                 )
-                if "configure_logging" not in completed:
-                    configure_logging(cfg, force=True)
+                # Always restore logging — rollback may have torn it down above.
+                configure_logging(cfg, force=True)
             _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)

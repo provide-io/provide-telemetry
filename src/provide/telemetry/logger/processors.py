@@ -24,6 +24,13 @@ from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
+# Keys that must survive harden_input truncation regardless of insertion order.
+# These are structlog/telemetry control fields; losing them silently corrupts
+# routing, filtering, and trace correlation downstream.
+_HARDEN_PRIORITY_KEYS: frozenset[str] = frozenset(
+    {"event", "level", "timestamp", "trace_id", "span_id", "logger", "logger_name"}
+)
+
 TRACE_LEVEL = 5
 
 # Fast lowercase level → numeric lookup (avoids normalize + getLevelName per message)
@@ -110,8 +117,13 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         if max_attr_count > 0 and len(event_dict) > max_attr_count:  # pragma: no mutate
-            keys = list(event_dict)[:max_attr_count]
-            event_dict = {k: event_dict[k] for k in keys}
+            # Preserve control/telemetry fields first, then fill with user payload.
+            # Simple first-N truncation would silently drop level, trace_id, etc.
+            # when callers pass many keyword arguments.
+            priority = {k: event_dict[k] for k in _HARDEN_PRIORITY_KEYS if k in event_dict}
+            remaining = max(0, max_attr_count - len(priority))
+            user_keys = [k for k in event_dict if k not in _HARDEN_PRIORITY_KEYS]
+            event_dict = {**priority, **{k: event_dict[k] for k in user_keys[:remaining]}}
         return {k: _clean_value(v, 0) for k, v in event_dict.items()}
 
     return _processor
