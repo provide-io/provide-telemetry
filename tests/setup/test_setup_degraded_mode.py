@@ -102,6 +102,28 @@ def test_setup_fallback_calls_configure_logging_when_it_was_not_completed(
     assert setup_mod._setup_done is True
 
 
+def test_setup_error_cleared_after_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A successful setup clears any stale error left by a prior failed attempt."""
+    from provide.telemetry.health import get_health_snapshot, set_setup_error
+
+    _reset_all_for_tests()
+
+    # Plant a stale error as if a previous setup call had failed.
+    set_setup_error("stale error from prior attempt")
+
+    monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
+    monkeypatch.setattr("provide.telemetry.setup._refresh_otel_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
+    monkeypatch.setattr("provide.telemetry.slo._rebind_slo_instruments", lambda: None)
+
+    setup_telemetry()
+
+    assert get_health_snapshot().setup_error is None
+
+
 def test_idempotent_after_degraded_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     """After degraded setup, second call is a no-op (idempotent)."""
     _reset_setup_state_for_tests()
