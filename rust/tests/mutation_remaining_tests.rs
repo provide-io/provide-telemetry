@@ -146,3 +146,44 @@ fn otel_installed_for_tests_returns_false_without_otel_feature() {
         "otel must not be marked as installed when built without the otel feature"
     );
 }
+
+// --- ClassificationPolicy get/set ---
+
+#[test]
+fn classification_policy_default_values() {
+    // Kills: replace default() with all-empty strings or wrong values.
+    let policy = provide_telemetry::ClassificationPolicy::default();
+    assert_eq!(policy.public, "pass");
+    assert_eq!(policy.internal, "pass");
+    assert_eq!(policy.pii, "redact");
+    assert_eq!(policy.phi, "drop");
+    assert_eq!(policy.pci, "hash");
+    assert_eq!(policy.secret, "drop");
+}
+
+#[test]
+fn classification_policy_set_and_get_roundtrip() {
+    // Kills: replace set_classification_policy with () or get with default.
+    let custom = provide_telemetry::ClassificationPolicy {
+        public: "pass".to_string(),
+        internal: "redact".to_string(),
+        pii: "drop".to_string(),
+        phi: "drop".to_string(),
+        pci: "drop".to_string(),
+        secret: "drop".to_string(), // pragma: allowlist secret
+    };
+    provide_telemetry::set_classification_policy(custom.clone());
+    let got = provide_telemetry::get_classification_policy();
+    assert_eq!(got.internal, "redact", "set value must be retrievable");
+    assert_eq!(got.pii, "drop");
+    // Reset to default to avoid contaminating other tests.
+    provide_telemetry::set_classification_policy(provide_telemetry::ClassificationPolicy::default());
+}
+
+#[test]
+fn classification_policy_fields_are_distinct() {
+    // Kills: setting all fields to the same value.
+    let policy = provide_telemetry::ClassificationPolicy::default();
+    assert_ne!(policy.pii, policy.pci, "pii and pci must have different default actions");
+    assert_ne!(policy.public, policy.phi, "public and phi must have different default actions");
+}
