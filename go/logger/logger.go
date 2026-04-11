@@ -361,6 +361,14 @@ func IsEnabled(logger *slog.Logger, level slog.Level) bool {
 	return logger.Enabled(context.Background(), level)
 }
 
+// GetDefaultLogger returns a named *slog.Logger using the current active configuration,
+// evaluated at call time rather than package init. Use this for package-level loggers
+// where a context is unavailable — it picks up whatever Configure last set, including
+// the correct format and level, with the component name preserved in the handler.
+func GetDefaultLogger(name string) *slog.Logger {
+	return GetLogger(context.Background(), name)
+}
+
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
 func IsDebugEnabled() bool {
 	if Logger == nil {
