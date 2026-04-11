@@ -13,7 +13,6 @@ naming_conventions:
   typescript: camelCase
   go: PascalCase
   rust: snake_case
-  csharp: PascalCase
 
 api:
   lifecycle:
