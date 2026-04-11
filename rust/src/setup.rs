@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::Layer as _, layer::SubscriberExt as _, util::Sub
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
-use crate::otel::{build_otel_layer, setup_otel, shutdown_otel};
+use crate::otel::{build_otel_layer, build_otel_log_layer, setup_otel, shutdown_otel};
 use crate::runtime::{get_runtime_config, set_active_config};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -44,6 +44,10 @@ pub(crate) fn install_subscriber(config: &TelemetryConfig) {
 
     if let Some(otel) = build_otel_layer(config) {
         layers.push(otel);
+    }
+
+    if let Some(log_layer) = build_otel_log_layer(config) {
+        layers.push(log_layer);
     }
 
     let _ = Registry::default().with(layers).try_init();
