@@ -8,6 +8,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
 
+pub struct NoopSpan {
+    trace_id: String,
+    span_id: String,
+    guard: Option<ContextGuard>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tracer {
     name: String,
@@ -24,6 +30,17 @@ impl Tracer {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn start_span(&self, _name: &str) -> NoopSpan {
+        let trace_id = next_hex(32);
+        let span_id = next_hex(16);
+        let guard = set_trace_context(Some(trace_id.clone()), Some(span_id.clone()));
+        NoopSpan {
+            trace_id,
+            span_id,
+            guard: Some(guard),
+        }
     }
 }
 
@@ -59,9 +76,28 @@ pub fn trace<T, F>(name: &str, callback: F) -> T
 where
     F: FnOnce() -> T,
 {
-    let _span_name = name;
-    let _guard = set_trace_context(Some(next_hex(32)), Some(next_hex(16)));
+    let _span = tracer.start_span(name);
     callback()
+}
+
+impl NoopSpan {
+    pub fn trace_id(&self) -> &str {
+        &self.trace_id
+    }
+
+    pub fn span_id(&self) -> &str {
+        &self.span_id
+    }
+
+    pub fn set_attribute(&self, _key: &str, _value: &str) {}
+
+    pub fn record_error(&self, _error: &str) {}
+}
+
+impl Drop for NoopSpan {
+    fn drop(&mut self) {
+        drop(self.guard.take());
+    }
 }
 
 #[cfg(test)]
@@ -69,13 +105,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tracing_test_tracer_names_match_contract() {
+    fn tracer_test_tracer_names_match_contract() {
         assert_eq!(tracer.name(), "provide.telemetry");
         assert_eq!(get_tracer(Some("custom.tracer")).name(), "custom.tracer");
     }
 
     #[test]
-    fn tracing_test_next_hex_respects_requested_length_and_advances() {
+    fn tracer_test_next_hex_respects_requested_length_and_advances() {
         let first = next_hex(16);
         let second = next_hex(16);
         let long = next_hex(32);
