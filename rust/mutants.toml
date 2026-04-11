@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# cargo-mutants configuration for the Rust library.
+# https://mutants.rs/mutants-toml.html
+
+# Equivalent mutations: excluded because the mutated code is
+# behaviourally identical to the original.
+exclude_re = [
+    # consent.rs: "TRACE" => 0 and the catch-all `_ => 0` both return 0.
+    # Deleting the TRACE arm produces no observable change in behaviour.
+    'delete match arm "TRACE" in log_level_order',
+]
