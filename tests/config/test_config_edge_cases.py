@@ -22,6 +22,7 @@ from provide.telemetry.config import (
     _parse_env_float,
     _parse_env_int,
     _parse_otlp_headers,
+    redact_config,
 )
 
 # ── _parse_bool edge cases ─────────────────────────────────────────────
@@ -330,3 +331,40 @@ class TestCrossFieldInteractions:
         monkeypatch.setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "from-os")
         cfg = TelemetryConfig.from_env()
         assert cfg.service_name == "from-os"
+
+
+# ── redact_config ─────────────────────────────────────────────────────────────
+
+
+class TestRedactConfig:
+    def test_primitive_fields_pass_through(self) -> None:
+        cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_SERVICE_NAME": "svc"})
+        result = redact_config(cfg)
+        assert result["service_name"] == "svc"
+
+    def test_sub_config_becomes_dict(self) -> None:
+        cfg = TelemetryConfig()
+        result = redact_config(cfg)
+        assert isinstance(result["logging"], dict)
+        assert isinstance(result["tracing"], dict)
+        assert isinstance(result["metrics"], dict)
+
+    def test_otlp_headers_are_masked(self) -> None:
+        cfg = TelemetryConfig()
+        cfg.logging.otlp_headers = {"Authorization": "Bearer supersecrettoken"}
+        result = redact_config(cfg)
+        headers = result["logging"]["otlp_headers"]  # type: ignore[index]
+        assert "supersecrettoken" not in str(headers)
+        assert "Bear****" in str(headers)
+
+    def test_otlp_endpoint_password_masked(self) -> None:
+        cfg = TelemetryConfig()
+        cfg.tracing.otlp_endpoint = "https://user:s3cr3t@otel.example.com/traces"  # pragma: allowlist secret
+        result = redact_config(cfg)
+        assert "s3cr3t" not in str(result["tracing"])
+
+    def test_otlp_endpoint_none_stays_none(self) -> None:
+        cfg = TelemetryConfig()
+        cfg.tracing.otlp_endpoint = None
+        result = redact_config(cfg)
+        assert result["tracing"]["otlp_endpoint"] is None  # type: ignore[index]

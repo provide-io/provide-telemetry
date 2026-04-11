@@ -204,6 +204,28 @@ func (c *TelemetryConfig) String() string { return c.RedactedString() }
 // GoString implements fmt.GoStringer and always returns a redacted representation.
 func (c *TelemetryConfig) GoString() string { return c.RedactedString() }
 
+// RedactConfig returns the config fields as a map with OTLP headers and
+// endpoint passwords masked. Safe to log or store — no secrets are exposed.
+func RedactConfig(c *TelemetryConfig) map[string]interface{} {
+	return map[string]interface{}{
+		"service_name": c.ServiceName,
+		"environment":  c.Environment,
+		"version":      c.Version,
+		"logging": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Logging.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Logging.OTLPHeaders),
+		},
+		"tracing": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Tracing.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Tracing.OTLPHeaders),
+		},
+		"metrics": map[string]interface{}{
+			"otlp_endpoint": maskEndpointURL(c.Metrics.OTLPEndpoint),
+			"otlp_headers":  maskHeaders(c.Metrics.OTLPHeaders),
+		},
+	}
+}
+
 // DefaultTelemetryConfig returns a *TelemetryConfig with all defaults applied.
 func DefaultTelemetryConfig() *TelemetryConfig {
 	return &TelemetryConfig{

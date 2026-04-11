@@ -27,7 +27,7 @@ pub mod schema;
 mod setup;
 pub mod slo;
 pub mod testing;
-pub mod tracing;
+pub mod tracer;
 
 pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire, QueuePolicy};
 pub use cardinality::{
@@ -51,13 +51,15 @@ pub use context::{
 pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
-pub use logger::{get_logger, logger, LogEvent, Logger};
+pub use logger::{buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger};
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
 pub use otel::{_reset_otel_for_tests, otel_installed_for_tests};
 pub use pii::{
-    get_pii_rules, register_pii_rule, replace_pii_rules, sanitize_payload, PIIMode, PIIRule,
+    get_pii_rules, get_secret_patterns, register_pii_rule, register_secret_pattern,
+    replace_pii_rules, reset_secret_patterns_for_tests, sanitize_payload, PIIMode, PIIRule,
+    SecretPattern,
 };
 pub use propagation::{bind_propagation_context, extract_w3c_context, PropagationContext};
 pub use receipts::{
@@ -75,5 +77,5 @@ pub use sampling::{
 };
 pub use schema::{event, event_name, Event};
 pub use setup::{setup_telemetry, shutdown_telemetry};
-pub use slo::{classify_error, reset_slo_for_tests};
-pub use tracing::{get_trace_context, get_tracer, set_trace_context, trace, tracer, Tracer};
+pub use slo::{classify_error, record_red_metrics, record_use_metrics, reset_slo_for_tests};
+pub use tracer::{get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer};

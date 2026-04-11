@@ -350,6 +350,17 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	return l
 }
 
+// Trace emits a TRACE-level record on logger. It is a convenience wrapper
+// matching the .trace() method available on Python and TypeScript loggers.
+func Trace(logger *slog.Logger, msg string, args ...any) {
+	logger.Log(context.Background(), LevelTrace, msg, args...)
+}
+
+// IsEnabled reports whether logger would emit records at level.
+func IsEnabled(logger *slog.Logger, level slog.Level) bool {
+	return logger.Enabled(context.Background(), level)
+}
+
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
 func IsDebugEnabled() bool {
 	if Logger == nil {
