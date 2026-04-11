@@ -193,6 +193,10 @@ Call `get_health_snapshot()` for a point-in-time frozen dataclass of all counter
 - Sampling policies (per-signal rates and overrides)
 - Backpressure queue limits
 - Exporter resilience policies (retries, backoff, timeout, fail-open)
+- Security config (PII key sets, secret pattern registration)
+- SLO config (RED/USE metric enable flags and thresholds)
+- PII max traversal depth (`pii_max_depth`)
+- Schema strictness (`strict_schema`)
 
 These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 
