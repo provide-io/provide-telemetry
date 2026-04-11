@@ -2,8 +2,9 @@ name: 🚀 Release
 
 on:
   push:
+    # Only go sub-module tags trigger this workflow on push (for verify-go-proxy).
+    # Main release builds/publishes are gated on GitHub Release creation below.
     tags:
-      - 'v*'
       - 'go/logger/v*'
       - 'go/tracer/v*'
   release:
@@ -12,8 +13,8 @@ on:
 
 jobs:
   build:
-    # Skip on go sub-module tags — only verify-go-proxy is needed for those
-    if: "!startsWith(github.ref, 'refs/tags/go/')"
+    # Run on GitHub Release creation or manual dispatch only
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -107,8 +108,8 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
 
   build-npm:
-    # Skip on go sub-module tags — only verify-go-proxy is needed for those
-    if: "!startsWith(github.ref, 'refs/tags/go/')"
+    # Run on GitHub Release creation or manual dispatch only
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -135,8 +136,8 @@ jobs:
           path: typescript/*.tgz
 
   build-rust:
-    # Skip on go sub-module tags — only verify-go-proxy is needed for those
-    if: "!startsWith(github.ref, 'refs/tags/go/')"
+    # Run on GitHub Release creation or manual dispatch only
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
