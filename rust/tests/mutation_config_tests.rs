@@ -1,10 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// Mutation tests for config.rs
-
+// SPDX-Comment: Part of provide-telemetry.
+//
 use std::collections::HashMap;
 
-use provide_telemetry::{setup_telemetry, TelemetryConfig};
+use provide_telemetry::{setup_telemetry, ConfigurationError, TelemetryConfig};
+
+fn config_from(entries: &[(&str, &str)]) -> Result<TelemetryConfig, ConfigurationError> {
+    let env: HashMap<String, String> = entries
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    TelemetryConfig::from_map(&env)
+}
 
 #[test]
 fn test_telemetry_config_default() {
@@ -98,4 +106,45 @@ fn test_percent_encoding_boundary_exactly_two_chars_after_percent_is_valid() {
         Some("O"),
         "%4F (exactly idx+2 == len-1) must be treated as valid encoding"
     );
+}
+
+// --- parse_bool false-y values ---
+// Kills: replace match guard matches!(..., "0"|"false"|"no"|"off") with false
+// Without the false-y guard, "false"/"no"/"off"/"0" fall through to the Err branch.
+
+#[test]
+fn config_test_parse_bool_falsy_values_are_accepted() {
+    for val in &["false", "False", "FALSE", "0", "no", "NO", "off", "OFF"] {
+        let cfg = config_from(&[("PROVIDE_TRACE_ENABLED", val)])
+            .unwrap_or_else(|e| panic!("{val:?} should parse as false, got error: {e}"));
+        assert!(!cfg.tracing.enabled, "{val:?} must parse as false");
+    }
+}
+
+// --- parse_non_negative_float edge cases ---
+// Kills: replace || with && (infinity slips through), replace < with == (negatives slip through),
+//        replace < with <= (zero is incorrectly rejected).
+
+#[test]
+fn config_test_non_negative_float_rejects_infinity() {
+    // Kills: || → && (with &&, !is_finite() && negative is false for +inf → no error)
+    let err = config_from(&[("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "inf")])
+        .expect_err("infinity must be rejected");
+    assert!(err.message.contains("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"));
+}
+
+#[test]
+fn config_test_non_negative_float_rejects_negative() {
+    // Kills: < → == (only 0.0 would error; -1 would slip through)
+    let err = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "-1")])
+        .expect_err("negative float must be rejected");
+    assert!(err.message.contains("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"));
+}
+
+#[test]
+fn config_test_non_negative_float_accepts_zero() {
+    // Kills: < → <= (zero would be incorrectly rejected)
+    let cfg = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0")])
+        .expect("zero must be a valid non-negative float");
+    assert_eq!(cfg.exporter.logs_backoff_seconds, 0.0);
 }
