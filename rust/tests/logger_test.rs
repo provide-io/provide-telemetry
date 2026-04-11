@@ -4,6 +4,7 @@
 //
 use std::sync::{Mutex, OnceLock};
 
+use provide_telemetry::testing::reset_telemetry_state;
 use provide_telemetry::{get_logger, trace, Logger};
 
 static LOGGER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -27,6 +28,39 @@ fn logger_test_logging_works_without_otel() {
     assert_eq!(events[0].level, "INFO");
     assert_eq!(events[0].message, "logger.test.info");
     assert_eq!(events[2].level, "ERROR");
+}
+
+#[test]
+fn logger_test_debug_and_warn_levels_are_captured() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    reset_telemetry_state();
+    let logger = get_logger(Some("tests.logger.levels"));
+
+    logger.debug("debug-msg");
+    logger.warn("warn-msg");
+
+    let events = Logger::drain_events_for_tests();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].level, "DEBUG");
+    assert_eq!(events[0].message, "debug-msg");
+    assert_eq!(events[1].level, "WARN");
+    assert_eq!(events[1].message, "warn-msg");
+}
+
+#[test]
+fn logger_test_unknown_level_stored_verbatim_in_buffer() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    reset_telemetry_state();
+    let logger = get_logger(Some("tests.logger.custom"));
+
+    // "TRACE" is not one of the four known levels — falls through to INFO in
+    // tracing, but the raw string is preserved in the test-capture buffer.
+    logger.log("TRACE", "trace-msg");
+
+    let events = Logger::drain_events_for_tests();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].level, "TRACE");
+    assert_eq!(events[0].message, "trace-msg");
 }
 
 #[test]
