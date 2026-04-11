@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+//go:build !nogovernance
+
+// Package telemetry — consent-gate module (strippable governance module).
+// Build with -tags nogovernance to exclude.
 package telemetry
 
 import (
