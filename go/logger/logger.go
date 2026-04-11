@@ -12,6 +12,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
@@ -32,6 +33,9 @@ func SetSamplingFunc(fn func(signal, key string) bool) { _samplingFn = fn }
 // _cfg is the active logging configuration.
 var _cfg = DefaultLogConfig() //nolint:gochecknoglobals
 
+// _globalMu protects _cfg and Logger from concurrent Configure calls.
+var _globalMu sync.RWMutex //nolint:gochecknoglobals
+
 // Configure replaces the active logging configuration and rebuilds Logger.
 func Configure(cfg LogConfig) {
 	// Clone ModuleLevels so callers cannot mutate it after the fact.
@@ -42,6 +46,8 @@ func Configure(cfg LogConfig) {
 		}
 		cfg.ModuleLevels = cloned
 	}
+	_globalMu.Lock()
+	defer _globalMu.Unlock()
 	_cfg = cfg
 	_configureLogger(cfg)
 }
@@ -286,9 +292,12 @@ func _configureLogger(cfg LogConfig) {
 // the full telemetry handler chain (PII sanitisation, schema validation, etc.).
 // Useful in tests that want to exercise the logging path without capturing output.
 func NewNullLogger() *slog.Logger {
+	_globalMu.RLock()
+	cfg := _cfg
+	_globalMu.RUnlock()
 	opts := &slog.HandlerOptions{Level: LevelTrace}
 	base := slog.NewTextHandler(io.Discard, opts)
-	return slog.New(_newTelemetryHandler(base, _cfg, ""))
+	return slog.New(_newTelemetryHandler(base, cfg, ""))
 }
 
 // NewBufferLogger returns a logger that writes through the full telemetry handler
@@ -297,7 +306,9 @@ func NewNullLogger() *slog.Logger {
 func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
 	base := slog.NewTextHandler(w, opts)
+	_globalMu.RLock()
 	cfg := _cfg
+	_globalMu.RUnlock()
 	cfg.Level = _slogLevelToString(level)
 	return slog.New(_newTelemetryHandler(base, cfg, ""))
 }
@@ -322,7 +333,9 @@ func _slogLevelToString(l slog.Level) string {
 // If ctx carries trace/span IDs (written by SetTraceContext), they are pre-attached
 // so they appear on every log line even when callers use the context-free form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
+	_globalMu.RLock()
 	cfg := _cfg
+	_globalMu.RUnlock()
 	w := cfg.Output
 	if w == nil {
 		w = os.Stderr
@@ -371,16 +384,22 @@ func GetDefaultLogger(name string) *slog.Logger {
 
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
 func IsDebugEnabled() bool {
-	if Logger == nil {
+	_globalMu.RLock()
+	l := Logger
+	_globalMu.RUnlock()
+	if l == nil {
 		return false
 	}
-	return Logger.Enabled(context.Background(), slog.LevelDebug)
+	return l.Enabled(context.Background(), slog.LevelDebug)
 }
 
 // IsTraceEnabled returns true if the package-level Logger would emit TRACE records.
 func IsTraceEnabled() bool {
-	if Logger == nil {
+	_globalMu.RLock()
+	l := Logger
+	_globalMu.RUnlock()
+	if l == nil {
 		return false
 	}
-	return Logger.Enabled(context.Background(), LevelTrace)
+	return l.Enabled(context.Background(), LevelTrace)
 }
