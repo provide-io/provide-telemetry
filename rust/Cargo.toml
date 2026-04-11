@@ -25,6 +25,7 @@ otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
+    "dep:opentelemetry-appender-tracing",
     "dep:reqwest",
     "dep:tracing-opentelemetry",
 ]
@@ -34,8 +35,9 @@ base64 = "0.22"
 hmac = "0.12"
 mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
+opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, features = ["http-proto", "reqwest-client"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics"] }
 percent-encoding = "2.3.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
