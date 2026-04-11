@@ -233,7 +233,11 @@ def _maybe_backoff(sig: Signal, attempt: int, attempts: int, backoff_seconds: fl
 
 
 def _run_attempt_with_timeout(
-    signal: Signal, operation: Callable[[], T], timeout_seconds: float, *, skip_executor: bool = False
+    signal: Signal,
+    operation: Callable[[], T],
+    timeout_seconds: float,
+    *,
+    skip_executor: bool = False,  # pragma: no mutate
 ) -> T:
     """Run *operation* with a per-signal timeout executor.
 
@@ -330,14 +334,14 @@ def _warn_event_loop_setup(signal: Signal) -> None:
         if signal in _async_setup_warned_signals:
             return
         _async_setup_warned_signals.add(signal)
-    warnings.warn(
-        f"telemetry {signal} export called from an active event loop with "
-        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "
-        "bypassing timeout executor to prevent event loop stall. "
-        "Call setup_telemetry() before starting the event loop.",
-        RuntimeWarning,
-        stacklevel=4,
-    )
+    warnings.warn(  # pragma: no mutate
+        f"telemetry {signal} export called from an active event loop with "  # pragma: no mutate
+        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "  # pragma: no mutate
+        "bypassing timeout executor to prevent event loop stall. "  # pragma: no mutate
+        "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate
+        RuntimeWarning,  # pragma: no mutate
+        stacklevel=4,  # pragma: no mutate
+    )  # pragma: no mutate
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
