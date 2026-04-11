@@ -14,6 +14,7 @@ fn metrics_lock() -> &'static Mutex<()> {
 
 #[test]
 fn metrics_test_fallback_instruments_record_values() {
+    let _guard = metrics_lock().lock().expect("metrics lock poisoned");
     let requests = counter("test.requests", Some("Total requests"), Some("request"));
     requests.add(2.0, None);
     requests.add(3.0, None);
@@ -33,6 +34,7 @@ fn metrics_test_fallback_instruments_record_values() {
 
 #[test]
 fn metrics_test_meter_name_getter() {
+    let _guard = metrics_lock().lock().expect("metrics lock poisoned");
     // Kills: replace Meter::name -> &str with "" or "xyzzy"
     let meter = get_meter(Some("my.service.meter"));
     assert_eq!(meter.name(), "my.service.meter");

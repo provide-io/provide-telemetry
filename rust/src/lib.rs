@@ -34,12 +34,13 @@ pub use cardinality::{
     clear_cardinality_limits, get_cardinality_limits, register_cardinality_limit, CardinalityLimit,
 };
 pub use classification::{
-    classify_key, clear_classification_rules, register_classification_rule,
-    register_classification_rules, ClassificationRule, DataClass,
+    classify_key, clear_classification_rules, get_classification_policy,
+    register_classification_rule, register_classification_rules, set_classification_policy,
+    ClassificationPolicy, ClassificationRule, DataClass,
 };
 pub use config::{
-    BackpressureConfig, ExporterPolicyConfig, RuntimeOverrides, SLOConfig, SamplingConfig,
-    SecurityConfig, TelemetryConfig,
+    redact_config, BackpressureConfig, ExporterPolicyConfig, RuntimeOverrides, SLOConfig,
+    SamplingConfig, SecurityConfig, TelemetryConfig,
 };
 pub use consent::{
     get_consent_level, reset_consent_for_tests, set_consent_level, should_allow, ConsentLevel,
