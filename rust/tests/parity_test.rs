@@ -88,6 +88,7 @@ fn parity_test_cardinality_zero_ttl_clamped() {
 
 #[test]
 fn parity_test_pii_hash_matches_fixture() {
+    let _guard = parity_lock().lock().expect("parity lock");
     let payload = json!({"password": "secret"}); // pragma: allowlist secret
     provide_telemetry::replace_pii_rules(vec![PIIRule {
         path: vec!["password".to_string()],
