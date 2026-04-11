@@ -90,6 +90,10 @@ class Gauge:
         self._resolved = otel_gauge is not None
         self._lock = threading.Lock()
         self.value = 0
+        # Per-attribute last-seen value for set() delta computation.
+        # Without this, set() with different attribute sets computes deltas against
+        # a shared scalar, sending incorrect deltas to the OTel UpDownCounter.
+        self._attr_values: dict[tuple[tuple[str, str], ...], int] = {}
 
     def _resolve_otel(self) -> Any | None:
         if self._resolved:
@@ -135,9 +139,12 @@ class Gauge:
         try:
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
+            attrs_key = tuple(sorted(attrs.items()))
             with self._lock:
-                delta = value - self.value
-                self.value = value
+                prev = self._attr_values.get(attrs_key, 0)
+                delta = value - prev
+                self._attr_values[attrs_key] = value
+                self.value += delta
                 if otel_gauge is not None:
                     otel_gauge.add(delta, attrs)
         finally:

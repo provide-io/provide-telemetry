@@ -40,7 +40,10 @@ fn test_percent_encoding_valid_is_accepted() {
     // %41 decodes to 'A'; the header value "hello%41world" = "helloAworld".
     let cfg = config_with_header("x-custom=hello%41world").expect("valid encoding must not fail");
     let logs_headers = &cfg.logging.otlp_headers;
-    assert_eq!(logs_headers.get("x-custom").map(|s| s.as_str()), Some("helloAworld"));
+    assert_eq!(
+        logs_headers.get("x-custom").map(|s| s.as_str()),
+        Some("helloAworld")
+    );
 }
 
 /// % at the very end of the string — too few chars → invalid.
@@ -50,7 +53,7 @@ fn test_percent_encoding_percent_at_end_is_rejected() {
     // config level), so the key simply won't appear.
     let cfg = config_with_header("x-bad=value%").expect("config-level parse must succeed");
     assert!(
-        cfg.logging.otlp_headers.get("x-bad").is_none(),
+        !cfg.logging.otlp_headers.contains_key("x-bad"),
         "header with bare % at end should be silently skipped"
     );
 }
@@ -60,7 +63,7 @@ fn test_percent_encoding_percent_at_end_is_rejected() {
 fn test_percent_encoding_one_hex_digit_is_rejected() {
     let cfg = config_with_header("x-bad=value%4").expect("config-level parse must succeed");
     assert!(
-        cfg.logging.otlp_headers.get("x-bad").is_none(),
+        !cfg.logging.otlp_headers.contains_key("x-bad"),
         "header with %<one-digit> should be silently skipped"
     );
 }
@@ -70,7 +73,7 @@ fn test_percent_encoding_one_hex_digit_is_rejected() {
 fn test_percent_encoding_non_hex_first_char_is_rejected() {
     let cfg = config_with_header("x-bad=value%GF").expect("config-level parse must succeed");
     assert!(
-        cfg.logging.otlp_headers.get("x-bad").is_none(),
+        !cfg.logging.otlp_headers.contains_key("x-bad"),
         "header with %G (non-hex first digit) should be silently skipped"
     );
 }
@@ -80,7 +83,7 @@ fn test_percent_encoding_non_hex_first_char_is_rejected() {
 fn test_percent_encoding_non_hex_second_char_is_rejected() {
     let cfg = config_with_header("x-bad=value%4Z").expect("config-level parse must succeed");
     assert!(
-        cfg.logging.otlp_headers.get("x-bad").is_none(),
+        !cfg.logging.otlp_headers.contains_key("x-bad"),
         "header with %4Z (non-hex second digit) should be silently skipped"
     );
 }

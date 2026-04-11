@@ -158,7 +158,6 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         return handlers
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
-    _otel_log_global_set = True  # pragma: no mutate
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
     if instrumentation_handler_cls is not None:
         handlers.append(
@@ -172,6 +171,11 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
+    # Set both flags together after handler construction succeeds.
+    # If construction raises, _otel_log_provider stays None and shutdown_logging()
+    # will correctly find no provider to flush, rather than reporting a live
+    # provider that was never fully initialised.
+    _otel_log_global_set = True  # pragma: no mutate
     _otel_log_provider = provider
     return handlers
 
