@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+
+"""Run behavioral parity tests across all four language implementations.
+
+Each language has its own parity test suite that validates the same
+spec/behavioral_fixtures.yaml contracts. This script runs all four suites
+and reports a unified pass/fail matrix.
+
+Usage:
+    python spec/run_behavioral_parity.py             # run all languages
+    python spec/run_behavioral_parity.py --lang python,go  # run subset
+
+Exit code 0 if every checked language passes, 1 otherwise.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# Language runner configuration
+# ---------------------------------------------------------------------------
+
+_PASS = "\033[32mPASS\033[0m"  # noqa: S105
+_FAIL = "\033[31mFAIL\033[0m"
+_SKIP = "\033[33mSKIP\033[0m"
+
+
+@dataclass
+class LanguageRunner:
+    """How to run parity tests for one language."""
+
+    name: str
+    label: str
+    check_cmd: list[str]  # command to verify runtime is available
+    run_cmd: list[str]  # command to run the parity tests
+    cwd: Path  # working directory
+    env_extra: dict[str, str] = field(default_factory=dict)
+
+
+def _runners(repo: Path) -> list[LanguageRunner]:
+    return [
+        LanguageRunner(
+            name="python",
+            label="Python",
+            check_cmd=["uv", "--version"],
+            run_cmd=[
+                "uv",
+                "run",
+                "python",
+                "scripts/run_pytest_gate.py",
+                "tests/parity/",
+                "--no-cov",
+                "-q",
+            ],
+            cwd=repo,
+        ),
+        LanguageRunner(
+            name="typescript",
+            label="TypeScript",
+            check_cmd=["node", "--version"],
+            run_cmd=["npx", "vitest", "run", "tests/parity.test.ts"],
+            cwd=repo / "typescript",
+        ),
+        LanguageRunner(
+            name="go",
+            label="Go",
+            check_cmd=["go", "version"],
+            run_cmd=["go", "test", "-run", "TestParity", "-v", "-count=1", "./..."],
+            cwd=repo / "go",
+        ),
+        LanguageRunner(
+            name="rust",
+            label="Rust",
+            check_cmd=["cargo", "--version"],
+            run_cmd=[
+                "cargo",
+                "test",
+                "--test",
+                "parity_test",
+                "--",
+                "--test-threads=1",
+            ],
+            cwd=repo / "rust",
+            # 8 MiB stack prevents overflow when all parity tests run sequentially
+            # on the same thread (default 2 MiB is insufficient for deep sanitize_payload calls)
+            env_extra={"RUST_MIN_STACK": "8388608"},
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Runner logic
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Result:
+    lang: str
+    label: str
+    status: str  # "pass" | "fail" | "skip"
+    duration_s: float
+    output: str
+
+
+def _runtime_available(runner: LanguageRunner) -> bool:
+    """Return True if the runtime for this language is installed."""
+    try:
+        subprocess.run(  # noqa: S603
+            runner.check_cmd,
+            capture_output=True,
+            check=True,
+            cwd=runner.cwd,
+            timeout=10,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _run_parity(runner: LanguageRunner, *, timeout: int = 300) -> Result:
+    """Run parity tests and return a Result."""
+    import os
+
+    env = {**os.environ, **runner.env_extra}
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(  # noqa: S603
+            runner.run_cmd,
+            capture_output=True,
+            text=True,
+            cwd=runner.cwd,
+            env=env,
+            timeout=timeout,
+        )
+        elapsed = time.monotonic() - start
+        status = "pass" if proc.returncode == 0 else "fail"
+        output = (proc.stdout + proc.stderr).strip()
+    except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - start
+        status = "fail"
+        output = f"TIMEOUT after {timeout}s"
+    return Result(
+        lang=runner.name,
+        label=runner.label,
+        status=status,
+        duration_s=elapsed,
+        output=output,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--lang",
+        default="python,typescript,go,rust",
+        help="Comma-separated list of languages to check (default: all four)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Seconds before a single language run is considered timed out (default: 300)",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print full test output for failing languages",
+    )
+    args = parser.parse_args(argv)
+
+    selected = {s.strip().lower() for s in args.lang.split(",")}
+    runners = [r for r in _runners(_REPO_ROOT) if r.name in selected]
+
+    if not runners:
+        print(f"No runners matched --lang={args.lang!r}", file=sys.stderr)
+        return 1
+
+    results: list[Result] = []
+    for runner in runners:
+        if not _runtime_available(runner):
+            print(f"  [{runner.label:12s}] runtime not found — skipping")
+            results.append(
+                Result(
+                    lang=runner.name,
+                    label=runner.label,
+                    status="skip",
+                    duration_s=0.0,
+                    output="runtime not installed",
+                )
+            )
+            continue
+
+        print(f"  [{runner.label:12s}] running parity tests...", flush=True)
+        result = _run_parity(runner, timeout=args.timeout)
+        badge = _PASS if result.status == "pass" else _FAIL
+        print(f"  [{runner.label:12s}] {badge}  ({result.duration_s:.1f}s)")
+        results.append(result)
+
+    # Summary table
+    print()
+    print("┌─────────────────┬────────┬──────────┐")
+    print("│ Language        │ Status │     Time │")
+    print("├─────────────────┼────────┼──────────┤")
+    for r in results:
+        if r.status == "pass":
+            badge = "PASS"
+        elif r.status == "fail":
+            badge = "FAIL"
+        else:
+            badge = "SKIP"
+        print(f"│ {r.label:<15s} │ {badge:<6s} │ {r.duration_s:6.1f}s │")
+    print("└─────────────────┴────────┴──────────┘")
+
+    any_fail = any(r.status == "fail" for r in results)
+    if any_fail:
+        print()
+        for r in results:
+            if r.status == "fail":
+                print(f"── {r.label} failure output ──────────────────────────")
+                print(r.output[-4000:] if len(r.output) > 4000 else r.output)
+                print()
+    elif args.verbose:
+        for r in results:
+            print(f"── {r.label} output ──────────────────────────")
+            print(r.output)
+            print()
+
+    return 1 if any_fail else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
