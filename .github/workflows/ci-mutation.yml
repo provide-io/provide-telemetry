@@ -106,5 +106,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
-      - name: Run cargo-mutants
+      # cargo-mutants exits 3 if any mutants are missed — this step fails the job.
+      # All mutants must be caught (100% kill rate enforced).
+      - name: Run cargo-mutants (100% kill rate required)
         run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4

@@ -6,12 +6,12 @@ use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 
 use provide_telemetry::{
-    classify_error, clear_cardinality_limits, compute_error_fingerprint, event, extract_w3c_context,
-    get_cardinality_limits, get_health_snapshot, get_queue_policy, get_sampling_policy,
-    get_secret_patterns, record_red_metrics, record_use_metrics, register_cardinality_limit,
-    register_secret_pattern, reset_secret_patterns_for_tests, sanitize_payload, set_queue_policy,
-    set_sampling_policy, CardinalityLimit, EventSchemaError, PIIMode, PIIRule, QueuePolicy,
-    SamplingPolicy, Signal,
+    classify_error, clear_cardinality_limits, compute_error_fingerprint, event,
+    extract_w3c_context, get_cardinality_limits, get_health_snapshot, get_queue_policy,
+    get_sampling_policy, get_secret_patterns, record_red_metrics, record_use_metrics,
+    register_cardinality_limit, register_secret_pattern, reset_secret_patterns_for_tests,
+    sanitize_payload, set_queue_policy, set_sampling_policy, CardinalityLimit, EventSchemaError,
+    PIIMode, PIIRule, QueuePolicy, SamplingPolicy, Signal,
 };
 use rstest::rstest;
 
@@ -190,7 +190,10 @@ fn parity_test_fingerprint_is_deterministic() {
 fn parity_test_fingerprint_differs_by_error_type() {
     let a = compute_error_fingerprint("ValueError", None);
     let b = compute_error_fingerprint("TypeError", None);
-    assert_ne!(a, b, "different error names must produce different fingerprints");
+    assert_ne!(
+        a, b,
+        "different error names must produce different fingerprints"
+    );
 }
 
 #[test]

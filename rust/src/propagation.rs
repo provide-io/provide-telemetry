@@ -6,7 +6,7 @@
 use serde_json::Value;
 
 use crate::context::{bind_context, ContextGuard};
-use crate::tracing::set_trace_context;
+use crate::tracer::set_trace_context;
 
 const MAX_HEADER_LENGTH: usize = 512;
 const MAX_TRACESTATE_PAIRS: usize = 32;
