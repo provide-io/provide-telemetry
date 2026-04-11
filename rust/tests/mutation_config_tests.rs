@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Mutation tests for config.rs
 
-use provide_telemetry::{TelemetryConfig, setup_telemetry};
+use provide_telemetry::{setup_telemetry, TelemetryConfig};
 
 #[test]
 fn test_telemetry_config_default() {
