@@ -31,6 +31,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
+      # Cache Cargo registry and build artefacts to speed up incremental builds
+      - uses: Swatinem/rust-cache@9d47c6ad4b02f74cd1c6df580bba6e6af45df269  # v2
+        with:
+          workspaces: rust
       # Check formatting
       - name: Cargo fmt
         run: cargo fmt --check --manifest-path Cargo.toml
@@ -42,6 +46,26 @@ jobs:
       # Static analysis
       - name: Cargo clippy
         run: cargo clippy --manifest-path Cargo.toml --all-targets --all-features -- -D warnings
+
+  test-otel:
+    name: Rust — test with otel feature
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      # Checkout the repository
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # Install the stable Rust toolchain
+      - uses: dtolnay/rust-toolchain@stable
+      # Cache Cargo registry and build artefacts to speed up incremental builds
+      - uses: Swatinem/rust-cache@9d47c6ad4b02f74cd1c6df580bba6e6af45df269  # v2
+        with:
+          workspaces: rust
+      # Run tests with the otel feature enabled — verifies OTel log/metrics wiring
+      # compiles and the unit-level OTel provider tests pass.
+      - name: Cargo test with otel feature
+        run: cargo test --features otel
 
   conformance:
     runs-on: ubuntu-24.04
