@@ -92,7 +92,7 @@ jobs:
         run: uv run pytest --no-cov -q tests/test_strip_governance.py
 
   typescript-no-governance:
-    name: TypeScript — governance module isolation
+    name: TypeScript — governance module boundaries (tree-shake only)
     runs-on: ubuntu-latest
     defaults:
       run:
