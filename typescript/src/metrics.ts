@@ -19,6 +19,7 @@ import {
   type UpDownCounter,
   metrics,
 } from '@opentelemetry/api';
+import { _emittedField, _incrementHealth } from './health';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
 import { getActiveTraceIds } from './tracing';
@@ -58,6 +59,7 @@ export class CounterInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       const ids = getActiveTraceIds();
       const enriched =
         ids.trace_id && ids.span_id
@@ -97,6 +99,7 @@ export class GaugeInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       this._inner.add(value, attributes);
       this._lastValue += value;
     } finally {
@@ -110,6 +113,7 @@ export class GaugeInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       // Stryker disable next-line StringLiteral: empty string fallback for no-attributes key — functionally equivalent to any constant
       const key = attributes ? JSON.stringify(attributes) : '';
       const prev = this._values.get(key) ?? 0;
@@ -153,6 +157,7 @@ export class HistogramInstrument {
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       const ids = getActiveTraceIds();
       const enriched =
         ids.trace_id && ids.span_id

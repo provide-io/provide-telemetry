@@ -109,3 +109,79 @@ class TestApplyDefaultRedactionBoundaries:
         items = [{"password": "secret"}]  # pragma: allowlist secret
         result = _apply_default_sensitive_key_redaction(items, items, depth=1, max_depth=2)
         assert result[0]["password"] == "secret"  # pragma: allowlist secret
+
+
+# ---------------------------------------------------------------------------
+# receipt_hook argument tests for list-item secret detection
+# Kills mutmut_59, 61, 65, 66, 75, 81
+# ---------------------------------------------------------------------------
+
+# A value long enough to match the long_hex secret pattern (40+ hex chars).
+_HEX_SECRET = "a" * 40  # pragma: allowlist secret
+
+
+class TestListItemReceiptHookArguments:
+    """Kills mutmut_59/61/65/66: exact arguments passed to receipt_hook for list item secrets."""
+
+    def test_receipt_hook_list_item_key_is_list_item_literal(self) -> None:
+        """Kill mutmut_59 (key→None) and mutmut_65/66 (key string mutations).
+
+        When a secret is detected in a list item string, the receipt_hook
+        must be called with the exact key literal '(list_item)' — not None,
+        not 'XX(list_item)XX', not '(LIST_ITEM)'.
+        """
+        calls: list[tuple[object, str, object]] = []
+
+        def hook(key: object, mode: str, value: object) -> None:
+            calls.append((key, mode, value))
+
+        _apply_default_sensitive_key_redaction([_HEX_SECRET], [_HEX_SECRET], receipt_hook=hook)
+        assert len(calls) == 1, "receipt_hook must be called exactly once for one list-item secret"
+        assert calls[0][0] == "(list_item)", f"expected key '(list_item)', got {calls[0][0]!r}"
+
+    def test_receipt_hook_list_item_value_is_original_item(self) -> None:
+        """Kill mutmut_61: third argument (value) must be the original item, not None."""
+        calls: list[tuple[object, str, object]] = []
+
+        def hook(key: object, mode: str, value: object) -> None:
+            calls.append((key, mode, value))
+
+        _apply_default_sensitive_key_redaction([_HEX_SECRET], [_HEX_SECRET], receipt_hook=hook)
+        assert len(calls) == 1
+        assert calls[0][2] == _HEX_SECRET, f"expected value to be the original secret string, got {calls[0][2]!r}"
+
+    def test_receipt_hook_list_item_mode_is_redact(self) -> None:
+        """Verify the mode argument is 'redact' (sanity check for the hook call)."""
+        calls: list[tuple[object, str, object]] = []
+
+        def hook(key: object, mode: str, value: object) -> None:
+            calls.append((key, mode, value))
+
+        _apply_default_sensitive_key_redaction([_HEX_SECRET], [_HEX_SECRET], receipt_hook=hook)
+        assert len(calls) == 1
+        assert calls[0][1] == "redact"
+
+
+class TestListItemReceiptHookPropagatedToNestedItems:
+    """Kills mutmut_75 (receipt_hook=None) and mutmut_81 (receipt_hook removed)
+    in the recursive call for non-secret list items.
+
+    When a list item is NOT itself a secret string, the function recurses into
+    it. The receipt_hook must be forwarded to that recursive call.
+    """
+
+    def test_receipt_hook_forwarded_to_nested_dict_in_list(self) -> None:
+        """Kill mutmut_75/81: hook must reach a sensitive key nested inside a list item dict."""
+        calls: list[tuple[object, str, object]] = []
+
+        def hook(key: object, mode: str, value: object) -> None:
+            calls.append((key, mode, value))
+
+        # List item is a dict (not a secret string itself), so the else branch recurses.
+        # The nested dict has a sensitive key 'token' that default redaction should catch.
+        node = [{"token": "some_value"}]
+        original = [{"token": "some_value"}]
+        _apply_default_sensitive_key_redaction(node, original, receipt_hook=hook)
+        assert len(calls) == 1, "receipt_hook must be forwarded into recursion for non-secret list items"
+        assert calls[0][0] == "token"
+        assert calls[0][1] == "redact"
