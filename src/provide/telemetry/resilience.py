@@ -65,6 +65,10 @@ _async_setup_warned_signals: set[Signal] = set()
 # Per-signal executors isolate failure domains so a timeout storm in one
 # signal (e.g. traces) cannot starve workers used by another (e.g. logs).
 _timeout_executors: dict[Signal, concurrent.futures.ThreadPoolExecutor] = {}
+# Bounded semaphores limit the number of pending executor submissions per signal.
+# When full, new submissions are rejected rather than queued indefinitely.
+_EXECUTOR_MAX_PENDING = 10
+_executor_semaphores: dict[Signal, threading.BoundedSemaphore] = {}
 
 
 def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecutor:
@@ -78,6 +82,14 @@ def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecut
             )
             _timeout_executors[signal] = executor
         return executor
+
+
+def _get_executor_semaphore(signal: Signal) -> threading.BoundedSemaphore:
+    """Return (or create) the bounded semaphore that caps pending submissions for *signal*."""
+    with _lock:
+        if signal not in _executor_semaphores:
+            _executor_semaphores[signal] = threading.BoundedSemaphore(_EXECUTOR_MAX_PENDING)
+        return _executor_semaphores[signal]
 
 
 _VALID_SIGNALS = frozenset({"logs", "traces", "metrics"})
@@ -255,6 +267,10 @@ def _run_attempt_with_timeout(
     """
     if timeout_seconds <= 0 or skip_executor:
         return operation()
+    sem = _get_executor_semaphore(signal)
+    if not sem.acquire(blocking=False):
+        # Pending queue is full — drop the operation (fail-open).
+        return None  # type: ignore[return-value]
     executor = _get_timeout_executor(signal)  # pragma: no mutate
     future = executor.submit(operation)
     try:
@@ -263,6 +279,8 @@ def _run_attempt_with_timeout(
         future.cancel()
         _maybe_replace_executor(signal)
         raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
+    finally:
+        sem.release()
 
 
 def _maybe_replace_executor(signal: Signal) -> None:
@@ -325,6 +343,7 @@ def reset_resilience_for_tests() -> None:
         for executor in _timeout_executors.values():
             executor.shutdown(wait=False)
         _timeout_executors.clear()
+        _executor_semaphores.clear()
 
 
 def _is_running_in_event_loop() -> bool:
