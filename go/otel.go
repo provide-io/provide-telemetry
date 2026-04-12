@@ -112,16 +112,17 @@ func _warnIfMeterProviderConflict() {
 
 // _buildDefaultMeterProvider creates an OTLP HTTP-backed MeterProvider from config.
 // Called automatically when cfg.Metrics.OTLPEndpoint is set and no explicit provider
-// was passed to SetupTelemetry. On error, auto-wiring is silently skipped.
-func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider, error) {
+// was passed to SetupTelemetry.
+//
+// Neither otlpmetrichttp.New nor sdkmetric.NewMeterProvider can return errors at
+// construction time (URL parse errors are swallowed internally by the OTel SDK), so
+// this function always returns a usable provider.
+func _buildDefaultMeterProvider(cfg *TelemetryConfig) *sdkmetric.MeterProvider {
 	metricsURL := strings.TrimRight(cfg.Metrics.OTLPEndpoint, "/") + "/v1/metrics"
-	exporter, err := otlpmetrichttp.New(context.Background(),
+	exporter, _ := otlpmetrichttp.New(context.Background(),
 		otlpmetrichttp.WithEndpointURL(metricsURL),
 		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("otlp metric exporter: %w", err)
-	}
 	res := sdkresource.NewWithAttributes(
 		"https://opentelemetry.io/schemas/1.26.0",
 		attribute.String("service.name", cfg.ServiceName),
@@ -131,7 +132,7 @@ func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider,
 	return sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
 		sdkmetric.WithResource(res),
-	), nil
+	)
 }
 
 // _applyOTelProviders wires real OTel providers from state into the package-level singletons.
@@ -149,9 +150,7 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 
 	// Auto-create a MeterProvider from config when none was explicitly supplied.
 	if state.meterProvider == nil && cfg.Metrics.OTLPEndpoint != "" {
-		if mp, err := _buildDefaultMeterProvider(cfg); err == nil {
-			state.meterProvider = mp
-		}
+		state.meterProvider = _buildDefaultMeterProvider(cfg)
 	}
 
 	if state.meterProvider != nil {
