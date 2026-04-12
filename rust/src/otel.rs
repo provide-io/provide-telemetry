@@ -52,11 +52,7 @@ pub(crate) fn build_otel_layer(
     // Store provider so shutdown_otel() can flush and close it
     OTEL_PROVIDER.get_or_init(|| std::sync::Mutex::new(Some(provider)));
 
-    Some(
-        tracing_opentelemetry::layer()
-            .with_tracer(tracer)
-            .boxed(),
-    )
+    Some(tracing_opentelemetry::layer().with_tracer(tracer).boxed())
 }
 
 // Otel: build OTLP-backed LoggerProvider and return an appender-tracing bridge layer
@@ -91,9 +87,7 @@ pub(crate) fn build_otel_log_layer(
     // Store provider so shutdown_otel() can flush and close it
     OTEL_LOG_PROVIDER.get_or_init(|| std::sync::Mutex::new(Some(provider.clone())));
 
-    Some(
-        opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&provider).boxed(),
-    )
+    Some(opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&provider).boxed())
 }
 
 // Non-otel: log layer is always None
@@ -102,6 +96,30 @@ pub(crate) fn build_otel_log_layer(
     _config: &TelemetryConfig,
 ) -> Option<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>> {
     None
+}
+
+// Build an OTel Resource from the active TelemetryConfig.
+// All three providers (trace, log, metric) use this so that service.name,
+// service.version, deployment.environment and the SDK telemetry fields
+// (telemetry.sdk.language/name/version) appear consistently in every signal
+// exported to OpenObserve.
+//
+// Resource::builder() includes SdkProvidedResourceDetector and
+// TelemetryResourceDetector by default, which populate the sdk.* attributes.
+// Service attributes from config override any env-var defaults.
+#[cfg(feature = "otel")]
+fn build_resource(config: &TelemetryConfig) -> opentelemetry_sdk::Resource {
+    use opentelemetry::KeyValue;
+    use opentelemetry_sdk::Resource;
+
+    Resource::builder()
+        .with_service_name(config.service_name.clone())
+        .with_attribute(KeyValue::new("service.version", config.version.clone()))
+        .with_attribute(KeyValue::new(
+            "deployment.environment",
+            config.environment.clone(),
+        ))
+        .build()
 }
 
 #[cfg(feature = "otel")]

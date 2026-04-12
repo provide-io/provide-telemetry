@@ -43,6 +43,48 @@ impl ClassificationRule {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClassificationPolicy {
+    pub public: String,
+    pub internal: String,
+    pub pii: String,
+    pub phi: String,
+    pub pci: String,
+    pub secret: String,
+}
+
+impl Default for ClassificationPolicy {
+    fn default() -> Self {
+        Self {
+            public: "pass".to_string(),
+            internal: "pass".to_string(),
+            pii: "redact".to_string(),
+            phi: "drop".to_string(),
+            pci: "hash".to_string(),
+            secret: "drop".to_string(), // pragma: allowlist secret
+        }
+    }
+}
+
+static POLICY: OnceLock<Mutex<ClassificationPolicy>> = OnceLock::new();
+
+fn policy() -> &'static Mutex<ClassificationPolicy> {
+    POLICY.get_or_init(|| Mutex::new(ClassificationPolicy::default()))
+}
+
+pub fn set_classification_policy(p: ClassificationPolicy) {
+    *policy()
+        .lock()
+        .expect("classification policy lock poisoned") = p;
+}
+
+pub fn get_classification_policy() -> ClassificationPolicy {
+    policy()
+        .lock()
+        .expect("classification policy lock poisoned")
+        .clone()
+}
+
 static RULES: OnceLock<Mutex<Vec<ClassificationRule>>> = OnceLock::new();
 
 fn rules() -> &'static Mutex<Vec<ClassificationRule>> {

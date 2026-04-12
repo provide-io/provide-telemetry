@@ -31,7 +31,8 @@ pub mod tracer;
 
 pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire, QueuePolicy};
 pub use cardinality::{
-    clear_cardinality_limits, get_cardinality_limits, register_cardinality_limit, CardinalityLimit,
+    clear_cardinality_limits, get_cardinality_limits, guard_attributes, register_cardinality_limit,
+    CardinalityLimit,
 };
 pub use classification::{
     classify_key, clear_classification_rules, register_classification_rule,
@@ -50,8 +51,10 @@ pub use context::{
 };
 pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
-pub use health::{get_health_snapshot, HealthSnapshot};
-pub use logger::{buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger};
+pub use health::{get_health_snapshot, increment_emitted, HealthSnapshot};
+pub use logger::{
+    buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger,
+};
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
@@ -75,7 +78,7 @@ pub use runtime::{
 pub use sampling::{
     get_sampling_policy, set_sampling_policy, should_sample, SamplingPolicy, Signal,
 };
-pub use schema::{event, event_name, Event};
+pub use schema::{event, event_name, get_strict_schema, set_strict_schema, Event};
 pub use setup::{setup_telemetry, shutdown_telemetry};
 pub use slo::{classify_error, record_red_metrics, record_use_metrics, reset_slo_for_tests};
 pub use tracer::{get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer};

@@ -54,17 +54,22 @@ fn main() {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_micros() as u64;
-        let before_logs = count_log_hits(
-            &openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, now_us)?,
-            &names.run_id,
-            &names.otlp_log_event,
-            &names.json_log_event,
-        );
-        let before_traces = count_trace_hits(
-            &openobserve_shared::search_hits(&endpoints, "traces", &auth, start_us, now_us)?,
-            &names.trace_name,
-        );
-        let before_metrics = openobserve_shared::metric_stream_names(&endpoints, &auth)?
+
+        // Count baseline before emitting
+        let log_hits_before =
+            openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, now_us)?
+                .iter()
+                .filter(|h| h.get("run_id").and_then(Value::as_str) == Some(names.run_id.as_str()))
+                .count();
+        let trace_hits_before =
+            openobserve_shared::search_hits(&endpoints, "traces", &auth, start_us, now_us)?
+                .iter()
+                .filter(|h| {
+                    h.get("operation_name").and_then(Value::as_str)
+                        == Some(names.trace_name.as_str())
+                })
+                .count();
+        let metrics_before = openobserve_shared::metric_stream_names(&endpoints, &auth)?
             .contains(&names.metric_stream);
 
         println!(
@@ -87,16 +92,22 @@ fn main() {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_micros() as u64;
-            after_logs = count_log_hits(
-                &openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, end_us)?,
-                &names.run_id,
-                &names.otlp_log_event,
-                &names.json_log_event,
-            );
-            after_traces = count_trace_hits(
-                &openobserve_shared::search_hits(&endpoints, "traces", &auth, start_us, end_us)?,
-                &names.trace_name,
-            );
+
+            after_logs =
+                openobserve_shared::search_hits(&endpoints, "logs", &auth, start_us, end_us)?
+                    .iter()
+                    .filter(|h| {
+                        h.get("run_id").and_then(Value::as_str) == Some(names.run_id.as_str())
+                    })
+                    .count();
+            after_traces =
+                openobserve_shared::search_hits(&endpoints, "traces", &auth, start_us, end_us)?
+                    .iter()
+                    .filter(|h| {
+                        h.get("operation_name").and_then(Value::as_str)
+                            == Some(names.trace_name.as_str())
+                    })
+                    .count();
             after_metrics = openobserve_shared::metric_stream_names(&endpoints, &auth)?
                 .contains(&names.metric_stream);
 
