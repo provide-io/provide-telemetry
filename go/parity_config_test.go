@@ -31,7 +31,7 @@ func TestParity_ConfigHeaders_PercentSpace(t *testing.T) {
 // ── Error Fingerprint ─────────────────────────────────────────────────────────
 
 func TestParity_ErrorFingerprint_NoFrames(t *testing.T) {
-	fp := _computeErrorFingerprint("ValueError", nil)
+	fp := ComputeErrorFingerprint("ValueError", nil)
 	if len(fp) != 12 {
 		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
 	}
@@ -42,7 +42,7 @@ func TestParity_ErrorFingerprint_NoFrames(t *testing.T) {
 }
 
 func TestParity_ErrorFingerprint_WithParts(t *testing.T) {
-	fp := _computeErrorFingerprintFromParts("TypeError", []string{"module:main", "handler:process"})
+	fp := ComputeErrorFingerprintFromParts("TypeError", []string{"module:main", "handler:process"})
 	if len(fp) != 12 {
 		t.Fatalf("expected 12-char fingerprint, got %d chars: %q", len(fp), fp)
 	}

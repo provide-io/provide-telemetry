@@ -385,6 +385,26 @@ impl TelemetryConfig {
     }
 }
 
+pub fn redact_config(cfg: &TelemetryConfig) -> TelemetryConfig {
+    fn mask(headers: &HashMap<String, String>) -> HashMap<String, String> {
+        headers
+            .keys()
+            .map(|k| (k.clone(), "***REDACTED***".to_string()))
+            .collect()
+    }
+    let mut out = cfg.clone();
+    if !out.logging.otlp_headers.is_empty() {
+        out.logging.otlp_headers = mask(&cfg.logging.otlp_headers);
+    }
+    if !out.tracing.otlp_headers.is_empty() {
+        out.tracing.otlp_headers = mask(&cfg.tracing.otlp_headers);
+    }
+    if !out.metrics.otlp_headers.is_empty() {
+        out.metrics.otlp_headers = mask(&cfg.metrics.otlp_headers);
+    }
+    out
+}
+
 fn env_value<'a>(env: &'a HashMap<String, String>, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
         .find_map(|key| env.get(*key).map(String::as_str))

@@ -4,7 +4,7 @@
 //
 use std::collections::HashMap;
 
-use provide_telemetry::{setup_telemetry, ConfigurationError, TelemetryConfig};
+use provide_telemetry::{redact_config, setup_telemetry, ConfigurationError, TelemetryConfig};
 
 fn config_from(entries: &[(&str, &str)]) -> Result<TelemetryConfig, ConfigurationError> {
     let env: HashMap<String, String> = entries
@@ -147,4 +147,68 @@ fn config_test_non_negative_float_accepts_zero() {
     let cfg = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0")])
         .expect("zero must be a valid non-negative float");
     assert_eq!(cfg.exporter.logs_backoff_seconds, 0.0);
+}
+
+// --- redact_config ---
+
+#[test]
+fn redact_config_masks_otlp_header_values() {
+    // Kills: return cfg.clone() unchanged (no masking)
+    let cfg = config_from(&[(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "authorization=Bearer secret123",
+    )])
+    .unwrap();
+    let redacted = redact_config(&cfg);
+    // Keys are preserved, values replaced.
+    assert!(
+        redacted.logging.otlp_headers.contains_key("authorization"),
+        "key must be preserved"
+    );
+    assert_eq!(
+        redacted.logging.otlp_headers.get("authorization").map(String::as_str),
+        Some("***REDACTED***"),
+        "value must be masked"
+    );
+}
+
+#[test]
+fn redact_config_preserves_non_header_fields() {
+    // Kills: replacing all fields with defaults.
+    let cfg = config_from(&[
+        ("PROVIDE_TELEMETRY_SERVICE_NAME", "my-service"),
+        ("PROVIDE_TELEMETRY_ENV", "prod"),
+    ])
+    .unwrap();
+    let redacted = redact_config(&cfg);
+    assert_eq!(redacted.service_name, "my-service");
+    assert_eq!(redacted.environment, "prod");
+}
+
+#[test]
+fn redact_config_empty_headers_unchanged() {
+    // Kills: unconditionally mask even empty headers.
+    let cfg = TelemetryConfig::default();
+    let redacted = redact_config(&cfg);
+    assert!(
+        redacted.logging.otlp_headers.is_empty(),
+        "empty headers must stay empty"
+    );
+}
+
+#[test]
+fn redact_config_does_not_mutate_original() {
+    // Ensures the original is not modified.
+    let cfg = config_from(&[(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "x-token=realvalue",
+    )])
+    .unwrap();
+    let original_value = cfg.logging.otlp_headers.get("x-token").cloned();
+    let _ = redact_config(&cfg);
+    assert_eq!(
+        cfg.logging.otlp_headers.get("x-token").cloned(),
+        original_value,
+        "original config must not be mutated"
+    );
 }

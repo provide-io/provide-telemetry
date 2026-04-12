@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// _computeErrorFingerprint generates a stable 12-char hex fingerprint from
+// ComputeErrorFingerprint generates a stable 12-char hex fingerprint from
 // exception type + top 3 stack frames from the given program counters.
 // Matches the Python/TypeScript algorithm exactly.
-func _computeErrorFingerprint(excType string, pcs []uintptr) string {
+func ComputeErrorFingerprint(excType string, pcs []uintptr) string {
 	parts := []string{strings.ToLower(excType)}
 	if len(pcs) > 0 {
 		frames := runtime.CallersFrames(pcs)
@@ -37,8 +37,8 @@ func _computeErrorFingerprint(excType string, pcs []uintptr) string {
 	return _shortHash12(strings.Join(parts, ":"))
 }
 
-// _computeErrorFingerprintFromParts generates a fingerprint from pre-extracted parts.
-func _computeErrorFingerprintFromParts(excType string, frameParts []string) string {
+// ComputeErrorFingerprintFromParts generates a fingerprint from pre-extracted parts.
+func ComputeErrorFingerprintFromParts(excType string, frameParts []string) string {
 	parts := []string{strings.ToLower(excType)}
 	parts = append(parts, frameParts...)
 	return _shortHash12(strings.Join(parts, ":"))

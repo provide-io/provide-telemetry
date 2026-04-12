@@ -64,7 +64,7 @@ func TestComputeErrorFingerprint_WithFrames(t *testing.T) {
 	n := runtime.Callers(1, pcs)
 	pcs = pcs[:n]
 
-	fp := _computeErrorFingerprint("RuntimeError", pcs)
+	fp := ComputeErrorFingerprint("RuntimeError", pcs)
 	if len(fp) != 12 {
 		t.Fatalf("expected 12-char fingerprint, got %d: %q", len(fp), fp)
 	}
@@ -88,7 +88,7 @@ func TestShortHash12_Format(t *testing.T) {
 func TestComputeErrorFingerprint_InvalidPCs(t *testing.T) {
 	// A slice with a zero/invalid PC triggers the frame.Function == "" && !more early break.
 	pcs := []uintptr{0}
-	fp := _computeErrorFingerprint("ValueError", pcs)
+	fp := ComputeErrorFingerprint("ValueError", pcs)
 	if len(fp) != 12 {
 		t.Fatalf("expected 12-char fingerprint even with invalid PCs, got %d: %q", len(fp), fp)
 	}
