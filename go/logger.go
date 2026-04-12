@@ -141,7 +141,7 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 // applySchema validates the event name and required keys when strict mode is enabled.
 // Returns an error if validation fails; the caller drops the record on error.
 func (h *_telemetryHandler) applySchema(r slog.Record) error {
-	if !_strictSchema {
+	if !_readStrictSchema() {
 		return nil
 	}
 	if err := ValidateEventName(r.Message); err != nil {

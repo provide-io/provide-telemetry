@@ -7,10 +7,60 @@ import {
   EventSchemaError,
   event,
   eventName,
+  getStrictSchema,
+  setStrictSchema,
   validateEventName,
   validateRequiredKeys,
+  _resetStrictSchemaForTests,
 } from '../src/schema';
 import { TelemetryError } from '../src/exceptions';
+
+describe('setStrictSchema / getStrictSchema', () => {
+  afterEach(() => {
+    _resetStrictSchemaForTests();
+    _resetConfig();
+  });
+
+  it('getStrictSchema returns config value when no override is set', () => {
+    _resetStrictSchemaForTests();
+    setupTelemetry({ strictSchema: false });
+    expect(getStrictSchema()).toBe(false);
+    _resetConfig();
+    setupTelemetry({ strictSchema: true });
+    expect(getStrictSchema()).toBe(true);
+  });
+
+  it('setStrictSchema overrides config and getStrictSchema returns override', () => {
+    setupTelemetry({ strictSchema: false });
+    setStrictSchema(true);
+    expect(getStrictSchema()).toBe(true);
+  });
+
+  it('setStrictSchema(false) override takes precedence over config true', () => {
+    setupTelemetry({ strictSchema: true });
+    setStrictSchema(false);
+    expect(getStrictSchema()).toBe(false);
+  });
+
+  it('_resetStrictSchemaForTests clears the override', () => {
+    setStrictSchema(true);
+    _resetStrictSchemaForTests();
+    // After reset, falls back to config; default config has strictSchema: false
+    _resetConfig();
+    expect(getStrictSchema()).toBe(false);
+  });
+
+  it('setStrictSchema(true) causes event() to reject non-conforming segments', () => {
+    setStrictSchema(true);
+    expect(() => event('Auth', 'login', 'success')).toThrow(EventSchemaError);
+  });
+
+  it('setStrictSchema(false) causes event() to accept non-conforming segments', () => {
+    setStrictSchema(false);
+    const rec = event('Auth', 'Login', 'Success');
+    expect(rec.event).toBe('Auth.Login.Success');
+  });
+});
 
 describe('EventSchemaError', () => {
   it('is a TelemetryError', () => {
