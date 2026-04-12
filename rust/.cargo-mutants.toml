@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# cargo-mutants configuration
+#
+# Equivalent mutations — these are excluded because the mutated code is
+# indistinguishable from the original through any black-box test, not because
+# the code is untested.
+
+[mutants]
+# consent.rs: "TRACE" => 0 is identical to the _ => 0 fallthrough.
+# Deleting the TRACE arm produces no observable behaviour change because both
+# arms return 0, so no test can distinguish them.
+#
+# otel.rs: setup_otel and shutdown_otel are both #[cfg(feature = "otel")].
+# cargo-mutants runs without --features otel, so the otel-feature variants are
+# never compiled during mutation testing and these mutations are unobservable.
+exclude_re = [
+    # consent.rs: "TRACE" => 0 and _ => 0 both return 0 — indistinguishable.
+    'delete match arm "TRACE" in log_level_order',
+    # otel.rs: setup_otel and shutdown_otel are #[cfg(feature = "otel")],
+    # not compiled in the default feature set used by cargo-mutants.
+    'replace setup_otel -> Result<.*, TelemetryError> with Ok\(\)',
+    'replace shutdown_otel with \(\)',
+    # otel.rs: without the otel feature, OTEL_INSTALLED is always false.
+    # Replacing otel_installed()/otel_installed_for_tests() with the literal
+    # `false` is observable-equivalent to the real implementation.
+    'replace otel_installed -> bool with false',
+    'replace otel_installed_for_tests -> bool with false',
+]
