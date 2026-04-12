@@ -179,6 +179,21 @@ func TestGetMeterReturnsNil(t *testing.T) {
 	}
 }
 
+func TestGetMeterAutoWiredFromEndpoint(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+	defer _resetSetup()
+	defer _resetOTelProviders()
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry: %v", err)
+	}
+
+	m := GetMeter("test.auto.meter")
+	if m == nil {
+		t.Fatal("expected non-nil Meter when OTEL_EXPORTER_OTLP_ENDPOINT is set")
+	}
+}
+
 func TestOptionsAccepted(t *testing.T) {
 	c := NewCounter("test.opts", WithDescription("a counter"), WithUnit("requests"))
 	if c == nil {
