@@ -18,7 +18,6 @@ use crate::pii::replace_pii_rules;
 use crate::receipts::reset_receipts_for_tests;
 use crate::resilience::_reset_resilience_for_tests;
 use crate::sampling::_reset_sampling_for_tests;
-use crate::schema::_reset_strict_schema_for_tests;
 use crate::setup::shutdown_telemetry;
 use crate::slo::reset_slo_for_tests;
 use crate::tracer::set_trace_context;
@@ -53,7 +52,6 @@ pub fn reset_telemetry_state() {
     #[cfg(feature = "governance")]
     clear_classification_rules();
     replace_pii_rules(Vec::new());
-    _reset_strict_schema_for_tests();
     reset_context_for_tests();
 }
 

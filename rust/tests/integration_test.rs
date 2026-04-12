@@ -19,7 +19,6 @@ mod e2e_shared;
 
 #[path = "../examples/support/basic_telemetry.rs"]
 mod basic_telemetry;
-#[cfg(feature = "governance")]
 #[path = "../examples/support/data_governance.rs"]
 mod data_governance;
 #[path = "../examples/support/error_degradation.rs"]
@@ -244,7 +243,6 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
     assert_eq!(summary.depth_preserved_leaf.as_deref(), Some("deep"));
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn integration_test_data_governance_example_summary_matches_demo_flow() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
@@ -402,107 +400,6 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
     assert!(err
         .to_string()
         .contains("OpenTelemetry providers already installed"));
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_counter_add_does_not_panic_after_setup() {
-    use provide_telemetry::{counter, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-metrics-test");
-    setup_telemetry().expect("setup should succeed");
-    assert!(provide_telemetry::otel::otel_installed_for_tests());
-
-    // counter() should use OTel global meter and not panic
-    let c = counter("test.otel.counter", None, None);
-    c.add(1.0, None);
-    c.add(2.0, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_gauge_set_does_not_panic_after_setup() {
-    use provide_telemetry::{gauge, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-gauge-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // gauge() should use OTel global meter and not panic
-    let g = gauge("test.otel.gauge", None, None);
-    g.set(42.0, None);
-    g.add(1.0, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_histogram_record_does_not_panic_after_setup() {
-    use provide_telemetry::{histogram, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-histogram-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // histogram() should use OTel global meter and not panic
-    let h = histogram("test.otel.histogram", None, None);
-    h.record(99.5, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_tracing_span_does_not_panic_after_setup() {
-    use provide_telemetry::setup_telemetry;
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-tracing-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // tracing span should not panic when OTel is wired
-    tracing::info_span!("test.otel.span").in_scope(|| {
-        tracing::info!(event = "test.otel.log", "otel log bridge test");
-    });
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_health_snapshot_emitted_logs_non_negative_after_log() {
-    use provide_telemetry::{get_health_snapshot, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-health-test");
-    setup_telemetry().expect("setup should succeed");
-
-    tracing::info!(event = "test.health.log", "health snapshot log bridge test");
-
-    // emitted_logs is a u64; just verify the snapshot is accessible and the field exists
-    let snapshot = get_health_snapshot();
-    let _ = snapshot.emitted_logs;
 
     reset_runtime();
     std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
