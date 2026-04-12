@@ -77,7 +77,7 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 configure_logging(cfg, force=True)
             else:
                 set_setup_error(None)  # clear any stale error from a prior failed attempt
-            _setup_done = True
+                _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)
             if cfg.slo.enable_use_metrics:

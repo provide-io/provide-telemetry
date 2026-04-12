@@ -322,8 +322,9 @@ def test_parity_classify_error_429() -> None:
 
 
 def test_parity_classify_error_0_timeout() -> None:
+    # status_code=0 with no timeout in name is now "unclassified" (Fix 2)
     result = classify_error("ConnectionError", status_code=0)
-    assert result["error.category"] == "timeout"
+    assert result["error.category"] == "unclassified"
 
 
 # ── PII Default Sensitive Keys (canonical 17) ────────────────────────────────

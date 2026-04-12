@@ -353,3 +353,60 @@ def test_reload_runtime_from_env_warning_extra_keys(
     assert hasattr(rec, "action"), "extra dict must contain 'action' key"
     # Kill mutmut_24/25: exact value
     assert rec.action == "restart required to apply"
+
+
+def test_concurrent_reconfigure_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Concurrent calls to reconfigure_telemetry() must not raise."""
+    import threading
+
+    runtime_mod.reset_runtime_for_tests()
+    monkeypatch.setattr(
+        "provide.telemetry.runtime.TelemetryConfig.from_env",
+        classmethod(lambda cls: TelemetryConfig()),
+    )
+    import importlib
+
+    logger_core = importlib.import_module("provide.telemetry.logger.core")
+    monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: False)
+    monkeypatch.setattr(
+        "provide.telemetry.tracing.provider._has_tracing_provider",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "provide.telemetry.metrics.provider._has_meter_provider",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "provide.telemetry.setup.shutdown_telemetry",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "provide.telemetry.setup.setup_telemetry",
+        lambda cfg: cfg,
+    )
+
+    errors: list[Exception] = []
+
+    def _reconfigure() -> None:
+        try:
+            runtime_mod.reconfigure_telemetry()
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_reconfigure) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert errors == []
+
+
+def test_reconfigure_lock_exists() -> None:
+    """_reconfigure_lock must exist and be a threading.Lock-compatible object."""
+    import threading
+
+    lock = runtime_mod._reconfigure_lock
+    assert hasattr(lock, "acquire")
+    assert hasattr(lock, "release")
+    assert isinstance(lock, type(threading.Lock()))

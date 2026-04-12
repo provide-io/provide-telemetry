@@ -26,7 +26,56 @@ from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 _logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
-_active_config = TelemetryConfig.from_env({})
+_active_config: TelemetryConfig | None = None
+# Serializes concurrent reconfigure_telemetry() calls against each other.
+# Note: this does not fully prevent races with concurrent setup_telemetry() calls,
+# which would require process-level coordination. It only serializes concurrent
+# reconfigure_telemetry() callers.
+_reconfigure_lock = threading.Lock()
+
+
+def _apply_policies(snapshot: TelemetryConfig) -> None:
+    """Push hot policy values from a config snapshot to signal subsystems. Lock-free."""
+    set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))  # pragma: no mutate
+    set_sampling_policy("traces", SamplingPolicy(default_rate=snapshot.sampling.traces_rate))
+    set_sampling_policy("metrics", SamplingPolicy(default_rate=snapshot.sampling.metrics_rate))
+    set_queue_policy(
+        QueuePolicy(
+            logs_maxsize=snapshot.backpressure.logs_maxsize,
+            traces_maxsize=snapshot.backpressure.traces_maxsize,
+            metrics_maxsize=snapshot.backpressure.metrics_maxsize,
+        )
+    )
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=snapshot.exporter.logs_retries,
+            backoff_seconds=snapshot.exporter.logs_backoff_seconds,
+            timeout_seconds=snapshot.exporter.logs_timeout_seconds,
+            fail_open=snapshot.exporter.logs_fail_open,
+            allow_blocking_in_event_loop=snapshot.exporter.logs_allow_blocking_in_event_loop,
+        ),
+    )
+    set_exporter_policy(
+        "traces",
+        ExporterPolicy(
+            retries=snapshot.exporter.traces_retries,
+            backoff_seconds=snapshot.exporter.traces_backoff_seconds,
+            timeout_seconds=snapshot.exporter.traces_timeout_seconds,
+            fail_open=snapshot.exporter.traces_fail_open,
+            allow_blocking_in_event_loop=snapshot.exporter.traces_allow_blocking_in_event_loop,
+        ),
+    )
+    set_exporter_policy(
+        "metrics",
+        ExporterPolicy(
+            retries=snapshot.exporter.metrics_retries,
+            backoff_seconds=snapshot.exporter.metrics_backoff_seconds,
+            timeout_seconds=snapshot.exporter.metrics_timeout_seconds,
+            fail_open=snapshot.exporter.metrics_fail_open,
+            allow_blocking_in_event_loop=snapshot.exporter.metrics_allow_blocking_in_event_loop,
+        ),
+    )
 
 
 def apply_runtime_config(config: TelemetryConfig) -> None:
@@ -109,29 +158,22 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
     from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
     from provide.telemetry.tracing import provider as tracing_provider
 
-    target = config or TelemetryConfig.from_env()
-    current = get_runtime_config()
-    if _provider_config_changed(current, target):
-        if (
-            logger_core._has_otel_log_provider()
-            or tracing_provider._has_tracing_provider()
-            or metrics_provider._has_meter_provider()
-        ):
-            raise RuntimeError(
-                "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
-                "restart the process and call setup_telemetry() with the new config"
-            )
-        shutdown_telemetry()
-        return setup_telemetry(target)
-    overrides = RuntimeOverrides(
-        sampling=target.sampling,
-        backpressure=target.backpressure,
-        exporter=target.exporter,
-        security=target.security,
-        slo=target.slo,
-        pii_max_depth=target.pii_max_depth,
-    )
-    return update_runtime_config(overrides)
+    with _reconfigure_lock:
+        target = config or TelemetryConfig.from_env()
+        current = get_runtime_config()
+        if _provider_config_changed(current, target):
+            if (
+                logger_core._has_otel_log_provider()
+                or tracing_provider._has_tracing_provider()
+                or metrics_provider._has_meter_provider()
+            ):
+                raise RuntimeError(
+                    "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
+                    "restart the process and call setup_telemetry() with the new config"
+                )
+            shutdown_telemetry()
+            return setup_telemetry(target)
+        return update_runtime_config(_overrides_from_config(target))
 
 
 _COLD_KEYS = frozenset(
