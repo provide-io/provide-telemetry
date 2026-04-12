@@ -153,7 +153,13 @@ def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))
 
 
-def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), depth: int = 0) -> Any:
+def _apply_rule(
+    node: Any,
+    rule: PIIRule,
+    current_path: tuple[str, ...] = (),
+    depth: int = 0,  # pragma: no mutate
+    receipt_hook: Callable[[str, str, Any], None] | None = None,
+) -> Any:
     if depth >= 32:  # hard safety limit
         return node
     if isinstance(node, dict):
@@ -164,13 +170,15 @@ def _apply_rule(node: Any, rule: PIIRule, current_path: tuple[str, ...] = (), de
                 masked = _mask(value, rule.mode, rule.truncate_to)
                 if masked is not None:
                     output[key] = masked
-                if _receipt_hook is not None:
-                    _receipt_hook(".".join(child_path), rule.mode, value)
+                if receipt_hook is not None:
+                    receipt_hook(".".join(child_path), rule.mode, value)
             else:
-                output[key] = _apply_rule(value, rule, child_path, depth=depth + 1)
+                output[key] = _apply_rule(value, rule, child_path, depth=depth + 1, receipt_hook=receipt_hook)
         return output
     if isinstance(node, list):
-        return [_apply_rule(item, rule, (*current_path, "*"), depth=depth + 1) for item in node]  # pragma: no mutate
+        return [
+            _apply_rule(item, rule, (*current_path, "*"), depth=depth + 1, receipt_hook=receipt_hook) for item in node
+        ]  # pragma: no mutate
     return node
 
 
@@ -178,8 +186,9 @@ def _apply_default_sensitive_key_redaction(
     node: Any,
     original: Any,
     rule_targeted_keys: frozenset[str] | None = None,
-    depth: int = 0,
-    max_depth: int = 8,
+    depth: int = 0,  # pragma: no mutate
+    max_depth: int = 8,  # pragma: no mutate
+    receipt_hook: Callable[[str, str, Any], None] | None = None,
 ) -> Any:
     if depth >= max_depth:
         return node
@@ -193,22 +202,36 @@ def _apply_default_sensitive_key_redaction(
                     output[key] = value
                 else:
                     output[key] = _REDACTED
-                    if _receipt_hook is not None:
-                        _receipt_hook(key, "redact", orig_value)
+                    if receipt_hook is not None:
+                        receipt_hook(key, "redact", orig_value)
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
-                if _receipt_hook is not None:
-                    _receipt_hook(key, "redact", value)
+                if receipt_hook is not None:
+                    receipt_hook(key, "redact", value)
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
-                    value, orig_value, rule_targeted_keys, depth=depth + 1, max_depth=max_depth
+                    value,
+                    orig_value,
+                    rule_targeted_keys,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    receipt_hook=receipt_hook,
                 )
         return output
     if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
-        return [
-            _apply_default_sensitive_key_redaction(item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth)
-            for item, orig in zip(node, original, strict=False)  # pragma: no mutate
-        ]
+        result: list[Any] = []
+        for item, orig in zip(node, original, strict=False):  # pragma: no mutate
+            if isinstance(item, str) and _detect_secret_in_value(item):
+                result.append(_REDACTED)
+                if receipt_hook is not None:
+                    receipt_hook("(list_item)", "redact", item)
+            else:
+                result.append(
+                    _apply_default_sensitive_key_redaction(
+                        item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth, receipt_hook=receipt_hook
+                    )
+                )
+        return result
     return node
 
 
@@ -220,23 +243,29 @@ def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
 def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
     if not enabled:
         return dict(payload)
-    # GIL-safe snapshot: reading the list reference is atomic.  If no custom
-    # rules are registered (common case), skip tuple copy + rule application.
-    rules_snapshot = _rules
+    # Snapshot hooks once to prevent TOCTOU races if they are replaced concurrently.
+    receipt_hook = _receipt_hook
+    classification_hook = _classification_hook
+    # Fix 3a: Thread-safe snapshot of rules list to prevent RuntimeError from
+    # concurrent replace_pii_rules() calls mutating the list during iteration.
+    with _lock:
+        rules_snapshot = list(_rules)
     # _apply_rule builds entirely new dict/list nodes at every level it traverses,
     # so a shallow top-level copy is sufficient — no deepcopy needed.
     cleaned: Any = dict(payload)
     if rules_snapshot:
         rules = tuple(rules_snapshot)
         for rule in rules:
-            cleaned = _apply_rule(cleaned, rule)
+            cleaned = _apply_rule(cleaned, rule, receipt_hook=receipt_hook)
         rule_targeted_keys = _collect_rule_leaf_keys(rules)
     else:
         rule_targeted_keys = frozenset()  # pragma: no mutate — None also accepted by callee
-    cleaned = _apply_default_sensitive_key_redaction(cleaned, payload, rule_targeted_keys, max_depth=max_depth)
-    if _classification_hook is not None and isinstance(cleaned, dict):
+    cleaned = _apply_default_sensitive_key_redaction(
+        cleaned, payload, rule_targeted_keys, max_depth=max_depth, receipt_hook=receipt_hook
+    )
+    if classification_hook is not None and isinstance(cleaned, dict):
         for key, value in list(cleaned.items()):
-            label = _classification_hook(key, value)
+            label = classification_hook(key, value)
             if label is not None:
                 cleaned[f"__{key}__class"] = label
     if isinstance(cleaned, dict):
