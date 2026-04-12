@@ -19,6 +19,7 @@ mod e2e_shared;
 
 #[path = "../examples/support/basic_telemetry.rs"]
 mod basic_telemetry;
+#[cfg(feature = "governance")]
 #[path = "../examples/support/data_governance.rs"]
 mod data_governance;
 #[path = "../examples/support/error_degradation.rs"]
@@ -243,6 +244,7 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
     assert_eq!(summary.depth_preserved_leaf.as_deref(), Some("deep"));
 }
 
+#[cfg(feature = "governance")]
 #[test]
 fn integration_test_data_governance_example_summary_matches_demo_flow() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
