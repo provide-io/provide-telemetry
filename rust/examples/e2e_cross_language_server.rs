@@ -42,8 +42,13 @@ fn run() -> Result<(), String> {
         _ => 18765,
     };
 
-    let provider = e2e_shared::init_tracer_provider("rust-e2e-backend")?;
-    let tracer = provider.tracer("rust.e2e.backend");
+    // Use provide-telemetry's setup_telemetry() which installs the tracing subscriber,
+    // registers the OTel TracerProvider globally, and sets the W3C propagator.
+    provide_telemetry::setup_telemetry().map_err(|err| format!("setup_telemetry failed: {err}"))?;
+
+    // Global tracer is now available — setup_telemetry() calls set_tracer_provider().
+    let tracer = global::tracer("rust.e2e.backend");
+
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|err| format!("failed to bind server: {err}"))?;
 
