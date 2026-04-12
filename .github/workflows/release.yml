@@ -96,7 +96,7 @@ jobs:
 
   publish-pypi:
     needs: [build, verify-testpypi]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       id-token: write
@@ -162,7 +162,7 @@ jobs:
 
   publish-npm:
     needs: build-npm
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -193,7 +193,7 @@ jobs:
 
   publish-rust:
     needs: build-rust
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -207,15 +207,14 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Publish to crates.io
-        # Skip silently if CARGO_REGISTRY_TOKEN is not configured
-        if: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
-        run: cargo publish --locked
+        # Skip silently if CARGO_REGISTRY_TOKEN is not configured (shell-level check avoids secrets context in if:)
+        run: if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then echo "CARGO_REGISTRY_TOKEN not set — skipping crates.io publish"; else cargo publish --locked; fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   sign-and-upload:
     needs: [build, build-rust]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -241,10 +240,12 @@ jobs:
         with:
           inputs: dist/*.whl dist/*.tar.gz
       - name: Upload artifacts and signatures to release
+        # Use release tag_name on release events; fall back to ref_name (e.g. v0.3.0) on workflow_dispatch
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${RELEASE_TAG}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
             rust-dist/*.crate \
             sbom/sbom-python.cdx.json \
