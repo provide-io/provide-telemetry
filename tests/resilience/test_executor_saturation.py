@@ -227,3 +227,24 @@ class TestCrossSignalIsolation:
 
         # Cleanup
         logs_event.set()
+
+
+class TestExecutorSemaphore:
+    def test_semaphore_full_returns_none(self) -> None:
+        """When the semaphore is exhausted, run_with_resilience returns None (fail-open)."""
+        resilience_mod.set_exporter_policy(
+            "logs",
+            ExporterPolicy(retries=0, timeout_seconds=0.1, fail_open=True),
+        )
+        sem = resilience_mod._get_executor_semaphore("logs")
+        # Drain the semaphore completely so no new submissions are accepted.
+        drained = 0
+        while sem.acquire(blocking=False):
+            drained += 1
+
+        try:
+            result = run_with_resilience("logs", lambda: "should-not-run")
+            assert result is None
+        finally:
+            for _ in range(drained):
+                sem.release()

@@ -19,14 +19,14 @@ class TestClassifyErrorExactValues:
     """Verify exact string values in every dict key for each branch."""
 
     def test_timeout_branch_all_values(self) -> None:
-        """Non-timeout exc_name + status_code=0 -> timeout branch."""
-        r = classify_error("SomeError", status_code=0)
+        """Timeout exc_name -> timeout branch."""
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error.category"] == "timeout"
         assert r["error.severity"] == "info"
         assert r["error_type"] == "internal"
         assert r["error_code"] == "0"
-        assert r["error_name"] == "SomeError"
-        assert r["error.type"] == "SomeError"
+        assert r["error_name"] == "TimeoutError"
+        assert r["error.type"] == "TimeoutError"
         assert r["http.status_code"] == "0"
 
     def test_timeout_branch_via_exc_name(self) -> None:
@@ -108,17 +108,22 @@ class TestClassifyErrorExactValues:
         assert r["error_type"] == "internal"
 
     def test_status_code_none_defaults_to_0(self) -> None:
-        """Kills: status_code is not None else 0 mutation."""
-        r = classify_error("Error", status_code=None)
+        """Kills: status_code is not None else 0 mutation — code maps to '0' in output."""
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error_code"] == "0"
         assert r["http.status_code"] == "0"
-        # code=0 triggers timeout
+        # 'timeout' in name still triggers timeout branch
         assert r["error.category"] == "timeout"
 
     def test_status_code_none_no_timeout_in_name(self) -> None:
-        """Even without 'timeout' in name, code=0 triggers timeout branch."""
+        """Without 'timeout' in name and no status_code, result is unclassified."""
         r = classify_error("ValueError")
-        assert r["error.category"] == "timeout"
+        assert r["error.category"] == "unclassified"
+
+    def test_status_code_zero_no_timeout_in_name(self) -> None:
+        """status_code=0 with no 'timeout' in name -> unclassified (not a timeout HTTP code)."""
+        r = classify_error("ValueError", status_code=0)
+        assert r["error.category"] == "unclassified"
 
     def test_server_error_at_499_is_client_not_server(self) -> None:
         """Boundary: 499 >= 400 but < 500, should be client_error."""
@@ -146,7 +151,7 @@ class TestClassifyErrorStringLiterals:
     """Verify that specific string literal values cannot be swapped."""
 
     def test_category_timeout_exact(self) -> None:
-        r = classify_error("E", status_code=0)
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error.category"] == "timeout"
         assert r["error.category"] != "server_error"
         assert r["error.category"] != "client_error"
@@ -171,7 +176,7 @@ class TestClassifyErrorStringLiterals:
         assert r["error.category"] != "client_error"
 
     def test_severity_info_in_timeout(self) -> None:
-        r = classify_error("E", status_code=0)
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error.severity"] == "info"
         assert r["error.severity"] != "critical"
         assert r["error.severity"] != "warning"
@@ -189,7 +194,7 @@ class TestClassifyErrorStringLiterals:
         assert r["error.severity"] != "info"
 
     def test_error_type_internal_in_timeout(self) -> None:
-        r = classify_error("E", status_code=0)
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error_type"] == "internal"
         assert r["error_type"] != "server"
         assert r["error_type"] != "client"

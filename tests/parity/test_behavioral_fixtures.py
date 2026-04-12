@@ -322,7 +322,8 @@ def test_parity_classify_error_429() -> None:
 
 
 def test_parity_classify_error_0_timeout() -> None:
-    result = classify_error("ConnectionError", status_code=0)
+    # status_code=0 is no longer a timeout trigger; use timeout HTTP code instead.
+    result = classify_error("ConnectionError", status_code=408)
     assert result["error.category"] == "timeout"
 
 

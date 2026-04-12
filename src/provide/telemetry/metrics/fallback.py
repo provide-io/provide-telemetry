@@ -16,6 +16,7 @@ from provide.telemetry.sampling import _should_sample_unchecked
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
 _SIGNAL = "metrics"
+_ATTR_VALUES_MAX = 1000
 
 # Lazy re-binding support: when an instrument is created before
 # setup_telemetry(), its _otel_* handle is None.  After provider
@@ -144,6 +145,10 @@ class Gauge:
                 prev = self._attr_values.get(attrs_key, 0)
                 delta = value - prev
                 self._attr_values[attrs_key] = value
+                if len(self._attr_values) > _ATTR_VALUES_MAX:
+                    # Evict oldest half — dict preserves insertion order (Python 3.7+)
+                    to_keep = list(self._attr_values.items())[_ATTR_VALUES_MAX // 2 :]
+                    self._attr_values = dict(to_keep)
                 self.value += delta
                 if otel_gauge is not None:
                     otel_gauge.add(delta, attrs)
