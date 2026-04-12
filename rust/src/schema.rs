@@ -146,8 +146,7 @@ mod tests {
         let err = event_name(&["a", "b"]).expect_err("strict arity should fail");
         assert_eq!(err.message, "expected 3-5 segments, got 2");
 
-        let err =
-            event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
+        let err = event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
         assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
         set_strict_schema(false);
     }
