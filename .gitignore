@@ -31,3 +31,5 @@ coverage.out
 rust/target/
 go/coverage.html
 .claude/settings.local.json
+.claude/worktrees/
+rust/mutants.out/

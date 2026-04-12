@@ -48,15 +48,42 @@ const _consecutiveTimeouts: Record<string, number> = { logs: 0, traces: 0, metri
 // Stryker disable next-line ObjectLiteral
 const _circuitTrippedAt: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 // Stryker disable next-line ObjectLiteral
-export const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
+const _openCount: Record<string, number> = { logs: 0, traces: 0, metrics: 0 };
 /* Stryker disable BooleanLiteral: initial false values are reset by _resetResilienceForTests before each test — equivalent mutant */
 // Stryker disable next-line ObjectLiteral
-export const _halfOpenProbing: Record<string, boolean> = {
+const _halfOpenProbing: Record<string, boolean> = {
   logs: false,
   traces: false,
   metrics: false,
 };
 /* Stryker restore BooleanLiteral */
+
+/** Test-only getters for circuit breaker state inspection. */
+export function _getConsecutiveTimeoutsForTests(signal: string): number {
+  return _consecutiveTimeouts[signal] ?? 0;
+}
+export function _getCircuitTrippedAtForTests(signal: string): number {
+  return _circuitTrippedAt[signal] ?? 0;
+}
+export function _getOpenCountForTests(signal: string): number {
+  return _openCount[signal] ?? 0;
+}
+export function _getHalfOpenProbingForTests(signal: string): boolean {
+  return _halfOpenProbing[signal] ?? false;
+}
+/** Test-only setters for priming circuit breaker state in tests. */
+export function _setConsecutiveTimeoutsForTests(signal: string, value: number): void {
+  _consecutiveTimeouts[signal] = value;
+}
+export function _setCircuitTrippedAtForTests(signal: string, value: number): void {
+  _circuitTrippedAt[signal] = value;
+}
+export function _setOpenCountForTests(signal: string, value: number): void {
+  _openCount[signal] = value;
+}
+export function _setHalfOpenProbingForTests(signal: string, value: boolean): void {
+  _halfOpenProbing[signal] = value;
+}
 
 export function setExporterPolicy(signal: string, policy: Partial<ExporterPolicy>): void {
   _policies[signal] = { ...DEFAULT_POLICY, ...policy };

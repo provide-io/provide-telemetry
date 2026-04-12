@@ -74,6 +74,30 @@ try {
 // Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
 let _fallbackStore: PropagationStore = { active: {}, stack: [], otelCtxStack: [] };
 
+// Emit a one-time warning when the module-level fallback store is activated.
+let _fallbackWarned = false;
+
+function _warnFallbackOnce(): void {
+  if (!_fallbackWarned) {
+    _fallbackWarned = true;
+    console.warn(
+      '[provide-telemetry] AsyncLocalStorage is unavailable; ' +
+        'falling back to module-level context store. ' +
+        'Concurrent requests will share propagation context. ' +
+        'This is unsafe in production async environments.',
+    );
+  }
+}
+
+/**
+ * Returns true when AsyncLocalStorage is unavailable and the module-level
+ * fallback store is being used. Callers can check this to detect unsafe
+ * environments where concurrent requests share propagation context.
+ */
+export function isFallbackMode(): boolean {
+  return _als === null;
+}
+
 function _getStore(): PropagationStore {
   if (_als) {
     return _als.getStore() ?? _fallbackStore;
@@ -300,6 +324,7 @@ export function _resetPropagationForTests(): void {
   /* v8 ignore next */
   _als = _AlsConstructor ? new _AlsConstructor() : null;
   _fallbackStore = { active: {}, stack: [], otelCtxStack: [] };
+  _fallbackWarned = false;
 }
 
 /** Disable AsyncLocalStorage for testing the module-level fallback path. */
