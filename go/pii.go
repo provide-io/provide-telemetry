@@ -195,13 +195,18 @@ func _sanitizeMap(m map[string]any, path []string, rules []PIIRule, depth int) m
 }
 
 // _sanitizeSlice copies the slice, recursively sanitizing each element.
+// Non-map items are routed through _sanitizeValue so that custom rules
+// (including drop mode) apply to primitive slice elements too.
 func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
-	out := make([]any, len(s))
-	for i, item := range s {
+	out := make([]any, 0, len(s))
+	for _, item := range s {
 		if inner, ok := item.(map[string]any); ok {
-			out[i] = _sanitizeMap(inner, path, rules, depth)
+			out = append(out, _sanitizeMap(inner, path, rules, depth))
 		} else {
-			out[i] = item
+			sanitized, drop := _sanitizeValue("", item, path, rules, depth)
+			if !drop {
+				out = append(out, sanitized)
+			}
 		}
 	}
 	return out

@@ -49,10 +49,9 @@ func _resetQueuePolicy() {
 }
 
 // _drainAndRebuild replaces all queues with new channels based on policy.
-// Old channels are abandoned (not closed) to prevent a TOCTOU panic: TryAcquire
-// and Release read the channel pointer under RLock then release the lock before
-// the channel operation, so closing the old channel here could race with a
-// concurrent send/receive on the now-stale pointer.
+// Old channels are abandoned (not closed) to prevent a panic: closing a channel
+// while a concurrent sender holds a stale pointer to it would panic. GC reclaims
+// the old channel once all in-flight references drop.
 // Caller must hold _queueMu write lock.
 func _drainAndRebuild(policy QueuePolicy) {
 	// Intentionally do not close old channels — let them be GC'd once all
@@ -95,20 +94,20 @@ func _channelForSignal(signal string) chan struct{} {
 // TryAcquire attempts a non-blocking acquire on the signal's semaphore.
 // Returns true if a slot was acquired; false if the queue is at capacity or the signal is unknown.
 // A maxSize of 0 (or negative) means unlimited — always succeeds without a channel.
+// The RLock is held through the entire read + send to prevent a TOCTOU race where
+// SetQueuePolicy swaps the channel pointer between the read and the send.
 func TryAcquire(signal string) bool {
 	_queueMu.RLock()
-	policy := _queuePolicy
-	ch := _channelForSignal(signal)
-	_queueMu.RUnlock()
+	defer _queueMu.RUnlock()
 
 	maxSize := 0
 	switch signal {
 	case signalLogs:
-		maxSize = policy.LogsMaxSize
+		maxSize = _queuePolicy.LogsMaxSize
 	case signalTraces:
-		maxSize = policy.TracesMaxSize
+		maxSize = _queuePolicy.TracesMaxSize
 	case signalMetrics:
-		maxSize = policy.MetricsMaxSize
+		maxSize = _queuePolicy.MetricsMaxSize
 	default:
 		return false
 	}
@@ -116,6 +115,7 @@ func TryAcquire(signal string) bool {
 		return true
 	}
 
+	ch := _channelForSignal(signal)
 	select {
 	case ch <- struct{}{}:
 		return true
@@ -126,21 +126,23 @@ func TryAcquire(signal string) bool {
 }
 
 // Release frees one slot on the signal's semaphore. No-op for unknown signals or unlimited queues.
+// The RLock is held through the entire read + receive to prevent a TOCTOU race where
+// SetQueuePolicy swaps the channel pointer between the read and the receive.
 func Release(signal string) {
 	_queueMu.RLock()
-	policy := _queuePolicy
-	ch := _channelForSignal(signal)
-	_queueMu.RUnlock()
+	defer _queueMu.RUnlock()
 
 	maxSize := 0
 	switch signal {
 	case signalLogs:
-		maxSize = policy.LogsMaxSize
+		maxSize = _queuePolicy.LogsMaxSize
 	case signalTraces:
-		maxSize = policy.TracesMaxSize
+		maxSize = _queuePolicy.TracesMaxSize
 	case signalMetrics:
-		maxSize = policy.MetricsMaxSize
+		maxSize = _queuePolicy.MetricsMaxSize
 	}
+
+	ch := _channelForSignal(signal)
 	if maxSize <= 0 || ch == nil {
 		return
 	}
