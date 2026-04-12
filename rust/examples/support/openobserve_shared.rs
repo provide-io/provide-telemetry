@@ -75,8 +75,11 @@ fn otlp_headers(auth: &str) -> HashMap<String, String> {
 }
 
 fn resource(service_name: &str) -> Resource {
-    Resource::builder_empty()
-        .with_attributes([KeyValue::new("service.name", service_name.to_string())])
+    // Use Resource::builder() (not builder_empty()) so that SdkProvidedResourceDetector
+    // and TelemetryResourceDetector run automatically, populating telemetry.sdk.language,
+    // telemetry.sdk.name, and telemetry.sdk.version in exported signals.
+    Resource::builder()
+        .with_service_name(service_name.to_string())
         .build()
 }
 
