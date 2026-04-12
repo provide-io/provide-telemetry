@@ -262,3 +262,16 @@ class TestGaugeSet:
         g.set(10)
         assert g.value == 10
         otel_gauge.add.assert_called_with(10, {})
+
+    def test_gauge_set_evicts_oldest_when_attr_values_exceed_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When _attr_values exceeds _ATTR_VALUES_MAX, oldest half is evicted."""
+        limit = fallback_mod._ATTR_VALUES_MAX
+        monkeypatch.setattr(fallback_mod, "_resolve_otel_for_gauge", lambda _: None, raising=False)
+        g = Gauge("g.evict")
+        g._resolved = True
+        g._otel_gauge = None
+        # Populate gauge with limit+1 distinct attribute sets to trigger eviction.
+        for i in range(limit + 1):
+            g.set(i, attributes={"k": str(i)})
+        # After eviction, only ~half of the entries should remain.
+        assert len(g._attr_values) <= limit // 2 + 1

@@ -714,3 +714,60 @@ func TestRegisterSecretPattern_WorksInSanitizePayloadE2E(t *testing.T) {
 		t.Errorf("expected name unchanged, got %v", result["name"])
 	}
 }
+
+// TestSanitizePayload_DropMode_InSliceMaps verifies that a PIIRule with mode "drop"
+// removes the matching key from map elements inside a slice.
+func TestSanitizePayload_DropMode_InSliceMaps(t *testing.T) {
+	_resetPIIRules()
+	t.Cleanup(_resetPIIRules)
+
+	SetPIIRules([]PIIRule{
+		{Path: []string{"items", "token"}, Mode: PIIModeDrop},
+	})
+
+	payload := map[string]any{
+		"items": []any{
+			map[string]any{"token": "secret1", "id": "1"},
+			map[string]any{"token": "other2", "id": "2"},
+		},
+	}
+	result := SanitizePayload(payload, true, 8)
+
+	items, ok := result["items"].([]any)
+	if !ok {
+		t.Fatal("expected items to be a slice")
+	}
+	for i, raw := range items {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("items[%d] is not a map", i)
+		}
+		if _, present := m["token"]; present {
+			t.Errorf("items[%d]: expected token to be dropped, got %v", i, m["token"])
+		}
+	}
+}
+
+// TestSanitizePayload_DropMode_PrimitiveSliceNotDroppedWithoutMatch verifies that
+// primitive values in a slice pass through unchanged when no rule matches them.
+func TestSanitizePayload_DropMode_PrimitiveSliceNotDroppedWithoutMatch(t *testing.T) {
+	_resetPIIRules()
+	t.Cleanup(_resetPIIRules)
+
+	SetPIIRules([]PIIRule{
+		{Path: []string{"other"}, Mode: PIIModeDrop},
+	})
+
+	payload := map[string]any{
+		"tags": []any{"alpha", "beta", "gamma"},
+	}
+	result := SanitizePayload(payload, true, 8)
+
+	tags, ok := result["tags"].([]any)
+	if !ok {
+		t.Fatal("expected tags to be a slice")
+	}
+	if len(tags) != 3 {
+		t.Errorf("expected 3 tags, got %d: %v", len(tags), tags)
+	}
+}

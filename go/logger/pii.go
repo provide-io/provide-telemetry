@@ -65,6 +65,7 @@ var (
 	_classificationHook func(key string, value any) string
 	_receiptHook        func(fieldPath string, action string, originalValue any)
 	_customSecretPats   map[string]*regexp.Regexp
+	_sanitizeDelegate   func(map[string]any, bool, int) map[string]any
 )
 
 // RegisterSecretPattern registers a custom secret detection pattern.
@@ -130,20 +131,40 @@ func GetPIIRules() []PIIRule {
 	return cp
 }
 
-// ResetPIIRules clears all custom PII rules and hooks (for test cleanup).
+// ResetPIIRules clears all custom PII rules, hooks, and the sanitize delegate (for test cleanup).
 func ResetPIIRules() {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	_piiRules = nil
 	_classificationHook = nil
 	_receiptHook = nil
+	_sanitizeDelegate = nil
+}
+
+// SetSanitizePayloadFunc registers an external sanitize function that SanitizePayload
+// will delegate to instead of using its own rule set. Pass nil to deregister and
+// fall back to the local rule set. This allows the top-level telemetry package to
+// wire its own PII engine into the logger sub-package without creating an import cycle.
+func SetSanitizePayloadFunc(fn func(map[string]any, bool, int) map[string]any) {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	_sanitizeDelegate = fn
 }
 
 // SanitizePayload applies PII sanitization to the given payload map.
+// If a delegate function has been registered via SetSanitizePayloadFunc, it is
+// called instead of the local rule set, allowing the top-level telemetry engine
+// to serve as the single source of truth for PII rules.
 // If enabled is false, a shallow copy is returned unchanged.
 func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[string]any {
 	if !enabled {
 		return _shallowCopy(payload)
+	}
+	_piiMu.RLock()
+	delegate := _sanitizeDelegate
+	_piiMu.RUnlock()
+	if delegate != nil {
+		return delegate(payload, enabled, maxDepth)
 	}
 	if maxDepth <= 0 {
 		maxDepth = _piiDefaultMax
@@ -184,19 +205,15 @@ func _sanitizeMap(m map[string]any, path []string, rules []PIIRule, depth int) m
 }
 
 func _sanitizeSlice(s []any, path []string, rules []PIIRule, depth int) []any {
-	out := make([]any, len(s))
-	for i, item := range s {
-		switch typed := item.(type) {
-		case map[string]any:
-			out[i] = _sanitizeMap(typed, path, rules, depth)
-		case string:
-			if _detectSecretInValue(typed) {
-				out[i] = _piiRedacted
-			} else {
-				out[i] = item
+	out := make([]any, 0, len(s))
+	for _, item := range s {
+		if inner, ok := item.(map[string]any); ok {
+			out = append(out, _sanitizeMap(inner, path, rules, depth))
+		} else {
+			sanitized, drop := _sanitizeValue("", item, path, rules, depth)
+			if !drop {
+				out = append(out, sanitized)
 			}
-		default:
-			out[i] = item
 		}
 	}
 	return out
