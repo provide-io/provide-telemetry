@@ -59,7 +59,9 @@ pub use context::{
 pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
-pub use logger::{buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger};
+pub use logger::{
+    buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger,
+};
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
@@ -90,4 +92,6 @@ pub use slo::{
     classify_error, get_error_count_for_tests, get_request_count_for_tests, record_red_metrics,
     record_use_metrics, reset_slo_for_tests, slo_initialized_for_tests,
 };
-pub use tracer::{get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer};
+pub use tracer::{
+    get_trace_context, get_tracer, set_trace_context, trace, tracer, NoopSpan, Tracer,
+};
