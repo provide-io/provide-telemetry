@@ -9,10 +9,13 @@
 # the code is untested.
 
 [mutants]
-# --tests runs all unit + integration tests but skips example/benchmark binaries.
-# This cuts per-mutation build time by ~40% on machines with many example files,
-# while still exercising every #[test] function in both src/ and tests/.
+# Pass --tests to ALL cargo invocations (both the compile-check and the test-run
+# phases). This skips building the 19 example binaries per mutation — examples
+# have no tests, so they never detect mutations and only add compile overhead.
+# cargo test --tests still includes all inline #[test] unit tests in src/ as
+# well as every integration test in tests/, preserving full mutation coverage.
 cargo_test_args = ["--tests"]
+cargo_arg = ["--tests"]
 
 # consent.rs: "TRACE" => 0 is identical to the _ => 0 fallthrough.
 # Deleting the TRACE arm produces no observable behaviour change because both
