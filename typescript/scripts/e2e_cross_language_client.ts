@@ -15,8 +15,7 @@
  * Exit code 0 on success, 1 on any error.
  */
 
-import { context, trace } from '@opentelemetry/api';
-import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { trace } from '@opentelemetry/api';
 
 import { setupTelemetry, registerOtelProviders, withTrace, getActiveTraceIds } from '../src/index';
 
@@ -48,13 +47,8 @@ async function main(): Promise<void> {
     consoleOutput: false,
   };
 
-  // AsyncLocalStorageContextManager must be enabled before registerOtelProviders
-  // so that startActiveSpan propagates spans through async boundaries.
-  // (registerOtelProviders only calls trace.setGlobalTracerProvider, not context setup)
-  const ctxMgr = new AsyncLocalStorageContextManager();
-  ctxMgr.enable();
-  context.setGlobalContextManager(ctxMgr);
-
+  // registerOtelProviders installs the AsyncLocalStorageContextManager so
+  // startActiveSpan propagates spans through async boundaries automatically.
   setupTelemetry(cfg);
   // registerOtelProviders is async — must be awaited before creating spans.
   await registerOtelProviders(cfg);

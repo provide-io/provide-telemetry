@@ -40,6 +40,20 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   const endpoint = cfg.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT;
   const registered: ShutdownableProvider[] = [];
 
+  // ── Context manager ──────────────────────────────────────────────────────────
+  // Install AsyncLocalStorageContextManager so startActiveSpan propagates spans
+  // through async boundaries in Node.js. Must happen before TracerProvider setup.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctxHooks: any = await import('@opentelemetry/context-async-hooks' as string);
+    const { context } = await import('@opentelemetry/api');
+    const ctxMgr = new ctxHooks.AsyncLocalStorageContextManager();
+    ctxMgr.enable();
+    context.setGlobalContextManager(ctxMgr);
+  } catch {
+    // Not a Node.js environment or peer dep not installed — skip silently.
+  }
+
   // ── Tracing ──────────────────────────────────────────────────────────────────
   if (cfg.tracingEnabled) {
     try {
