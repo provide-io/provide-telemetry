@@ -52,6 +52,8 @@ path = [
   "go/VERSION",
   "go/go.mod",
   "go/go.sum",
+  "go/go.work",
+  "go/internal/go.mod",
   "go/logger/go.mod",
   "go/logger/VERSION",
   "go/tracer/go.mod",
