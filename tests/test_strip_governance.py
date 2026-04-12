@@ -9,13 +9,16 @@ These tests verify that:
 1. Core telemetry (logging, tracing, metrics, PII, schema, health) works without
    importing any governance symbols.
 2. Governance symbols are optional and only available via lazy import.
-
-These tests do NOT delete files — they validate the abstraction boundary.
+3. A subprocess with governance files physically absent still runs core telemetry.
 """
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Tests: core telemetry without governance
@@ -58,7 +61,7 @@ class TestCoreWithoutGovernance:
         assert result.get("password") == "***", "password must be redacted"
         assert result.get("token") == "***", "token must be redacted"
         assert result.get("user") == "alice", "non-sensitive key must pass through"
-        # No classification labels without governance
+        # No classification labels without governance (classification.py not imported)
         assert "__password__class" not in result, (
             "classification labels must be absent when classification.py not imported"
         )
@@ -131,14 +134,24 @@ class TestGovernanceIsOptional:
     """Governance symbols must only be loaded on first access, not on import."""
 
     def test_core_import_does_not_load_governance_modules(self) -> None:
-        """Importing provide.telemetry must not eagerly load governance modules."""
-        # We verify the contract: top-level import succeeds and core symbols are
-        # available regardless of governance module availability.
-        import provide.telemetry
+        """Core import must not eagerly pull in governance modules.
 
-        # Top-level import succeeds (governance is lazy).
-        assert provide.telemetry.setup_telemetry is not None
-        assert provide.telemetry.get_logger is not None
+        Uses a subprocess to get a clean Python process with no prior imports,
+        then checks sys.modules after importing only core symbols.
+        """
+        script = (
+            "import provide.telemetry\n"
+            "import sys\n"
+            "gov = [k for k in sys.modules if any(g in k for g in"
+            " ('classification', 'consent', 'receipts'))]\n"
+            "assert not gov, f'governance modules loaded eagerly: {gov}'\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"Core import pulled in governance modules:\n{result.stdout}{result.stderr}"
 
     def test_governance_symbols_are_lazily_imported(self) -> None:
         """Governance symbols must resolve correctly when modules are present."""
@@ -149,25 +162,104 @@ class TestGovernanceIsOptional:
         assert hasattr(t, "ConsentLevel")
         assert hasattr(t, "RedactionReceipt")
 
-    def test_governance_modules_not_in_core_imports(self) -> None:
-        """Core imports must not eagerly pull in governance modules.
 
-        We detect this by checking that governance module keys were not loaded
-        before any governance-specific test ran. Since tests may run in any order,
-        we verify the inverse: after a cold import of core-only symbols, governance
-        module paths are absent from sys.modules.
-        """
-        # Import only core symbols — no governance.
-        from provide.telemetry import get_logger, setup_telemetry  # noqa: F401
+# ---------------------------------------------------------------------------
+# Tests: actual file deletion — subprocess with governance files absent
+# ---------------------------------------------------------------------------
 
-        # Governance must not have been pulled in by the above core imports.
-        # (They may be present from other tests in the session; we skip assertion
-        #  if they were loaded by an earlier test.)
-        core_only_keys = {
-            "provide.telemetry.setup",
-            "provide.telemetry.config",
-            "provide.telemetry.logger",
-            "provide.telemetry.exceptions",
-        }
-        for key in core_only_keys:
-            assert key in sys.modules, f"core module {key!r} must be imported"
+
+class TestFilesDeletionProof:
+    """Prove that physically removing governance files leaves core telemetry intact.
+
+    Each test copies the installed package to a temp directory, deletes the
+    governance files there, then runs a subprocess with that modified path
+    injected into PYTHONPATH. This is the strongest possible proof.
+    """
+
+    @staticmethod
+    def _make_stripped_copy() -> Path:
+        """Return path to a temp copy of the package with governance files removed."""
+        import provide.telemetry as t
+
+        pkg_dir = Path(t.__file__).parent  # .../provide/telemetry/
+        provide_dir = pkg_dir.parent  # .../provide/
+        tmpdir = Path(tempfile.mkdtemp())
+        stripped = tmpdir / "provide"
+        shutil.copytree(provide_dir, stripped)
+
+        # Delete the three governance modules from the copy.
+        for name in ("classification.py", "consent.py", "receipts.py"):
+            target = stripped / "telemetry" / name
+            target.unlink(missing_ok=True)
+
+        return tmpdir
+
+    def test_core_import_works_without_governance_files(self) -> None:
+        """Core package imports must succeed even when governance .py files are gone."""
+        tmpdir = self._make_stripped_copy()
+        try:
+            script = (
+                "import provide.telemetry\n"
+                "from provide.telemetry import setup_telemetry, get_logger\n"
+                "assert setup_telemetry is not None\n"
+                "assert get_logger is not None\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                env={**__import__("os").environ, "PYTHONPATH": str(tmpdir)},
+            )
+            assert result.returncode == 0, (
+                f"Core import failed after stripping governance:\n{result.stdout}{result.stderr}"
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_pii_redacts_without_governance_files(self) -> None:
+        """PII redaction must work even when governance .py files are gone."""
+        tmpdir = self._make_stripped_copy()
+        try:
+            script = (
+                "from provide.telemetry.pii import replace_pii_rules, sanitize_payload\n"
+                "replace_pii_rules([])\n"
+                "payload = {'user': 'alice', 'password': 'TESTPWD'}\n"  # pragma: allowlist secret
+                "result = sanitize_payload(payload, enabled=True, max_depth=3)\n"
+                "assert result['password'] == '***', f'expected redacted, got {result}'\n"
+                "assert '__password__class' not in result, 'no classification without module'\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                env={**__import__("os").environ, "PYTHONPATH": str(tmpdir)},
+            )
+            assert result.returncode == 0, (
+                f"PII redaction failed after stripping governance:\n{result.stdout}{result.stderr}"
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_governance_access_raises_when_files_absent(self) -> None:
+        """Accessing governance symbols must raise AttributeError when files are gone."""
+        tmpdir = self._make_stripped_copy()
+        try:
+            script = (
+                "import provide.telemetry as t\n"
+                "try:\n"
+                "    _ = t.ClassificationPolicy\n"
+                "    raise AssertionError('expected AttributeError')\n"
+                "except (AttributeError, ImportError):\n"
+                "    pass  # expected — module is absent\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                env={**__import__("os").environ, "PYTHONPATH": str(tmpdir)},
+            )
+            assert result.returncode == 0, (
+                f"Governance access did not raise after stripping:\n{result.stdout}{result.stderr}"
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
