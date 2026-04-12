@@ -3,6 +3,7 @@ module github.com/provide-io/provide-telemetry/go
 go 1.26.0
 
 require (
+	github.com/provide-io/provide-telemetry/go/internal v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	go.opentelemetry.io/contrib/bridges/otelslog v0.17.0
@@ -13,6 +14,8 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 )
+
+replace github.com/provide-io/provide-telemetry/go/internal => ./internal
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

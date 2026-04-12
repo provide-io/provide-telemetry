@@ -1,8 +1,7 @@
-go 1.26.1
+go 1.26.0
 
 use (
 	.
-	./cmd/e2e_cross_language_client
 	./internal
 	./logger
 	./tracer
