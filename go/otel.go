@@ -12,7 +12,10 @@ import (
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otlpmetrichttp "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
@@ -107,8 +110,32 @@ func _warnIfMeterProviderConflict() {
 	}
 }
 
+// _buildDefaultMeterProvider creates an OTLP HTTP-backed MeterProvider from config.
+// Called automatically when cfg.Metrics.OTLPEndpoint is set and no explicit provider
+// was passed to SetupTelemetry. On error, auto-wiring is silently skipped.
+func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider, error) {
+	metricsURL := strings.TrimRight(cfg.Metrics.OTLPEndpoint, "/") + "/v1/metrics"
+	exporter, err := otlpmetrichttp.New(context.Background(),
+		otlpmetrichttp.WithEndpointURL(metricsURL),
+		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("otlp metric exporter: %w", err)
+	}
+	res := sdkresource.NewWithAttributes(
+		"https://opentelemetry.io/schemas/1.26.0",
+		attribute.String("service.name", cfg.ServiceName),
+		attribute.String("service.version", cfg.Version),
+		attribute.String("deployment.environment", cfg.Environment),
+	)
+	return sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
+		sdkmetric.WithResource(res),
+	), nil
+}
+
 // _applyOTelProviders wires real OTel providers from state into the package-level singletons.
-// It is called by SetupTelemetry when at least one provider option is present.
+// It is called by SetupTelemetry unconditionally to handle both explicit and auto-created providers.
 func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 	if state.tracerProvider != nil {
 		if tp, ok := state.tracerProvider.(*sdktrace.TracerProvider); ok {
@@ -117,6 +144,13 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 			otel.SetTracerProvider(tp)
 			tracer := tp.Tracer(cfg.ServiceName)
 			_setDefaultTracer(_otelTracerAdapter{inner: tracer})
+		}
+	}
+
+	// Auto-create a MeterProvider from config when none was explicitly supplied.
+	if state.meterProvider == nil && cfg.Metrics.OTLPEndpoint != "" {
+		if mp, err := _buildDefaultMeterProvider(cfg); err == nil {
+			state.meterProvider = mp
 		}
 	}
 
