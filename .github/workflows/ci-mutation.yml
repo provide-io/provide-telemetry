@@ -34,6 +34,9 @@ on:
       - "go/**"
       - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
+  # Nightly full mutation run — avoids blocking PRs on the multi-hour Rust sweep
+  schedule:
+    - cron: "0 2 * * *"
 
 permissions:
   contents: read
@@ -101,7 +104,9 @@ jobs:
 
   rust-mutation:
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    # Full mutation sweep can take several hours; cap at 4h to avoid runaway jobs
+    timeout-minutes: 240
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -109,12 +114,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02f74cd1c6df580bba6e6af45df269  # v2
+        with:
+          workspaces: rust
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
+      # -j 4 runs four mutant test processes in parallel (matches 4-core GitHub runner).
       # cargo-mutants exits 3 if any mutants are missed — this step fails the job.
       # All mutants must be caught (100% kill rate enforced).
       - name: Run cargo-mutants (100% kill rate required)
-        run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+        run: cargo mutants -j 4 --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
 
   go-mutation:
     needs: changes
