@@ -82,19 +82,6 @@ def _rust_version() -> str | None:
     return match.group(1) if match else None
 
 
-def _csharp_version() -> str | None:
-    """Read version from csharp/src/Provide.Telemetry/*.csproj."""
-    csproj_dir = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry"
-    if not csproj_dir.exists():
-        return None
-    for csproj in csproj_dir.glob("*.csproj"):
-        text = csproj.read_text(encoding="utf-8")
-        match = re.search(r"<Version>([^<]+)</Version>", text)
-        if match:
-            return match.group(1)
-    return None
-
-
 _LANG_READERS = {
     "python": _python_version,
     "typescript": _typescript_version,
@@ -102,7 +89,6 @@ _LANG_READERS = {
     "go/logger": _go_logger_version,
     "go/tracer": _go_tracer_version,
     "rust": _rust_version,
-    "csharp": _csharp_version,
 }
 
 

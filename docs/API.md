@@ -122,7 +122,7 @@ Error events automatically receive an `error_fingerprint` field — a 12-charact
 
 Build a structured event from 3 or 4 segments following the DA(R)S pattern (Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that behaves as a dot-joined string and exposes typed fields.
 
-In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), validates segment count and format; in non-strict mode (the default), accepts 1+ segments with no format validation.
+Requires exactly 3 or 4 segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase, alphanumeric + hyphens); in non-strict mode (the default), only the segment count is checked.
 
 ```python
 # 3-segment DAS (domain.action.status)

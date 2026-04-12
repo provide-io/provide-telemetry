@@ -40,7 +40,7 @@ Recommended:
 
 Avoid:
 
-- 5+ segment names:
+- Names with more than 4 segments (5 is the enforced maximum; prefer 3–4):
   - `auth.login.password.reset.attempt.failed`
 - Free-form strings as segments:
   - `event("auth", user_input, "success")`
