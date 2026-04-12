@@ -4,12 +4,14 @@
 //
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 use crate::metrics::{counter, gauge, histogram, Counter, Gauge, Histogram};
 
 static SLO_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static SLO_ERROR_COUNT: AtomicU64 = AtomicU64::new(0);
+static SLO_REQUEST_COUNT: AtomicU64 = AtomicU64::new(0);
 
 static RED_REQUESTS: OnceLock<Counter> = OnceLock::new();
 static RED_ERRORS: OnceLock<Counter> = OnceLock::new();
@@ -25,10 +27,12 @@ pub fn record_red_metrics(route: &str, method: &str, status_code: u16, duration_
     ]
     .into_iter()
     .collect();
+    SLO_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
     RED_REQUESTS
         .get_or_init(|| counter("http.requests.total", Some("Total HTTP requests"), None))
         .add(1.0, Some(attrs.clone()));
     if method != "WS" && status_code >= 500 {
+        SLO_ERROR_COUNT.fetch_add(1, Ordering::SeqCst);
         RED_ERRORS
             .get_or_init(|| counter("http.errors.total", Some("Total HTTP errors"), None))
             .add(1.0, Some(attrs.clone()));
@@ -73,8 +77,18 @@ pub fn slo_initialized_for_tests() -> bool {
     SLO_INITIALIZED.load(Ordering::SeqCst)
 }
 
+pub fn get_error_count_for_tests() -> u64 {
+    SLO_ERROR_COUNT.load(Ordering::SeqCst)
+}
+
+pub fn get_request_count_for_tests() -> u64 {
+    SLO_REQUEST_COUNT.load(Ordering::SeqCst)
+}
+
 pub fn reset_slo_for_tests() {
     SLO_INITIALIZED.store(false, Ordering::SeqCst);
+    SLO_ERROR_COUNT.store(0, Ordering::SeqCst);
+    SLO_REQUEST_COUNT.store(0, Ordering::SeqCst);
 }
 
 #[cfg(test)]
