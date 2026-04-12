@@ -69,7 +69,7 @@ def record_use_metrics(resource: str, utilization_percent: int) -> None:
 
 def classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]:
     code = status_code if status_code is not None else 0
-    is_timeout = code == 0 or "timeout" in exc_name.lower()
+    is_timeout = "timeout" in exc_name.lower() or code in (408, 504)
 
     if is_timeout:
         category = "timeout"
