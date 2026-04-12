@@ -67,7 +67,8 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
     })
 }
 
-pub fn event_name(segments: &[&str], strict: bool) -> Result<String, EventSchemaError> {
+pub fn event_name(segments: &[&str]) -> Result<String, EventSchemaError> {
+    let strict = get_strict_schema();
     if strict {
         if !(3..=5).contains(&segments.len()) {
             return Err(EventSchemaError::new(format!(
@@ -96,26 +97,32 @@ mod tests {
 
     #[test]
     fn schema_test_event_name_returns_exact_joined_value() {
+        set_strict_schema(false);
         assert_eq!(
-            event_name(&["auth", "login", "ok"], false).expect("name should build"),
+            event_name(&["auth", "login", "ok"]).expect("name should build"),
             "auth.login.ok"
         );
+        set_strict_schema(true);
         assert_eq!(
-            event_name(&["a", "b", "c", "d", "e"], true).expect("strict name should build"),
+            event_name(&["a", "b", "c", "d", "e"]).expect("strict name should build"),
             "a.b.c.d.e"
         );
+        set_strict_schema(false);
     }
 
     #[test]
     fn schema_test_event_name_validates_empty_and_invalid_strict_inputs() {
-        let err = event_name(&[], false).expect_err("empty non-strict name should fail");
+        set_strict_schema(false);
+        let err = event_name(&[]).expect_err("empty non-strict name should fail");
         assert_eq!(err.message, "event_name requires at least 1 segment");
 
-        let err = event_name(&["a", "b"], true).expect_err("strict arity should fail");
+        set_strict_schema(true);
+        let err = event_name(&["a", "b"]).expect_err("strict arity should fail");
         assert_eq!(err.message, "expected 3-5 segments, got 2");
 
         let err =
-            event_name(&["valid", "not-valid", "ok"], true).expect_err("strict syntax should fail");
+            event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
         assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
+        set_strict_schema(false);
     }
 }
