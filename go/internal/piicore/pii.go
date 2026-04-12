@@ -59,8 +59,17 @@ var DefaultSensitiveKeys = map[string]struct{}{
 }
 
 // BuiltinSecretPatterns are the compiled regexps checked against every string // pragma: allowlist secret
-// value when no custom rule matches. Patterns are sourced from the generated file.
-var BuiltinSecretPatterns = generatedSecretPatterns // pragma: allowlist secret
+// value when no custom rule matches.
+var BuiltinSecretPatterns = []*regexp.Regexp{ // pragma: allowlist secret
+	regexp.MustCompile(`(?:AKIA|ASIA)[A-Z0-9]{16}`),
+	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`),
+	regexp.MustCompile(`gh[pos]_[A-Za-z0-9_]{36,}`),
+	regexp.MustCompile(`[0-9a-fA-F]{40,}`),
+	regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`),
+}
+
+// MinSecretLength is the minimum string length checked against secret patterns. // pragma: allowlist secret
+const MinSecretLength = 20 // pragma: allowlist secret
 
 // ApplyRule returns true if rule.Path matches path (supports '*' wildcards).
 func ApplyRule(rule PIIRule, path []string) bool {
