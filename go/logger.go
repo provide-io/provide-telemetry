@@ -327,7 +327,7 @@ func (h *_telemetryHandler) applyErrorFingerprint(r slog.Record) slog.Record {
 	if excName == "" {
 		return r
 	}
-	fp := _computeErrorFingerprintFromParts(excName, nil)
+	fp := ComputeErrorFingerprintFromParts(excName, nil)
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
 		nr.AddAttrs(a)

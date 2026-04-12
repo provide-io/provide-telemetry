@@ -150,9 +150,11 @@ func NewHistogram(name string, opts ...Option) Histogram {
 	return &_atomicHistogram{name: name}
 }
 
-// GetMeter returns a named OTel meter when available, or nil.
-// OTel wiring is deferred to Task 14; this always returns nil for now.
+// GetMeter returns a named OTel metric.Meter when an OTel MeterProvider has
+// been installed (via SetupTelemetry with WithMeterProvider), or nil otherwise.
 func GetMeter(name string) any {
-	_ = name
-	return nil
+	if _otelMeterProvider == nil {
+		return nil
+	}
+	return _otelMeterProvider.Meter(name)
 }
