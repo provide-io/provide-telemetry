@@ -59,6 +59,8 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
         if not _setup_done:
             _quiet_otel_sdk_loggers()
             apply_runtime_config(cfg)
+            from provide.telemetry.health import set_setup_error
+
             completed: list[str] = []
             try:
                 configure_logging(cfg, force=True)
@@ -72,8 +74,6 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 _rebind_slo_instruments()
             except Exception as exc:
                 _rollback(completed)
-                from provide.telemetry.health import set_setup_error
-
                 set_setup_error(str(exc))
                 warnings.warn(  # pragma: no mutate
                     f"telemetry setup failed, running in degraded mode: {exc}",
@@ -82,6 +82,8 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 )
                 # Always restore logging — rollback may have torn it down above.
                 configure_logging(cfg, force=True)
+            else:
+                set_setup_error(None)  # clear any stale error from a prior failed attempt
             _setup_done = True
             if cfg.slo.enable_red_metrics:
                 record_red_metrics("startup", "INIT", 200, 0.0)
