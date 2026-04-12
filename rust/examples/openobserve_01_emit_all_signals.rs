@@ -2,36 +2,68 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-
-#[cfg(feature = "otel")]
-#[path = "support/openobserve_shared.rs"]
-mod openobserve_shared;
+// Demonstrates emitting all three signal types (logs, traces, metrics) through
+// the provide-telemetry library's public API using setup_telemetry().
+//
+// Required env vars:
+//   OTEL_EXPORTER_OTLP_ENDPOINT  — e.g. http://localhost:5080/api/default
+//   OTEL_EXPORTER_OTLP_HEADERS   — e.g. Authorization=Basic <base64>
+//   PROVIDE_TELEMETRY_SERVICE_NAME — e.g. provide-telemetry-rust-examples
+//
+// Optional:
+//   PROVIDE_EXAMPLE_RUN_ID — tag to stamp on each signal for verification
 
 #[cfg(feature = "otel")]
 fn main() {
-    let result = (|| -> Result<(), String> {
-        let base_url = openobserve_shared::require_env("OPENOBSERVE_URL")?;
-        let user = openobserve_shared::require_env("OPENOBSERVE_USER")?;
-        let password = openobserve_shared::require_env("OPENOBSERVE_PASSWORD")?;
-        let names = openobserve_shared::signal_names(std::env::var("PROVIDE_EXAMPLE_RUN_ID").ok());
-        let endpoints = openobserve_shared::OpenObserveEndpoints::new(&base_url);
-        let auth = openobserve_shared::auth_header(&user, &password);
+    use opentelemetry::trace::Tracer as _;
+    use provide_telemetry::{counter, histogram, setup_telemetry, shutdown_telemetry};
+    use std::collections::BTreeMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-        let summary = openobserve_shared::emit_all_signals(
-            &endpoints,
-            &auth,
-            &names,
-            "provide-telemetry-rust-examples",
-        )?;
+    let run_id = std::env::var("PROVIDE_EXAMPLE_RUN_ID").unwrap_or_else(|_| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .to_string()
+    });
 
-        println!("signals emitted run_id={}", summary.run_id);
-        Ok(())
-    })();
+    setup_telemetry().expect("telemetry setup failed");
 
-    if let Err(err) = result {
-        eprintln!("{err}");
-        std::process::exit(1);
+    // Traces: use the global OTel tracer that setup_telemetry() installs.
+    // opentelemetry::global::tracer() uses the active TracerProvider, so this
+    // is fully going through the library — setup_telemetry() wired it.
+    let tracer = opentelemetry::global::tracer("example.openobserve");
+    let span_name = format!("example.openobserve.work.{run_id}");
+    let mut _span = tracer.start(span_name.clone());
+
+    let requests = counter("example.openobserve.requests", None, None);
+    let latency = histogram("example.openobserve.latency", None, Some("ms"));
+
+    for i in 0..5i64 {
+        // Logs: tracing events are bridged to OTLP by OpenTelemetryTracingBridge.
+        // Structured fields become OTel log attributes in OpenObserve.
+        // Logs: tracing events are bridged to OTLP by OpenTelemetryTracingBridge.
+        // Structured fields become OTel log attributes in OpenObserve.
+        tracing::info!(
+            run_id = %run_id,
+            event = "example.openobserve.log",
+            iteration = i,
+            "openobserve otlp log",
+        );
+
+        let mut attrs = BTreeMap::new();
+        attrs.insert("run_id".to_string(), run_id.clone());
+        attrs.insert("iteration".to_string(), i.to_string());
+        requests.add(1.0, Some(attrs.clone()));
+        latency.record(50.0 + i as f64, Some(attrs));
     }
+
+    use opentelemetry::trace::Span as _;
+    _span.end();
+
+    shutdown_telemetry().expect("shutdown failed");
+    println!("signals emitted run_id={run_id}");
 }
 
 #[cfg(not(feature = "otel"))]
