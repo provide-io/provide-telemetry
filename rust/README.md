@@ -256,28 +256,25 @@ python3 ../spec/validate_conformance.py
 
 ## Examples
 
-```bash
-cargo run --example telemetry_01_basic
-cargo run --example telemetry_02_w3c_propagation
-cargo run --example telemetry_03_sampling_and_backpressure
-cargo run --example telemetry_04_runtime_reconfigure
-cargo run --example telemetry_05_pii_and_cardinality_policy
-cargo run --example telemetry_06_exporter_resilience_modes
-cargo run --example telemetry_07_slo_and_health_snapshot
-cargo run --example telemetry_08_full_hardening_profile
-cargo run --example telemetry_09_error_handling_and_degradation
-cargo run --example telemetry_10_performance_metrics
-cargo run --example telemetry_11_lazy_loading_proof
-cargo run --example telemetry_12_error_fingerprint_and_sessions
-cargo run --example telemetry_13_security_hardening
-cargo run --features governance --example telemetry_14_data_governance
-cargo run --features otel --example openobserve_01_emit_all_signals
-cargo run --features otel --example openobserve_02_verify_ingestion
-cargo run --features otel --example openobserve_03_hardening_profile
-cargo run --features otel --example openobserve_04_via_public_api
-cargo run --features otel --example e2e_cross_language_client
-cargo run --features otel --example e2e_cross_language_server -- --port 18765
-```
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_01_basic`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_02_w3c_propagation`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_03_sampling_and_backpressure`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_04_runtime_reconfigure`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_05_pii_and_cardinality_policy`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_06_exporter_resilience_modes`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_07_slo_and_health_snapshot`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_08_full_hardening_profile`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_09_error_handling_and_degradation`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_10_performance_metrics`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_11_lazy_loading_proof`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_12_error_fingerprint_and_sessions`
+- `cargo run --manifest-path rust/Cargo.toml --example telemetry_13_security_hardening`
+- `cargo run --manifest-path rust/Cargo.toml --features governance --example telemetry_14_data_governance`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_01_emit_all_signals`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_02_verify_ingestion`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_03_hardening_profile`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_client`
+- `cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_server -- --port 18765`
 
 The example suite covers the same numbered telemetry topics as Python, TypeScript, and Go, includes OpenObserve integration examples, and keeps the OTLP E2E client/server pair used by the cross-language verification flow.
 

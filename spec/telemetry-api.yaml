@@ -154,7 +154,15 @@ api:
     - name: event_name
       kind: function
       required: false
-      note: "Returns plain dot-joined event name string."
+      note: "Returns plain dot-joined event name string. Reads strict-schema flag from global state (set_strict_schema)."
+    - name: set_strict_schema
+      kind: function
+      required: true
+      note: "Enable or disable strict segment-format validation for event(). Thread-safe."
+    - name: get_strict_schema
+      kind: function
+      required: true
+      note: "Return the current strict-schema flag value."
 
   slo:
     - name: classify_error
@@ -182,6 +190,44 @@ api:
     - name: reconfigure_telemetry
       kind: function
       required: true
+
+  governance:
+    - name: register_classification_rules
+      kind: function
+      required: false
+      note: "Strippable — only present when classification module is installed"
+    - name: register_classification_rule
+      kind: function
+      required: false
+      note: "Convenience wrapper for single-rule registration. Equivalent to register_classification_rules([rule])."
+    - name: classify_key
+      kind: function
+      required: false
+      note: "Return the DataClass label for a key if a rule matches, else null/None/nil."
+    - name: set_classification_policy
+      kind: function
+      required: false
+    - name: get_classification_policy
+      kind: function
+      required: false
+    - name: set_consent_level
+      kind: function
+      required: false
+      note: "Strippable — only present when consent module is installed"
+    - name: get_consent_level
+      kind: function
+      required: false
+    - name: should_allow
+      kind: function
+      required: false
+    - name: enable_receipts
+      kind: function
+      required: false
+      note: "Strippable — only present when receipts module is installed"
+    - name: redact_config
+      kind: function
+      required: false
+      note: "Returns a safe copy of TelemetryConfig with secrets masked"
 
   errors:
     - name: TelemetryError

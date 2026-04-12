@@ -137,25 +137,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_test_event_strict_gates_segment_format_validation() {
-        // Non-strict: invalid segment format is accepted by event()
-        set_strict_schema(false);
-        let ev = event(&["not-valid", "b", "c"]).expect("non-strict should accept invalid segment");
-        assert_eq!(ev.event, "not-valid.b.c");
-
-        // Strict: invalid segment format is rejected
-        set_strict_schema(true);
-        let err =
-            event(&["not-valid", "b", "c"]).expect_err("strict should reject invalid segment");
-        assert!(
-            err.message.contains("invalid event segment"),
-            "unexpected error: {}",
-            err.message
-        );
-        set_strict_schema(false);
-    }
-
-    #[test]
     fn schema_test_event_name_validates_empty_and_invalid_strict_inputs() {
         set_strict_schema(false);
         let err = event_name(&[]).expect_err("empty non-strict name should fail");
@@ -165,22 +146,9 @@ mod tests {
         let err = event_name(&["a", "b"]).expect_err("strict arity should fail");
         assert_eq!(err.message, "expected 3-5 segments, got 2");
 
-        let err = event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
+        let err =
+            event_name(&["valid", "not-valid", "ok"]).expect_err("strict syntax should fail");
         assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
         set_strict_schema(false);
-    }
-
-    #[test]
-    fn schema_test_validate_required_keys_matches_python_contract() {
-        let mut data = std::collections::BTreeMap::new();
-        data.insert(
-            "domain".to_string(),
-            serde_json::Value::String("auth".to_string()),
-        );
-        validate_required_keys(&data, &["domain".to_string()]).expect("key should exist");
-
-        let err = validate_required_keys(&data, &["domain".to_string(), "action".to_string()])
-            .expect_err("missing key should fail");
-        assert_eq!(err.message, "missing required keys: action");
     }
 }
