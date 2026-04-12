@@ -20,7 +20,8 @@ name = "provide_telemetry"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["governance"]
+governance = []
 otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -51,3 +52,7 @@ uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
 rstest = "0.25"
+
+[[example]]
+name = "telemetry_14_data_governance"
+required-features = ["governance"]

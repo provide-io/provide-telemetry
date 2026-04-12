@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+//go:build !nogovernance
+
 // Package telemetry — cryptographic redaction receipts (strippable governance module).
-// If this file is deleted, the PII engine runs unchanged (hook stays nil).
+// Build with -tags nogovernance to exclude. The PII engine runs unchanged (hook stays nil).
 package telemetry
 
 import (

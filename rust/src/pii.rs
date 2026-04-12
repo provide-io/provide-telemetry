@@ -8,7 +8,9 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(feature = "governance")]
 use crate::classification::classify_key;
+#[cfg(feature = "governance")]
 use crate::receipts::emit_receipt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -208,6 +210,7 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     if let Some(masked) = mask_value(value, &rule.mode, rule.truncate_to) {
                         out.insert(key.clone(), masked);
                     }
+                    #[cfg(feature = "governance")]
                     emit_receipt(
                         &child_path.join("."),
                         &format!("{:?}", rule.mode).to_ascii_lowercase(),
@@ -223,6 +226,7 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     || is_secret(value)
                 {
                     out.insert(key.clone(), Value::String(REDACTED.to_string()));
+                    #[cfg(feature = "governance")]
                     emit_receipt(&child_path.join("."), "redact", &value.to_string());
                     continue;
                 }
@@ -249,7 +253,9 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
         return payload.clone();
     }
     let rules = get_pii_rules();
+    #[cfg_attr(not(feature = "governance"), allow(unused_mut))]
     let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
+    #[cfg(feature = "governance")]
     if let (Value::Object(original), Value::Object(map)) = (payload, &mut cleaned) {
         let keys: Vec<String> = original.keys().cloned().collect();
         for key in keys {
