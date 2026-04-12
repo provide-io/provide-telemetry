@@ -233,3 +233,26 @@ async def test_retry_loop_skip_executor_false_when_timeout_zero() -> None:
         run_with_resilience("traces", lambda: "ok")
 
     assert seen_skip == [False], f"skip_executor must be False when timeout_seconds=0, got {seen_skip}"
+
+
+@pytest.mark.asyncio
+async def test_event_loop_setup_warning_emitted_with_fractional_timeout() -> None:
+    """timeout_seconds=0.5 must emit the event-loop setup warning (> 0, not > 1).
+
+    Kills: `timeout_seconds > 0` → `timeout_seconds > 1` (mutmut_7) in
+    _apply_event_loop_limits.  With the mutation, skip_executor is False for
+    0.5 so _warn_event_loop_setup is never called and no RuntimeWarning is
+    emitted — the assertion below catches the discrepancy.
+    """
+    policy = ExporterPolicy(timeout_seconds=0.5, allow_blocking_in_event_loop=False)
+    set_exporter_policy("metrics", policy)
+
+    def op() -> str:
+        return "ok"
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        run_with_resilience("metrics", op)
+
+    bypass_warns = [x for x in w if "event loop" in str(x.message).lower() and "bypass" in str(x.message).lower()]
+    assert len(bypass_warns) >= 1, "setup warning must be emitted when timeout_seconds=0.5 and in event loop"
