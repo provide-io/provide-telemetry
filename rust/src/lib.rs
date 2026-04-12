@@ -7,8 +7,10 @@
 
 pub mod backpressure;
 pub mod cardinality;
+#[cfg(feature = "governance")]
 pub mod classification;
 mod config;
+#[cfg(feature = "governance")]
 pub mod consent;
 pub mod context;
 mod errors;
@@ -19,6 +21,7 @@ pub mod metrics;
 pub mod otel;
 pub mod pii;
 pub mod propagation;
+#[cfg(feature = "governance")]
 pub mod receipts;
 pub mod resilience;
 mod runtime;
@@ -33,6 +36,7 @@ pub use backpressure::{get_queue_policy, release, set_queue_policy, try_acquire,
 pub use cardinality::{
     clear_cardinality_limits, get_cardinality_limits, register_cardinality_limit, CardinalityLimit,
 };
+#[cfg(feature = "governance")]
 pub use classification::{
     classify_key, clear_classification_rules, get_classification_policy,
     register_classification_rule, register_classification_rules, set_classification_policy,
@@ -42,6 +46,7 @@ pub use config::{
     redact_config, BackpressureConfig, ExporterPolicyConfig, RuntimeOverrides, SLOConfig,
     SamplingConfig, SecurityConfig, TelemetryConfig,
 };
+#[cfg(feature = "governance")]
 pub use consent::{
     get_consent_level, reset_consent_for_tests, set_consent_level, should_allow, ConsentLevel,
 };
@@ -65,6 +70,7 @@ pub use pii::{
     SecretPattern,
 };
 pub use propagation::{bind_propagation_context, extract_w3c_context, PropagationContext};
+#[cfg(feature = "governance")]
 pub use receipts::{
     enable_receipts, get_emitted_receipts_for_tests, reset_receipts_for_tests, RedactionReceipt,
 };

@@ -1,0 +1,115 @@
+name: 🛡️ CI — Strip Governance
+
+# Verify that governance modules (classification, consent, receipts) can be
+# excluded from each language implementation without breaking core telemetry.
+#
+# Rust:       cargo test --no-default-features
+# Go:         go test -tags nogovernance ./...
+# Python:     pytest tests/test_strip_governance.py
+# TypeScript: vitest run strip-governance
+
+on:
+  push:
+    paths:
+      - "rust/**"
+      - "go/**"
+      - "src/**"
+      - "tests/test_strip_governance.py"
+      - "typescript/src/**"
+      - "typescript/tests/strip-governance.test.ts"
+      - ".github/workflows/ci-strip-governance.yml"
+  pull_request:
+    paths:
+      - "rust/**"
+      - "go/**"
+      - "src/**"
+      - "tests/test_strip_governance.py"
+      - "typescript/src/**"
+      - "typescript/tests/strip-governance.test.ts"
+      - ".github/workflows/ci-strip-governance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rust-no-governance:
+    name: Rust — no governance feature
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # Build library with governance disabled — must compile clean.
+      - name: Build without governance
+        run: cargo build --no-default-features
+
+      # Run the core + no-governance regression tests.
+      - name: Test without governance
+        run: cargo test --no-default-features
+
+  go-no-governance:
+    name: Go — nogovernance build tag
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.25"
+
+      # Build package without governance files — must compile clean.
+      - name: Build without governance
+        run: go build -tags nogovernance ./...
+
+      # Run all tests including the no-governance regression suite.
+      - name: Test without governance
+        run: go test -tags nogovernance -race -count=1 ./...
+
+  python-no-governance:
+    name: Python — governance abstraction boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      # Run the strip-governance regression tests — verifies core works
+      # without calling governance APIs.
+      - name: Run strip-governance tests
+        run: uv run pytest --no-cov -q tests/test_strip_governance.py
+
+  typescript-no-governance:
+    name: TypeScript — governance module isolation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: typescript/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Run the strip-governance test suite — verifies core features and
+      # that governance lives in isolated modules.
+      - name: Run strip-governance tests
+        run: npm test -- strip-governance
