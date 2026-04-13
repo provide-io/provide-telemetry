@@ -368,3 +368,17 @@ class TestRedactConfig:
         cfg.tracing.otlp_endpoint = None
         result = redact_config(cfg)
         assert result["tracing"]["otlp_endpoint"] is None  # type: ignore[index]
+
+    def test_otlp_endpoint_host_preserved_after_masking(self) -> None:
+        """Kills: `_mask_endpoint_url(v["otlp_endpoint"])` → None or `_mask_endpoint_url(None)`.
+
+        Mutation 19 replaces the call result with None.
+        Mutation 22 passes None as the argument, losing the original URL entirely.
+        Both are caught by asserting the hostname is present in the masked endpoint.
+        """
+        cfg = TelemetryConfig()
+        cfg.tracing.otlp_endpoint = "https://user:s3cr3t@otel.example.com/traces"  # pragma: allowlist secret
+        result = redact_config(cfg)
+        endpoint = result["tracing"]["otlp_endpoint"]  # type: ignore[index]
+        assert endpoint is not None, "masked endpoint must not be None"
+        assert "otel.example.com" in str(endpoint), "original host must be preserved after masking"

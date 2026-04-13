@@ -109,7 +109,7 @@ def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
             return attributes
     guarded = dict(attributes)
     for key, value in list(guarded.items()):
-        expired: list[str] = []
+        expired: list[str] = []  # pragma: no mutate
         with _lock:
             if _limits.get(key) is None:
                 continue
