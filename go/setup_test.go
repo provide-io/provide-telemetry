@@ -10,8 +10,15 @@ import (
 )
 
 // resetSetupState clears all setup state and related subsystems between tests.
+// It also blanks OTel endpoint env vars so unit tests run isolated from any real
+// OTLP exporters configured in the developer or CI environment — auto-wiring in
+// _buildDefaultMeterProvider only fires when the endpoint is non-empty.
 func resetSetupState(t *testing.T) {
 	t.Helper()
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "")
 	_resetSetup()
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
