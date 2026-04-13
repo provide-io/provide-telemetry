@@ -60,7 +60,8 @@ pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
 pub use logger::{
-    buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger,
+    buffer_logger, enable_json_capture_for_tests, get_logger, logger, null_logger,
+    take_json_capture, BufferLogger, LogEvent, Logger, NullLogger,
 };
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
