@@ -4,7 +4,10 @@
 //
 
 use regex::Regex;
-use std::sync::{OnceLock, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    OnceLock,
+};
 
 use crate::errors::EventSchemaError;
 
