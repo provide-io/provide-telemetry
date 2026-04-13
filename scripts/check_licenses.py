@@ -61,6 +61,9 @@ DEV_ONLY_SKIP: frozenset[str] = frozenset(
         "reuse",  # GPLv3+ (SPDX compliance tool)
         "docutils",  # Mixed: BSD/GPL/Public Domain (GPL clause applies only to
         # the command-line interface, not the library; kept as dev dep)
+        "python-dateutil",  # Apache-2.0 + BSD dual licence reported with semicolon
+        # separator that the pip-licenses parser emits as one token; dev-only
+        # transitive dep, never distributed with the library.
     }
 )
 
