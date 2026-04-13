@@ -197,7 +197,9 @@ _NOISE_FIELDS: frozenset[str] = frozenset(
 # Pino numeric level → canonical uppercase string.
 _PINO_LEVELS: dict[int, str] = {10: "TRACE", 20: "DEBUG", 30: "INFO", 40: "WARN", 50: "ERROR", 60: "FATAL"}
 
-_ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+# Accept UTC (Z) or any timezone offset (±HH:MM) — both are valid ISO 8601.
+# Fractional seconds are optional since languages vary in precision.
+_ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
 
 
 @dataclass
@@ -231,6 +233,9 @@ def _probe_runners(repo: Path) -> list[ProbeRunner]:
             label="TypeScript",
             cmd=["npx", "tsx", str(probes / "emit_log_typescript.ts")],
             cwd=repo / "typescript",
+            # tsx resolves node_modules from file path, not cwd; point it at the
+            # typescript package's node_modules so bare imports like 'pino' resolve.
+            env_extra={"NODE_PATH": str(repo / "typescript" / "node_modules")},
         ),
         ProbeRunner(
             name="rust",
