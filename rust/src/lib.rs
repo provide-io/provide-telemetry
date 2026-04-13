@@ -39,8 +39,8 @@ pub use classification::{
     register_classification_rules, ClassificationRule, DataClass,
 };
 pub use config::{
-    BackpressureConfig, ExporterPolicyConfig, RuntimeOverrides, SLOConfig, SamplingConfig,
-    SecurityConfig, TelemetryConfig,
+    redact_config, BackpressureConfig, ExporterPolicyConfig, LoggingConfig, RuntimeOverrides,
+    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
 };
 pub use consent::{
     get_consent_level, reset_consent_for_tests, set_consent_level, should_allow, ConsentLevel,
@@ -53,7 +53,10 @@ pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, increment_emitted, HealthSnapshot};
 pub use logger::{
-    buffer_logger, get_logger, logger, null_logger, BufferLogger, LogEvent, Logger, NullLogger,
+    buffer_logger, configure_logging, enable_console_capture_for_tests,
+    enable_json_capture_for_tests, get_logger, logger, null_logger,
+    reset_logging_config_for_tests, set_as_global_logger, take_console_capture,
+    take_json_capture, BufferLogger, LogEvent, Logger, NullLogger,
 };
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,

@@ -33,6 +33,7 @@ otel = [
 [dependencies]
 base64 = "0.22"
 hmac = "0.12"
+log = "0.4"
 mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
 opentelemetry-appender-tracing = { version = "0.31", optional = true }
