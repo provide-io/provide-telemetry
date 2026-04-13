@@ -15,6 +15,7 @@ import {
   trace,
   context as otelContext,
 } from '@opentelemetry/api';
+import { _emittedField, _incrementHealth } from './health';
 import { getActiveOtelContext } from './propagation';
 import { randomHex } from './hash';
 
@@ -124,6 +125,7 @@ function _withSyntheticIds<T>(fn: () => T): T {
 
 /** Shared span handler for withTrace — records exceptions and sets ERROR status. */
 function _spanHandler<T>(fn: () => T, span: Span): T {
+  _incrementHealth(_emittedField('traces'));
   try {
     const result = fn();
     if (result instanceof Promise) {

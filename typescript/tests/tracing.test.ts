@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { trace, propagation } from '@opentelemetry/api';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import {
   _resetTraceContext,
   getActiveTraceIds,
@@ -437,5 +438,33 @@ describe('withTrace — OTel propagation context wiring', () => {
     }
 
     withSpy.mockRestore();
+  });
+});
+
+describe('withTrace — tracesEmitted health counter', () => {
+  beforeEach(() => _resetHealthForTests());
+  afterEach(() => _resetHealthForTests());
+
+  it('increments tracesEmitted by 1 for each withTrace call', () => {
+    expect(getHealthSnapshot().tracesEmitted).toBe(0);
+    withTrace('test.span', () => 'result');
+    expect(getHealthSnapshot().tracesEmitted).toBe(1);
+  });
+
+  it('increments tracesEmitted once per span (not once per attribute or nested call)', () => {
+    withTrace('outer', () => {
+      withTrace('inner', () => 'inner-result');
+      return 'outer-result';
+    });
+    expect(getHealthSnapshot().tracesEmitted).toBe(2);
+  });
+
+  it('still increments tracesEmitted when the traced function throws', () => {
+    expect(() =>
+      withTrace('failing.span', () => {
+        throw new Error('boom');
+      }),
+    ).toThrow('boom');
+    expect(getHealthSnapshot().tracesEmitted).toBe(1);
   });
 });

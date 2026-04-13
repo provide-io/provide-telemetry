@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as tracing from '../src/tracing';
 import {
   CounterInstrument,
@@ -12,6 +12,7 @@ import {
   getMeter,
   histogram,
 } from '../src/metrics';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
 import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
 import { setupTelemetry, _resetConfig } from '../src/config';
@@ -682,5 +683,69 @@ describe('exemplar — partial trace context', () => {
     const h = new HistogramInstrument('test.hist', inner as never);
     h.record(42, { route: '/api' });
     expect(inner.record).toHaveBeenCalledWith(42, { route: '/api' });
+  });
+});
+
+describe('metrics instruments — metricsEmitted health counter', () => {
+  beforeEach(() => {
+    _resetHealthForTests();
+    _resetSamplingForTests();
+    _resetBackpressureForTests();
+    _resetConfig();
+    setupTelemetry({ metricsEnabled: true });
+  });
+  afterEach(() => {
+    _resetHealthForTests();
+    _resetSamplingForTests();
+    _resetBackpressureForTests();
+    _resetConfig();
+  });
+
+  it('CounterInstrument.add() increments metricsEmitted by 1', () => {
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    expect(getHealthSnapshot().metricsEmitted).toBe(0);
+    c.add(1);
+    expect(getHealthSnapshot().metricsEmitted).toBe(1);
+  });
+
+  it('CounterInstrument.add() does NOT increment metricsEmitted when sampling drops the event', () => {
+    setSamplingPolicy('metrics', { defaultRate: 0.0 });
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', inner as never);
+    c.add(1);
+    expect(getHealthSnapshot().metricsEmitted).toBe(0);
+  });
+
+  it('GaugeInstrument.add() increments metricsEmitted by 1', () => {
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.gauge', inner as never);
+    g.add(5);
+    expect(getHealthSnapshot().metricsEmitted).toBe(1);
+  });
+
+  it('GaugeInstrument.set() increments metricsEmitted by 1', () => {
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.gauge', inner as never);
+    g.set(10);
+    expect(getHealthSnapshot().metricsEmitted).toBe(1);
+  });
+
+  it('HistogramInstrument.record() increments metricsEmitted by 1', () => {
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', inner as never);
+    h.record(42);
+    expect(getHealthSnapshot().metricsEmitted).toBe(1);
+  });
+
+  it('each call increments metricsEmitted independently', () => {
+    const counterInner = { add: vi.fn() };
+    const c = new CounterInstrument('test.counter', counterInner as never);
+    const histInner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.hist', histInner as never);
+    c.add(1);
+    c.add(2);
+    h.record(99);
+    expect(getHealthSnapshot().metricsEmitted).toBe(3);
   });
 });

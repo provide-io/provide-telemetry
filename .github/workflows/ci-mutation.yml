@@ -120,10 +120,11 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
       # -j 4 runs four mutant test processes in parallel (matches 4-core GitHub runner).
+      # --in-place is incompatible with -j in cargo-mutants v27+; use copy-per-mutant mode.
       # cargo-mutants exits 3 if any mutants are missed — this step fails the job.
       # All mutants must be caught (100% kill rate enforced).
       - name: Run cargo-mutants (100% kill rate required)
-        run: cargo mutants -j 4 --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+        run: cargo mutants -j 4 --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
 
   go-mutation:
     needs: changes

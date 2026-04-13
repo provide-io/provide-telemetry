@@ -18,6 +18,7 @@ import { getConfig } from './config';
 import { getContext } from './context';
 import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
+import { _emittedField, _incrementHealth } from './health';
 import { emitLogRecord } from './otel-logs';
 import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
@@ -140,6 +141,9 @@ export function makeWriteHook() {
         }
       }
     }
+
+    // Count every record that survives all filters as emitted.
+    _incrementHealth(_emittedField('logs'));
 
     // Export to OTLP when a log provider is registered (noop otherwise).
     emitLogRecord(o);
