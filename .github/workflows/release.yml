@@ -79,8 +79,11 @@ jobs:
           python-version: "3.11"
           enable-cache: false
       - name: Extract version from tag
+        # Use workflow_dispatch release_tag input when set; fall back to ref name (e.g. v0.3.0)
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Wait for TestPyPI propagation
         run: sleep 30
       - name: Install from TestPyPI and verify
@@ -111,7 +114,10 @@ jobs:
         with:
           name: dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
+        with:
+          # Safe to retrigger — skip if version already published
+          skip-existing: true
 
   build-typescript:
     runs-on: ubuntu-latest
@@ -162,7 +168,9 @@ jobs:
 
   publish-npm:
     needs: build-npm
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # continue-on-error: safe to retrigger — npm will fail with 403 if version already published
+    continue-on-error: true
     runs-on: ubuntu-24.04
     permissions:
       contents: read
