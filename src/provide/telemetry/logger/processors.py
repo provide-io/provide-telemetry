@@ -219,3 +219,17 @@ class _LevelFilter:
 def make_level_filter(default_level: str, module_levels: dict[str, str]) -> _LevelFilter:
     """Create a _LevelFilter for per-module log level overrides."""
     return _LevelFilter(default_level, module_levels)
+
+
+def rename_event_to_msg(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Rename structlog's 'event' key to canonical 'msg' before JSON rendering.
+
+    All four language loggers must emit 'msg' as the message field.  structlog
+    uses 'event' internally; this processor is inserted immediately before the
+    JSONRenderer so the rename only affects the serialised output — all upstream
+    processors (schema enforcement, PII sanitization, harden_input, etc.) still
+    operate on 'event' as normal.
+    """
+    if "event" in event_dict:
+        event_dict["msg"] = event_dict.pop("event")
+    return event_dict
