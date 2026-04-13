@@ -281,7 +281,7 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 0
     assert called["metrics_shutdown"] == 0
-    # Setup failed in degraded mode — _setup_done must stay False so a retry can succeed.
+    # Setup is NOT marked done after failure — allows retry
     assert setup_mod._setup_done is False
 
 
