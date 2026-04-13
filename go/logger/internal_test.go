@@ -9,6 +9,9 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+
+	"github.com/provide-io/provide-telemetry/go/internal/fingerprintcore"
+	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // TestGetBoundFieldsBadContextValue covers the !ok branch in GetBoundFields
@@ -43,14 +46,14 @@ func TestEventSchemaErrorAsNonMatch(t *testing.T) {
 	}
 }
 
-// TestApplyModeRedact covers the default branch in _applyMode (PIIModeRedact).
+// TestApplyModeRedact covers the default branch in piicore.ApplyMode (PIIModeRedact).
 func TestApplyModeRedact(t *testing.T) {
-	val, drop := _applyMode("sensitive", PIIModeRedact, 0)
+	val, drop := piicore.ApplyMode("sensitive", piicore.PIIModeRedact, 0)
 	if drop {
 		t.Fatal("redact mode should not drop the field")
 	}
-	if val != _piiRedacted {
-		t.Fatalf("redact mode should return %q, got %q", _piiRedacted, val)
+	if val != piicore.Redacted {
+		t.Fatalf("redact mode should return %q, got %q", piicore.Redacted, val)
 	}
 }
 
@@ -86,12 +89,12 @@ func TestApplyTraceFieldsCopiesExistingAttrs(t *testing.T) {
 	Logger.InfoContext(ctx, "test.trace.copy", slog.String("k", "v"))
 }
 
-// TestExtractFuncNameNoDot covers the branch in _extractFuncName
+// TestExtractFuncNameNoDot covers the branch in fingerprintcore.ExtractFuncName
 // where the function name has no "." (no package prefix).
 func TestExtractFuncNameNoDot(t *testing.T) {
-	result := _extractFuncName("nodotfunction")
+	result := fingerprintcore.ExtractFuncName("nodotfunction")
 	if result != "nodotfunction" {
-		t.Fatalf("_extractFuncName without dot = %q, want 'nodotfunction'", result)
+		t.Fatalf("ExtractFuncName without dot = %q, want 'nodotfunction'", result)
 	}
 }
 

@@ -4,26 +4,15 @@
 package telemetry
 
 import (
-	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
-)
 
-// _segmentRe matches a valid event name segment: starts with a lowercase letter,
-// followed by lowercase letters, digits, or underscores.
-var _segmentRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	"github.com/provide-io/provide-telemetry/go/internal/schemacore"
+)
 
 // _strictSchema controls whether Event enforces segment format validation.
 // Set to true by SetupTelemetry when StrictSchema is enabled.
 var _strictSchema bool
-
-const (
-	_minSegments  = 3
-	_maxSegments  = 5
-	_dasSegments  = 3
-	_darsSegments = 4
-)
 
 // EventRecord holds the structured DA(R)S fields for an event.
 // The Event field is the dot-joined name (e.g. "auth.login.success").
@@ -64,23 +53,12 @@ func (e EventRecord) Attrs() []any {
 //
 // Returns an *EventSchemaError if validation fails.
 func Event(segments ...string) (EventRecord, error) {
+	if err := schemacore.ValidateEventCall(_strictSchema, segments); err != nil {
+		return EventRecord{}, NewEventSchemaError(err.Error())
+	}
+	name := schemacore.JoinSegments(segments)
 	n := len(segments)
-	if n != _dasSegments && n != _darsSegments {
-		return EventRecord{}, NewEventSchemaError(fmt.Sprintf(
-			"event() requires 3 or 4 segments (DA[R]S), got %d", n,
-		))
-	}
-	if _strictSchema {
-		for _, seg := range segments {
-			if !_segmentRe.MatchString(seg) {
-				return EventRecord{}, NewEventSchemaError(fmt.Sprintf(
-					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
-				))
-			}
-		}
-	}
-	name := strings.Join(segments, ".")
-	if n == _dasSegments {
+	if n == schemacore.DASSegments {
 		return EventRecord{
 			Event:  name,
 			Domain: segments[0],
@@ -100,21 +78,8 @@ func Event(segments ...string) (EventRecord, error) {
 // EventName validates and returns a dotted event name from segments.
 // Accepts 3–5 segments. Format validation is only applied when _strictSchema is true.
 func EventName(segments ...string) (string, error) {
-	n := len(segments)
-	if n < _minSegments || n > _maxSegments {
-		return "", NewEventSchemaError(fmt.Sprintf(
-			"event name must have %d–%d segments, got %d",
-			_minSegments, _maxSegments, n,
-		))
-	}
-	if _strictSchema {
-		for _, seg := range segments {
-			if !_segmentRe.MatchString(seg) {
-				return "", NewEventSchemaError(fmt.Sprintf(
-					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
-				))
-			}
-		}
+	if err := schemacore.ValidateEventSegments(_strictSchema, segments); err != nil {
+		return "", NewEventSchemaError(err.Error())
 	}
 	return strings.Join(segments, "."), nil
 }
@@ -124,31 +89,16 @@ func EventName(segments ...string) (string, error) {
 // Segment count is always enforced; format validation only applies when _strictSchema is true.
 func ValidateEventName(name string) error {
 	segments := strings.Split(name, ".")
-	n := len(segments)
-	if n < _minSegments || n > _maxSegments {
-		return NewEventSchemaError(fmt.Sprintf(
-			"event name must have %d–%d segments, got %d",
-			_minSegments, _maxSegments, n,
-		))
-	}
-	if _strictSchema {
-		for _, seg := range segments {
-			if !_segmentRe.MatchString(seg) {
-				return NewEventSchemaError(fmt.Sprintf(
-					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg,
-				))
-			}
-		}
+	if err := schemacore.ValidateEventSegments(_strictSchema, segments); err != nil {
+		return NewEventSchemaError(err.Error())
 	}
 	return nil
 }
 
 // ValidateRequiredKeys returns an EventSchemaError if any required key is missing from attrs.
 func ValidateRequiredKeys(attrs map[string]any, requiredKeys []string) error {
-	for _, key := range requiredKeys {
-		if _, ok := attrs[key]; !ok {
-			return NewEventSchemaError("missing required key: " + key)
-		}
+	if err := schemacore.ValidateRequiredKeys(attrs, requiredKeys); err != nil {
+		return NewEventSchemaError(err.Error())
 	}
 	return nil
 }
