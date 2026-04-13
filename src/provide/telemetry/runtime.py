@@ -32,6 +32,11 @@ _logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
+# Serializes concurrent reconfigure_telemetry() calls against each other.
+# Note: this does not fully prevent races with concurrent setup_telemetry() calls,
+# which would require process-level coordination. It only serializes concurrent
+# reconfigure_telemetry() callers.
+_reconfigure_lock = threading.Lock()
 
 
 def _apply_policies(snapshot: TelemetryConfig) -> None:
@@ -153,21 +158,22 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
     from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
     from provide.telemetry.tracing import provider as tracing_provider
 
-    target = config or TelemetryConfig.from_env()
-    current = get_runtime_config()
-    if _provider_config_changed(current, target):
-        if (
-            logger_core._has_otel_log_provider()
-            or tracing_provider._has_tracing_provider()
-            or metrics_provider._has_meter_provider()
-        ):
-            raise RuntimeError(
-                "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
-                "restart the process and call setup_telemetry() with the new config"
-            )
-        shutdown_telemetry()
-        return setup_telemetry(target)
-    return update_runtime_config(_overrides_from_config(target))
+    with _reconfigure_lock:
+        target = config or TelemetryConfig.from_env()
+        current = get_runtime_config()
+        if _provider_config_changed(current, target):
+            if (
+                logger_core._has_otel_log_provider()
+                or tracing_provider._has_tracing_provider()
+                or metrics_provider._has_meter_provider()
+            ):
+                raise RuntimeError(
+                    "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
+                    "restart the process and call setup_telemetry() with the new config"
+                )
+            shutdown_telemetry()
+            return setup_telemetry(target)
+        return update_runtime_config(_overrides_from_config(target))
 
 
 _COLD_KEYS = frozenset(

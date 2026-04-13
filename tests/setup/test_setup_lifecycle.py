@@ -281,8 +281,8 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 0
     assert called["metrics_shutdown"] == 0
-    # Setup is marked done even in degraded mode (idempotent)
-    assert setup_mod._setup_done is True
+    # Setup is NOT marked done after failure — allows retry
+    assert setup_mod._setup_done is False
 
 
 def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,7 +318,7 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 1
     assert called["metrics_shutdown"] == 0
-    assert setup_mod._setup_done is True
+    assert setup_mod._setup_done is False
 
 
 def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -353,7 +353,7 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
     # Tracing teardown raised, but logging teardown must still have been called
     assert called["trace_shutdown"] == 1
     assert called["log_shutdown"] == 1
-    assert setup_mod._setup_done is True
+    assert setup_mod._setup_done is False
 
 
 def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> None:

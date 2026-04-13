@@ -73,9 +73,7 @@ fn policy() -> &'static Mutex<ClassificationPolicy> {
 }
 
 pub fn set_classification_policy(p: ClassificationPolicy) {
-    *policy()
-        .lock()
-        .expect("classification policy lock poisoned") = p;
+    *policy().lock().expect("classification policy lock poisoned") = p;
 }
 
 pub fn get_classification_policy() -> ClassificationPolicy {

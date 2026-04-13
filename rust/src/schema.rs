@@ -4,29 +4,9 @@
 //
 
 use regex::Regex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use crate::errors::EventSchemaError;
-
-static STRICT_SCHEMA: AtomicBool = AtomicBool::new(false);
-
-/// Enable or disable strict schema validation for [`event`] segment format.
-///
-/// When strict mode is disabled (the default), segment format is not validated.
-/// When enabled, every segment must match `^[a-z][a-z0-9_]*$`.
-/// Segment count validation (3–4) is always enforced regardless of this flag.
-pub fn set_strict_schema(enabled: bool) {
-    STRICT_SCHEMA.store(enabled, Ordering::SeqCst);
-}
-
-pub fn get_strict_schema() -> bool {
-    STRICT_SCHEMA.load(Ordering::SeqCst)
-}
-
-pub fn _reset_strict_schema_for_tests() {
-    STRICT_SCHEMA.store(false, Ordering::SeqCst);
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
@@ -43,7 +23,6 @@ fn segment_re() -> &'static Regex {
 }
 
 pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
-    // Segment count is always validated.
     if !(3..=4).contains(&segments.len()) {
         return Err(EventSchemaError::new(format!(
             "event() requires 3 or 4 segments (DA[R]S), got {}",
@@ -51,14 +30,11 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
         )));
     }
 
-    // Segment format is only validated in strict mode.
-    if get_strict_schema() {
-        for (idx, segment) in segments.iter().enumerate() {
-            if !segment_re().is_match(segment) {
-                return Err(EventSchemaError::new(format!(
-                    "invalid event segment: segment[{idx}]={segment}"
-                )));
-            }
+    for (idx, segment) in segments.iter().enumerate() {
+        if !segment_re().is_match(segment) {
+            return Err(EventSchemaError::new(format!(
+                "invalid event segment: segment[{idx}]={segment}"
+            )));
         }
     }
 
@@ -102,41 +78,6 @@ pub fn event_name(segments: &[&str], strict: bool) -> Result<String, EventSchema
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::acquire_test_state_lock;
-
-    #[test]
-    fn schema_test_strict_schema_gate_controls_segment_format_validation() {
-        let _guard = acquire_test_state_lock();
-        _reset_strict_schema_for_tests();
-
-        // Non-conforming segment (contains hyphen): should succeed in non-strict mode.
-        assert!(
-            event(&["auth", "login-web", "ok"]).is_ok(),
-            "non-strict mode should allow non-conforming segments"
-        );
-
-        // Enable strict mode: same event should fail.
-        set_strict_schema(true);
-        let err = event(&["auth", "login-web", "ok"])
-            .expect_err("strict mode should reject non-conforming segments");
-        assert!(
-            err.message.contains("login-web"),
-            "error should mention the invalid segment"
-        );
-
-        // Segment count is still enforced regardless of strict mode.
-        set_strict_schema(false);
-        assert!(
-            event(&["only", "two"]).is_err(),
-            "too few segments should always fail"
-        );
-        assert!(
-            event(&["a", "b", "c", "d", "e"]).is_err(),
-            "too many segments should always fail"
-        );
-
-        _reset_strict_schema_for_tests();
-    }
 
     #[test]
     fn schema_test_event_name_returns_exact_joined_value() {

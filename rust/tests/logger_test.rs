@@ -145,22 +145,10 @@ fn logger_test_tracing_levels_match_log_method() {
     });
     Logger::drain_events_for_tests(); // clean up so subsequent tests see a fresh buffer
     let captured = levels.lock().expect("level capture lock").clone();
-    assert!(
-        captured.contains(&"DEBUG".to_string()),
-        "debug() must emit at DEBUG level; got {captured:?}"
-    );
-    assert!(
-        captured.contains(&"INFO".to_string()),
-        "info() must emit at INFO level; got {captured:?}"
-    );
-    assert!(
-        captured.contains(&"WARN".to_string()),
-        "warn() must emit at WARN level; got {captured:?}"
-    );
-    assert!(
-        captured.contains(&"ERROR".to_string()),
-        "error() must emit at ERROR level; got {captured:?}"
-    );
+    assert!(captured.contains(&"DEBUG".to_string()), "debug() must emit at DEBUG level; got {captured:?}");
+    assert!(captured.contains(&"INFO".to_string()), "info() must emit at INFO level; got {captured:?}");
+    assert!(captured.contains(&"WARN".to_string()), "warn() must emit at WARN level; got {captured:?}");
+    assert!(captured.contains(&"ERROR".to_string()), "error() must emit at ERROR level; got {captured:?}");
 }
 
 #[test]
@@ -195,9 +183,5 @@ fn logger_test_buffer_caps_at_max_fallback_events() {
         logger.info("x");
     }
     let events = Logger::drain_events_for_tests();
-    assert_eq!(
-        events.len(),
-        1000,
-        "buffer must not exceed MAX_FALLBACK_EVENTS (1000)"
-    );
+    assert_eq!(events.len(), 1000, "buffer must not exceed MAX_FALLBACK_EVENTS (1000)");
 }

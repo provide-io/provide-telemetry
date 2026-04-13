@@ -40,7 +40,6 @@ opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, features = ["http-proto", "reqwest-client"] }
 opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics"] }
 percent-encoding = "2.3.1"
-rand = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }

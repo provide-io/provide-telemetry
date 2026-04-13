@@ -5,9 +5,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use tracing_subscriber::{
-    layer::Layer as _, layer::SubscriberExt as _, util::SubscriberInitExt as _, Registry,
-};
+use tracing_subscriber::{layer::Layer as _, layer::SubscriberExt as _, util::SubscriberInitExt as _, Registry};
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
@@ -34,7 +32,9 @@ pub(crate) fn install_subscriber(config: &TelemetryConfig) {
     // that arise when chaining .with() calls with heterogeneous layer types.
     let mut layers: Vec<Box<dyn tracing_subscriber::Layer<Registry> + Send + Sync>> = Vec::new();
 
-    layers.push(tracing_subscriber::EnvFilter::new(&config.logging.level).boxed());
+    layers.push(
+        tracing_subscriber::EnvFilter::new(&config.logging.level).boxed(),
+    );
 
     if config.logging.fmt == "json" {
         layers.push(tracing_subscriber::fmt::layer().json().boxed());
