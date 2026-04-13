@@ -4,8 +4,11 @@
 //
 use std::sync::{Mutex, OnceLock};
 
-use provide_telemetry::testing::reset_telemetry_state;
-use provide_telemetry::{get_logger, trace, Logger};
+use provide_telemetry::{
+    bind_context, configure_logging, enable_console_capture_for_tests,
+    enable_json_capture_for_tests, get_logger, reset_logging_config_for_tests,
+    set_as_global_logger, take_console_capture, take_json_capture, trace, Logger, LoggingConfig,
+};
 
 static LOGGER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -176,4 +179,252 @@ fn logger_test_buffer_caps_at_max_fallback_events() {
         1000,
         "buffer must not exceed MAX_FALLBACK_EVENTS (1000)"
     );
+}
+
+#[test]
+fn logger_test_console_format_writes_readable_line() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    std::env::set_var("PROVIDE_LOG_FORMAT", "console");
+    std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "false");
+    enable_console_capture_for_tests();
+
+    let logger = get_logger(Some("tests.console_output"));
+    logger.warn("console.parity.check");
+
+    let raw = take_console_capture();
+    std::env::remove_var("PROVIDE_LOG_FORMAT");
+    std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+    Logger::drain_events_for_tests();
+
+    let line = String::from_utf8(raw).expect("utf8");
+    let line = line.trim();
+    assert!(!line.is_empty(), "expected console output");
+    assert!(line.contains("WARN"), "line must contain level: {line}");
+    assert!(line.contains("console.parity.check"), "line must contain message: {line}");
+    assert!(line.contains("tests.console_output"), "line must contain target: {line}");
+    assert!(!line.starts_with("20"), "timestamp must be absent when disabled: {line}");
+}
+
+#[test]
+fn logger_test_configure_logging_overrides_env() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    // Env says JSON; programmatic override says console — override wins.
+    std::env::set_var("PROVIDE_LOG_FORMAT", "json");
+    let mut cfg = provide_telemetry::LoggingConfig::default();
+    cfg.fmt = "console".to_string();
+    cfg.include_timestamp = false;
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+    enable_console_capture_for_tests();
+
+    let logger = get_logger(Some("tests.configure"));
+    logger.info("configure.override.check");
+
+    let json_raw = take_json_capture();
+    let console_raw = take_console_capture();
+    std::env::remove_var("PROVIDE_LOG_FORMAT");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    assert!(json_raw.is_empty(), "override to console must suppress JSON emit");
+    assert!(!console_raw.is_empty(), "override to console must produce console output");
+}
+
+#[test]
+fn logger_test_log_trait_routes_to_events() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    // set_as_global_logger may fail if already set by another test run; that is fine.
+    let _ = set_as_global_logger();
+    enable_json_capture_for_tests();
+    std::env::set_var("PROVIDE_LOG_FORMAT", "json");
+    std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "false");
+
+    log::info!(target: "tests.log_trait", "log.trait.parity");
+
+    let raw = take_json_capture();
+    std::env::remove_var("PROVIDE_LOG_FORMAT");
+    std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+    Logger::drain_events_for_tests();
+
+    let line = String::from_utf8(raw).expect("utf8");
+    let line = line.trim();
+    assert!(!line.is_empty(), "log::info! must produce JSON output");
+    let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+    assert_eq!(parsed["msg"], "log.trait.parity");
+    assert_eq!(parsed["level"], "INFO");
+    assert_eq!(parsed["logger_name"], "tests.log_trait");
+}
+
+#[test]
+fn logger_test_log_trait_respects_level_filter() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    // Configure to INFO — DEBUG must be filtered out.
+    let mut cfg = provide_telemetry::LoggingConfig::default();
+    cfg.level = "INFO".to_string();
+    cfg.fmt = "json".to_string();
+    cfg.include_timestamp = false;
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    log::debug!(target: "tests.log_filter", "should.be.filtered");
+    log::info!(target: "tests.log_filter", "should.pass");
+
+    let raw = take_json_capture();
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    let output = String::from_utf8(raw).expect("utf8");
+    assert!(!output.contains("should.be.filtered"), "DEBUG must be filtered at INFO level");
+    assert!(output.contains("should.pass"), "INFO must pass through at INFO level");
+}
+
+#[test]
+fn logger_test_console_format_includes_timestamp_when_enabled() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let cfg = LoggingConfig { fmt: "console".to_string(), include_timestamp: true, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_console_capture_for_tests();
+
+    let logger = get_logger(Some("tests.console_ts"));
+    logger.info("console.timestamp.enabled");
+
+    let raw = take_console_capture();
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    let line = String::from_utf8(raw).expect("utf8");
+    let line = line.trim();
+    assert!(line.starts_with("20"), "timestamp must appear when enabled: {line}");
+    assert!(line.contains('T'), "timestamp must have T separator: {line}");
+}
+
+#[test]
+fn logger_test_console_format_includes_context_fields() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let cfg = LoggingConfig { fmt: "console".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_console_capture_for_tests();
+
+    let _ctx = bind_context([("request_id".to_string(), serde_json::Value::String("ctx-abc".into()))]);
+    let logger = get_logger(Some("tests.console_ctx"));
+    logger.info("console.context.fields");
+    drop(_ctx);
+
+    let raw = take_console_capture();
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    let line = String::from_utf8(raw).expect("utf8");
+    let line = line.trim();
+    assert!(line.contains("request_id"), "context key must appear in console line: {line}");
+    assert!(line.contains("ctx-abc"), "context value must appear in console line: {line}");
+}
+
+#[test]
+fn logger_test_log_trait_level_warn_filters_info() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    let cfg = LoggingConfig { level: "WARN".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    log::info!(target: "tests.warn_lvl", "info.filtered");
+    log::warn!(target: "tests.warn_lvl", "warn.passes");
+    log::error!(target: "tests.warn_lvl", "error.passes");
+
+    let output = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    assert!(!output.contains("info.filtered"), "INFO must be filtered at WARN level");
+    assert!(output.contains("warn.passes"), "WARN must pass at WARN level");
+    assert!(output.contains("error.passes"), "ERROR must pass at WARN level");
+}
+
+#[test]
+fn logger_test_log_trait_level_error_filters_warn() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    let cfg = LoggingConfig { level: "ERROR".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    log::warn!(target: "tests.error_lvl", "warn.filtered");
+    log::error!(target: "tests.error_lvl", "error.passes");
+
+    let output = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    assert!(!output.contains("warn.filtered"), "WARN must be filtered at ERROR level");
+    assert!(output.contains("error.passes"), "ERROR must pass at ERROR level");
+}
+
+#[test]
+fn logger_test_log_trait_level_debug_allows_debug() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    let cfg = LoggingConfig { level: "DEBUG".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    log::debug!(target: "tests.debug_lvl", "debug.passes");
+    log::info!(target: "tests.debug_lvl", "info.passes");
+
+    let output = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    assert!(output.contains("debug.passes"), "DEBUG must pass at DEBUG level");
+    assert!(output.contains("info.passes"), "INFO must pass at DEBUG level");
+}
+
+#[test]
+fn logger_test_log_trait_level_trace_allows_trace() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    let cfg = LoggingConfig { level: "TRACE".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    log::trace!(target: "tests.trace_lvl", "trace.passes");
+    log::debug!(target: "tests.trace_lvl", "debug.passes");
+
+    let output = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    assert!(output.contains("trace.passes"), "TRACE must pass at TRACE level");
+    assert!(output.contains("debug.passes"), "DEBUG must pass at TRACE level");
+}
+
+#[test]
+fn logger_test_log_trait_level_aliases_warning_and_critical() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+
+    // WARNING is an alias for WARN.
+    let cfg = LoggingConfig { level: "WARNING".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+    log::info!(target: "tests.alias_lvl", "info.filtered.warning");
+    log::warn!(target: "tests.alias_lvl", "warn.passes.warning");
+    let out1 = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+    assert!(!out1.contains("info.filtered.warning"), "INFO filtered under WARNING alias");
+    assert!(out1.contains("warn.passes.warning"), "WARN passes under WARNING alias");
+
+    // CRITICAL is an alias for ERROR.
+    let cfg2 = LoggingConfig { level: "CRITICAL".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    configure_logging(cfg2);
+    enable_json_capture_for_tests();
+    log::warn!(target: "tests.alias_lvl", "warn.filtered.critical");
+    log::error!(target: "tests.alias_lvl", "error.passes.critical");
+    let out2 = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+    assert!(!out2.contains("warn.filtered.critical"), "WARN filtered under CRITICAL alias");
+    assert!(out2.contains("error.passes.critical"), "ERROR passes under CRITICAL alias");
 }
