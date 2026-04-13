@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Run tests with coverage
         run: go test -race -coverprofile=coverage.out .
       - name: Enforce 100% coverage
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       # Build golangci-lint v2 from source — v2 module path supports Go 1.25 and the v2 config format.
       # Pre-built binaries are Go 1.24 and refuse Go 1.25; v1 module path ignores v2 config.
       - name: Install golangci-lint (v2)
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Install security tools
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Run go vet
         run: go vet ./...
 
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       # Build and run each standalone telemetry example (no live backend required)
       - name: Run telemetry examples
         run: |
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       # Verify go/logger builds and tests independently with zero OTel deps
       - name: Run go/logger tests with coverage
         run: go test -race -coverprofile=coverage.out ./...
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       # Verify go/tracer builds and tests independently with OTel API only (no SDK)
       - name: Run go/tracer tests
         run: go test -race ./...
