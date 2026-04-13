@@ -178,10 +178,27 @@ class TestFilesDeletionProof:
 
     @staticmethod
     def _make_stripped_copy() -> Path:
-        """Return path to a temp copy of the package with governance files removed."""
-        import provide.telemetry as t
+        """Return path to a temp copy of the package with governance files removed.
 
-        pkg_dir = Path(t.__file__).parent  # .../provide/telemetry/
+        We locate the source via the test file path rather than ``t.__file__``
+        because under mutmut the latter resolves to the instrumented temp copy,
+        which would transplant trampolines into the subprocess and crash it.
+        """
+        # Walk up from this test file to the project root (contains pyproject.toml),
+        # then descend into src/provide/telemetry/.  This is always the real source
+        # tree, even when mutmut has set PYTHONPATH to an instrumented directory.
+        _here = Path(__file__).resolve()
+        for _parent in _here.parents:
+            _candidate = _parent / "src" / "provide" / "telemetry"
+            if _candidate.exists():
+                pkg_dir = _candidate
+                break
+        else:
+            # Fallback: editable install without src layout
+            import provide.telemetry as t
+
+            pkg_dir = Path(t.__file__).parent
+
         provide_dir = pkg_dir.parent  # .../provide/
         tmpdir = Path(tempfile.mkdtemp())
         stripped = tmpdir / "provide"
