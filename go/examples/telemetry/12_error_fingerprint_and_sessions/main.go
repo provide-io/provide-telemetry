@@ -86,7 +86,7 @@ fmt.Println()
 	fmt.Printf("  Session after bind:  %q\n", sessionAfterBind)
 
 	boundEvt, _ := telemetry.Event("app", "session", "bound")
-	log.InfoContext(ctx, boundEvt.Event, append(boundEvt.Attrs(), "msg", "session is active")...)
+	log.InfoContext(ctx, boundEvt.Event, append(boundEvt.Attrs(), "detail", "session is active")...)
 
 	actionEvt, _ := telemetry.Event("app", "session", "action")
 	log.InfoContext(ctx, actionEvt.Event, append(actionEvt.Attrs(), "action", "page_view", "path", "/dashboard")...)

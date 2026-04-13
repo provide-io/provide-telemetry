@@ -22,6 +22,15 @@ from provide.telemetry.logger.context import get_context
 from provide.telemetry.schema.events import validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
+
+def _get_active_config() -> Any | None:
+    """Return the active runtime config without eagerly loading the runtime module."""
+    runtime = sys.modules.get("provide.telemetry.runtime")
+    if runtime is None:
+        return None
+    return getattr(runtime, "_active_config", None)
+
+
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 # Keys that must survive harden_input truncation regardless of insertion order.
@@ -103,25 +112,30 @@ def add_error_fingerprint(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
 def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> Any:
     """Structlog processor: truncate values, strip control chars, limit attributes."""
 
-    def _clean_value(value: object, depth: int) -> object:
-        if isinstance(value, str):
-            cleaned = _CONTROL_CHAR_RE.sub("", value)
-            if len(cleaned) > max_value_length:  # pragma: no mutate
-                return cleaned[:max_value_length]
-            return cleaned
-        if isinstance(value, dict) and depth < max_depth:
-            return {k: _clean_value(v, depth + 1) for k, v in value.items()}
-        if isinstance(value, list) and depth < max_depth:
-            return [_clean_value(item, depth + 1) for item in value]  # pragma: no mutate
-        return value
-
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        if max_attr_count > 0 and len(event_dict) > max_attr_count:  # pragma: no mutate
+        live = _get_active_config()
+        _max_value_length = live.security.max_attr_value_length if live is not None else max_value_length
+        _max_attr_count = live.security.max_attr_count if live is not None else max_attr_count
+        _max_depth = live.security.max_nesting_depth if live is not None else max_depth
+
+        def _clean_value(value: object, depth: int) -> object:
+            if isinstance(value, str):
+                cleaned = _CONTROL_CHAR_RE.sub("", value)
+                if len(cleaned) > _max_value_length:  # pragma: no mutate
+                    return cleaned[:_max_value_length]
+                return cleaned
+            if isinstance(value, dict) and depth < _max_depth:
+                return {k: _clean_value(v, depth + 1) for k, v in value.items()}
+            if isinstance(value, list) and depth < _max_depth:
+                return [_clean_value(item, depth + 1) for item in value]  # pragma: no mutate
+            return value
+
+        if _max_attr_count > 0 and len(event_dict) > _max_attr_count:  # pragma: no mutate
             # Preserve control/telemetry fields first, then fill with user payload.
             # Simple first-N truncation would silently drop level, trace_id, etc.
             # when callers pass many keyword arguments.
             priority = {k: event_dict[k] for k in _HARDEN_PRIORITY_KEYS if k in event_dict}
-            remaining = max(0, max_attr_count - len(priority))
+            remaining = max(0, _max_attr_count - len(priority))
             user_keys = [k for k in event_dict if k not in _HARDEN_PRIORITY_KEYS]
             event_dict = {**priority, **{k: event_dict[k] for k in user_keys[:remaining]}}
         return {k: _clean_value(v, 0) for k, v in event_dict.items()}
@@ -134,7 +148,11 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
         event_dict.setdefault("service", config.service_name)
         event_dict.setdefault("env", config.environment)
         event_dict.setdefault("version", config.version)
-        if config.slo.include_error_taxonomy and "error_type" not in event_dict and "exc_name" in event_dict:
+        live = _get_active_config()
+        include_error_taxonomy = (
+            live.slo.include_error_taxonomy if live is not None else config.slo.include_error_taxonomy
+        )
+        if include_error_taxonomy and "error_type" not in event_dict and "exc_name" in event_dict:
             from provide.telemetry.slo import classify_error  # lazy: avoid loading metrics at logging config time
 
             status_code = event_dict.get("status_code")
@@ -157,12 +175,12 @@ def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
-    # strict_schema is authoritative: strict mode always enforces both checks.
-    # compat mode keeps event-name policy configurable and skips required-key hard failures.
-    strict_event_name = True if config.strict_schema else config.event_schema.strict_event_name
     required_keys = config.event_schema.required_keys
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+        live = _get_active_config()
+        live_strict = live.strict_schema if live is not None else config.strict_schema
+        strict_event_name = True if live_strict else config.event_schema.strict_event_name
         event = str(event_dict.get("event", ""))
         validate_event_name(event, strict_event_name=strict_event_name)
         validate_required_keys(event_dict, required_keys)
@@ -175,7 +193,9 @@ def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:  # prag
     from provide.telemetry.pii import sanitize_payload
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        return sanitize_payload(event_dict, enabled, max_depth=max_depth)
+        live = _get_active_config()
+        _max_depth = live.pii_max_depth if live is not None else max_depth
+        return sanitize_payload(event_dict, enabled, max_depth=_max_depth)
 
     return _processor
 
@@ -221,15 +241,15 @@ def make_level_filter(default_level: str, module_levels: dict[str, str]) -> _Lev
     return _LevelFilter(default_level, module_levels)
 
 
-def rename_event_to_msg(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """Rename structlog's 'event' key to canonical 'msg' before JSON rendering.
+def rename_event_to_message(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Rename structlog's 'event' key to canonical 'message' before JSON rendering.
 
-    All four language loggers must emit 'msg' as the message field.  structlog
+    All four language loggers must emit 'message' as the message field.  structlog
     uses 'event' internally; this processor is inserted immediately before the
     JSONRenderer so the rename only affects the serialised output — all upstream
     processors (schema enforcement, PII sanitization, harden_input, etc.) still
     operate on 'event' as normal.
     """
     if "event" in event_dict:
-        event_dict["msg"] = event_dict.pop("event")
+        event_dict["message"] = event_dict.pop("event")
     return event_dict

@@ -95,7 +95,9 @@ def test_classification_tag_added_to_payload() -> None:
 def test_phi_classification_tag() -> None:
     register_classification_rules([ClassificationRule(pattern="dob", classification=DataClass.PHI)])
     result = pii_mod.sanitize_payload({"dob": "1990-01-01", "name": "Bob"}, enabled=True)
-    assert result.get("__dob__class") == "PHI"
+    # PHI default action is "drop" — field is removed, no class tag added
+    assert "dob" not in result
+    assert "__dob__class" not in result
 
 
 def test_pci_classification_tag() -> None:
