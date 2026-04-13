@@ -65,7 +65,7 @@ func main() {
 	fmt.Println("\nBinding structured context fields...")
 	ctx = telemetry.BindContext(ctx, map[string]any{"region": "us-east-1", "tier": "premium"})
 	startEvt, _ := telemetry.Event("example", "basic", "start")
-	log.InfoContext(ctx, startEvt, "msg", "context is bound")
+	log.InfoContext(ctx, startEvt.Event, append(startEvt.Attrs(), "detail", "context is bound")...)
 	fmt.Println("  Bound: region=us-east-1, tier=premium")
 
 	// Traced work loop with all metric types
@@ -82,12 +82,12 @@ func main() {
 	fmt.Println("\nUnbinding 'region', then clearing all context...")
 	ctx = telemetry.UnbindContext(ctx, "region")
 	unbindEvt, _ := telemetry.Event("example", "basic", "after_unbind")
-	log.InfoContext(ctx, unbindEvt, "msg", "region removed")
+	log.InfoContext(ctx, unbindEvt.Event, append(unbindEvt.Attrs(), "detail", "region removed")...)
 	fmt.Println("  Unbound: region")
 
 	ctx = telemetry.ClearContext(ctx)
 	clearEvt, _ := telemetry.Event("example", "basic", "after_clear")
-	log.InfoContext(ctx, clearEvt, "msg", "all context cleared")
+	log.InfoContext(ctx, clearEvt.Event, append(clearEvt.Attrs(), "detail", "all context cleared")...)
 	fmt.Println("  Cleared: all context fields")
 
 	fmt.Println("\nDone!")

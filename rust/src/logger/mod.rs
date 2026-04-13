@@ -92,9 +92,112 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         })
 }
 
-/// Shared emit path: run processors, emit (JSON + console + OTel), buffer.
-fn emit_event(mut event: LogEvent) {
-    process_event(&mut event);
+/// Serialise a `LogEvent` to a canonical JSON line and write it to the capture
+/// buffer (in tests) or stderr (production).
+fn emit_json_log(event: &LogEvent) {
+    let mut record = json!({
+        "message": event.message,
+        "level": event.level,
+    });
+    let obj = record.as_object_mut().expect("json object");
+    // Service identity from context or fallback
+    for (k, v) in &event.context {
+        obj.insert(k.clone(), v.clone());
+    }
+    if let Some(tid) = &event.trace_id {
+        obj.insert("trace_id".to_string(), Value::String(tid.clone()));
+    }
+    if let Some(sid) = &event.span_id {
+        obj.insert("span_id".to_string(), Value::String(sid.clone()));
+    }
+    obj.insert("logger_name".to_string(), Value::String(event.target.clone()));
+    let line = serde_json::to_string(obj).unwrap_or_default();
+    let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
+    if let Some(buf) = capture.as_mut() {
+        buf.extend_from_slice(line.as_bytes());
+        buf.push(b'\n');
+    } else {
+        eprintln!("{line}");
+    }
+}
+
+/// Serialise a `LogEvent` to JSON including a timestamp field and write to
+/// the capture buffer or stderr.
+fn emit_json_log_with_timestamp(event: &LogEvent) {
+    let mut record = json!({
+        "message": event.message,
+        "level": event.level,
+        "timestamp": now_iso8601(),
+    });
+    let obj = record.as_object_mut().expect("json object");
+    for (k, v) in &event.context {
+        obj.insert(k.clone(), v.clone());
+    }
+    if let Some(tid) = &event.trace_id {
+        obj.insert("trace_id".to_string(), Value::String(tid.clone()));
+    }
+    if let Some(sid) = &event.span_id {
+        obj.insert("span_id".to_string(), Value::String(sid.clone()));
+    }
+    obj.insert("logger_name".to_string(), Value::String(event.target.clone()));
+    let line = serde_json::to_string(obj).unwrap_or_default();
+    let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
+    if let Some(buf) = capture.as_mut() {
+        buf.extend_from_slice(line.as_bytes());
+        buf.push(b'\n');
+    } else {
+        eprintln!("{line}");
+    }
+}
+
+/// If `PROVIDE_LOG_FORMAT=json`, emit canonical JSON for this event.
+fn emit_if_json(event: &LogEvent) {
+    let logging = active_logging_config();
+    if logging.fmt.eq_ignore_ascii_case("json") {
+        if logging.include_timestamp {
+            emit_json_log_with_timestamp(event);
+        } else {
+            emit_json_log(event);
+        }
+    }
+}
+
+/// Format a human-readable console line for this event.
+fn format_console_line(event: &LogEvent, include_timestamp: bool) -> String {
+    let mut s = String::new();
+    if include_timestamp {
+        s.push_str(&now_iso8601());
+        s.push_str("  ");
+    }
+    s.push_str(&format!("{:<5}", event.level));
+    s.push_str("  ");
+    s.push_str(&event.target);
+    s.push_str("  ");
+    s.push_str(&event.message);
+    for (k, v) in &event.context {
+        s.push_str(&format!("  {k}={v}"));
+    }
+    s
+}
+
+/// If format is not JSON, emit a human-readable console line for this event.
+fn emit_if_console(event: &LogEvent) {
+    let logging = active_logging_config();
+    if !logging.fmt.eq_ignore_ascii_case("json") {
+        let line = format_console_line(event, logging.include_timestamp);
+        let mut capture = CONSOLE_CAPTURE.lock().expect("console capture lock poisoned");
+        if let Some(buf) = capture.as_mut() {
+            buf.extend_from_slice(line.as_bytes());
+            buf.push(b'\n');
+        } else {
+            eprintln!("{line}");
+        }
+    }
+}
+
+/// Shared core: build an event, emit it (JSON or console), buffer it.
+fn log_event(level: &str, target: &str, message: &str) {
+    let event = new_event(target, level, message);
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]

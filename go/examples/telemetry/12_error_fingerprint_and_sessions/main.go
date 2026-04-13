@@ -84,7 +84,7 @@ func demoSessionCorrelation(ctx context.Context) {
 	fmt.Printf("  Session after bind:  %q\n", sessionAfterBind)
 
 	boundEvt, _ := telemetry.Event("app", "session", "bound")
-	log.InfoContext(ctx, boundEvt, "msg", "session is active")
+	log.InfoContext(ctx, boundEvt.Event, append(boundEvt.Attrs(), "detail", "session is active")...)
 
 	actionEvt, _ := telemetry.Event("app", "session", "action")
 	log.InfoContext(ctx, actionEvt, "action", "page_view", "path", "/dashboard")
