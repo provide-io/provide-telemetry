@@ -830,4 +830,22 @@ describe('resilience — encapsulated state getter/setter functions', () => {
     expect(_getHalfOpenProbingForTests('logs')).toBe(false);
     expect(_getCircuitTrippedAtForTests('logs')).toBe(0);
   });
+
+  // Kills: BooleanLiteral `false` → `true` in _getHalfOpenProbingForTests (?? false).
+  // Also covers the ?? fallback branches in all four getters (unknown signal not in dict).
+  it('_getHalfOpenProbingForTests returns false for an unknown signal (covers ?? false branch)', () => {
+    expect(_getHalfOpenProbingForTests('__unknown_signal__')).toBe(false);
+  });
+
+  it('_getConsecutiveTimeoutsForTests returns 0 for an unknown signal (covers ?? 0 branch)', () => {
+    expect(_getConsecutiveTimeoutsForTests('__unknown_signal__')).toBe(0);
+  });
+
+  it('_getOpenCountForTests returns 0 for an unknown signal (covers ?? 0 branch)', () => {
+    expect(_getOpenCountForTests('__unknown_signal__')).toBe(0);
+  });
+
+  it('_getCircuitTrippedAtForTests returns 0 for an unknown signal (covers ?? 0 branch)', () => {
+    expect(_getCircuitTrippedAtForTests('__unknown_signal__')).toBe(0);
+  });
 });
