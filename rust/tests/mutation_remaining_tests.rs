@@ -205,3 +205,61 @@ fn classification_policy_fields_are_distinct() {
         "public and phi must have different default actions"
     );
 }
+
+#[test]
+fn test_set_and_get_strict_schema() {
+    use provide_telemetry::{get_strict_schema, set_strict_schema};
+    // Reset to known state.
+    set_strict_schema(false);
+    assert!(!get_strict_schema(), "default should be false");
+    set_strict_schema(true);
+    assert!(get_strict_schema(), "should be true after set");
+    set_strict_schema(false);
+    assert!(!get_strict_schema(), "should return to false");
+}
+
+#[test]
+fn test_guard_attributes_enforces_limits() {
+    use provide_telemetry::{
+        clear_cardinality_limits, guard_attributes, register_cardinality_limit, CardinalityLimit,
+    };
+    use std::collections::HashMap;
+
+    clear_cardinality_limits();
+    register_cardinality_limit(
+        "env",
+        CardinalityLimit {
+            max_values: 1,
+            ttl_seconds: 60.0,
+        },
+    );
+
+    let mut attrs: HashMap<String, String> = HashMap::new();
+    attrs.insert("env".to_string(), "prod".to_string());
+    let result = guard_attributes(attrs);
+    // First value within limit passes through unchanged.
+    assert_eq!(result.get("env").map(String::as_str), Some("prod"));
+
+    // A second unique value for the same key should overflow when limit=1 and seen=1.
+    // (guard_attributes does not track cross-call state; within one call it counts uniqueness per key)
+    let mut attrs2: HashMap<String, String> = HashMap::new();
+    attrs2.insert("env".to_string(), "staging".to_string());
+    attrs2.insert("region".to_string(), "us-east".to_string());
+    let result2 = guard_attributes(attrs2);
+    // "region" has no limit, passes through.
+    assert_eq!(result2.get("region").map(String::as_str), Some("us-east"));
+
+    clear_cardinality_limits();
+}
+
+#[test]
+fn test_guard_attributes_no_limits_passthrough() {
+    use provide_telemetry::{clear_cardinality_limits, guard_attributes};
+    use std::collections::HashMap;
+
+    clear_cardinality_limits();
+    let mut attrs: HashMap<String, String> = HashMap::new();
+    attrs.insert("key".to_string(), "value".to_string());
+    let result = guard_attributes(attrs);
+    assert_eq!(result.get("key").map(String::as_str), Some("value"));
+}

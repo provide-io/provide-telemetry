@@ -19,6 +19,12 @@ export interface ClassificationRule {
   classification: DataClass;
 }
 
+/** Internal rule with pre-compiled RegExp to avoid re-compilation on every key check. */
+interface _CompiledRule {
+  compiled: RegExp;
+  classification: DataClass;
+}
+
 /** Defines the action to take per DataClass. */
 export interface ClassificationPolicy {
   PUBLIC: string;
@@ -39,24 +45,28 @@ const _DEFAULT_POLICY: ClassificationPolicy = {
 };
 
 // Stryker disable next-line ArrayDeclaration
-const _rules: ClassificationRule[] = [];
+const _rules: _CompiledRule[] = [];
 // Stryker disable next-line ObjectLiteral: initial _policy is tested by default-policy test; Stryker's perTest coverage misattributes the test that checks all six fields
 let _policy: ClassificationPolicy = { ..._DEFAULT_POLICY };
 
 /**
- * Convert a glob pattern (supporting * wildcards) to a RegExp.
+ * Compile a glob pattern (supporting * wildcards) to a RegExp.
  * Only * is treated as a wildcard; all other regex special chars are escaped.
+ * Called once at registration time, not on every key check.
  */
-function matchGlob(pattern: string, key: string): boolean {
+function _compileGlob(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(key);
+  return new RegExp(`^${escaped}$`);
 }
 
 /**
  * Register classification rules and install the classification hook on the PII engine.
+ * Patterns are compiled to RegExp once here rather than on every key lookup.
  */
 export function registerClassificationRules(rules: ClassificationRule[]): void {
-  _rules.push(...rules);
+  for (const rule of rules) {
+    _rules.push({ compiled: _compileGlob(rule.pattern), classification: rule.classification });
+  }
   setClassificationHook(_classifyField);
 }
 
@@ -73,7 +83,7 @@ export function getClassificationPolicy(): ClassificationPolicy {
 /** Return the DataClass label for a key if a rule matches, else null. */
 export function _classifyField(key: string, _value: unknown): string | null {
   for (const rule of _rules) {
-    if (matchGlob(rule.pattern, key)) {
+    if (rule.compiled.test(key)) {
       return rule.classification;
     }
   }

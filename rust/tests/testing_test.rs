@@ -39,7 +39,7 @@ fn testing_test_reset_trace_context_clears_manually_set_trace_context() {
     assert_eq!(
         get_trace_context()
             .get("trace_id")
-            .and_then(|value| value.clone()),
+            .and_then(|value: &Option<String>| value.clone()),
         Some("abc123".to_string())
     );
 
@@ -48,7 +48,7 @@ fn testing_test_reset_trace_context_clears_manually_set_trace_context() {
     assert_eq!(
         get_trace_context()
             .get("trace_id")
-            .and_then(|value| value.clone()),
+            .and_then(|value: &Option<String>| value.clone()),
         None
     );
 }
