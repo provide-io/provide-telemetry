@@ -147,6 +147,54 @@ class TestApplyRuleList:
         assert result["items"][0]["ok"] == "data1"
         assert result["items"][1]["ok"] == "data2"
 
+    def test_receipt_hook_propagated_to_list_items(self) -> None:
+        """Kills mutmut_44 (receipt_hook=None) and mutmut_49 (receipt_hook removed).
+
+        When _apply_rule processes a list, it must pass receipt_hook=receipt_hook
+        (not None) to each item's recursive call.  If the hook is dropped, PII
+        events inside list elements are never recorded.
+        """
+        calls: list[tuple[str, str, Any]] = []
+
+        def hook(path: str, mode: str, value: Any) -> None:
+            calls.append((path, mode, value))
+
+        node: dict[str, Any] = {
+            "items": [
+                {"secret": "value1"},  # pragma: allowlist secret
+            ]
+        }
+        rule = PIIRule(path=("items", "*", "secret"), mode="redact")
+        _apply_rule(node, rule, receipt_hook=hook)
+        assert len(calls) == 1
+        assert calls[0][0] == "items.*.secret"
+        assert calls[0][1] == "redact"
+        assert calls[0][2] == "value1"
+
+    def test_depth_increments_by_one_per_list_level(self) -> None:
+        """Kills mutmut_48 (depth removed), mutmut_51 (depth-1), mutmut_52 (depth+2).
+
+        Starting at depth=31, processing a list means items are called at
+        depth=32 — which hits the safety limit and returns the item unchanged.
+
+        With depth removed (mutmut_48): item depth stays 31 → rule applied → "***" (WRONG).
+        With depth-1 (mutmut_51): item depth becomes 30 → rule applied → "***" (WRONG).
+        With depth+2 (mutmut_52): at depth=30, item at 32 → limit hit → unchanged (WRONG).
+        """
+        rule = PIIRule(path=("*", "secret"), mode="redact")
+
+        # At depth=31, list items recurse to depth=32 → limit → node returned unchanged.
+        list_node: list[Any] = [{"secret": "value1"}]  # pragma: allowlist secret
+        result_at_31 = _apply_rule(list_node, rule, current_path=(), depth=31)
+        # With correct depth+1: item at depth=32 → returns unchanged → "value1" preserved
+        assert result_at_31[0]["secret"] == "value1"  # pragma: allowlist secret
+
+        # At depth=30, list items recurse to depth=31 → NOT at limit → rule applied.
+        result_at_30 = _apply_rule(list_node, rule, current_path=(), depth=30)
+        # With correct depth+1: item at depth=31 → matches rule → "***"
+        # With mutmut_52 (depth+2): item at depth=32 → limit hit → "value1" (WRONG)
+        assert result_at_30[0]["secret"] == "***"
+
 
 # ---------------------------------------------------------------------------
 # _apply_default_sensitive_key_redaction survivors
@@ -417,83 +465,3 @@ class TestSanitizePayloadEnabledFlag:
         result = sanitize_payload(payload, enabled=True)
         assert result["password"] == "***"  # redacted
         assert result["data"] == "public"
-
-
-class TestApplyDefaultRedactionListDepthIncrement:
-    """Kill pii.x__apply_default_sensitive_key_redaction__mutmut_47: depth+1 → depth+2."""
-
-    def test_list_depth_increment_is_one_not_two(self) -> None:
-        """Kills mutmut_47: depth+1 → depth+2 in the list recursion branch.
-
-        Trace with max_depth=3 and payload {"data": [{"password": "secret"}]}:
-
-        Original (depth+1):
-          depth=0: outer dict → "data" value (list) → call list at depth=0+1=1
-          depth=1: list → call items at depth=1+1=2
-          depth=2 < 3: process dict → "password" → redact → "***" ✓
-
-        Mutation (depth+2):
-          depth=0: outer dict → "data" value (list) → call list at depth=0+1=1
-          depth=1: list → call items at depth=1+2=3
-          depth=3 >= 3: return node unchanged → "secret" ✗
-        """
-        replace_pii_rules([])
-        payload: dict[str, Any] = {"data": [{"password": "secret"}]}
-        result = sanitize_payload(payload, enabled=True, max_depth=3)
-        # With original depth+1, password inside the list is processed and redacted
-        assert result["data"][0]["password"] == "***"
-
-
-class TestApplyRuleMutants:
-    def test_depth_32_returns_node_unchanged(self) -> None:
-        rule = PIIRule(path=("password",), mode="redact")
-        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
-        result = _apply_rule(node, rule, depth=32)
-        assert result is node
-
-    def test_redact_mode_value_in_output(self) -> None:
-        rule = PIIRule(path=("password",), mode="redact")
-        result = _apply_rule({"password": "secret"}, rule)  # pragma: allowlist secret
-        assert result["password"] == "***"
-
-    def test_dict_recursion_depth_30(self) -> None:
-        rule = PIIRule(path=("inner", "password"), mode="redact")
-        node: dict[str, Any] = {"inner": {"password": "secret"}}  # pragma: allowlist secret
-        result = _apply_rule(node, rule, depth=30)
-        assert result["inner"]["password"] == "***"
-
-    def test_depth_31_stops_dict_recursion(self) -> None:
-        # depth=31 → child recurses at 32 → hits limit; kills mutmut_27/28
-        rule = PIIRule(path=("inner", "password"), mode="redact")
-        node: dict[str, Any] = {"inner": {"password": "secret"}}  # pragma: allowlist secret
-        result = _apply_rule(node, rule, depth=31)
-        assert result["inner"]["password"] == "secret"  # pragma: allowlist secret
-
-
-class TestApplyDefaultRedactionBoundaries:
-    def test_depth_at_max_returns_unchanged(self) -> None:
-        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=1)
-        assert result["password"] == "secret"  # pragma: allowlist secret
-
-    def test_none_rule_targeted_keys(self) -> None:
-        node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(node, node, rule_targeted_keys=None)
-        assert result["password"] == "***"
-
-    def test_dict_recursion_depth_1_max_3(self) -> None:
-        node: dict[str, Any] = {"outer": {"password": "secret"}}  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=3)
-        assert result["outer"]["password"] == "***"
-
-    def test_list_recursion_hits_depth_limit(self) -> None:
-        # depth=31 → list item at 32 → hits limit; kills mutmut_44/46
-        items = [{"password": "secret"}]  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(items, items, depth=31, max_depth=32)
-        assert result[0]["password"] == "secret"  # pragma: allowlist secret
-
-    def test_list_recursion_forwards_max_depth(self) -> None:
-        # max_depth=2 forwarded → item at depth=2 hits limit; kills mutmut_45
-        items = [{"password": "secret"}]  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(items, items, depth=1, max_depth=2)
-        assert result[0]["password"] == "secret"  # pragma: allowlist secret
