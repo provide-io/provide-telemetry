@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config';
 import { _resetContext, bindContext, clearContext } from '../src/context';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
 import * as otelLogs from '../src/otel-logs';
 import * as schema from '../src/schema';
@@ -733,5 +734,35 @@ describe('write hook — logIncludeTimestamp toggle', () => {
     const obj: Record<string, unknown> = { level: 30, event: 'test', time: ts };
     hook(obj);
     expect(obj['time']).toBe(ts);
+  });
+});
+
+describe('write hook — logsEmitted health counter', () => {
+  beforeEach(() => _resetHealthForTests());
+  afterEach(() => _resetHealthForTests());
+
+  it('increments logsEmitted by 1 for each log record that survives all filters', () => {
+    makeCfg();
+    const hook = makeWriteHook();
+    expect(getHealthSnapshot().logsEmitted).toBe(0);
+    hook({ level: 30, event: 'request_ok' });
+    expect(getHealthSnapshot().logsEmitted).toBe(1);
+  });
+
+  it('increments logsEmitted once per record (not multiple times)', () => {
+    makeCfg();
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'first' });
+    hook({ level: 30, event: 'second' });
+    hook({ level: 30, event: 'third' });
+    expect(getHealthSnapshot().logsEmitted).toBe(3);
+  });
+
+  it('does NOT increment logsEmitted when strictSchema drops the record', () => {
+    makeCfg({ strictSchema: true });
+    const hook = makeWriteHook();
+    // Invalid event name (contains space) — schema will drop it before emitting.
+    hook({ level: 30, event: 'invalid event name with spaces' });
+    expect(getHealthSnapshot().logsEmitted).toBe(0);
   });
 });
