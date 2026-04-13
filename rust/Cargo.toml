@@ -4,7 +4,7 @@
 #
 [package]
 name = "provide-telemetry"
-version = "0.2.6"
+version = "0.2.4"
 edition = "2021"
 rust-version = "1.81"
 description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
@@ -26,7 +26,6 @@ otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
-    "dep:opentelemetry-appender-tracing",
     "dep:reqwest",
     "dep:tracing-opentelemetry",
 ]
@@ -36,13 +35,9 @@ base64 = "0.22"
 hmac = "0.12"
 mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
-opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, features = ["http-proto", "reqwest-client"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio"] }
 percent-encoding = "2.3.1"
-rand = "0.8"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
 regex = "1.11.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -55,7 +50,3 @@ uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
 rstest = "0.25"
-
-[[example]]
-name = "telemetry_14_data_governance"
-required-features = ["governance"]

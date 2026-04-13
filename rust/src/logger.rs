@@ -9,9 +9,6 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use serde_json::Value;
 
 use crate::context::get_context;
-use crate::health::increment_emitted;
-use crate::pii::sanitize_payload;
-use crate::sampling::Signal;
 use crate::tracer::get_trace_context;
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
@@ -52,23 +49,11 @@ pub static logger: LazyLock<Logger> = LazyLock::new(|| Logger::new(None));
 
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
-    // Sanitize context fields through the PII engine before storing in the event.
-    let raw_context = get_context();
-    let payload = Value::Object(
-        raw_context
-            .into_iter()
-            .collect::<serde_json::Map<String, Value>>(),
-    );
-    let sanitized = sanitize_payload(&payload, true, 8);
-    let context = match sanitized {
-        Value::Object(map) => map.into_iter().collect(),
-        _ => BTreeMap::new(),
-    };
     LogEvent {
         level: level.to_string(),
         target: target.to_string(),
         message: message.to_string(),
-        context,
+        context: get_context(),
         trace_id: trace.get("trace_id").and_then(Clone::clone),
         span_id: trace.get("span_id").and_then(Clone::clone),
     }
@@ -102,26 +87,10 @@ impl Logger {
     }
 
     pub fn log(&self, level: &str, message: &str) {
-        // Push to test-capture buffer (preserves drain_events_for_tests API)
-        let evt = new_event(&self.target, level, message);
-        {
-            let mut buf = events().lock().expect("logger event lock poisoned");
-            if buf.len() < MAX_FALLBACK_EVENTS {
-                buf.push(evt);
-            }
-        }
-        // Count each emitted log event in health counters.
-        increment_emitted(Signal::Logs, 1);
-        // Emit through the active tracing subscriber.
-        // `target:` must be a string literal in tracing macros, so we carry the
-        // logger name as a structured "logger" field instead.
-        // Level must also be const — use individual macros via match.
-        let tgt = self.target.as_str();
-        match level {
-            "DEBUG" => tracing::debug!(logger = tgt, "{}", message),
-            "WARN" => tracing::warn!(logger = tgt, "{}", message),
-            "ERROR" => tracing::error!(logger = tgt, "{}", message),
-            _ => tracing::info!(logger = tgt, "{}", message),
+        let event = new_event(&self.target, level, message);
+        let mut buf = events().lock().expect("logger event lock poisoned");
+        if buf.len() < MAX_FALLBACK_EVENTS {
+            buf.push(event);
         }
     }
 
@@ -205,39 +174,4 @@ pub fn null_logger(name: Option<&str>) -> NullLogger {
 
 pub fn buffer_logger(name: Option<&str>) -> BufferLogger {
     BufferLogger::new(name)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::context::{bind_context, reset_context_for_tests};
-    use crate::testing::acquire_test_state_lock;
-
-    #[test]
-    fn logger_test_pii_sanitization_redacts_sensitive_fields() {
-        let _guard = acquire_test_state_lock();
-        reset_context_for_tests();
-
-        // Bind a sensitive field named "password" to context.
-        let _ctx = bind_context([(
-            "password".to_string(),
-            Value::String("secret123".to_string()),
-        )]);
-
-        Logger::drain_events_for_tests(); // Clear any prior events.
-        let log = get_logger(None);
-        log.info("test message");
-
-        let events = Logger::drain_events_for_tests();
-        assert_eq!(events.len(), 1);
-        let password_val = events[0]
-            .context
-            .get("password")
-            .expect("password field should be present");
-        assert_eq!(
-            password_val,
-            &Value::String("***".to_string()),
-            "password field should be redacted to ***"
-        );
-    }
 }

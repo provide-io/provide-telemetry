@@ -253,7 +253,6 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
         return payload.clone();
     }
     let rules = get_pii_rules();
-    #[cfg_attr(not(feature = "governance"), allow(unused_mut))]
     let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
     #[cfg(feature = "governance")]
     if let (Value::Object(original), Value::Object(map)) = (payload, &mut cleaned) {
