@@ -8,6 +8,39 @@
 import { getConfig } from './config';
 import { TelemetryError } from './exceptions';
 
+// Module-level strict-schema override.
+// null = not set; use getConfig().strictSchema.
+// true/false = explicitly overridden via setStrictSchema().
+let _strictSchemaOverride: boolean | null = null;
+
+/**
+ * Enable or disable strict segment-format validation for event() and eventName().
+ *
+ * When enabled, every segment must match /^[a-z][a-z0-9_]*$/.
+ * When disabled (the default), segment format is not validated.
+ * Segment count validation is always enforced.
+ *
+ * This overrides the strictSchema field from config for the lifetime of the
+ * module (i.e. until setStrictSchema is called again or resetStrictSchemaForTests).
+ */
+export function setStrictSchema(enabled: boolean): void {
+  _strictSchemaOverride = enabled;
+}
+
+/**
+ * Return the current strict-schema flag.
+ * Returns the override value if set, otherwise falls back to getConfig().strictSchema.
+ */
+export function getStrictSchema(): boolean {
+  if (_strictSchemaOverride !== null) return _strictSchemaOverride;
+  return getConfig().strictSchema;
+}
+
+/** Reset the strict-schema override. For use in tests only. */
+export function _resetStrictSchemaForTests(): void {
+  _strictSchemaOverride = null;
+}
+
 export class EventSchemaError extends TelemetryError {
   constructor(message?: string) {
     super(message);
@@ -43,7 +76,7 @@ export function event(...segments: string[]): EventRecord {
     throw new EventSchemaError(`event() requires 3 or 4 segments (DA[R]S), got ${segments.length}`);
   }
 
-  const strict = getConfig().strictSchema;
+  const strict = getStrictSchema();
   if (strict) {
     for (const seg of segments) {
       if (!SEGMENT_RE.test(seg)) {
@@ -76,7 +109,7 @@ export function eventName(...segments: string[]): string {
     // Stryker disable next-line StringLiteral: error message content doesn't affect behavior
     throw new EventSchemaError(`expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got 0`);
   }
-  const strict = getConfig().strictSchema;
+  const strict = getStrictSchema();
   if (strict) {
     if (segments.length < MIN_SEGMENTS || segments.length > MAX_SEGMENTS) {
       throw new EventSchemaError(

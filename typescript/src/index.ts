@@ -130,6 +130,8 @@ export {
   EventSchemaError,
   event,
   eventName,
+  getStrictSchema,
+  setStrictSchema,
   validateEventName,
   validateRequiredKeys,
 } from './schema';

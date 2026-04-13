@@ -14,8 +14,10 @@ from __future__ import annotations
 
 __all__ = [
     "get_runtime_config",
+    "get_strict_schema",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
+    "set_strict_schema",
     "update_runtime_config",
 ]
 
@@ -210,6 +212,20 @@ def _is_strict_event_name() -> bool:
     if cfg is None:
         return False
     return cfg.strict_schema or cfg.event_schema.strict_event_name
+
+
+def set_strict_schema(enabled: bool) -> None:
+    """Convenience wrapper: enable or disable strict event-schema validation.
+
+    Equivalent to ``update_runtime_config(RuntimeOverrides(strict_schema=enabled))``.
+    Thread-safe via the runtime config lock.
+    """
+    update_runtime_config(RuntimeOverrides(strict_schema=enabled))
+
+
+def get_strict_schema() -> bool:
+    """Return the current strict-schema flag from the active runtime config."""
+    return get_runtime_config().strict_schema
 
 
 def reset_runtime_for_tests() -> None:
