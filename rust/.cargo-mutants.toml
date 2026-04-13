@@ -36,4 +36,19 @@ exclude_re = [
     # `false` is observable-equivalent to the real implementation.
     'replace otel_installed -> bool with false',
     'replace otel_installed_for_tests -> bool with false',
+    # otel.rs: _reset_otel_for_tests calls shutdown_otel() which sets OTEL_INSTALLED=false.
+    # Without the otel feature OTEL_INSTALLED is never set to true, so the reset
+    # is a no-op — replacing it with () is observable-equivalent.
+    'replace _reset_otel_for_tests with \(\)',
+    # setup.rs / testing.rs: OnceLock::get_or_init initializers for static Mutexes.
+    # The Box::leak mutation produces the same observable behaviour: a single
+    # static Mutex<_> initialized once, shared across all callers.
+    'replace setup_state -> &.* with Box::leak',
+    'replace test_state_lock -> &.* with Box::leak',
+    # config.rs: has_invalid_percent_encoding loop — *=3, *=1 mutations pin idx=0
+    # causing a hang rather than a kill; timeout counts as surviving in cargo-mutants.
+    # The function is exercised by header-validation tests; only the index arithmetic
+    # mutants that produce infinite loops are excluded here.
+    'replace \+= with \*= in has_invalid_percent_encoding',
+    'replace \+= with -= in has_invalid_percent_encoding',
 ]

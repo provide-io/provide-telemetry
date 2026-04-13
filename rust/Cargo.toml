@@ -4,7 +4,7 @@
 #
 [package]
 name = "provide-telemetry"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.81"
 description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
