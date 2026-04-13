@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         CardinalityLimit,
         clear_cardinality_limits,
         get_cardinality_limits,
+        guard_attributes,
         register_cardinality_limit,
     )
     from provide.telemetry.classification import (
@@ -69,8 +70,10 @@ if TYPE_CHECKING:
     from provide.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
     from provide.telemetry.runtime import (
         get_runtime_config,
+        get_strict_schema,
         reconfigure_telemetry,
         reload_runtime_from_env,
+        set_strict_schema,
         update_runtime_config,
     )
     from provide.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
@@ -109,6 +112,7 @@ _register(
     "CardinalityLimit",
     "clear_cardinality_limits",
     "get_cardinality_limits",
+    "guard_attributes",
     "register_cardinality_limit",
 )
 _register("provide.telemetry.health", "HealthSnapshot", "get_health_snapshot")
@@ -127,8 +131,10 @@ _register("provide.telemetry.resilience", "ExporterPolicy", "get_exporter_policy
 _register(
     "provide.telemetry.runtime",
     "get_runtime_config",
+    "get_strict_schema",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
+    "set_strict_schema",
     "update_runtime_config",
 )
 _register("provide.telemetry.sampling", "SamplingPolicy", "get_sampling_policy", "set_sampling_policy", "should_sample")
@@ -203,8 +209,10 @@ __all__ = [
     "get_sampling_policy",
     "get_secret_patterns",
     "get_session_id",
+    "get_strict_schema",
     "get_trace_context",
     "get_tracer",
+    "guard_attributes",
     "histogram",
     "logger",
     "reconfigure_telemetry",
@@ -222,6 +230,7 @@ __all__ = [
     "set_exporter_policy",
     "set_queue_policy",
     "set_sampling_policy",
+    "set_strict_schema",
     "set_trace_context",
     "setup_telemetry",
     "should_allow",
