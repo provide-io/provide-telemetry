@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Tests: core telemetry without governance
 # ---------------------------------------------------------------------------
@@ -168,12 +170,19 @@ class TestGovernanceIsOptional:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.tooling
 class TestFilesDeletionProof:
     """Prove that physically removing governance files leaves core telemetry intact.
 
     Each test copies the installed package to a temp directory, deletes the
     governance files there, then runs a subprocess with that modified path
     injected into PYTHONPATH. This is the strongest possible proof.
+
+    Marked ``tooling`` so mutmut skips this class: the subprocesses spawn into
+    the mutmut-instrumented source tree, causing trampoline code to fire with
+    ``mutmut.config = None`` and crash before any mutation can be evaluated.
+    The mutation coverage these tests provide is already captured by the 1000+
+    unit tests that run directly against instrumented source.
     """
 
     @staticmethod
