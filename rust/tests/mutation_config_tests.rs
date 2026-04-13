@@ -130,9 +130,7 @@ fn config_test_non_negative_float_rejects_infinity() {
     // Kills: || → && (with &&, !is_finite() && negative is false for +inf → no error)
     let err = config_from(&[("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "inf")])
         .expect_err("infinity must be rejected");
-    assert!(err
-        .message
-        .contains("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"));
+    assert!(err.message.contains("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"));
 }
 
 #[test]
@@ -140,9 +138,7 @@ fn config_test_non_negative_float_rejects_negative() {
     // Kills: < → == (only 0.0 would error; -1 would slip through)
     let err = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "-1")])
         .expect_err("negative float must be rejected");
-    assert!(err
-        .message
-        .contains("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"));
+    assert!(err.message.contains("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"));
 }
 
 #[test]
@@ -170,11 +166,7 @@ fn redact_config_masks_otlp_header_values() {
         "key must be preserved"
     );
     assert_eq!(
-        redacted
-            .logging
-            .otlp_headers
-            .get("authorization")
-            .map(String::as_str),
+        redacted.logging.otlp_headers.get("authorization").map(String::as_str),
         Some("***REDACTED***"),
         "value must be masked"
     );
@@ -207,7 +199,11 @@ fn redact_config_empty_headers_unchanged() {
 #[test]
 fn redact_config_does_not_mutate_original() {
     // Ensures the original is not modified.
-    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_HEADERS", "x-token=realvalue")]).unwrap();
+    let cfg = config_from(&[(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "x-token=realvalue",
+    )])
+    .unwrap();
     let original_value = cfg.logging.otlp_headers.get("x-token").cloned();
     let _ = redact_config(&cfg);
     assert_eq!(

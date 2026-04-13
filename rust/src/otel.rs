@@ -56,7 +56,11 @@ pub(crate) fn build_otel_layer(
     // Store provider so shutdown_otel() can flush and close it
     OTEL_PROVIDER.get_or_init(|| std::sync::Mutex::new(Some(provider)));
 
-    Some(tracing_opentelemetry::layer().with_tracer(tracer).boxed())
+    Some(
+        tracing_opentelemetry::layer()
+            .with_tracer(tracer)
+            .boxed(),
+    )
 }
 
 // Otel: build OTLP-backed LoggerProvider and return an appender-tracing bridge layer
@@ -98,7 +102,9 @@ pub(crate) fn build_otel_log_layer(
     // Store provider so shutdown_otel() can flush and close it
     OTEL_LOG_PROVIDER.get_or_init(|| std::sync::Mutex::new(Some(provider.clone())));
 
-    Some(opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&provider).boxed())
+    Some(
+        opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&provider).boxed(),
+    )
 }
 
 // Non-otel: log layer is always None
@@ -126,10 +132,7 @@ fn build_resource(config: &TelemetryConfig) -> opentelemetry_sdk::Resource {
     Resource::builder()
         .with_service_name(config.service_name.clone())
         .with_attribute(KeyValue::new("service.version", config.version.clone()))
-        .with_attribute(KeyValue::new(
-            "deployment.environment",
-            config.environment.clone(),
-        ))
+        .with_attribute(KeyValue::new("deployment.environment", config.environment.clone()))
         .build()
 }
 
