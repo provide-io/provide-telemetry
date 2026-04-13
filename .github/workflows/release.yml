@@ -10,6 +10,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      # When retriggering a release manually, pass the tag so sign-and-upload targets the right release
+      release_tag:
+        description: 'Release tag to publish (e.g. v0.3.0). Leave blank to use current ref.'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -77,8 +83,11 @@ jobs:
           python-version: "3.11"
           enable-cache: false
       - name: Extract version from tag
+        # Use workflow_dispatch release_tag input when set; fall back to ref name (e.g. v0.3.0)
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Wait for TestPyPI propagation
         run: sleep 30
       - name: Install from TestPyPI and verify
@@ -96,7 +105,7 @@ jobs:
 
   publish-pypi:
     needs: [build, verify-testpypi]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       id-token: write
@@ -110,6 +119,9 @@ jobs:
           name: dist
           path: dist
       - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
+        with:
+          # Safe to retrigger — skip if version already published
+          skip-existing: true
 
   build-npm:
     # Run on GitHub Release creation or manual dispatch only
@@ -162,7 +174,9 @@ jobs:
 
   publish-npm:
     needs: build-npm
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # continue-on-error: safe to retrigger — npm will fail with 403 if version already published
+    continue-on-error: true
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -193,7 +207,7 @@ jobs:
 
   publish-rust:
     needs: build-rust
-    if: github.event_name == 'release' && secrets.CARGO_REGISTRY_TOKEN != ''
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -207,13 +221,14 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Publish to crates.io
-        run: cargo publish --locked
+        # Skip silently if CARGO_REGISTRY_TOKEN is not configured (shell-level check avoids secrets context in if:)
+        run: if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then echo "CARGO_REGISTRY_TOKEN not set — skipping crates.io publish"; else cargo publish --locked; fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   sign-and-upload:
     needs: [build, build-rust]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -239,10 +254,12 @@ jobs:
         with:
           inputs: dist/*.whl dist/*.tar.gz
       - name: Upload artifacts and signatures to release
+        # Priority: workflow_dispatch input > release event tag > ref_name
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${RELEASE_TAG}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
             rust-dist/*.crate \
             sbom/sbom-python.cdx.json \
