@@ -32,7 +32,7 @@ cargo build --manifest-path rust/Cargo.toml --features otel
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_11_lazy_loading_proof`
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_12_error_fingerprint_and_sessions`
 - `cargo run --manifest-path rust/Cargo.toml --example telemetry_13_security_hardening`
-- `cargo run --manifest-path rust/Cargo.toml --example telemetry_14_data_governance`
+- `cargo run --manifest-path rust/Cargo.toml --features governance --example telemetry_14_data_governance`
 - `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_01_emit_all_signals`
 - `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_02_verify_ingestion`
 - `cargo run --manifest-path rust/Cargo.toml --features otel --example openobserve_03_hardening_profile`
