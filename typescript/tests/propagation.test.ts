@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   _disablePropagationALSForTest,
   _resetPropagationForTests,
@@ -11,6 +11,7 @@ import {
   extractW3cContext,
   getActivePropagationContext,
   getActiveOtelContext,
+  isFallbackMode,
   MAX_HEADER_LENGTH,
   MAX_TRACESTATE_PAIRS,
   MAX_BAGGAGE_LENGTH,
@@ -565,5 +566,95 @@ describe('propagation — clearPropagation pops OTel context stack (kills line 1
     expect(getActiveOtelContext()).toBeUndefined(); // first layer had no traceparent → undefined sentinel
     clearPropagationContext(); // pop first layer
     expect(getActiveOtelContext()).toBeUndefined(); // stack is now empty
+  });
+});
+
+describe('isFallbackMode — ALS availability check', () => {
+  afterEach(() => _resetPropagationForTests());
+
+  it('returns false when AsyncLocalStorage is available (default)', () => {
+    // In Node.js test environment ALS is available.
+    expect(isFallbackMode()).toBe(false);
+  });
+
+  it('returns true when ALS is disabled', () => {
+    const saved = _disablePropagationALSForTest();
+    try {
+      expect(isFallbackMode()).toBe(true);
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+});
+
+describe('propagation — fallback warning emitted once', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    _resetPropagationForTests();
+  });
+
+  it('emits a console.warn when ALS is unavailable and store is accessed', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'warn-test' });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[provide-telemetry]'));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('AsyncLocalStorage is unavailable'),
+      );
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+
+  it('emits the warning exactly once across multiple store accesses', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'first' });
+      getActivePropagationContext();
+      bindPropagationContext({ traceId: 'second' });
+      getActivePropagationContext();
+      // Warning should only fire once regardless of how many times the store is accessed.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+
+  it('warning message mentions concurrent request danger', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({});
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Concurrent requests will share propagation context'),
+      );
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+
+  it('_resetPropagationForTests resets the warned flag so warning fires again in next test', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'pre-reset' });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+    // Reset clears the warned flag.
+    _resetPropagationForTests();
+    warnSpy.mockClear();
+    const saved2 = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'post-reset' });
+      // Should warn again since flag was reset.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      _restorePropagationALSForTest(saved2);
+    }
   });
 });

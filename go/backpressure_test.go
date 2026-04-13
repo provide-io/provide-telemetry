@@ -202,6 +202,54 @@ func TestSetQueuePolicy_ZeroSize_Unlimited(t *testing.T) {
 	}
 }
 
+// TestTryAcquireRelease_ConcurrentSetQueuePolicy verifies that concurrent calls to
+// TryAcquire/Release and SetQueuePolicy do not race. Before the TOCTOU fix,
+// TryAcquire would release the RLock before sending on the channel, allowing
+// SetQueuePolicy to swap the channel pointer mid-operation.
+func TestTryAcquireRelease_ConcurrentSetQueuePolicy(t *testing.T) {
+	_resetQueuePolicy()
+	_resetHealth()
+	t.Cleanup(_resetQueuePolicy)
+	t.Cleanup(_resetHealth)
+
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 10, TracesMaxSize: 10, MetricsMaxSize: 10})
+
+	const goroutines = 20
+	const iterations = 200
+
+	var wg sync.WaitGroup
+	// Goroutines that continuously swap the queue policy.
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				size := (i+j)%10 + 1
+				SetQueuePolicy(QueuePolicy{
+					LogsMaxSize:    size,
+					TracesMaxSize:  size,
+					MetricsMaxSize: size,
+				})
+			}
+		}(i)
+	}
+	// Goroutines that continuously acquire and release.
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
+					if TryAcquire(signal) {
+						Release(signal)
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 func TestBackpressureConcurrency(t *testing.T) {
 	_resetQueuePolicy()
 	_resetHealth()

@@ -6,7 +6,7 @@
  */
 
 import { ConfigurationError } from './exceptions';
-import { _droppedField, _emittedField, _incrementHealth } from './health';
+import { _droppedField, _incrementHealth } from './health';
 
 export interface SamplingPolicy {
   defaultRate: number;
@@ -53,8 +53,10 @@ export function shouldSample(signal: string, key?: string): boolean {
   _validateSignal(signal);
   const _policy = _policies[signal] ?? DEFAULT_POLICY;
   const overrides = _policy.overrides;
-  const lookupKey = key ?? signal;
-  const rate = overrides && lookupKey in overrides ? overrides[lookupKey] : _policy.defaultRate;
+  // Only consult the override map when an explicit non-null key is provided.
+  // Using `key ?? signal` would cause any override keyed by signal name (e.g. "logs")
+  // to silently apply to all unkeyed shouldSample("logs") calls — a shadow-override hazard.
+  const rate = key != null && overrides && key in overrides ? overrides[key] : _policy.defaultRate;
   const clamped = _clamp(rate);
   /* Stryker disable ConditionalExpression,EqualityOperator,BlockStatement: boundary not observable (Math.random [0,1)); health counter updates tested but perTest coverage misattributes */
   if (clamped <= 0) {
@@ -62,13 +64,16 @@ export function shouldSample(signal: string, key?: string): boolean {
     return false;
   }
   if (clamped >= 1) {
-    _incrementHealth(_emittedField(signal));
+    // Do not increment emitted here — emitted is incremented downstream at the actual
+    // emission site (logger, tracer, etc.) to avoid double-counting.
     return true;
   }
   /* Stryker restore ConditionalExpression,EqualityOperator,BlockStatement */
   // Stryker disable next-line EqualityOperator: Math.random() is in [0,1) so < 1.0 and <= 1.0 are equivalent (random never equals 1.0)
   const sampled = Math.random() < clamped;
-  _incrementHealth(sampled ? _emittedField(signal) : _droppedField(signal));
+  if (!sampled) {
+    _incrementHealth(_droppedField(signal));
+  }
   return sampled;
 }
 

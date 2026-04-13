@@ -425,3 +425,92 @@ func TestIsEnabled(t *testing.T) {
 		t.Error("expected TRACE to be disabled")
 	}
 }
+
+// ---- SetSanitizePayloadFunc (Fix 1: delegate / PII engine unification) ----
+
+// TestSetSanitizePayloadFunc_DelegateTakesPrecedence verifies that when a delegate
+// is registered, SanitizePayload calls the delegate instead of its own rule set.
+func TestSetSanitizePayloadFunc_DelegateTakesPrecedence(t *testing.T) {
+	logger.ResetPIIRules()
+	t.Cleanup(logger.ResetPIIRules)
+
+	// Local rule would redact "user", but the delegate returns the value unchanged.
+	logger.SetPIIRules([]logger.PIIRule{
+		{Path: []string{"user"}, Mode: logger.PIIModeRedact},
+	})
+
+	called := false
+	logger.SetSanitizePayloadFunc(func(payload map[string]any, enabled bool, maxDepth int) map[string]any {
+		called = true
+		out := make(map[string]any, len(payload))
+		for k, v := range payload {
+			out[k] = v
+		}
+		return out
+	})
+
+	payload := map[string]any{"user": "alice"}
+	result := logger.SanitizePayload(payload, true, 8)
+
+	if !called {
+		t.Error("expected delegate to be called")
+	}
+	// Delegate does not apply local rules; user should be alice, not redacted.
+	if result["user"] != "alice" {
+		t.Errorf("delegate does not apply local rules; user should be alice, got %v", result["user"])
+	}
+}
+
+// TestSetSanitizePayloadFunc_NilDeregisters verifies that passing nil to
+// SetSanitizePayloadFunc reverts to the local rule set.
+func TestSetSanitizePayloadFunc_NilDeregisters(t *testing.T) {
+	logger.ResetPIIRules()
+	t.Cleanup(logger.ResetPIIRules)
+
+	logger.SetPIIRules([]logger.PIIRule{
+		{Path: []string{"user"}, Mode: logger.PIIModeRedact},
+	})
+
+	// Register a delegate, then remove it.
+	logger.SetSanitizePayloadFunc(func(payload map[string]any, enabled bool, maxDepth int) map[string]any {
+		return payload
+	})
+	logger.SetSanitizePayloadFunc(nil)
+
+	payload := map[string]any{"user": "alice"}
+	result := logger.SanitizePayload(payload, true, 8)
+
+	if result["user"] != "***" {
+		t.Errorf("after nil deregister, local rules should apply; want ***, got %v", result["user"])
+	}
+}
+
+// TestSetSanitizePayloadFunc_LoggingPipelineUsesDelegate verifies that a delegate
+// wired into the logger sub-package correctly sanitizes a log field.
+func TestSetSanitizePayloadFunc_LoggingPipelineUsesDelegate(t *testing.T) {
+	logger.ResetPIIRules()
+	t.Cleanup(logger.ResetPIIRules)
+
+	// Delegate redacts the "secret" key regardless of local rules.
+	logger.SetSanitizePayloadFunc(func(payload map[string]any, enabled bool, maxDepth int) map[string]any {
+		out := make(map[string]any, len(payload))
+		for k, v := range payload {
+			if k == "secret" {
+				out[k] = "***"
+			} else {
+				out[k] = v
+			}
+		}
+		return out
+	})
+
+	payload := map[string]any{"secret": "top-secret-value", "name": "bob"}
+	result := logger.SanitizePayload(payload, true, 8)
+
+	if result["secret"] != "***" {
+		t.Errorf("delegate should redact secret; got %v", result["secret"])
+	}
+	if result["name"] != "bob" {
+		t.Errorf("delegate should preserve name; got %v", result["name"])
+	}
+}
