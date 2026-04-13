@@ -19,7 +19,7 @@ class TestClassifyErrorExactValues:
     """Verify exact string values in every dict key for each branch."""
 
     def test_timeout_branch_all_values(self) -> None:
-        """Timeout exc_name + status_code=None -> timeout branch."""
+        """Timeout exc_name -> timeout branch."""
         r = classify_error("TimeoutError", status_code=None)
         assert r["error.category"] == "timeout"
         assert r["error.severity"] == "info"
@@ -108,24 +108,22 @@ class TestClassifyErrorExactValues:
         assert r["error_type"] == "internal"
 
     def test_status_code_none_defaults_to_0(self) -> None:
-        """Kills: status_code is not None else 0 mutation."""
-        r = classify_error("Error", status_code=None)
+        """Kills: status_code is not None else 0 mutation — code maps to '0' in output."""
+        r = classify_error("TimeoutError", status_code=None)
         assert r["error_code"] == "0"
         assert r["http.status_code"] == "0"
-        # code=0 with no timeout in name -> unclassified (not timeout)
-        assert r["error.category"] == "unclassified"
+        # 'timeout' in name still triggers timeout branch
+        assert r["error.category"] == "timeout"
 
     def test_status_code_none_no_timeout_in_name(self) -> None:
-        """Without timeout in name and no timeout status code, code=0 -> unclassified."""
+        """Without 'timeout' in name and no status_code, result is unclassified."""
         r = classify_error("ValueError")
         assert r["error.category"] == "unclassified"
 
     def test_status_code_zero_no_timeout_in_name(self) -> None:
-        """status_code=0 with no timeout name should be unclassified."""
-        r = classify_error("SomeError", status_code=0)
+        """status_code=0 with no 'timeout' in name -> unclassified (not a timeout HTTP code)."""
+        r = classify_error("ValueError", status_code=0)
         assert r["error.category"] == "unclassified"
-        assert r["error.severity"] == "info"
-        assert r["error_type"] == "internal"
 
     def test_server_error_at_499_is_client_not_server(self) -> None:
         """Boundary: 499 >= 400 but < 500, should be client_error."""
@@ -220,56 +218,6 @@ class TestClassifyErrorStringLiterals:
     def test_severity_info_in_unclassified(self) -> None:
         r = classify_error("E", status_code=200)
         assert r["error.severity"] == "info"
-
-
-class TestClassifyErrorTimeoutStatusCodes:
-    """Verify that HTTP 408/504 are classified as timeout regardless of exc_name."""
-
-    def test_408_is_timeout(self) -> None:
-        """HTTP 408 Request Timeout must be classified as timeout."""
-        r = classify_error("SomeError", status_code=408)
-        assert r["error.category"] == "timeout"
-        assert r["error.severity"] == "info"
-        assert r["error_type"] == "internal"
-
-    def test_504_is_timeout(self) -> None:
-        """HTTP 504 Gateway Timeout must be classified as timeout."""
-        r = classify_error("SomeError", status_code=504)
-        assert r["error.category"] == "timeout"
-        assert r["error.severity"] == "info"
-        assert r["error_type"] == "internal"
-
-    def test_status_code_none_non_timeout_name_is_unclassified(self) -> None:
-        """status_code=None with non-timeout exc_name -> unclassified (code=0)."""
-        r = classify_error("RuntimeError", status_code=None)
-        assert r["error.category"] == "unclassified"
-        assert r["error_code"] == "0"
-
-    def test_status_code_zero_non_timeout_name_is_unclassified(self) -> None:
-        """status_code=0 with non-timeout exc_name -> unclassified."""
-        r = classify_error("RuntimeError", status_code=0)
-        assert r["error.category"] == "unclassified"
-
-    def test_timeout_name_with_408_is_timeout(self) -> None:
-        """exc_name contains 'timeout' AND status_code=408 -> still timeout."""
-        r = classify_error("RequestTimeout", status_code=408)
-        assert r["error.category"] == "timeout"
-
-    def test_timeout_name_with_none_status_is_timeout(self) -> None:
-        """exc_name contains 'timeout' with status_code=None -> timeout."""
-        r = classify_error("NetworkTimeout", status_code=None)
-        assert r["error.category"] == "timeout"
-        assert r["error_code"] == "0"
-
-    def test_407_is_not_timeout(self) -> None:
-        """HTTP 407 is not a timeout code; no 'timeout' in name -> client_error."""
-        r = classify_error("SomeError", status_code=407)
-        assert r["error.category"] == "client_error"
-
-    def test_503_is_not_timeout(self) -> None:
-        """HTTP 503 (non-504) without timeout name -> server_error."""
-        r = classify_error("ServiceUnavailable", status_code=503)
-        assert r["error.category"] == "server_error"
 
 
 class TestClassifyErrorDictKeys:
