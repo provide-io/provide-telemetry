@@ -13,7 +13,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"github.com/provide-io/provide-telemetry/go/logger"
@@ -24,13 +23,6 @@ func main() {
 	cfg.Format = logger.LogFormatJSON
 	cfg.ServiceName = os.Getenv("PROVIDE_TELEMETRY_SERVICE_NAME")
 	cfg.Output = os.Stderr
-
-	// Disable timestamp for deterministic output when the env var says so.
-	if v := os.Getenv("PROVIDE_LOG_INCLUDE_TIMESTAMP"); v == "false" || v == "0" {
-		cfg.IncludeTimestamp = false
-	}
-
 	logger.Configure(cfg)
 	logger.Logger.Info("log.output.parity", "logger_name", "probe")
-	_ = context.Background() // satisfy import
 }
