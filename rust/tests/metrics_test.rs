@@ -4,10 +4,7 @@
 //
 use std::sync::{Mutex, OnceLock};
 
-use provide_telemetry::{
-    counter, gauge, get_meter, histogram, reconfigure_telemetry, reset_metrics_for_tests,
-    TelemetryConfig,
-};
+use provide_telemetry::{counter, gauge, get_meter, histogram, reconfigure_telemetry, reset_metrics_for_tests, TelemetryConfig};
 
 static METRICS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -57,11 +54,7 @@ fn metrics_test_disabled_metrics_are_no_ops() {
     reset_metrics_for_tests();
     let c = counter("test.disabled", None, None);
     c.add(99.0, None);
-    assert_eq!(
-        c.value(),
-        0.0,
-        "add() must be a no-op when metrics are disabled"
-    );
+    assert_eq!(c.value(), 0.0, "add() must be a no-op when metrics are disabled");
 
     // Restore default (metrics enabled) so other tests are unaffected.
     reconfigure_telemetry(Some(TelemetryConfig::default())).expect("restore must succeed");

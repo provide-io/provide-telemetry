@@ -46,7 +46,8 @@ fn run() -> Result<(), String> {
 
     // Use provide-telemetry's setup_telemetry() which installs the tracing subscriber,
     // registers the OTel TracerProvider globally, and sets the W3C propagator.
-    provide_telemetry::setup_telemetry().map_err(|err| format!("setup_telemetry failed: {err}"))?;
+    provide_telemetry::setup_telemetry()
+        .map_err(|err| format!("setup_telemetry failed: {err}"))?;
 
     // Global tracer is now available — setup_telemetry() calls set_tracer_provider().
     let tracer = global::tracer("rust.e2e.client");
@@ -93,7 +94,11 @@ impl Injector for MapInjector<'_> {
 }
 
 #[cfg(feature = "otel")]
-fn send_get(backend_url: &str, path: &str, headers: HashMap<String, String>) -> Result<(), String> {
+fn send_get(
+    backend_url: &str,
+    path: &str,
+    headers: HashMap<String, String>,
+) -> Result<(), String> {
     let authority = backend_url
         .strip_prefix("http://")
         .ok_or_else(|| "only http:// backend URLs are supported".to_string())?;

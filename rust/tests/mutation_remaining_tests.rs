@@ -116,10 +116,7 @@ fn fingerprint_different_stacks_produce_different_hashes() {
     // same value for every input, so two distinct stacks would hash identically.
     let fp1 = compute_error_fingerprint("ValueError", Some("module_a.py"));
     let fp2 = compute_error_fingerprint("ValueError", Some("module_b.py"));
-    assert_ne!(
-        fp1, fp2,
-        "different stack frames must produce different fingerprints"
-    );
+    assert_ne!(fp1, fp2, "different stack frames must produce different fingerprints");
 }
 
 #[test]
@@ -128,10 +125,7 @@ fn fingerprint_stack_normalizes_path_separators() {
     // normalize_frames replaces '\' with '/' and takes the last path component.
     let unix = compute_error_fingerprint("ValueError", Some("src/app/module.py"));
     let windows = compute_error_fingerprint("ValueError", Some("src\\app\\module.py"));
-    assert_eq!(
-        unix, windows,
-        "path separators must be normalised to the same last component"
-    );
+    assert_eq!(unix, windows, "path separators must be normalised to the same last component");
 }
 
 #[test]
@@ -139,10 +133,7 @@ fn fingerprint_stack_is_deterministic_with_frames() {
     use provide_telemetry::compute_error_fingerprint;
     let fp1 = compute_error_fingerprint("ValueError", Some("  app.py\n  utils.py\n  core.py"));
     let fp2 = compute_error_fingerprint("ValueError", Some("  app.py\n  utils.py\n  core.py"));
-    assert_eq!(
-        fp1, fp2,
-        "same stack must always produce the same fingerprint"
-    );
+    assert_eq!(fp1, fp2, "same stack must always produce the same fingerprint");
 }
 
 #[test]
@@ -196,12 +187,6 @@ fn classification_policy_set_and_get_roundtrip() {
 fn classification_policy_fields_are_distinct() {
     // Kills: setting all fields to the same value.
     let policy = provide_telemetry::ClassificationPolicy::default();
-    assert_ne!(
-        policy.pii, policy.pci,
-        "pii and pci must have different default actions"
-    );
-    assert_ne!(
-        policy.public, policy.phi,
-        "public and phi must have different default actions"
-    );
+    assert_ne!(policy.pii, policy.pci, "pii and pci must have different default actions");
+    assert_ne!(policy.public, policy.phi, "public and phi must have different default actions");
 }
