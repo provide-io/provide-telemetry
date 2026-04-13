@@ -268,7 +268,7 @@ def _run_attempt_with_timeout(
     if timeout_seconds <= 0 or skip_executor:
         return operation()
     sem = _get_executor_semaphore(signal)
-    if not sem.acquire(blocking=False):
+    if not sem.acquire(blocking=False):  # pragma: no mutate — blocking=None is also non-blocking
         # Pending queue is full — drop the operation (fail-open).
         return None  # type: ignore[return-value]
     executor = _get_timeout_executor(signal)  # pragma: no mutate
