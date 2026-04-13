@@ -8,7 +8,7 @@
 #[cfg(feature = "governance")]
 mod classification_mutation {
     use provide_telemetry::{
-        clear_classification_rules, classify_key, register_classification_rule, ClassificationRule,
+        classify_key, clear_classification_rules, register_classification_rule, ClassificationRule,
         DataClass,
     };
     use std::sync::{Mutex, OnceLock};
