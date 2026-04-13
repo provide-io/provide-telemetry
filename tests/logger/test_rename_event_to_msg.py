@@ -3,29 +3,29 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Tests for the rename_event_to_message structlog processor."""
+"""Tests for the rename_event_to_msg structlog processor."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from provide.telemetry.logger.processors import rename_event_to_message
+from provide.telemetry.logger.processors import rename_event_to_msg
 
 # ── Unit tests for the processor itself ─────────────────────────────────────
 
 
 def test_rename_event_to_msg_renames_event_key() -> None:
     event_dict: dict[str, Any] = {"event": "hello.world", "level": "INFO"}
-    result = rename_event_to_message(None, "info", event_dict)
-    assert result["message"] == "hello.world"
+    result = rename_event_to_msg(None, "info", event_dict)
+    assert result["msg"] == "hello.world"
     assert "event" not in result
 
 
 def test_rename_event_to_msg_no_op_when_event_absent() -> None:
     event_dict: dict[str, Any] = {"level": "INFO", "service": "probe"}
-    result = rename_event_to_message(None, "info", event_dict)
-    assert "message" not in result
+    result = rename_event_to_msg(None, "info", event_dict)
+    assert "msg" not in result
     assert result == {"level": "INFO", "service": "probe"}
 
 
@@ -36,19 +36,19 @@ def test_rename_event_to_msg_preserves_other_fields() -> None:
         "service": "svc",
         "trace_id": "abc",
     }
-    result = rename_event_to_message(None, "debug", event_dict)
-    assert result["message"] == "test.event"
+    result = rename_event_to_msg(None, "debug", event_dict)
+    assert result["msg"] == "test.event"
     assert result["level"] == "DEBUG"
     assert result["service"] == "svc"
     assert result["trace_id"] == "abc"
     assert "event" not in result
 
 
-# ── Integration: JSON format emits 'message' not 'event' ────────────────────
+# ── Integration: JSON format emits 'msg' not 'event' ────────────────────────
 
 
 def test_json_logger_emits_msg_field(capsys: Any) -> None:
-    """End-to-end: configure_logging in JSON mode must emit 'message', not 'event'."""
+    """End-to-end: configure_logging in JSON mode must emit 'msg', not 'event'."""
     import dataclasses
 
     from provide.telemetry.config import TelemetryConfig
@@ -74,5 +74,5 @@ def test_json_logger_emits_msg_field(capsys: Any) -> None:
     output = captured.err.strip()
     assert output, "expected JSON output on stderr"
     record = json.loads(output)
-    assert record.get("message") == "log.output.parity", f"expected message field, got: {record}"
+    assert record.get("msg") == "log.output.parity", f"expected msg field, got: {record}"
     assert "event" not in record, "'event' key must not appear in JSON output"

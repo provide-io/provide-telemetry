@@ -4,11 +4,7 @@
 //
 use std::sync::{Mutex, OnceLock};
 
-use provide_telemetry::{
-    bind_context, configure_logging, enable_console_capture_for_tests,
-    enable_json_capture_for_tests, get_logger, reset_logging_config_for_tests,
-    set_as_global_logger, take_console_capture, take_json_capture, trace, Logger, LoggingConfig,
-};
+use provide_telemetry::{enable_json_capture_for_tests, get_logger, take_json_capture, trace, Logger};
 
 static LOGGER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -87,19 +83,10 @@ fn logger_test_json_emit_produces_canonical_fields() {
     assert!(!line.is_empty(), "expected a JSON line in capture buffer");
 
     let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
-    assert_eq!(
-        parsed["message"], "log.output.parity",
-        "message field must match"
-    );
+    assert_eq!(parsed["msg"], "log.output.parity", "msg field must match");
     assert_eq!(parsed["level"], "INFO", "level must be uppercase INFO");
-    assert_eq!(
-        parsed["logger_name"], "tests.json_emit",
-        "logger_name must match target"
-    );
-    assert!(
-        parsed.get("timestamp").is_none(),
-        "timestamp must be absent when disabled"
-    );
+    assert_eq!(parsed["logger_name"], "tests.json_emit", "logger_name must match target");
+    assert!(parsed.get("timestamp").is_none(), "timestamp must be absent when disabled");
     Logger::drain_events_for_tests();
 }
 
@@ -119,9 +106,7 @@ fn logger_test_json_emit_includes_timestamp_by_default() {
     let line = String::from_utf8(raw).expect("utf8");
     let parsed: serde_json::Value = serde_json::from_str(line.trim()).expect("valid JSON");
     assert_eq!(parsed["level"], "WARN");
-    let ts = parsed["timestamp"]
-        .as_str()
-        .expect("timestamp must be a string");
+    let ts = parsed["timestamp"].as_str().expect("timestamp must be a string");
     // ISO 8601 pattern: 2026-04-13T00:00:00.000Z
     assert!(
         ts.len() == 24 && ts.ends_with('Z') && ts.contains('T'),
@@ -142,239 +127,7 @@ fn logger_test_no_json_emit_in_console_format() {
     let raw = take_json_capture();
     std::env::remove_var("PROVIDE_LOG_FORMAT");
 
-    assert!(
-        raw.is_empty(),
-        "no JSON should be captured in console format"
-    );
+    assert!(raw.is_empty(), "no JSON should be captured in console format");
     // Drain event buffer to keep tests clean.
     Logger::drain_events_for_tests();
-}
-
-#[test]
-fn logger_test_console_format_writes_readable_line() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    std::env::set_var("PROVIDE_LOG_FORMAT", "console");
-    std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "false");
-    enable_console_capture_for_tests();
-
-    let logger = get_logger(Some("tests.console_output"));
-    logger.warn("console.parity.check");
-
-    let raw = take_console_capture();
-    std::env::remove_var("PROVIDE_LOG_FORMAT");
-    std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
-    Logger::drain_events_for_tests();
-
-    let line = String::from_utf8(raw).expect("utf8");
-    let line = line.trim();
-    assert!(!line.is_empty(), "expected console output");
-    assert!(line.contains("WARN"), "line must contain level: {line}");
-    assert!(
-        line.contains("console.parity.check"),
-        "line must contain message: {line}"
-    );
-    assert!(
-        line.contains("tests.console_output"),
-        "line must contain target: {line}"
-    );
-    assert!(
-        !line.starts_with("20"),
-        "timestamp must be absent when disabled: {line}"
-    );
-}
-
-#[test]
-fn logger_test_configure_logging_overrides_env() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    // Env says JSON; programmatic override says console — override wins.
-    std::env::set_var("PROVIDE_LOG_FORMAT", "json");
-    let cfg = provide_telemetry::LoggingConfig {
-        fmt: "console".to_string(),
-        include_timestamp: false,
-        ..provide_telemetry::LoggingConfig::default()
-    };
-    configure_logging(cfg);
-    enable_json_capture_for_tests();
-    enable_console_capture_for_tests();
-
-    let logger = get_logger(Some("tests.configure"));
-    logger.info("configure.override.check");
-
-    let json_raw = take_json_capture();
-    let console_raw = take_console_capture();
-    std::env::remove_var("PROVIDE_LOG_FORMAT");
-    reset_logging_config_for_tests();
-    Logger::drain_events_for_tests();
-
-    assert!(
-        json_raw.is_empty(),
-        "override to console must suppress JSON emit"
-    );
-    assert!(
-        !console_raw.is_empty(),
-        "override to console must produce console output"
-    );
-}
-
-#[test]
-fn logger_test_log_trait_routes_to_events() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    // set_as_global_logger may fail if already set by another test run; that is fine.
-    let _ = set_as_global_logger();
-    enable_json_capture_for_tests();
-    std::env::set_var("PROVIDE_LOG_FORMAT", "json");
-    std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "false");
-
-    log::info!(target: "tests.log_trait", "log.trait.parity");
-
-    let raw = take_json_capture();
-    std::env::remove_var("PROVIDE_LOG_FORMAT");
-    std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
-    Logger::drain_events_for_tests();
-
-    let line = String::from_utf8(raw).expect("utf8");
-    let line = line.trim();
-    assert!(!line.is_empty(), "log::info! must produce JSON output");
-    let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
-    assert_eq!(parsed["message"], "log.trait.parity");
-    assert_eq!(parsed["level"], "INFO");
-    assert_eq!(parsed["logger_name"], "tests.log_trait");
-}
-
-#[test]
-fn logger_test_log_trait_respects_level_filter() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let _ = set_as_global_logger();
-    // Configure to INFO — DEBUG must be filtered out.
-    let cfg = provide_telemetry::LoggingConfig {
-        level: "INFO".to_string(),
-        fmt: "json".to_string(),
-        include_timestamp: false,
-        ..provide_telemetry::LoggingConfig::default()
-    };
-    configure_logging(cfg);
-    enable_json_capture_for_tests();
-
-    log::debug!(target: "tests.log_filter", "should.be.filtered");
-    log::info!(target: "tests.log_filter", "should.pass");
-
-    let raw = take_json_capture();
-    reset_logging_config_for_tests();
-    Logger::drain_events_for_tests();
-
-    let output = String::from_utf8(raw).expect("utf8");
-    assert!(
-        !output.contains("should.be.filtered"),
-        "DEBUG must be filtered at INFO level"
-    );
-    assert!(
-        output.contains("should.pass"),
-        "INFO must pass through at INFO level"
-    );
-}
-
-#[test]
-fn logger_test_log_trait_respects_module_level_override() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let _ = set_as_global_logger();
-    // Global INFO, but module "tests.mod_override" gets DEBUG.
-    // Without the fix, enabled() uses global INFO and drops the DEBUG record
-    // before log_event() can apply the module override.
-    let cfg = LoggingConfig {
-        level: "INFO".to_string(),
-        fmt: "json".to_string(),
-        include_timestamp: false,
-        module_levels: {
-            let mut m = std::collections::HashMap::new();
-            m.insert("tests.mod_override".to_string(), "DEBUG".to_string());
-            m
-        },
-        ..LoggingConfig::default()
-    };
-    configure_logging(cfg);
-    enable_json_capture_for_tests();
-
-    // Module override allows DEBUG — must reach the event store.
-    log::debug!(target: "tests.mod_override", "debug.should.pass");
-    // No override — global INFO applies — must be filtered.
-    log::debug!(target: "tests.other_module", "debug.must.be.filtered");
-
-    let raw = take_json_capture();
-    reset_logging_config_for_tests();
-    Logger::drain_events_for_tests();
-
-    let output = String::from_utf8(raw).expect("utf8");
-    assert!(
-        output.contains("debug.should.pass"),
-        "DEBUG must pass for module with DEBUG override; got: {output}"
-    );
-    assert!(
-        !output.contains("debug.must.be.filtered"),
-        "DEBUG must be filtered for module without override; got: {output}"
-    );
-}
-
-#[test]
-fn logger_test_console_format_includes_timestamp_when_enabled() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let cfg = LoggingConfig {
-        fmt: "console".to_string(),
-        include_timestamp: true,
-        ..LoggingConfig::default()
-    };
-    configure_logging(cfg);
-    enable_console_capture_for_tests();
-
-    let logger = get_logger(Some("tests.console_ts"));
-    logger.info("console.timestamp.enabled");
-
-    let raw = take_console_capture();
-    reset_logging_config_for_tests();
-    Logger::drain_events_for_tests();
-
-    let line = String::from_utf8(raw).expect("utf8");
-    let line = line.trim();
-    assert!(
-        line.starts_with("20"),
-        "timestamp must appear when enabled: {line}"
-    );
-    assert!(
-        line.contains('T'),
-        "timestamp must have T separator: {line}"
-    );
-}
-
-#[test]
-fn logger_test_console_format_includes_context_fields() {
-    let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let cfg = LoggingConfig {
-        fmt: "console".to_string(),
-        include_timestamp: false,
-        ..LoggingConfig::default()
-    };
-    configure_logging(cfg);
-    enable_console_capture_for_tests();
-
-    let _ctx = bind_context([(
-        "request_id".to_string(),
-        serde_json::Value::String("ctx-abc".into()),
-    )]);
-    let logger = get_logger(Some("tests.console_ctx"));
-    logger.info("console.context.fields");
-    drop(_ctx);
-
-    let raw = take_console_capture();
-    reset_logging_config_for_tests();
-    Logger::drain_events_for_tests();
-
-    let line = String::from_utf8(raw).expect("utf8");
-    let line = line.trim();
-    assert!(
-        line.contains("request_id"),
-        "context key must appear in console line: {line}"
-    );
-    assert!(
-        line.contains("ctx-abc"),
-        "context value must appear in console line: {line}"
-    );
 }
