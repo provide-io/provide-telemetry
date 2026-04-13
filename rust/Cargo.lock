@@ -842,6 +842,7 @@ version = "0.3.0"
 dependencies = [
  "base64",
  "hmac",
+ "log",
  "mutants",
  "opentelemetry",
  "opentelemetry-otlp",

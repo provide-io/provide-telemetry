@@ -45,8 +45,8 @@ pub use classification::{
     ClassificationPolicy, ClassificationRule, DataClass,
 };
 pub use config::{
-    redact_config, BackpressureConfig, ExporterPolicyConfig, RuntimeOverrides, SLOConfig,
-    SamplingConfig, SecurityConfig, TelemetryConfig,
+    redact_config, BackpressureConfig, ExporterPolicyConfig, LoggingConfig, RuntimeOverrides,
+    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
 };
 #[cfg(feature = "governance")]
 pub use consent::{
@@ -60,7 +60,9 @@ pub use errors::{ConfigurationError, EventSchemaError, TelemetryError};
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
 pub use logger::{
-    buffer_logger, enable_json_capture_for_tests, get_logger, logger, null_logger,
+    buffer_logger, configure_logging, enable_console_capture_for_tests,
+    enable_json_capture_for_tests, get_logger, logger, null_logger,
+    reset_logging_config_for_tests, set_as_global_logger, take_console_capture,
     take_json_capture, BufferLogger, LogEvent, Logger, NullLogger,
 };
 pub use metrics::{
