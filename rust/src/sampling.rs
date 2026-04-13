@@ -85,16 +85,9 @@ pub fn should_sample(signal: Signal, key: Option<&str>) -> Result<bool, Telemetr
         return Ok(false);
     }
 
-    let keep = key
-        .map(|value| {
-            let total = value
-                .as_bytes()
-                .iter()
-                .fold(0u64, |acc, byte| acc + u64::from(*byte));
-            let normalized = (total % 100) as f64 / 100.0;
-            normalized < rate
-        })
-        .unwrap_or(rate >= 0.5);
+    // Probabilistic sampling: uniform random < rate, regardless of key.
+    // A key may select an override rate but the sampling decision is always random.
+    let keep = rand::random::<f64>() < rate;
     if !keep {
         increment_dropped(signal, 1);
     }
@@ -154,34 +147,47 @@ mod tests {
     }
 
     #[test]
-    fn sampling_test_keyed_hashing_hits_threshold_edges() {
+    fn sampling_test_probabilistic_rate_half_produces_roughly_half() {
         let _guard = acquire_test_state_lock();
         _reset_sampling_for_tests();
         _reset_health_for_tests();
-        let before = get_health_snapshot().dropped_logs;
+
         set_sampling_policy(
             Signal::Logs,
             SamplingPolicy {
                 default_rate: 0.5,
-                overrides: BTreeMap::from([("edge".to_string(), 0.5)]),
+                overrides: BTreeMap::from([("override_key".to_string(), 0.5)]),
             },
         )
         .expect("policy should set");
 
-        let after_first_keep = get_health_snapshot().dropped_logs;
-        assert!(should_sample(Signal::Logs, Some("1")).expect("sampling should work"));
-        assert_eq!(get_health_snapshot().dropped_logs, after_first_keep);
+        // Over 10_000 trials at rate 0.5, expect 40–60% sampled (probabilistic).
+        let trials = 10_000;
+        let kept_no_key = (0..trials)
+            .filter(|_| should_sample(Signal::Logs, None).expect("sampling should work"))
+            .count();
+        assert!(
+            kept_no_key >= 4_000 && kept_no_key <= 6_000,
+            "rate=0.5 no-key: {kept_no_key}/10000 outside [4000,6000]"
+        );
 
-        assert!(!should_sample(Signal::Logs, Some("11")).expect("sampling should work"));
-        let after_first_drop = get_health_snapshot().dropped_logs;
-        assert_eq!(after_first_drop - before, 1);
+        // Keyed calls look up the override rate but are still probabilistic.
+        let kept_keyed = (0..trials)
+            .filter(|_| {
+                should_sample(Signal::Logs, Some("override_key")).expect("sampling should work")
+            })
+            .count();
+        assert!(
+            kept_keyed >= 4_000 && kept_keyed <= 6_000,
+            "rate=0.5 keyed: {kept_keyed}/10000 outside [4000,6000]"
+        );
 
-        assert!(!should_sample(Signal::Logs, Some("2")).expect("sampling should work"));
-        let after_second_drop = get_health_snapshot().dropped_logs;
-        assert_eq!(after_second_drop - before, 2);
-
-        assert!(should_sample(Signal::Logs, None).expect("sampling should work"));
-        let after = get_health_snapshot().dropped_logs;
-        assert_eq!(after - before, 2);
+        // dropped_logs should equal sum of dropped (not-kept) events.
+        let expected_dropped = (trials - kept_no_key) + (trials - kept_keyed);
+        assert_eq!(
+            get_health_snapshot().dropped_logs as usize,
+            expected_dropped,
+            "dropped counter mismatch"
+        );
     }
 }
