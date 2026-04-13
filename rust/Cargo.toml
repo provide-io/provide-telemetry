@@ -73,5 +73,8 @@ name = "emit_log_probe"
 name = "contract_probe"
 
 [[example]]
+name = "emit_log_probe"
+
+[[example]]
 name = "telemetry_14_data_governance"
 required-features = ["governance"]
