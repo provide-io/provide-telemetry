@@ -8,8 +8,8 @@
 #![cfg(not(feature = "governance"))]
 
 use provide_telemetry::{
-    counter, get_health_snapshot, get_logger, replace_pii_rules, sanitize_payload,
-    setup_telemetry, shutdown_telemetry, PIIMode, PIIRule,
+    counter, get_health_snapshot, get_logger, replace_pii_rules, sanitize_payload, setup_telemetry,
+    shutdown_telemetry, PIIMode, PIIRule,
 };
 use serde_json::json;
 
@@ -46,7 +46,10 @@ fn no_governance_pii_sanitize_redacts_sensitive_keys() {
     let result = sanitize_payload(&payload, true, 3);
     assert_eq!(result["password"], "***", "password must be redacted");
     assert_eq!(result["token"], "***", "token must be redacted");
-    assert_eq!(result["user"], "alice", "non-sensitive key must pass through");
+    assert_eq!(
+        result["user"], "alice",
+        "non-sensitive key must pass through"
+    );
     // No __password__class annotation without governance
     assert!(
         result.get("__password__class").is_none(),
