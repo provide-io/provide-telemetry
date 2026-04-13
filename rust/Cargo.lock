@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "provide-telemetry"
-version = "0.2.6"
+version = "0.3.0"
 dependencies = [
  "base64",
  "hmac",
