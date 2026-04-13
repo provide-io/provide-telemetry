@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
+// Cross-language distributed tracing E2E server.
+//
+// Uses provide-telemetry's setup_telemetry() for all signal setup, then creates
+// child spans via the global OTel tracer API (which setup_telemetry installs).
+// Accepts W3C traceparent from incoming requests and links child spans correctly.
+//
+// Required env vars:
+//   PROVIDE_TELEMETRY_SERVICE_NAME — e.g. rust-e2e-backend
+//   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT or OTEL_EXPORTER_OTLP_ENDPOINT
+//   OTEL_EXPORTER_OTLP_HEADERS — Authorization=Basic <base64>
 
 #[cfg(feature = "otel")]
 use std::collections::HashMap;
@@ -15,11 +25,9 @@ use std::net::TcpListener;
 #[cfg(feature = "otel")]
 use opentelemetry::global;
 #[cfg(feature = "otel")]
-use opentelemetry::trace::{Span, SpanKind, Tracer as _, TracerProvider as _};
-
+use opentelemetry::propagation::Extractor;
 #[cfg(feature = "otel")]
-#[path = "support/e2e_shared.rs"]
-mod e2e_shared;
+use opentelemetry::trace::{Span as _, SpanKind, Tracer as _};
 
 #[cfg(feature = "otel")]
 fn main() {
@@ -42,8 +50,14 @@ fn run() -> Result<(), String> {
         _ => 18765,
     };
 
-    let provider = e2e_shared::init_tracer_provider("rust-e2e-backend")?;
-    let tracer = provider.tracer("rust.e2e.backend");
+    // Use provide-telemetry's setup_telemetry() which installs the tracing subscriber,
+    // registers the OTel TracerProvider globally, and sets the W3C propagator.
+    provide_telemetry::setup_telemetry()
+        .map_err(|err| format!("setup_telemetry failed: {err}"))?;
+
+    // Global tracer is now available — setup_telemetry() calls set_tracer_provider().
+    let tracer = global::tracer("rust.e2e.backend");
+
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|err| format!("failed to bind server: {err}"))?;
 
@@ -56,17 +70,15 @@ fn run() -> Result<(), String> {
             "/health" => respond(&mut stream, 200, b"ok")?,
             "/shutdown" => {
                 respond(&mut stream, 200, b"ok")?;
-                provider
-                    .force_flush()
-                    .map_err(|err| format!("force flush failed: {err}"))?;
-                provider
-                    .shutdown()
+                provide_telemetry::shutdown_telemetry()
                     .map_err(|err| format!("shutdown failed: {err}"))?;
                 return Ok(());
             }
             "/traced" => {
+                // Extract W3C traceparent from incoming headers.
+                // setup_telemetry() installed the W3C TraceContextPropagator globally.
                 let parent = global::get_text_map_propagator(|propagator| {
-                    propagator.extract(&e2e_shared::HeaderExtractor::new(&headers))
+                    propagator.extract(&MapExtractor::new(&headers))
                 });
                 let mut span = tracer
                     .span_builder("rust.e2e.cross_language_handler")
@@ -80,6 +92,32 @@ fn run() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+// Minimal header extractor for the OTel propagation API.
+#[cfg(feature = "otel")]
+struct MapExtractor<'a> {
+    headers: &'a HashMap<String, String>,
+}
+
+#[cfg(feature = "otel")]
+impl<'a> MapExtractor<'a> {
+    fn new(headers: &'a HashMap<String, String>) -> Self {
+        Self { headers }
+    }
+}
+
+#[cfg(feature = "otel")]
+impl Extractor for MapExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.headers
+            .get(&key.to_ascii_lowercase())
+            .map(String::as_str)
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.headers.keys().map(String::as_str).collect()
+    }
 }
 
 #[cfg(feature = "otel")]

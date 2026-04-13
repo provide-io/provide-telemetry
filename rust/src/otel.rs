@@ -45,9 +45,13 @@ pub(crate) fn build_otel_layer(
 
     let provider = SdkTracerProvider::builder()
         .with_simple_exporter(exporter)
+        .with_resource(build_resource(config))
         .build();
 
     let tracer = opentelemetry::trace::TracerProvider::tracer(&provider, "provide-telemetry");
+
+    // Register as the global OTel TracerProvider so opentelemetry::global::tracer() works.
+    opentelemetry::global::set_tracer_provider(provider.clone());
 
     // Store provider so shutdown_otel() can flush and close it
     OTEL_PROVIDER.get_or_init(|| std::sync::Mutex::new(Some(provider)));
@@ -84,8 +88,15 @@ pub(crate) fn build_otel_log_layer(
         .build()
         .ok()?;
 
+    // Use batch exporter rather than simple so emit() is non-blocking.
+    // SimpleLogProcessor calls the exporter inline; if the OpenTelemetryTracingBridge
+    // forwards a tracing event emitted from inside the PeriodicReader's tokio thread,
+    // the inline blocking reqwest call panics ("Cannot drop a runtime in a context where
+    // blocking is not allowed"). BatchLogProcessor queues records and exports them on a
+    // separate std::thread that is safe for blocking I/O.
     let provider = SdkLoggerProvider::builder()
-        .with_simple_exporter(exporter)
+        .with_batch_exporter(exporter)
+        .with_resource(build_resource(config))
         .build();
 
     // Store provider so shutdown_otel() can flush and close it
@@ -102,6 +113,27 @@ pub(crate) fn build_otel_log_layer(
     _config: &TelemetryConfig,
 ) -> Option<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>> {
     None
+}
+
+// Build an OTel Resource from the active TelemetryConfig.
+// All three providers (trace, log, metric) use this so that service.name,
+// service.version, deployment.environment and the SDK telemetry fields
+// (telemetry.sdk.language/name/version) appear consistently in every signal
+// exported to OpenObserve.
+//
+// Resource::builder() includes SdkProvidedResourceDetector and
+// TelemetryResourceDetector by default, which populate the sdk.* attributes.
+// Service attributes from config override any env-var defaults.
+#[cfg(feature = "otel")]
+fn build_resource(config: &TelemetryConfig) -> opentelemetry_sdk::Resource {
+    use opentelemetry::KeyValue;
+    use opentelemetry_sdk::Resource;
+
+    Resource::builder()
+        .with_service_name(config.service_name.clone())
+        .with_attribute(KeyValue::new("service.version", config.version.clone()))
+        .with_attribute(KeyValue::new("deployment.environment", config.environment.clone()))
+        .build()
 }
 
 #[cfg(feature = "otel")]
@@ -147,6 +179,7 @@ pub(crate) fn setup_otel_meter(config: &TelemetryConfig) -> Result<(), Telemetry
     let reader = PeriodicReader::builder(exporter).build();
     let provider = SdkMeterProvider::builder()
         .with_reader(reader)
+        .with_resource(build_resource(config))
         .build();
 
     // Set as the global meter provider so opentelemetry::global::meter() works
@@ -160,6 +193,12 @@ pub(crate) fn setup_otel_meter(config: &TelemetryConfig) -> Result<(), Telemetry
 
 #[cfg(feature = "otel")]
 pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
+    // Install the W3C TraceContext propagator so that
+    // opentelemetry::global::get_text_map_propagator() works for traceparent
+    // injection/extraction in e2e and cross-language scenarios.
+    opentelemetry::global::set_text_map_propagator(
+        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+    );
     // Provider was already built in build_otel_layer; set up meter provider here.
     setup_otel_meter(config)?;
     OTEL_INSTALLED.store(true, Ordering::SeqCst);
