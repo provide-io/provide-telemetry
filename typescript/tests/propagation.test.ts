@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   _disablePropagationALSForTest,
   _resetPropagationForTests,
@@ -588,6 +588,7 @@ describe('isFallbackMode — ALS availability check', () => {
 });
 
 describe('propagation — fallback warning emitted once', () => {
+  beforeEach(() => _resetPropagationForTests());
   afterEach(() => {
     vi.restoreAllMocks();
     _resetPropagationForTests();
@@ -630,6 +631,32 @@ describe('propagation — fallback warning emitted once', () => {
       bindPropagationContext({});
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Concurrent requests will share propagation context'),
+      );
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+
+  it('warning message mentions falling back to module-level context store (kills StringLiteral mutation on line 66)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({});
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('falling back to module-level context store'),
+      );
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+  });
+
+  it('warning message mentions unsafe production async environments (kills StringLiteral mutation on line 68)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({});
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('This is unsafe in production async environments'),
       );
     } finally {
       _restorePropagationALSForTest(saved);
