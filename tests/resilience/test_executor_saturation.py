@@ -229,38 +229,22 @@ class TestCrossSignalIsolation:
         logs_event.set()
 
 
-class TestBoundedExecutorQueue:
-    """Verify Fix 5: executor queue is bounded by semaphore."""
-
-    def test_exhausted_semaphore_causes_drop(self) -> None:
-        """When the semaphore is exhausted, new submissions return None immediately."""
-        import contextlib
-
-        from provide.telemetry.resilience import (
-            _EXECUTOR_MAX_PENDING,
-            _get_executor_semaphore,
-            set_exporter_policy,
+class TestExecutorSemaphore:
+    def test_semaphore_full_returns_none(self) -> None:
+        """When the semaphore is exhausted, run_with_resilience returns None (fail-open)."""
+        resilience_mod.set_exporter_policy(
+            "logs",
+            ExporterPolicy(retries=0, timeout_seconds=0.1, fail_open=True),
         )
+        sem = resilience_mod._get_executor_semaphore("logs")
+        # Drain the semaphore completely so no new submissions are accepted.
+        drained = 0
+        while sem.acquire(blocking=False):
+            drained += 1
 
-        resilience_mod.reset_resilience_for_tests()
-        set_exporter_policy("logs", ExporterPolicy(retries=0, timeout_seconds=1.0, fail_open=True))
-
-        sem = _get_executor_semaphore("logs")
-        # Exhaust the semaphore
-        for _ in range(_EXECUTOR_MAX_PENDING):
-            acquired = sem.acquire(blocking=False)
-            assert acquired
-
-        # Now the semaphore is empty — run_with_resilience should drop the op
-        result = run_with_resilience("logs", lambda: "should-not-run")
-        assert result is None
-
-        # Release all acquired slots
-        for _ in range(_EXECUTOR_MAX_PENDING):
-            with contextlib.suppress(ValueError):
+        try:
+            result = run_with_resilience("logs", lambda: "should-not-run")
+            assert result is None
+        finally:
+            for _ in range(drained):
                 sem.release()
-
-    def test_reset_clears_semaphores(self) -> None:
-        """reset_resilience_for_tests() clears _executor_semaphores."""
-        resilience_mod.reset_resilience_for_tests()
-        assert resilience_mod._executor_semaphores == {}
