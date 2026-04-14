@@ -13,6 +13,7 @@ import pytest
 
 from provide.telemetry import pii as pii_mod
 from provide.telemetry import propagation as propagation_mod
+from provide.telemetry import runtime as runtime_mod
 from provide.telemetry.config import SecurityConfig, TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.logger.processors import harden_input, sanitize_sensitive_fields
@@ -22,6 +23,7 @@ from provide.telemetry.pii import _detect_secret_in_value, sanitize_payload
 @pytest.fixture(autouse=True)
 def _reset_pii() -> None:
     pii_mod.reset_pii_rules_for_tests()
+    runtime_mod.reset_runtime_for_tests()
 
 
 # ---------------------------------------------------------------------------
@@ -489,8 +491,7 @@ class TestSanitizeSensitiveFieldsProcessor:
         processor = sanitize_sensitive_fields(enabled=True, max_depth=1)
         event: dict[str, Any] = {"level1": {"password": "deep_secret"}}
         result = processor(None, "", event)
-        # At max_depth=1, the nested dict should not be traversed
-        assert result["level1"]["password"] == "deep_secret"  # pragma: allowlist secret
+        assert result["level1"]["password"] == "deep_secret"  # depth=1: not traversed  # pragma: allowlist secret
 
     def test_processor_with_max_depth_default_traverses(self) -> None:
         processor = sanitize_sensitive_fields(enabled=True, max_depth=8)

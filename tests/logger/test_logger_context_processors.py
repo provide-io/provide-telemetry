@@ -17,6 +17,14 @@ from provide.telemetry.schema.events import EventSchemaError
 from provide.telemetry.tracing.context import set_trace_context
 
 
+@pytest.fixture(autouse=True)
+def _reset_runtime() -> None:
+    """Reset active runtime config so processor tests use factory-captured values."""
+    from provide.telemetry import runtime as runtime_mod
+
+    runtime_mod.reset_runtime_for_tests()
+
+
 def test_context_unbind_missing_key_is_noop_and_keeps_dict_state() -> None:
     clear_context()
     bind_context(request_id="rid")
@@ -145,3 +153,17 @@ def test_save_context_preserves_current_values() -> None:
     assert get_context()["user"] == "bob"
     reset_context(token)
     assert get_context()["user"] == "alice"
+
+
+def test_get_active_config_returns_none_when_runtime_absent() -> None:
+    """Covers the `return None` branch when runtime module is not in sys.modules."""
+    import sys
+
+    from provide.telemetry.logger.processors import _get_active_config
+
+    saved = sys.modules.pop("provide.telemetry.runtime", None)
+    try:
+        assert _get_active_config() is None
+    finally:
+        if saved is not None:
+            sys.modules["provide.telemetry.runtime"] = saved

@@ -88,9 +88,9 @@ class TestApplyDefaultRedactionBoundaries:
         result = _apply_default_sensitive_key_redaction(node, node, depth=1, max_depth=1)
         assert result["password"] == "secret"  # pragma: allowlist secret
 
-    def test_none_rule_targeted_keys(self) -> None:
+    def test_none_rule_targeted_paths(self) -> None:
         node: dict[str, Any] = {"password": "secret"}  # pragma: allowlist secret
-        result = _apply_default_sensitive_key_redaction(node, node, rule_targeted_keys=None)
+        result = _apply_default_sensitive_key_redaction(node, node, rule_targeted_paths=None)
         assert result["password"] == "***"
 
     def test_dict_recursion_depth_1_max_3(self) -> None:
@@ -183,5 +183,6 @@ class TestListItemReceiptHookPropagatedToNestedItems:
         original = [{"token": "some_value"}]
         _apply_default_sensitive_key_redaction(node, original, receipt_hook=hook)
         assert len(calls) == 1, "receipt_hook must be forwarded into recursion for non-secret list items"
-        assert calls[0][0] == "token"
+        # Path includes wildcard segment for list position: "*.token"
+        assert calls[0][0] == "*.token"
         assert calls[0][1] == "redact"
