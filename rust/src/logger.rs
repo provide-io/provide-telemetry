@@ -39,6 +39,49 @@ pub fn take_json_capture() -> Vec<u8> {
         .unwrap_or_default()
 }
 
+/// Optional capture buffer used by tests to intercept console log lines.
+static CONSOLE_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Enable in-process capture of console log lines (test helper).
+pub fn enable_console_capture_for_tests() {
+    *CONSOLE_CAPTURE.lock().expect("console capture lock poisoned") = Some(Vec::new());
+}
+
+/// Drain and return captured console log lines, then disable capture.
+pub fn take_console_capture() -> Vec<u8> {
+    CONSOLE_CAPTURE
+        .lock()
+        .expect("console capture lock poisoned")
+        .take()
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// Programmatic config override — highest-priority, overrides env vars
+// ---------------------------------------------------------------------------
+
+static LOGGING_CONFIG_OVERRIDE: LazyLock<Mutex<Option<crate::config::LoggingConfig>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Override the active logging configuration programmatically.
+///
+/// Takes precedence over both `setup_telemetry()` config and env vars.
+/// Useful when the caller wants to set level/format at startup in code
+/// rather than relying solely on environment variables.
+pub fn configure_logging(config: crate::config::LoggingConfig) {
+    *LOGGING_CONFIG_OVERRIDE
+        .lock()
+        .expect("logging config override lock poisoned") = Some(config);
+}
+
+/// Clear the programmatic logging override (test helper).
+pub fn reset_logging_config_for_tests() {
+    *LOGGING_CONFIG_OVERRIDE
+        .lock()
+        .expect("logging config override lock poisoned") = None;
+}
+
 /// Format Unix epoch seconds + milliseconds as ISO 8601 UTC.
 ///
 /// Uses the civil-calendar algorithm from
@@ -67,10 +110,20 @@ fn now_iso8601() -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}.{ms:03}Z")
 }
 
-/// Read the active logging config, falling back to env-var parse when
-/// `setup_telemetry()` has not yet been called (mirrors Python's lazy-configure
-/// behaviour).
+/// Read the active logging config.
+///
+/// Priority order:
+/// 1. Programmatic override via `configure_logging()` — highest priority.
+/// 2. Runtime config installed by `setup_telemetry()`.
+/// 3. Fresh parse of environment variables — lowest priority / fallback.
 fn active_logging_config() -> crate::config::LoggingConfig {
+    if let Some(cfg) = LOGGING_CONFIG_OVERRIDE
+        .lock()
+        .expect("logging config override lock poisoned")
+        .clone()
+    {
+        return cfg;
+    }
     get_runtime_config()
         .map(|c| c.logging.clone())
         .unwrap_or_else(|| {
@@ -150,6 +203,50 @@ fn emit_if_json(event: &LogEvent) {
     }
 }
 
+/// Format a human-readable console line for this event.
+fn format_console_line(event: &LogEvent, include_timestamp: bool) -> String {
+    let mut s = String::new();
+    if include_timestamp {
+        s.push_str(&now_iso8601());
+        s.push_str("  ");
+    }
+    s.push_str(&format!("{:<5}", event.level));
+    s.push_str("  ");
+    s.push_str(&event.target);
+    s.push_str("  ");
+    s.push_str(&event.message);
+    for (k, v) in &event.context {
+        s.push_str(&format!("  {k}={v}"));
+    }
+    s
+}
+
+/// If format is not JSON, emit a human-readable console line for this event.
+fn emit_if_console(event: &LogEvent) {
+    let logging = active_logging_config();
+    if !logging.fmt.eq_ignore_ascii_case("json") {
+        let line = format_console_line(event, logging.include_timestamp);
+        let mut capture = CONSOLE_CAPTURE.lock().expect("console capture lock poisoned");
+        if let Some(buf) = capture.as_mut() {
+            buf.extend_from_slice(line.as_bytes());
+            buf.push(b'\n');
+        } else {
+            eprintln!("{line}");
+        }
+    }
+}
+
+/// Shared core: build an event, emit it (JSON or console), buffer it.
+fn log_event(level: &str, target: &str, message: &str) {
+    let event = new_event(target, level, message);
+    emit_if_json(&event);
+    emit_if_console(&event);
+    let mut buf = events().lock().expect("logger event lock poisoned");
+    if buf.len() < MAX_FALLBACK_EVENTS {
+        buf.push(event);
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogEvent {
     pub level: String,
@@ -224,12 +321,7 @@ impl Logger {
     }
 
     pub fn log(&self, level: &str, message: &str) {
-        let event = new_event(&self.target, level, message);
-        emit_if_json(&event);
-        let mut buf = events().lock().expect("logger event lock poisoned");
-        if buf.len() < MAX_FALLBACK_EVENTS {
-            buf.push(event);
-        }
+        log_event(level, &self.target, message);
     }
 
     pub fn drain_events_for_tests() -> Vec<LogEvent> {
@@ -312,4 +404,52 @@ pub fn null_logger(name: Option<&str>) -> NullLogger {
 
 pub fn buffer_logger(name: Option<&str>) -> BufferLogger {
     BufferLogger::new(name)
+}
+
+// ---------------------------------------------------------------------------
+// log::Log trait — routes log::info!() / log::debug!() etc. through here
+// ---------------------------------------------------------------------------
+
+fn level_str_to_log_filter(level: &str) -> log::LevelFilter {
+    match level.to_uppercase().as_str() {
+        "TRACE" => log::LevelFilter::Trace,
+        "DEBUG" => log::LevelFilter::Debug,
+        "WARN" | "WARNING" => log::LevelFilter::Warn,
+        "ERROR" | "CRITICAL" => log::LevelFilter::Error,
+        _ => log::LevelFilter::Info,
+    }
+}
+
+impl log::Log for Logger {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        let config = active_logging_config();
+        metadata.level() <= level_str_to_log_filter(&config.level)
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let level = match record.level() {
+            log::Level::Error => "ERROR",
+            log::Level::Warn => "WARN",
+            log::Level::Info => "INFO",
+            log::Level::Debug => "DEBUG",
+            log::Level::Trace => "TRACE",
+        };
+        log_event(level, record.target(), &record.args().to_string());
+    }
+
+    fn flush(&self) {}
+}
+
+/// Register the package-level logger as the global `log` crate backend.
+///
+/// After this call all `log::info!()`, `log::debug!()` etc. macros in any
+/// crate that depends on `log` will be routed through provide-telemetry.
+/// Returns `Err` if a global logger has already been installed.
+pub fn set_as_global_logger() -> Result<(), log::SetLoggerError> {
+    log::set_logger(&*logger)?;
+    log::set_max_level(log::LevelFilter::Trace);
+    Ok(())
 }
