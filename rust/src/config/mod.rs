@@ -35,6 +35,15 @@ pub struct LoggingConfig {
     /// Controlled by `PROVIDE_LOG_INCLUDE_TIMESTAMP` (default: true).
     pub include_timestamp: bool,
     pub otlp_headers: HashMap<String, String>,
+    /// OTLP endpoint URL for logs export. Falls back to the shared
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+    /// is unset. `None` means no endpoint configured.
+    pub otlp_endpoint: Option<String>,
+    /// OTLP transport protocol for logs. Empty string means default
+    /// (resolved at exporter-build time to `http/protobuf`). Values:
+    /// `http/protobuf`, `http/json`, `grpc` (the latter requires the
+    /// `otel-grpc` cargo feature).
+    pub otlp_protocol: String,
 }
 
 impl Default for LoggingConfig {
@@ -44,6 +53,8 @@ impl Default for LoggingConfig {
             fmt: "console".to_string(),
             include_timestamp: true,
             otlp_headers: HashMap::new(),
+            otlp_endpoint: None,
+            otlp_protocol: String::new(),
         }
     }
 }
@@ -55,6 +66,12 @@ pub struct TracingConfig {
     /// Combined with sampling.traces_rate via min() in apply_policies.
     pub sample_rate: f64,
     pub otlp_headers: HashMap<String, String>,
+    /// OTLP endpoint URL for traces export. Falls back to the shared
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+    /// is unset.
+    pub otlp_endpoint: Option<String>,
+    /// OTLP transport protocol for traces. See `LoggingConfig::otlp_protocol`.
+    pub otlp_protocol: String,
 }
 
 impl Default for TracingConfig {
@@ -63,6 +80,8 @@ impl Default for TracingConfig {
             enabled: true,
             sample_rate: 1.0,
             otlp_headers: HashMap::new(),
+            otlp_endpoint: None,
+            otlp_protocol: String::new(),
         }
     }
 }
@@ -71,6 +90,12 @@ impl Default for TracingConfig {
 pub struct MetricsConfig {
     pub enabled: bool,
     pub otlp_headers: HashMap<String, String>,
+    /// OTLP endpoint URL for metrics export. Falls back to the shared
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
+    /// is unset.
+    pub otlp_endpoint: Option<String>,
+    /// OTLP transport protocol for metrics. See `LoggingConfig::otlp_protocol`.
+    pub otlp_protocol: String,
 }
 
 impl Default for MetricsConfig {
@@ -78,6 +103,8 @@ impl Default for MetricsConfig {
         Self {
             enabled: true,
             otlp_headers: HashMap::new(),
+            otlp_endpoint: None,
+            otlp_protocol: String::new(),
         }
     }
 }
@@ -215,6 +242,8 @@ impl TelemetryConfig {
     pub fn from_map(env: &HashMap<String, String>) -> Result<Self, ConfigurationError> {
         let shared_headers = parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"]))?
             .unwrap_or_default();
+        let shared_endpoint = env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+        let shared_protocol = env_value(env, &["OTEL_EXPORTER_OTLP_PROTOCOL"]).unwrap_or("");
 
         Ok(Self {
             service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])
@@ -253,6 +282,12 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
+                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
+                    .or(shared_endpoint)
+                    .map(str::to_string),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
             },
             tracing: TracingConfig {
                 enabled: parse_bool(
@@ -270,6 +305,12 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_TRACES_HEADERS"],
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
+                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
+                    .or(shared_endpoint)
+                    .map(str::to_string),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
             },
             metrics: MetricsConfig {
                 enabled: parse_bool(
@@ -282,6 +323,12 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_METRICS_HEADERS"],
                 ))?
                 .unwrap_or(shared_headers),
+                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
+                    .or(shared_endpoint)
+                    .map(str::to_string),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
             },
             event_schema: SchemaConfig::default(),
             sampling: SamplingConfig {
