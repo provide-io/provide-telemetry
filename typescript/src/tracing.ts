@@ -18,6 +18,9 @@ import {
 import { _emittedField, _incrementHealth } from './health';
 import { getActiveOtelContext } from './propagation';
 import { randomHex } from './hash';
+import { shouldAllow } from './consent';
+import { shouldSample } from './sampling';
+import { tryAcquire, release } from './backpressure';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -211,7 +214,6 @@ export function withTrace<T>(name: string, fn: () => T): T {
   // Stryker disable next-line StringLiteral: 'traces' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
   if (!shouldAllow('traces')) return fn();
   if (!shouldSample('traces', name)) return fn();
-  // Stryker disable next-line StringLiteral: 'traces' vs '' — both return a ticket when all queues are unbounded (default); differentiating requires a bounded-only-traces test that checks tracesEmitted
   const ticket = tryAcquire('traces');
   if (!ticket) return fn();
 
@@ -225,25 +227,33 @@ export function withTrace<T>(name: string, fn: () => T): T {
   try {
     const activeCtx = getActiveOtelContext();
     if (activeCtx) {
-      return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
-        tracer.startActiveSpan(name, (span: Span) => {
-          // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-          /* v8 ignore start: noop-span false branch + real-span return are unreachable without a registered OTel provider */
-          if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-          return _spanHandler(fn, span);
-          /* v8 ignore stop */
-        }),
-      );
+      try {
+        return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
+          tracer.startActiveSpan(name, (span: Span) => {
+            // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+            /* v8 ignore start: noop-span false branch + real-span return are unreachable without a registered OTel provider */
+            if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+            return _spanHandler(fn, span);
+            /* v8 ignore stop */
+          }),
+        );
+      } finally {
+        release(ticket);
+      }
     }
   } catch {
     // getActiveOtelContext() threw — graceful degradation, fall through to default behaviour.
   }
 
-  return tracer.startActiveSpan(name, (span: Span) => {
-    // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-    if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-    return _spanHandler(fn, span);
-  });
+  try {
+    return tracer.startActiveSpan(name, (span: Span) => {
+      // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+      if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+      return _spanHandler(fn, span);
+    });
+  } finally {
+    release(ticket);
+  }
 }
 
 /**
