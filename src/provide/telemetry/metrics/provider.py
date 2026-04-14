@@ -26,6 +26,7 @@ _meter_provider: Any | None = None
 _meter_lock = threading.Lock()
 _meter_global_set: bool = False  # True once we called set_meter_provider()
 _setup_generation: int = 0
+_metrics_explicitly_disabled: bool = False
 
 # Baseline captured inside setup_metrics() (not at module load) so that
 # external providers installed before import are not mistaken for the default.
@@ -48,8 +49,11 @@ def _load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
 def setup_metrics(config: TelemetryConfig) -> None:
     global _meter_provider, _meter_global_set
     global _baseline_meter_provider, _baseline_captured
+    global _metrics_explicitly_disabled
     if not config.metrics.enabled:
+        _metrics_explicitly_disabled = True
         return
+    _metrics_explicitly_disabled = False
     from provide.telemetry.resilience import _is_running_in_event_loop
 
     if _is_running_in_event_loop():  # pragma: no mutate
@@ -133,7 +137,12 @@ def _has_real_meter_provider(otel_metrics: Any) -> bool:
 
 
 def get_meter(name: str | None = None) -> Any | None:
-    if _meter_provider is None:
+    if _metrics_explicitly_disabled:
+        return None
+    otel_metrics = _load_otel_metrics_api()
+    if otel_metrics is None:
+        return None
+    if not _has_real_meter_provider(otel_metrics):
         return None
     meter_name = "provide.telemetry" if name is None else name
     if _meter_provider is not None:
@@ -151,6 +160,7 @@ def get_meter(name: str | None = None) -> Any | None:
 def _set_meter_for_test(meter: Any | None) -> None:
     global _meter_provider, _meter_global_set, _setup_generation
     global _baseline_meter_provider, _baseline_captured
+    global _metrics_explicitly_disabled
     _meters.clear()
     if meter is not None:
         _meters["provide.telemetry"] = meter
@@ -159,6 +169,7 @@ def _set_meter_for_test(meter: Any | None) -> None:
     _setup_generation = 0
     _baseline_meter_provider = None
     _baseline_captured = False
+    _metrics_explicitly_disabled = False
 
 
 def shutdown_metrics() -> None:

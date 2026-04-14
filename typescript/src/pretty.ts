@@ -33,7 +33,7 @@ const LEVEL_NAMES: Record<number, string> = {
 const LEVEL_PAD = 6; // "fatal" = 5, pad to 6
 
 // Keys to exclude from the key=value tail (already rendered or internal)
-const SKIP_KEYS = new Set(['level', 'time', 'msg', 'event', 'v', 'pid', 'hostname']);
+const SKIP_KEYS = new Set(['level', 'time', 'message', 'event', 'v', 'pid', 'hostname']);
 
 /**
  * Detect whether stdout supports color.
@@ -76,7 +76,7 @@ export function formatPretty(obj: Record<string, unknown>, colors: boolean): str
   }
 
   // 3. Event / message
-  const event = obj['event'] ?? obj['msg'] ?? '';
+  const event = obj['event'] ?? obj['message'] ?? '';
   parts.push(String(event));
 
   // 4. Remaining key=value pairs (sorted, skip internal keys)

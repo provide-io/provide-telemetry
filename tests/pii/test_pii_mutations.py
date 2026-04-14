@@ -401,16 +401,16 @@ class TestApplyRuleDictOutput:
 class TestApplyDefaultSensitiveKeyRedactionMutants:
     """Kill remaining mutants in _apply_default_sensitive_key_redaction."""
 
-    def test_none_rule_targeted_keys_replaced_with_frozenset(self) -> None:
+    def test_none_rule_targeted_paths_replaced_with_frozenset(self) -> None:
         """Kills mutmut_1: `is None` -> `is not None` and mutmut_2: frozenset() -> None.
 
-        When rule_targeted_keys is None (default), it must be replaced with
-        an empty frozenset so the `key in rule_targeted_keys` check works.
-        The `is not None` mutant would skip the replacement when keys IS None,
-        causing a TypeError on `key in None`.
-        The `frozenset() -> None` mutant would replace with None, also causing TypeError.
+        When rule_targeted_paths is None (default), it must be replaced with
+        an empty frozenset so the path-has-rule check works without crashing.
+        The `is not None` mutant would skip the replacement when paths IS None,
+        causing a TypeError. The `frozenset() -> None` mutant would replace with
+        None, also causing TypeError.
         """
-        # Call with rule_targeted_keys=None (default) — must not crash
+        # Call with rule_targeted_paths=None (default) — must not crash
         node: dict[str, Any] = {"password": "secret123", "name": "alice"}
         original: dict[str, Any] = {"password": "secret123", "name": "alice"}
         result = _apply_default_sensitive_key_redaction(node, original)

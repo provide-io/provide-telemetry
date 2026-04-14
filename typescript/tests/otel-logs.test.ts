@@ -195,7 +195,7 @@ describe('emitLogRecord', () => {
   it('is a noop when no provider is registered', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
-    expect(() => emitLogRecord({ level: 30, msg: 'hello', time: Date.now() })).not.toThrow();
+    expect(() => emitLogRecord({ level: 30, message: 'hello', time: Date.now() })).not.toThrow();
     expect(loggerStub.emit).not.toHaveBeenCalled();
   });
 
@@ -204,7 +204,13 @@ describe('emitLogRecord', () => {
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
 
-    emitLogRecord({ level: 30, msg: 'test message', time: 1000, event: 'test.event', env: 'prod' });
+    emitLogRecord({
+      level: 30,
+      message: 'test message',
+      time: 1000,
+      event: 'test.event',
+      env: 'prod',
+    });
 
     expect(loggerStub.emit).toHaveBeenCalledOnce();
     const call = loggerStub.emit.mock.calls[0][0];
@@ -212,7 +218,7 @@ describe('emitLogRecord', () => {
     expect(call.severityNumber).toBe(9); // INFO
     expect(call.severityText).toBe('INFO');
     expect(call.attributes).toMatchObject({ event: 'test.event', env: 'prod' });
-    expect(call.attributes).not.toHaveProperty('msg');
+    expect(call.attributes).not.toHaveProperty('message');
     expect(call.attributes).not.toHaveProperty('level');
     expect(call.attributes).not.toHaveProperty('time');
   });
@@ -221,7 +227,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 10, msg: 'trace', time: 1000 });
+    emitLogRecord({ level: 10, message: 'trace', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(1);
     expect(loggerStub.emit.mock.calls[0][0].severityText).toBe('TRACE');
   });
@@ -230,7 +236,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 20, msg: 'debug', time: 1000 });
+    emitLogRecord({ level: 20, message: 'debug', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(5);
   });
 
@@ -238,7 +244,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 40, msg: 'warn', time: 1000 });
+    emitLogRecord({ level: 40, message: 'warn', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(13);
   });
 
@@ -246,7 +252,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 50, msg: 'err', time: 1000 });
+    emitLogRecord({ level: 50, message: 'err', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(17);
   });
 
@@ -254,7 +260,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 60, msg: 'fatal', time: 1000 });
+    emitLogRecord({ level: 60, message: 'fatal', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(21);
   });
 
@@ -262,11 +268,11 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 99, msg: 'unknown', time: 1000 });
+    emitLogRecord({ level: 99, message: 'unknown', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(9);
   });
 
-  it('falls back to event field when msg is absent', async () => {
+  it('falls back to event field when message is absent', async () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
@@ -278,7 +284,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 30, msg: 'ts', time: 1234567890 });
+    emitLogRecord({ level: 30, message: 'ts', time: 1234567890 });
     expect(loggerStub.emit.mock.calls[0][0].timestamp).toBe(1234567890);
   });
 
@@ -287,7 +293,7 @@ describe('emitLogRecord', () => {
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     const before = Date.now();
-    emitLogRecord({ level: 30, msg: 'no-time' });
+    emitLogRecord({ level: 30, message: 'no-time' });
     const after = Date.now();
     const ts = loggerStub.emit.mock.calls[0][0].timestamp as number;
     expect(ts).toBeGreaterThanOrEqual(before);
@@ -298,11 +304,11 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ msg: 'no level', time: 1000 });
+    emitLogRecord({ message: 'no level', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(9);
   });
 
-  it('body falls back to empty string when neither msg nor event present', async () => {
+  it('body falls back to empty string when neither message nor event present', async () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
@@ -314,7 +320,7 @@ describe('emitLogRecord', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, v: 1, service: 'svc' });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, v: 1, service: 'svc' });
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).not.toHaveProperty('v');
     expect(attrs).toHaveProperty('service', 'svc');
@@ -328,7 +334,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ securityMaxAttrValueLength: 10 });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, longField: 'a'.repeat(20) });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, longField: 'a'.repeat(20) });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['longField']).toBe('a'.repeat(10) + '...');
@@ -340,7 +346,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ securityMaxAttrValueLength: 10 });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, exact: 'a'.repeat(10) });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, exact: 'a'.repeat(10) });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['exact']).toBe('a'.repeat(10));
@@ -352,7 +358,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ securityMaxAttrValueLength: 5 });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, num: 123456 });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, num: 123456 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['num']).toBe(123456);
@@ -366,7 +372,7 @@ describe('emitLogRecord — securityMaxAttrCount', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ securityMaxAttrCount: 3 });
 
-    const record: Record<string, unknown> = { level: 30, msg: 'test', time: 1000 };
+    const record: Record<string, unknown> = { level: 30, message: 'test', time: 1000 };
     for (let i = 0; i < 10; i++) record[`key${i}`] = `val${i}`;
     emitLogRecord(record);
 
@@ -380,7 +386,7 @@ describe('emitLogRecord — securityMaxAttrCount', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ securityMaxAttrCount: 100 });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, a: 1, b: 2, c: 3 });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, a: 1, b: 2, c: 3 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).toHaveProperty('a', 1);
@@ -398,7 +404,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
 
     emitLogRecord({
       level: 30,
-      msg: 'test',
+      message: 'test',
       time: 1000,
       caller_file: 'app.ts',
       caller_line: 42,
@@ -419,7 +425,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
 
     emitLogRecord({
       level: 30,
-      msg: 'test',
+      message: 'test',
       time: 1000,
       caller_file: 'app.ts',
       caller_line: 42,
@@ -438,7 +444,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ logCodeAttributes: true });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000, caller_file: 'app.ts' });
+    emitLogRecord({ level: 30, message: 'test', time: 1000, caller_file: 'app.ts' });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['code.filepath']).toBe('app.ts');
@@ -452,7 +458,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     await setupOtelLogProvider({ serviceName: 'test', otelEnabled: true } as never);
     setupTelemetry({ logCodeAttributes: true });
 
-    emitLogRecord({ level: 30, msg: 'test', time: 1000 });
+    emitLogRecord({ level: 30, message: 'test', time: 1000 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).not.toHaveProperty('code.filepath');
