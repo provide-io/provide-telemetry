@@ -12,6 +12,7 @@ import pytest
 import structlog
 
 from provide.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.runtime import reset_runtime_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
 from provide.telemetry.tracing.context import set_trace_context
 
@@ -34,10 +35,17 @@ def reset_logger_state() -> None:
     Sampling policies are also reset here: a test that sets a signal's rate to
     0.0 (e.g. test_rate_zero_never_samples) would cause apply_sampling to drop
     all events in the next test on the same worker, producing empty log output.
+
+    Runtime _active_config is also cleared: processors that read live config
+    (harden_input, sanitize_sensitive_fields, enforce_event_schema) would
+    otherwise pick up a previous test's TelemetryConfig and ignore the
+    constructor-captured values, breaking property tests that specify tight
+    bounds like max_attr_value_length=100.
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
     reset_sampling_for_tests()
+    reset_runtime_for_tests()
 
 
 @pytest.fixture(autouse=True)
