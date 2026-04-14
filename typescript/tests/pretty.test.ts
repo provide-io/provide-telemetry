@@ -220,12 +220,12 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
     expect(line).toContain('\x1b[36m');
   });
 
-  it('skips all 7 internal SKIP_KEYS: level, time, msg, event, v, pid, hostname', () => {
+  it('skips all 7 internal SKIP_KEYS: level, time, message, event, v, pid, hostname', () => {
     const line = formatPretty(
       {
         level: 30,
         time: 123,
-        msg: 'hi',
+        message: 'hi',
         event: 'test',
         v: 1,
         pid: 99,
@@ -236,7 +236,7 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
     );
     expect(line).not.toContain('level=');
     expect(line).not.toContain('time=');
-    expect(line).not.toContain('msg=');
+    expect(line).not.toContain('message=');
     expect(line).not.toContain('event=');
     expect(line).not.toContain('v=');
     expect(line).not.toContain('pid=');
@@ -290,8 +290,8 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
     expect(line).toMatch(/\[info\s+\] test\.ok/);
   });
 
-  it('missing event and msg produce empty string, not sentinel', () => {
-    // Kills: `obj['event'] ?? obj['msg'] ?? ''` → `?? "Stryker was here!"`
+  it('missing event and message produce empty string, not sentinel', () => {
+    // Kills: `obj['event'] ?? obj['message'] ?? ''` → `?? "Stryker was here!"`
     const line = formatPretty({ level: 30 }, false);
     expect(line).not.toContain('Stryker');
     // The line should contain the level bracket followed by a space then empty event

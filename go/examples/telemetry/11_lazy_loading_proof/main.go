@@ -99,7 +99,7 @@ func main() {
 
 	log := telemetry.GetLogger(ctx, "lazy.proof")
 	logEvt, _ := telemetry.Event("lazy", "proof", "log")
-	log.InfoContext(ctx, logEvt.Event, append(logEvt.Attrs(), "msg", "logging works on no-op path")...)
+	log.InfoContext(ctx, logEvt.Event, append(logEvt.Attrs(), "detail", "logging works on no-op path")...)
 	fmt.Println("  GetLogger: OK")
 
 	// Summary

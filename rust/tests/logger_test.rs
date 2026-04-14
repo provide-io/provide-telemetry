@@ -80,7 +80,7 @@ fn logger_test_json_emit_produces_canonical_fields() {
     assert!(!line.is_empty(), "expected a JSON line in capture buffer");
 
     let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
-    assert_eq!(parsed["msg"], "log.output.parity", "msg field must match");
+    assert_eq!(parsed["message"], "log.output.parity", "message field must match");
     assert_eq!(parsed["level"], "INFO", "level must be uppercase INFO");
     assert_eq!(parsed["logger_name"], "tests.json_emit", "logger_name must match target");
     assert!(parsed.get("timestamp").is_none(), "timestamp must be absent when disabled");
@@ -198,7 +198,7 @@ fn logger_test_log_trait_routes_to_events() {
     let line = line.trim();
     assert!(!line.is_empty(), "log::info! must produce JSON output");
     let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
-    assert_eq!(parsed["msg"], "log.trait.parity");
+    assert_eq!(parsed["message"], "log.trait.parity");
     assert_eq!(parsed["level"], "INFO");
     assert_eq!(parsed["logger_name"], "tests.log_trait");
 }

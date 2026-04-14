@@ -25,6 +25,15 @@ from provide.telemetry.logger.processors import (
     sanitize_sensitive_fields,
 )
 
+
+@pytest.fixture(autouse=True)
+def _reset_runtime() -> None:
+    """Reset active runtime config so processor tests use factory-captured values."""
+    from provide.telemetry import runtime as runtime_mod
+
+    runtime_mod.reset_runtime_for_tests()
+
+
 # ── merge_runtime_context: trace_id / span_id key names ─────────────
 
 

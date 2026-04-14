@@ -108,40 +108,40 @@ describe('write hook — window.__pinoLogs capture', () => {
     expect(spy).toHaveBeenCalledOnce();
   });
 
-  it('msg defaults to empty string when both msg and event are absent', () => {
+  it('message defaults to empty string when both message and event are absent', () => {
     // mutation: `o['event'] ?? ''` → `o['event'] ?? null` or similar
     makeCfg();
     const hook = makeWriteHook();
-    const obj: Record<string, unknown> = { level: 30 }; // no msg, no event
+    const obj: Record<string, unknown> = { level: 30 }; // no message, no event
     hook(obj as object);
-    // After hook runs, obj['msg'] should be '' not undefined or null
-    expect(obj['msg']).toBe('');
+    // After hook runs, obj['message'] should be '' not undefined or null
+    expect(obj['message']).toBe('');
   });
 });
 
-describe('write hook — msg fallback to event', () => {
-  it('sets msg to event value when msg is absent', () => {
+describe('write hook — message fallback to event', () => {
+  it('sets message to event value when message is absent', () => {
     makeCfg();
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'my_event' };
     hook(obj);
-    expect(obj['msg']).toBe('my_event');
+    expect(obj['message']).toBe('my_event');
   });
 
-  it('sets msg to empty string when neither msg nor event present', () => {
+  it('sets message to empty string when neither message nor event present', () => {
     makeCfg();
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30 };
     hook(obj);
-    expect(obj['msg']).toBe('');
+    expect(obj['message']).toBe('');
   });
 
-  it('preserves explicit non-empty msg', () => {
+  it('preserves explicit non-empty message', () => {
     makeCfg();
     const hook = makeWriteHook();
-    const obj: Record<string, unknown> = { level: 30, event: 'e', msg: 'explicit message' };
+    const obj: Record<string, unknown> = { level: 30, event: 'e', message: 'explicit message' };
     hook(obj);
-    expect(obj['msg']).toBe('explicit message');
+    expect(obj['message']).toBe('explicit message');
   });
 });
 
@@ -530,11 +530,11 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
-  it('validates msg field when event is absent', () => {
+  it('validates message field when event is absent', () => {
     makeCfg({ strictSchema: true });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
     const hook = makeWriteHook();
-    hook({ level: 30, msg: 'x' });
+    hook({ level: 30, message: 'x' });
     // 'x' is not a valid 3-part event name, so the record should be dropped.
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();

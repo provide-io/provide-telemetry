@@ -8,7 +8,7 @@
  *   - Automatic context binding (from bindContext())
  *   - Automatic OTEL trace_id/span_id injection
  *   - PII sanitization
- *   - msg fallback: if msg is empty, defaults to obj.event
+ *   - message fallback: if message is empty, defaults to obj.event
  *
  * Mirrors Python provide.telemetry get_logger().
  */
@@ -70,8 +70,8 @@ export function makeWriteHook() {
     // Merge module-level context bindings.
     Object.assign(o, getContext());
 
-    // Ensure msg is always non-empty — pino sets msg='' when no string arg is passed.
-    if (!o['msg']) o['msg'] = o['event'] ?? '';
+    // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
+    if (!o['message']) o['message'] = o['event'] ?? '';
 
     // Caller info injection — intentionally expensive (creates Error per call).
     // Stryker disable all
@@ -123,7 +123,7 @@ export function makeWriteHook() {
     // Schema validation — drop records that violate strict schema rules.
     /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
     if (cfg.strictSchema) {
-      const event = String(o['event'] ?? o['msg'] ?? '');
+      const event = String(o['event'] ?? o['message'] ?? '');
       if (event) {
         try {
           validateEventName(event);
@@ -199,14 +199,16 @@ function getRootLogger(): pino.Logger {
       {
         base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
         level: cfg.logLevel,
+        messageKey: 'message',
       },
       stream as unknown as pino.DestinationStream,
     );
   } else {
-    /* c8 ignore next 8 */
+    /* c8 ignore next 9 */
     _root = pino({
       base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
       level: cfg.logLevel,
+      messageKey: 'message',
       browser: {
         write: hook,
       },

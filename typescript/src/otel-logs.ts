@@ -96,13 +96,13 @@ export function emitLogRecord(o: Record<string, unknown>): void {
   if (!_otelLogger) return;
 
   const level = (o['level'] as number) ?? 30;
-  const body = String(o['msg'] ?? o['event'] ?? '');
+  const body = String(o['message'] ?? o['event'] ?? '');
   const severityNumber = SEVERITY_MAP[level] ?? DEFAULT_SEVERITY;
   const severityText = SEVERITY_TEXT[level] ?? 'INFO';
 
   // Build attributes: everything except the pino-internal fields already
   // represented by body / severity / timestamp.
-  const SKIP = new Set(['msg', 'level', 'time', 'v']);
+  const SKIP = new Set(['message', 'level', 'time', 'v']);
   const attributes: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) {
     if (!SKIP.has(k) && v !== undefined) attributes[k] = v;

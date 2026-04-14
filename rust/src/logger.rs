@@ -137,7 +137,7 @@ fn active_logging_config() -> crate::config::LoggingConfig {
 /// buffer (in tests) or stderr (production).
 fn emit_json_log(event: &LogEvent) {
     let mut record = json!({
-        "msg": event.message,
+        "message": event.message,
         "level": event.level,
     });
     let obj = record.as_object_mut().expect("json object");
@@ -166,7 +166,7 @@ fn emit_json_log(event: &LogEvent) {
 /// the capture buffer or stderr.
 fn emit_json_log_with_timestamp(event: &LogEvent) {
     let mut record = json!({
-        "msg": event.message,
+        "message": event.message,
         "level": event.level,
         "timestamp": now_iso8601(),
     });

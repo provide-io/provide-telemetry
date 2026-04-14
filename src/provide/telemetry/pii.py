@@ -23,7 +23,7 @@ import re as _re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 MaskMode = Literal["drop", "redact", "hash", "truncate"]
 
@@ -111,6 +111,8 @@ _rules: list[PIIRule] = []
 # None = feature not loaded (zero overhead).
 _classification_hook: Callable[[str, Any], str | None] | None = None
 _receipt_hook: Callable[[str, str, Any], None] | None = None
+# Set by classification.py when rules are registered; takes label → action string.
+_policy_hook: Callable[[str], str] | None = None
 
 
 def replace_pii_rules(rules: list[PIIRule]) -> None:
@@ -182,41 +184,49 @@ def _apply_rule(
     return node
 
 
+def _path_has_rule(rule_paths: frozenset[tuple[str, ...]], child_path: tuple[str, ...]) -> bool:
+    """Return True if any rule path matches child_path via _match()."""
+    return any(_match(rp, child_path) for rp in rule_paths)
+
+
 def _apply_default_sensitive_key_redaction(
     node: Any,
     original: Any,
-    rule_targeted_keys: frozenset[str] | None = None,
     depth: int = 0,  # pragma: no mutate
     max_depth: int = 8,  # pragma: no mutate
     receipt_hook: Callable[[str, str, Any], None] | None = None,
+    rule_targeted_paths: frozenset[tuple[str, ...]] | None = None,
+    _current_path: tuple[str, ...] = (),
 ) -> Any:
     if depth >= max_depth:
         return node
-    if rule_targeted_keys is None:
-        rule_targeted_keys = frozenset()
+    if rule_targeted_paths is None:
+        rule_targeted_paths = frozenset()
     if isinstance(node, dict) and isinstance(original, dict):
         output: dict[str, Any] = {}
         for key, value in node.items():
             orig_value = original.get(key, value)
+            child_path = (*_current_path, key)
             if key.lower() in _DEFAULT_SENSITIVE_KEYS:
-                if key in rule_targeted_keys or value != orig_value:
+                if _path_has_rule(rule_targeted_paths, child_path) or value != orig_value:
                     output[key] = value
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
-                        receipt_hook(key, "redact", orig_value)
+                        receipt_hook(".".join(cast(tuple[str, ...], child_path)), "redact", orig_value)
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
-                    receipt_hook(key, "redact", value)
+                    receipt_hook(".".join(cast(tuple[str, ...], child_path)), "redact", value)
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
                     value,
                     orig_value,
-                    rule_targeted_keys,
+                    rule_targeted_paths=rule_targeted_paths,
                     depth=depth + 1,
                     max_depth=max_depth,
                     receipt_hook=receipt_hook,
+                    _current_path=child_path,
                 )
         return output
     if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
@@ -229,16 +239,22 @@ def _apply_default_sensitive_key_redaction(
             else:
                 result.append(
                     _apply_default_sensitive_key_redaction(
-                        item, orig, rule_targeted_keys, depth=depth + 1, max_depth=max_depth, receipt_hook=receipt_hook
+                        item,
+                        orig,
+                        rule_targeted_paths=rule_targeted_paths,
+                        depth=depth + 1,
+                        max_depth=max_depth,
+                        receipt_hook=receipt_hook,
+                        _current_path=(*_current_path, "*"),
                     )
                 )
         return result
     return node
 
 
-def _collect_rule_leaf_keys(rules: tuple[PIIRule, ...]) -> frozenset[str]:
-    """Collect the leaf key names that custom rules target."""
-    return frozenset(rule.path[-1] for rule in rules if rule.path)
+def _collect_rule_paths(rules: tuple[PIIRule, ...]) -> frozenset[tuple[str, ...]]:
+    """Collect the full paths that custom rules target."""
+    return frozenset(rule.path for rule in rules if rule.path)
 
 
 def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
@@ -247,6 +263,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
     # Snapshot hooks once to prevent TOCTOU races if they are replaced concurrently.
     receipt_hook = _receipt_hook
     classification_hook = _classification_hook
+    policy_fn = _policy_hook
     # Fix 3a: Thread-safe snapshot of rules list to prevent RuntimeError from
     # concurrent replace_pii_rules() calls mutating the list during iteration.
     with _lock:
@@ -258,26 +275,33 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         rules = tuple(rules_snapshot)
         for rule in rules:
             cleaned = _apply_rule(cleaned, rule, receipt_hook=receipt_hook)
-        rule_targeted_keys = _collect_rule_leaf_keys(rules)
+        rule_targeted_paths = _collect_rule_paths(rules)
     else:
-        rule_targeted_keys = frozenset()  # pragma: no mutate — None also accepted by callee
+        rule_targeted_paths = frozenset()  # pragma: no mutate — None also accepted by callee
     cleaned = _apply_default_sensitive_key_redaction(
-        cleaned, payload, rule_targeted_keys, max_depth=max_depth, receipt_hook=receipt_hook
+        cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
         for key, value in list(cleaned.items()):
             label = classification_hook(key, value)
             if label is not None:
-                cleaned[f"__{key}__class"] = label
+                action = policy_fn(label) if policy_fn is not None else "pass"
+                if action == "drop":
+                    del cleaned[key]
+                else:
+                    cleaned[f"__{key}__class"] = label
+                    if action in ("redact", "hash", "truncate") and value != _REDACTED:
+                        cleaned[key] = _mask(value, action, 8)  # type: ignore[arg-type]
     if isinstance(cleaned, dict):
         return cleaned
     return {}
 
 
 def reset_pii_rules_for_tests() -> None:
-    global _classification_hook, _receipt_hook
+    global _classification_hook, _receipt_hook, _policy_hook
     replace_pii_rules([])
     with _lock:
         _custom_secret_patterns.clear()
     _classification_hook = None
     _receipt_hook = None
+    _policy_hook = None
