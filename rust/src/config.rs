@@ -26,6 +26,9 @@ pub struct RuntimeOverrides {
 pub struct LoggingConfig {
     pub level: String,
     pub fmt: String,
+    /// Whether to include an ISO 8601 timestamp in JSON log output.
+    /// Controlled by `PROVIDE_LOG_INCLUDE_TIMESTAMP` (default: true).
+    pub include_timestamp: bool,
     pub otlp_headers: HashMap<String, String>,
 }
 
@@ -34,6 +37,7 @@ impl Default for LoggingConfig {
         Self {
             level: "INFO".to_string(),
             fmt: "console".to_string(),
+            include_timestamp: true,
             otlp_headers: HashMap::new(),
         }
     }
@@ -230,6 +234,11 @@ impl TelemetryConfig {
                 fmt: env_value(env, &["PROVIDE_LOG_FORMAT"])
                     .unwrap_or("console")
                     .to_string(),
+                include_timestamp: parse_bool(
+                    env_value(env, &["PROVIDE_LOG_INCLUDE_TIMESTAMP"]),
+                    true,
+                    "PROVIDE_LOG_INCLUDE_TIMESTAMP",
+                )?,
                 otlp_headers: parse_otlp_headers(env_value(
                     env,
                     &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],

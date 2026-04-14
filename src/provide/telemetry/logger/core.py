@@ -27,6 +27,7 @@ from provide.telemetry.logger.processors import (
     inject_das_fields,
     make_level_filter,
     merge_runtime_context,
+    rename_event_to_msg,
     sanitize_sensitive_fields,
 )
 
@@ -271,6 +272,9 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
 
     renderer: Any
     if config.logging.fmt == "json":
+        # Rename structlog's internal 'event' key to canonical 'msg' so that
+        # all four language loggers emit the same field name in JSON output.
+        processors.append(rename_event_to_msg)
         renderer = structlog.processors.JSONRenderer()
     elif config.logging.fmt == "pretty":
         from provide.telemetry.logger.pretty import resolve_color

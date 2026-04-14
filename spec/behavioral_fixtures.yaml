@@ -393,3 +393,64 @@ pii_depth:
       max_depth: 3
       input_depth: 3
       expected: "untouched"
+
+log_output_format:
+  description: >
+    Canonical JSON log line format. All language loggers MUST emit these field
+    names when writing structured JSON output to stderr. Fields are compared by
+    the behavioral parity output probe suite (spec/probes/ + --check-output).
+    "required" fields must always be present. "optional" fields must use the
+    canonical name when present. "noise" fields must be stripped before comparison.
+  required_fields:
+    msg:
+      type: string
+      description: "Human-readable log message (structlog 'event' renamed, slog 'msg')"
+    level:
+      type: string
+      enum: [TRACE, DEBUG, INFO, WARN, WARNING, ERROR, CRITICAL]
+      description: "Severity level, uppercase"
+  optional_fields:
+    timestamp:
+      type: string
+      format: "ISO 8601 UTC e.g. 2026-04-12T00:00:00.000Z — verified by pattern not value"
+      pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    service:
+      type: string
+      description: "Service name from PROVIDE_TELEMETRY_SERVICE_NAME"
+    trace_id:
+      type: string
+      description: "32-char hex W3C trace identifier"
+    span_id:
+      type: string
+      description: "16-char hex W3C span identifier"
+    logger_name:
+      type: string
+      description: "Logger/target/component name"
+  # Fields emitted by individual language runtimes that must be stripped before
+  # cross-language comparison. Any field listed here is language-specific noise.
+  noise_fields_to_strip:
+    - pid        # pino (TypeScript)
+    - hostname   # pino (TypeScript)
+    - v          # pino (TypeScript)
+    - time       # renamed to timestamp during normalization
+    - event      # structlog raw field; Python renames to msg before emit
+    - target     # Rust raw field; renamed to logger_name during normalization
+    - "service.name"   # Go slog raw field; renamed to service
+    - "service.env"    # Go slog raw field; renamed to env
+    - "service.version" # Go slog raw field; renamed to version
+    - "trace.id"       # Go slog raw field; renamed to trace_id
+    - "span.id"        # Go slog raw field; renamed to span_id
+  # Fixed probe inputs used by spec/probes/emit_log_*.{py,go,ts,rs}.
+  # Probes set these env vars then call logger.info("log.output.parity").
+  # Timestamps are disabled so output is deterministic.
+  probe_env:
+    PROVIDE_TELEMETRY_SERVICE_NAME: "probe"
+    PROVIDE_LOG_LEVEL: "INFO"
+    PROVIDE_LOG_FORMAT: "json"
+    PROVIDE_LOG_INCLUDE_TIMESTAMP: "false"
+  probe_cases:
+    - id: "simple_info"
+      call: 'logger.info("log.output.parity")'
+      expected:
+        msg: "log.output.parity"
+        level: "INFO"
