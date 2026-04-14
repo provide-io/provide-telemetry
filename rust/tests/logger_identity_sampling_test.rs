@@ -90,32 +90,32 @@ fn logger_test_context_bound_service_takes_precedence_over_config() {
 }
 
 #[test]
-fn logger_test_per_level_sampling_override_is_applied() {
+fn logger_test_per_message_sampling_override_is_applied() {
     let _guard = lock().lock().expect("lock poisoned");
 
     _reset_sampling_for_tests();
     _reset_health_for_tests();
 
-    // DEBUG → always drop; INFO → always keep (default_rate 1.0)
+    // "drop.this.message" → always drop; all other messages → always keep (default_rate 1.0)
     let mut overrides = BTreeMap::new();
-    overrides.insert("DEBUG".to_string(), 0.0_f64);
+    overrides.insert("drop.this.message".to_string(), 0.0_f64);
     set_sampling_policy(Signal::Logs, SamplingPolicy { default_rate: 1.0, overrides })
         .expect("set_sampling_policy should succeed");
 
-    let logger = get_logger(Some("tests.per_level"));
+    let logger = get_logger(Some("tests.per_message"));
 
     let before = provide_telemetry::get_health_snapshot().emitted_logs;
-    logger.debug("should.be.dropped");
+    logger.info("drop.this.message");
     assert_eq!(
         provide_telemetry::get_health_snapshot().emitted_logs, before,
-        "debug log must be dropped by per-level sampling override"
+        "message must be dropped when override rate is 0.0"
     );
 
     let before = provide_telemetry::get_health_snapshot().emitted_logs;
-    logger.info("should.pass");
+    logger.info("other.message");
     assert_eq!(
         provide_telemetry::get_health_snapshot().emitted_logs, before + 1,
-        "info log must pass when default_rate is 1.0"
+        "other messages must pass when default_rate is 1.0"
     );
 
     _reset_sampling_for_tests();
