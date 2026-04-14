@@ -11,6 +11,8 @@ use crate::errors::TelemetryError;
 #[cfg(feature = "otel")]
 mod endpoint;
 #[cfg(feature = "otel")]
+pub(crate) mod metrics;
+#[cfg(feature = "otel")]
 mod resource;
 #[cfg(feature = "otel")]
 pub(crate) mod traces;
@@ -19,8 +21,11 @@ static OTEL_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "otel")]
 pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
+    // Build the resource once and clone for each provider (cheap — Resource
+    // is internally Arc'd).
     let resource = resource::build_resource(config);
-    traces::install_tracer_provider(config, resource)?;
+    traces::install_tracer_provider(config, resource.clone())?;
+    metrics::install_meter_provider(config, resource)?;
     OTEL_INSTALLED.store(true, Ordering::SeqCst);
     Ok(())
 }
@@ -32,7 +37,10 @@ pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError
 
 pub(crate) fn shutdown_otel() {
     #[cfg(feature = "otel")]
-    traces::shutdown_tracer_provider();
+    {
+        traces::shutdown_tracer_provider();
+        metrics::shutdown_meter_provider();
+    }
     OTEL_INSTALLED.store(false, Ordering::SeqCst);
 }
 
