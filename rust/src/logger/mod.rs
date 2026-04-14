@@ -197,6 +197,15 @@ fn emit_if_console(event: &LogEvent) {
 
 /// Shared core: build an event, emit it (JSON or console), buffer it.
 fn log_event(level: &str, target: &str, message: &str) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(level)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
     let event = new_event(target, level, message);
     emit_if_json(&event);
     emit_if_console(&event);
@@ -337,16 +346,10 @@ pub static logger: LazyLock<Logger> = LazyLock::new(|| Logger::new(None));
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
     let mut context = get_context();
-    if let Some(cfg) = get_runtime_config().or_else(|| TelemetryConfig::from_env().ok()) {
-        context
-            .entry("service".to_string())
-            .or_insert_with(|| Value::String(cfg.service_name));
-        context
-            .entry("env".to_string())
-            .or_insert_with(|| Value::String(cfg.environment));
-        context
-            .entry("version".to_string())
-            .or_insert_with(|| Value::String(cfg.version));
+    if let Some(cfg) = get_runtime_config() {
+        context.entry("service".to_string()).or_insert_with(|| Value::String(cfg.service_name));
+        context.entry("env".to_string()).or_insert_with(|| Value::String(cfg.environment));
+        context.entry("version".to_string()).or_insert_with(|| Value::String(cfg.version));
     }
     LogEvent {
         level: level.to_string(),
