@@ -73,9 +73,8 @@ export function makeWriteHook() {
     const samplingKey = String(o['event'] ?? o['message'] ?? '');
     if (!shouldSample('logs', samplingKey)) return;
 
-    // Backpressure gate: drop when the log queue is full.
-    const ticket = tryAcquire('logs');
-    if (!ticket) return;
+    // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
+    if (!o['message']) o['message'] = o['event'] ?? '';
 
     // Caller info injection — intentionally expensive (creates Error per call).
     // Stryker disable all
@@ -123,6 +122,34 @@ export function makeWriteHook() {
     if (!cfg.logIncludeTimestamp) {
       delete o['time'];
     }
+
+    // Schema validation — drop records that violate strict schema rules.
+    /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
+    if (cfg.strictSchema) {
+      const event = String(o['event'] ?? o['message'] ?? '');
+      if (event) {
+        try {
+          validateEventName(event);
+        } catch (e) {
+          if (e instanceof EventSchemaError) return;
+          throw e;
+        }
+      }
+      if (cfg.requiredLogKeys.length > 0) {
+        try {
+          validateRequiredKeys(o, cfg.requiredLogKeys);
+        } catch (e) {
+          if (e instanceof EventSchemaError) return;
+          throw e;
+        }
+      }
+    }
+
+    // Count every record that survives all filters as emitted.
+    _incrementHealth(_emittedField('logs'));
+
+    // Export to OTLP when a log provider is registered (noop otherwise).
+    emitLogRecord(o);
 
     // Capture to window.__pinoLogs for Playwright and devtools inspection.
     // Check is done inline (not at module load) so it works when loaded in Node.js
@@ -175,14 +202,16 @@ function getRootLogger(): pino.Logger {
       {
         base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
         level: cfg.logLevel,
+        messageKey: 'message',
       },
       stream as unknown as pino.DestinationStream,
     );
   } else {
-    /* c8 ignore next 8 */
+    /* c8 ignore next 9 */
     _root = pino({
       base: { service: cfg.serviceName, env: cfg.environment, version: cfg.version },
       level: cfg.logLevel,
+      messageKey: 'message',
       browser: {
         write: hook,
       },

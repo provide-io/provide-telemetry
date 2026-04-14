@@ -276,7 +276,15 @@ func _configureLogger(cfg LogConfig) {
 	if w == nil {
 		w = os.Stderr
 	}
-	opts := &slog.HandlerOptions{Level: LevelTrace}
+	opts := &slog.HandlerOptions{
+		Level: LevelTrace,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
 		base = slog.NewJSONHandler(w, opts)
@@ -340,7 +348,15 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	if w == nil {
 		w = os.Stderr
 	}
-	opts := &slog.HandlerOptions{Level: LevelTrace}
+	opts := &slog.HandlerOptions{
+		Level: LevelTrace,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	}
 	var base slog.Handler
 	if cfg.Format == LogFormatJSON {
 		base = slog.NewJSONHandler(w, opts)

@@ -27,6 +27,7 @@ _provider_lock = threading.Lock()
 _provider_ref: Any | None = None
 _otel_global_set: bool = False  # True once we called set_tracer_provider()
 _setup_generation: int = 0
+_tracing_explicitly_disabled: bool = False
 
 # Baseline captured inside setup_tracing() (not at module load) so that
 # external providers installed before import are not mistaken for the default.
@@ -68,8 +69,11 @@ def _load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
 def setup_tracing(config: TelemetryConfig) -> None:
     global _provider_configured, _provider_ref, _otel_global_set
     global _baseline_tracer_provider, _baseline_captured
+    global _tracing_explicitly_disabled
     if not config.tracing.enabled:
+        _tracing_explicitly_disabled = True
         return
+    _tracing_explicitly_disabled = False
     from provide.telemetry.resilience import _is_running_in_event_loop
 
     if _is_running_in_event_loop():  # pragma: no mutate
@@ -147,12 +151,14 @@ def shutdown_tracing() -> None:
 def _reset_tracing_for_tests() -> None:
     global _provider_configured, _provider_ref, _otel_global_set, _setup_generation
     global _baseline_tracer_provider, _baseline_captured
+    global _tracing_explicitly_disabled
     _provider_configured = False
     _provider_ref = None
     _otel_global_set = False
     _setup_generation = 0
     _baseline_tracer_provider = None
     _baseline_captured = False
+    _tracing_explicitly_disabled = False
 
 
 class _TracerLike(Protocol):
@@ -176,7 +182,7 @@ def _has_real_tracer_provider(otel_trace: Any) -> bool:
 
 
 def get_tracer(name: str | None = None) -> _TracerLike:
-    if not _provider_configured:
+    if _tracing_explicitly_disabled:
         return _NoopTracer()
     otel_trace = _load_otel_trace_api()
     if otel_trace is None:

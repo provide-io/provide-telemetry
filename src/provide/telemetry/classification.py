@@ -75,11 +75,6 @@ def register_classification_rules(rules: list[ClassificationRule]) -> None:
     pii_mod._policy_hook = _lookup_policy_action
 
 
-def register_classification_rule(rule: ClassificationRule) -> None:
-    """Register a single classification rule."""
-    register_classification_rules([rule])
-
-
 def set_classification_policy(policy: ClassificationPolicy) -> None:
     """Replace the current classification policy."""
     global _policy

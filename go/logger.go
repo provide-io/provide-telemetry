@@ -250,7 +250,15 @@ func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) 
 
 // _configureLogger builds the Logger package var from cfg and sets it as slog's default.
 func _configureLogger(cfg *TelemetryConfig) {
-	opts := &slog.HandlerOptions{Level: LevelTrace}
+	opts := &slog.HandlerOptions{
+		Level: LevelTrace,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	}
 	var base slog.Handler
 	if cfg.Logging.Format == LogFormatJSON {
 		base = slog.NewJSONHandler(os.Stderr, opts)
@@ -274,7 +282,15 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 			cfg = h.cfg
 		}
 	}
-	opts := &slog.HandlerOptions{Level: LevelTrace}
+	opts := &slog.HandlerOptions{
+		Level: LevelTrace,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	}
 	var base slog.Handler
 	if cfg.Logging.Format == LogFormatJSON {
 		base = slog.NewJSONHandler(os.Stderr, opts)

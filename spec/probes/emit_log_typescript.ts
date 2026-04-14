@@ -60,6 +60,7 @@ const root = pino(
   {
     base: { service: serviceName },
     level: 'info',
+    messageKey: 'message',
   },
   stream as unknown as pino.DestinationStream,
 );
