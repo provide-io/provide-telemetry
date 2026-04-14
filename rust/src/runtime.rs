@@ -127,6 +127,7 @@ pub fn reconfigure_telemetry(
     }
 
     set_active_config(Some(target.clone()));
+    apply_policies(&target);
     Ok(target)
 }
 

@@ -700,3 +700,4 @@ fn tracer_test_consent_none_skips_emitted_counter() {
     );
     reset_consent_for_tests();
 }
+

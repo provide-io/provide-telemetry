@@ -263,7 +263,7 @@ fn log_event(level: &str, target: &str, message: &str) {
     if !should_allow("logs", Some(level)) {
         return;
     }
-    if !should_sample(Signal::Logs, None).unwrap_or(true) {
+    if !should_sample(Signal::Logs, Some(level)).unwrap_or(true) {
         return;
     }
     let Some(ticket) = try_acquire(Signal::Logs) else {
@@ -317,11 +317,17 @@ pub static logger: LazyLock<Logger> = LazyLock::new(|| Logger::new(None));
 
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
+    let mut context = get_context();
+    if let Some(cfg) = get_runtime_config() {
+        context.entry("service".to_string()).or_insert_with(|| Value::String(cfg.service_name));
+        context.entry("env".to_string()).or_insert_with(|| Value::String(cfg.environment));
+        context.entry("version".to_string()).or_insert_with(|| Value::String(cfg.version));
+    }
     LogEvent {
         level: level.to_string(),
         target: target.to_string(),
         message: message.to_string(),
-        context: get_context(),
+        context,
         trace_id: trace.get("trace_id").and_then(Clone::clone),
         span_id: trace.get("span_id").and_then(Clone::clone),
     }
