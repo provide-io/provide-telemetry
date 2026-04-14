@@ -104,7 +104,6 @@ def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
         slo=cfg.slo,
         pii_max_depth=cfg.pii_max_depth,
         strict_schema=cfg.strict_schema,
-        logging=cfg.logging,
     )
 
 
@@ -125,8 +124,6 @@ def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> Tele
         merged.pii_max_depth = overrides.pii_max_depth
     if overrides.strict_schema is not None:
         merged.strict_schema = overrides.strict_schema
-    if overrides.logging is not None:
-        merged.logging = overrides.logging
     return merged
 
 
@@ -138,10 +135,6 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
         merged = _apply_overrides(base, overrides)
         _active_config = merged
     _apply_policies(merged)
-    if overrides.logging is not None:
-        from provide.telemetry.logger import core as logger_core
-
-        logger_core.configure_logging(merged, force=True)
     return get_runtime_config()
 
 
