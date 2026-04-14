@@ -64,6 +64,10 @@ class Counter:
         return self._otel_counter
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
+        from provide.telemetry.consent import should_allow
+
+        if not should_allow("metrics"):
+            return
         if not _should_sample_unchecked(_SIGNAL, self.name):
             return
         ticket = _try_acquire_unchecked(_SIGNAL)
@@ -122,6 +126,10 @@ class Gauge:
         return self._otel_gauge
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
+        from provide.telemetry.consent import should_allow
+
+        if not should_allow("metrics"):
+            return
         if not _should_sample_unchecked(_SIGNAL, self.name):
             return
         ticket = _try_acquire_unchecked(_SIGNAL)
@@ -139,6 +147,10 @@ class Gauge:
             release(ticket)
 
     def set(self, value: int, attributes: dict[str, str] | None = None) -> None:
+        from provide.telemetry.consent import should_allow
+
+        if not should_allow("metrics"):
+            return
         if not _should_sample_unchecked(_SIGNAL, self.name):
             return
         ticket = _try_acquire_unchecked(_SIGNAL)
@@ -197,6 +209,10 @@ class Histogram:
         return self._otel_histogram
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
+        from provide.telemetry.consent import should_allow
+
+        if not should_allow("metrics"):
+            return
         if not _should_sample_unchecked(_SIGNAL, self.name):
             return
         ticket = _try_acquire_unchecked(_SIGNAL)

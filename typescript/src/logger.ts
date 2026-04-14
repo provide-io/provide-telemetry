@@ -16,6 +16,7 @@
 import pino from 'pino';
 import { getConfig } from './config';
 import { getContext } from './context';
+import { shouldAllow } from './consent';
 import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
 import { _emittedField, _incrementHealth } from './health';
@@ -23,6 +24,7 @@ import { emitLogRecord } from './otel-logs';
 import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
+import { tryAcquire, release } from './backpressure';
 import { getActiveTraceIds } from './tracing';
 
 /** Pino level number → console method name. */
@@ -30,6 +32,16 @@ const LEVEL_MAP: Record<number, string> = {
   10: 'trace',
   20: 'debug',
   30: 'log',
+  40: 'warn',
+  50: 'error',
+  60: 'error',
+};
+
+/** Pino level number → semantic level string for consent checks. */
+const CONSENT_LEVEL_MAP: Record<number, string> = {
+  10: 'trace',
+  20: 'debug',
+  30: 'info',
   40: 'warn',
   50: 'error',
   60: 'error',
@@ -62,114 +74,126 @@ export function makeWriteHook() {
     const cfg = getConfig();
     const o = obj as Record<string, unknown>;
 
-    // Inject OTEL trace/span IDs if an active span exists.
-    const ids = getActiveTraceIds();
-    if (ids.trace_id) o['trace_id'] = ids.trace_id;
-    if (ids.span_id) o['span_id'] = ids.span_id;
+    // Consent gate: drop records the current consent level forbids.
+    const levelLabel = CONSENT_LEVEL_MAP[o['level'] as number] ?? 'info';
+    if (!shouldAllow('logs', levelLabel)) return;
 
-    // Merge module-level context bindings.
-    Object.assign(o, getContext());
+    // Backpressure gate: drop when the log queue is full.
+    const ticket = tryAcquire('logs');
+    if (!ticket) return;
 
-    // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
-    if (!o['message']) o['message'] = o['event'] ?? '';
+    try {
+      // Inject OTEL trace/span IDs if an active span exists.
+      const ids = getActiveTraceIds();
+      if (ids.trace_id) o['trace_id'] = ids.trace_id;
+      if (ids.span_id) o['span_id'] = ids.span_id;
 
-    // Caller info injection — intentionally expensive (creates Error per call).
-    // Stryker disable all
-    if (cfg.logIncludeCaller) {
-      const err = new Error();
-      const stack = err.stack?.split('\n');
-      /* v8 ignore next -- stack is always defined in V8 */
-      if (stack) {
-        for (const frame of stack.slice(1)) {
-          if (
-            !frame.includes('logger.ts') &&
-            !frame.includes('node_modules') &&
-            !frame.includes('pino')
-          ) {
-            const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
-            /* v8 ignore next -- match always succeeds for V8 stack frames */
-            if (match) {
-              o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
-              o['caller_line'] = Number(match[2]);
+      // Merge module-level context bindings.
+      Object.assign(o, getContext());
+
+      // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
+      if (!o['message']) o['message'] = o['event'] ?? '';
+
+      // Caller info injection — intentionally expensive (creates Error per call).
+      // Stryker disable all
+      if (cfg.logIncludeCaller) {
+        const err = new Error();
+        const stack = err.stack?.split('\n');
+        /* v8 ignore next -- stack is always defined in V8 */
+        if (stack) {
+          for (const frame of stack.slice(1)) {
+            if (
+              !frame.includes('logger.ts') &&
+              !frame.includes('node_modules') &&
+              !frame.includes('pino')
+            ) {
+              const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
+              /* v8 ignore next -- match always succeeds for V8 stack frames */
+              if (match) {
+                o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
+                o['caller_line'] = Number(match[2]);
+              }
+              break;
             }
-            break;
           }
         }
       }
-    }
-    // Stryker enable all
+      // Stryker enable all
 
-    // Error fingerprinting — stable hash from error name + stack.
-    const errObj = o['err'] as Record<string, unknown> | undefined;
-    const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
-      | string
-      | undefined;
-    if (excName) {
-      const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
-      o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
-    }
-
-    // PII sanitization: blocked keys + secret detection + custom PII rules.
-    if (cfg.logSanitize) {
-      sanitize(o, cfg.sanitizeFields);
-      sanitizePayload(o, [], { maxDepth: cfg.piiMaxDepth });
-    }
-
-    // Strip timestamp when configured off.
-    if (!cfg.logIncludeTimestamp) {
-      delete o['time'];
-    }
-
-    // Schema validation — drop records that violate schema rules.
-    // Required-key enforcement runs unconditionally (matches Python/Go/Rust):
-    // strictSchema only controls whether the event-name charset is strict.
-    if (cfg.requiredLogKeys.length > 0) {
-      try {
-        validateRequiredKeys(o, cfg.requiredLogKeys);
-      } catch (e) {
-        if (e instanceof EventSchemaError) return;
-        throw e;
+      // Error fingerprinting — stable hash from error name + stack.
+      const errObj = o['err'] as Record<string, unknown> | undefined;
+      const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
+        | string
+        | undefined;
+      if (excName) {
+        const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
+        o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
       }
-    }
-    /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
-    if (cfg.strictSchema) {
-      const event = String(o['event'] ?? o['message'] ?? '');
-      if (event) {
+
+      // PII sanitization: blocked keys + secret detection + custom PII rules.
+      if (cfg.logSanitize) {
+        sanitize(o, cfg.sanitizeFields);
+        sanitizePayload(o, [], { maxDepth: cfg.piiMaxDepth });
+      }
+
+      // Strip timestamp when configured off.
+      if (!cfg.logIncludeTimestamp) {
+        delete o['time'];
+      }
+
+      // Schema validation — drop records that violate schema rules.
+      // Required-key enforcement runs unconditionally (matches Python/Go/Rust):
+      // strictSchema only controls whether the event-name charset is strict.
+      if (cfg.requiredLogKeys.length > 0) {
         try {
-          validateEventName(event);
+          validateRequiredKeys(o, cfg.requiredLogKeys);
         } catch (e) {
           if (e instanceof EventSchemaError) return;
           throw e;
         }
       }
-    }
-
-    // Count every record that survives all filters as emitted.
-    _incrementHealth(_emittedField('logs'));
-
-    // Export to OTLP when a log provider is registered (noop otherwise).
-    emitLogRecord(o);
-
-    // Capture to window.__pinoLogs for Playwright and devtools inspection.
-    // Check is done inline (not at module load) so it works when loaded in Node.js
-    // test environments that later gain a jsdom window.
-    if (typeof window !== 'undefined' && cfg.captureToWindow) {
-      if (!('__pinoLogs' in window)) {
-        (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+      /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
+      if (cfg.strictSchema) {
+        const event = String(o['event'] ?? o['message'] ?? '');
+        if (event) {
+          try {
+            validateEventName(event);
+          } catch (e) {
+            if (e instanceof EventSchemaError) return;
+            throw e;
+          }
+        }
       }
-      (window as unknown as Record<string, unknown[]>)['__pinoLogs'].push(o);
-    }
 
-    // Emit to console only when explicitly enabled (opt-in).
-    if (cfg.consoleOutput) {
-      const method = LEVEL_MAP[o['level'] as number] ?? 'log';
-      if (cfg.logFormat === 'pretty') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (console as any)[method](formatPretty(o, supportsColor()));
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (console as any)[method](o);
+      // Count every record that survives all filters as emitted.
+      _incrementHealth(_emittedField('logs'));
+
+      // Export to OTLP when a log provider is registered (noop otherwise).
+      emitLogRecord(o);
+
+      // Capture to window.__pinoLogs for Playwright and devtools inspection.
+      // Check is done inline (not at module load) so it works when loaded in Node.js
+      // test environments that later gain a jsdom window.
+      if (typeof window !== 'undefined' && cfg.captureToWindow) {
+        if (!('__pinoLogs' in window)) {
+          (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+        }
+        (window as unknown as Record<string, unknown[]>)['__pinoLogs'].push(o);
       }
+
+      // Emit to console only when explicitly enabled (opt-in).
+      if (cfg.consoleOutput) {
+        const method = LEVEL_MAP[o['level'] as number] ?? 'log';
+        if (cfg.logFormat === 'pretty') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (console as any)[method](formatPretty(o, supportsColor()));
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (console as any)[method](o);
+        }
+      }
+    } finally {
+      release(ticket);
     }
   };
 }

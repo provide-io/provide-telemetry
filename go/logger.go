@@ -57,6 +57,11 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyStandardFields(r)
 	r = h.applyTraceFields(ctx, r)
 
+	// Consent gate: block before any processing when consent level forbids logs.
+	if !ShouldAllow(signalLogs, r.Level.String()) {
+		return nil
+	}
+
 	// Schema validation runs BEFORE sampling so records rejected by
 	// validateRequiredKeys / validateEventName don't inflate LogsEmitted
 	// (ShouldSample increments the emitted counter on sampled=true).
@@ -67,6 +72,12 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil
 		return nil
 	}
+
+	// Backpressure gate: drop when the log queue is full.
+	if !TryAcquire(signalLogs) {
+		return nil
+	}
+	defer Release(signalLogs)
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)

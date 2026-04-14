@@ -8,9 +8,12 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use serde_json::{json, Value};
 
+use crate::backpressure::{release, try_acquire};
 use crate::config::TelemetryConfig;
+use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::runtime::get_runtime_config;
+use crate::sampling::Signal;
 use crate::tracer::get_trace_context;
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
@@ -238,6 +241,12 @@ fn emit_if_console(event: &LogEvent) {
 
 /// Shared core: build an event, emit it (JSON or console), buffer it.
 fn log_event(level: &str, target: &str, message: &str) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
     let event = new_event(target, level, message);
     emit_if_json(&event);
     emit_if_console(&event);
@@ -245,6 +254,7 @@ fn log_event(level: &str, target: &str, message: &str) {
     if buf.len() < MAX_FALLBACK_EVENTS {
         buf.push(event);
     }
+    release(ticket);
 }
 
 #[derive(Clone, Debug, PartialEq)]
