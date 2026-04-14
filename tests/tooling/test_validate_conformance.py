@@ -106,3 +106,79 @@ pub use crate::trace;
     assert "bind_context" in exports
     assert "ExportedTelemetryError" in exports
     assert "trace" in exports
+
+
+def test_parse_language_overrides_fallback_parses_go_entries() -> None:
+    """_parse_language_overrides_fallback should extract go and rust override entries."""
+    module = _load_validate_conformance_module()
+    sample_yaml = (
+        "spec_version: '1'\n"
+        "language_overrides:\n"
+        "  go:\n"
+        "    - spec_name: tracer\n"
+        "      accepted_kinds: [type]\n"
+        '      note: "Go exports Tracer as interface type"\n'
+        "    - spec_name: trace\n"
+        "      accepted_kinds: [function]\n"
+        '      note: "Go uses Trace() function"\n'
+        "  rust:\n"
+        "    - spec_name: trace\n"
+        "      accepted_kinds: [function]\n"
+        '      note: "Rust pub fn"\n'
+        "other_key: value\n"
+    )
+    result = module._parse_language_overrides_fallback(sample_yaml)
+
+    assert "go" in result, f"go not in result: {list(result.keys())}"
+    assert len(result["go"]) == 2
+    assert result["go"][0]["spec_name"] == "tracer"
+    assert result["go"][0]["accepted_kinds"] == ["type"]
+    assert result["go"][1]["spec_name"] == "trace"
+    assert result["go"][1]["accepted_kinds"] == ["function"]
+
+    assert "rust" in result
+    assert len(result["rust"]) == 1
+    assert result["rust"][0]["spec_name"] == "trace"
+    assert result["rust"][0]["accepted_kinds"] == ["function"]
+
+    # other_key should not appear
+    assert "other_key" not in result
+
+
+def test_load_spec_no_yaml_includes_language_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When PyYAML is unavailable, _load_spec() should still parse language_overrides."""
+    module = _load_validate_conformance_module()
+    typed_module = cast(Any, module)
+
+    # Patch _YAML_AVAILABLE to False to exercise the regex fallback path
+    monkeypatch.setattr(typed_module, "_YAML_AVAILABLE", False)
+
+    spec_data = typed_module._load_spec()
+    lo = spec_data.get("language_overrides", {})
+
+    assert isinstance(lo, dict), f"language_overrides is not a dict: {type(lo)}"
+    assert "go" in lo, f"go not in overrides: {list(lo.keys())}"
+    assert len(lo["go"]) > 0, "go overrides should be non-empty"
+
+    # Confirm at least tracer and trace overrides are present for go
+    go_spec_names = [e["spec_name"] for e in lo["go"]]
+    assert "tracer" in go_spec_names
+    assert "trace" in go_spec_names
+
+
+def test_conformance_go_kind_deviations_are_notes_not_errors_no_yaml(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without PyYAML, Go kind deviations must be notes (not errors) and exit 0."""
+    module = _load_validate_conformance_module()
+    typed_module = cast(Any, module)
+
+    monkeypatch.setattr(typed_module, "_YAML_AVAILABLE", False)
+
+    spec_data = typed_module._load_spec()
+    symbols = typed_module._collect_spec_symbols(spec_data)
+    errors, kind_notes = typed_module._check_language("go", symbols, spec_data)
+
+    assert errors == [], f"Expected no errors for go; got: {errors}"
+    # Go has documented deviations that should appear as kind notes
+    assert len(kind_notes) > 0, "Expected at least one kind note for go"
