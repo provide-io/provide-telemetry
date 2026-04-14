@@ -19,12 +19,14 @@ use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
 mod emit;
+mod processors;
 
 pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
     take_json_capture,
 };
 use emit::{emit_if_console, emit_if_json};
+use processors::process_event;
 
 // When the governance feature is disabled, consent is unconditionally granted.
 #[cfg(not(feature = "governance"))]
@@ -83,18 +85,9 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         })
 }
 
-/// Shared core: build an event, emit it (JSON or console), buffer it.
-fn log_event(level: &str, target: &str, message: &str) {
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
-        return;
-    };
-    let event = new_event(target, level, message);
+/// Shared emit path: run processors, emit (JSON + console + OTel), buffer.
+fn emit_event(mut event: LogEvent) {
+    process_event(&mut event);
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]
@@ -106,8 +99,55 @@ fn log_event(level: &str, target: &str, message: &str) {
         buf.push(event);
     }
     drop(buf);
+}
+
+/// Shared core: gate, build, process, emit, count.
+fn log_event(level: &str, target: &str, message: &str) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    emit_event(new_event(target, level, message));
     increment_emitted(Signal::Logs, 1);
     release(ticket);
+}
+
+/// Like `log_event` but attaches DARS metadata from an `Event`.
+fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(&ev.event)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    let mut event = new_event(target, level, &ev.event);
+    event.event_metadata = Some(EventMetadata {
+        domain: ev.domain.clone(),
+        action: ev.action.clone(),
+        resource: ev.resource.clone(),
+        status: ev.status.clone(),
+    });
+    emit_event(event);
+    increment_emitted(Signal::Logs, 1);
+    release(ticket);
+}
+
+/// DARS metadata extracted from an `Event` when the caller uses the
+/// `_event` logger methods. `None` for plain string messages.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EventMetadata {
+    pub domain: String,
+    pub action: String,
+    pub resource: Option<String>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,6 +158,7 @@ pub struct LogEvent {
     pub context: BTreeMap<String, Value>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
+    pub event_metadata: Option<EventMetadata>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -159,6 +200,7 @@ fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
         context,
         trace_id: trace.get("trace_id").and_then(Clone::clone),
         span_id: trace.get("span_id").and_then(Clone::clone),
+        event_metadata: None,
     }
 }
 
@@ -191,6 +233,26 @@ impl Logger {
 
     pub fn log(&self, level: &str, message: &str) {
         log_event(level, &self.target, message);
+    }
+
+    pub fn debug_event(&self, event: &crate::schema::Event) {
+        self.log_event("DEBUG", event);
+    }
+
+    pub fn info_event(&self, event: &crate::schema::Event) {
+        self.log_event("INFO", event);
+    }
+
+    pub fn warn_event(&self, event: &crate::schema::Event) {
+        self.log_event("WARN", event);
+    }
+
+    pub fn error_event(&self, event: &crate::schema::Event) {
+        self.log_event("ERROR", event);
+    }
+
+    pub fn log_event(&self, level: &str, event: &crate::schema::Event) {
+        log_event_with_event(level, &self.target, event);
     }
 
     pub fn drain_events_for_tests() -> Vec<LogEvent> {
