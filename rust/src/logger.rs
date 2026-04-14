@@ -14,7 +14,7 @@ use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
-use crate::sampling::Signal;
+use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
@@ -243,6 +243,9 @@ fn emit_if_console(event: &LogEvent) {
 /// Shared core: build an event, emit it (JSON or console), buffer it.
 fn log_event(level: &str, target: &str, message: &str) {
     if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, None).unwrap_or(true) {
         return;
     }
     let Some(ticket) = try_acquire(Signal::Logs) else {

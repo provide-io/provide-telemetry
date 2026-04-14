@@ -32,7 +32,10 @@ fn apply_policies(config: &TelemetryConfig) {
     );
     let _ = set_sampling_policy(
         Signal::Traces,
-        SamplingPolicy { default_rate: config.sampling.traces_rate, overrides: BTreeMap::new() },
+        SamplingPolicy {
+            default_rate: config.sampling.traces_rate.min(config.tracing.sample_rate),
+            overrides: BTreeMap::new(),
+        },
     );
     let _ = set_sampling_policy(
         Signal::Metrics,
