@@ -36,6 +36,15 @@ T = TypeVar("T")
 Signal = str
 
 
+class ExecutorSaturated(RuntimeError):
+    """Raised when the per-signal executor's pending queue is exhausted.
+
+    The retry loop catches this like any other failure: on fail_open=True the
+    caller sees None; on fail_open=False the exception propagates.  Either way,
+    saturation is recorded as a failed attempt — not a silent success.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class ExporterPolicy:
     retries: int = 0
@@ -269,8 +278,10 @@ def _run_attempt_with_timeout(
         return operation()
     sem = _get_executor_semaphore(signal)
     if not sem.acquire(blocking=False):  # pragma: no mutate — blocking=None is also non-blocking
-        # Pending queue is full — drop the operation (fail-open).
-        return None  # type: ignore[return-value]
+        # Pending queue is full — raise so the retry loop treats this as a
+        # failure and honors policy.fail_open rather than returning a silent
+        # None that masquerades as success.
+        raise ExecutorSaturated(f"{signal} executor saturated")
     executor = _get_timeout_executor(signal)  # pragma: no mutate
     future = executor.submit(operation)
     try:

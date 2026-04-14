@@ -141,5 +141,8 @@ def test_run_attempt_drops_when_semaphore_full_does_not_block() -> None:
             sem.release()
 
     assert not t.is_alive(), "Thread is still alive — sem.acquire is blocking (mutation blocking=True/None active)"
-    assert "exc" not in exc_holder, f"unexpected exception: {exc_holder.get('exc')}"
-    assert result_holder.get("value") is None, "Expected None (fail-open drop) when semaphore is exhausted"
+    # Saturation now raises ExecutorSaturated so the outer retry_loop honors
+    # policy.fail_open (either returns None or re-raises) instead of silently
+    # treating the drop as a successful attempt.
+    assert isinstance(exc_holder.get("exc"), resilience_mod.ExecutorSaturated)
+    assert "value" not in result_holder

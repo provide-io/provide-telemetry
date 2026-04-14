@@ -339,8 +339,16 @@ def _has_otel_log_provider() -> bool:
 def get_logger(name: str | None = None) -> _TraceWrapper:
     if not _configured:
         from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
-        configure_logging(TelemetryConfig.from_env())
+        cfg = TelemetryConfig.from_env()
+        # Install the logs sampling policy so PROVIDE_SAMPLING_LOGS_RATE takes
+        # effect for lazy-init emission.  Narrow on purpose: leave exporter and
+        # backpressure policies alone — those belong to setup_telemetry()'s
+        # orchestration, and overwriting them here would clobber values set
+        # directly by callers that only want logging without full setup.
+        set_sampling_policy("logs", SamplingPolicy(default_rate=cfg.sampling.logs_rate))
+        configure_logging(cfg)
     return _TraceWrapper(structlog.get_logger(name or "provide"))
 
 

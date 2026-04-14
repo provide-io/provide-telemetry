@@ -48,7 +48,9 @@ class Counter:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -103,7 +105,9 @@ class Gauge:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -174,7 +178,9 @@ class Histogram:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
