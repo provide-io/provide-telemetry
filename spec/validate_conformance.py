@@ -20,7 +20,6 @@ import ast
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 try:
     import yaml  # type: ignore[import-untyped]
@@ -77,13 +76,14 @@ def _to_pascal_case(snake: str) -> str:
     return "".join(_GO_ACRONYMS.get(p.lower(), p.capitalize()) for p in parts)
 
 
-def _load_spec(path: Path | None = None) -> dict[str, Any]:
+def _load_spec(path: Path | None = None) -> dict[str, object]:
     """Load the YAML spec. Uses PyYAML if available, else a regex-based fallback."""
     text = (path or _SPEC_PATH).read_text(encoding="utf-8")
     if _YAML_AVAILABLE:
-        return yaml.safe_load(text)  # type: ignore[no-any-return]
+        result: dict[str, object] = yaml.safe_load(text)
+        return result
 
-    names: list[dict[str, Any]] = []
+    names: list[dict[str, object]] = []
     for match in re.finditer(
         r"-\s+name:\s+(\S+)\s*\n\s+kind:\s+(\S+)\s*\n\s+required:\s+(true|false)",
         text,
@@ -95,18 +95,20 @@ def _load_spec(path: Path | None = None) -> dict[str, Any]:
                 "required": match.group(3) == "true",
             }
         )
-    return {"api_entries": names}
+    return {"api_entries": names, "language_overrides": {}}
 
 
-def _collect_spec_symbols(spec: dict[str, Any]) -> list[dict[str, Any]]:
+def _collect_spec_symbols(spec: dict[str, object]) -> list[dict[str, object]]:
     """Flatten the spec API categories into a list of symbol dicts."""
     api = spec.get("api")
     if api is None:
-        return spec.get("api_entries", [])  # type: ignore[no-any-return]
-    symbols: list[dict[str, Any]] = []
-    for _category, entries in api.items():
-        if isinstance(entries, list):
-            symbols.extend(entries)
+        raw = spec.get("api_entries", [])
+        return raw if isinstance(raw, list) else []
+    symbols: list[dict[str, object]] = []
+    if isinstance(api, dict):
+        for _category, entries in api.items():
+            if isinstance(entries, list):
+                symbols.extend(e for e in entries if isinstance(e, dict))
     return symbols
 
 
@@ -326,61 +328,66 @@ def _get_typescript_exports() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Kind override table
-# Maps (lang) → { (exported_name, spec_kind) → set of acceptable actual kinds }
-# These are documented intentional deviations, not bugs.
+# Kind overrides are now stored in spec/telemetry-api.yaml under
+# language_overrides: rather than hardcoded here.
+# Use _build_kind_overrides() to read them at runtime.
 # ---------------------------------------------------------------------------
 
-_KIND_OVERRIDES: dict[str, dict[tuple[str, str], set[str]]] = {
-    "go": {
-        # spec says kind:instance for "tracer" → Go maps to "Tracer" (interface type, not DefaultTracer)
-        # The actual instance is DefaultTracer (var). Idiomatic Go: type and instance coexist.
-        ("Tracer", "instance"): {"type"},
-        # spec says kind:instance for "logger" → Go exports Logger as var (*slog.Logger)
-        ("Logger", "instance"): {"instance"},
-        # spec says kind:decorator for "trace" → Go exports Trace as a function (idiomatic)
-        ("Trace", "decorator"): {"function"},
-        # spec says kind:function for counter/gauge/histogram → Go name maps to interface types.
-        # Constructors are NewCounter/NewGauge/NewHistogram (func). Type is the spec-named symbol.
-        ("Counter", "function"): {"type"},
-        ("Gauge", "function"): {"type"},
-        ("Histogram", "function"): {"type"},
-    },
-    "rust": {
-        # spec says kind:decorator for "trace" → Rust exports trace as pub fn (acceptable)
-        ("trace", "decorator"): {"function"},
-        # spec says kind:instance for "logger" → Rust pub static (a LazyLock<Logger>)
-        ("logger", "instance"): {"instance"},
-        # spec says kind:instance for "tracer" → Rust pub fn tracer() returns a Tracer
-        ("tracer", "instance"): {"function", "instance"},
-    },
-    "typescript": {
-        # spec says kind:decorator for "trace" → TS exports traceDecorator as trace (function)
-        ("trace", "decorator"): {"function"},
-        # spec says kind:instance for "logger" → TS exports logger as const (instance)
-        ("logger", "instance"): {"instance"},
-        # spec says kind:instance for "tracer" → TS exports tracer as const (instance)
-        ("tracer", "instance"): {"instance"},
-    },
-    "python": {
-        # spec says kind:decorator for "trace" → Python trace() is a def (function used as decorator)
-        ("trace", "decorator"): {"function"},
-        # spec says kind:instance for "logger" → Python lazy instance (_LazyLogger assigned at module level)
-        ("logger", "instance"): {"instance"},
-        # spec says kind:instance for "tracer" → Python lazy instance (_LazyTracer assigned at module level)
-        ("tracer", "instance"): {"instance"},
-    },
-}
+
+def _build_kind_overrides(
+    spec: dict[str, object],
+    symbols: list[dict[str, object]],
+    transform: Callable[[str], str],
+    lang: str,
+) -> dict[tuple[str, str], set[str]]:
+    """Build a (exported_name, spec_kind) → accepted_kinds map from spec YAML.
+
+    Reads spec["language_overrides"][lang] and resolves spec_kind by looking up
+    each spec_name in *symbols*.  The transform converts spec names to the
+    language-specific exported name (e.g. snake_case → PascalCase for Go).
+    """
+    overrides_raw = spec.get("language_overrides")
+    if not isinstance(overrides_raw, dict):
+        return {}
+    lang_entries = overrides_raw.get(lang)
+    if not isinstance(lang_entries, list):
+        return {}
+
+    # Build a quick lookup: spec_name → spec_kind
+    spec_kind_map: dict[str, str] = {}
+    for sym in symbols:
+        if isinstance(sym, dict):
+            name = sym.get("name")
+            kind = sym.get("kind")
+            if isinstance(name, str) and isinstance(kind, str):
+                spec_kind_map[name] = kind
+
+    result: dict[tuple[str, str], set[str]] = {}
+    for entry in lang_entries:
+        if not isinstance(entry, dict):
+            continue
+        spec_name = entry.get("spec_name")
+        accepted_raw = entry.get("accepted_kinds")
+        if not isinstance(spec_name, str) or not isinstance(accepted_raw, list):
+            continue
+        spec_kind = spec_kind_map.get(spec_name)
+        if spec_kind is None:
+            continue
+        exported_name = transform(spec_name)
+        accepted: set[str] = {k for k in accepted_raw if isinstance(k, str)}
+        result[(exported_name, spec_kind)] = accepted
+    return result
 
 
 def _check_language(
     lang: str,
-    symbols: list[dict[str, Any]],
+    symbols: list[dict[str, object]],
+    spec: dict[str, object],
 ) -> tuple[list[str], list[str]]:
     """Check one language. Returns (errors, kind_notes).
 
-    errors: missing required symbols (cause exit code 1)
-    kind_notes: kind mismatches that are documented deviations (warnings only)
+    errors: missing required symbols or undocumented kind mismatches (exit code 1)
+    kind_notes: kind mismatches that are documented deviations in the spec YAML (notes only)
     """
     exports: dict[str, str]
     transform: Callable[[str], str]
@@ -399,7 +406,7 @@ def _check_language(
     else:
         return [f"Language '{lang}' is not yet supported by the conformance checker."], []
 
-    lang_overrides = _KIND_OVERRIDES.get(lang, {})
+    lang_overrides = _build_kind_overrides(spec, symbols, transform, lang)
     errors: list[str] = []
     kind_notes: list[str] = []
 
@@ -427,8 +434,12 @@ def _check_language(
                 f"  {expected}: spec={spec_kind}, exported as={actual_kind} [idiomatic deviation — intentional]"
             )
         else:
-            # Undocumented kind mismatch — still a note (not a CI-breaking error)
-            kind_notes.append(f"  {expected}: spec={spec_kind}, exported as={actual_kind} [unexpected kind mismatch]")
+            # Undocumented kind mismatch — error (not in language_overrides allowlist)
+            errors.append(
+                f"  KIND MISMATCH: {lang} exports '{expected}' as {actual_kind!r},"
+                f" spec expects {spec_kind!r} (spec: {spec_name})"
+                f" — add to language_overrides in telemetry-api.yaml if intentional"
+            )
 
     return errors, kind_notes
 
@@ -448,7 +459,7 @@ def main() -> int:
 
     for lang in langs:
         print(f"Checking {lang}...")
-        errors, kind_notes = _check_language(lang, symbols)
+        errors, kind_notes = _check_language(lang, symbols, spec)
         if errors:
             all_errors.extend(errors)
             print(f"  {len(errors)} missing symbols")
