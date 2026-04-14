@@ -86,6 +86,7 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 		return fn(ctx)
 	}
 	defer Release(signalTraces)
+	_incSpansStarted()
 
 	spanCtx, span := DefaultTracer.Start(ctx, name)
 	defer span.End()
