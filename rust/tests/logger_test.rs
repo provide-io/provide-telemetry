@@ -80,10 +80,19 @@ fn logger_test_json_emit_produces_canonical_fields() {
     assert!(!line.is_empty(), "expected a JSON line in capture buffer");
 
     let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
-    assert_eq!(parsed["message"], "log.output.parity", "message field must match");
+    assert_eq!(
+        parsed["message"], "log.output.parity",
+        "message field must match"
+    );
     assert_eq!(parsed["level"], "INFO", "level must be uppercase INFO");
-    assert_eq!(parsed["logger_name"], "tests.json_emit", "logger_name must match target");
-    assert!(parsed.get("timestamp").is_none(), "timestamp must be absent when disabled");
+    assert_eq!(
+        parsed["logger_name"], "tests.json_emit",
+        "logger_name must match target"
+    );
+    assert!(
+        parsed.get("timestamp").is_none(),
+        "timestamp must be absent when disabled"
+    );
     Logger::drain_events_for_tests();
 }
 
@@ -103,7 +112,9 @@ fn logger_test_json_emit_includes_timestamp_by_default() {
     let line = String::from_utf8(raw).expect("utf8");
     let parsed: serde_json::Value = serde_json::from_str(line.trim()).expect("valid JSON");
     assert_eq!(parsed["level"], "WARN");
-    let ts = parsed["timestamp"].as_str().expect("timestamp must be a string");
+    let ts = parsed["timestamp"]
+        .as_str()
+        .expect("timestamp must be a string");
     // ISO 8601 pattern: 2026-04-13T00:00:00.000Z
     assert!(
         ts.len() == 24 && ts.ends_with('Z') && ts.contains('T'),
@@ -124,7 +135,10 @@ fn logger_test_no_json_emit_in_console_format() {
     let raw = take_json_capture();
     std::env::remove_var("PROVIDE_LOG_FORMAT");
 
-    assert!(raw.is_empty(), "no JSON should be captured in console format");
+    assert!(
+        raw.is_empty(),
+        "no JSON should be captured in console format"
+    );
     // Drain event buffer to keep tests clean.
     Logger::drain_events_for_tests();
 }
@@ -148,9 +162,18 @@ fn logger_test_console_format_writes_readable_line() {
     let line = line.trim();
     assert!(!line.is_empty(), "expected console output");
     assert!(line.contains("WARN"), "line must contain level: {line}");
-    assert!(line.contains("console.parity.check"), "line must contain message: {line}");
-    assert!(line.contains("tests.console_output"), "line must contain target: {line}");
-    assert!(!line.starts_with("20"), "timestamp must be absent when disabled: {line}");
+    assert!(
+        line.contains("console.parity.check"),
+        "line must contain message: {line}"
+    );
+    assert!(
+        line.contains("tests.console_output"),
+        "line must contain target: {line}"
+    );
+    assert!(
+        !line.starts_with("20"),
+        "timestamp must be absent when disabled: {line}"
+    );
 }
 
 #[test]
@@ -174,8 +197,14 @@ fn logger_test_configure_logging_overrides_env() {
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
 
-    assert!(json_raw.is_empty(), "override to console must suppress JSON emit");
-    assert!(!console_raw.is_empty(), "override to console must produce console output");
+    assert!(
+        json_raw.is_empty(),
+        "override to console must suppress JSON emit"
+    );
+    assert!(
+        !console_raw.is_empty(),
+        "override to console must produce console output"
+    );
 }
 
 #[test]
@@ -223,14 +252,24 @@ fn logger_test_log_trait_respects_level_filter() {
     Logger::drain_events_for_tests();
 
     let output = String::from_utf8(raw).expect("utf8");
-    assert!(!output.contains("should.be.filtered"), "DEBUG must be filtered at INFO level");
-    assert!(output.contains("should.pass"), "INFO must pass through at INFO level");
+    assert!(
+        !output.contains("should.be.filtered"),
+        "DEBUG must be filtered at INFO level"
+    );
+    assert!(
+        output.contains("should.pass"),
+        "INFO must pass through at INFO level"
+    );
 }
 
 #[test]
 fn logger_test_console_format_includes_timestamp_when_enabled() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let cfg = LoggingConfig { fmt: "console".to_string(), include_timestamp: true, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        fmt: "console".to_string(),
+        include_timestamp: true,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_console_capture_for_tests();
 
@@ -243,18 +282,31 @@ fn logger_test_console_format_includes_timestamp_when_enabled() {
 
     let line = String::from_utf8(raw).expect("utf8");
     let line = line.trim();
-    assert!(line.starts_with("20"), "timestamp must appear when enabled: {line}");
-    assert!(line.contains('T'), "timestamp must have T separator: {line}");
+    assert!(
+        line.starts_with("20"),
+        "timestamp must appear when enabled: {line}"
+    );
+    assert!(
+        line.contains('T'),
+        "timestamp must have T separator: {line}"
+    );
 }
 
 #[test]
 fn logger_test_console_format_includes_context_fields() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    let cfg = LoggingConfig { fmt: "console".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        fmt: "console".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_console_capture_for_tests();
 
-    let _ctx = bind_context([("request_id".to_string(), serde_json::Value::String("ctx-abc".into()))]);
+    let _ctx = bind_context([(
+        "request_id".to_string(),
+        serde_json::Value::String("ctx-abc".into()),
+    )]);
     let logger = get_logger(Some("tests.console_ctx"));
     logger.info("console.context.fields");
     drop(_ctx);
@@ -265,15 +317,26 @@ fn logger_test_console_format_includes_context_fields() {
 
     let line = String::from_utf8(raw).expect("utf8");
     let line = line.trim();
-    assert!(line.contains("request_id"), "context key must appear in console line: {line}");
-    assert!(line.contains("ctx-abc"), "context value must appear in console line: {line}");
+    assert!(
+        line.contains("request_id"),
+        "context key must appear in console line: {line}"
+    );
+    assert!(
+        line.contains("ctx-abc"),
+        "context value must appear in console line: {line}"
+    );
 }
 
 #[test]
 fn logger_test_log_trait_level_warn_filters_info() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let _ = set_as_global_logger();
-    let cfg = LoggingConfig { level: "WARN".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        level: "WARN".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
 
@@ -285,16 +348,30 @@ fn logger_test_log_trait_level_warn_filters_info() {
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
 
-    assert!(!output.contains("info.filtered"), "INFO must be filtered at WARN level");
-    assert!(output.contains("warn.passes"), "WARN must pass at WARN level");
-    assert!(output.contains("error.passes"), "ERROR must pass at WARN level");
+    assert!(
+        !output.contains("info.filtered"),
+        "INFO must be filtered at WARN level"
+    );
+    assert!(
+        output.contains("warn.passes"),
+        "WARN must pass at WARN level"
+    );
+    assert!(
+        output.contains("error.passes"),
+        "ERROR must pass at WARN level"
+    );
 }
 
 #[test]
 fn logger_test_log_trait_level_error_filters_warn() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let _ = set_as_global_logger();
-    let cfg = LoggingConfig { level: "ERROR".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        level: "ERROR".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
 
@@ -305,15 +382,26 @@ fn logger_test_log_trait_level_error_filters_warn() {
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
 
-    assert!(!output.contains("warn.filtered"), "WARN must be filtered at ERROR level");
-    assert!(output.contains("error.passes"), "ERROR must pass at ERROR level");
+    assert!(
+        !output.contains("warn.filtered"),
+        "WARN must be filtered at ERROR level"
+    );
+    assert!(
+        output.contains("error.passes"),
+        "ERROR must pass at ERROR level"
+    );
 }
 
 #[test]
 fn logger_test_log_trait_level_debug_allows_debug() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let _ = set_as_global_logger();
-    let cfg = LoggingConfig { level: "DEBUG".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        level: "DEBUG".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
 
@@ -324,15 +412,26 @@ fn logger_test_log_trait_level_debug_allows_debug() {
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
 
-    assert!(output.contains("debug.passes"), "DEBUG must pass at DEBUG level");
-    assert!(output.contains("info.passes"), "INFO must pass at DEBUG level");
+    assert!(
+        output.contains("debug.passes"),
+        "DEBUG must pass at DEBUG level"
+    );
+    assert!(
+        output.contains("info.passes"),
+        "INFO must pass at DEBUG level"
+    );
 }
 
 #[test]
 fn logger_test_log_trait_level_trace_allows_trace() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let _ = set_as_global_logger();
-    let cfg = LoggingConfig { level: "TRACE".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        level: "TRACE".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
 
@@ -343,8 +442,14 @@ fn logger_test_log_trait_level_trace_allows_trace() {
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
 
-    assert!(output.contains("trace.passes"), "TRACE must pass at TRACE level");
-    assert!(output.contains("debug.passes"), "DEBUG must pass at TRACE level");
+    assert!(
+        output.contains("trace.passes"),
+        "TRACE must pass at TRACE level"
+    );
+    assert!(
+        output.contains("debug.passes"),
+        "DEBUG must pass at TRACE level"
+    );
 }
 
 #[test]
@@ -353,7 +458,12 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
     let _ = set_as_global_logger();
 
     // WARNING is an alias for WARN.
-    let cfg = LoggingConfig { level: "WARNING".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg = LoggingConfig {
+        level: "WARNING".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
     log::info!(target: "tests.alias_lvl", "info.filtered.warning");
@@ -361,11 +471,22 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
     let out1 = String::from_utf8(take_json_capture()).expect("utf8");
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
-    assert!(!out1.contains("info.filtered.warning"), "INFO filtered under WARNING alias");
-    assert!(out1.contains("warn.passes.warning"), "WARN passes under WARNING alias");
+    assert!(
+        !out1.contains("info.filtered.warning"),
+        "INFO filtered under WARNING alias"
+    );
+    assert!(
+        out1.contains("warn.passes.warning"),
+        "WARN passes under WARNING alias"
+    );
 
     // CRITICAL is an alias for ERROR.
-    let cfg2 = LoggingConfig { level: "CRITICAL".to_string(), fmt: "json".to_string(), include_timestamp: false, ..LoggingConfig::default() };
+    let cfg2 = LoggingConfig {
+        level: "CRITICAL".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
     configure_logging(cfg2);
     enable_json_capture_for_tests();
     log::warn!(target: "tests.alias_lvl", "warn.filtered.critical");
@@ -373,8 +494,14 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
     let out2 = String::from_utf8(take_json_capture()).expect("utf8");
     reset_logging_config_for_tests();
     Logger::drain_events_for_tests();
-    assert!(!out2.contains("warn.filtered.critical"), "WARN filtered under CRITICAL alias");
-    assert!(out2.contains("error.passes.critical"), "ERROR passes under CRITICAL alias");
+    assert!(
+        !out2.contains("warn.filtered.critical"),
+        "WARN filtered under CRITICAL alias"
+    );
+    assert!(
+        out2.contains("error.passes.critical"),
+        "ERROR passes under CRITICAL alias"
+    );
 }
 
 #[test]
@@ -396,21 +523,33 @@ fn logger_test_emitted_logs_increments_on_log() {
 #[test]
 fn logger_test_sampling_zero_drops_log_and_does_not_increment_emitted() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    use provide_telemetry::{get_health_snapshot, set_sampling_policy, Signal, SamplingPolicy};
+    use provide_telemetry::{get_health_snapshot, set_sampling_policy, SamplingPolicy, Signal};
 
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
 
-    set_sampling_policy(Signal::Logs, SamplingPolicy { default_rate: 0.0, overrides: Default::default() })
-        .expect("policy should set");
+    set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: 0.0,
+            overrides: Default::default(),
+        },
+    )
+    .expect("policy should set");
 
     let logger = get_logger(Some("tests.sampling_zero"));
     logger.info("should.be.dropped");
     Logger::drain_events_for_tests();
 
     let snap = get_health_snapshot();
-    assert_eq!(snap.emitted_logs, 0, "emitted_logs must stay 0 when sampling rate is 0.0");
-    assert_eq!(snap.dropped_logs, 1, "dropped_logs must be 1 when sampling rate is 0.0");
+    assert_eq!(
+        snap.emitted_logs, 0,
+        "emitted_logs must stay 0 when sampling rate is 0.0"
+    );
+    assert_eq!(
+        snap.dropped_logs, 1,
+        "dropped_logs must be 1 when sampling rate is 0.0"
+    );
 
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
@@ -419,13 +558,19 @@ fn logger_test_sampling_zero_drops_log_and_does_not_increment_emitted() {
 #[test]
 fn logger_test_full_queue_drops_log_and_does_not_increment_emitted() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    use provide_telemetry::{get_health_snapshot, set_queue_policy, try_acquire, release, Signal, QueuePolicy};
+    use provide_telemetry::{
+        get_health_snapshot, release, set_queue_policy, try_acquire, QueuePolicy, Signal,
+    };
 
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
 
     // Fill the log queue completely.
-    set_queue_policy(QueuePolicy { logs_maxsize: 1, traces_maxsize: 64, metrics_maxsize: 64 });
+    set_queue_policy(QueuePolicy {
+        logs_maxsize: 1,
+        traces_maxsize: 64,
+        metrics_maxsize: 64,
+    });
     let ticket = try_acquire(Signal::Logs).expect("first acquire must succeed");
 
     let logger = get_logger(Some("tests.backpressure"));
@@ -433,8 +578,14 @@ fn logger_test_full_queue_drops_log_and_does_not_increment_emitted() {
     Logger::drain_events_for_tests();
 
     let snap = get_health_snapshot();
-    assert_eq!(snap.emitted_logs, 0, "emitted_logs must stay 0 when queue is full");
-    assert_eq!(snap.dropped_logs, 1, "dropped_logs must be 1 when queue is full");
+    assert_eq!(
+        snap.emitted_logs, 0,
+        "emitted_logs must stay 0 when queue is full"
+    );
+    assert_eq!(
+        snap.dropped_logs, 1,
+        "dropped_logs must be 1 when queue is full"
+    );
 
     release(ticket);
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
@@ -444,13 +595,21 @@ fn logger_test_full_queue_drops_log_and_does_not_increment_emitted() {
 #[test]
 fn tracer_test_sampling_zero_drops_span_but_still_calls_callback() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    use provide_telemetry::{get_health_snapshot, set_sampling_policy, trace, Signal, SamplingPolicy};
+    use provide_telemetry::{
+        get_health_snapshot, set_sampling_policy, trace, SamplingPolicy, Signal,
+    };
 
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
 
-    set_sampling_policy(Signal::Traces, SamplingPolicy { default_rate: 0.0, overrides: Default::default() })
-        .expect("policy should set");
+    set_sampling_policy(
+        Signal::Traces,
+        SamplingPolicy {
+            default_rate: 0.0,
+            overrides: Default::default(),
+        },
+    )
+    .expect("policy should set");
 
     let mut called = false;
     let result = trace("tests.trace.sampled_out", || {
@@ -458,11 +617,20 @@ fn tracer_test_sampling_zero_drops_span_but_still_calls_callback() {
         99_i32
     });
 
-    assert!(called, "callback must still execute when sampling drops the span");
+    assert!(
+        called,
+        "callback must still execute when sampling drops the span"
+    );
     assert_eq!(result, 99, "callback return value must be preserved");
     let snap = get_health_snapshot();
-    assert_eq!(snap.emitted_traces, 0, "emitted_traces must stay 0 when sampling rate is 0.0");
-    assert_eq!(snap.dropped_traces, 1, "dropped_traces must be 1 when sampling rate is 0.0");
+    assert_eq!(
+        snap.emitted_traces, 0,
+        "emitted_traces must stay 0 when sampling rate is 0.0"
+    );
+    assert_eq!(
+        snap.dropped_traces, 1,
+        "dropped_traces must be 1 when sampling rate is 0.0"
+    );
 
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
@@ -471,13 +639,19 @@ fn tracer_test_sampling_zero_drops_span_but_still_calls_callback() {
 #[test]
 fn tracer_test_full_queue_drops_span_but_still_calls_callback() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    use provide_telemetry::{get_health_snapshot, set_queue_policy, try_acquire, release, trace, Signal, QueuePolicy};
+    use provide_telemetry::{
+        get_health_snapshot, release, set_queue_policy, trace, try_acquire, QueuePolicy, Signal,
+    };
 
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
 
     // Fill the trace queue completely.
-    set_queue_policy(QueuePolicy { logs_maxsize: 64, traces_maxsize: 1, metrics_maxsize: 64 });
+    set_queue_policy(QueuePolicy {
+        logs_maxsize: 64,
+        traces_maxsize: 1,
+        metrics_maxsize: 64,
+    });
     let ticket = try_acquire(Signal::Traces).expect("first acquire must succeed");
 
     let mut called = false;
@@ -486,11 +660,20 @@ fn tracer_test_full_queue_drops_span_but_still_calls_callback() {
         77_i32
     });
 
-    assert!(called, "callback must still execute when backpressure drops the span");
+    assert!(
+        called,
+        "callback must still execute when backpressure drops the span"
+    );
     assert_eq!(result, 77, "callback return value must be preserved");
     let snap = get_health_snapshot();
-    assert_eq!(snap.emitted_traces, 0, "emitted_traces must stay 0 when queue is full");
-    assert_eq!(snap.dropped_traces, 1, "dropped_traces must be 1 when queue is full");
+    assert_eq!(
+        snap.emitted_traces, 0,
+        "emitted_traces must stay 0 when queue is full"
+    );
+    assert_eq!(
+        snap.dropped_traces, 1,
+        "dropped_traces must be 1 when queue is full"
+    );
 
     release(ticket);
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
@@ -500,7 +683,9 @@ fn tracer_test_full_queue_drops_span_but_still_calls_callback() {
 #[test]
 fn tracer_test_consent_none_skips_emitted_counter() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
-    use provide_telemetry::{get_health_snapshot, reset_consent_for_tests, set_consent_level, ConsentLevel};
+    use provide_telemetry::{
+        get_health_snapshot, reset_consent_for_tests, set_consent_level, ConsentLevel,
+    };
 
     reset_consent_for_tests();
     set_consent_level(ConsentLevel::None);
