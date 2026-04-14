@@ -8,6 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
+#[cfg(feature = "otel")]
+mod resource;
+
 static OTEL_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "otel")]
