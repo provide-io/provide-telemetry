@@ -29,7 +29,6 @@ from provide.telemetry.logger.processors import (
     sanitize_sensitive_fields,
 )
 from provide.telemetry.pii import reset_pii_rules_for_tests
-from provide.telemetry.schema.events import EventSchemaError
 
 
 @pytest.fixture(autouse=True)
@@ -72,9 +71,10 @@ def test_processors() -> None:
 def test_enforce_schema_processor() -> None:
     cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "true"})
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c"})
-    with pytest.raises(EventSchemaError):
-        processor(None, "info", {"event": "invalid"})
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" not in result
+    result = processor(None, "info", {"event": "invalid"})
+    assert "_schema_error" in result
 
 
 def test_enforce_required_keys_processor() -> None:
@@ -85,16 +85,18 @@ def test_enforce_required_keys_processor() -> None:
         }
     )
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c", "request_id": "x"})
-    with pytest.raises(EventSchemaError):
-        processor(None, "info", {"event": "a.b.c"})
+    result = processor(None, "info", {"event": "a.b.c", "request_id": "x"})
+    assert "_schema_error" not in result
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" in result
 
 
 def test_enforce_required_keys_enforced_in_compat_mode() -> None:
     cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id"})
     processor = enforce_event_schema(cfg)
-    with pytest.raises(EventSchemaError, match="missing required keys: request_id"):
-        processor(None, "info", {"event": "a.b.c"})
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" in result
+    assert "request_id" in result["_schema_error"]
 
 
 def test_configure_and_get_logger() -> None:
