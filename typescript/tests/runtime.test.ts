@@ -54,6 +54,15 @@ describe('getRuntimeConfig', () => {
       (cfg.logModuleLevels as Record<string, string>)['new.mod'] = 'info';
     }).toThrow();
   });
+
+  it('reflects values set via setupTelemetry() without needing updateRuntimeConfig()', () => {
+    _resetRuntimeForTests();
+    _resetConfig();
+    setupTelemetry({ serviceName: 'injected-service', logLevel: 'debug' });
+    const cfg = getRuntimeConfig();
+    expect(cfg.serviceName).toBe('injected-service');
+    expect(cfg.logLevel).toBe('debug');
+  });
 });
 
 describe('updateRuntimeConfig', () => {

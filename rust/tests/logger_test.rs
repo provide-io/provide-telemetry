@@ -376,3 +376,38 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
     assert!(!out2.contains("warn.filtered.critical"), "WARN filtered under CRITICAL alias");
     assert!(out2.contains("error.passes.critical"), "ERROR passes under CRITICAL alias");
 }
+
+#[test]
+fn logger_test_emitted_logs_increments_on_log() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::get_health_snapshot;
+
+    let before = get_health_snapshot().emitted_logs;
+    let logger = get_logger(Some("tests.health"));
+    logger.info("logger.health.test");
+    Logger::drain_events_for_tests();
+    let after = get_health_snapshot().emitted_logs;
+    assert!(
+        after > before,
+        "emitted_logs should increase after a log call (before={before}, after={after})"
+    );
+}
+
+#[test]
+fn tracer_test_consent_none_skips_emitted_counter() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::{get_health_snapshot, reset_consent_for_tests, set_consent_level, ConsentLevel};
+
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::None);
+    let before = get_health_snapshot().emitted_traces;
+
+    let _ = provide_telemetry::trace("test.span", || 42_i32);
+
+    let after = get_health_snapshot().emitted_traces;
+    assert_eq!(
+        before, after,
+        "emitted_traces should not increase when consent is None (before={before}, after={after})"
+    );
+    reset_consent_for_tests();
+}
