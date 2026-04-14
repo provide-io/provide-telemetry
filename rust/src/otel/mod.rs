@@ -9,6 +9,8 @@ use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
 #[cfg(feature = "otel")]
+mod endpoint;
+#[cfg(feature = "otel")]
 mod resource;
 
 static OTEL_INSTALLED: AtomicBool = AtomicBool::new(false);
