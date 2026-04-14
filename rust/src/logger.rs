@@ -263,7 +263,7 @@ fn log_event(level: &str, target: &str, message: &str) {
     if !should_allow("logs", Some(level)) {
         return;
     }
-    if !should_sample(Signal::Logs, Some(level)).unwrap_or(true) {
+    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
         return;
     }
     let Some(ticket) = try_acquire(Signal::Logs) else {
