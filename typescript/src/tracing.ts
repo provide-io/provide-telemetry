@@ -225,24 +225,25 @@ export function withTrace<T>(name: string, fn: () => T): T {
   // a second span attempt in the fallback path without holding a backpressure slot.
   let activeCtx: ReturnType<typeof getActiveOtelContext> | undefined;
   try {
-    const activeCtx = getActiveOtelContext();
-    if (activeCtx) {
-      try {
-        return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
-          tracer.startActiveSpan(name, (span: Span) => {
-            // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-            /* v8 ignore start: noop-span false branch + real-span return are unreachable without a registered OTel provider */
-            if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-            return _spanHandler(fn, span);
-            /* v8 ignore stop */
-          }),
-        );
-      } finally {
-        release(ticket);
-      }
-    }
+    activeCtx = getActiveOtelContext();
   } catch {
     // getActiveOtelContext() threw — graceful degradation, fall through to default behaviour.
+  }
+
+  if (activeCtx) {
+    try {
+      return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
+        tracer.startActiveSpan(name, (span: Span) => {
+          // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+          /* v8 ignore start: noop-span false branch + real-span return are unreachable without a registered OTel provider */
+          if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+          return _spanHandler(fn, span);
+          /* v8 ignore stop */
+        }),
+      );
+    } finally {
+      release(ticket);
+    }
   }
 
   try {
