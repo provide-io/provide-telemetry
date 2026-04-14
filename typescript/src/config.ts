@@ -28,7 +28,7 @@ export interface TelemetryConfig {
   logLevel: string;
   /** Output format: "json" (default) or "pretty". */
   logFormat: 'json' | 'pretty';
-  /** Enable OTEL SDK registration on setupTelemetry(). */
+  /** When true, registerOtelProviders() will install OTEL SDK providers. setupTelemetry() stores this flag but does not register providers itself. */
   otelEnabled: boolean;
   /** OTLP export endpoint (e.g. "http://localhost:4318"). */
   otlpEndpoint?: string;
