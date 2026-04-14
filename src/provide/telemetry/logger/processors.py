@@ -163,15 +163,23 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
     return _processor
 
 
-def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    from provide.telemetry.backpressure import release, try_acquire
+    from provide.telemetry.consent import should_allow
     from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
 
+    if not should_allow("logs", method_name):
+        raise structlog.DropEvent()
     event_name = str(event_dict.get("event", ""))  # pragma: no mutate
-    if should_sample("logs", event_name):
-        increment_emitted("logs")
-        return event_dict
-    raise structlog.DropEvent()
+    if not should_sample("logs", event_name):
+        raise structlog.DropEvent()
+    ticket = try_acquire("logs")
+    if ticket is None:
+        raise structlog.DropEvent()  # backpressure full; dropped counter already incremented
+    increment_emitted("logs")
+    release(ticket)
+    return event_dict
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:

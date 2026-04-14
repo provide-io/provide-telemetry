@@ -44,7 +44,10 @@ _reconfigure_lock = threading.Lock()
 def _apply_policies(snapshot: TelemetryConfig) -> None:
     """Push hot policy values from a config snapshot to signal subsystems. Lock-free."""
     set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))  # pragma: no mutate
-    set_sampling_policy("traces", SamplingPolicy(default_rate=snapshot.sampling.traces_rate))
+    set_sampling_policy(
+        "traces",
+        SamplingPolicy(default_rate=min(snapshot.sampling.traces_rate, snapshot.tracing.sample_rate)),
+    )
     set_sampling_policy("metrics", SamplingPolicy(default_rate=snapshot.sampling.metrics_rate))
     set_queue_policy(
         QueuePolicy(

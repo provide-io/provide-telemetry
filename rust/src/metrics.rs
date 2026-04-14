@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
+use crate::consent::should_allow;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
@@ -43,6 +44,9 @@ pub struct Counter {
 impl Counter {
     pub fn add(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -87,6 +91,9 @@ impl Gauge {
         if !metrics_enabled() {
             return;
         }
+        if !should_allow("metrics", None) {
+            return;
+        }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
             return;
         }
@@ -103,6 +110,9 @@ impl Gauge {
 
     pub fn set(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -146,6 +156,9 @@ pub struct Histogram {
 impl Histogram {
     pub fn record(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
