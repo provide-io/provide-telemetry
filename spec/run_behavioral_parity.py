@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -33,20 +34,29 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _find_cargo_bin() -> str:
-    """Prefer rustup's cargo over whatever the invoking environment shadows it with.
+def _find_rust_toolchain() -> tuple[str, dict[str, str]]:
+    """Return (cargo_bin, env_overrides) ensuring a coherent Rust toolchain.
 
-    uv run python injects its own older cargo into PATH for build purposes.
-    Rustup installs cargo at ~/.cargo/bin/cargo — prefer that when it exists.
+    uv run python injects its own older cargo AND rustc into PATH for building
+    Python packages.  Prepending ~/.cargo/bin to PATH ensures both cargo and
+    rustc resolve from the same rustup-managed toolchain rather than the
+    uv-injected one.
     """
-    rustup_cargo = Path.home() / ".cargo" / "bin" / "cargo"
-    if rustup_cargo.is_file():
-        return str(rustup_cargo)
-    found = shutil.which("cargo")
-    return found or "cargo"
+    cargo_dir = Path.home() / ".cargo" / "bin"
+    if (cargo_dir / "cargo").is_file():
+        cargo_bin = str(cargo_dir / "cargo")
+        env_overrides: dict[str, str] = {
+            "PATH": f"{cargo_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        }
+    else:
+        cargo_bin = shutil.which("cargo") or "cargo"
+        env_overrides = {}
+    return cargo_bin, env_overrides
 
 
-_CARGO_BIN: str = _find_cargo_bin()
+_CARGO_BIN: str
+_CARGO_ENV: dict[str, str]
+_CARGO_BIN, _CARGO_ENV = _find_rust_toolchain()
 
 # ---------------------------------------------------------------------------
 # Language runner configuration
@@ -116,7 +126,7 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             cwd=repo / "rust",
             # 8 MiB stack prevents overflow when all parity tests run sequentially
             # on the same thread (default 2 MiB is insufficient for deep sanitize_payload calls)
-            env_extra={"RUST_MIN_STACK": "8388608"},
+            env_extra={"RUST_MIN_STACK": "8388608", **_CARGO_ENV},
         ),
     ]
 
@@ -152,8 +162,6 @@ def _runtime_available(runner: LanguageRunner) -> bool:
 
 def _run_parity(runner: LanguageRunner, *, timeout: int = 300) -> Result:
     """Run parity tests and return a Result."""
-    import os
-
     env = {**os.environ, **runner.env_extra}
     start = time.monotonic()
     try:
@@ -260,6 +268,7 @@ def _probe_runners(repo: Path) -> list[ProbeRunner]:
             label="Rust",
             cmd=[_CARGO_BIN, "--locked", "run", "--example", "emit_log_probe", "--quiet"],
             cwd=repo / "rust",
+            env_extra={**_CARGO_ENV},
         ),
     ]
 
@@ -282,8 +291,6 @@ def _normalize_log_record(raw: dict[str, object]) -> dict[str, object]:
 
 def _run_probe(runner: ProbeRunner, *, timeout: int = 60) -> tuple[str, str]:
     """Run probe; return (combined_output, error_message_or_empty)."""
-    import os
-
     env = {**os.environ, **_PROBE_ENV, **runner.env_extra}
     try:
         proc = subprocess.run(  # noqa: S603
