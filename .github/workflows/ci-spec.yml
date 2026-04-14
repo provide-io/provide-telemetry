@@ -78,6 +78,7 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all four language parity suites and report results
+      # Run all four language parity suites, then run each language's emit probe
+      # and cross-compare canonical JSON fields (msg, level) to catch output regressions.
       - name: Behavioral parity check
-        run: python spec/run_behavioral_parity.py
+        run: python spec/run_behavioral_parity.py --check-output
