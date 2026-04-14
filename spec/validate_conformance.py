@@ -18,12 +18,17 @@ from __future__ import annotations
 import argparse
 import ast
 import re
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 try:
     import yaml  # type: ignore[import-untyped]
+
+    _YAML_AVAILABLE = True
 except ImportError:
-    yaml = None  # type: ignore[assignment]
+    yaml = None
+    _YAML_AVAILABLE = False
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC_PATH = _REPO_ROOT / "spec" / "telemetry-api.yaml"
@@ -72,13 +77,13 @@ def _to_pascal_case(snake: str) -> str:
     return "".join(_GO_ACRONYMS.get(p.lower(), p.capitalize()) for p in parts)
 
 
-def _load_spec(path: Path | None = None) -> dict[str, object]:
+def _load_spec(path: Path | None = None) -> dict[str, Any]:
     """Load the YAML spec. Uses PyYAML if available, else a regex-based fallback."""
     text = (path or _SPEC_PATH).read_text(encoding="utf-8")
-    if yaml is not None:
+    if _YAML_AVAILABLE:
         return yaml.safe_load(text)  # type: ignore[no-any-return]
 
-    names: list[dict[str, object]] = []
+    names: list[dict[str, Any]] = []
     for match in re.finditer(
         r"-\s+name:\s+(\S+)\s*\n\s+kind:\s+(\S+)\s*\n\s+required:\s+(true|false)",
         text,
@@ -93,125 +98,292 @@ def _load_spec(path: Path | None = None) -> dict[str, object]:
     return {"api_entries": names}
 
 
-def _collect_spec_symbols(spec: dict[str, object]) -> list[dict[str, object]]:
+def _collect_spec_symbols(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten the spec API categories into a list of symbol dicts."""
     api = spec.get("api")
     if api is None:
-        return spec.get("api_entries", [])  # type: ignore[return-value]
-    symbols: list[dict[str, object]] = []
-    for _category, entries in api.items():  # type: ignore[union-attr]
+        return spec.get("api_entries", [])  # type: ignore[no-any-return]
+    symbols: list[dict[str, Any]] = []
+    for _category, entries in api.items():
         if isinstance(entries, list):
             symbols.extend(entries)
     return symbols
 
 
-def _get_python_exports() -> set[str]:
-    """Parse Python __all__ from __init__.py without importing."""
+# ---------------------------------------------------------------------------
+# Per-language kind-aware export parsers
+# Each returns dict[exported_name, kind] where kind ∈ {function, instance, type, decorator}
+# ---------------------------------------------------------------------------
+
+
+def _python_module_kinds(src_root: Path) -> dict[str, str]:
+    """Scan Python source modules to build a name→kind map.
+
+    Walks all .py files under *src_root*, collects module-level definitions,
+    and returns a mapping from symbol name to its kind string.
+    """
+    kind_map: dict[str, str] = {}
+    if not src_root.is_dir():
+        return kind_map
+    for py_file in sorted(src_root.rglob("*.py")):
+        try:
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                kind_map[node.name] = "function"
+            elif isinstance(node, ast.ClassDef):
+                kind_map[node.name] = "type"
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                        kind_map[target.id] = "instance"
+            elif (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and not node.target.id.startswith("_")
+            ):
+                kind_map[node.target.id] = "instance"
+    return kind_map
+
+
+def _get_python_exports() -> dict[str, str]:
+    """Parse Python __all__ from __init__.py and determine kind for each name."""
     init_path = _REPO_ROOT / "src" / "provide" / "telemetry" / "__init__.py"
     if not init_path.exists():
-        return set()
+        return {}
+
     tree = ast.parse(init_path.read_text(encoding="utf-8"))
+    all_names: list[str] = []
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(node.value, ast.List):
-                    return {
+                    all_names = [
                         elt.value
                         for elt in node.value.elts
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-                    }
-    return set()
+                    ]
+
+    src_root = _REPO_ROOT / "src" / "provide" / "telemetry"
+    kind_map = _python_module_kinds(src_root)
+
+    result: dict[str, str] = {}
+    for name in all_names:
+        result[name] = kind_map.get(name, "instance")
+    return result
 
 
-def _get_go_exports() -> set[str]:
-    """Parse exported symbol names from all non-test Go files in go/."""
+def _get_go_exports() -> dict[str, str]:
+    """Parse exported symbol names and kinds from all non-test Go files in go/."""
     go_dir = _REPO_ROOT / "go"
     if not go_dir.is_dir():
-        return set()
-    exports: set[str] = set()
-    patterns = (
-        r"^func ([A-Z][A-Za-z0-9]*)",
-        r"^var ([A-Z][A-Za-z0-9]*)",
-        r"^type ([A-Z][A-Za-z0-9]*)",
-    )
+        return {}
+    exports: dict[str, str] = {}
+    kind_patterns: list[tuple[str, str]] = [
+        (r"^func ([A-Z][A-Za-z0-9]*)", "function"),
+        (r"^var ([A-Z][A-Za-z0-9]*)", "instance"),
+        (r"^type ([A-Z][A-Za-z0-9]*)", "type"),
+    ]
     for go_file in sorted(go_dir.glob("*.go")):
         if go_file.name.endswith("_test.go"):
             continue
         text = go_file.read_text(encoding="utf-8")
-        for pattern in patterns:
+        for pattern, kind in kind_patterns:
             for match in re.finditer(pattern, text, re.MULTILINE):
-                exports.add(match.group(1))
+                exports[match.group(1)] = kind
+        # Multi-line var blocks: var (\n  Name Type\n)
+        for block in re.finditer(r"^var\s*\(\n(.*?)\n\)", text, re.MULTILINE | re.DOTALL):
+            for line in block.group(1).splitlines():
+                m = re.match(r"^\s+([A-Z][A-Za-z0-9]*)\b", line.strip())
+                if m:
+                    exports[m.group(1)] = "instance"
     return exports
 
 
-def _parse_rust_use_exports(use_body: str) -> set[str]:
+def _parse_rust_use_exports(use_body: str) -> list[str]:
     """Extract exported symbol names from a Rust ``pub use`` statement body."""
     body = use_body.strip()
+    names: list[str] = []
     if "{" in body and "}" in body:
         items = body[body.index("{") + 1 : body.rindex("}")]
-        exports = set()
         for item in re.split(r"\s*,\s*", items.strip()):
             if not item:
                 continue
             if " as " in item:
-                exports.add(item.split(" as ")[1].strip())
+                names.append(item.split(" as ")[1].strip())
             else:
-                exports.add(item.rsplit("::", 1)[-1].strip())
-        return exports
+                names.append(item.rsplit("::", 1)[-1].strip())
+        return names
 
     target = body.rsplit("::", 1)[-1].strip()
     if " as " in target:
-        return {target.split(" as ")[1].strip()}
-    return {target}
+        return [target.split(" as ")[1].strip()]
+    return [target]
 
 
-def _get_rust_exports() -> set[str]:
-    """Parse exported symbol names from rust/src/lib.rs via regex."""
+def _get_rust_exports() -> dict[str, str]:
+    """Parse exported symbol names and kinds from rust/src/lib.rs via regex."""
     lib_path = _REPO_ROOT / "rust" / "src" / "lib.rs"
     if not lib_path.exists():
-        return set()
+        return {}
     text = lib_path.read_text(encoding="utf-8")
-    exports: set[str] = set()
-    patterns = (
-        r"^\s*pub\s+(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)",
-        r"^\s*pub\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)",
-        r"^\s*pub\s+enum\s+([A-Za-z_][A-Za-z0-9_]*)",
-        r"^\s*pub\s+type\s+([A-Za-z_][A-Za-z0-9_]*)",
-        r"^\s*pub\s+static\s+([A-Za-z_][A-Za-z0-9_]*)",
-        r"^\s*pub\s+const\s+([A-Za-z_][A-Za-z0-9_]*)",
-    )
-    for pattern in patterns:
+    exports: dict[str, str] = {}
+
+    # Direct declarations with kind
+    kind_patterns: list[tuple[str, str]] = [
+        (r"^\s*pub\s+(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)", "function"),
+        (r"^\s*pub\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)", "type"),
+        (r"^\s*pub\s+enum\s+([A-Za-z_][A-Za-z0-9_]*)", "type"),
+        (r"^\s*pub\s+type\s+([A-Za-z_][A-Za-z0-9_]*)", "type"),
+        (r"^\s*pub\s+static\s+(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)", "instance"),
+        (r"^\s*pub\s+const\s+([A-Za-z_][A-Za-z0-9_]*)", "instance"),
+    ]
+    for pattern, kind in kind_patterns:
         for match in re.finditer(pattern, text, re.MULTILINE):
-            exports.add(match.group(1))
+            exports[match.group(1)] = kind
+
+    # Re-exports: determine kind from submodule source files
+    rust_src = _REPO_ROOT / "rust" / "src"
+    sub_kinds: dict[str, str] = {}
+    if rust_src.is_dir():
+        for rs_file in sorted(rust_src.rglob("*.rs")):
+            if rs_file.name == "lib.rs":
+                continue
+            rs_text = rs_file.read_text(encoding="utf-8")
+            for pattern, kind in kind_patterns:
+                for m in re.finditer(pattern, rs_text, re.MULTILINE):
+                    sub_kinds[m.group(1)] = kind
+
     for match in re.finditer(r"^\s*pub\s+use\s+(.+?);", text, re.MULTILINE | re.DOTALL):
-        exports.update(_parse_rust_use_exports(match.group(1)))
+        for name in _parse_rust_use_exports(match.group(1)):
+            exports[name] = sub_kinds.get(name, exports.get(name, "instance"))
+
     return exports
 
 
-def _get_typescript_exports() -> set[str]:
-    """Parse TypeScript export names from index.ts via regex."""
+def _get_typescript_src_kinds(ts_src_dir: Path) -> dict[str, str]:
+    """Scan TypeScript source files for top-level export declarations to get kinds."""
+    kind_map: dict[str, str] = {}
+    if not ts_src_dir.is_dir():
+        return kind_map
+    fn_pattern = re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)", re.MULTILINE)
+    const_pattern = re.compile(r"^export\s+const\s+(\w+)", re.MULTILINE)
+    class_pattern = re.compile(r"^export\s+(?:abstract\s+)?class\s+(\w+)", re.MULTILINE)
+    type_pattern = re.compile(r"^export\s+(?:type|interface|enum)\s+(\w+)", re.MULTILINE)
+    for ts_file in sorted(ts_src_dir.glob("*.ts")):
+        if ts_file.name.startswith("react"):
+            continue
+        text = ts_file.read_text(encoding="utf-8")
+        for m in fn_pattern.finditer(text):
+            kind_map[m.group(1)] = "function"
+        for m in const_pattern.finditer(text):
+            kind_map[m.group(1)] = "instance"
+        for m in class_pattern.finditer(text):
+            kind_map[m.group(1)] = "type"
+        for m in type_pattern.finditer(text):
+            kind_map[m.group(1)] = "type"
+    return kind_map
+
+
+def _get_typescript_exports() -> dict[str, str]:
+    """Parse TypeScript export names and kinds from index.ts and source files."""
     index_path = _REPO_ROOT / "typescript" / "src" / "index.ts"
     if not index_path.exists():
-        return set()
+        return {}
     text = index_path.read_text(encoding="utf-8")
-    exports: set[str] = set()
-    for block in re.finditer(r"export\s+(?:type\s+)?\{([^}]+)\}", text):
+
+    ts_src_dir = _REPO_ROOT / "typescript" / "src"
+    src_kinds = _get_typescript_src_kinds(ts_src_dir)
+
+    exports: dict[str, str] = {}
+
+    # export type { ... } → kind "type"
+    for block in re.finditer(r"export\s+type\s+\{([^}]+)\}", text):
         for item in re.split(r"\s*,\s*", block.group(1).strip()):
             if not item:
                 continue
-            if " as " in item:
-                alias = item.split(" as ")[1].strip()
-                exports.add(alias)
-            else:
-                exports.add(item)
+            name = item.split(" as ")[-1].strip() if " as " in item else item.strip()
+            exports[name] = "type"
+
+    # export { ... } → look up kind from source files
+    for block in re.finditer(r"export\s+\{([^}]+)\}", text):
+        # Skip if this is a "export type {" block (already handled above)
+        raw = block.group(0)
+        if "export type " in raw:
+            continue
+        for item in re.split(r"\s*,\s*", block.group(1).strip()):
+            if not item:
+                continue
+            parts = item.split(" as ")
+            original = parts[0].strip()
+            exported = parts[-1].strip()
+            kind = src_kinds.get(original, src_kinds.get(exported, "function"))
+            exports[exported] = kind
+
     return exports
+
+
+# ---------------------------------------------------------------------------
+# Kind override table
+# Maps (lang) → { (exported_name, spec_kind) → set of acceptable actual kinds }
+# These are documented intentional deviations, not bugs.
+# ---------------------------------------------------------------------------
+
+_KIND_OVERRIDES: dict[str, dict[tuple[str, str], set[str]]] = {
+    "go": {
+        # spec says kind:instance for "tracer" → Go maps to "Tracer" (interface type, not DefaultTracer)
+        # The actual instance is DefaultTracer (var). Idiomatic Go: type and instance coexist.
+        ("Tracer", "instance"): {"type"},
+        # spec says kind:instance for "logger" → Go exports Logger as var (*slog.Logger)
+        ("Logger", "instance"): {"instance"},
+        # spec says kind:decorator for "trace" → Go exports Trace as a function (idiomatic)
+        ("Trace", "decorator"): {"function"},
+        # spec says kind:function for counter/gauge/histogram → Go name maps to interface types.
+        # Constructors are NewCounter/NewGauge/NewHistogram (func). Type is the spec-named symbol.
+        ("Counter", "function"): {"type"},
+        ("Gauge", "function"): {"type"},
+        ("Histogram", "function"): {"type"},
+    },
+    "rust": {
+        # spec says kind:decorator for "trace" → Rust exports trace as pub fn (acceptable)
+        ("trace", "decorator"): {"function"},
+        # spec says kind:instance for "logger" → Rust pub static (a LazyLock<Logger>)
+        ("logger", "instance"): {"instance"},
+        # spec says kind:instance for "tracer" → Rust pub fn tracer() returns a Tracer
+        ("tracer", "instance"): {"function", "instance"},
+    },
+    "typescript": {
+        # spec says kind:decorator for "trace" → TS exports traceDecorator as trace (function)
+        ("trace", "decorator"): {"function"},
+        # spec says kind:instance for "logger" → TS exports logger as const (instance)
+        ("logger", "instance"): {"instance"},
+        # spec says kind:instance for "tracer" → TS exports tracer as const (instance)
+        ("tracer", "instance"): {"instance"},
+    },
+    "python": {
+        # spec says kind:decorator for "trace" → Python trace() is a def (function used as decorator)
+        ("trace", "decorator"): {"function"},
+        # spec says kind:instance for "logger" → Python lazy instance (_LazyLogger assigned at module level)
+        ("logger", "instance"): {"instance"},
+        # spec says kind:instance for "tracer" → Python lazy instance (_LazyTracer assigned at module level)
+        ("tracer", "instance"): {"instance"},
+    },
+}
 
 
 def _check_language(
     lang: str,
-    symbols: list[dict[str, object]],
-) -> list[str]:
-    """Check one language. Returns list of error messages."""
+    symbols: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    """Check one language. Returns (errors, kind_notes).
+
+    errors: missing required symbols (cause exit code 1)
+    kind_notes: kind mismatches that are documented deviations (warnings only)
+    """
+    exports: dict[str, str]
+    transform: Callable[[str], str]
     if lang == "python":
         exports = _get_python_exports()
         transform = _identity
@@ -225,17 +397,40 @@ def _check_language(
         exports = _get_go_exports()
         transform = _to_pascal_case
     else:
-        return [f"Language '{lang}' is not yet supported by the conformance checker."]
+        return [f"Language '{lang}' is not yet supported by the conformance checker."], []
 
+    lang_overrides = _KIND_OVERRIDES.get(lang, {})
     errors: list[str] = []
+    kind_notes: list[str] = []
+
     for sym in symbols:
         if not sym.get("required", False):
             continue
         spec_name = str(sym["name"])
+        spec_kind = str(sym.get("kind", "function"))
         expected = transform(spec_name)
+
         if expected not in exports:
             errors.append(f"  MISSING: {lang} does not export '{expected}' (spec: {spec_name})")
-    return errors
+            continue
+
+        actual_kind = exports[expected]
+        if actual_kind == spec_kind:
+            continue  # exact match — no note needed
+
+        # Check overrides: acceptable if the actual kind is in the allowed set
+        override_key = (expected, spec_kind)
+        allowed = lang_overrides.get(override_key)
+        if allowed is not None and actual_kind in allowed:
+            # Documented idiomatic deviation — record as a note, not an error
+            kind_notes.append(
+                f"  {expected}: spec={spec_kind}, exported as={actual_kind} [idiomatic deviation — intentional]"
+            )
+        else:
+            # Undocumented kind mismatch — still a note (not a CI-breaking error)
+            kind_notes.append(f"  {expected}: spec={spec_kind}, exported as={actual_kind} [unexpected kind mismatch]")
+
+    return errors, kind_notes
 
 
 def main() -> int:
@@ -253,12 +448,16 @@ def main() -> int:
 
     for lang in langs:
         print(f"Checking {lang}...")
-        errors = _check_language(lang, symbols)
+        errors, kind_notes = _check_language(lang, symbols)
         if errors:
             all_errors.extend(errors)
             print(f"  {len(errors)} missing symbols")
         else:
             print("  OK — all required symbols present")
+        if kind_notes:
+            print("  KIND NOTES (idiomatic deviations, not errors):")
+            for note in kind_notes:
+                print(note)
 
     if all_errors:
         print(f"\nFAILED — {len(all_errors)} conformance errors:")
