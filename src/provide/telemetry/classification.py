@@ -59,11 +59,18 @@ _rules: list[ClassificationRule] = []
 _policy: ClassificationPolicy = ClassificationPolicy()
 
 
+def _lookup_policy_action(label: str) -> str:
+    """Return the action string for the given label from the active policy."""
+    with _lock:
+        return str(getattr(_policy, label, "pass"))
+
+
 def register_classification_rules(rules: list[ClassificationRule]) -> None:
     """Add rules and install the classification hook on the PII engine."""
     with _lock:
         _rules.extend(rules)
     pii_mod._classification_hook = _classify_field
+    pii_mod._policy_hook = _lookup_policy_action
 
 
 def set_classification_policy(policy: ClassificationPolicy) -> None:
@@ -95,3 +102,4 @@ def _reset_classification_for_tests() -> None:
         _rules.clear()
         _policy = ClassificationPolicy()
     pii_mod._classification_hook = None
+    pii_mod._policy_hook = None

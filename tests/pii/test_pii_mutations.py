@@ -341,8 +341,8 @@ class TestSanitizePayload:
         # Custom rule left value unchanged (len("ab") <= 10), default must respect that
         assert result["password"] == "ab"
 
-    def test_rule_targeted_keys_propagates_through_nested_dict(self) -> None:
-        """Kills mutant replacing rule_targeted_keys with None in dict recursion.
+    def test_rule_targeted_paths_propagates_through_nested_dict(self) -> None:
+        """Kills mutant replacing rule_targeted_paths with None in dict recursion.
 
         A custom rule targeting a nested sensitive key must prevent default
         redaction at any depth, not just the top level.
@@ -354,8 +354,8 @@ class TestSanitizePayload:
         # is tracked as rule-targeted so default redaction must NOT apply "***"
         assert result["outer"]["password"] == "short"  # pragma: allowlist secret
 
-    def test_rule_targeted_keys_propagates_through_list(self) -> None:
-        """Kills mutant replacing rule_targeted_keys with None in list recursion."""
+    def test_rule_targeted_paths_propagates_through_list(self) -> None:
+        """Kills mutant replacing rule_targeted_paths with None in list recursion."""
         payload: dict[str, Any] = {"items": [{"token": "val"}]}
         replace_pii_rules([PIIRule(path=("items", "*", "token"), mode="truncate", truncate_to=100)])
         result = sanitize_payload(payload, enabled=True)
@@ -401,16 +401,16 @@ class TestApplyRuleDictOutput:
 class TestApplyDefaultSensitiveKeyRedactionMutants:
     """Kill remaining mutants in _apply_default_sensitive_key_redaction."""
 
-    def test_none_rule_targeted_keys_replaced_with_frozenset(self) -> None:
+    def test_none_rule_targeted_paths_replaced_with_frozenset(self) -> None:
         """Kills mutmut_1: `is None` -> `is not None` and mutmut_2: frozenset() -> None.
 
-        When rule_targeted_keys is None (default), it must be replaced with
-        an empty frozenset so the `key in rule_targeted_keys` check works.
-        The `is not None` mutant would skip the replacement when keys IS None,
-        causing a TypeError on `key in None`.
-        The `frozenset() -> None` mutant would replace with None, also causing TypeError.
+        When rule_targeted_paths is None (default), it must be replaced with
+        an empty frozenset so the path-has-rule check works without crashing.
+        The `is not None` mutant would skip the replacement when paths IS None,
+        causing a TypeError. The `frozenset() -> None` mutant would replace with
+        None, also causing TypeError.
         """
-        # Call with rule_targeted_keys=None (default) — must not crash
+        # Call with rule_targeted_paths=None (default) — must not crash
         node: dict[str, Any] = {"password": "secret123", "name": "alice"}
         original: dict[str, Any] = {"password": "secret123", "name": "alice"}
         result = _apply_default_sensitive_key_redaction(node, original)

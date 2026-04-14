@@ -178,7 +178,7 @@ _PROBE_ENV: dict[str, str] = {
 # Canonical field renames: {raw_field: canonical_field}.
 # Applied before comparison so all languages share the same key names.
 _FIELD_RENAMES: dict[str, str] = {
-    "msg": "msg",  # already canonical; listed for completeness
+    "message": "message",  # already canonical; listed for completeness
     "time": "timestamp",
     "target": "logger_name",
     "name": "logger_name",
@@ -302,7 +302,7 @@ def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
     Returns a list of mismatch messages; empty list means all good.
     """
     mismatches: list[str] = []
-    required = ("msg", "level")
+    required = ("message", "level")
     for field_name in required:
         values = {lang: rec.get(field_name) for lang, rec in records.items()}
         unique = set(v for v in values.values() if v is not None)
@@ -362,7 +362,7 @@ def run_output_check(
         all_ok = False
     else:
         langs = ", ".join(sorted(records))
-        print(f"  MATCH: msg + level agree across [{langs}]")
+        print(f"  MATCH: message + level agree across [{langs}]")
 
     return all_ok
 
