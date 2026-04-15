@@ -272,6 +272,10 @@ fn log_event(level: &str, target: &str, message: &str) {
     let event = new_event(target, level, message);
     emit_if_json(&event);
     emit_if_console(&event);
+    #[cfg(feature = "otel")]
+    if crate::otel::otel_installed() {
+        crate::otel::logs::emit_log(&event);
+    }
     let mut buf = events().lock().expect("logger event lock poisoned");
     if buf.len() < MAX_FALLBACK_EVENTS {
         buf.push(event);
