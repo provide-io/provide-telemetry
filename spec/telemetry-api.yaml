@@ -287,31 +287,248 @@ api:
       required: false
       note: "Strippable governance type"
 
-config_env_vars:
-  - prefix: PROVIDE_TELEMETRY_
-    keys:
-      - SERVICE_NAME
-      - ENVIRONMENT
-      - VERSION
-      - REQUIRED_KEYS
-      - STRICT_SCHEMA
-  - prefix: PROVIDE_LOG_
-    keys:
-      - LEVEL
-      - FORMAT
-      - INCLUDE_CALLER
-      - SANITIZE
-      - PII_MAX_DEPTH
-  - prefix: PROVIDE_TRACE_
-    keys:
-      - ENABLED
-      - SAMPLE_RATE
-  - prefix: PROVIDE_METRICS_
-    keys:
-      - ENABLED
-  - prefix: PROVIDE_
-    keys:
-      - CONSENT_LEVEL
+config_defaults:
+  core:
+    - env: PROVIDE_TELEMETRY_SERVICE_NAME
+      type: str
+      default: "provide-service"
+      description: "Service identity attached to all signals"
+    - env: PROVIDE_TELEMETRY_ENV
+      type: str
+      default: "dev"
+      description: "Deployment environment tag (e.g. dev, staging, prod)"
+    - env: PROVIDE_TELEMETRY_VERSION
+      type: str
+      default: "0.0.0"
+      description: "Application version tag"
+    - env: PROVIDE_TELEMETRY_STRICT_SCHEMA
+      type: bool
+      default: "false"
+      description: "Master switch: when true, overrides event name strictness to on"
+
+  event_schema:
+    - env: PROVIDE_TELEMETRY_STRICT_EVENT_NAME
+      type: bool
+      default: "false"
+      description: "Require 3-5 dot-separated lowercase segments in event names"
+    - env: PROVIDE_TELEMETRY_REQUIRED_KEYS
+      type: str
+      default: ""
+      description: "Comma-separated list of keys every log event must contain"
+
+  logging:
+    - env: PROVIDE_LOG_LEVEL
+      type: str
+      default: "INFO"
+      description: "Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL"
+    - env: PROVIDE_LOG_FORMAT
+      type: str
+      default: "console"
+      description: "Renderer: console, json, or pretty"
+    - env: PROVIDE_LOG_INCLUDE_TIMESTAMP
+      type: bool
+      default: "true"
+      description: "Add ISO-8601 timestamp to each log event"
+    - env: PROVIDE_LOG_INCLUDE_CALLER
+      type: bool
+      default: "true"
+      description: "Add filename and line number to each log event"
+    - env: PROVIDE_LOG_SANITIZE
+      type: bool
+      default: "true"
+      description: "Enable PII/sensitive field redaction in log output"
+    - env: PROVIDE_LOG_PII_MAX_DEPTH
+      type: int
+      default: "8"
+      description: "Maximum nesting depth for PII/sensitive field traversal during sanitization"
+    - env: PROVIDE_LOG_CODE_ATTRIBUTES
+      type: bool
+      default: "false"
+      description: "Attach code attributes to OTel log records"
+    - env: PROVIDE_LOG_PRETTY_KEY_COLOR
+      type: str
+      default: "dim"
+      description: "ANSI color name for keys in pretty format (see named colors below)"
+    - env: PROVIDE_LOG_PRETTY_VALUE_COLOR
+      type: str
+      default: ""
+      description: "ANSI color name for values in pretty format (empty = default)"
+    - env: PROVIDE_LOG_PRETTY_FIELDS
+      type: str
+      default: ""
+      description: "Comma-separated field names to display in pretty format"
+    - env: PROVIDE_LOG_MODULE_LEVELS
+      type: str
+      default: ""
+      description: "Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING)"
+
+  tracing:
+    - env: PROVIDE_TRACE_ENABLED
+      type: bool
+      default: "true"
+      description: "Enable OTel tracing provider (falls back to no-op when false)"
+    - env: PROVIDE_TRACE_SAMPLE_RATE
+      type: float
+      default: "1.0"
+      description: "Trace sampling rate (0.0-1.0)"
+
+  metrics:
+    - env: PROVIDE_METRICS_ENABLED
+      type: bool
+      default: "true"
+      description: "Enable OTel metrics provider (falls back to in-process when false)"
+
+  otlp:
+    - env: OTEL_EXPORTER_OTLP_ENDPOINT
+      type: str
+      default: "None"
+      description: "Shared OTLP endpoint (fallback for all signals)"
+    - env: OTEL_EXPORTER_OTLP_HEADERS
+      type: str
+      default: "None"
+      description: "Shared OTLP headers (fallback for all signals)"
+    - env: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
+      type: str
+      default: "None"
+      description: "Per-signal OTLP endpoint for logs"
+    - env: OTEL_EXPORTER_OTLP_LOGS_HEADERS
+      type: str
+      default: "None"
+      description: "Per-signal OTLP headers for logs"
+    - env: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      type: str
+      default: "None"
+      description: "Per-signal OTLP endpoint for traces"
+    - env: OTEL_EXPORTER_OTLP_TRACES_HEADERS
+      type: str
+      default: "None"
+      description: "Per-signal OTLP headers for traces"
+    - env: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+      type: str
+      default: "None"
+      description: "Per-signal OTLP endpoint for metrics"
+    - env: OTEL_EXPORTER_OTLP_METRICS_HEADERS
+      type: str
+      default: "None"
+      description: "Per-signal OTLP headers for metrics"
+
+  sampling:
+    - env: PROVIDE_SAMPLING_LOGS_RATE
+      type: float
+      default: "1.0"
+      description: "Probability (0.0-1.0) of keeping a log event"
+    - env: PROVIDE_SAMPLING_TRACES_RATE
+      type: float
+      default: "1.0"
+      description: "Probability (0.0-1.0) of keeping a trace span"
+    - env: PROVIDE_SAMPLING_METRICS_RATE
+      type: float
+      default: "1.0"
+      description: "Probability (0.0-1.0) of keeping a metric observation"
+
+  backpressure:
+    - env: PROVIDE_BACKPRESSURE_LOGS_MAXSIZE
+      type: int
+      default: "0"
+      description: "Max queued log events (0 = unlimited)"
+    - env: PROVIDE_BACKPRESSURE_TRACES_MAXSIZE
+      type: int
+      default: "0"
+      description: "Max queued trace spans (0 = unlimited)"
+    - env: PROVIDE_BACKPRESSURE_METRICS_MAXSIZE
+      type: int
+      default: "0"
+      description: "Max queued metric observations (0 = unlimited)"
+
+  exporter:
+    - env: PROVIDE_EXPORTER_LOGS_RETRIES
+      type: int
+      default: "0"
+      description: "Max retry attempts for log export"
+    - env: PROVIDE_EXPORTER_TRACES_RETRIES
+      type: int
+      default: "0"
+      description: "Max retry attempts for trace export"
+    - env: PROVIDE_EXPORTER_METRICS_RETRIES
+      type: int
+      default: "0"
+      description: "Max retry attempts for metric export"
+    - env: PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS
+      type: float
+      default: "0.0"
+      description: "Delay between retry attempts for logs"
+    - env: PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS
+      type: float
+      default: "0.0"
+      description: "Delay between retry attempts for traces"
+    - env: PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS
+      type: float
+      default: "0.0"
+      description: "Delay between retry attempts for metrics"
+    - env: PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS
+      type: float
+      default: "10.0"
+      description: "Per-attempt timeout for log export"
+    - env: PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS
+      type: float
+      default: "10.0"
+      description: "Per-attempt timeout for trace export"
+    - env: PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS
+      type: float
+      default: "10.0"
+      description: "Per-attempt timeout for metric export"
+    - env: PROVIDE_EXPORTER_LOGS_FAIL_OPEN
+      type: bool
+      default: "true"
+      description: "On exhausted retries: true = drop silently, false = raise"
+    - env: PROVIDE_EXPORTER_TRACES_FAIL_OPEN
+      type: bool
+      default: "true"
+      description: "On exhausted retries: true = drop silently, false = raise"
+    - env: PROVIDE_EXPORTER_METRICS_FAIL_OPEN
+      type: bool
+      default: "true"
+      description: "On exhausted retries: true = drop silently, false = raise"
+    - env: PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP
+      type: bool
+      default: "false"
+      description: "Allow retries/backoff inside an async event loop for logs"
+    - env: PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP
+      type: bool
+      default: "false"
+      description: "Allow retries/backoff inside an async event loop for traces"
+    - env: PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP
+      type: bool
+      default: "false"
+      description: "Allow retries/backoff inside an async event loop for metrics"
+
+  slo:
+    - env: PROVIDE_SLO_ENABLE_RED_METRICS
+      type: bool
+      default: "false"
+      description: "Emit RED (Rate/Error/Duration) HTTP metrics"
+    - env: PROVIDE_SLO_ENABLE_USE_METRICS
+      type: bool
+      default: "false"
+      description: "Emit USE (Utilization/Saturation/Errors) resource metrics"
+    - env: PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY
+      type: bool
+      default: "true"
+      description: "Auto-classify errors into server/client/internal taxonomy"
+
+  security:
+    - env: PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH
+      type: int
+      default: "1024"
+      description: "Maximum string length for log attribute values (truncated beyond this)"
+    - env: PROVIDE_SECURITY_MAX_ATTR_COUNT
+      type: int
+      default: "64"
+      description: "Maximum number of attributes per log event (excess keys dropped)"
+    - env: PROVIDE_SECURITY_MAX_NESTING_DEPTH
+      type: int
+      default: "8"
+      description: "Maximum nesting depth for dict/list attribute values"
 
 required_behaviors:
   - id: graceful_degradation
