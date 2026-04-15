@@ -228,7 +228,7 @@ pub static logger: LazyLock<Logger> = LazyLock::new(|| Logger::new(None));
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
     let mut context = get_context();
-    if let Some(cfg) = get_runtime_config() {
+    if let Some(cfg) = get_runtime_config().or_else(|| TelemetryConfig::from_env().ok()) {
         context
             .entry("service".to_string())
             .or_insert_with(|| Value::String(cfg.service_name));

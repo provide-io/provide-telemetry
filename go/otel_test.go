@@ -222,6 +222,28 @@ func TestOTel_LogsEndpointAutoWiresLoggerProvider(t *testing.T) {
 	}
 }
 
+func TestOTel_InvalidSharedEndpointDegradesWithoutInstallingProviders(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://[")
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry should fail open on invalid endpoint, got %v", err)
+	}
+
+	status := GetRuntimeStatus()
+	if !status.SetupDone {
+		t.Fatal("expected setup to be marked done after fail-open provider init")
+	}
+	if status.Providers.Logs || status.Providers.Traces || status.Providers.Metrics {
+		t.Fatalf("expected no providers after fail-open init, got %+v", status.Providers)
+	}
+	if !status.Fallback.Logs || !status.Fallback.Traces || !status.Fallback.Metrics {
+		t.Fatalf("expected fallback for all signals after fail-open init, got %+v", status.Fallback)
+	}
+}
+
 func TestOTel_ShutdownTelemetry_RestoresNoopTracer(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

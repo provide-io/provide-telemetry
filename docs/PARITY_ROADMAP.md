@@ -10,6 +10,17 @@ As of 2026-04-15, the roadmap work below is implemented in the repo and backed b
 
 Treat the remaining sections as the maintained parity contract and regression criteria rather than an untriaged backlog.
 
+## Status
+
+As of 2026-04-15, the roadmap work below is implemented in the repo and backed
+by the shared behavioral parity suite. The parity runner now checks canonical
+log-envelope fields plus shared lifecycle/config cases for lazy initialization,
+strict-schema rejection, required-key rejection, invalid config, fail-open
+exporter initialization, and shutdown+re-setup.
+
+Treat the remaining sections as the maintained parity contract and regression
+criteria rather than an untriaged backlog.
+
 ## Target Outcome
 
 The target is:
@@ -32,7 +43,8 @@ The main ongoing focus is keeping the achieved contract from drifting:
 - preserve one semantic contract across Python, TypeScript, Go, and Rust
 - keep optional OTLP paths honest about dependency and feature-gate boundaries
 - extend shared parity probes whenever new user-visible behavior is added
-- keep docs aligned with what the runtime-status and parity suites actually guarantee
+- keep docs aligned with what the runtime-status and parity suites actually
+  guarantee
 
 ## Workstreams
 

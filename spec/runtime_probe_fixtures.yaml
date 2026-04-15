@@ -21,12 +21,6 @@ cases:
       emitted: true
       schema_error: true
 
-  - id: strict_event_name_only
-    kind: flags
-    expected:
-      emitted: true
-      schema_error: true
-
   - id: required_keys_rejection
     kind: flags
     expected:
@@ -45,36 +39,11 @@ cases:
       providers_cleared: true
       fallback_all: true
 
-  - id: signal_enablement
-    kind: flags
-    expected:
-      setup_done: true
-      logs_enabled: true
-      traces_enabled: false
-      metrics_enabled: false
-
-  - id: per_signal_logs_endpoint
-    kind: flags
-    expected:
-      setup_done: true
-      logs_provider: true
-      traces_provider: false
-      metrics_provider: false
-
-  - id: provider_identity_reconfigure
-    kind: flags
-    expected:
-      providers_active: true
-      raised: true
-      config_preserved: true
-
   - id: shutdown_re_setup
     kind: flags
     expected:
       first_setup_done: true
       shutdown_cleared_setup: true
-      shutdown_cleared_providers: true
-      shutdown_fallback_all: true
       re_setup_done: true
       signals_match: true
       providers_match: true

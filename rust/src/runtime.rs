@@ -99,17 +99,10 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
         .clone()
 }
 
-fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
-    let guard = active_config()
-        .read()
-        .expect("runtime config lock poisoned");
-    let cfg = guard.clone();
-    (cfg.clone(), cfg.is_some())
-}
-
 pub fn get_runtime_status() -> RuntimeStatus {
-    let (cfg, setup_done) = runtime_config_snapshot();
-    let cfg = cfg.unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
+    let cfg =
+        get_runtime_config().unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
+    let setup_done = get_runtime_config().is_some();
 
     #[cfg(feature = "otel")]
     let providers = SignalStatus {

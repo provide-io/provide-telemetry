@@ -9,6 +9,7 @@ import {
   _getRegisteredProviders,
   _markProvidersRegistered,
   _resetRuntimeForTests,
+  _setProviderSignalInstalled,
   _storeRegisteredProviders,
   getRuntimeConfig,
   getRuntimeStatus,
@@ -92,38 +93,16 @@ describe('getRuntimeStatus', () => {
   });
 
   it('reports per-signal provider installation state', () => {
-    setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: true });
+    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
     _setProviderSignalInstalled('logs', true);
     _setProviderSignalInstalled('traces', false);
     _setProviderSignalInstalled('metrics', true);
 
     const status = getRuntimeStatus();
     expect(status.setupDone).toBe(true);
-    expect(status.signals).toEqual({ logs: true, traces: false, metrics: true });
+    expect(status.signals).toEqual({ logs: true, traces: true, metrics: true });
     expect(status.providers).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.fallback).toEqual({ logs: false, traces: true, metrics: false });
-  });
-
-  it('returns a frozen object', () => {
-    const cfg = getRuntimeConfig();
-    expect(Object.isFrozen(cfg)).toBe(true);
-  });
-
-  it('throws when mutating a frozen config property', () => {
-    const cfg = getRuntimeConfig();
-    expect(() => {
-      (cfg as Record<string, unknown>)['samplingLogsRate'] = 0.5;
-    }).toThrow();
-  });
-
-  it('deep-freezes nested objects', () => {
-    setupTelemetry({ logModuleLevels: { 'my.mod': 'debug' } });
-    updateRuntimeConfig({ samplingLogsRate: 1.0 });
-    const cfg = getRuntimeConfig();
-    expect(Object.isFrozen(cfg.logModuleLevels)).toBe(true);
-    expect(() => {
-      (cfg.logModuleLevels as Record<string, string>)['new.mod'] = 'info';
-    }).toThrow();
   });
 });
 

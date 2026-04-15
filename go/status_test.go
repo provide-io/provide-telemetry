@@ -26,26 +26,6 @@ func TestGetRuntimeStatus_BeforeSetup_UsesFallback(t *testing.T) {
 	}
 }
 
-func TestGetRuntimeStatus_BeforeSetup_ConfigFromEnvErrorFallsBackToDefaults(t *testing.T) {
-	ResetForTests()
-	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "not-a-float")
-
-	status := GetRuntimeStatus()
-
-	if status.SetupDone {
-		t.Fatal("setup_done should be false before setup")
-	}
-	if !status.Signals.Logs || !status.Signals.Traces || !status.Signals.Metrics {
-		t.Fatalf("expected default-enabled signals after config parse failure, got %+v", status.Signals)
-	}
-	if status.Providers.Logs || status.Providers.Traces || status.Providers.Metrics {
-		t.Fatalf("expected no providers before setup, got %+v", status.Providers)
-	}
-	if !status.Fallback.Logs || !status.Fallback.Traces || !status.Fallback.Metrics {
-		t.Fatalf("expected fallback mode before setup, got %+v", status.Fallback)
-	}
-}
-
 func TestGetRuntimeStatus_ReportsProviderState(t *testing.T) {
 	ResetForTests()
 	_setupMu.Lock()

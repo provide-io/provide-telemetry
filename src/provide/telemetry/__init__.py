@@ -54,6 +54,8 @@ if TYPE_CHECKING:
     from provide.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
     from provide.telemetry.runtime import (
         get_runtime_config,
+        get_runtime_status,
+        get_strict_schema,
         reconfigure_telemetry,
         reload_runtime_from_env,
         update_runtime_config,
@@ -95,6 +97,8 @@ _register("provide.telemetry.resilience", "ExporterPolicy", "get_exporter_policy
 _register(
     "provide.telemetry.runtime",
     "get_runtime_config",
+    "get_runtime_status",
+    "get_strict_schema",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
     "update_runtime_config",
@@ -158,6 +162,7 @@ __all__ = [
     "get_pii_rules",
     "get_queue_policy",
     "get_runtime_config",
+    "get_runtime_status",
     "get_sampling_policy",
     "get_secret_patterns",
     "get_session_id",
