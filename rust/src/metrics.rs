@@ -68,7 +68,7 @@ impl Counter {
             .expect("counter state lock poisoned")
             .value += value;
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
+        if crate::otel::otel_installed() {
             crate::otel::metrics::record_counter_add(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
@@ -148,7 +148,7 @@ impl Gauge {
             .expect("gauge state lock poisoned")
             .last_value = value;
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
+        if crate::otel::otel_installed() {
             crate::otel::metrics::record_gauge_set(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
@@ -200,7 +200,7 @@ impl Histogram {
         state.total += value;
         drop(state);
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
+        if crate::otel::otel_installed() {
             crate::otel::metrics::record_histogram(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
