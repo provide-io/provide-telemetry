@@ -247,8 +247,7 @@ impl TelemetryConfig {
         // the per-signal path must be appended (/v1/traces, /v1/metrics,
         // /v1/logs). Signal-specific endpoint env vars are used verbatim.
         let with_signal_path = |signal_path: &str| -> Option<String> {
-            shared_endpoint
-                .map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
+            shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
         };
 
         Ok(Self {

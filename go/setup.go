@@ -17,6 +17,7 @@ type SetupOption func(*_setupState)
 type _setupState struct {
 	tracerProvider any
 	meterProvider  any
+	loggerProvider any
 }
 
 // WithTracerProvider injects a tracer provider at setup time.
@@ -27,6 +28,11 @@ func WithTracerProvider(tp any) SetupOption {
 // WithMeterProvider injects a meter provider at setup time.
 func WithMeterProvider(mp any) SetupOption {
 	return func(s *_setupState) { s.meterProvider = mp }
+}
+
+// WithLoggerProvider injects a logger provider at setup time.
+func WithLoggerProvider(lp any) SetupOption {
+	return func(s *_setupState) { s.loggerProvider = lp }
 }
 
 // Package-level setup state — protected by _setupMu.
@@ -139,7 +145,9 @@ func ShutdownTelemetry(ctx context.Context) error {
 	_setupDone = false
 	_runtimeCfg = nil
 
-	return _shutdownOTelProviders(ctx)
+	err := _shutdownOTelProviders(ctx)
+	DefaultTracer = &_noopTracer{}
+	return err
 }
 
 // _resetSetup clears setup state unconditionally. For use in tests only.

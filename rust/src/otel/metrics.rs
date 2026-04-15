@@ -7,7 +7,7 @@
 //! Only compiled under the `otel` cargo feature. Mirrors the
 //! traces.rs design: callers continue to go through
 //! `metrics::counter()`/`gauge()`/`histogram()` (which gate on
-//! consent / sampling / backpressure first); when an `OTEL_INSTALLED`
+//! consent / sampling / backpressure first); when a meter provider
 //! provider is present, the instrument call also pushes a record
 //! through the global MeterProvider.
 //!
@@ -39,12 +39,16 @@ use crate::errors::TelemetryError;
 
 use super::endpoint::{resolve_protocol, OtlpProtocol};
 
-static METER_PROVIDER: OnceLock<Arc<SdkMeterProvider>> = OnceLock::new();
+static METER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkMeterProvider>>>> = OnceLock::new();
 static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new();
 static GAUGES: OnceLock<Mutex<HashMap<String, Gauge<f64>>>> = OnceLock::new();
 static HISTOGRAMS: OnceLock<Mutex<HashMap<String, Histogram<f64>>>> = OnceLock::new();
 
 const METER_NAME: &str = "provide.telemetry";
+
+fn meter_provider_slot() -> &'static Mutex<Option<Arc<SdkMeterProvider>>> {
+    METER_PROVIDER.get_or_init(|| Mutex::new(None))
+}
 
 fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
     match p {
@@ -80,9 +84,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
 pub(super) fn install_meter_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
-) -> Result<(), TelemetryError> {
+) -> Result<bool, TelemetryError> {
     if !cfg.metrics.enabled {
-        return Ok(());
+        return Ok(false);
     }
 
     let exporter = match build_exporter(cfg) {
@@ -92,7 +96,7 @@ pub(super) fn install_meter_provider(
                 eprintln!(
                     "provide_telemetry: metrics exporter init failed (fail_open=true): {err}"
                 );
-                return Ok(());
+                return Ok(false);
             }
             return Err(err);
         }
@@ -109,13 +113,18 @@ pub(super) fn install_meter_provider(
 
     let arc = Arc::new(provider);
     global::set_meter_provider(arc.as_ref().clone());
-    let _ = METER_PROVIDER.set(arc);
-    Ok(())
+    *meter_provider_slot()
+        .lock()
+        .expect("meter provider lock poisoned") = Some(arc);
+    Ok(true)
 }
 
 /// Force-flush and shut down the installed `MeterProvider`.
 pub(super) fn shutdown_meter_provider() {
-    if let Some(p) = METER_PROVIDER.get() {
+    let mut guard = meter_provider_slot()
+        .lock()
+        .expect("meter provider lock poisoned");
+    if let Some(p) = guard.take() {
         let _ = p.force_flush();
         let _ = p.shutdown();
     }
@@ -129,6 +138,13 @@ pub(super) fn shutdown_meter_provider() {
     if let Some(m) = HISTOGRAMS.get() {
         m.lock().expect("histogram cache lock poisoned").clear();
     }
+}
+
+pub(crate) fn meter_provider_installed() -> bool {
+    meter_provider_slot()
+        .lock()
+        .expect("meter provider lock poisoned")
+        .is_some()
 }
 
 fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
@@ -182,29 +198,17 @@ fn get_or_create_histogram(name: &str) -> Histogram<f64> {
 /// existing consent / sampling / backpressure gates have approved
 /// the operation. No-op when no MeterProvider is installed (the
 /// global default returns a noop meter that swallows the write).
-pub(crate) fn record_counter_add(
-    name: &str,
-    value: f64,
-    attrs: Option<&BTreeMap<String, String>>,
-) {
+pub(crate) fn record_counter_add(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_counter(name).add(value, &kvs);
 }
 
-pub(crate) fn record_gauge_set(
-    name: &str,
-    value: f64,
-    attrs: Option<&BTreeMap<String, String>>,
-) {
+pub(crate) fn record_gauge_set(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_gauge(name).record(value, &kvs);
 }
 
-pub(crate) fn record_histogram(
-    name: &str,
-    value: f64,
-    attrs: Option<&BTreeMap<String, String>>,
-) {
+pub(crate) fn record_histogram(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_histogram(name).record(value, &kvs);
 }

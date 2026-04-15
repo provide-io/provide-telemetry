@@ -71,8 +71,10 @@ pub fn record_use_metrics(resource: &str, utilization_percent: i32) {
 pub fn classify_error(error_name: &str, status_code: Option<u16>) -> BTreeMap<String, String> {
     SLO_INITIALIZED.store(true, Ordering::SeqCst);
     let code = status_code.unwrap_or(0);
-    let is_timeout =
-        error_name.to_ascii_lowercase().contains("timeout") || code == 0 || code == 408 || code == 504;
+    let is_timeout = error_name.to_ascii_lowercase().contains("timeout")
+        || code == 0
+        || code == 408
+        || code == 504;
 
     let (category, severity, error_type) = if is_timeout {
         ("timeout", "info", "internal")
