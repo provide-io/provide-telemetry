@@ -19,12 +19,14 @@ use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
 mod emit;
+mod processors;
 
 pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
     take_json_capture,
 };
 use emit::{emit_if_console, emit_if_json};
+use processors::process_event;
 
 // When the governance feature is disabled, consent is unconditionally granted.
 #[cfg(not(feature = "governance"))]
@@ -88,18 +90,9 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         })
 }
 
-/// Shared core: build an event, emit it (JSON or console), buffer it.
-fn log_event(level: &str, target: &str, message: &str) {
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
-        return;
-    };
-    let event = new_event(target, level, message);
+/// Shared emit path: run processors, emit (JSON + console + OTel), buffer.
+fn emit_event(mut event: LogEvent) {
+    process_event(&mut event);
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]
@@ -113,43 +106,8 @@ fn log_event(level: &str, target: &str, message: &str) {
     drop(buf);
 }
 
-/// Like `log_event` but merges extra caller-supplied fields into the event context.
-fn log_event_with_fields(
-    level: &str,
-    target: &str,
-    message: &str,
-    extra: &BTreeMap<String, Value>,
-) {
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
-        return;
-    };
-    let mut event = new_event(target, level, message);
-    for (k, v) in extra {
-        event.context.insert(k.clone(), v.clone());
-    }
-    emit_event(event);
-    increment_emitted(Signal::Logs, 1);
-    release(ticket);
-}
-
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
-    // Level filtering: skip events below the effective threshold
-    // (respects per-module overrides via longest-prefix match).
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
     if !should_allow("logs", Some(level)) {
         return;
     }
@@ -166,10 +124,6 @@ fn log_event(level: &str, target: &str, message: &str) {
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
 fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
     if !should_allow("logs", Some(level)) {
         return;
     }
@@ -284,27 +238,6 @@ impl Logger {
 
     pub fn log(&self, level: &str, message: &str) {
         log_event(level, &self.target, message);
-    }
-
-    /// Emit with extra step-local structured fields merged into the event context.
-    pub fn log_fields(&self, level: &str, message: &str, fields: &BTreeMap<String, Value>) {
-        log_event_with_fields(level, &self.target, message, fields);
-    }
-
-    pub fn debug_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
-        self.log_fields("DEBUG", message, fields);
-    }
-
-    pub fn info_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
-        self.log_fields("INFO", message, fields);
-    }
-
-    pub fn warn_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
-        self.log_fields("WARN", message, fields);
-    }
-
-    pub fn error_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
-        self.log_fields("ERROR", message, fields);
     }
 
     pub fn debug_event(&self, event: &crate::schema::Event) {
