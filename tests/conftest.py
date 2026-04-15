@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import structlog
 
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.consent import _reset_consent_for_tests
 from provide.telemetry.logger.core import _reset_logging_for_tests
 from provide.telemetry.runtime import reset_runtime_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
@@ -46,6 +48,8 @@ def reset_logger_state() -> None:
     _reset_logging_for_tests()
     reset_sampling_for_tests()
     reset_runtime_for_tests()
+    reset_queues_for_tests()
+    _reset_consent_for_tests()
 
 
 @pytest.fixture(autouse=True)
