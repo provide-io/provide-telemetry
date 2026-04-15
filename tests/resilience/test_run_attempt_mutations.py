@@ -146,3 +146,53 @@ def test_run_attempt_drops_when_semaphore_full_does_not_block() -> None:
     # treating the drop as a successful attempt.
     assert isinstance(exc_holder.get("exc"), resilience_mod.ExecutorSaturated)
     assert "value" not in result_holder
+
+
+# ---------------------------------------------------------------------------
+# mutmut_6: ExecutorSaturated(f"{signal} executor saturated") → ExecutorSaturated(None)
+#
+# The message must be a non-None string containing the signal name so that
+# callers (logs, retry policies, etc.) can identify which signal was saturated.
+# ---------------------------------------------------------------------------
+
+
+def test_executor_saturated_message_contains_signal_name() -> None:
+    """Kill mutmut_6: ExecutorSaturated message must be a string with the signal name.
+
+    The mutation changes the message argument to None.  A string message
+    containing the signal name is required for diagnosing which signal saturated.
+    """
+    sem = _get_executor_semaphore("logs")
+    max_pending = resilience_mod._EXECUTOR_MAX_PENDING
+
+    # Drain all permits from the semaphore.
+    acquired: list[bool] = []
+    for _ in range(max_pending):
+        acquired.append(sem.acquire(blocking=False))
+
+    exc_holder: dict[str, BaseException] = {}
+
+    def _run() -> None:
+        try:
+            _run_attempt_with_timeout("logs", lambda: "x", timeout_seconds=5.0)
+        except resilience_mod.ExecutorSaturated as exc:
+            exc_holder["exc"] = exc
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=2.0)
+
+    for ok in acquired:
+        if ok:
+            sem.release()
+
+    assert "exc" in exc_holder, "ExecutorSaturated was not raised"
+    exc = exc_holder["exc"]
+    assert isinstance(exc, resilience_mod.ExecutorSaturated)
+    # The message must be a non-None string (kills mutmut_6: message=None)
+    msg = str(exc)
+    assert msg is not None
+    assert msg != "None"
+    assert len(msg) > 0
+    # Must contain the signal name "logs" for diagnosability
+    assert "logs" in msg, f"Expected 'logs' in ExecutorSaturated message, got: {msg!r}"
