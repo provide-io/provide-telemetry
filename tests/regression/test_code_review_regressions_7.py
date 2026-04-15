@@ -68,11 +68,9 @@ class TestSchemaRejectDoesNotBumpEmittedLogs:
         # a missing required key and verifying emitted_logs stays at 0.
         reset_health_for_tests()
         schema_proc = enforce_event_schema(cfg)
-        # Missing the required 'event' key — schema raises.
-        from provide.telemetry.schema.events import EventSchemaError
-
-        with pytest.raises(EventSchemaError):
-            schema_proc(None, "info", {"level": "info"})
+        # Missing the required 'event' key — schema annotates with _schema_error.
+        result = schema_proc(None, "info", {"level": "info"})
+        assert "_schema_error" in result
         # apply_sampling never ran, so emitted_logs stayed at zero.
         assert get_health_snapshot().emitted_logs == 0
 
@@ -158,10 +156,8 @@ class TestTypescriptOnlyFindingsAreLanguageSpecific:
             event_schema=SchemaConfig(required_keys=("request_id",)),
         )
         proc = enforce_event_schema(cfg)
-        from provide.telemetry.schema.events import EventSchemaError
-
-        with pytest.raises(EventSchemaError):
-            proc(None, "info", {"event": "ok"})  # missing request_id
+        result = proc(None, "info", {"event": "ok"})  # missing request_id
+        assert "_schema_error" in result
 
     def test_python_defaults_match_go_rust(self) -> None:
         """Finding 6 parity: Python's defaults already match the canonical values."""
