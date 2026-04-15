@@ -170,15 +170,15 @@ class TestF3ProcessorLiveConfig:
 
     def test_enforce_event_schema_reads_live_strict_schema(self) -> None:
         from provide.telemetry.logger.processors import enforce_event_schema
-        from provide.telemetry.schema.events import EventSchemaError
 
         cfg = TelemetryConfig(strict_schema=False)
         runtime_mod.apply_runtime_config(cfg)
         proc = enforce_event_schema(cfg)
         # Enable strict via runtime
         runtime_mod.update_runtime_config(RuntimeOverrides(strict_schema=True))
-        with pytest.raises(EventSchemaError, match="invalid event name"):
-            proc(None, "", {"event": "bad event name"})
+        result = proc(None, "", {"event": "bad event name"})
+        assert "_schema_error" in result
+        assert "invalid event name" in result["_schema_error"]
 
     def test_add_standard_fields_reads_live_slo_include_error_taxonomy(self) -> None:
         from provide.telemetry.logger.processors import add_standard_fields

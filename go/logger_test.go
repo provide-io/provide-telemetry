@@ -366,7 +366,7 @@ func TestHandler_WithGroup(t *testing.T) {
 	}
 }
 
-func TestHandler_SchemaStrict_Drop(t *testing.T) {
+func TestHandler_SchemaStrict_Annotates(t *testing.T) {
 	_strictSchema = true
 	t.Cleanup(func() { _strictSchema = false })
 	setupFullSampling(t)
@@ -376,11 +376,16 @@ func TestHandler_SchemaStrict_Drop(t *testing.T) {
 
 	var buf bytes.Buffer
 	l := newTestLogger(&buf, cfg, "")
-	// Not a valid dotted event name (fails segment-count validation)
+	// Not a valid dotted event name (fails segment-count validation).
+	// Event is annotated with _schema_error instead of dropped —
+	// cross-language standard: never lose telemetry on schema violation.
 	l.Info("invalid")
 
-	if buf.Len() != 0 {
-		t.Errorf("expected strict schema to drop invalid event, got: %s", buf.String())
+	if buf.Len() == 0 {
+		t.Fatal("schema violation should annotate and emit, not drop")
+	}
+	if !strings.Contains(buf.String(), "_schema_error") {
+		t.Errorf("expected _schema_error annotation, got: %s", buf.String())
 	}
 }
 
@@ -807,7 +812,7 @@ func TestHandler_ErrorFingerprint_NotAdded_WhenNoError(t *testing.T) {
 
 // ── Schema strict: required keys drop / pass ──────────────────────────────────
 
-func TestHandler_SchemaStrict_RequiredKeys_Drop(t *testing.T) {
+func TestHandler_SchemaStrict_RequiredKeys_Annotates(t *testing.T) {
 	_strictSchema = true
 	t.Cleanup(func() { _strictSchema = false })
 	setupFullSampling(t)
@@ -820,8 +825,11 @@ func TestHandler_SchemaStrict_RequiredKeys_Drop(t *testing.T) {
 	l := newTestLogger(&buf, cfg, "")
 	l.Info("user.auth.login")
 
-	if buf.Len() != 0 {
-		t.Errorf("expected record dropped for missing required key, got: %s", buf.String())
+	if buf.Len() == 0 {
+		t.Fatal("schema violation should annotate and emit, not drop")
+	}
+	if !strings.Contains(buf.String(), "_schema_error") {
+		t.Errorf("expected _schema_error annotation, got: %s", buf.String())
 	}
 }
 

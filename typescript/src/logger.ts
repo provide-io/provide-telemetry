@@ -147,15 +147,18 @@ export function makeWriteHook() {
         delete o['time'];
       }
 
-      // Schema validation — drop records that violate schema rules.
-      // Required-key enforcement runs unconditionally (matches Python/Go/Rust):
-      // strictSchema only controls whether the event-name charset is strict.
+      // Schema validation — annotate instead of dropping.
+      // Preserves telemetry while flagging violations via _schema_error.
+      // Cross-language standard (Python/Rust/Go match).
       if (cfg.requiredLogKeys.length > 0) {
         try {
           validateRequiredKeys(o, cfg.requiredLogKeys);
         } catch (e) {
-          if (e instanceof EventSchemaError) return;
-          throw e;
+          if (e instanceof EventSchemaError) {
+            o['_schema_error'] = (e as EventSchemaError).message;
+          } else {
+            throw e;
+          }
         }
       }
       /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
@@ -165,8 +168,11 @@ export function makeWriteHook() {
           try {
             validateEventName(event);
           } catch (e) {
-            if (e instanceof EventSchemaError) return;
-            throw e;
+            if (e instanceof EventSchemaError) {
+              o['_schema_error'] = (e as EventSchemaError).message;
+            } else {
+              throw e;
+            }
           }
         }
       }

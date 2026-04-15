@@ -488,12 +488,15 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
-  it('drops log when strictSchema=true and event name violates schema', () => {
+  it('annotates log with _schema_error when strictSchema=true and event name violates schema', () => {
     makeCfg({ strictSchema: true });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
     const hook = makeWriteHook();
     hook({ level: 30, event: 'x' });
-    expect(spy).not.toHaveBeenCalled();
+    // Record is emitted (not dropped) with _schema_error annotation.
+    // Cross-language standard: never lose telemetry on schema violation.
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toHaveProperty('_schema_error');
     spy.mockRestore();
   });
 
@@ -506,12 +509,13 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
-  it('drops log when strictSchema=true and requiredLogKeys missing', () => {
+  it('annotates log with _schema_error when strictSchema=true and requiredLogKeys missing', () => {
     makeCfg({ strictSchema: true, requiredLogKeys: ['action'] });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
     const hook = makeWriteHook();
     hook({ level: 30, event: 'app.user.created' });
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toHaveProperty('_schema_error');
     spy.mockRestore();
   });
 
@@ -533,13 +537,14 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
-  it('validates message field when event is absent', () => {
+  it('annotates message field when event is absent and name invalid', () => {
     makeCfg({ strictSchema: true });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
     const hook = makeWriteHook();
     hook({ level: 30, message: 'x' });
-    // 'x' is not a valid 3-part event name, so the record should be dropped.
-    expect(spy).not.toHaveBeenCalled();
+    // 'x' is not a valid 3-part event name; annotated, not dropped.
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toHaveProperty('_schema_error');
     spy.mockRestore();
   });
 
@@ -563,13 +568,15 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
-  it('does not capture dropped record to window.__pinoLogs', () => {
+  it('captures schema-annotated record to window.__pinoLogs', () => {
     makeCfg({ strictSchema: true, captureToWindow: true });
     (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
     const hook = makeWriteHook();
     hook({ level: 30, event: 'x' });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
-    expect(logs.length).toBe(0);
+    // Record is emitted (not dropped) with _schema_error annotation.
+    expect(logs.length).toBe(1);
+    expect(logs[0]).toHaveProperty('_schema_error');
   });
 });
 
@@ -761,12 +768,13 @@ describe('write hook — logsEmitted health counter', () => {
     expect(getHealthSnapshot().logsEmitted).toBe(3);
   });
 
-  it('does NOT increment logsEmitted when strictSchema drops the record', () => {
+  it('increments logsEmitted for schema-annotated records (not dropped)', () => {
     makeCfg({ strictSchema: true });
     const hook = makeWriteHook();
-    // Invalid event name (contains space) — schema will drop it before emitting.
+    // Invalid event name — annotated with _schema_error but still emitted.
+    // Cross-language standard: schema violations annotate, never drop.
     hook({ level: 30, event: 'invalid event name with spaces' });
-    expect(getHealthSnapshot().logsEmitted).toBe(0);
+    expect(getHealthSnapshot().logsEmitted).toBe(1);
   });
 });
 

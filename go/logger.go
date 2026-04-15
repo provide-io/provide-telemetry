@@ -62,11 +62,12 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		return nil
 	}
 
-	// Schema validation runs BEFORE sampling so records rejected by
-	// validateRequiredKeys / validateEventName don't inflate LogsEmitted
-	// (ShouldSample increments the emitted counter on sampled=true).
+	// Schema validation runs BEFORE sampling so records flagged by
+	// validateRequiredKeys / validateEventName don't inflate LogsEmitted.
+	// Annotate with _schema_error instead of dropping — preserves telemetry.
+	// Cross-language standard (Python/TypeScript/Rust match).
 	if err := h.applySchema(r); err != nil {
-		return nil //nolint:nilerr // schema violation drops the record
+		r.AddAttrs(slog.String("_schema_error", err.Error()))
 	}
 
 	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil

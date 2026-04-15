@@ -25,7 +25,6 @@ from provide.telemetry.resilience import (
     set_exporter_policy,
 )
 from provide.telemetry.sampling import reset_sampling_for_tests, should_sample
-from provide.telemetry.schema.events import EventSchemaError
 from provide.telemetry.setup import _reset_all_for_tests
 from provide.telemetry.slo import _reset_slo_for_tests, record_use_metrics
 from provide.telemetry.tracing import provider as provider_mod
@@ -205,9 +204,10 @@ class TestRequiredKeysCompatMode:
             }
         )
         processor = enforce_event_schema(config)
-        # Missing request_id should raise
-        with pytest.raises(EventSchemaError, match="missing required keys: request_id"):
-            processor(None, "", {"event": "test"})
+        # Missing request_id should annotate with _schema_error
+        result = processor(None, "", {"event": "test"})
+        assert "_schema_error" in result
+        assert "missing required keys: request_id" in result["_schema_error"]
 
     def test_required_keys_pass_when_present(self) -> None:
         config = TelemetryConfig.from_env(
