@@ -45,11 +45,13 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
         )));
     }
 
-    for (idx, segment) in segments.iter().enumerate() {
-        if !segment_re().is_match(segment) {
-            return Err(EventSchemaError::new(format!(
-                "invalid event segment: segment[{idx}]={segment}"
-            )));
+    if get_strict_schema() {
+        for (idx, segment) in segments.iter().enumerate() {
+            if !segment_re().is_match(segment) {
+                return Err(EventSchemaError::new(format!(
+                    "invalid event segment: segment[{idx}]={segment}"
+                )));
+            }
         }
     }
 
@@ -106,6 +108,25 @@ mod tests {
         assert_eq!(
             event_name(&["a", "b", "c", "d", "e"]).expect("strict name should build"),
             "a.b.c.d.e"
+        );
+        set_strict_schema(false);
+    }
+
+    #[test]
+    fn schema_test_event_strict_gates_segment_format_validation() {
+        // Non-strict: invalid segment format is accepted by event()
+        set_strict_schema(false);
+        let ev = event(&["not-valid", "b", "c"]).expect("non-strict should accept invalid segment");
+        assert_eq!(ev.event, "not-valid.b.c");
+
+        // Strict: invalid segment format is rejected
+        set_strict_schema(true);
+        let err =
+            event(&["not-valid", "b", "c"]).expect_err("strict should reject invalid segment");
+        assert!(
+            err.message.contains("invalid event segment"),
+            "unexpected error: {}",
+            err.message
         );
         set_strict_schema(false);
     }
