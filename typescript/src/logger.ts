@@ -197,7 +197,7 @@ export function makeWriteHook() {
       // Emit to console only when explicitly enabled (opt-in).
       if (cfg.consoleOutput) {
         const method = LEVEL_MAP[o['level'] as number] ?? 'log';
-        if (cfg.logFormat === 'pretty') {
+        if (cfg.logFormat === 'pretty' || cfg.logFormat === 'console') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (console as any)[method](formatPretty(o, supportsColor()));
         } else {

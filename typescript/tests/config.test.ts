@@ -35,8 +35,8 @@ describe('getConfig defaults', () => {
     expect(getConfig().captureToWindow).toBe(true);
   });
 
-  it('otelEnabled defaults to false', () => {
-    expect(getConfig().otelEnabled).toBe(false);
+  it('otelEnabled defaults to true', () => {
+    expect(getConfig().otelEnabled).toBe(true);
   });
 });
 
@@ -56,7 +56,7 @@ describe('setupTelemetry', () => {
 
   it('preserves unset fields as defaults', () => {
     setupTelemetry({ serviceName: 'x' });
-    expect(getConfig().otelEnabled).toBe(false);
+    expect(getConfig().otelEnabled).toBe(true);
     expect(getConfig().captureToWindow).toBe(true);
   });
 });
@@ -197,8 +197,8 @@ describe('configFromEnv — default values', () => {
     expect(configFromEnv().sanitizeFields).toEqual([]);
   });
 
-  it('otelEnabled defaults to false', () => {
-    expect(configFromEnv().otelEnabled).toBe(false);
+  it('otelEnabled defaults to true', () => {
+    expect(configFromEnv().otelEnabled).toBe(true);
   });
 });
 
