@@ -3,11 +3,15 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+use std::collections::BTreeMap;
 use std::sync::{OnceLock, RwLock};
 
+use crate::backpressure::{set_queue_policy, QueuePolicy};
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 use crate::otel::otel_installed;
+use crate::resilience::{set_exporter_policy, ExporterPolicy};
+use crate::sampling::{set_sampling_policy, SamplingPolicy, Signal};
 use crate::RuntimeOverrides;
 
 static ACTIVE_CONFIG: OnceLock<RwLock<Option<TelemetryConfig>>> = OnceLock::new();
@@ -38,41 +42,105 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
         .clone()
 }
 
+/// Mirror of setup::apply_policies — must stay in sync with that function.
+/// We can't call setup::apply_policies directly because setup imports from runtime
+/// (circular dep: setup → runtime), so we duplicate the logic here.
+fn apply_runtime_policies(config: &TelemetryConfig) {
+    let _ = set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: config.sampling.logs_rate,
+            overrides: BTreeMap::new(),
+        },
+    );
+    let _ = set_sampling_policy(
+        Signal::Traces,
+        SamplingPolicy {
+            default_rate: config.sampling.traces_rate.min(config.tracing.sample_rate),
+            overrides: BTreeMap::new(),
+        },
+    );
+    let _ = set_sampling_policy(
+        Signal::Metrics,
+        SamplingPolicy {
+            default_rate: config.sampling.metrics_rate,
+            overrides: BTreeMap::new(),
+        },
+    );
+    set_queue_policy(QueuePolicy {
+        logs_maxsize: config.backpressure.logs_maxsize,
+        traces_maxsize: config.backpressure.traces_maxsize,
+        metrics_maxsize: config.backpressure.metrics_maxsize,
+    });
+    let _ = set_exporter_policy(
+        Signal::Logs,
+        ExporterPolicy {
+            retries: config.exporter.logs_retries as u32,
+            backoff_seconds: config.exporter.logs_backoff_seconds,
+            timeout_seconds: config.exporter.logs_timeout_seconds,
+            fail_open: config.exporter.logs_fail_open,
+            allow_blocking_in_event_loop: false,
+        },
+    );
+    let _ = set_exporter_policy(
+        Signal::Traces,
+        ExporterPolicy {
+            retries: config.exporter.traces_retries as u32,
+            backoff_seconds: config.exporter.traces_backoff_seconds,
+            timeout_seconds: config.exporter.traces_timeout_seconds,
+            fail_open: config.exporter.traces_fail_open,
+            allow_blocking_in_event_loop: false,
+        },
+    );
+    let _ = set_exporter_policy(
+        Signal::Metrics,
+        ExporterPolicy {
+            retries: config.exporter.metrics_retries as u32,
+            backoff_seconds: config.exporter.metrics_backoff_seconds,
+            timeout_seconds: config.exporter.metrics_timeout_seconds,
+            fail_open: config.exporter.metrics_fail_open,
+            allow_blocking_in_event_loop: false,
+        },
+    );
+}
+
 pub fn update_runtime_config(
     overrides: RuntimeOverrides,
 ) -> Result<TelemetryConfig, TelemetryError> {
-    let mut guard = active_config()
-        .write()
-        .expect("runtime config lock poisoned");
-    let current = guard
-        .as_ref()
-        .cloned()
-        .ok_or_else(|| TelemetryError::new("telemetry not set up: call setup_telemetry first"))?;
-
-    let mut next = current;
-    if let Some(sampling) = overrides.sampling {
-        next.sampling = sampling;
-    }
-    if let Some(backpressure) = overrides.backpressure {
-        next.backpressure = backpressure;
-    }
-    if let Some(exporter) = overrides.exporter {
-        next.exporter = exporter;
-    }
-    if let Some(security) = overrides.security {
-        next.security = security;
-    }
-    if let Some(slo) = overrides.slo {
-        next.slo = slo;
-    }
-    if let Some(pii_max_depth) = overrides.pii_max_depth {
-        next.pii_max_depth = pii_max_depth;
-    }
-    if let Some(strict_schema) = overrides.strict_schema {
-        next.strict_schema = strict_schema;
-    }
-
-    *guard = Some(next.clone());
+    let next = {
+        let mut guard = active_config()
+            .write()
+            .expect("runtime config lock poisoned");
+        let current = guard
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| TelemetryError::new("telemetry not set up: call setup_telemetry first"))?;
+        let mut next = current;
+        if let Some(sampling) = overrides.sampling {
+            next.sampling = sampling;
+        }
+        if let Some(backpressure) = overrides.backpressure {
+            next.backpressure = backpressure;
+        }
+        if let Some(exporter) = overrides.exporter {
+            next.exporter = exporter;
+        }
+        if let Some(security) = overrides.security {
+            next.security = security;
+        }
+        if let Some(slo) = overrides.slo {
+            next.slo = slo;
+        }
+        if let Some(pii_max_depth) = overrides.pii_max_depth {
+            next.pii_max_depth = pii_max_depth;
+        }
+        if let Some(strict_schema) = overrides.strict_schema {
+            next.strict_schema = strict_schema;
+        }
+        *guard = Some(next.clone());
+        next
+    }; // write lock released here before calling apply_runtime_policies
+    apply_runtime_policies(&next);
     Ok(next)
 }
 

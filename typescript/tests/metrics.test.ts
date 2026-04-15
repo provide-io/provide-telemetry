@@ -16,6 +16,7 @@ import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
 import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
 import { setupTelemetry, _resetConfig } from '../src/config';
+import { setConsentLevel, resetConsentForTests } from '../src/consent';
 
 afterEach(() => {
   _resetSamplingForTests();
@@ -747,5 +748,56 @@ describe('metrics instruments — metricsEmitted health counter', () => {
     c.add(2);
     h.record(99);
     expect(getHealthSnapshot().metricsEmitted).toBe(3);
+  });
+});
+
+describe('metrics instruments — consent gate', () => {
+  beforeEach(() => {
+    resetConsentForTests();
+    _resetHealthForTests();
+  });
+
+  afterEach(() => {
+    resetConsentForTests();
+  });
+
+  it('CounterInstrument.add() drops under ConsentNone', () => {
+    setConsentLevel('NONE');
+    const inner = { add: vi.fn() };
+    const c = new CounterInstrument('test.consent.counter', inner as never);
+    const before = getHealthSnapshot().metricsEmitted;
+    c.add(1);
+    expect(getHealthSnapshot().metricsEmitted).toBe(before);
+    expect(inner.add).not.toHaveBeenCalled();
+  });
+
+  it('GaugeInstrument.add() drops under ConsentNone', () => {
+    setConsentLevel('NONE');
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.consent.gauge', inner as never);
+    const before = getHealthSnapshot().metricsEmitted;
+    g.add(1);
+    expect(getHealthSnapshot().metricsEmitted).toBe(before);
+    expect(inner.add).not.toHaveBeenCalled();
+  });
+
+  it('GaugeInstrument.set() drops under ConsentNone', () => {
+    setConsentLevel('NONE');
+    const inner = { add: vi.fn() };
+    const g = new GaugeInstrument('test.consent.gauge.set', inner as never);
+    const before = getHealthSnapshot().metricsEmitted;
+    g.set(3.14);
+    expect(getHealthSnapshot().metricsEmitted).toBe(before);
+    expect(inner.add).not.toHaveBeenCalled();
+  });
+
+  it('HistogramInstrument.record() drops under ConsentNone', () => {
+    setConsentLevel('NONE');
+    const inner = { record: vi.fn() };
+    const h = new HistogramInstrument('test.consent.histogram', inner as never);
+    const before = getHealthSnapshot().metricsEmitted;
+    h.record(42);
+    expect(getHealthSnapshot().metricsEmitted).toBe(before);
+    expect(inner.record).not.toHaveBeenCalled();
   });
 });
