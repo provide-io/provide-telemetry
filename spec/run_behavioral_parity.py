@@ -241,7 +241,7 @@ def _probe_runners(repo: Path) -> list[ProbeRunner]:
         ProbeRunner(
             name="rust",
             label="Rust",
-            cmd=["cargo", "run", "--example", "emit_log_probe", "--quiet"],
+            cmd=["cargo", "--locked", "run", "--example", "emit_log_probe", "--quiet"],
             cwd=repo / "rust",
         ),
     ]
