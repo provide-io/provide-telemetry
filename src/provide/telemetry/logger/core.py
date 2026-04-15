@@ -11,7 +11,7 @@ import logging
 import sys
 import threading
 import warnings
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import structlog
 
@@ -121,6 +121,37 @@ def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
 
 def _load_instrumentation_logging_handler() -> _InstrumentationLoggingHandlerFactory | None:
     return _otel.load_instrumentation_logging_handler()
+
+
+def _log_provider_config_key(config: TelemetryConfig) -> tuple[object, ...]:
+    return (
+        config.service_name,
+        config.version,
+        config.logging.otlp_endpoint,
+        tuple(sorted(config.logging.otlp_headers.items())),
+        config.exporter.logs_timeout_seconds,
+    )
+
+
+def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: TelemetryConfig) -> bool:
+    if previous is None or _otel_log_provider is None or not _otel_log_global_set:
+        return False
+    return _log_provider_config_key(previous) == _log_provider_config_key(current)
+
+
+def _make_otel_logging_handler(
+    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
+) -> logging.Handler:
+    instrumentation_handler_cls = _load_instrumentation_logging_handler()
+    if instrumentation_handler_cls is not None:
+        return instrumentation_handler_cls(
+            level=level,
+            logger_provider=provider,
+            log_code_attributes=config.logging.log_code_attributes,
+        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return cast(logging.Handler, sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
