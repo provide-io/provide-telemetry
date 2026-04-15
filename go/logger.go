@@ -292,7 +292,10 @@ func _configureLogger(cfg *TelemetryConfig) {
 // returned logger pre-attaches trace.id and span.id so they appear on every log line
 // even when callers use the context-free Logger.Info(...) form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	cfg := DefaultTelemetryConfig()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		cfg = DefaultTelemetryConfig()
+	}
 	if Logger != nil {
 		if h, ok := Logger.Handler().(*_telemetryHandler); ok {
 			cfg = h.cfg

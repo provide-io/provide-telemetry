@@ -89,6 +89,30 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     let current = get_runtime_config()
         .ok_or_else(|| TelemetryError::new("telemetry not set up: call setup_telemetry first"))?;
 
+    // Warn on cold-field drift (matches Python/TypeScript/Go behavior).
+    let mut drifted: Vec<&str> = Vec::new();
+    if current.service_name != fresh.service_name {
+        drifted.push("service_name");
+    }
+    if current.environment != fresh.environment {
+        drifted.push("environment");
+    }
+    if current.version != fresh.version {
+        drifted.push("version");
+    }
+    if current.tracing.enabled != fresh.tracing.enabled {
+        drifted.push("tracing.enabled");
+    }
+    if current.metrics.enabled != fresh.metrics.enabled {
+        drifted.push("metrics.enabled");
+    }
+    if !drifted.is_empty() {
+        eprintln!(
+            "[provide-telemetry] runtime.cold_field_drift: {} — restart required to apply",
+            drifted.join(", ")
+        );
+    }
+
     let overrides = RuntimeOverrides {
         sampling: Some(fresh.sampling),
         backpressure: Some(fresh.backpressure),
