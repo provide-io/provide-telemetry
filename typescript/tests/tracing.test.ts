@@ -15,6 +15,15 @@ import {
   withTrace,
 } from '../src/tracing';
 import { _resetPropagationForTests, bindPropagationContext } from '../src/propagation';
+import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
+import {
+  _resetBackpressureForTests,
+  setQueuePolicy,
+  tryAcquire,
+  release,
+} from '../src/backpressure';
+import { resetConsentForTests, setConsentLevel } from '../src/consent';
+import { _resetConfig, setupTelemetry } from '../src/config';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {
@@ -466,6 +475,54 @@ describe('withTrace — tracesEmitted health counter', () => {
       }),
     ).toThrow('boom');
     expect(getHealthSnapshot().tracesEmitted).toBe(1);
+  });
+});
+
+describe('withTrace — enforcement gates', () => {
+  beforeEach(() => {
+    _resetConfig();
+    _resetSamplingForTests();
+    _resetBackpressureForTests();
+    resetConsentForTests();
+    _resetHealthForTests();
+    setupTelemetry({ serviceName: 'test-svc' });
+  });
+  afterEach(() => {
+    _resetSamplingForTests();
+    _resetBackpressureForTests();
+    resetConsentForTests();
+  });
+
+  it('fn still runs when consent blocks the span', () => {
+    setConsentLevel('NONE');
+    let called = false;
+    withTrace('test.span', () => {
+      called = true;
+    });
+    expect(called).toBe(true);
+    expect(getHealthSnapshot().tracesEmitted).toBe(0);
+  });
+
+  it('fn still runs when sampling rate is 0', () => {
+    setSamplingPolicy('traces', { defaultRate: 0, overrides: {} });
+    let called = false;
+    withTrace('test.span', () => {
+      called = true;
+    });
+    expect(called).toBe(true);
+    expect(getHealthSnapshot().tracesEmitted).toBe(0);
+  });
+
+  it('fn still runs when backpressure queue is full', () => {
+    setQueuePolicy({ maxLogs: 0, maxTraces: 1, maxMetrics: 0 });
+    const ticket = tryAcquire('traces'); // fill the only slot
+    expect(ticket).toBeTruthy();
+    let called = false;
+    withTrace('test.span', () => {
+      called = true;
+    });
+    expect(called).toBe(true);
+    if (ticket) release(ticket);
   });
 });
 
