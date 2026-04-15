@@ -192,7 +192,10 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// metrics: rate 1.0 -> _incEmitted(signalMetrics)
+	// metrics: rate 1.0 — ShouldSample alone no longer increments
+	// MetricsEmitted. Counter.Add / Gauge.Set / Histogram.Record bump the
+	// counter only after the backpressure gate succeeds, so sampling-only
+	// callers don't over-report.
 	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 1.0}); err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +225,10 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 	if snap.TracesDropped != 1 {
 		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
 	}
-	if snap.MetricsEmitted != 1 {
-		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
+	// MetricsEmitted stays 0 here — see comment above: ShouldSample is not
+	// the emission point for metrics; Counter.Add etc. are.
+	if snap.MetricsEmitted != 0 {
+		t.Errorf("MetricsEmitted: want 0 (ShouldSample is not the emission point), got %d", snap.MetricsEmitted)
 	}
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)
