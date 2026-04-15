@@ -180,6 +180,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = [
+  "tests.parity.test_behavioral_fixtures",
+  "tests.parity.test_behavioral_fixtures_ext",
+  "tests.tooling.test_check_fixture_coverage",
+]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
+
 [tool.ty.environment]
 python-version = "3.11"
 

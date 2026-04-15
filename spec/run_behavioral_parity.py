@@ -89,6 +89,7 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             check_cmd=["cargo", "--version"],
             run_cmd=[
                 "cargo",
+                "--locked",
                 "test",
                 "--test",
                 "parity_test",
@@ -290,31 +291,56 @@ def _extract_json_line(output: str) -> dict[str, object] | None:
         line = line.strip()
         if line.startswith("{"):
             try:
-                return json.loads(line)  # type: ignore[return-value]
+                return json.loads(line)  # type: ignore[no-any-return]
             except json.JSONDecodeError:
                 continue
     return None
 
 
+_VALID_LEVELS: frozenset[str] = frozenset({"TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL"})
+_TRACE_ID_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{32}$")
+_SPAN_ID_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{16}$")
+
+
 def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
-    """Cross-compare required fields across all language records.
+    """Cross-compare required and optional fields across all language records.
 
     Returns a list of mismatch messages; empty list means all good.
     """
     mismatches: list[str] = []
-    required = ("message", "level")
-    for field_name in required:
+    # Required fields must agree across all languages.
+    for field_name in ("message", "level"):
         values = {lang: rec.get(field_name) for lang, rec in records.items()}
-        unique = set(v for v in values.values() if v is not None)
-        if len(unique) > 1:
+        if len({v for v in values.values() if v is not None}) > 1:
             mismatches.append(
                 f"  field '{field_name}' differs: " + ", ".join(f"{lang}={v!r}" for lang, v in sorted(values.items()))
             )
-    # Verify timestamp format when present.
+    # Level must be a valid enum value.
+    for lang, rec in records.items():
+        lvl = rec.get("level")
+        if lvl is not None and str(lvl) not in _VALID_LEVELS:
+            mismatches.append(f"  {lang}: 'level' has unexpected value: {lvl!r}")
+    # Optional fields: when present in 2+ languages, they should agree.
+    for field_name in ("service",):
+        present = {lang: rec.get(field_name) for lang, rec in records.items() if rec.get(field_name) is not None}
+        if len(present) >= 2 and len(set(present.values())) > 1:
+            mismatches.append(
+                f"  field '{field_name}' differs across languages: "
+                + ", ".join(f"{lang}={v!r}" for lang, v in sorted(present.items()))
+            )
+    # Timestamp format validation.
     for lang, rec in records.items():
         ts = rec.get("timestamp")
         if ts is not None and not _ISO8601_RE.match(str(ts)):
             mismatches.append(f"  {lang}: 'timestamp' is not ISO 8601: {ts!r}")
+    # trace_id: 32 hex chars; span_id: 16 hex chars.
+    for lang, rec in records.items():
+        tid = rec.get("trace_id")
+        if tid is not None and not _TRACE_ID_RE.match(str(tid)):
+            mismatches.append(f"  {lang}: 'trace_id' invalid format: {tid!r}")
+        sid = rec.get("span_id")
+        if sid is not None and not _SPAN_ID_RE.match(str(sid)):
+            mismatches.append(f"  {lang}: 'span_id' invalid format: {sid!r}")
     return mismatches
 
 
@@ -362,7 +388,7 @@ def run_output_check(
         all_ok = False
     else:
         langs = ", ".join(sorted(records))
-        print(f"  MATCH: message + level agree across [{langs}]")
+        print(f"  MATCH: msg + level + format agree across [{langs}]")
 
     return all_ok
 
