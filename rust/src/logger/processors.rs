@@ -45,6 +45,8 @@ pub(super) fn process_event(event: &mut LogEvent) {
     sanitize_context(event, pii_max_depth);
 
     // 5. Schema enforcement (validate event name when strict mode is on)
+    // Annotates with _schema_error instead of dropping — cross-language
+    // standard: all four languages (Python/TypeScript/Go/Rust) annotate and emit.
     enforce_schema(event);
 }
 
@@ -96,13 +98,37 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
             }
         }
     }
-    // Cap attribute count — keep the first N in sorted order (BTreeMap is
-    // already sorted, so this preserves alphabetical priority).
+    // Cap attribute count. Priority keys (service identity, trace context,
+    // DARS fields) are preserved; excess is trimmed from the remainder
+    // in BTreeMap alphabetical order (deterministic).
     if max_attr_count > 0 && event.context.len() > max_attr_count {
-        let keys: Vec<String> = event.context.keys().skip(max_attr_count).cloned().collect();
-        for key in keys {
-            event.context.remove(&key);
+        use std::collections::HashSet;
+        const PRIORITY_KEYS: &[&str] = &[
+            "service", "env", "version", "trace_id", "span_id", "session_id",
+            "domain", "action", "resource", "status", "error_fingerprint",
+        ];
+        let priority_set: HashSet<&str> = PRIORITY_KEYS.iter().copied().collect();
+
+        // Collect priority keys that are actually present — O(n) with HashSet.
+        let mut keep: HashSet<String> = event
+            .context
+            .keys()
+            .filter(|k| priority_set.contains(k.as_str()))
+            .cloned()
+            .collect();
+
+        // Fill remaining slots from non-priority keys (alphabetical — BTreeMap order).
+        for key in event.context.keys() {
+            if keep.len() >= max_attr_count {
+                break;
+            }
+            if !priority_set.contains(key.as_str()) {
+                keep.insert(key.clone());
+            }
         }
+
+        // Drop everything not in `keep` — O(n) with HashSet lookup.
+        event.context.retain(|k, _| keep.contains(k));
     }
 }
 
@@ -153,8 +179,10 @@ fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
 }
 
 /// When strict schema mode is on, validate the event message as a
-/// dot-joined event name. Invalid names get an `_schema_error` context
-/// field (we do NOT drop the event — that would lose telemetry).
+/// dot-joined event name. Invalid names get a `_schema_error` context
+/// field — the event is always emitted (never dropped), so telemetry
+/// is never lost. Cross-language standard: all four languages annotate
+/// and emit rather than drop.
 fn enforce_schema(event: &mut LogEvent) {
     if !get_strict_schema() {
         return;
@@ -223,7 +251,30 @@ mod tests {
     }
 
     #[test]
-    fn error_fingerprint_added_for_error_events() {
+    fn harden_input_preserves_priority_keys_when_over_cap() {
+        let mut event = make_event("INFO", "test");
+        // Add 10 generic keys over a cap of 4
+        for i in 0..10 {
+            event.context.insert(format!("extra_{i:02}"), Value::String("x".to_string()));
+        }
+        // Add priority keys — must survive even when over cap
+        event.context.insert("trace_id".to_string(), Value::String("tid-abc".to_string()));
+        event.context.insert("service".to_string(), Value::String("svc".to_string()));
+        // Cap at 4: 2 priority keys + 2 generic
+        harden_input(&mut event, 1024, 4);
+        assert_eq!(event.context.len(), 4, "must cap at 4");
+        assert!(
+            event.context.contains_key("trace_id"),
+            "trace_id (priority) must survive capping"
+        );
+        assert!(
+            event.context.contains_key("service"),
+            "service (priority) must survive capping"
+        );
+    }
+
+    #[test]
+    fn error_fingerprint_added_when_error_attr_present() {
         let mut event = make_event("ERROR", "something failed");
         event
             .context
