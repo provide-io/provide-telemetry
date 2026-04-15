@@ -28,7 +28,10 @@ fn setup_state() -> &'static Mutex<SetupState> {
 fn apply_policies(config: &TelemetryConfig) {
     let _ = set_sampling_policy(
         Signal::Logs,
-        SamplingPolicy { default_rate: config.sampling.logs_rate, overrides: BTreeMap::new() },
+        SamplingPolicy {
+            default_rate: config.sampling.logs_rate,
+            overrides: BTreeMap::new(),
+        },
     );
     let _ = set_sampling_policy(
         Signal::Traces,

@@ -21,6 +21,8 @@ import * as otelLogs from '../src/otel-logs';
 import * as schema from '../src/schema';
 import * as tracing from '../src/tracing';
 import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
+import { setConsentLevel, resetConsentForTests } from '../src/consent';
+import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();
@@ -795,5 +797,48 @@ describe('makeWriteHook — sampling gate', () => {
     hook({ level: 30, message: 'should.pass' });
     const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
     expect(logs).toHaveLength(1);
+  });
+});
+
+describe('makeWriteHook — consent gate', () => {
+  beforeEach(() => {
+    resetConsentForTests();
+    _resetHealthForTests();
+    makeCfg();
+  });
+
+  afterEach(() => {
+    resetConsentForTests();
+  });
+
+  it('drops log records when consent is NONE', () => {
+    setConsentLevel('NONE');
+    const before = getHealthSnapshot().logsEmitted;
+    const hook = makeWriteHook();
+    hook({ level: 30, message: 'should.be.dropped' });
+    expect(getHealthSnapshot().logsEmitted).toBe(before);
+  });
+});
+
+describe('makeWriteHook — backpressure gate', () => {
+  beforeEach(() => {
+    _resetBackpressureForTests();
+    _resetHealthForTests();
+    makeCfg();
+  });
+
+  afterEach(() => {
+    _resetBackpressureForTests();
+  });
+
+  it('drops log records when the log queue is full', () => {
+    setQueuePolicy({ maxLogs: 1 });
+    const ticket = tryAcquire('logs');
+    expect(ticket).not.toBeNull();
+    const before = getHealthSnapshot().logsEmitted;
+    const hook = makeWriteHook();
+    hook({ level: 30, message: 'should.be.dropped.by.backpressure' });
+    expect(getHealthSnapshot().logsEmitted).toBe(before);
+    // ticket held intentionally — _resetBackpressureForTests() in afterEach will clean up
   });
 });

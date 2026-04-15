@@ -53,6 +53,7 @@ try {
   _als = new AsyncLocalStorage<_TraceIds>();
 } catch {
   // Non-Node runtime (browser, Deno): fall back to module globals.
+  /* c8 ignore next */
   _als = null;
 }
 
@@ -151,9 +152,11 @@ function _withSyntheticIds<T>(fn: () => T): T {
   // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
   const traceId = randomHex(16);
   const spanId = randomHex(8);
+  /* c8 ignore next -- _als is always non-null in Node.js; false branch is browser/Deno only */
   if (_als !== null) {
     return _als.run<T>({ traceId, spanId }, fn);
   }
+  /* c8 ignore start -- browser/Deno fallback: _als is always non-null in Node.js tests */
   const prevTraceId = _manualTraceId;
   const prevSpanId = _manualSpanId;
   _manualTraceId = traceId;
@@ -176,6 +179,7 @@ function _withSyntheticIds<T>(fn: () => T): T {
   _manualTraceId = prevTraceId;
   _manualSpanId = prevSpanId;
   return result;
+  /* c8 ignore stop */
 }
 
 /** Shared span handler for withTrace — records exceptions and sets ERROR status. */

@@ -563,3 +563,33 @@ describe('withTrace — async context isolation (no ID bleed between concurrent 
     expect(bTraceIds[0]).toBeDefined();
   });
 });
+
+describe('setTraceContext / _resetTraceContext — inside ALS scope', () => {
+  it('setTraceContext inside withTrace writes into the ALS store, not globals', () => {
+    // withTrace runs fn inside _als.run() so _als.getStore() returns the store.
+    // Calling setTraceContext there should write into the store (lines 69-71 coverage).
+    let innerCtx: { trace_id?: string; span_id?: string } = {};
+    withTrace('als.scope.set', () => {
+      setTraceContext('inner-trace', 'inner-span');
+      innerCtx = getTraceContext();
+    });
+    expect(innerCtx.trace_id).toBe('inner-trace');
+    expect(innerCtx.span_id).toBe('inner-span');
+    // After the trace scope exits, manual globals are unchanged.
+    const outer = getTraceContext();
+    expect(outer.trace_id).toBeUndefined();
+  });
+
+  it('_resetTraceContext inside withTrace clears the ALS store fields', () => {
+    // Calling _resetTraceContext inside a withTrace run() scope covers lines 106-107.
+    let ctxAfterReset: { trace_id?: string; span_id?: string } = {};
+    withTrace('als.scope.reset', () => {
+      setTraceContext('to-be-cleared', 'to-be-cleared-span');
+      _resetTraceContext();
+      ctxAfterReset = getTraceContext();
+    });
+    // After reset, trace context is cleared (only synthetic IDs from withTrace remain
+    // after the reset, but the manual values we injected are gone).
+    expect(ctxAfterReset.trace_id).not.toBe('to-be-cleared');
+  });
+});

@@ -10,12 +10,20 @@ use serde_json::{json, Value};
 
 use crate::backpressure::{release, try_acquire};
 use crate::config::TelemetryConfig;
+#[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
+
+// When the governance feature is disabled, consent is unconditionally granted.
+#[cfg(not(feature = "governance"))]
+#[inline(always)]
+fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
+    true
+}
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
 
@@ -25,8 +33,7 @@ const MAX_FALLBACK_EVENTS: usize = 1000;
 
 /// Optional capture buffer used by tests to intercept JSON log lines instead
 /// of writing them to stderr.  None means "write to stderr" (production path).
-static JSON_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> =
-    LazyLock::new(|| Mutex::new(None));
+static JSON_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Enable in-process capture of JSON log lines (test helper).
 /// Call before the code under test; retrieve lines with `take_json_capture()`.
@@ -44,12 +51,13 @@ pub fn take_json_capture() -> Vec<u8> {
 }
 
 /// Optional capture buffer used by tests to intercept console log lines.
-static CONSOLE_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> =
-    LazyLock::new(|| Mutex::new(None));
+static CONSOLE_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Enable in-process capture of console log lines (test helper).
 pub fn enable_console_capture_for_tests() {
-    *CONSOLE_CAPTURE.lock().expect("console capture lock poisoned") = Some(Vec::new());
+    *CONSOLE_CAPTURE
+        .lock()
+        .expect("console capture lock poisoned") = Some(Vec::new());
 }
 
 /// Drain and return captured console log lines, then disable capture.
@@ -93,7 +101,9 @@ pub fn reset_logging_config_for_tests() {
 /// is needed.
 fn now_iso8601() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let d = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let ts = d.as_secs();
     let ms = d.subsec_millis();
     // All post-1970 timestamps: ts/86400 >= 0, z >= 719_468, era >= 4.
@@ -155,7 +165,10 @@ fn emit_json_log(event: &LogEvent) {
     if let Some(sid) = &event.span_id {
         obj.insert("span_id".to_string(), Value::String(sid.clone()));
     }
-    obj.insert("logger_name".to_string(), Value::String(event.target.clone()));
+    obj.insert(
+        "logger_name".to_string(),
+        Value::String(event.target.clone()),
+    );
     let line = serde_json::to_string(obj).unwrap_or_default();
     let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
     if let Some(buf) = capture.as_mut() {
@@ -184,7 +197,10 @@ fn emit_json_log_with_timestamp(event: &LogEvent) {
     if let Some(sid) = &event.span_id {
         obj.insert("span_id".to_string(), Value::String(sid.clone()));
     }
-    obj.insert("logger_name".to_string(), Value::String(event.target.clone()));
+    obj.insert(
+        "logger_name".to_string(),
+        Value::String(event.target.clone()),
+    );
     let line = serde_json::to_string(obj).unwrap_or_default();
     let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
     if let Some(buf) = capture.as_mut() {
@@ -230,7 +246,9 @@ fn emit_if_console(event: &LogEvent) {
     let logging = active_logging_config();
     if !logging.fmt.eq_ignore_ascii_case("json") {
         let line = format_console_line(event, logging.include_timestamp);
-        let mut capture = CONSOLE_CAPTURE.lock().expect("console capture lock poisoned");
+        let mut capture = CONSOLE_CAPTURE
+            .lock()
+            .expect("console capture lock poisoned");
         if let Some(buf) = capture.as_mut() {
             buf.extend_from_slice(line.as_bytes());
             buf.push(b'\n');

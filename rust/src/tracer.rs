@@ -7,10 +7,18 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::backpressure::{release, try_acquire};
+#[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
 use crate::health::increment_emitted;
 use crate::sampling::{should_sample, Signal};
+
+// When the governance feature is disabled, consent is unconditionally granted.
+#[cfg(not(feature = "governance"))]
+#[inline(always)]
+fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
+    true
+}
 
 pub struct NoopSpan {
     trace_id: String,
