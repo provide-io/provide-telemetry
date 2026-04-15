@@ -24,8 +24,8 @@ Every log event passes through a linear chain of structlog processors configured
 5. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
 6. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
 7. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from exception type and normalized stack trace when `exc_info` is present.
-8. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
-9. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Raises `EventSchemaError` on violation.
+8. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Annotates `_schema_error` on violation instead of dropping.
+9. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
 10. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
 11. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering, placed late so enrichment processors run first.
 12. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
@@ -185,13 +185,14 @@ Call `get_health_snapshot()` for a point-in-time frozen dataclass of all counter
 - Security config (PII key sets, secret pattern registration)
 - SLO config (RED/USE metric enable flags and thresholds)
 - PII max traversal depth (`pii_max_depth`)
-- Schema strictness (`strict_schema`)
+- Schema strictness (`strict_schema`) and event-schema fields (`strict_event_name`, `required_keys`)
+- Safe logging pipeline rebuilds (level, format, timestamp/caller inclusion, sanitize flag, pretty settings, module levels)
 
 These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 
 ### NOT hot-reloadable (requires process restart)
 
-- Log handlers and structlog processor chain
+- OTLP log-provider/exporter settings (`logging.otlp_endpoint`, `logging.otlp_headers`, `exporter.logs_timeout_seconds`) after a global OTel log provider is installed
 - OTel `TracerProvider` / `MeterProvider` (process-global singletons in the OTel SDK)
 - Service name, environment, version
 

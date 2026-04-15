@@ -194,12 +194,12 @@ def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
-    required_keys = config.event_schema.required_keys
-
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         live = _get_active_config()
         live_strict = live.strict_schema if live is not None else config.strict_schema
-        strict_event_name = True if live_strict else config.event_schema.strict_event_name
+        live_event_schema = live.event_schema if live is not None else config.event_schema
+        strict_event_name = True if live_strict else live_event_schema.strict_event_name
+        required_keys = live_event_schema.required_keys
         event = str(event_dict.get("event", ""))
         validate_event_name(event, strict_event_name=strict_event_name)
         validate_required_keys(event_dict, required_keys)

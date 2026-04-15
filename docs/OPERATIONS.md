@@ -23,8 +23,8 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 ## Failure Behavior
 
 - Missing OTel dependencies: tracing falls back to no-op tracer objects and metrics use in-process fallback wrappers.
-- Invalid event names with strict event mode enabled: raises `EventSchemaError`.
-- Missing required keys: raises `EventSchemaError` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode).
+- Invalid event names with strict event mode enabled: log processors annotate `_schema_error`; direct schema helpers like `event()`, `event_name()`, and `validate_event_name()` raise `EventSchemaError`.
+- Missing required keys: log processors annotate `_schema_error` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode); `validate_required_keys()` raises directly.
 - Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`.
 - Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced for OTLP exporter setup and for each resilience attempt; timed-out attempts count as failures and follow retry/fail-open policy.
 - Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
