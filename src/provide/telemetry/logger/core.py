@@ -273,6 +273,11 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             ),
             add_standard_fields(config),
             add_error_fingerprint,
+            # Schema validation runs BEFORE sampling. Schema-invalid records are now
+            # annotated with _schema_error and continue through the pipeline — they
+            # DO contribute to emitted_logs. The ordering ensures _schema_error is
+            # set before apply_sampling evaluates the record.
+            enforce_event_schema(config),
             apply_sampling,
             enforce_event_schema(config),
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
