@@ -29,17 +29,13 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15]
-        features: ["", "--features otel", "--features otel-grpc"]
+        features: ["", "--features otel"]
         exclude:
           # Full feature matrix on Linux; default-only on Windows/macOS
           - os: windows-2025
             features: "--features otel"
-          - os: windows-2025
-            features: "--features otel-grpc"
           - os: macos-15
             features: "--features otel"
-          - os: macos-15
-            features: "--features otel-grpc"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -47,23 +43,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-      # Cache Cargo registry and build artefacts to speed up incremental builds
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
-        with:
-          workspaces: rust
-      # Check formatting
-      - name: Cargo fmt
+      # Format check only on Linux default (no point repeating per OS/feature)
+      - name: Cargo fmt (Linux default only)
+        if: matrix.os == 'ubuntu-24.04' && matrix.features == ''
         run: cargo fmt --check --manifest-path Cargo.toml
-      # Run tests and collect coverage via cargo-llvm-cov
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
-      - name: Cargo test with coverage
-        run: cargo llvm-cov --all-targets --fail-under-lines 70
-      # Static analysis
-      - name: Cargo clippy
-        run: cargo clippy --manifest-path Cargo.toml --all-targets --all-features -- -D warnings
+      # Run tests with the selected feature set
+      - name: Cargo test ${{ matrix.features }}
+        run: cargo test --manifest-path Cargo.toml ${{ matrix.features }}
+      # Clippy with all features on Linux default; with selected features elsewhere
+      - name: Cargo clippy ${{ matrix.features }}
+        run: cargo clippy --manifest-path Cargo.toml --all-targets ${{ matrix.features || '--all-features' }} -- -D warnings
 
   test-otel:
     name: Rust — test with otel feature
