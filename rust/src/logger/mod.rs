@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::backpressure::{release, try_acquire};
 use crate::config::TelemetryConfig;
@@ -18,6 +18,16 @@ use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
+mod emit;
+mod processors;
+
+pub use emit::{
+    enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
+    take_json_capture,
+};
+use emit::{emit_if_console, emit_if_json};
+use processors::process_event;
+
 // When the governance feature is disabled, consent is unconditionally granted.
 #[cfg(not(feature = "governance"))]
 #[inline(always)]
@@ -26,48 +36,6 @@ fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
 }
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
-
-// ---------------------------------------------------------------------------
-// JSON stdout/stderr emit — canonical cross-language output
-// ---------------------------------------------------------------------------
-
-/// Optional capture buffer used by tests to intercept JSON log lines instead
-/// of writing them to stderr.  None means "write to stderr" (production path).
-static JSON_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
-
-/// Enable in-process capture of JSON log lines (test helper).
-/// Call before the code under test; retrieve lines with `take_json_capture()`.
-pub fn enable_json_capture_for_tests() {
-    *JSON_CAPTURE.lock().expect("json capture lock poisoned") = Some(Vec::new());
-}
-
-/// Drain and return captured JSON log lines, then disable capture.
-pub fn take_json_capture() -> Vec<u8> {
-    JSON_CAPTURE
-        .lock()
-        .expect("json capture lock poisoned")
-        .take()
-        .unwrap_or_default()
-}
-
-/// Optional capture buffer used by tests to intercept console log lines.
-static CONSOLE_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
-
-/// Enable in-process capture of console log lines (test helper).
-pub fn enable_console_capture_for_tests() {
-    *CONSOLE_CAPTURE
-        .lock()
-        .expect("console capture lock poisoned") = Some(Vec::new());
-}
-
-/// Drain and return captured console log lines, then disable capture.
-pub fn take_console_capture() -> Vec<u8> {
-    CONSOLE_CAPTURE
-        .lock()
-        .expect("console capture lock poisoned")
-        .take()
-        .unwrap_or_default()
-}
 
 // ---------------------------------------------------------------------------
 // Programmatic config override — highest-priority, overrides env vars
@@ -94,36 +62,6 @@ pub fn reset_logging_config_for_tests() {
         .expect("logging config override lock poisoned") = None;
 }
 
-/// Format Unix epoch seconds + milliseconds as ISO 8601 UTC.
-///
-/// Uses the civil-calendar algorithm from
-/// <https://howardhinnant.github.io/date_algorithms.html> so no external crate
-/// is needed.
-fn now_iso8601() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let d = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let ts = d.as_secs();
-    let ms = d.subsec_millis();
-    // All post-1970 timestamps: ts/86400 >= 0, z >= 719_468, era >= 4.
-    let z: i64 = (ts / 86_400) as i64 + 719_468;
-    let era: i64 = z / 146_097;
-    let doe: i64 = z - era * 146_097;
-    let yoe: i64 = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y: i64 = yoe + era * 400;
-    let doy: i64 = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp: i64 = (5 * doy + 2) / 153;
-    let day: i64 = doy - (153 * mp + 2) / 5 + 1;
-    let month: i64 = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year: i64 = if month <= 2 { y + 1 } else { y };
-    let sod = ts % 86_400;
-    let hour = sod / 3_600;
-    let min = (sod % 3_600) / 60;
-    let sec = sod % 60;
-    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}.{ms:03}Z")
-}
-
 /// Read the active logging config.
 ///
 /// Priority order:
@@ -147,129 +85,9 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         })
 }
 
-/// Serialise a `LogEvent` to a canonical JSON line and write it to the capture
-/// buffer (in tests) or stderr (production).
-fn emit_json_log(event: &LogEvent) {
-    let mut record = json!({
-        "message": event.message,
-        "level": event.level,
-    });
-    let obj = record.as_object_mut().expect("json object");
-    // Service identity from context or fallback
-    for (k, v) in &event.context {
-        obj.insert(k.clone(), v.clone());
-    }
-    if let Some(tid) = &event.trace_id {
-        obj.insert("trace_id".to_string(), Value::String(tid.clone()));
-    }
-    if let Some(sid) = &event.span_id {
-        obj.insert("span_id".to_string(), Value::String(sid.clone()));
-    }
-    obj.insert(
-        "logger_name".to_string(),
-        Value::String(event.target.clone()),
-    );
-    let line = serde_json::to_string(obj).unwrap_or_default();
-    let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
-    if let Some(buf) = capture.as_mut() {
-        buf.extend_from_slice(line.as_bytes());
-        buf.push(b'\n');
-    } else {
-        eprintln!("{line}");
-    }
-}
-
-/// Serialise a `LogEvent` to JSON including a timestamp field and write to
-/// the capture buffer or stderr.
-fn emit_json_log_with_timestamp(event: &LogEvent) {
-    let mut record = json!({
-        "message": event.message,
-        "level": event.level,
-        "timestamp": now_iso8601(),
-    });
-    let obj = record.as_object_mut().expect("json object");
-    for (k, v) in &event.context {
-        obj.insert(k.clone(), v.clone());
-    }
-    if let Some(tid) = &event.trace_id {
-        obj.insert("trace_id".to_string(), Value::String(tid.clone()));
-    }
-    if let Some(sid) = &event.span_id {
-        obj.insert("span_id".to_string(), Value::String(sid.clone()));
-    }
-    obj.insert(
-        "logger_name".to_string(),
-        Value::String(event.target.clone()),
-    );
-    let line = serde_json::to_string(obj).unwrap_or_default();
-    let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
-    if let Some(buf) = capture.as_mut() {
-        buf.extend_from_slice(line.as_bytes());
-        buf.push(b'\n');
-    } else {
-        eprintln!("{line}");
-    }
-}
-
-/// If `PROVIDE_LOG_FORMAT=json`, emit canonical JSON for this event.
-fn emit_if_json(event: &LogEvent) {
-    let logging = active_logging_config();
-    if logging.fmt.eq_ignore_ascii_case("json") {
-        if logging.include_timestamp {
-            emit_json_log_with_timestamp(event);
-        } else {
-            emit_json_log(event);
-        }
-    }
-}
-
-/// Format a human-readable console line for this event.
-fn format_console_line(event: &LogEvent, include_timestamp: bool) -> String {
-    let mut s = String::new();
-    if include_timestamp {
-        s.push_str(&now_iso8601());
-        s.push_str("  ");
-    }
-    s.push_str(&format!("{:<5}", event.level));
-    s.push_str("  ");
-    s.push_str(&event.target);
-    s.push_str("  ");
-    s.push_str(&event.message);
-    for (k, v) in &event.context {
-        s.push_str(&format!("  {k}={v}"));
-    }
-    s
-}
-
-/// If format is not JSON, emit a human-readable console line for this event.
-fn emit_if_console(event: &LogEvent) {
-    let logging = active_logging_config();
-    if !logging.fmt.eq_ignore_ascii_case("json") {
-        let line = format_console_line(event, logging.include_timestamp);
-        let mut capture = CONSOLE_CAPTURE
-            .lock()
-            .expect("console capture lock poisoned");
-        if let Some(buf) = capture.as_mut() {
-            buf.extend_from_slice(line.as_bytes());
-            buf.push(b'\n');
-        } else {
-            eprintln!("{line}");
-        }
-    }
-}
-
-/// Shared core: build an event, emit it (JSON or console), buffer it.
-fn log_event(level: &str, target: &str, message: &str) {
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
-        return;
-    };
-    let event = new_event(target, level, message);
+/// Shared emit path: run processors, emit (JSON + console + OTel), buffer.
+fn emit_event(mut event: LogEvent) {
+    process_event(&mut event);
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]
@@ -281,8 +99,55 @@ fn log_event(level: &str, target: &str, message: &str) {
         buf.push(event);
     }
     drop(buf);
+}
+
+/// Shared core: gate, build, process, emit, count.
+fn log_event(level: &str, target: &str, message: &str) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    emit_event(new_event(target, level, message));
     increment_emitted(Signal::Logs, 1);
     release(ticket);
+}
+
+/// Like `log_event` but attaches DARS metadata from an `Event`.
+fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(&ev.event)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    let mut event = new_event(target, level, &ev.event);
+    event.event_metadata = Some(EventMetadata {
+        domain: ev.domain.clone(),
+        action: ev.action.clone(),
+        resource: ev.resource.clone(),
+        status: ev.status.clone(),
+    });
+    emit_event(event);
+    increment_emitted(Signal::Logs, 1);
+    release(ticket);
+}
+
+/// DARS metadata extracted from an `Event` when the caller uses the
+/// `_event` logger methods. `None` for plain string messages.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EventMetadata {
+    pub domain: String,
+    pub action: String,
+    pub resource: Option<String>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -293,6 +158,7 @@ pub struct LogEvent {
     pub context: BTreeMap<String, Value>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
+    pub event_metadata: Option<EventMetadata>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -334,6 +200,7 @@ fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
         context,
         trace_id: trace.get("trace_id").and_then(Clone::clone),
         span_id: trace.get("span_id").and_then(Clone::clone),
+        event_metadata: None,
     }
 }
 
@@ -366,6 +233,26 @@ impl Logger {
 
     pub fn log(&self, level: &str, message: &str) {
         log_event(level, &self.target, message);
+    }
+
+    pub fn debug_event(&self, event: &crate::schema::Event) {
+        self.log_event("DEBUG", event);
+    }
+
+    pub fn info_event(&self, event: &crate::schema::Event) {
+        self.log_event("INFO", event);
+    }
+
+    pub fn warn_event(&self, event: &crate::schema::Event) {
+        self.log_event("WARN", event);
+    }
+
+    pub fn error_event(&self, event: &crate::schema::Event) {
+        self.log_event("ERROR", event);
+    }
+
+    pub fn log_event(&self, level: &str, event: &crate::schema::Event) {
+        log_event_with_event(level, &self.target, event);
     }
 
     pub fn drain_events_for_tests() -> Vec<LogEvent> {
