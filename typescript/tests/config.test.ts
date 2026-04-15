@@ -274,15 +274,21 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
-  it('invalid PROVIDE_LOG_FORMAT falls back to json default', () => {
-    withEnv({ PROVIDE_LOG_FORMAT: 'xml' }, () => {
-      expect(configFromEnv().logFormat).toBe('json');
+  it('reads PROVIDE_LOG_FORMAT=console', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'console' }, () => {
+      expect(configFromEnv().logFormat).toBe('console');
     });
   });
 
-  it('empty PROVIDE_LOG_FORMAT falls back to json default', () => {
+  it('invalid PROVIDE_LOG_FORMAT falls back to console default', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: 'xml' }, () => {
+      expect(configFromEnv().logFormat).toBe('console');
+    });
+  });
+
+  it('empty PROVIDE_LOG_FORMAT falls back to console default', () => {
     withEnv({ PROVIDE_LOG_FORMAT: '' }, () => {
-      expect(configFromEnv().logFormat).toBe('json');
+      expect(configFromEnv().logFormat).toBe('console');
     });
   });
 
