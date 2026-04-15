@@ -24,6 +24,7 @@ import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
 import { getActiveTraceIds } from './tracing';
 import { getConfig } from './config';
+import { shouldAllow } from './consent';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 
@@ -55,6 +56,7 @@ export class CounterInstrument {
 
   add(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
@@ -95,6 +97,7 @@ export class GaugeInstrument {
 
   add(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
@@ -109,6 +112,7 @@ export class GaugeInstrument {
 
   set(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
@@ -153,6 +157,7 @@ export class HistogramInstrument {
 
   record(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
