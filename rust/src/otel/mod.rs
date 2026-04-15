@@ -9,6 +9,8 @@ use crate::errors::TelemetryError;
 #[cfg(feature = "otel")]
 mod endpoint;
 #[cfg(feature = "otel")]
+pub(crate) mod logs;
+#[cfg(feature = "otel")]
 pub(crate) mod metrics;
 #[cfg(feature = "otel")]
 mod resource;
@@ -21,7 +23,8 @@ pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError>
     // is internally Arc'd).
     let resource = resource::build_resource(config);
     traces::install_tracer_provider(config, resource.clone())?;
-    metrics::install_meter_provider(config, resource)?;
+    metrics::install_meter_provider(config, resource.clone())?;
+    logs::install_logger_provider(config, resource)?;
     OTEL_INSTALLED.store(true, Ordering::SeqCst);
     Ok(())
 }
@@ -36,6 +39,7 @@ pub(crate) fn shutdown_otel() {
     {
         traces::shutdown_tracer_provider();
         metrics::shutdown_meter_provider();
+        logs::shutdown_logger_provider();
     }
     OTEL_INSTALLED.store(false, Ordering::SeqCst);
 }

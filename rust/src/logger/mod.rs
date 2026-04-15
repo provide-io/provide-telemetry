@@ -210,7 +210,7 @@ fn log_event(level: &str, target: &str, message: &str) {
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]
-    if crate::otel::logs::logger_provider_installed() {
+    if crate::otel::otel_installed() {
         crate::otel::logs::emit_log(&event);
     }
     let mut buf = events().lock().expect("logger event lock poisoned");
