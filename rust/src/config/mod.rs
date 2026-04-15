@@ -4,17 +4,19 @@
 //
 
 use std::collections::HashMap;
+use std::env;
 
 use serde::{Deserialize, Serialize};
 
-mod from_env;
-mod parse;
-mod redact;
+use crate::errors::ConfigurationError;
 
-pub use redact::redact_config;
+mod parse;
+
+use parse::{
+    env_value, parse_bool, parse_non_negative_float, parse_otlp_headers, parse_rate, parse_usize,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
-#[serde(default)]
 pub struct RuntimeOverrides {
     pub sampling: Option<SamplingConfig>,
     pub backpressure: Option<BackpressureConfig>,
@@ -23,11 +25,9 @@ pub struct RuntimeOverrides {
     pub slo: Option<SLOConfig>,
     pub pii_max_depth: Option<usize>,
     pub strict_schema: Option<bool>,
-    pub event_schema: Option<EventSchemaConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct LoggingConfig {
     pub level: String,
     pub fmt: String,
@@ -35,19 +35,6 @@ pub struct LoggingConfig {
     /// Controlled by `PROVIDE_LOG_INCLUDE_TIMESTAMP` (default: true).
     pub include_timestamp: bool,
     pub otlp_headers: HashMap<String, String>,
-    /// OTLP endpoint URL for logs export. Falls back to the shared
-    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
-    /// is unset. `None` means no endpoint configured.
-    pub otlp_endpoint: Option<String>,
-    /// OTLP transport protocol for logs. Empty string means default
-    /// (resolved at exporter-build time to `http/protobuf`). Values:
-    /// `http/protobuf`, `http/json`, `grpc` (the latter requires the
-    /// `otel-grpc` cargo feature).
-    pub otlp_protocol: String,
-    /// Per-module log level overrides. Keys are module-name prefixes
-    /// (longest-prefix wins); values are level strings (TRACE/DEBUG/
-    /// INFO/WARN/ERROR). Controlled by `PROVIDE_LOG_MODULE_LEVELS`.
-    pub module_levels: HashMap<String, String>,
 }
 
 impl Default for LoggingConfig {
@@ -57,27 +44,17 @@ impl Default for LoggingConfig {
             fmt: "console".to_string(),
             include_timestamp: true,
             otlp_headers: HashMap::new(),
-            otlp_endpoint: None,
-            otlp_protocol: String::new(),
-            module_levels: HashMap::new(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct TracingConfig {
     pub enabled: bool,
     /// Per-signal sample rate for traces (PROVIDE_TRACE_SAMPLE_RATE).
     /// Combined with sampling.traces_rate via min() in apply_policies.
     pub sample_rate: f64,
     pub otlp_headers: HashMap<String, String>,
-    /// OTLP endpoint URL for traces export. Falls back to the shared
-    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
-    /// is unset.
-    pub otlp_endpoint: Option<String>,
-    /// OTLP transport protocol for traces. See `LoggingConfig::otlp_protocol`.
-    pub otlp_protocol: String,
 }
 
 impl Default for TracingConfig {
@@ -86,31 +63,14 @@ impl Default for TracingConfig {
             enabled: true,
             sample_rate: 1.0,
             otlp_headers: HashMap::new(),
-            otlp_endpoint: None,
-            otlp_protocol: String::new(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct MetricsConfig {
     pub enabled: bool,
     pub otlp_headers: HashMap<String, String>,
-    /// OTLP endpoint URL for metrics export. Falls back to the shared
-    /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`
-    /// is unset.
-    pub otlp_endpoint: Option<String>,
-    /// OTLP transport protocol for metrics. See `LoggingConfig::otlp_protocol`.
-    pub otlp_protocol: String,
-    /// How often (in milliseconds) the `PeriodicReader` pushes metrics to the
-    /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
-    /// Default: 60 000 ms (60 seconds).
-    pub metric_export_interval_ms: u64,
-}
-
-fn default_metric_export_interval_ms() -> u64 {
-    60_000
 }
 
 impl Default for MetricsConfig {
@@ -118,22 +78,16 @@ impl Default for MetricsConfig {
         Self {
             enabled: true,
             otlp_headers: HashMap::new(),
-            otlp_endpoint: None,
-            otlp_protocol: String::new(),
-            metric_export_interval_ms: default_metric_export_interval_ms(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct EventSchemaConfig {
-    pub strict_event_name: bool,
+pub struct SchemaConfig {
     pub required_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct SamplingConfig {
     pub logs_rate: f64,
     pub traces_rate: f64,
@@ -151,7 +105,6 @@ impl Default for SamplingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(default)]
 pub struct BackpressureConfig {
     pub logs_maxsize: usize,
     pub traces_maxsize: usize,
@@ -159,7 +112,6 @@ pub struct BackpressureConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct ExporterPolicyConfig {
     pub logs_retries: usize,
     pub traces_retries: usize,
@@ -195,18 +147,15 @@ impl Default for ExporterPolicyConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct SLOConfig {
     pub enable_red_metrics: bool,
     pub enable_use_metrics: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct SecurityConfig {
     pub max_attr_value_length: usize,
     pub max_attr_count: usize,
-    pub max_nesting_depth: usize,
 }
 
 impl Default for SecurityConfig {
@@ -214,13 +163,11 @@ impl Default for SecurityConfig {
         Self {
             max_attr_value_length: 1024,
             max_attr_count: 64,
-            max_nesting_depth: 8,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct TelemetryConfig {
     pub service_name: String,
     pub environment: String,
@@ -230,7 +177,7 @@ pub struct TelemetryConfig {
     pub logging: LoggingConfig,
     pub tracing: TracingConfig,
     pub metrics: MetricsConfig,
-    pub event_schema: EventSchemaConfig,
+    pub event_schema: SchemaConfig,
     pub sampling: SamplingConfig,
     pub backpressure: BackpressureConfig,
     pub exporter: ExporterPolicyConfig,
@@ -249,7 +196,7 @@ impl Default for TelemetryConfig {
             logging: LoggingConfig::default(),
             tracing: TracingConfig::default(),
             metrics: MetricsConfig::default(),
-            event_schema: EventSchemaConfig::default(),
+            event_schema: SchemaConfig::default(),
             sampling: SamplingConfig::default(),
             backpressure: BackpressureConfig::default(),
             exporter: ExporterPolicyConfig::default(),
@@ -257,4 +204,226 @@ impl Default for TelemetryConfig {
             security: SecurityConfig::default(),
         }
     }
+}
+
+impl TelemetryConfig {
+    pub fn from_env() -> Result<Self, ConfigurationError> {
+        let env_map = env::vars().collect::<HashMap<_, _>>();
+        Self::from_map(&env_map)
+    }
+
+    pub fn from_map(env: &HashMap<String, String>) -> Result<Self, ConfigurationError> {
+        let shared_headers = parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"]))?
+            .unwrap_or_default();
+
+        Ok(Self {
+            service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])
+                .unwrap_or("provide-service")
+                .to_string(),
+            environment: env_value(env, &["PROVIDE_TELEMETRY_ENV", "PROVIDE_ENV"])
+                .unwrap_or("dev")
+                .to_string(),
+            version: env_value(env, &["PROVIDE_TELEMETRY_VERSION", "PROVIDE_VERSION"])
+                .unwrap_or("0.0.0")
+                .to_string(),
+            strict_schema: parse_bool(
+                env_value(env, &["PROVIDE_TELEMETRY_STRICT_SCHEMA"]),
+                false,
+                "PROVIDE_TELEMETRY_STRICT_SCHEMA",
+            )?,
+            pii_max_depth: parse_usize(
+                env_value(env, &["PROVIDE_LOG_PII_MAX_DEPTH"]),
+                8,
+                "PROVIDE_LOG_PII_MAX_DEPTH",
+            )?,
+            logging: LoggingConfig {
+                level: env_value(env, &["PROVIDE_LOG_LEVEL"])
+                    .unwrap_or("INFO")
+                    .to_string(),
+                fmt: env_value(env, &["PROVIDE_LOG_FORMAT"])
+                    .unwrap_or("console")
+                    .to_string(),
+                include_timestamp: parse_bool(
+                    env_value(env, &["PROVIDE_LOG_INCLUDE_TIMESTAMP"]),
+                    true,
+                    "PROVIDE_LOG_INCLUDE_TIMESTAMP",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],
+                ))?
+                .unwrap_or_else(|| shared_headers.clone()),
+            },
+            tracing: TracingConfig {
+                enabled: parse_bool(
+                    env_value(env, &["PROVIDE_TRACE_ENABLED"]),
+                    true,
+                    "PROVIDE_TRACE_ENABLED",
+                )?,
+                sample_rate: parse_rate(
+                    env_value(env, &["PROVIDE_TRACE_SAMPLE_RATE"]),
+                    1.0,
+                    "PROVIDE_TRACE_SAMPLE_RATE",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_TRACES_HEADERS"],
+                ))?
+                .unwrap_or_else(|| shared_headers.clone()),
+            },
+            metrics: MetricsConfig {
+                enabled: parse_bool(
+                    env_value(env, &["PROVIDE_METRICS_ENABLED"]),
+                    true,
+                    "PROVIDE_METRICS_ENABLED",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_METRICS_HEADERS"],
+                ))?
+                .unwrap_or(shared_headers),
+            },
+            event_schema: SchemaConfig::default(),
+            sampling: SamplingConfig {
+                logs_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_LOGS_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_LOGS_RATE",
+                )?,
+                traces_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_TRACES_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_TRACES_RATE",
+                )?,
+                metrics_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_METRICS_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_METRICS_RATE",
+                )?,
+            },
+            backpressure: BackpressureConfig {
+                logs_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE",
+                )?,
+                traces_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE",
+                )?,
+                metrics_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE",
+                )?,
+            },
+            exporter: ExporterPolicyConfig {
+                logs_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_LOGS_RETRIES",
+                )?,
+                traces_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_TRACES_RETRIES",
+                )?,
+                metrics_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_METRICS_RETRIES",
+                )?,
+                logs_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS",
+                )?,
+                traces_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS",
+                )?,
+                metrics_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS",
+                )?,
+                logs_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS",
+                )?,
+                traces_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS",
+                )?,
+                metrics_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
+                )?,
+                logs_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_LOGS_FAIL_OPEN",
+                )?,
+                traces_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_TRACES_FAIL_OPEN",
+                )?,
+                metrics_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_METRICS_FAIL_OPEN",
+                )?,
+            },
+            slo: SLOConfig {
+                enable_red_metrics: parse_bool(
+                    env_value(env, &["PROVIDE_SLO_ENABLE_RED_METRICS"]),
+                    false,
+                    "PROVIDE_SLO_ENABLE_RED_METRICS",
+                )?,
+                enable_use_metrics: parse_bool(
+                    env_value(env, &["PROVIDE_SLO_ENABLE_USE_METRICS"]),
+                    false,
+                    "PROVIDE_SLO_ENABLE_USE_METRICS",
+                )?,
+            },
+            security: SecurityConfig {
+                max_attr_value_length: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"]),
+                    1024,
+                    "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH",
+                )?,
+                max_attr_count: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_ATTR_COUNT"]),
+                    64,
+                    "PROVIDE_SECURITY_MAX_ATTR_COUNT",
+                )?,
+            },
+        })
+    }
+}
+
+pub fn redact_config(cfg: &TelemetryConfig) -> TelemetryConfig {
+    fn mask(headers: &HashMap<String, String>) -> HashMap<String, String> {
+        headers
+            .keys()
+            .map(|k| (k.clone(), "***REDACTED***".to_string()))
+            .collect()
+    }
+    let mut out = cfg.clone();
+    if !out.logging.otlp_headers.is_empty() {
+        out.logging.otlp_headers = mask(&cfg.logging.otlp_headers);
+    }
+    if !out.tracing.otlp_headers.is_empty() {
+        out.tracing.otlp_headers = mask(&cfg.tracing.otlp_headers);
+    }
+    if !out.metrics.otlp_headers.is_empty() {
+        out.metrics.otlp_headers = mask(&cfg.metrics.otlp_headers);
+    }
+    out
 }

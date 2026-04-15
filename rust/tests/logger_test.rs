@@ -161,9 +161,11 @@ fn logger_test_configure_logging_overrides_env() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     // Env says JSON; programmatic override says console — override wins.
     std::env::set_var("PROVIDE_LOG_FORMAT", "json");
-    let mut cfg = provide_telemetry::LoggingConfig::default();
-    cfg.fmt = "console".to_string();
-    cfg.include_timestamp = false;
+    let cfg = provide_telemetry::LoggingConfig {
+        fmt: "console".to_string(),
+        include_timestamp: false,
+        ..provide_telemetry::LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
     enable_console_capture_for_tests();
@@ -211,10 +213,12 @@ fn logger_test_log_trait_respects_level_filter() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let _ = set_as_global_logger();
     // Configure to INFO — DEBUG must be filtered out.
-    let mut cfg = provide_telemetry::LoggingConfig::default();
-    cfg.level = "INFO".to_string();
-    cfg.fmt = "json".to_string();
-    cfg.include_timestamp = false;
+    let cfg = provide_telemetry::LoggingConfig {
+        level: "INFO".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..provide_telemetry::LoggingConfig::default()
+    };
     configure_logging(cfg);
     enable_json_capture_for_tests();
 
