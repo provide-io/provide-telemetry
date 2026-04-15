@@ -218,22 +218,35 @@ Browser-specific options in `setupTelemetry()`:
 
 All options can be set programmatically via `setupTelemetry()` or via environment variables:
 
+<!-- BEGIN GENERATED CONFIG: typescript_summary -->
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
-| `PROVIDE_TELEMETRY_ENV` | `development` | Deployment environment (fallback: `PROVIDE_ENV`) |
-| `PROVIDE_TELEMETRY_VERSION` | `unknown` | Service version (fallback: `PROVIDE_VERSION`) |
-| `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
-| `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTLP export |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP logs endpoint (overrides shared) |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP traces endpoint (overrides shared) |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP metrics endpoint (overrides shared) |
-| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal logs headers (overrides shared) |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal traces headers (overrides shared) |
-| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal metrics headers (overrides shared) |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity attached to all signals |
+| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
+| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Application version tag |
+| `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Master switch: when true, overrides event name strictness to on |
+| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `PROVIDE_LOG_FORMAT` | `console` | Renderer: console, json, or pretty |
+| `PROVIDE_LOG_INCLUDE_TIMESTAMP` | `true` | Add ISO-8601 timestamp to each log event |
+| `PROVIDE_LOG_INCLUDE_CALLER` | `true` | Add filename and line number to each log event |
+| `PROVIDE_LOG_SANITIZE` | `true` | Enable PII/sensitive field redaction in log output |
+| `PROVIDE_LOG_PII_MAX_DEPTH` | `8` | Maximum nesting depth for PII/sensitive field traversal during sanitization |
+| `PROVIDE_LOG_CODE_ATTRIBUTES` | `false` | Attach code attributes to OTel log records |
+| `PROVIDE_LOG_PRETTY_KEY_COLOR` | `dim` | ANSI color name for keys in pretty format (see named colors below) |
+| `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format (empty = default) |
+| `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
+| `PROVIDE_LOG_MODULE_LEVELS` | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
+| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing provider (falls back to no-op when false) |
+| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP endpoint for logs |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal OTLP headers for logs |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP endpoint for traces |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal OTLP headers for traces |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP endpoint for metrics |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal OTLP headers for metrics |
+<!-- END GENERATED CONFIG: typescript_summary -->
 
 ### Pretty renderer
 
