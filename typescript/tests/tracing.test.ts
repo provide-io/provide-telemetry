@@ -468,3 +468,41 @@ describe('withTrace — tracesEmitted health counter', () => {
     expect(getHealthSnapshot().tracesEmitted).toBe(1);
   });
 });
+
+describe('withTrace — async context isolation (no ID bleed between concurrent flows)', () => {
+  it('does not leak trace IDs between overlapping async withTrace calls', async () => {
+    const aTraceIds: (string | undefined)[] = [];
+    const bTraceIds: (string | undefined)[] = [];
+
+    // Two async flows running concurrently.  Each captures its own trace_id
+    // at several suspension points.  With module-global save/restore, one
+    // flow's ID would leak into the other's continuation; with
+    // AsyncLocalStorage each flow sees only its own IDs.
+    const flowA = withTrace('flow.a', async () => {
+      aTraceIds.push(getTraceContext().trace_id);
+      await new Promise<void>((r) => setTimeout(r, 5));
+      aTraceIds.push(getTraceContext().trace_id);
+      await new Promise<void>((r) => setTimeout(r, 5));
+      aTraceIds.push(getTraceContext().trace_id);
+    });
+
+    const flowB = withTrace('flow.b', async () => {
+      bTraceIds.push(getTraceContext().trace_id);
+      await new Promise<void>((r) => setTimeout(r, 5));
+      bTraceIds.push(getTraceContext().trace_id);
+      await new Promise<void>((r) => setTimeout(r, 5));
+      bTraceIds.push(getTraceContext().trace_id);
+    });
+
+    await Promise.all([flowA, flowB]);
+
+    // Within a flow, every sample must be the same ID.
+    expect(new Set(aTraceIds).size).toBe(1);
+    expect(new Set(bTraceIds).size).toBe(1);
+    // Across flows, the IDs must differ.
+    expect(aTraceIds[0]).not.toBe(bTraceIds[0]);
+    // Neither should be undefined (synthetic IDs always present on fallback path).
+    expect(aTraceIds[0]).toBeDefined();
+    expect(bTraceIds[0]).toBeDefined();
+  });
+});
