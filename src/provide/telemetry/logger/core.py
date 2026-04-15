@@ -141,9 +141,7 @@ def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: Tele
     return _log_provider_config_key(previous) == _log_provider_config_key(current)
 
 
-def _make_otel_logging_handler(
-    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
-) -> logging.Handler:
+def _make_otel_logging_handler(sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig) -> logging.Handler:
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
     if instrumentation_handler_cls is not None:
         return instrumentation_handler_cls(
@@ -153,13 +151,12 @@ def _make_otel_logging_handler(
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        return cast(logging.Handler, sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))  # pragma: no mutate — cast() is a no-op; cast(None, ...) is equivalent
+        return sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
     global _otel_log_provider
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]  # pragma: no mutate
-    _otel_log_provider = None
 
     if not config.logging.otlp_endpoint:
         return handlers
@@ -171,6 +168,10 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     from provide.telemetry.resilience import run_with_resilience
 
     logs_api_mod, sdk_logs_mod, sdk_logs_export_mod, resource_cls, otlp_exporter_cls = components
+    if _can_reuse_otel_log_provider(_active_config, config):
+        handlers.append(_make_otel_logging_handler(sdk_logs_mod, _otel_log_provider, level, config))
+        return handlers
+
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
     exporter = run_with_resilience(
@@ -185,19 +186,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         return handlers
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
-    instrumentation_handler_cls = _load_instrumentation_logging_handler()
-    if instrumentation_handler_cls is not None:
-        handlers.append(
-            instrumentation_handler_cls(
-                level=level,
-                logger_provider=provider,
-                log_code_attributes=config.logging.log_code_attributes,
-            )
-        )
-    else:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            handlers.append(sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
+    handlers.append(_make_otel_logging_handler(sdk_logs_mod, provider, level, config))
     # Set both flags together after handler construction succeeds.
     # If construction raises, _otel_log_provider stays None and shutdown_logging()
     # will correctly find no provider to flush, rather than reporting a live

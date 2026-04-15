@@ -60,7 +60,7 @@ def test_update_runtime_config_rejects_provider_changing_logging_with_installed_
     from provide.telemetry.logger import core as logger_core
 
     runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-    monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+    monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
 
     with pytest.raises(RuntimeError, match="provider-changing logging reconfiguration is unsupported"):
         runtime_mod.update_runtime_config(
@@ -85,11 +85,9 @@ def test_reconfigure_telemetry_rejects_provider_changing_logging_with_installed_
     from provide.telemetry.tracing import provider as tracing_provider
 
     runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-    monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+    monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
     monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: False)
     monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
 
     with pytest.raises(RuntimeError, match="provider-changing logging reconfiguration is unsupported"):
-        runtime_mod.reconfigure_telemetry(
-            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"})
-        )
+        runtime_mod.reconfigure_telemetry(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"}))

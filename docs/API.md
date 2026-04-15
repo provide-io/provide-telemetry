@@ -38,7 +38,8 @@ process.
 
 ### `update_runtime_config(config: TelemetryConfig) -> TelemetryConfig`
 
-Apply a config snapshot to runtime signal policies (sampling, backpressure, exporter). Returns the active runtime snapshot.
+Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded from `RuntimeOverrides`. Returns the applied runtime snapshot.
+Safe logging pipeline settings are rebuilt in-process; provider-changing OTLP log settings are rejected once a global OTel log provider is installed.
 
 ### `reload_runtime_from_env() -> TelemetryConfig`
 
@@ -81,7 +82,7 @@ Semantics:
 
 ### `reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
 
-Apply hot runtime policy changes. Raises `RuntimeError` if provider-changing config differs and OTel providers are already installed (requires process restart).
+Apply hot runtime changes. Raises `RuntimeError` if provider-changing config differs and OTel providers are already installed (requires process restart), including OTLP log-provider changes after the global OTel log provider is live.
 
 ## Logging
 
