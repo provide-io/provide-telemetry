@@ -1,6 +1,6 @@
 # Provide Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed; Python, TypeScript, and Go activate full OTLP export when the OTel SDK is present. Rust provides API-shape parity with in-process fallback instrumentation; full OTel export is not yet implemented.
 
 [![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
 [![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)

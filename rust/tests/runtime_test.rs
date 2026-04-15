@@ -270,3 +270,41 @@ fn runtime_test_reload_runtime_from_env_reapplies_runtime_policies() {
         },
     );
 }
+
+#[test]
+fn runtime_test_reconfigure_telemetry_reapplies_runtime_policies() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    reset_runtime();
+    setup_telemetry().expect("setup should succeed");
+
+    let target = TelemetryConfig {
+        sampling: SamplingConfig {
+            logs_rate: 0.42,
+            traces_rate: 1.0,
+            metrics_rate: 1.0,
+        },
+        backpressure: BackpressureConfig {
+            logs_maxsize: 23,
+            traces_maxsize: 0,
+            metrics_maxsize: 0,
+        },
+        ..TelemetryConfig::default()
+    };
+
+    reconfigure_telemetry(Some(target)).expect("reconfigure should succeed");
+
+    let sp = provide_telemetry::sampling::get_sampling_policy(
+        provide_telemetry::sampling::Signal::Logs,
+    )
+    .expect("sampling policy should exist");
+    assert_eq!(
+        sp.default_rate, 0.42,
+        "sampling policy not updated live after reconfigure"
+    );
+
+    let qp = provide_telemetry::get_queue_policy();
+    assert_eq!(
+        qp.logs_maxsize, 23,
+        "queue policy not updated live after reconfigure"
+    );
+}
