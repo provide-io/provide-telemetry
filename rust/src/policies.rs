@@ -72,7 +72,7 @@ pub(crate) fn apply_policies(config: &TelemetryConfig) {
     );
     // Sync the strict-schema atomic so event()/event_name()/enforce_schema()
     // see the same value as the runtime config snapshot.
-    set_strict_schema(config.strict_schema);
+    set_strict_schema(config.strict_schema || config.event_schema.strict_event_name);
 }
 
 #[cfg(test)]

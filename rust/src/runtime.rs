@@ -5,6 +5,8 @@
 
 use std::sync::{OnceLock, RwLock};
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 use crate::otel::otel_installed;
@@ -15,6 +17,22 @@ static ACTIVE_CONFIG: OnceLock<RwLock<Option<TelemetryConfig>>> = OnceLock::new(
 
 fn active_config() -> &'static RwLock<Option<TelemetryConfig>> {
     ACTIVE_CONFIG.get_or_init(|| RwLock::new(None))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignalStatus {
+    pub logs: bool,
+    pub traces: bool,
+    pub metrics: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeStatus {
+    pub setup_done: bool,
+    pub signals: SignalStatus,
+    pub providers: SignalStatus,
+    pub fallback: SignalStatus,
+    pub setup_error: Option<String>,
 }
 
 pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {
@@ -42,6 +60,42 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
         .read()
         .expect("runtime config lock poisoned")
         .clone()
+}
+
+pub fn get_runtime_status() -> RuntimeStatus {
+    let cfg =
+        get_runtime_config().unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
+    let setup_done = get_runtime_config().is_some();
+
+    #[cfg(feature = "otel")]
+    let providers = SignalStatus {
+        logs: crate::otel::logs::logger_provider_installed(),
+        traces: crate::otel::traces::tracer_provider_installed(),
+        metrics: crate::otel::metrics::meter_provider_installed(),
+    };
+
+    #[cfg(not(feature = "otel"))]
+    let providers = SignalStatus {
+        logs: false,
+        traces: false,
+        metrics: false,
+    };
+
+    RuntimeStatus {
+        setup_done,
+        signals: SignalStatus {
+            logs: true,
+            traces: cfg.tracing.enabled,
+            metrics: cfg.metrics.enabled,
+        },
+        fallback: SignalStatus {
+            logs: !providers.logs,
+            traces: !providers.traces,
+            metrics: !providers.metrics,
+        },
+        providers,
+        setup_error: crate::health::get_health_snapshot().setup_error,
+    }
 }
 
 pub fn update_runtime_config(
@@ -75,6 +129,9 @@ pub fn update_runtime_config(
         }
         if let Some(strict_schema) = overrides.strict_schema {
             next.strict_schema = strict_schema;
+        }
+        if let Some(event_schema) = overrides.event_schema {
+            next.event_schema = event_schema;
         }
         *guard = Some(next.clone());
         next
@@ -120,6 +177,7 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
         slo: Some(fresh.slo),
         pii_max_depth: Some(fresh.pii_max_depth),
         strict_schema: Some(fresh.strict_schema),
+        event_schema: Some(fresh.event_schema),
     };
 
     let mut next = update_runtime_config(overrides)?;

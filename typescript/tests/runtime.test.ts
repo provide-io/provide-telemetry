@@ -9,8 +9,10 @@ import {
   _getRegisteredProviders,
   _markProvidersRegistered,
   _resetRuntimeForTests,
+  _setProviderSignalInstalled,
   _storeRegisteredProviders,
   getRuntimeConfig,
+  getRuntimeStatus,
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
   updateRuntimeConfig,
@@ -26,6 +28,22 @@ afterEach(() => {
 });
 
 describe('getRuntimeConfig', () => {
+  it('reflects env-derived identity before setupTelemetry()', () => {
+    process.env['PROVIDE_TELEMETRY_SERVICE_NAME'] = 'env-service';
+    process.env['PROVIDE_TELEMETRY_ENV'] = 'parity';
+    process.env['PROVIDE_TELEMETRY_VERSION'] = '1.2.3';
+    try {
+      const cfg = getRuntimeConfig();
+      expect(cfg.serviceName).toBe('env-service');
+      expect(cfg.environment).toBe('parity');
+      expect(cfg.version).toBe('1.2.3');
+    } finally {
+      delete process.env['PROVIDE_TELEMETRY_SERVICE_NAME'];
+      delete process.env['PROVIDE_TELEMETRY_ENV'];
+      delete process.env['PROVIDE_TELEMETRY_VERSION'];
+    }
+  });
+
   it('returns a config derived from env when nothing set', () => {
     const cfg = getRuntimeConfig();
     expect(cfg.serviceName).toBeDefined();
@@ -62,6 +80,28 @@ describe('getRuntimeConfig', () => {
     const cfg = getRuntimeConfig();
     expect(cfg.serviceName).toBe('injected-service');
     expect(cfg.logLevel).toBe('debug');
+  });
+});
+
+describe('getRuntimeStatus', () => {
+  it('reports fallback mode before setup', () => {
+    const status = getRuntimeStatus();
+    expect(status.setupDone).toBe(false);
+    expect(status.providers).toEqual({ logs: false, traces: false, metrics: false });
+    expect(status.fallback).toEqual({ logs: true, traces: true, metrics: true });
+  });
+
+  it('reports per-signal provider installation state', () => {
+    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
+    _setProviderSignalInstalled('logs', true);
+    _setProviderSignalInstalled('traces', false);
+    _setProviderSignalInstalled('metrics', true);
+
+    const status = getRuntimeStatus();
+    expect(status.setupDone).toBe(true);
+    expect(status.signals).toEqual({ logs: true, traces: true, metrics: true });
+    expect(status.providers).toEqual({ logs: true, traces: false, metrics: true });
+    expect(status.fallback).toEqual({ logs: false, traces: true, metrics: false });
   });
 });
 

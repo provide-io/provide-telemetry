@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+
+cases:
+  - id: lazy_init_logger
+    kind: record
+    expected:
+      message: "log.output.parity"
+      level: "INFO"
+      service: "probe"
+      env: "parity"
+      version: "1.2.3"
+      logger_name: "probe"
+      trace_id: "0af7651916cd43dd8448eb211c80319c"
+      span_id: "b7ad6b7169203331"
+
+  - id: strict_schema_rejection
+    kind: flags
+    expected:
+      emitted: true
+      schema_error: true
+
+  - id: required_keys_rejection
+    kind: flags
+    expected:
+      emitted: true
+      schema_error: true
+
+  - id: invalid_config
+    kind: flags
+    expected:
+      raised: true
+
+  - id: fail_open_exporter_init
+    kind: flags
+    expected:
+      setup_done: true
+      providers_cleared: true
+      fallback_all: true
+
+  - id: shutdown_re_setup
+    kind: flags
+    expected:
+      first_setup_done: true
+      shutdown_cleared_setup: true
+      re_setup_done: true
+      signals_match: true
+      providers_match: true

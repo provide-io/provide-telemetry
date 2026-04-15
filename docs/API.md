@@ -8,6 +8,10 @@ from provide.telemetry import setup_telemetry, get_logger, trace
 
 Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
 
+This document is the shared semantic contract for Python, TypeScript, Go, and
+Rust. Names and signatures vary by language, but the behavioral guarantees
+described here are the parity target.
+
 ## Setup and Lifecycle
 
 ### `setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
@@ -19,10 +23,20 @@ Initialize logging, tracing, and metrics providers. Lock-protected and idempoten
 > Go reads env vars and accepts functional `SetupOption` arguments.
 > Rust reads env vars with no programmatic config argument.
 > All four read `PROVIDE_*` / `OTEL_*` environment variables as the primary config source.
+>
+> Exporter/provider initialization is fail-open by default: if OTLP provider
+> construction fails, setup still succeeds and the affected signals remain on
+> the local fallback path.
 
 ### `shutdown_telemetry() -> None`
 
-Flush and tear down all providers and reset runtime policies. This clears the package's local setup state, but real OpenTelemetry process-global providers still cannot be replaced in-process once installed. For provider-changing lifecycle transitions, restart the process and call `setup_telemetry()` with the desired config.
+Flush and tear down all providers and clear local runtime state. A later
+`setup_telemetry()` call returns the package to the same runtime-status shape as
+the initial setup for the common path, including after lazy logger use.
+
+Provider-changing `reconfigure_telemetry()` remains intentionally rejected once
+real OpenTelemetry providers are live; use shutdown+setup or restart the
+process.
 
 ## Runtime Configuration
 
@@ -37,7 +51,38 @@ Reload config from environment variables, apply only hot-reloadable fields, warn
 
 ### `get_runtime_config() -> TelemetryConfig`
 
-Return a defensive copy of the active runtime config.
+Return a defensive copy of the effective runtime config. If explicit setup or
+runtime reconfiguration has already run, this is the active in-process
+snapshot. Otherwise it is the environment-derived config that lazy-init would
+use.
+
+### `get_runtime_status() -> RuntimeStatus`
+
+Return runtime/provider state using the shared cross-language shape:
+
+```text
+{
+  setup_done: bool,
+  signals: { logs: bool, traces: bool, metrics: bool },
+  providers: { logs: bool, traces: bool, metrics: bool },
+  fallback: { logs: bool, traces: bool, metrics: bool },
+  setup_error: str | null,
+}
+```
+
+Field names follow each language's normal casing conventions (`setup_done` in
+Python/Rust, `setupDone` in TypeScript, `SetupDone` in Go), but the semantic
+shape is the same.
+
+Semantics:
+
+- `setup_done` means explicit setup completed in this process.
+- `signals` reports whether each signal is enabled by config.
+- `providers` reports whether each signal has a real provider/export path
+  installed.
+- `fallback` reports whether the signal is currently on the local fallback/no-op
+  path.
+- `setup_error` is the last setup-time error snapshot exposed for diagnostics.
 
 ### `reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
 
@@ -48,6 +93,10 @@ Apply hot runtime changes. Raises `RuntimeError` if provider-changing config dif
 ### `get_logger(name: str | None = None) -> structlog-compatible logger`
 
 Return a structlog-compatible wrapped logger (internally a `_TraceWrapper` around a `FilteringBoundLogger`). Auto-configures on first call if `setup_telemetry()` hasn't been called.
+
+The lazy-init path uses the same effective environment config as explicit setup
+for the common logging path, including `service`, `env`, `version`,
+timestamp/caller toggles, and strict-schema / required-key behavior.
 
 ### `logger`
 

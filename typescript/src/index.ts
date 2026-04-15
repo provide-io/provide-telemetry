@@ -153,10 +153,12 @@ export type { PropagationContext } from './propagation';
 // Runtime reconfiguration
 export {
   getRuntimeConfig,
+  getRuntimeStatus,
   updateRuntimeConfig,
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
 } from './runtime';
+export type { RuntimeStatus } from './runtime';
 
 // Test utilities
 export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
