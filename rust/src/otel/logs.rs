@@ -7,7 +7,7 @@
 //! Only compiled under the `otel` cargo feature. Mirrors the
 //! traces.rs and metrics.rs designs: callers continue to go through
 //! `logger::log_event()` (which gates on consent / sampling /
-//! backpressure first); when a logger provider is present,
+//! backpressure first); when an `OTEL_INSTALLED` provider is present,
 //! the same record that goes to stderr also gets pushed through the
 //! global LoggerProvider for OTLP export.
 //!
@@ -15,7 +15,7 @@
 //! stderr stays the local-dev path, OTLP is the production transport,
 //! both fire when configured.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
@@ -28,16 +28,11 @@ use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 use crate::logger::LogEvent;
 
-use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
-use super::resilient::ResilientLogExporter;
+use super::endpoint::{resolve_protocol, OtlpProtocol};
 
-static LOGGER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkLoggerProvider>>>> = OnceLock::new();
+static LOGGER_PROVIDER: OnceLock<Arc<SdkLoggerProvider>> = OnceLock::new();
 
 const LOGGER_NAME: &str = "provide.telemetry";
-
-fn logger_provider_slot() -> &'static Mutex<Option<Arc<SdkLoggerProvider>>> {
-    LOGGER_PROVIDER.get_or_init(|| Mutex::new(None))
-}
 
 fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
     match p {
@@ -58,7 +53,6 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.logging.otlp_endpoint {
-        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.logging.otlp_headers.is_empty() {
@@ -74,17 +68,13 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
 pub(super) fn install_logger_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
-) -> Result<bool, TelemetryError> {
-    if cfg.logging.otlp_endpoint.is_none() {
-        return Ok(false);
-    }
-
+) -> Result<(), TelemetryError> {
     let exporter = match build_exporter(cfg) {
         Ok(e) => e,
         Err(err) => {
             if cfg.exporter.logs_fail_open {
                 eprintln!("provide_telemetry: logs exporter init failed (fail_open=true): {err}");
-                return Ok(false);
+                return Ok(());
             }
             return Err(err);
         }
@@ -92,35 +82,23 @@ pub(super) fn install_logger_provider(
 
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(ResilientLogExporter::new(exporter))
+        .with_batch_exporter(exporter)
         .build();
 
     let arc = Arc::new(provider);
     // OTel 0.31 doesn't expose a global logger-provider setter (unlike
     // tracer and meter), so we keep the provider only in our OnceLock
     // and emit_log() resolves through it directly.
-    *logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned") = Some(arc);
-    Ok(true)
+    let _ = LOGGER_PROVIDER.set(arc);
+    Ok(())
 }
 
 /// Force-flush and shut down the installed `LoggerProvider`.
 pub(super) fn shutdown_logger_provider() {
-    let mut guard = logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned");
-    if let Some(p) = guard.take() {
+    if let Some(p) = LOGGER_PROVIDER.get() {
         let _ = p.force_flush();
         let _ = p.shutdown();
     }
-}
-
-pub(crate) fn logger_provider_installed() -> bool {
-    logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned")
-        .is_some()
 }
 
 /// Map our level string to OTel severity. Unknown levels default to
@@ -178,11 +156,7 @@ fn parse_hex_u64(hex: &str) -> Option<u64> {
 /// and emit via the installed LoggerProvider. No-op when no provider
 /// has been installed.
 pub(crate) fn emit_log(event: &LogEvent) {
-    let provider = logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned")
-        .clone();
-    let Some(provider) = provider else {
+    let Some(provider) = LOGGER_PROVIDER.get() else {
         return;
     };
     let logger = provider.logger(LOGGER_NAME);
@@ -232,45 +206,6 @@ mod tests {
     }
 
     #[test]
-    fn build_exporter_rejects_invalid_endpoint_scheme() {
-        let mut cfg = test_config();
-        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
-        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
-        assert!(
-            err.message.contains("scheme"),
-            "error must mention bad scheme: {}",
-            err.message
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_fails_closed_by_default() {
-        let mut cfg = test_config();
-        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.logs_fail_open = false;
-        let resource = super::super::resource::build_resource(&cfg);
-        let result = install_logger_provider(&cfg, resource);
-        assert!(
-            result.is_err(),
-            "bad endpoint must return Err when fail_open=false"
-        );
-        let msg = result.unwrap_err().message;
-        assert!(
-            msg.contains("scheme"),
-            "error must mention bad scheme: {msg}"
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_succeeds_when_fail_open() {
-        let mut cfg = test_config();
-        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.logs_fail_open = true;
-        let resource = super::super::resource::build_resource(&cfg);
-        install_logger_provider(&cfg, resource).expect("fail_open must absorb validation error");
-    }
-
-    #[test]
     fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
         let mut cfg = test_config();
         cfg.logging.otlp_endpoint = Some("http://127.0.0.1:1/never/v1/logs".to_string());
@@ -286,7 +221,6 @@ mod tests {
             context: BTreeMap::new(),
             trace_id: None,
             span_id: None,
-            event_metadata: None,
         };
         emit_log(&event);
         shutdown_logger_provider();
