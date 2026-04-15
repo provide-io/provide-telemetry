@@ -220,46 +220,58 @@ fn redact_config_does_not_mutate_original() {
 // --- OTLP endpoint + protocol per-signal fallback ---
 
 #[test]
-fn otlp_endpoint_shared_falls_back_to_all_three_signals() {
+fn otlp_endpoint_shared_falls_back_with_per_signal_path_appended() {
     let cfg = config_from(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318")]).unwrap();
+    // Per OTLP/HTTP spec, the per-signal path is appended to the shared
+    // endpoint when no signal-specific override is set.
     assert_eq!(
         cfg.logging.otlp_endpoint.as_deref(),
-        Some("https://shared:4318")
+        Some("https://shared:4318/v1/logs")
     );
     assert_eq!(
         cfg.tracing.otlp_endpoint.as_deref(),
-        Some("https://shared:4318")
+        Some("https://shared:4318/v1/traces")
     );
     assert_eq!(
         cfg.metrics.otlp_endpoint.as_deref(),
-        Some("https://shared:4318")
+        Some("https://shared:4318/v1/metrics")
     );
 }
 
 #[test]
-fn otlp_endpoint_signal_specific_overrides_shared() {
+fn otlp_endpoint_shared_strips_trailing_slash_before_appending() {
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318/")]).unwrap();
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/traces"),
+        "trailing slash on shared endpoint must not produce a double slash"
+    );
+}
+
+#[test]
+fn otlp_endpoint_signal_specific_overrides_shared_verbatim() {
     let cfg = config_from(&[
         ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318"),
         (
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
-            "https://traces-only:4318",
+            "https://traces-only:4318/custom/path",
         ),
     ])
     .unwrap();
     assert_eq!(
         cfg.logging.otlp_endpoint.as_deref(),
-        Some("https://shared:4318"),
-        "logs should fall back to shared"
+        Some("https://shared:4318/v1/logs"),
+        "logs should fall back to shared with /v1/logs appended"
     );
     assert_eq!(
         cfg.tracing.otlp_endpoint.as_deref(),
-        Some("https://traces-only:4318"),
-        "traces should use its own override"
+        Some("https://traces-only:4318/custom/path"),
+        "traces should use its own override verbatim"
     );
     assert_eq!(
         cfg.metrics.otlp_endpoint.as_deref(),
-        Some("https://shared:4318"),
-        "metrics should fall back to shared"
+        Some("https://shared:4318/v1/metrics"),
+        "metrics should fall back to shared with /v1/metrics appended"
     );
 }
 
