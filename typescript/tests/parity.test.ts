@@ -461,7 +461,7 @@ describe('parity: slo_classify', () => {
 
 // ── Cardinality Clamping ────────────────────────────────────────────────────
 
-describe('parity: cardinality clamping', () => {
+describe('parity: cardinality_clamping', () => {
   afterEach(() => clearCardinalityLimits());
 
   it('zero maxValues clamped to 1', () => {

@@ -103,7 +103,7 @@ fn parity_test_pii_hash_matches_fixture() {
 }
 
 #[test]
-fn parity_test_propagation_limits_match_fixture() {
+fn parity_test_propagation_guards_limits_match_fixture() {
     let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
     let tracestate_32 = format!("{}z=q", "a=b,".repeat(31));
 
@@ -123,7 +123,7 @@ fn parity_test_propagation_limits_match_fixture() {
 #[case(503, "server_error")]
 #[case(200, "ok")]
 #[case(0, "timeout")]
-fn parity_test_slo_classification_matches_fixture(
+fn parity_test_slo_classify_classification_matches_fixture(
     #[case] status_code: u16,
     #[case] expected: &str,
 ) {

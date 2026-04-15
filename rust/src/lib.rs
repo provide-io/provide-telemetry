@@ -20,6 +20,7 @@ pub mod logger;
 pub mod metrics;
 pub mod otel;
 pub mod pii;
+mod policies;
 pub mod propagation;
 #[cfg(feature = "governance")]
 pub mod receipts;

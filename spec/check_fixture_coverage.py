@@ -79,7 +79,8 @@ def _category_variants(category: str) -> list[str]:
     camel = words[0] + "".join(w.capitalize() for w in words[1:])
     pascal = "".join(w.capitalize() for w in words)
     kebab = category.replace("_", "-")
-    variants.extend([camel, pascal, kebab])
+    spaced = category.replace("_", " ")
+    variants.extend([camel, pascal, kebab, spaced])
     return list(dict.fromkeys(variants))  # deduplicate while preserving order
 
 

@@ -477,4 +477,65 @@ typescript_extras:
           - name: onError
             type: "(error: Error, info: React.ErrorInfo) => void"
             required: false
-            description: "Optional callback invoked after telemetry is recorded."
+
+# ---------------------------------------------------------------------------
+# Language-specific API shape deviations from the canonical spec.
+# These are intentional idiomatic differences, not bugs.
+# The validator reads this section to decide which kind mismatches are notes
+# (documented deviations) vs. errors (unknown mismatches).
+#
+# spec_name: snake_case name as it appears in the api: section above.
+# accepted_kinds: list of actual export kinds that are acceptable for this
+#                 language even when they differ from the spec's kind field.
+# note: human-readable rationale.
+# ---------------------------------------------------------------------------
+language_overrides:
+  go:
+    - spec_name: tracer
+      accepted_kinds: [type]
+      note: "Go exports Tracer as interface type; DefaultTracer var is the instance — both are idiomatic"
+    - spec_name: trace
+      accepted_kinds: [function]
+      note: "Go uses Trace() function as decorator"
+    - spec_name: counter
+      accepted_kinds: [type]
+      note: "Go exports Counter as interface type; NewCounter() is the constructor"
+    - spec_name: gauge
+      accepted_kinds: [type]
+      note: "Go exports Gauge as interface type; NewGauge() is the constructor"
+    - spec_name: histogram
+      accepted_kinds: [type]
+      note: "Go exports Histogram as interface type; NewHistogram() is the constructor"
+    - spec_name: logger
+      accepted_kinds: [instance]
+      note: "Go exports Logger as *slog.Logger instance"
+  rust:
+    - spec_name: trace
+      accepted_kinds: [function]
+      note: "Rust exports trace as pub fn (used as attribute macro equivalent)"
+    - spec_name: tracer
+      accepted_kinds: [function, instance]
+      note: "Rust pub static LazyLock or pub fn returning Tracer"
+    - spec_name: logger
+      accepted_kinds: [instance]
+      note: "Rust pub static LazyLock<Logger>"
+  typescript:
+    - spec_name: trace
+      accepted_kinds: [function]
+      note: "TypeScript exports trace as a function used as decorator"
+    - spec_name: logger
+      accepted_kinds: [instance]
+      note: "TypeScript exports logger as const"
+    - spec_name: tracer
+      accepted_kinds: [instance]
+      note: "TypeScript exports tracer as const"
+  python:
+    - spec_name: trace
+      accepted_kinds: [function]
+      note: "Python trace() is a function used as decorator"
+    - spec_name: logger
+      accepted_kinds: [instance]
+      note: "Python exports a lazy logger instance"
+    - spec_name: tracer
+      accepted_kinds: [instance]
+      note: "Python exports a lazy tracer instance"
