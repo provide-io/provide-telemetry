@@ -97,6 +97,22 @@ where
     let Some(ticket) = try_acquire(Signal::Traces) else {
         return callback();
     };
+
+    // When OTel is compiled in and a TracerProvider has been installed,
+    // route through the OTel SDK so the span lands at the configured
+    // OTLP endpoint. Otherwise fall back to the noop span (which still
+    // populates the trace_id / span_id contextvars from synthetic ids).
+    #[cfg(feature = "otel")]
+    {
+        if crate::otel::otel_installed() {
+            let _otel_span = crate::otel::traces::start_span(name);
+            increment_emitted(Signal::Traces, 1);
+            let result = callback();
+            release(ticket);
+            return result;
+        }
+    }
+
     let _span = tracer.start_span(name);
     increment_emitted(Signal::Traces, 1);
     let result = callback();
