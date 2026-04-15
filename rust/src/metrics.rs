@@ -50,7 +50,7 @@ pub struct Counter {
 }
 
 impl Counter {
-    pub fn add(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
+    pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
         }
@@ -67,6 +67,12 @@ impl Counter {
             .lock()
             .expect("counter state lock poisoned")
             .value += value;
+        #[cfg(feature = "otel")]
+        if crate::otel::otel_installed() {
+            crate::otel::metrics::record_counter_add(&self.name, value, attributes.as_ref());
+        }
+        #[cfg(not(feature = "otel"))]
+        let _ = &attributes;
         increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
@@ -116,7 +122,7 @@ impl Gauge {
         release(ticket);
     }
 
-    pub fn set(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
+    pub fn set(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
         }
@@ -133,6 +139,12 @@ impl Gauge {
             .lock()
             .expect("gauge state lock poisoned")
             .last_value = value;
+        #[cfg(feature = "otel")]
+        if crate::otel::otel_installed() {
+            crate::otel::metrics::record_gauge_set(&self.name, value, attributes.as_ref());
+        }
+        #[cfg(not(feature = "otel"))]
+        let _ = &attributes;
         increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
@@ -162,7 +174,7 @@ pub struct Histogram {
 }
 
 impl Histogram {
-    pub fn record(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
+    pub fn record(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
         }
@@ -179,6 +191,12 @@ impl Histogram {
         state.count += 1;
         state.total += value;
         drop(state);
+        #[cfg(feature = "otel")]
+        if crate::otel::otel_installed() {
+            crate::otel::metrics::record_histogram(&self.name, value, attributes.as_ref());
+        }
+        #[cfg(not(feature = "otel"))]
+        let _ = &attributes;
         increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }

@@ -56,6 +56,31 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(5));
         });
 
+        // Emit a counter increment + a histogram observation. With OTel
+        // installed, these dual-emit: in-process state for tests +
+        // OTLP push via the global MeterProvider on its 60s flush
+        // interval (force_flush at shutdown).
+        let counter = provide_telemetry::counter(
+            "example.public_api.requests",
+            Some("requests served by the probe"),
+            Some("1"),
+        );
+        counter.add(1.0, None);
+        let histogram = provide_telemetry::histogram(
+            "example.public_api.latency_ms",
+            Some("synthetic latency observation"),
+            Some("ms"),
+        );
+        histogram.record(5.0, None);
+        println!("emitted metric requests=1 latency=5ms");
+
+        // Emit a log via the public Logger. With OTel installed, the
+        // record dual-emits: stderr (existing path) AND OTLP push via
+        // the LoggerProvider.
+        let logger = provide_telemetry::get_logger(Some("examples.public_api"));
+        logger.info("example.public_api.log");
+        println!("emitted log message=example.public_api.log");
+
         // Flush + tear down the providers so the batch processor exports
         // before the runtime is dropped.
         provide_telemetry::shutdown_telemetry().expect("shutdown_telemetry");
