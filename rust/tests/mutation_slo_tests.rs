@@ -18,53 +18,93 @@ fn slo_lock() -> &'static Mutex<()> {
     SLO_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-// ── classify_error boundary tests ────────────────────────────────────────────
-// Kills: 0 => … changed to any other arm, or arm removed entirely.
+// ── classify_error boundary tests (now returns BTreeMap with rich keys) ──────
+
+fn category(error_name: &str, code: u16) -> String {
+    classify_error(error_name, Some(code))["error.category"].clone()
+}
+
+fn severity(error_name: &str, code: u16) -> String {
+    classify_error(error_name, Some(code))["error.severity"].clone()
+}
+
 #[test]
 fn slo_classify_error_zero_is_timeout() {
-    assert_eq!(classify_error(0), "timeout");
+    assert_eq!(category("SomeError", 0), "timeout");
 }
 
-// Kills: 400..=499 lower bound changed to 401..=499 (or arm removed).
 #[test]
 fn slo_classify_error_400_is_client_error() {
-    assert_eq!(classify_error(400), "client_error");
+    assert_eq!(category("BadReq", 400), "client_error");
 }
 
-// Kills: 400..=499 upper bound changed to 400..=498 (or arm removed).
 #[test]
 fn slo_classify_error_499_is_client_error() {
-    assert_eq!(classify_error(499), "client_error");
+    assert_eq!(category("BadReq", 499), "client_error");
 }
 
-// Kills: 500..=599 lower bound changed to 501..=599 (or arm removed).
 #[test]
 fn slo_classify_error_500_is_server_error() {
-    assert_eq!(classify_error(500), "server_error");
+    assert_eq!(category("InternalError", 500), "server_error");
 }
 
-// Kills: 500..=599 upper bound changed to 500..=598 (or arm removed).
 #[test]
 fn slo_classify_error_599_is_server_error() {
-    assert_eq!(classify_error(599), "server_error");
+    assert_eq!(category("InternalError", 599), "server_error");
 }
 
-// Kills: _ arm replaced with wrong string; also guards 399 not leaking into 4xx.
 #[test]
-fn slo_classify_error_399_is_ok() {
-    assert_eq!(classify_error(399), "ok");
+fn slo_classify_error_399_is_unclassified() {
+    assert_eq!(category("Unknown", 399), "unclassified");
 }
 
-// Kills: _ arm replaced with wrong string; also guards 600 not leaking into 5xx.
 #[test]
-fn slo_classify_error_600_is_ok() {
-    assert_eq!(classify_error(600), "ok");
+fn slo_classify_error_600_is_unclassified() {
+    assert_eq!(category("Unknown", 600), "unclassified");
 }
 
-// Kills: 200 should map to "ok", not "client_error" or "server_error".
 #[test]
-fn slo_classify_error_200_is_ok() {
-    assert_eq!(classify_error(200), "ok");
+fn slo_classify_error_200_is_unclassified() {
+    assert_eq!(category("Success", 200), "unclassified");
+}
+
+#[test]
+fn slo_classify_error_timeout_in_name_is_timeout() {
+    assert_eq!(category("ConnectionTimeout", 200), "timeout");
+}
+
+#[test]
+fn slo_classify_error_408_is_timeout() {
+    assert_eq!(category("SomeError", 408), "timeout");
+}
+
+#[test]
+fn slo_classify_error_504_is_timeout() {
+    assert_eq!(category("SomeError", 504), "timeout");
+}
+
+#[test]
+fn slo_classify_error_429_has_critical_severity() {
+    assert_eq!(severity("RateLimit", 429), "critical");
+}
+
+#[test]
+fn slo_classify_error_404_has_warning_severity() {
+    assert_eq!(severity("NotFound", 404), "warning");
+}
+
+#[test]
+fn slo_classify_error_returns_all_spec_keys() {
+    let result = classify_error("TestError", Some(503));
+    assert!(result.contains_key("error_type"), "legacy key");
+    assert!(result.contains_key("error_code"), "legacy key");
+    assert!(result.contains_key("error_name"), "legacy key");
+    assert!(result.contains_key("error.type"), "spec key");
+    assert!(result.contains_key("error.category"), "spec key");
+    assert!(result.contains_key("error.severity"), "spec key");
+    assert!(result.contains_key("http.status_code"), "spec key");
+    assert_eq!(result["error.type"], "TestError");
+    assert_eq!(result["http.status_code"], "503");
 }
 
 // ── record_red_metrics condition tests ───────────────────────────────────────
