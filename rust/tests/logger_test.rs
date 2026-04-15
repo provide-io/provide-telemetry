@@ -19,6 +19,12 @@ fn logger_lock() -> &'static Mutex<()> {
 #[test]
 fn logger_test_logging_works_without_otel() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
+    // Set level to TRACE so all level methods are tested.
+    // Default is INFO which correctly filters DEBUG.
+    configure_logging(LoggingConfig {
+        level: "TRACE".to_string(),
+        ..LoggingConfig::default()
+    });
     let logger = get_logger(Some("tests.logger"));
 
     logger.info("logger.test.info");
@@ -26,6 +32,7 @@ fn logger_test_logging_works_without_otel() {
     logger.error("logger.test.error");
 
     let events = Logger::drain_events_for_tests();
+    reset_logging_config_for_tests();
     assert_eq!(events.len(), 3);
     assert_eq!(events[0].target, "tests.logger");
     assert_eq!(events[0].level, "INFO");

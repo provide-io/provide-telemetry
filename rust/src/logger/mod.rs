@@ -101,8 +101,27 @@ fn emit_event(mut event: LogEvent) {
     drop(buf);
 }
 
+/// Map level string to a numeric order for comparison.
+/// CRITICAL/FATAL are aliases for ERROR (same severity), matching the
+/// `log` bridge mapping in `level_str_to_log_filter`.
+fn level_order(level: &str) -> u8 {
+    match level.to_ascii_uppercase().as_str() {
+        "TRACE" => 0,
+        "DEBUG" => 1,
+        "INFO" => 2,
+        "WARN" | "WARNING" => 3,
+        "ERROR" | "CRITICAL" | "FATAL" => 4,
+        _ => 2, // default to INFO
+    }
+}
+
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
+    // Level filtering: skip events below the configured threshold.
+    let configured_level = active_logging_config().level;
+    if level_order(level) < level_order(&configured_level) {
+        return;
+    }
     if !should_allow("logs", Some(level)) {
         return;
     }
@@ -119,6 +138,10 @@ fn log_event(level: &str, target: &str, message: &str) {
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
 fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
+    let configured_level = active_logging_config().level;
+    if level_order(level) < level_order(&configured_level) {
+        return;
+    }
     if !should_allow("logs", Some(level)) {
         return;
     }
