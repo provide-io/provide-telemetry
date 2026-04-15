@@ -29,9 +29,7 @@ that operations still proceed (fallback must return True, not None/False).
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -66,12 +64,13 @@ class TestConsentSignalArgument:
     def _make_consent_spy(self) -> tuple[list[tuple[str, ...]], MagicMock]:
         """Return a list to collect calls and a mock that always allows."""
         calls: list[tuple[str, ...]] = []
+        mock = MagicMock(return_value=True)
 
         def _spy(*args: str) -> bool:
             calls.append(args)
             return True
 
-        return calls, _spy  # type: ignore
+        return calls, _spy  # type: ignore[return-value]
 
     def test_counter_add_calls_should_allow_with_metrics(self) -> None:
         """Counter.add must call should_allow("metrics")."""
@@ -82,7 +81,9 @@ class TestConsentSignalArgument:
         assert mock_allow.called, "should_allow must be called"
         first_call_args = mock_allow.call_args_list[0]
         signal_arg = first_call_args[0][0] if first_call_args[0] else first_call_args[1].get("_signal")
-        assert signal_arg == "metrics", f"should_allow must be called with 'metrics', got {signal_arg!r}"
+        assert signal_arg == "metrics", (
+            f"should_allow must be called with 'metrics', got {signal_arg!r}"
+        )
 
     def test_gauge_add_calls_should_allow_with_metrics(self) -> None:
         """Gauge.add must call should_allow("metrics")."""
@@ -157,7 +158,7 @@ class TestConsentFallbackLambda:
     and patching the import to fail.
     """
 
-    def _run_without_consent_module(self, fn: Callable[[], None]) -> None:
+    def _run_without_consent_module(self, fn: object) -> None:
         """Run fn() with consent module absent from sys.modules."""
         original = sys.modules.pop("provide.telemetry.consent", None)
         try:
@@ -166,13 +167,13 @@ class TestConsentFallbackLambda:
 
             real_import = builtins.__import__
 
-            def _failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            def _failing_import(name: str, *args: object, **kwargs: object) -> object:
                 if name == "provide.telemetry.consent":
                     raise ImportError("governance stripped")
                 return real_import(name, *args, **kwargs)
 
             with patch.object(builtins, "__import__", side_effect=_failing_import):
-                fn()
+                fn()  # type: ignore[call-arg]
         finally:
             if original is not None:
                 sys.modules["provide.telemetry.consent"] = original
@@ -191,7 +192,8 @@ class TestConsentFallbackLambda:
 
         self._run_without_consent_module(_do_add)
         assert c.value == 5, (
-            f"Counter.add must proceed when consent module is absent (fallback should return True), got value={c.value}"
+            f"Counter.add must proceed when consent module is absent (fallback should return True), "
+            f"got value={c.value}"
         )
 
     def test_gauge_add_proceeds_when_consent_module_absent(self) -> None:
@@ -222,4 +224,6 @@ class TestConsentFallbackLambda:
             h.record(9.9)
 
         self._run_without_consent_module(_do_record)
-        assert h.count == 1, f"Histogram.record must proceed with absent consent, got count={h.count}"
+        assert h.count == 1, (
+            f"Histogram.record must proceed with absent consent, got count={h.count}"
+        )
