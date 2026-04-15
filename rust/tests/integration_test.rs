@@ -176,7 +176,7 @@ fn integration_test_slo_example_summary_matches_demo_flow() {
 
     assert_eq!(summary.classify_404.as_deref(), Some("client_error"));
     assert_eq!(summary.classify_503.as_deref(), Some("server_error"));
-    assert_eq!(summary.classify_200.as_deref(), Some("ok"));
+    assert_eq!(summary.classify_200.as_deref(), Some("unclassified"));
 }
 
 #[test]

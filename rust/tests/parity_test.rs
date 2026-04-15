@@ -121,13 +121,14 @@ fn parity_test_propagation_guards_limits_match_fixture() {
 #[rstest]
 #[case(404, "client_error")]
 #[case(503, "server_error")]
-#[case(200, "ok")]
+#[case(200, "unclassified")]
 #[case(0, "timeout")]
 fn parity_test_slo_classify_classification_matches_fixture(
     #[case] status_code: u16,
     #[case] expected: &str,
 ) {
-    assert_eq!(classify_error(status_code), expected);
+    let result = classify_error("TestError", Some(status_code));
+    assert_eq!(result["error.category"], expected);
 }
 
 #[test]

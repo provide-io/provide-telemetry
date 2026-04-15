@@ -21,13 +21,17 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15]
-        features: ["", "--features otel"]
+        features: ["", "--features otel", "--features otel-grpc"]
         exclude:
           # Full feature matrix on Linux; default-only on Windows/macOS
           - os: windows-2025
             features: "--features otel"
+          - os: windows-2025
+            features: "--features otel-grpc"
           - os: macos-15
             features: "--features otel"
+          - os: macos-15
+            features: "--features otel-grpc"
     runs-on: ${{ matrix.os }}
     defaults:
       run:

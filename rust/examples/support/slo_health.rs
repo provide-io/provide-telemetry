@@ -17,9 +17,9 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     provide_telemetry::health::_reset_health_for_tests();
     let snapshot = get_health_snapshot();
     Ok(DemoSummary {
-        classify_404: Some(classify_error(404)),
-        classify_503: Some(classify_error(503)),
-        classify_200: Some(classify_error(200)),
+        classify_404: Some(classify_error("NotFound", Some(404))["error.category"].clone()),
+        classify_503: Some(classify_error("InternalError", Some(503))["error.category"].clone()),
+        classify_200: Some(classify_error("Success", Some(200))["error.category"].clone()),
         dropped_logs: snapshot.dropped_logs,
     })
 }

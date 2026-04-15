@@ -63,14 +63,43 @@ pub fn record_use_metrics(resource: &str, utilization_percent: i32) {
         .set(utilization_percent as f64, Some(attrs));
 }
 
-pub fn classify_error(status_code: u16) -> String {
+/// Classify an error by exception name and/or HTTP status code.
+///
+/// Returns a map with both legacy keys (`error_type`, `error_code`,
+/// `error_name`) and spec-aligned keys (`error.type`, `error.category`,
+/// `error.severity`, `http.status_code`) matching the Python reference.
+pub fn classify_error(error_name: &str, status_code: Option<u16>) -> BTreeMap<String, String> {
     SLO_INITIALIZED.store(true, Ordering::SeqCst);
-    match status_code {
-        0 => "timeout".to_string(),
-        400..=499 => "client_error".to_string(),
-        500..=599 => "server_error".to_string(),
-        _ => "ok".to_string(),
-    }
+    let code = status_code.unwrap_or(0);
+    let is_timeout =
+        error_name.to_ascii_lowercase().contains("timeout") || code == 0 || code == 408 || code == 504;
+
+    let (category, severity, error_type) = if is_timeout {
+        ("timeout", "info", "internal")
+    } else if (500..=599).contains(&code) {
+        ("server_error", "critical", "server")
+    } else if (400..=499).contains(&code) {
+        (
+            "client_error",
+            if code == 429 { "critical" } else { "warning" },
+            "client",
+        )
+    } else {
+        ("unclassified", "info", "internal")
+    };
+
+    [
+        ("error_type", error_type),
+        ("error_code", &code.to_string()),
+        ("error_name", error_name),
+        ("error.type", error_name),
+        ("error.category", category),
+        ("error.severity", severity),
+        ("http.status_code", &code.to_string()),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect()
 }
 
 pub fn slo_initialized_for_tests() -> bool {
@@ -102,7 +131,10 @@ mod tests {
         reset_slo_for_tests();
         assert!(!slo_initialized_for_tests());
 
-        assert_eq!(classify_error(503), "server_error");
+        assert_eq!(
+            classify_error("SomeError", Some(503))["error.category"],
+            "server_error"
+        );
         assert!(slo_initialized_for_tests());
 
         reset_slo_for_tests();
