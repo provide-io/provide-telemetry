@@ -394,6 +394,110 @@ fn logger_test_emitted_logs_increments_on_log() {
 }
 
 #[test]
+fn logger_test_sampling_zero_drops_log_and_does_not_increment_emitted() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::{get_health_snapshot, set_sampling_policy, Signal, SamplingPolicy};
+
+    provide_telemetry::sampling::_reset_sampling_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+
+    set_sampling_policy(Signal::Logs, SamplingPolicy { default_rate: 0.0, overrides: Default::default() })
+        .expect("policy should set");
+
+    let logger = get_logger(Some("tests.sampling_zero"));
+    logger.info("should.be.dropped");
+    Logger::drain_events_for_tests();
+
+    let snap = get_health_snapshot();
+    assert_eq!(snap.emitted_logs, 0, "emitted_logs must stay 0 when sampling rate is 0.0");
+    assert_eq!(snap.dropped_logs, 1, "dropped_logs must be 1 when sampling rate is 0.0");
+
+    provide_telemetry::sampling::_reset_sampling_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+}
+
+#[test]
+fn logger_test_full_queue_drops_log_and_does_not_increment_emitted() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::{get_health_snapshot, set_queue_policy, try_acquire, release, Signal, QueuePolicy};
+
+    provide_telemetry::backpressure::_reset_backpressure_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+
+    // Fill the log queue completely.
+    set_queue_policy(QueuePolicy { logs_maxsize: 1, traces_maxsize: 64, metrics_maxsize: 64 });
+    let ticket = try_acquire(Signal::Logs).expect("first acquire must succeed");
+
+    let logger = get_logger(Some("tests.backpressure"));
+    logger.info("should.be.dropped.by.backpressure");
+    Logger::drain_events_for_tests();
+
+    let snap = get_health_snapshot();
+    assert_eq!(snap.emitted_logs, 0, "emitted_logs must stay 0 when queue is full");
+    assert_eq!(snap.dropped_logs, 1, "dropped_logs must be 1 when queue is full");
+
+    release(ticket);
+    provide_telemetry::backpressure::_reset_backpressure_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+}
+
+#[test]
+fn tracer_test_sampling_zero_drops_span_but_still_calls_callback() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::{get_health_snapshot, set_sampling_policy, trace, Signal, SamplingPolicy};
+
+    provide_telemetry::sampling::_reset_sampling_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+
+    set_sampling_policy(Signal::Traces, SamplingPolicy { default_rate: 0.0, overrides: Default::default() })
+        .expect("policy should set");
+
+    let mut called = false;
+    let result = trace("tests.trace.sampled_out", || {
+        called = true;
+        99_i32
+    });
+
+    assert!(called, "callback must still execute when sampling drops the span");
+    assert_eq!(result, 99, "callback return value must be preserved");
+    let snap = get_health_snapshot();
+    assert_eq!(snap.emitted_traces, 0, "emitted_traces must stay 0 when sampling rate is 0.0");
+    assert_eq!(snap.dropped_traces, 1, "dropped_traces must be 1 when sampling rate is 0.0");
+
+    provide_telemetry::sampling::_reset_sampling_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+}
+
+#[test]
+fn tracer_test_full_queue_drops_span_but_still_calls_callback() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    use provide_telemetry::{get_health_snapshot, set_queue_policy, try_acquire, release, trace, Signal, QueuePolicy};
+
+    provide_telemetry::backpressure::_reset_backpressure_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+
+    // Fill the trace queue completely.
+    set_queue_policy(QueuePolicy { logs_maxsize: 64, traces_maxsize: 1, metrics_maxsize: 64 });
+    let ticket = try_acquire(Signal::Traces).expect("first acquire must succeed");
+
+    let mut called = false;
+    let result = trace("tests.trace.backpressure", || {
+        called = true;
+        77_i32
+    });
+
+    assert!(called, "callback must still execute when backpressure drops the span");
+    assert_eq!(result, 77, "callback return value must be preserved");
+    let snap = get_health_snapshot();
+    assert_eq!(snap.emitted_traces, 0, "emitted_traces must stay 0 when queue is full");
+    assert_eq!(snap.dropped_traces, 1, "dropped_traces must be 1 when queue is full");
+
+    release(ticket);
+    provide_telemetry::backpressure::_reset_backpressure_for_tests();
+    provide_telemetry::health::_reset_health_for_tests();
+}
+
+#[test]
 fn tracer_test_consent_none_skips_emitted_counter() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     use provide_telemetry::{get_health_snapshot, reset_consent_for_tests, set_consent_level, ConsentLevel};

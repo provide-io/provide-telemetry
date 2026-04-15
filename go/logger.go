@@ -78,6 +78,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		return nil
 	}
 	defer Release(signalLogs)
+	_incLogsEmitted()
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)

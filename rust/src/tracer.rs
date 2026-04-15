@@ -6,10 +6,11 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::backpressure::{release, try_acquire};
 use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
 use crate::health::increment_emitted;
-use crate::sampling::Signal;
+use crate::sampling::{should_sample, Signal};
 
 pub struct NoopSpan {
     trace_id: String,
@@ -82,9 +83,17 @@ where
     if !should_allow("traces", None) {
         return callback();
     }
+    if !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
+        return callback();
+    }
+    let Some(ticket) = try_acquire(Signal::Traces) else {
+        return callback();
+    };
     let _span = tracer.start_span(name);
     increment_emitted(Signal::Traces, 1);
-    callback()
+    let result = callback();
+    release(ticket);
+    result
 }
 
 impl NoopSpan {

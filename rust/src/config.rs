@@ -43,9 +43,12 @@ impl Default for LoggingConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TracingConfig {
     pub enabled: bool,
+    /// Per-signal sample rate for traces (PROVIDE_TRACE_SAMPLE_RATE).
+    /// Combined with sampling.traces_rate via min() in apply_policies.
+    pub sample_rate: f64,
     pub otlp_headers: HashMap<String, String>,
 }
 
@@ -53,6 +56,7 @@ impl Default for TracingConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            sample_rate: 1.0,
             otlp_headers: HashMap::new(),
         }
     }
@@ -250,6 +254,11 @@ impl TelemetryConfig {
                     env_value(env, &["PROVIDE_TRACE_ENABLED"]),
                     true,
                     "PROVIDE_TRACE_ENABLED",
+                )?,
+                sample_rate: parse_rate(
+                    env_value(env, &["PROVIDE_TRACE_SAMPLE_RATE"]),
+                    1.0,
+                    "PROVIDE_TRACE_SAMPLE_RATE",
                 )?,
                 otlp_headers: parse_otlp_headers(env_value(
                     env,

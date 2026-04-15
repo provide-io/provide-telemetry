@@ -80,7 +80,9 @@ export function makeWriteHook() {
     if (!shouldAllow('logs', levelLabel)) return;
 
     // Sampling gate: probabilistically drop records based on configured rate.
-    if (!shouldSample('logs')) return;
+    // Pass the canonical event key so per-event override rates take effect.
+    const samplingKey = String(o['event'] ?? o['message'] ?? '');
+    if (!shouldSample('logs', samplingKey)) return;
 
     // Backpressure gate: drop when the log queue is full.
     const ticket = tryAcquire('logs');
