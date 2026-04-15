@@ -68,6 +68,15 @@ pub fn increment_dropped(signal: Signal, amount: u64) {
     }
 }
 
+pub fn increment_emitted(signal: Signal, amount: u64) {
+    let mut snapshot = health().lock().expect("health lock poisoned");
+    match signal {
+        Signal::Logs => snapshot.emitted_logs += amount,
+        Signal::Traces => snapshot.emitted_traces += amount,
+        Signal::Metrics => snapshot.emitted_metrics += amount,
+    }
+}
+
 pub fn increment_retries(signal: Signal, amount: u64) {
     let mut snapshot = health().lock().expect("health lock poisoned");
     match signal {

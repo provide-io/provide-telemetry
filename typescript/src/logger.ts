@@ -120,21 +120,23 @@ export function makeWriteHook() {
       delete o['time'];
     }
 
-    // Schema validation — drop records that violate strict schema rules.
+    // Schema validation — drop records that violate schema rules.
+    // Required-key enforcement runs unconditionally (matches Python/Go/Rust):
+    // strictSchema only controls whether the event-name charset is strict.
+    if (cfg.requiredLogKeys.length > 0) {
+      try {
+        validateRequiredKeys(o, cfg.requiredLogKeys);
+      } catch (e) {
+        if (e instanceof EventSchemaError) return;
+        throw e;
+      }
+    }
     /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
     if (cfg.strictSchema) {
       const event = String(o['event'] ?? o['message'] ?? '');
       if (event) {
         try {
           validateEventName(event);
-        } catch (e) {
-          if (e instanceof EventSchemaError) return;
-          throw e;
-        }
-      }
-      if (cfg.requiredLogKeys.length > 0) {
-        try {
-          validateRequiredKeys(o, cfg.requiredLogKeys);
         } catch (e) {
           if (e instanceof EventSchemaError) return;
           throw e;

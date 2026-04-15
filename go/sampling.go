@@ -126,6 +126,13 @@ func ShouldSample(signal, key string) (bool, error) {
 }
 
 // _recordSampleDecision increments the appropriate counter based on the signal and sampling outcome.
+//
+// Note: metrics-emitted is intentionally NOT incremented here.  A metric
+// write that is sampled=true can still be dropped by the backpressure
+// gate (TryAcquire) inside the instrument's write path.  To avoid
+// over-reporting, metrics.go bumps MetricsRecorded explicitly only after
+// the write actually reaches storage.  Logs and traces lack a post-sample
+// drop gate, so their emitted counters can fire here safely.
 func _recordSampleDecision(signal string, sampled bool) {
 	if sampled {
 		switch signal {
@@ -133,8 +140,6 @@ func _recordSampleDecision(signal string, sampled bool) {
 			_incLogsEmitted()
 		case signalTraces:
 			_incSpansStarted()
-		case signalMetrics:
-			_incMetricsRecorded()
 		}
 	} else {
 		switch signal {

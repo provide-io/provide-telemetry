@@ -181,8 +181,8 @@ describe('registerOtelProviders', () => {
     await registerOtelProviders(getConfig());
     expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
       'service.name': 'attr-svc',
-      'deployment.environment': 'development',
-      'service.version': 'unknown',
+      'deployment.environment': 'dev',
+      'service.version': '0.0.0',
     });
   });
 

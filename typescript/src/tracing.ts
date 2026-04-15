@@ -23,6 +23,36 @@ import { randomHex } from './hash';
 const TRACER_NAME = '@provide-io/telemetry';
 
 // ── Manual trace context (injected without an active OTEL span) ───────────────
+//
+// Module-level globals are the fallback storage.  They are **not** safe when
+// two overlapping async flows each call setTraceContext / withTrace without
+// awaiting each other — one flow's state would leak into the other's Promise
+// continuation.  When running on Node we reach for AsyncLocalStorage so each
+// async chain gets its own isolated pair of IDs; the globals are reserved for
+// non-scoped callers (direct setTraceContext usage) and for browser/Deno
+// environments where AsyncLocalStorage is not available.
+//
+// Reads check the ALS store first, then fall back to the globals.  Writes via
+// setTraceContext() prefer the ALS store when one is active (so a per-request
+// scope wins over the globals), otherwise fall back to the globals (so the
+// classic "set it once at boot" pattern still works).
+
+type _TraceIds = { traceId?: string; spanId?: string };
+
+let _als: {
+  run<T>(store: _TraceIds, fn: () => T): T;
+  getStore(): _TraceIds | undefined;
+} | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { AsyncLocalStorage } = require('node:async_hooks') as typeof import('node:async_hooks');
+  _als = new AsyncLocalStorage<_TraceIds>();
+} catch {
+  // Non-Node runtime (browser, Deno): fall back to module globals.
+  _als = null;
+}
+
 let _manualTraceId: string | undefined;
 let _manualSpanId: string | undefined;
 
@@ -31,6 +61,12 @@ let _manualSpanId: string | undefined;
  * Returned by getTraceContext(); cleared by _resetTraceContext().
  */
 export function setTraceContext(traceId: string, spanId: string): void {
+  const store = _als?.getStore();
+  if (store !== undefined) {
+    store.traceId = traceId;
+    store.spanId = spanId;
+    return;
+  }
   _manualTraceId = traceId;
   _manualSpanId = spanId;
 }
@@ -39,13 +75,16 @@ export function setTraceContext(traceId: string, spanId: string): void {
  * Return the current trace context: manual injection first, then active OTEL span.
  */
 export function getTraceContext(): { trace_id?: string; span_id?: string } {
+  const store = _als?.getStore();
+  const traceId = store?.traceId ?? _manualTraceId;
+  const spanId = store?.spanId ?? _manualSpanId;
   // Stryker disable next-line ConditionalExpression,LogicalOperator: setTraceContext always sets both; partial state not reachable via public API
-  if (_manualTraceId !== undefined || _manualSpanId !== undefined) {
+  if (traceId !== undefined || spanId !== undefined) {
     return {
-      // Stryker disable next-line ConditionalExpression: _manualTraceId is always defined here (both set together)
-      ...(_manualTraceId !== undefined && { trace_id: _manualTraceId }),
-      // Stryker disable next-line ConditionalExpression: _manualSpanId is always defined here (both set together)
-      ...(_manualSpanId !== undefined && { span_id: _manualSpanId }),
+      // Stryker disable next-line ConditionalExpression: traceId is always defined here (both set together)
+      ...(traceId !== undefined && { trace_id: traceId }),
+      // Stryker disable next-line ConditionalExpression: spanId is always defined here (both set together)
+      ...(spanId !== undefined && { span_id: spanId }),
     };
   }
   const ids = getActiveTraceIds();
@@ -59,6 +98,11 @@ export function getTraceContext(): { trace_id?: string; span_id?: string } {
 export function _resetTraceContext(): void {
   _manualTraceId = undefined;
   _manualSpanId = undefined;
+  const store = _als?.getStore();
+  if (store !== undefined) {
+    store.traceId = undefined;
+    store.spanId = undefined;
+  }
 }
 
 /** Return the tracer for the telemetry library. Noop when no SDK is registered. */
@@ -94,15 +138,23 @@ function _isNoopSpan(span: Span): boolean {
 }
 
 /**
- * Execute fn with random synthetic trace/span IDs set as manual context,
- * then restore the previous manual context when done.
- * Handles both sync and async results.
+ * Execute fn with random synthetic trace/span IDs set as manual context.
+ *
+ * On Node we open a fresh AsyncLocalStorage scope so concurrent callers never
+ * see each other's IDs: each await chain carries its own store.  Outside Node
+ * we fall back to the save/restore pattern on module globals.
  */
 function _withSyntheticIds<T>(fn: () => T): T {
+  // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
+  const traceId = randomHex(16);
+  const spanId = randomHex(8);
+  if (_als !== null) {
+    return _als.run<T>({ traceId, spanId }, fn);
+  }
   const prevTraceId = _manualTraceId;
   const prevSpanId = _manualSpanId;
-  // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
-  setTraceContext(randomHex(16), randomHex(8));
+  _manualTraceId = traceId;
+  _manualSpanId = spanId;
   const result = fn();
   if (result instanceof Promise) {
     return result.then(

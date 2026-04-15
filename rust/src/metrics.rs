@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
+use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
 
@@ -54,6 +55,7 @@ impl Counter {
             .lock()
             .expect("counter state lock poisoned")
             .value += value;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -95,6 +97,7 @@ impl Gauge {
             .lock()
             .expect("gauge state lock poisoned")
             .last_value += value;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -112,6 +115,7 @@ impl Gauge {
             .lock()
             .expect("gauge state lock poisoned")
             .last_value = value;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -153,6 +157,8 @@ impl Histogram {
         let mut state = self.state.lock().expect("histogram state lock poisoned");
         state.count += 1;
         state.total += value;
+        drop(state);
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 

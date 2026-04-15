@@ -65,7 +65,7 @@ describe('configFromEnv', () => {
   it('returns defaults when no env vars set', () => {
     const cfg = configFromEnv();
     expect(cfg.serviceName).toBe('provide-service');
-    expect(cfg.environment).toBe('development');
+    expect(cfg.environment).toBe('dev');
   });
 
   it('reads PROVIDE_TELEMETRY_SERVICE_NAME', () => {
@@ -185,8 +185,8 @@ describe('configFromEnv', () => {
 });
 
 describe('configFromEnv — default values', () => {
-  it('version defaults to unknown', () => {
-    expect(configFromEnv().version).toBe('unknown');
+  it('version defaults to 0.0.0', () => {
+    expect(configFromEnv().version).toBe('0.0.0');
   });
 
   it('consoleOutput defaults to false', () => {

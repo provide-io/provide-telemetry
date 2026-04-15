@@ -174,8 +174,8 @@ export interface RuntimeOverrides {
 
 const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
-  environment: 'development',
-  version: 'unknown',
+  environment: 'dev',
+  version: '0.0.0',
   logLevel: 'info',
   logFormat: 'json',
   otelEnabled: false,

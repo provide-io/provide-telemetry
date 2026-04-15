@@ -70,8 +70,12 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[project.entry-points.pytest11]
-provide_telemetry = "provide.telemetry.testing"
+# NOTE: intentionally NOT registered as a pytest11 entry point.
+# Auto-loading a pytest plugin on install would globally reconfigure
+# structlog and reset telemetry state in every downstream test suite,
+# which is surprising and dangerous for a library dependency.
+# Consumers opt in explicitly via `-p provide.telemetry.testing`
+# or by adding it to `pytest_plugins` in their own conftest.py.
 
 [tool.setuptools.package-data]
 "provide.telemetry" = ["py.typed"]

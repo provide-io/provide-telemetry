@@ -70,6 +70,7 @@ func (c *_atomicCounter) Add(ctx context.Context, value int64, attrs ...slog.Att
 	}
 	defer Release(signalMetrics)
 	c.value.Add(value)
+	_incMetricsRecorded()
 }
 
 // Value returns the current counter value.
@@ -93,6 +94,7 @@ func (g *_atomicGauge) Set(ctx context.Context, value float64, attrs ...slog.Att
 	}
 	defer Release(signalMetrics)
 	g.value.Store(math.Float64bits(value))
+	_incMetricsRecorded()
 }
 
 // Value returns the current gauge reading.
@@ -124,6 +126,7 @@ func (h *_atomicHistogram) Record(ctx context.Context, value float64, attrs ...s
 			break
 		}
 	}
+	_incMetricsRecorded()
 }
 
 // Count returns the number of observations recorded.

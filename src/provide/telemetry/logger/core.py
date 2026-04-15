@@ -249,8 +249,11 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             ),
             add_standard_fields(config),
             add_error_fingerprint,
-            apply_sampling,
+            # Schema validation runs BEFORE sampling so records rejected by
+            # validate_required_keys / validate_event_name don't inflate the
+            # emitted_logs counter (apply_sampling increments it on acceptance).
             enforce_event_schema(config),
+            apply_sampling,
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )
