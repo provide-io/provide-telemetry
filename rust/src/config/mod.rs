@@ -252,7 +252,8 @@ impl TelemetryConfig {
         // the per-signal path must be appended (/v1/traces, /v1/metrics,
         // /v1/logs). Signal-specific endpoint env vars are used verbatim.
         let with_signal_path = |signal_path: &str| -> Option<String> {
-            shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
+            shared_endpoint
+                .map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
         };
 
         Ok(Self {
@@ -293,8 +294,8 @@ impl TelemetryConfig {
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
                 otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
-                    .or(shared_endpoint)
-                    .map(str::to_string),
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/logs")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
@@ -316,8 +317,8 @@ impl TelemetryConfig {
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
                 otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
-                    .or(shared_endpoint)
-                    .map(str::to_string),
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/traces")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
@@ -334,8 +335,8 @@ impl TelemetryConfig {
                 ))?
                 .unwrap_or(shared_headers),
                 otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
-                    .or(shared_endpoint)
-                    .map(str::to_string),
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/metrics")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
