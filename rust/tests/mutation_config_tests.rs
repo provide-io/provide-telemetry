@@ -99,3 +99,197 @@ fn test_percent_encoding_boundary_exactly_two_chars_after_percent_is_valid() {
         "%4F (exactly idx+2 == len-1) must be treated as valid encoding"
     );
 }
+
+// --- parse_bool false-y values ---
+// Kills: replace match guard matches!(..., "0"|"false"|"no"|"off") with false
+// Without the false-y guard, "false"/"no"/"off"/"0" fall through to the Err branch.
+
+#[test]
+fn config_test_parse_bool_falsy_values_are_accepted() {
+    for val in &["false", "False", "FALSE", "0", "no", "NO", "off", "OFF"] {
+        let cfg = config_from(&[("PROVIDE_TRACE_ENABLED", val)])
+            .unwrap_or_else(|e| panic!("{val:?} should parse as false, got error: {e}"));
+        assert!(!cfg.tracing.enabled, "{val:?} must parse as false");
+    }
+}
+
+// --- parse_non_negative_float edge cases ---
+// Kills: replace || with && (infinity slips through), replace < with == (negatives slip through),
+//        replace < with <= (zero is incorrectly rejected).
+
+#[test]
+fn config_test_non_negative_float_rejects_infinity() {
+    // Kills: || → && (with &&, !is_finite() && negative is false for +inf → no error)
+    let err = config_from(&[("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "inf")])
+        .expect_err("infinity must be rejected");
+    assert!(err
+        .message
+        .contains("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"));
+}
+
+#[test]
+fn config_test_non_negative_float_rejects_negative() {
+    // Kills: < → == (only 0.0 would error; -1 would slip through)
+    let err = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "-1")])
+        .expect_err("negative float must be rejected");
+    assert!(err
+        .message
+        .contains("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"));
+}
+
+#[test]
+fn config_test_non_negative_float_accepts_zero() {
+    // Kills: < → <= (zero would be incorrectly rejected)
+    let cfg = config_from(&[("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0")])
+        .expect("zero must be a valid non-negative float");
+    assert_eq!(cfg.exporter.logs_backoff_seconds, 0.0);
+}
+
+// --- redact_config ---
+
+#[test]
+fn redact_config_masks_otlp_header_values() {
+    // Kills: return cfg.clone() unchanged (no masking)
+    let cfg = config_from(&[(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "authorization=Bearer secret123",
+    )])
+    .unwrap();
+    let redacted = redact_config(&cfg);
+    // Keys are preserved, values replaced.
+    assert!(
+        redacted.logging.otlp_headers.contains_key("authorization"),
+        "key must be preserved"
+    );
+    assert_eq!(
+        redacted
+            .logging
+            .otlp_headers
+            .get("authorization")
+            .map(String::as_str),
+        Some("***REDACTED***"),
+        "value must be masked"
+    );
+}
+
+#[test]
+fn redact_config_preserves_non_header_fields() {
+    // Kills: replacing all fields with defaults.
+    let cfg = config_from(&[
+        ("PROVIDE_TELEMETRY_SERVICE_NAME", "my-service"),
+        ("PROVIDE_TELEMETRY_ENV", "prod"),
+    ])
+    .unwrap();
+    let redacted = redact_config(&cfg);
+    assert_eq!(redacted.service_name, "my-service");
+    assert_eq!(redacted.environment, "prod");
+}
+
+#[test]
+fn redact_config_empty_headers_unchanged() {
+    // Kills: unconditionally mask even empty headers.
+    let cfg = TelemetryConfig::default();
+    let redacted = redact_config(&cfg);
+    assert!(
+        redacted.logging.otlp_headers.is_empty(),
+        "empty headers must stay empty"
+    );
+}
+
+#[test]
+fn redact_config_does_not_mutate_original() {
+    // Ensures the original is not modified.
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_HEADERS", "x-token=realvalue")]).unwrap();
+    let original_value = cfg.logging.otlp_headers.get("x-token").cloned();
+    let _ = redact_config(&cfg);
+    assert_eq!(
+        cfg.logging.otlp_headers.get("x-token").cloned(),
+        original_value,
+        "original config must not be mutated"
+    );
+}
+
+// --- OTLP endpoint + protocol per-signal fallback ---
+
+#[test]
+fn otlp_endpoint_shared_falls_back_to_all_three_signals() {
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318")]).unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+}
+
+#[test]
+fn otlp_endpoint_signal_specific_overrides_shared() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318"),
+        (
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            "https://traces-only:4318",
+        ),
+    ])
+    .unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318"),
+        "logs should fall back to shared"
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://traces-only:4318"),
+        "traces should use its own override"
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318"),
+        "metrics should fall back to shared"
+    );
+}
+
+#[test]
+fn otlp_endpoint_is_none_when_neither_shared_nor_signal_env_set() {
+    let cfg = config_from(&[]).unwrap();
+    assert!(cfg.logging.otlp_endpoint.is_none());
+    assert!(cfg.tracing.otlp_endpoint.is_none());
+    assert!(cfg.metrics.otlp_endpoint.is_none());
+}
+
+#[test]
+fn otlp_protocol_shared_falls_back_to_all_three_signals() {
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")]).unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.tracing.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.metrics.otlp_protocol, "http/protobuf");
+}
+
+#[test]
+fn otlp_protocol_signal_specific_overrides_shared() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
+        ("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "grpc"),
+    ])
+    .unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.tracing.otlp_protocol, "http/protobuf");
+    assert_eq!(
+        cfg.metrics.otlp_protocol, "grpc",
+        "metrics should use its override"
+    );
+}
+
+#[test]
+fn otlp_protocol_defaults_to_empty_string_when_unset() {
+    let cfg = config_from(&[]).unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "");
+    assert_eq!(cfg.tracing.otlp_protocol, "");
+    assert_eq!(cfg.metrics.otlp_protocol, "");
+}
