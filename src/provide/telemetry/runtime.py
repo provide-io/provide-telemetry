@@ -151,7 +151,7 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     level/format/module-level changes take effect immediately.
     """
     global _active_config
-    logging_changed = False
+    logging_changed = False  # pragma: no mutate — None is also falsy; equivalent mutation
     with _lock:
         base = _active_config if _active_config is not None else TelemetryConfig.from_env()
         if overrides.logging is not None and overrides.logging != base.logging:
