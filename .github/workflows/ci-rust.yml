@@ -17,19 +17,34 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+        features: ["", "--features otel"]
+        exclude:
+          # Full feature matrix on Linux; default-only on Windows/macOS
+          - os: windows-2025
+            features: "--features otel"
+          - os: macos-15
+            features: "--features otel"
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dtolnay/rust-toolchain@stable
-      - name: Cargo fmt
+      # Format check only on Linux default (no point repeating per OS/feature)
+      - name: Cargo fmt (Linux default only)
+        if: matrix.os == 'ubuntu-24.04' && matrix.features == ''
         run: cargo fmt --check --manifest-path Cargo.toml
-      - name: Cargo test
-        run: cargo test --manifest-path Cargo.toml
-      - name: Cargo clippy
-        run: cargo clippy --manifest-path Cargo.toml --all-targets --all-features -- -D warnings
+      # Run tests with the selected feature set
+      - name: Cargo test ${{ matrix.features }}
+        run: cargo test --manifest-path Cargo.toml ${{ matrix.features }}
+      # Clippy with all features on Linux default; with selected features elsewhere
+      - name: Cargo clippy ${{ matrix.features }}
+        run: cargo clippy --manifest-path Cargo.toml --all-targets ${{ matrix.features || '--all-features' }} -- -D warnings
 
   conformance:
     runs-on: ubuntu-24.04
