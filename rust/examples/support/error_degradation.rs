@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use provide_telemetry::{
-    event, setup_telemetry, shutdown_telemetry, ConfigurationError, EventSchemaError,
-    TelemetryConfig, TelemetryError,
+    event, set_strict_schema, setup_telemetry, shutdown_telemetry, ConfigurationError,
+    EventSchemaError, TelemetryConfig, TelemetryError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +27,8 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     )]));
     let configuration_error_seen = matches!(bad_bool, Err(ConfigurationError { .. }));
 
+    // Strict schema mode is required to surface segment-format errors from event().
+    set_strict_schema(true);
     let bad_event = event(&["BAD", "UPPER", "case"]);
     let event_schema_error_seen = matches!(bad_event, Err(EventSchemaError { .. }));
 
@@ -40,6 +42,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             telemetry_error_catchall_count += 1;
         }
     }
+    set_strict_schema(false);
 
     shutdown_telemetry()?;
     Ok(DemoSummary {

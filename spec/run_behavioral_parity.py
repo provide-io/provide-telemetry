@@ -204,6 +204,7 @@ _PROBE_ENV: dict[str, str] = {
 # Canonical field renames: {raw_field: canonical_field}.
 # Applied before comparison so all languages share the same key names.
 _FIELD_RENAMES: dict[str, str] = {
+    "msg": "message",  # Go slog / some structlog variants emit "msg"
     "message": "message",  # already canonical; listed for completeness
     "time": "timestamp",
     "target": "logger_name",
