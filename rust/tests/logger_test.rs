@@ -424,4 +424,3 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
     assert!(!out2.contains("warn.filtered.critical"), "WARN filtered under CRITICAL alias");
     assert!(out2.contains("error.passes.critical"), "ERROR passes under CRITICAL alias");
 }
-

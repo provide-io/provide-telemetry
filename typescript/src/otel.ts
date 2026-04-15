@@ -127,5 +127,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   }
 
   _storeRegisteredProviders(registered);
-  _markProvidersRegistered();
+  if (registered.length > 0) {
+    _markProvidersRegistered();
+  }
 }

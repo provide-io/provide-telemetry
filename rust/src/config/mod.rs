@@ -244,6 +244,12 @@ impl TelemetryConfig {
             .unwrap_or_default();
         let shared_endpoint = env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
         let shared_protocol = env_value(env, &["OTEL_EXPORTER_OTLP_PROTOCOL"]).unwrap_or("");
+        // Per the OTLP/HTTP spec, when falling back to the shared endpoint
+        // the per-signal path must be appended (/v1/traces, /v1/metrics,
+        // /v1/logs). Signal-specific endpoint env vars are used verbatim.
+        let with_signal_path = |signal_path: &str| -> Option<String> {
+            shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
+        };
 
         Ok(Self {
             service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])

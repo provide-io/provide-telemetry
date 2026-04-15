@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	logglobal "go.opentelemetry.io/otel/log/global"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -145,6 +146,25 @@ func TestOTel_NoProviders_KeepsNoopTracer(t *testing.T) {
 	}
 }
 
+func TestOTel_TraceEndpointAutoWiresTracerProvider(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://collector:4318")
+
+	_, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if _, ok := DefaultTracer.(*_noopTracer); ok {
+		t.Fatal("expected env-configured traces endpoint to replace DefaultTracer with OTel adapter")
+	}
+	if _otelTracerProvider == nil {
+		t.Fatal("expected env-configured traces endpoint to install tracer provider")
+	}
+}
+
 // ── 6. WithMeterProvider wires real meter provider ────────────────────────────
 
 func TestOTel_WithMeterProvider_WiresRealMeter(t *testing.T) {
@@ -180,6 +200,44 @@ func TestOTel_ShutdownTelemetry_ShutsDownMeterProvider(t *testing.T) {
 
 	if _otelMeterProvider != nil {
 		t.Error("expected _otelMeterProvider to be nil after shutdown")
+	}
+}
+
+func TestOTel_LogsEndpointAutoWiresLoggerProvider(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "http://collector:4318")
+
+	_, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if _otelLoggerProvider == nil {
+		t.Fatal("expected env-configured logs endpoint to install logger provider")
+	}
+	if got := logglobal.GetLoggerProvider(); got == nil {
+		t.Fatal("expected global logger provider to be set")
+	}
+}
+
+func TestOTel_ShutdownTelemetry_RestoresNoopTracer(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	tp, _ := newInMemoryTP()
+	_, err := SetupTelemetry(WithTracerProvider(tp))
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("ShutdownTelemetry returned error: %v", err)
+	}
+
+	if _, ok := DefaultTracer.(*_noopTracer); !ok {
+		t.Fatalf("expected DefaultTracer to be reset to noop after shutdown, got %T", DefaultTracer)
 	}
 }
 
