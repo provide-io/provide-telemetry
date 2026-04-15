@@ -87,24 +87,26 @@ class TestApplyDefaultRedactionReceiptHookPath:
         """Path separator must be "." not "XX.XX".
 
         Kills mutmut_48: ".join" → "XX.XX".join.
+        The hook must be called with exactly "outer.inner" (not "outerXX.XXinner").
         """
         calls: list[tuple[str, str, Any]] = []
 
         def hook(path: str, mode: str, value: Any) -> None:
             calls.append((path, mode, value))
 
-        # A nested dict with a secret-bearing string value (triggers _detect_secret_in_value)
-        # We use a value that looks like an API key/Bearer token
-        secret_val = "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+        # AWS key is a known pattern that triggers _detect_secret_in_value.
+        # Nesting ensures child_path has 2 elements so the separator is exercised.
+        secret_val = "AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
         node: dict[str, Any] = {"outer": {"inner": secret_val}}
         original: dict[str, Any] = {"outer": {"inner": secret_val}}
         _apply_default_sensitive_key_redaction(node, original, receipt_hook=hook)
 
-        # If secret was detected, the path should be "outer.inner" not "outerXX.XXinner"
-        for path, _mode, _val in calls:
-            assert "XX.XX" not in path, (
-                f"Path separator must be '.', got 'XX.XX' in: {path!r}"
-            )
+        assert len(calls) >= 1, "Expected receipt_hook to be called for secret detection"
+        paths = [c[0] for c in calls]
+        assert "outer.inner" in paths, f"Expected 'outer.inner' in paths, got {paths!r}"
+        assert all("XX.XX" not in p for p in paths), (
+            f"Path separator must be '.', got 'XX.XX' in: {paths!r}"
+        )
 
     def test_sensitive_key_path_uses_dot_separator(self) -> None:
         """Sensitive key at top level produces single-segment path (no separator needed)."""
