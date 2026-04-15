@@ -28,14 +28,22 @@ export interface TelemetryConfig {
   version: string;
   /** Pino log level: trace | debug | info | warn | error. */
   logLevel: string;
-  /** Output format: "json" (default) or "pretty". */
-  logFormat: 'json' | 'pretty';
+  /** Output format: "json" (default), "pretty", or "console" (alias for pretty). */
+  logFormat: 'json' | 'pretty' | 'console';
   /** When true, registerOtelProviders() will install OTEL SDK providers. setupTelemetry() stores this flag but does not register providers itself. */
   otelEnabled: boolean;
   /** OTLP export endpoint (e.g. "http://localhost:4318"). */
   otlpEndpoint?: string;
   /** OTLP headers as key=value pairs. */
   otlpHeaders?: Record<string, string>;
+  /** Per-signal OTLP endpoints (override shared otlpEndpoint). */
+  otlpLogsEndpoint?: string;
+  otlpTracesEndpoint?: string;
+  otlpMetricsEndpoint?: string;
+  /** Per-signal OTLP headers (override shared otlpHeaders). */
+  otlpLogsHeaders?: Record<string, string>;
+  otlpTracesHeaders?: Record<string, string>;
+  otlpMetricsHeaders?: Record<string, string>;
   /** Fields whose values are replaced with "[REDACTED]". */
   sanitizeFields: string[];
   /** Push every log object into window.__pinoLogs (browser only). */
@@ -180,7 +188,7 @@ export const DEFAULTS: TelemetryConfig = {
   version: '0.0.0',
   logLevel: 'info',
   logFormat: 'json',
-  otelEnabled: false,
+  otelEnabled: true,
   sanitizeFields: [],
   captureToWindow: true,
   consoleOutput: true,
@@ -376,9 +384,24 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
       Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
     );
   }
+  // Mask per-signal headers
+  for (const field of ['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const) {
+    const hdrs = config[field];
+    if (hdrs && Object.keys(hdrs).length > 0) {
+      result[field] = Object.fromEntries(
+        Object.entries(hdrs).map(([k, v]) => [k, maskHeaderValue(v)]),
+      );
+    }
+  }
   // Stryker disable next-line ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
   if (config.otlpEndpoint) {
     result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
+  }
+  // Mask per-signal endpoints
+  for (const field of ['otlpLogsEndpoint', 'otlpTracesEndpoint', 'otlpMetricsEndpoint'] as const) {
+    if (config[field]) {
+      result[field] = maskEndpointUrl(config[field]);
+    }
   }
   return result;
 }
