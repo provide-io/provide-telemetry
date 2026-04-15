@@ -25,6 +25,7 @@ import { sanitizePayload } from './pii';
 import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
+import { shouldSample } from './sampling';
 import { getActiveTraceIds } from './tracing';
 
 /** Pino level number → console method name. */
@@ -77,6 +78,9 @@ export function makeWriteHook() {
     // Consent gate: drop records the current consent level forbids.
     const levelLabel = CONSENT_LEVEL_MAP[o['level'] as number] ?? 'info';
     if (!shouldAllow('logs', levelLabel)) return;
+
+    // Sampling gate: probabilistically drop records based on configured rate.
+    if (!shouldSample('logs')) return;
 
     // Backpressure gate: drop when the log queue is full.
     const ticket = tryAcquire('logs');

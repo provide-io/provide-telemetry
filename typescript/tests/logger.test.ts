@@ -20,6 +20,7 @@ import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
 import * as otelLogs from '../src/otel-logs';
 import * as schema from '../src/schema';
 import * as tracing from '../src/tracing';
+import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();
@@ -764,5 +765,35 @@ describe('write hook — logsEmitted health counter', () => {
     // Invalid event name (contains space) — schema will drop it before emitting.
     hook({ level: 30, event: 'invalid event name with spaces' });
     expect(getHealthSnapshot().logsEmitted).toBe(0);
+  });
+});
+
+describe('makeWriteHook — sampling gate', () => {
+  beforeEach(() => {
+    _resetSamplingForTests();
+    _resetConfig();
+    _resetRootLogger();
+    setupTelemetry({ serviceName: 'test-svc', logLevel: 'debug', captureToWindow: true });
+    (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+  });
+
+  afterEach(() => {
+    _resetSamplingForTests();
+  });
+
+  it('drops log records when logs sampling rate is 0', () => {
+    setSamplingPolicy('logs', { defaultRate: 0, overrides: {} });
+    const hook = makeWriteHook();
+    hook({ level: 30, message: 'should.be.dropped' });
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    expect(logs).toHaveLength(0);
+  });
+
+  it('passes log records when logs sampling rate is 1', () => {
+    setSamplingPolicy('logs', { defaultRate: 1, overrides: {} });
+    const hook = makeWriteHook();
+    hook({ level: 30, message: 'should.pass' });
+    const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+    expect(logs).toHaveLength(1);
   });
 });
