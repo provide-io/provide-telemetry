@@ -350,8 +350,8 @@ def test_reconfigure_telemetry_error_message_exact(monkeypatch: pytest.MonkeyPat
             runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="renamed"))
         msg = str(exc_info.value)
         assert "OpenTelemetry" in msg
-        assert "setup_telemetry" in msg
-        assert "reconfigure_telemetry" in msg
+        assert "setup_telemetry()" in msg
+        assert "Restart the process" in msg
     finally:
         logger_core._otel_log_provider = None
 

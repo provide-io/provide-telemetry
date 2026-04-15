@@ -27,9 +27,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-import structlog
 
-from provide.telemetry import _otel
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger import core as core_mod
 from provide.telemetry.logger.core import _reset_logging_for_tests
@@ -92,9 +90,7 @@ class TestCanReuseOtelLogProvider:
         core_mod._otel_log_global_set = False  # global not set
 
         result = core_mod._can_reuse_otel_log_provider(cfg, cfg)
-        assert result is False, (
-            "_can_reuse_otel_log_provider must return False when _otel_log_global_set is False"
-        )
+        assert result is False, "_can_reuse_otel_log_provider must return False when _otel_log_global_set is False"
 
     def test_returns_false_when_provider_is_none_and_global_set_true(self) -> None:
         """When provider is None but global_set is True, must return False.
@@ -113,8 +109,7 @@ class TestCanReuseOtelLogProvider:
 
         result = core_mod._can_reuse_otel_log_provider(cfg, cfg)
         assert result is False, (
-            "_can_reuse_otel_log_provider must return False when provider is None "
-            "(even if global_set is True)"
+            "_can_reuse_otel_log_provider must return False when provider is None (even if global_set is True)"
         )
 
     def test_returns_true_when_all_conditions_met_and_config_same(self) -> None:
@@ -127,8 +122,7 @@ class TestCanReuseOtelLogProvider:
 
         result = core_mod._can_reuse_otel_log_provider(cfg, cfg)
         assert result is True, (
-            "_can_reuse_otel_log_provider must return True when all conditions are met "
-            "and configs have the same key"
+            "_can_reuse_otel_log_provider must return True when all conditions are met and configs have the same key"
         )
 
     def test_returns_false_when_previous_is_none(self) -> None:
@@ -164,6 +158,7 @@ class TestMakeOtelLoggingHandler:
         We test by building a handler via the mocked OTel component path and asserting
         the return is a logging.Handler.
         """
+
         # Build a minimal mock for the OTel SDK logging handler
         class _MockHandler(logging.Handler):
             def __init__(self, level: int, logger_provider: object) -> None:
@@ -201,16 +196,14 @@ class TestBuildHandlersConfigArg:
     fourth argument.
     """
 
-    def test_config_passed_to_handler_when_reusing_provider(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_config_passed_to_handler_when_reusing_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_make_otel_logging_handler must receive the actual config, not None.
 
         Kills mutmut_13: last arg → None.
         """
         received_configs: list[Any] = []
 
-        def _spy_handler(sdk_mod: Any, prov: Any, lvl: int, cfg: Any) -> logging.Handler:
+        def _spy_handler(_sdk_mod: Any, _prov: Any, lvl: int, cfg: Any) -> logging.Handler:
             received_configs.append(cfg)
             return logging.NullHandler()
 
@@ -223,7 +216,7 @@ class TestBuildHandlersConfigArg:
         # Mock OTel components to exist
         mock_components = (MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
         monkeypatch.setattr(core_mod, "_load_otel_logs_components", lambda: mock_components)
-        monkeypatch.setattr(core_mod, "_can_reuse_otel_log_provider", lambda prev, cur: True)
+        monkeypatch.setattr(core_mod, "_can_reuse_otel_log_provider", lambda _prev, _cur: True)
         monkeypatch.setattr(core_mod, "_active_config", cfg)
 
         core_mod._build_handlers(cfg, logging.INFO)
@@ -231,9 +224,7 @@ class TestBuildHandlersConfigArg:
         assert len(received_configs) == 1, f"Expected 1 handler call, got {len(received_configs)}"
         passed_cfg = received_configs[0]
         assert passed_cfg is not None, "config passed to _make_otel_logging_handler must not be None"
-        assert isinstance(passed_cfg, TelemetryConfig), (
-            f"Expected TelemetryConfig, got {type(passed_cfg)!r}"
-        )
+        assert isinstance(passed_cfg, TelemetryConfig), f"Expected TelemetryConfig, got {type(passed_cfg)!r}"
         assert passed_cfg is cfg, "Must pass the same config object, not a substitute"
 
 
@@ -271,11 +262,11 @@ class TestGetActiveConfig:
         cfg = TelemetryConfig()
         original_cfg = runtime._active_config
         try:
-            runtime._active_config = cfg
+            runtime._active_config = cfg  # type: ignore[attr-defined]
             result = _get_active_config()
             assert result is cfg
         finally:
-            runtime._active_config = original_cfg
+            runtime._active_config = original_cfg  # type: ignore[attr-defined]
 
     def test_returns_none_when_active_config_is_none(self) -> None:
         """When _active_config is None in the runtime module, returns None."""
@@ -286,11 +277,11 @@ class TestGetActiveConfig:
         runtime = importlib.import_module("provide.telemetry.runtime")
         original_cfg = runtime._active_config
         try:
-            runtime._active_config = None
+            runtime._active_config = None  # type: ignore[attr-defined]
             result = _get_active_config()
             assert result is None
         finally:
-            runtime._active_config = original_cfg
+            runtime._active_config = original_cfg  # type: ignore[attr-defined]
 
 
 # ── apply_sampling: fallback lambda and release(ticket) ───────────────────────
@@ -316,9 +307,7 @@ class TestApplySamplingFallbackAndRelease:
         monkeypatch.setattr(bp_mod, "try_acquire", lambda signal: ticket)
         monkeypatch.setattr(health_mod, "increment_emitted", lambda signal: None)
 
-    def test_apply_sampling_proceeds_when_consent_module_absent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_apply_sampling_proceeds_when_consent_module_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When consent module is absent (ImportError), the fallback must allow events.
 
         Kills mutmut_3 (returns False) and mutmut_2 (returns None → falsy).
@@ -338,7 +327,7 @@ class TestApplySamplingFallbackAndRelease:
 
             real_import = builtins.__import__
 
-            def _failing_import(name: str, *args: object, **kwargs: object) -> object:
+            def _failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
                 if name == "provide.telemetry.consent":
                     raise ImportError("governance stripped")
                 return real_import(name, *args, **kwargs)
@@ -376,9 +365,7 @@ class TestApplySamplingFallbackAndRelease:
             proc_mod.apply_sampling(None, "info", {"event": "test.event.ok"})
 
         assert len(released) == 1, f"release must be called once, got {len(released)} calls"
-        assert released[0] is ticket, (
-            f"release must be called with the actual ticket (token=99), got {released[0]!r}"
-        )
+        assert released[0] is ticket, f"release must be called with the actual ticket (token=99), got {released[0]!r}"
         assert released[0] is not None, "release must not be called with None (mutmut_26)"
 
     def test_release_receives_correct_token_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -407,13 +394,10 @@ class TestApplySamplingFallbackAndRelease:
             proc_mod.apply_sampling(None, "info", {"event": "test.event.ok"})
 
         assert released == [sentinel_ticket], (
-            f"release must receive the exact ticket from try_acquire, "
-            f"got {released!r} instead of [{sentinel_ticket!r}]"
+            f"release must receive the exact ticket from try_acquire, got {released!r} instead of [{sentinel_ticket!r}]"
         )
 
-    def test_apply_sampling_consent_check_uses_logs_signal(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_apply_sampling_consent_check_uses_logs_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """apply_sampling must call should_allow("logs", method_name).
 
         This test verifies the "logs" signal is passed (existing test already covers this,
