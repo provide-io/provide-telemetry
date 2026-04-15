@@ -12,6 +12,7 @@ use crate::backpressure::{release, try_acquire};
 use crate::config::TelemetryConfig;
 use crate::consent::should_allow;
 use crate::context::get_context;
+use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::Signal;
 use crate::tracer::get_trace_context;
@@ -254,6 +255,8 @@ fn log_event(level: &str, target: &str, message: &str) {
     if buf.len() < MAX_FALLBACK_EVENTS {
         buf.push(event);
     }
+    drop(buf);
+    increment_emitted(Signal::Logs, 1);
     release(ticket);
 }
 

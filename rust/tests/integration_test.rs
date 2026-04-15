@@ -406,3 +406,36 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
     reset_runtime();
     std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
 }
+
+#[test]
+fn setup_test_sampling_policy_applied_from_config() {
+    use provide_telemetry::{get_sampling_policy, setup_telemetry, shutdown_telemetry};
+
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    reset_policies();
+    let _ = shutdown_telemetry();
+
+    std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.25");
+    std::env::set_var("PROVIDE_SAMPLING_TRACES_RATE", "0.5");
+
+    let _ = setup_telemetry();
+
+    let logs_policy = get_sampling_policy(Signal::Logs).expect("logs policy should exist");
+    assert!(
+        (logs_policy.default_rate - 0.25).abs() < 1e-9,
+        "expected logs rate 0.25, got {}",
+        logs_policy.default_rate
+    );
+
+    let traces_policy = get_sampling_policy(Signal::Traces).expect("traces policy should exist");
+    assert!(
+        (traces_policy.default_rate - 0.5).abs() < 1e-9,
+        "expected traces rate 0.5, got {}",
+        traces_policy.default_rate
+    );
+
+    let _ = shutdown_telemetry();
+    std::env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
+    std::env::remove_var("PROVIDE_SAMPLING_TRACES_RATE");
+    reset_policies();
+}

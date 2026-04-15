@@ -4,48 +4,12 @@
 //
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::consent::should_allow;
-use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Tracer {
-    name: String,
-}
-
-pub static tracer: std::sync::LazyLock<Tracer> = std::sync::LazyLock::new(|| Tracer::new(None));
-
-impl Tracer {
-    pub fn new(name: Option<&str>) -> Self {
-        Self {
-            name: name.unwrap_or("provide.telemetry").to_string(),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-static TRACE_COUNTER: AtomicU64 = AtomicU64::new(1);
-
-fn next_hex(len: usize) -> String {
-    let seed = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut value = format!("{seed:016x}");
-    while value.len() < len {
-        let snapshot = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        value.push_str(&format!("{snapshot:016x}"));
-    }
-    value[..len].to_string()
-}
+use crate::context::trace_snapshot;
+use crate::tracer::Tracer;
 
 pub fn get_tracer(name: Option<&str>) -> Tracer {
-    Tracer::new(name)
-}
-
-pub fn set_trace_context(trace_id: Option<String>, span_id: Option<String>) -> ContextGuard {
-    set_trace_context_internal(trace_id, span_id)
+    crate::tracer::get_tracer(name)
 }
 
 pub fn get_trace_context() -> BTreeMap<String, Option<String>> {
@@ -60,12 +24,7 @@ pub fn trace<T, F>(name: &str, callback: F) -> T
 where
     F: FnOnce() -> T,
 {
-    if !should_allow("traces", None) {
-        return callback();
-    }
-    let _span_name = name;
-    let _guard = set_trace_context(Some(next_hex(32)), Some(next_hex(16)));
-    callback()
+    crate::tracer::trace(name, callback)
 }
 
 #[cfg(test)]
@@ -74,21 +33,13 @@ mod tests {
 
     #[test]
     fn tracing_test_tracer_names_match_contract() {
-        assert_eq!(tracer.name(), "provide.telemetry");
+        assert_eq!(get_tracer(None).name(), "provide.telemetry");
         assert_eq!(get_tracer(Some("custom.tracer")).name(), "custom.tracer");
     }
 
     #[test]
-    fn tracing_test_next_hex_respects_requested_length_and_advances() {
-        let first = next_hex(16);
-        let second = next_hex(16);
-        let long = next_hex(32);
-
-        assert_eq!(first.len(), 16);
-        assert_eq!(second.len(), 16);
-        assert_eq!(long.len(), 32);
-        assert_ne!(first, second);
-        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
-        assert!(long.chars().all(|ch| ch.is_ascii_hexdigit()));
+    fn tracing_test_trace_invokes_callback() {
+        let result = trace("test.span", || 42_i32);
+        assert_eq!(result, 42);
     }
 }

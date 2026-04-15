@@ -9,10 +9,11 @@
  * does not prevent the others from draining.
  */
 
-import { _getRegisteredProviders } from './runtime';
+import { _clearProviderState, _getRegisteredProviders } from './runtime';
 
 export async function shutdownTelemetry(): Promise<void> {
   const providers = _getRegisteredProviders();
   await Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve()));
   await Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve()));
+  _clearProviderState();
 }
