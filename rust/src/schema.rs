@@ -137,6 +137,25 @@ mod tests {
     }
 
     #[test]
+    fn schema_test_event_strict_gates_segment_format_validation() {
+        // Non-strict: invalid segment format is accepted by event()
+        set_strict_schema(false);
+        let ev = event(&["not-valid", "b", "c"]).expect("non-strict should accept invalid segment");
+        assert_eq!(ev.event, "not-valid.b.c");
+
+        // Strict: invalid segment format is rejected
+        set_strict_schema(true);
+        let err =
+            event(&["not-valid", "b", "c"]).expect_err("strict should reject invalid segment");
+        assert!(
+            err.message.contains("invalid event segment"),
+            "unexpected error: {}",
+            err.message
+        );
+        set_strict_schema(false);
+    }
+
+    #[test]
     fn schema_test_event_name_validates_empty_and_invalid_strict_inputs() {
         set_strict_schema(false);
         let err = event_name(&[]).expect_err("empty non-strict name should fail");
