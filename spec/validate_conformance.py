@@ -76,6 +76,44 @@ def _to_pascal_case(snake: str) -> str:
     return "".join(_GO_ACRONYMS.get(p.lower(), p.capitalize()) for p in parts)
 
 
+def _parse_language_overrides_fallback(text: str) -> dict[str, list[dict[str, object]]]:
+    """Parse the language_overrides block from raw YAML text without PyYAML."""
+    overrides: dict[str, list[dict[str, object]]] = {}
+    in_lo = False
+    current_lang: str | None = None
+    current_entry: dict[str, object] | None = None
+
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        if stripped == "language_overrides:":
+            in_lo = True
+            continue
+        if not in_lo:
+            continue
+        # End of section: new top-level key (no leading spaces)
+        if stripped and not stripped.startswith(" "):
+            break
+        # Language key: exactly 2 spaces + identifier + colon
+        m = re.match(r"  (\w+):\s*$", stripped)
+        if m:
+            current_lang = m.group(1)
+            overrides[current_lang] = []
+            current_entry = None
+            continue
+        # List entry starting with spec_name
+        m = re.match(r"    - spec_name:\s+(\S+)", stripped)
+        if m and current_lang is not None:
+            current_entry = {"spec_name": m.group(1), "accepted_kinds": []}
+            overrides[current_lang].append(current_entry)
+            continue
+        # accepted_kinds line
+        m = re.match(r"\s+accepted_kinds:\s+\[([^\]]+)\]", stripped)
+        if m and current_entry is not None:
+            current_entry["accepted_kinds"] = [k.strip() for k in m.group(1).split(",")]
+
+    return overrides
+
+
 def _load_spec(path: Path | None = None) -> dict[str, object]:
     """Load the YAML spec. Uses PyYAML if available, else a regex-based fallback."""
     text = (path or _SPEC_PATH).read_text(encoding="utf-8")
@@ -95,7 +133,7 @@ def _load_spec(path: Path | None = None) -> dict[str, object]:
                 "required": match.group(3) == "true",
             }
         )
-    return {"api_entries": names, "language_overrides": {}}
+    return {"api_entries": names, "language_overrides": _parse_language_overrides_fallback(text)}
 
 
 def _collect_spec_symbols(spec: dict[str, object]) -> list[dict[str, object]]:

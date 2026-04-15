@@ -55,7 +55,7 @@ fn parity_test_normal_string_unchanged() {
 }
 
 #[test]
-fn parity_test_cardinality_zero_max_values_clamped() {
+fn parity_test_cardinality_clamping_zero_max_values() {
     let _guard = parity_lock().lock().expect("parity lock poisoned");
     clear_cardinality_limits();
     register_cardinality_limit(
@@ -71,7 +71,7 @@ fn parity_test_cardinality_zero_max_values_clamped() {
 }
 
 #[test]
-fn parity_test_cardinality_zero_ttl_clamped() {
+fn parity_test_cardinality_clamping_zero_ttl() {
     let _guard = parity_lock().lock().expect("parity lock poisoned");
     clear_cardinality_limits();
     register_cardinality_limit(

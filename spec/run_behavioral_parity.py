@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -30,6 +31,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _find_cargo_bin() -> str:
+    """Prefer rustup's cargo over whatever the invoking environment shadows it with.
+
+    uv run python injects its own older cargo into PATH for build purposes.
+    Rustup installs cargo at ~/.cargo/bin/cargo — prefer that when it exists.
+    """
+    rustup_cargo = Path.home() / ".cargo" / "bin" / "cargo"
+    if rustup_cargo.is_file():
+        return str(rustup_cargo)
+    found = shutil.which("cargo")
+    return found or "cargo"
+
+
+_CARGO_BIN: str = _find_cargo_bin()
 
 # ---------------------------------------------------------------------------
 # Language runner configuration
@@ -86,9 +103,9 @@ def _runners(repo: Path) -> list[LanguageRunner]:
         LanguageRunner(
             name="rust",
             label="Rust",
-            check_cmd=["cargo", "--version"],
+            check_cmd=[_CARGO_BIN, "--version"],
             run_cmd=[
-                "cargo",
+                _CARGO_BIN,
                 "--locked",
                 "test",
                 "--test",
@@ -241,7 +258,7 @@ def _probe_runners(repo: Path) -> list[ProbeRunner]:
         ProbeRunner(
             name="rust",
             label="Rust",
-            cmd=["cargo", "--locked", "run", "--example", "emit_log_probe", "--quiet"],
+            cmd=[_CARGO_BIN, "--locked", "run", "--example", "emit_log_probe", "--quiet"],
             cwd=repo / "rust",
         ),
     ]
