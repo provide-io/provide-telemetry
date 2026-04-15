@@ -235,6 +235,47 @@ fn logger_test_log_trait_respects_level_filter() {
 }
 
 #[test]
+fn logger_test_log_trait_respects_module_level_override() {
+    let _guard = logger_lock().lock().expect("logger lock poisoned");
+    let _ = set_as_global_logger();
+    // Global INFO, but module "tests.mod_override" gets DEBUG.
+    // Without the fix, enabled() uses global INFO and drops the DEBUG record
+    // before log_event() can apply the module override.
+    let cfg = LoggingConfig {
+        level: "INFO".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        module_levels: {
+            let mut m = std::collections::HashMap::new();
+            m.insert("tests.mod_override".to_string(), "DEBUG".to_string());
+            m
+        },
+        ..LoggingConfig::default()
+    };
+    configure_logging(cfg);
+    enable_json_capture_for_tests();
+
+    // Module override allows DEBUG — must reach the event store.
+    log::debug!(target: "tests.mod_override", "debug.should.pass");
+    // No override — global INFO applies — must be filtered.
+    log::debug!(target: "tests.other_module", "debug.must.be.filtered");
+
+    let raw = take_json_capture();
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+
+    let output = String::from_utf8(raw).expect("utf8");
+    assert!(
+        output.contains("debug.should.pass"),
+        "DEBUG must pass for module with DEBUG override; got: {output}"
+    );
+    assert!(
+        !output.contains("debug.must.be.filtered"),
+        "DEBUG must be filtered for module without override; got: {output}"
+    );
+}
+
+#[test]
 fn logger_test_console_format_includes_timestamp_when_enabled() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     let cfg = LoggingConfig { fmt: "console".to_string(), include_timestamp: true, ..LoggingConfig::default() };
