@@ -28,7 +28,7 @@ def _get_active_config() -> Any | None:
     runtime = sys.modules.get("provide.telemetry.runtime")
     if runtime is None:
         return None
-    return getattr(runtime, "_active_config", None)
+    return getattr(runtime, "_active_config", None)  # pragma: no mutate — _active_config always exists as module var; 2-arg vs 3-arg equivalent
 
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
