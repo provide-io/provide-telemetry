@@ -221,6 +221,7 @@ mod tests {
             context: BTreeMap::new(),
             trace_id: None,
             span_id: None,
+            event_metadata: None,
         };
         emit_log(&event);
         shutdown_logger_provider();

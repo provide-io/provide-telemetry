@@ -45,6 +45,8 @@ pub(super) fn process_event(event: &mut LogEvent) {
     sanitize_context(event, pii_max_depth);
 
     // 5. Schema enforcement (validate event name when strict mode is on)
+    // Annotates with _schema_error instead of dropping — this is the new
+    // cross-language standard (Python/TS/Go will be updated to match).
     enforce_schema(event);
 }
 
@@ -78,7 +80,15 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
         for value in event.context.values_mut() {
             if let Value::String(s) = value {
                 if s.len() > max_value_length {
-                    s.truncate(max_value_length);
+                    // Find the last char boundary at or before max_value_length
+                    // to avoid panicking on multi-byte UTF-8 codepoints.
+                    let safe_end = s
+                        .char_indices()
+                        .map(|(i, _)| i)
+                        .take_while(|&i| i <= max_value_length)
+                        .last()
+                        .unwrap_or(0);
+                    s.truncate(safe_end);
                     s.push_str("...");
                 }
             }
@@ -96,11 +106,34 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
             }
         }
     }
-    // Cap attribute count — keep the first N in sorted order (BTreeMap is
-    // already sorted, so this preserves alphabetical priority).
+    // Cap attribute count. Priority keys (service identity, trace context,
+    // DARS fields) are preserved; excess is trimmed from the remainder.
     if max_attr_count > 0 && event.context.len() > max_attr_count {
-        let keys: Vec<String> = event.context.keys().skip(max_attr_count).cloned().collect();
-        for key in keys {
+        const PRIORITY_KEYS: &[&str] = &[
+            "service", "env", "version", "trace_id", "span_id", "session_id",
+            "domain", "action", "resource", "status", "error_fingerprint",
+        ];
+        let mut keep: Vec<String> = event
+            .context
+            .keys()
+            .filter(|k| PRIORITY_KEYS.contains(&k.as_str()))
+            .cloned()
+            .collect();
+        for key in event.context.keys() {
+            if keep.len() >= max_attr_count {
+                break;
+            }
+            if !PRIORITY_KEYS.contains(&key.as_str()) {
+                keep.push(key.clone());
+            }
+        }
+        let to_remove: Vec<String> = event
+            .context
+            .keys()
+            .filter(|k| !keep.contains(k))
+            .cloned()
+            .collect();
+        for key in to_remove {
             event.context.remove(&key);
         }
     }
@@ -113,12 +146,18 @@ fn add_error_fingerprint(event: &mut LogEvent) {
     if !matches!(event.level.as_str(), "ERROR" | "CRITICAL" | "FATAL") {
         return;
     }
+    // Only add fingerprint when error/exception attributes exist in the
+    // context — matching Python/TypeScript/Go semantics. Plain error-level
+    // messages without error metadata do not get fingerprinted.
     let error_name = event
         .context
         .get("error")
         .or_else(|| event.context.get("error_type"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(&event.message);
+        .or_else(|| event.context.get("exception"))
+        .and_then(|v| v.as_str());
+    let Some(error_name) = error_name else {
+        return;
+    };
     let stack = event
         .context
         .get("stack")
@@ -153,8 +192,10 @@ fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
 }
 
 /// When strict schema mode is on, validate the event message as a
-/// dot-joined event name. Invalid names get an `_schema_error` context
-/// field (we do NOT drop the event — that would lose telemetry).
+/// dot-joined event name. Invalid names get a `_schema_error` context
+/// field — the event is always emitted (never dropped), so telemetry
+/// is never lost. This is the new cross-language standard; Python/TS/Go
+/// will be updated from their current drop-on-failure behaviour to match.
 fn enforce_schema(event: &mut LogEvent) {
     if !get_strict_schema() {
         return;
@@ -201,6 +242,20 @@ mod tests {
     }
 
     #[test]
+    fn harden_input_truncates_safely_on_multibyte_utf8() {
+        let mut event = make_event("INFO", "test");
+        // "é" is 2 bytes in UTF-8; a 5-byte limit could land mid-codepoint
+        event
+            .context
+            .insert("multi".to_string(), Value::String("ééééé".to_string()));
+        // Must not panic — truncates at a char boundary before max
+        harden_input(&mut event, 5, 64);
+        let val = event.context["multi"].as_str().unwrap();
+        assert!(val.is_char_boundary(val.len()), "must end at char boundary");
+        assert!(val.ends_with("..."));
+    }
+
+    #[test]
     fn harden_input_strips_control_chars() {
         let mut event = make_event("INFO", "test");
         event
@@ -223,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn error_fingerprint_added_for_error_events() {
+    fn error_fingerprint_added_when_error_attr_present() {
         let mut event = make_event("ERROR", "something failed");
         event
             .context
@@ -235,8 +290,22 @@ mod tests {
     }
 
     #[test]
+    fn error_fingerprint_not_added_without_error_attr() {
+        let mut event = make_event("ERROR", "plain error message");
+        // No "error" or "error_type" in context — fingerprint should NOT be added
+        add_error_fingerprint(&mut event);
+        assert!(
+            !event.context.contains_key("error_fingerprint"),
+            "fingerprint requires error attrs in context"
+        );
+    }
+
+    #[test]
     fn error_fingerprint_not_added_for_info_events() {
         let mut event = make_event("INFO", "normal log");
+        event
+            .context
+            .insert("error".to_string(), Value::String("SomeError".to_string()));
         add_error_fingerprint(&mut event);
         assert!(!event.context.contains_key("error_fingerprint"));
     }
