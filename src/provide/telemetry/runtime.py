@@ -127,6 +127,15 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     with _lock:
         base = _active_config if _active_config is not None else TelemetryConfig.from_env()
         merged = _apply_overrides(base, overrides)
+        if _logging_provider_config_changed(base, merged):
+            from provide.telemetry.logger.core import _has_otel_log_provider
+
+            if _has_otel_log_provider():
+                raise RuntimeError(
+                    "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
+                    "are installed. Use reconfigure_telemetry() for full provider replacement, or restart the "
+                    "process and call setup_telemetry() with the new config."
+                )
         _active_config = merged
     _apply_policies(merged)
     if overrides.logging is not None:
@@ -176,11 +185,19 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
                 or metrics_provider._has_meter_provider()
             ):
                 raise RuntimeError(
-                    "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; "
-                    "restart the process and call setup_telemetry() with the new config"
+                    "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed. "
+                    "Use reconfigure_telemetry() for full provider replacement, or restart the process and call "
+                    "setup_telemetry() with the new config."
                 )
             shutdown_telemetry()
             return setup_telemetry(target)
+        if _logging_provider_config_changed(current, target):
+            if logger_core._has_otel_log_provider():
+                raise RuntimeError(
+                    "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
+                    "are installed (endpoint/headers/timeout change). Use reconfigure_telemetry() for full "
+                    "provider replacement, or restart the process and call setup_telemetry() with the new config."
+                )
         return update_runtime_config(_overrides_from_config(target))
 
 
