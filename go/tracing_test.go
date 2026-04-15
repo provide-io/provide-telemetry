@@ -56,6 +56,54 @@ func TestNoopTracer_Start_SetsContext(t *testing.T) {
 	}
 }
 
+// ── Trace() enforcement gate tests ───────────────────────────────────────────
+
+func TestTrace_SamplingZero_FnStillRuns(t *testing.T) {
+	_resetSamplingPolicies()
+	_resetHealth()
+	t.Cleanup(_resetSamplingPolicies)
+	t.Cleanup(_resetHealth)
+	_, err := SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ran := false
+	_ = Trace(context.Background(), "test.span", func(_ context.Context) error {
+		ran = true
+		return nil
+	})
+	if !ran {
+		t.Error("expected fn to run even when sampling rate is 0")
+	}
+	snap := GetHealthSnapshot()
+	if snap.TracesEmitted != 0 {
+		t.Errorf("expected TracesEmitted=0 when sampling=0, got %d", snap.TracesEmitted)
+	}
+}
+
+func TestTrace_BackpressureFull_FnStillRuns(t *testing.T) {
+	_resetQueuePolicy()
+	_resetHealth()
+	t.Cleanup(_resetQueuePolicy)
+	t.Cleanup(_resetHealth)
+	SetQueuePolicy(QueuePolicy{TracesMaxSize: 1})
+	ok := TryAcquire(signalTraces)
+	if !ok {
+		t.Fatal("could not acquire initial trace slot")
+	}
+	defer Release(signalTraces)
+
+	ran := false
+	_ = Trace(context.Background(), "test.span", func(_ context.Context) error {
+		ran = true
+		return nil
+	})
+	if !ran {
+		t.Error("expected fn to run even under full backpressure")
+	}
+}
+
 // ── 5. Span methods don't panic ───────────────────────────────────────────────
 
 func TestNoopSpan_Methods_NoPanic(t *testing.T) {
