@@ -19,6 +19,8 @@ import { _emittedField, _incrementHealth } from './health';
 import { getActiveOtelContext } from './propagation';
 import { randomHex } from './hash';
 import { shouldAllow } from './consent';
+import { shouldSample } from './sampling';
+import { tryAcquire, release } from './backpressure';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -212,12 +214,25 @@ function _spanHandler<T>(fn: () => T, span: Span): T {
  */
 export function withTrace<T>(name: string, fn: () => T): T {
   if (!shouldAllow('traces')) return fn();
+  if (!shouldSample('traces', name)) return fn();
+  const ticket = tryAcquire('traces');
+  if (!ticket) return fn();
+
   const tracer = trace.getTracer(TRACER_NAME);
 
   // If an OTel context was extracted from propagation headers, use it as parent.
+  // Narrow the try/catch to getActiveOtelContext() only so that errors inside
+  // otelContext.with() propagate naturally instead of being swallowed and causing
+  // a second span attempt in the fallback path without holding a backpressure slot.
+  let activeCtx: ReturnType<typeof getActiveOtelContext> | undefined;
   try {
-    const activeCtx = getActiveOtelContext();
-    if (activeCtx) {
+    activeCtx = getActiveOtelContext();
+  } catch {
+    // getActiveOtelContext() threw — graceful degradation, fall through to default behaviour.
+  }
+
+  if (activeCtx) {
+    try {
       return otelContext.with(activeCtx as ReturnType<typeof otelContext.active>, () =>
         tracer.startActiveSpan(name, (span: Span) => {
           // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
@@ -227,16 +242,20 @@ export function withTrace<T>(name: string, fn: () => T): T {
           /* v8 ignore stop */
         }),
       );
+    } finally {
+      release(ticket);
     }
-  } catch {
-    // Graceful degradation — fall through to default behaviour.
   }
 
-  return tracer.startActiveSpan(name, (span: Span) => {
-    // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
-    if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
-    return _spanHandler(fn, span);
-  });
+  try {
+    return tracer.startActiveSpan(name, (span: Span) => {
+      // Stryker disable next-line ConditionalExpression: noop detection is not observable without SDK — branch outcome equivalent under mutation
+      if (_isNoopSpan(span)) return _withSyntheticIds(() => _spanHandler(fn, span));
+      return _spanHandler(fn, span);
+    });
+  } finally {
+    release(ticket);
+  }
 }
 
 /**
