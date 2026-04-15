@@ -10,6 +10,7 @@ import {
   type RuntimeOverrides,
   type TelemetryConfig,
   configFromEnv,
+  getConfig,
   setupTelemetry,
 } from './config';
 import { ConfigurationError } from './exceptions';
@@ -56,9 +57,9 @@ function deepFreeze<T extends object>(obj: T): Readonly<T> {
   return Object.freeze(obj);
 }
 
-/** Return the active runtime config (or env-derived defaults if none set). */
+/** Return the active runtime config (or live setupTelemetry config if none explicitly set via updateRuntimeConfig). */
 export function getRuntimeConfig(): Readonly<TelemetryConfig> {
-  const cfg = _activeConfig ?? configFromEnv();
+  const cfg = _activeConfig ?? getConfig();
   return deepFreeze({ ...cfg });
 }
 
@@ -209,6 +210,12 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 
   setupTelemetry(proposed);
   _activeConfig = proposed;
+}
+
+/** Clear provider registration state. Called by shutdownTelemetry after flush/shutdown. */
+export function _clearProviderState(): void {
+  _providersRegistered = false;
+  _registeredProviders = [];
 }
 
 export function _resetRuntimeForTests(): void {
