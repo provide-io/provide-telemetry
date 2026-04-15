@@ -124,12 +124,18 @@ fn level_order(level: &str) -> u8 {
 /// Per-module overrides win via longest-prefix match; falls back to the
 /// global default level.
 fn effective_level_threshold(target: &str, config: &crate::config::LoggingConfig) -> u8 {
-    let mut best_prefix_len = 0;
+    let mut best_match: Option<usize> = None;
     let mut threshold = level_order(&config.level);
     for (prefix, lvl) in &config.module_levels {
-        if target.starts_with(prefix.as_str()) && prefix.len() > best_prefix_len {
-            best_prefix_len = prefix.len();
-            threshold = level_order(lvl);
+        let matches = prefix.is_empty()
+            || target == prefix.as_str()
+            || target.starts_with(&format!("{prefix}."));
+        if matches {
+            let plen = prefix.len();
+            if best_match.map_or(true, |best| plen > best) {
+                best_match = Some(plen);
+                threshold = level_order(lvl);
+            }
         }
     }
     threshold
@@ -404,7 +410,17 @@ fn level_str_to_log_filter(level: &str) -> log::LevelFilter {
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
         let config = active_logging_config();
-        metadata.level() <= level_str_to_log_filter(&config.level)
+        // Map log::Level to our severity order (TRACE=0 … ERROR=4) and compare
+        // against the effective threshold for this target, which respects
+        // per-module overrides via longest-dot-hierarchy-prefix match.
+        let record_order: u8 = match metadata.level() {
+            log::Level::Error => 4,
+            log::Level::Warn => 3,
+            log::Level::Info => 2,
+            log::Level::Debug => 1,
+            log::Level::Trace => 0,
+        };
+        record_order >= effective_level_threshold(metadata.target(), &config)
     }
 
     fn log(&self, record: &log::Record<'_>) {
