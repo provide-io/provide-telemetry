@@ -216,3 +216,88 @@ fn redact_config_does_not_mutate_original() {
         "original config must not be mutated"
     );
 }
+
+// --- OTLP endpoint + protocol per-signal fallback ---
+
+#[test]
+fn otlp_endpoint_shared_falls_back_to_all_three_signals() {
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318")]).unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318")
+    );
+}
+
+#[test]
+fn otlp_endpoint_signal_specific_overrides_shared() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318"),
+        (
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            "https://traces-only:4318",
+        ),
+    ])
+    .unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318"),
+        "logs should fall back to shared"
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://traces-only:4318"),
+        "traces should use its own override"
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318"),
+        "metrics should fall back to shared"
+    );
+}
+
+#[test]
+fn otlp_endpoint_is_none_when_neither_shared_nor_signal_env_set() {
+    let cfg = config_from(&[]).unwrap();
+    assert!(cfg.logging.otlp_endpoint.is_none());
+    assert!(cfg.tracing.otlp_endpoint.is_none());
+    assert!(cfg.metrics.otlp_endpoint.is_none());
+}
+
+#[test]
+fn otlp_protocol_shared_falls_back_to_all_three_signals() {
+    let cfg = config_from(&[("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")]).unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.tracing.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.metrics.otlp_protocol, "http/protobuf");
+}
+
+#[test]
+fn otlp_protocol_signal_specific_overrides_shared() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
+        ("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "grpc"),
+    ])
+    .unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "http/protobuf");
+    assert_eq!(cfg.tracing.otlp_protocol, "http/protobuf");
+    assert_eq!(
+        cfg.metrics.otlp_protocol, "grpc",
+        "metrics should use its override"
+    );
+}
+
+#[test]
+fn otlp_protocol_defaults_to_empty_string_when_unset() {
+    let cfg = config_from(&[]).unwrap();
+    assert_eq!(cfg.logging.otlp_protocol, "");
+    assert_eq!(cfg.tracing.otlp_protocol, "");
+    assert_eq!(cfg.metrics.otlp_protocol, "");
+}
