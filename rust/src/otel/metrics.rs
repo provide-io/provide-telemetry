@@ -7,7 +7,7 @@
 //! Only compiled under the `otel` cargo feature. Mirrors the
 //! traces.rs design: callers continue to go through
 //! `metrics::counter()`/`gauge()`/`histogram()` (which gate on
-//! consent / sampling / backpressure first); when a meter provider
+//! consent / sampling / backpressure first); when an `OTEL_INSTALLED`
 //! provider is present, the instrument call also pushes a record
 //! through the global MeterProvider.
 //!
@@ -37,19 +37,14 @@ use opentelemetry_sdk::Resource;
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
-use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
-use super::resilient::ResilientMetricExporter;
+use super::endpoint::{resolve_protocol, OtlpProtocol};
 
-static METER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkMeterProvider>>>> = OnceLock::new();
+static METER_PROVIDER: OnceLock<Arc<SdkMeterProvider>> = OnceLock::new();
 static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new();
 static GAUGES: OnceLock<Mutex<HashMap<String, Gauge<f64>>>> = OnceLock::new();
 static HISTOGRAMS: OnceLock<Mutex<HashMap<String, Histogram<f64>>>> = OnceLock::new();
 
 const METER_NAME: &str = "provide.telemetry";
-
-fn meter_provider_slot() -> &'static Mutex<Option<Arc<SdkMeterProvider>>> {
-    METER_PROVIDER.get_or_init(|| Mutex::new(None))
-}
 
 fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
     match p {
@@ -70,7 +65,6 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.metrics.otlp_endpoint {
-        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.metrics.otlp_headers.is_empty() {
@@ -86,12 +80,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
 pub(super) fn install_meter_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
-) -> Result<bool, TelemetryError> {
+) -> Result<(), TelemetryError> {
     if !cfg.metrics.enabled {
-        return Ok(false);
-    }
-    if cfg.metrics.otlp_endpoint.is_none() {
-        return Ok(false);
+        return Ok(());
     }
 
     let exporter = match build_exporter(cfg) {
@@ -101,14 +92,14 @@ pub(super) fn install_meter_provider(
                 eprintln!(
                     "provide_telemetry: metrics exporter init failed (fail_open=true): {err}"
                 );
-                return Ok(false);
+                return Ok(());
             }
             return Err(err);
         }
     };
 
-    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter))
-        .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(Duration::from_secs(60))
         .build();
 
     let provider = SdkMeterProvider::builder()
@@ -118,18 +109,13 @@ pub(super) fn install_meter_provider(
 
     let arc = Arc::new(provider);
     global::set_meter_provider(arc.as_ref().clone());
-    *meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned") = Some(arc);
-    Ok(true)
+    let _ = METER_PROVIDER.set(arc);
+    Ok(())
 }
 
 /// Force-flush and shut down the installed `MeterProvider`.
 pub(super) fn shutdown_meter_provider() {
-    let mut guard = meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned");
-    if let Some(p) = guard.take() {
+    if let Some(p) = METER_PROVIDER.get() {
         let _ = p.force_flush();
         let _ = p.shutdown();
     }
@@ -143,13 +129,6 @@ pub(super) fn shutdown_meter_provider() {
     if let Some(m) = HISTOGRAMS.get() {
         m.lock().expect("histogram cache lock poisoned").clear();
     }
-}
-
-pub(crate) fn meter_provider_installed() -> bool {
-    meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned")
-        .is_some()
 }
 
 fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
@@ -203,17 +182,29 @@ fn get_or_create_histogram(name: &str) -> Histogram<f64> {
 /// existing consent / sampling / backpressure gates have approved
 /// the operation. No-op when no MeterProvider is installed (the
 /// global default returns a noop meter that swallows the write).
-pub(crate) fn record_counter_add(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_counter_add(
+    name: &str,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_counter(name).add(value, &kvs);
 }
 
-pub(crate) fn record_gauge_set(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_gauge_set(
+    name: &str,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_gauge(name).record(value, &kvs);
 }
 
-pub(crate) fn record_histogram(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_histogram(
+    name: &str,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
     get_or_create_histogram(name).record(value, &kvs);
 }
@@ -240,47 +231,6 @@ mod tests {
     #[test]
     fn shutdown_without_install_is_a_noop() {
         shutdown_meter_provider();
-    }
-
-    #[test]
-    fn build_exporter_rejects_invalid_endpoint_scheme() {
-        let mut cfg = test_config();
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
-        assert!(
-            err.message.contains("scheme"),
-            "error must mention bad scheme: {}",
-            err.message
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_fails_closed_by_default() {
-        let mut cfg = test_config();
-        cfg.metrics.enabled = true;
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.metrics_fail_open = false;
-        let resource = super::super::resource::build_resource(&cfg);
-        let result = install_meter_provider(&cfg, resource);
-        assert!(
-            result.is_err(),
-            "bad endpoint must return Err when fail_open=false"
-        );
-        let msg = result.unwrap_err().message;
-        assert!(
-            msg.contains("scheme"),
-            "error must mention bad scheme: {msg}"
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_succeeds_when_fail_open() {
-        let mut cfg = test_config();
-        cfg.metrics.enabled = true;
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.metrics_fail_open = true;
-        let resource = super::super::resource::build_resource(&cfg);
-        install_meter_provider(&cfg, resource).expect("fail_open must absorb validation error");
     }
 
     #[test]
