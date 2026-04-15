@@ -51,10 +51,9 @@ pub fn update_runtime_config(
         let mut guard = active_config()
             .write()
             .expect("runtime config lock poisoned");
-        let current = guard
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| TelemetryError::new("telemetry not set up: call setup_telemetry first"))?;
+        let current = guard.as_ref().cloned().ok_or_else(|| {
+            TelemetryError::new("telemetry not set up: call setup_telemetry first")
+        })?;
         let mut next = current;
         if let Some(sampling) = overrides.sampling {
             next.sampling = sampling;
