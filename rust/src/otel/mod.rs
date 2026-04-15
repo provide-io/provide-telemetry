@@ -7,17 +7,9 @@ use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
 #[cfg(feature = "otel")]
-mod endpoint;
-#[cfg(feature = "otel")]
-pub(crate) mod logs;
-#[cfg(feature = "otel")]
-pub(crate) mod metrics;
-#[cfg(feature = "otel")]
-pub(crate) mod resilient;
-#[cfg(feature = "otel")]
 mod resource;
-#[cfg(feature = "otel")]
-pub(crate) mod traces;
+
+static OTEL_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "otel")]
 pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
