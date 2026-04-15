@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +60,9 @@ pub fn trace<T, F>(name: &str, callback: F) -> T
 where
     F: FnOnce() -> T,
 {
+    if !should_allow("traces", None) {
+        return callback();
+    }
     let _span_name = name;
     let _guard = set_trace_context(Some(next_hex(32)), Some(next_hex(16)));
     callback()

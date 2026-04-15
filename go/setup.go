@@ -56,7 +56,8 @@ func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
 
 func _applyRuntimePolicies(cfg *TelemetryConfig) {
 	_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
-	_, _ = SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: cfg.Sampling.TracesRate})
+	effectiveTracesRate := min(cfg.Sampling.TracesRate, cfg.Tracing.SampleRate)
+	_, _ = SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: effectiveTracesRate})
 	_, _ = SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: cfg.Sampling.MetricsRate})
 
 	SetQueuePolicy(QueuePolicy{

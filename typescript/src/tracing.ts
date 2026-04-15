@@ -18,6 +18,7 @@ import {
 import { _emittedField, _incrementHealth } from './health';
 import { getActiveOtelContext } from './propagation';
 import { randomHex } from './hash';
+import { shouldAllow } from './consent';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -210,6 +211,7 @@ function _spanHandler<T>(fn: () => T, span: Span): T {
  * Mirrors Python @trace decorator behaviour: records exceptions, sets ERROR status.
  */
 export function withTrace<T>(name: string, fn: () => T): T {
+  if (!shouldAllow('traces')) return fn();
   const tracer = trace.getTracer(TRACER_NAME);
 
   // If an OTel context was extracted from propagation headers, use it as parent.

@@ -74,6 +74,9 @@ func GetTracer(name string) Tracer {
 // fn receives the context enriched with trace/span IDs.
 // If fn returns an error, the error is recorded on the span before it ends.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
+	if !ShouldAllow(signalTraces, "") {
+		return fn(ctx)
+	}
 	spanCtx, span := DefaultTracer.Start(ctx, name)
 	defer span.End()
 	err := fn(spanCtx)

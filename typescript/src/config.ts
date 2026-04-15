@@ -471,7 +471,9 @@ export function getConfig(): TelemetryConfig {
 export function applyConfigPolicies(cfg: TelemetryConfig): void {
   // Sampling
   setSamplingPolicy('logs', { defaultRate: cfg.samplingLogsRate });
-  setSamplingPolicy('traces', { defaultRate: cfg.samplingTracesRate });
+  setSamplingPolicy('traces', {
+    defaultRate: Math.min(cfg.samplingTracesRate, cfg.traceSampleRate),
+  });
   setSamplingPolicy('metrics', { defaultRate: cfg.samplingMetricsRate });
 
   // Backpressure

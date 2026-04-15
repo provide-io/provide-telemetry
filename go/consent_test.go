@@ -12,6 +12,7 @@ import (
 
 func TestConsentDefaultIsFull(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	if got := GetConsentLevel(); got != ConsentFull {
 		t.Errorf("expected ConsentFull, got %v", got)
 	}
@@ -19,6 +20,7 @@ func TestConsentDefaultIsFull(t *testing.T) {
 
 func TestConsentFullAllowsAllSignals(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFull)
 	signals := []struct {
 		signal   string
@@ -38,6 +40,7 @@ func TestConsentFullAllowsAllSignals(t *testing.T) {
 
 func TestConsentNoneBlocksAllSignals(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentNone)
 	signals := []struct {
 		signal   string
@@ -57,6 +60,7 @@ func TestConsentNoneBlocksAllSignals(t *testing.T) {
 
 func TestConsentFunctionalLogThresholds(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFunctional)
 
 	tests := []struct {
@@ -81,6 +85,7 @@ func TestConsentFunctionalLogThresholds(t *testing.T) {
 
 func TestConsentFunctionalTracesAndMetricsAllowed(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFunctional)
 	if !ShouldAllow("traces", "") {
 		t.Error("expected FUNCTIONAL to allow traces")
@@ -92,6 +97,7 @@ func TestConsentFunctionalTracesAndMetricsAllowed(t *testing.T) {
 
 func TestConsentFunctionalContextBlocked(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFunctional)
 	if ShouldAllow("context", "") {
 		t.Error("expected FUNCTIONAL to block context")
@@ -100,6 +106,7 @@ func TestConsentFunctionalContextBlocked(t *testing.T) {
 
 func TestConsentMinimalLogThresholds(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentMinimal)
 
 	tests := []struct {
@@ -123,6 +130,7 @@ func TestConsentMinimalLogThresholds(t *testing.T) {
 
 func TestConsentMinimalBlocksTracesMetricsContext(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentMinimal)
 	for _, sig := range []string{"traces", "metrics", "context"} {
 		if ShouldAllow(sig, "") {
@@ -133,6 +141,7 @@ func TestConsentMinimalBlocksTracesMetricsContext(t *testing.T) {
 
 func TestLoadConsentFromEnvFull(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "FULL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFull {
@@ -142,6 +151,7 @@ func TestLoadConsentFromEnvFull(t *testing.T) {
 
 func TestLoadConsentFromEnvFunctional(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "FUNCTIONAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentFunctional {
@@ -151,6 +161,7 @@ func TestLoadConsentFromEnvFunctional(t *testing.T) {
 
 func TestLoadConsentFromEnvMinimal(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "MINIMAL")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentMinimal {
@@ -160,6 +171,7 @@ func TestLoadConsentFromEnvMinimal(t *testing.T) {
 
 func TestLoadConsentFromEnvNone(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
 	LoadConsentFromEnv()
 	if got := GetConsentLevel(); got != ConsentNone {
@@ -169,6 +181,7 @@ func TestLoadConsentFromEnvNone(t *testing.T) {
 
 func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
 	LoadConsentFromEnv()
 	// invalid value leaves level unchanged (FULL)
@@ -179,6 +192,7 @@ func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
 
 func TestLoadConsentFromEnvEmpty(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "")
 	LoadConsentFromEnv()
 	// empty env var leaves level unchanged
@@ -189,6 +203,7 @@ func TestLoadConsentFromEnvEmpty(t *testing.T) {
 
 func TestConsentFunctionalUnknownSignalAllowed(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFunctional)
 	if !ShouldAllow("custom_signal", "") {
 		t.Error("expected FUNCTIONAL to allow unknown signals")
@@ -197,6 +212,7 @@ func TestConsentFunctionalUnknownSignalAllowed(t *testing.T) {
 
 func TestConsentMinimalUnknownSignalBlocked(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentMinimal)
 	if ShouldAllow("custom_signal", "") {
 		t.Error("expected MINIMAL to block unknown signals")
@@ -205,6 +221,7 @@ func TestConsentMinimalUnknownSignalBlocked(t *testing.T) {
 
 func TestSetGetConsentLevel(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentFunctional)
 	if got := GetConsentLevel(); got != ConsentFunctional {
 		t.Errorf("expected ConsentFunctional, got %v", got)
@@ -213,6 +230,7 @@ func TestSetGetConsentLevel(t *testing.T) {
 
 func TestShouldAllowUnknownConsentLevelReturnsFalse(t *testing.T) {
 	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
 	SetConsentLevel(ConsentLevel(99))
 	if ShouldAllow("logs", "INFO") {
 		t.Error("expected unknown ConsentLevel to deny all signals")

@@ -58,10 +58,13 @@ type _atomicCounter struct {
 	value atomic.Int64
 }
 
-// Add increments the counter by value, subject to sampling and backpressure.
+// Add increments the counter by value, subject to consent, sampling and backpressure.
 func (c *_atomicCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !ShouldAllow(signalMetrics, "") {
+		return
+	}
 	if sampled, _ := ShouldSample(signalMetrics, c.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
@@ -82,10 +85,13 @@ type _atomicGauge struct {
 	value atomic.Uint64
 }
 
-// Set stores value as the current gauge reading, subject to sampling and backpressure.
+// Set stores value as the current gauge reading, subject to consent, sampling and backpressure.
 func (g *_atomicGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !ShouldAllow(signalMetrics, "") {
+		return
+	}
 	if sampled, _ := ShouldSample(signalMetrics, g.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
@@ -107,10 +113,13 @@ type _atomicHistogram struct {
 	sum   atomic.Uint64 // stores float64 bits
 }
 
-// Record adds a single observation, subject to sampling and backpressure.
+// Record adds a single observation, subject to consent, sampling and backpressure.
 func (h *_atomicHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !ShouldAllow(signalMetrics, "") {
+		return
+	}
 	if sampled, _ := ShouldSample(signalMetrics, h.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}

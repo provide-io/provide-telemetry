@@ -28,9 +28,12 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             @functools.wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 from provide.telemetry.backpressure import release, try_acquire
+                from provide.telemetry.consent import should_allow
                 from provide.telemetry.health import increment_emitted
                 from provide.telemetry.sampling import should_sample
 
+                if not should_allow("traces"):
+                    return await fn(*args, **kwargs)
                 if not should_sample("traces", span_name):
                     return await fn(*args, **kwargs)
                 ticket = try_acquire("traces")
@@ -52,9 +55,12 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
         @functools.wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             from provide.telemetry.backpressure import release, try_acquire
+            from provide.telemetry.consent import should_allow
             from provide.telemetry.health import increment_emitted
             from provide.telemetry.sampling import should_sample
 
+            if not should_allow("traces"):
+                return fn(*args, **kwargs)
             if not should_sample("traces", span_name):
                 return fn(*args, **kwargs)
             ticket = try_acquire("traces")
