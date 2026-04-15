@@ -25,10 +25,12 @@ otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
-    "dep:opentelemetry-appender-tracing",
+    "dep:opentelemetry-semantic-conventions",
     "dep:reqwest",
     "dep:tracing-opentelemetry",
 ]
+# OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
+otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic"]
 
 [dependencies]
 base64 = "0.22"
@@ -38,7 +40,8 @@ mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
 opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, features = ["http-proto", "reqwest-client"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace"] }
+opentelemetry-semantic-conventions = { version = "0.31", optional = true }
 percent-encoding = "2.3.1"
 rand = "0.8"
 tracing = "0.1"
