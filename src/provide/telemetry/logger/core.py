@@ -11,7 +11,7 @@ import logging
 import sys
 import threading
 import warnings
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import structlog
 
@@ -146,7 +146,9 @@ def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: Tele
     return _log_provider_config_key(previous) == _log_provider_config_key(current)
 
 
-def _make_otel_logging_handler(sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig) -> logging.Handler:
+def _make_otel_logging_handler(
+    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
+) -> logging.Handler:
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
     if instrumentation_handler_cls is not None:
         return instrumentation_handler_cls(
@@ -156,7 +158,7 @@ def _make_otel_logging_handler(sdk_logs_mod: Any, provider: object, level: int, 
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        return sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
+        return cast(logging.Handler, sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider))
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
