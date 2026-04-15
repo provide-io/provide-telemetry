@@ -17,6 +17,7 @@ import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
 import { setSetupError } from './health';
 import { ConfigurationError } from './exceptions';
+import { _setActiveConfig } from './runtime';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -181,7 +182,7 @@ const DEFAULTS: TelemetryConfig = {
   otelEnabled: false,
   sanitizeFields: [],
   captureToWindow: true,
-  consoleOutput: false,
+  consoleOutput: true,
   strictSchema: false,
   requiredLogKeys: [],
   logIncludeTimestamp: true,
@@ -217,6 +218,14 @@ const DEFAULTS: TelemetryConfig = {
 };
 
 let _config: TelemetryConfig = { ...DEFAULTS };
+
+/** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
+let _configVersion = 0;
+
+/** Return the current config version (used by logger to detect stale root). */
+export function _getConfigVersion(): number {
+  return _configVersion;
+}
 
 /** Read a string from Node process.env. Silently returns undefined in non-Node environments. */
 // Stryker disable BlockStatement
@@ -334,7 +343,7 @@ export function configFromEnv(): TelemetryConfig {
     otlpHeaders: parsedHeaders,
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
-    consoleOutput: false,
+    consoleOutput: true,
     strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
@@ -510,6 +519,8 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
+  _configVersion++;
+  _setActiveConfig(_config);
   try {
     applyConfigPolicies(_config);
   } catch (err: unknown) {
@@ -522,6 +533,7 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
 /** Reset to defaults (used in tests). */
 export function _resetConfig(): void {
   _config = { ...DEFAULTS };
+  _configVersion = 0;
 }
 
 /**

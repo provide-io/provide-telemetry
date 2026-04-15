@@ -90,7 +90,7 @@ See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs
 
 ## API Surface
 
-All implementations export equivalent APIs:
+All implementations export equivalent APIs (signatures vary per language idiom):
 
 | Category | Functions |
 |----------|-----------|

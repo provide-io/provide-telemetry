@@ -217,9 +217,7 @@ _FIELD_RENAMES: dict[str, str] = {
 }
 
 # Fields to drop after renaming (pino metadata, structlog internals).
-_NOISE_FIELDS: frozenset[str] = frozenset(
-    {"pid", "hostname", "v", "event", "service.name", "service.env", "service.version", "trace.id", "span.id"}
-)
+_NOISE_FIELDS: frozenset[str] = frozenset({"pid", "hostname", "v", "event"})
 
 # Pino numeric level → canonical uppercase string.
 _PINO_LEVELS: dict[int, str] = {10: "TRACE", 20: "DEBUG", 30: "INFO", 40: "WARN", 50: "ERROR", 60: "FATAL"}
