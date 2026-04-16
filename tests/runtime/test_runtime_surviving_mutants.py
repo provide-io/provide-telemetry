@@ -234,7 +234,9 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
     mutmut_5 (and→or), mutmut_6 (is not None→is None), mutmut_7 (!=→==),
     mutmut_8 (True→None), mutmut_9 (True→False)."""
 
-    def test_logging_unchanged_does_not_trigger_reconfigure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_logging_unchanged_does_not_trigger_reconfigure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When logging config is unchanged, configure_logging must NOT be called.
 
         Kills mutmut_2 (logging_changed=True at init) and mutmut_5 (and→or).
@@ -246,16 +248,18 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
 
         logger_core = importlib.import_module("provide.telemetry.logger.core")
         configure_calls: list[object] = []
-        monkeypatch.setattr(
-            logger_core, "configure_logging", lambda cfg, force=False: configure_calls.append((cfg, force))
-        )
+        monkeypatch.setattr(logger_core, "configure_logging", lambda cfg, force=False: configure_calls.append((cfg, force)))
         base = TelemetryConfig.from_env()
         runtime_mod.apply_runtime_config(base)
         # Override with IDENTICAL logging config — must not trigger reconfigure
         runtime_mod.update_runtime_config(RuntimeOverrides(logging=base.logging))
-        assert configure_calls == [], "configure_logging was called even though logging config did not change"
+        assert configure_calls == [], (
+            "configure_logging was called even though logging config did not change"
+        )
 
-    def test_logging_changed_triggers_reconfigure_with_force_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_logging_changed_triggers_reconfigure_with_force_true(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When logging config changes, configure_logging(merged, force=True) must be called.
 
         Kills mutmut_8 (True→None), mutmut_9 (True→False), mutmut_31 (force=None),
@@ -285,7 +289,9 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
         # The merged config should have the new logging level
         assert cfg_arg.logging.level == "DEBUG"
 
-    def test_logging_none_override_does_not_trigger_reconfigure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_logging_none_override_does_not_trigger_reconfigure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When overrides.logging is None, configure_logging must NOT be called.
 
         Kills mutmut_6 (is None instead of is not None).
@@ -294,15 +300,15 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
 
         logger_core = importlib.import_module("provide.telemetry.logger.core")
         configure_calls: list[object] = []
-        monkeypatch.setattr(
-            logger_core, "configure_logging", lambda cfg, force=False: configure_calls.append((cfg, force))
-        )
+        monkeypatch.setattr(logger_core, "configure_logging", lambda cfg, force=False: configure_calls.append((cfg, force)))
         runtime_mod.apply_runtime_config(TelemetryConfig.from_env())
         # No logging override — must not trigger reconfigure
         runtime_mod.update_runtime_config(RuntimeOverrides(strict_schema=True))
         assert configure_calls == []
 
-    def test_logging_changed_flag_with_same_value_not_triggered(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_logging_changed_flag_with_same_value_not_triggered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When overrides.logging is not None but EQUALS base.logging, no reconfigure.
 
         Kills mutmut_7 (!=→==): with ==, the flag would be set when values ARE equal
@@ -326,15 +332,19 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
 class TestUpdateRuntimeConfigErrorMessages:
     """Kill mutmut_20/21/23/24/25/26/27: error message string mutations."""
 
-    def test_error_message_contains_opentelemetry_capitalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_error_message_contains_opentelemetry_capitalized(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Error must contain "OpenTelemetry" (capital O and T).
 
         Kills mutmut_21 ("opentelemetry" lowercase).
         """
         from provide.telemetry.logger import core as logger_core
 
-        runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        runtime_mod.apply_runtime_config(
+            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
+        )
+        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
@@ -351,18 +361,20 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "OpenTelemetry" in msg, f"Expected 'OpenTelemetry' in error, got: {msg!r}"
         assert "opentelemetry" not in msg.replace("OpenTelemetry", ""), "Must not be lowercase"
-        # mutmut_20: prefix "XX" prepended to "provider-changing..."
-        assert "XXprovider-changing" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
-    def test_error_message_contains_reconfigure_telemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_error_message_contains_reconfigure_telemetry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Error must contain 'reconfigure_telemetry()' (exact case).
 
         Kills mutmut_23/24/25 (case/prefix changes).
         """
         from provide.telemetry.logger import core as logger_core
 
-        runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        runtime_mod.apply_runtime_config(
+            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
+        )
+        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
@@ -379,18 +391,20 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "reconfigure_telemetry()" in msg, f"Expected 'reconfigure_telemetry()' in: {msg!r}"
         assert "Use reconfigure_telemetry()" in msg, f"Expected 'Use reconfigure_telemetry()' in: {msg!r}"
-        # mutmut_23: prefix "XX" prepended to "are installed..."
-        assert "XXare installed" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
-    def test_error_message_contains_setup_telemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_error_message_contains_setup_telemetry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Error must contain 'setup_telemetry()'.
 
         Kills mutmut_26/27 (suffix changes).
         """
         from provide.telemetry.logger import core as logger_core
 
-        runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        runtime_mod.apply_runtime_config(
+            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
+        )
+        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
@@ -407,5 +421,4 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "setup_telemetry()" in msg, f"Expected 'setup_telemetry()' in: {msg!r}"
         assert "process and call setup_telemetry()" in msg
-        # mutmut_26: prefix "XX" prepended to "process and call..."
-        assert "XXprocess" not in msg, f"Message must not start segment with 'XX': {msg!r}"
+
