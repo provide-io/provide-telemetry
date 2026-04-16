@@ -400,6 +400,14 @@ _STRUCTURAL_CATEGORIES: frozenset[str] = frozenset({"health_snapshot"})
 _ALLOWLISTED_CATEGORIES: frozenset[str] = _PROBE_ONLY_CATEGORIES | _STRUCTURAL_CATEGORIES
 
 
+def _find_repo_root_from(start: Path) -> Path:
+    """Walk up from start until we find the repo root (marked by a VERSION file)."""
+    for parent in start.resolve().parents:
+        if (parent / "VERSION").exists():
+            return parent
+    raise FileNotFoundError(f"Could not locate repo root from {start}")  # pragma: no cover
+
+
 def test_parity_fixture_yaml_coverage() -> None:
     """Every top-level category in behavioral_fixtures.yaml must have ≥1 test_parity_{category}* test."""
     import importlib
@@ -407,11 +415,14 @@ def test_parity_fixture_yaml_coverage() -> None:
 
     import yaml as _yaml
 
-    fixtures_path = Path(__file__).resolve().parent.parent.parent / "spec" / "behavioral_fixtures.yaml"
+    # Anchor to the real repo root via VERSION so this test survives mutmut's
+    # test-file relocation into mutants/ (where __file__ resolves to mutants/tests/…).
+    repo_root = _find_repo_root_from(Path(__file__))
+    fixtures_path = repo_root / "spec" / "behavioral_fixtures.yaml"
     all_categories: list[str] = list(_yaml.safe_load(fixtures_path.read_text()).keys())
 
     # Collect test_parity_* names from all Python modules inside tests/parity/.
-    parity_dir = Path(__file__).resolve().parent
+    parity_dir = repo_root / "tests" / "parity"
     module_fns: set[str] = set()
     for py_file in sorted(parity_dir.glob("test_*.py")):
         mod_name = f"tests.parity.{py_file.stem}"
