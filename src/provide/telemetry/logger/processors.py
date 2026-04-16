@@ -245,7 +245,7 @@ class _LevelFilter:
 
         threshold = self._default_numeric
         for prefix in self._sorted_prefixes:
-            if logger_name.startswith(prefix):
+            if prefix == "" or logger_name == prefix or logger_name.startswith(prefix + "."):
                 threshold = self._module_numerics[prefix]
                 break
 
