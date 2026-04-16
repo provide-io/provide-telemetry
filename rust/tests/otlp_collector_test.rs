@@ -16,7 +16,6 @@ fn otlp_collector_smoke() {
     reset_telemetry_state();
 
     if env::var("PROVIDE_TEST_OTLP_ENDPOINT").is_err() {
-        eprintln!("PROVIDE_TEST_OTLP_ENDPOINT not set — skipping OTLP collector test");
         return;
     }
 

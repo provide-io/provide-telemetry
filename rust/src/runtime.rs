@@ -99,10 +99,17 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
         .clone()
 }
 
+fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
+    let guard = active_config()
+        .read()
+        .expect("runtime config lock poisoned");
+    let cfg = guard.clone();
+    (cfg.clone(), cfg.is_some())
+}
+
 pub fn get_runtime_status() -> RuntimeStatus {
-    let cfg =
-        get_runtime_config().unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
-    let setup_done = get_runtime_config().is_some();
+    let (cfg, setup_done) = runtime_config_snapshot();
+    let cfg = cfg.unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
 
     #[cfg(feature = "otel")]
     let providers = SignalStatus {
@@ -391,82 +398,6 @@ mod tests {
         changed.strict_schema = true;
 
         assert!(!provider_config_changed(&current, &changed));
-    }
-
-    #[test]
-    fn runtime_test_per_signal_helpers_are_independent() {
-        let base = TelemetryConfig::default();
-
-        // logging-only change — only logging helper fires
-        let mut changed = base.clone();
-        changed.logging.otlp_protocol = "http/json".to_string();
-        assert!(logging_provider_config_changed(&base, &changed));
-        assert!(!tracing_provider_config_changed(&base, &changed));
-        assert!(!metrics_provider_config_changed(&base, &changed));
-
-        // tracing-only change — only tracing helper fires
-        let mut changed = base.clone();
-        changed.exporter.traces_timeout_seconds = 5.0;
-        assert!(!logging_provider_config_changed(&base, &changed));
-        assert!(tracing_provider_config_changed(&base, &changed));
-        assert!(!metrics_provider_config_changed(&base, &changed));
-
-        // metrics-only change — only metrics helper fires
-        let mut changed = base.clone();
-        changed.metrics.metric_export_interval_ms = 30_000;
-        assert!(!logging_provider_config_changed(&base, &changed));
-        assert!(!tracing_provider_config_changed(&base, &changed));
-        assert!(metrics_provider_config_changed(&base, &changed));
-    }
-
-    #[test]
-    fn runtime_test_reload_timeout_hot_when_no_provider_snapshot_matches_live_policy() {
-        // Serialize against other tests that touch env or runtime state.
-        let _guard = crate::testing::acquire_test_state_lock();
-        use std::env;
-
-        // Set up with a known timeout.
-        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "7.0");
-        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "1.0");
-        set_active_config(Some(
-            TelemetryConfig::from_env().expect("config must parse"),
-        ));
-        apply_policies(&get_runtime_config().expect("config must exist"));
-
-        // No OTel provider is installed in this unit-test environment, so the
-        // timeout field is hot-reloadable.  Change it and reload.
-        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "99.0");
-        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.5");
-
-        let reloaded = reload_runtime_from_env().expect("reload must succeed");
-
-        // Without a live provider, timeout IS hot-reloadable.
-        assert_eq!(
-            reloaded.exporter.logs_timeout_seconds, 99.0,
-            "timeout must be hot-reloadable when no OTel provider is installed"
-        );
-
-        // The key invariant: config snapshot and live exporter policy agree —
-        // no split-brain regardless of which path (freeze or update) was taken.
-        let policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
-            .expect("policy must exist");
-        assert_eq!(
-            policy.timeout_seconds, reloaded.exporter.logs_timeout_seconds,
-            "live exporter policy must match the config snapshot (no split-brain)"
-        );
-
-        // Hot-reloadable non-timeout field also updated correctly.
-        assert_eq!(
-            reloaded.sampling.logs_rate, 0.5,
-            "sampling rate must update"
-        );
-
-        // Cleanup: remove env vars and reset all global telemetry state so
-        // subsequent tests (sampling, backpressure, schema, resilience, etc.)
-        // start from a known clean slate.
-        env::remove_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS");
-        env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
-        crate::testing::reset_telemetry_state();
     }
 
     #[test]

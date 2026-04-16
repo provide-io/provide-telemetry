@@ -39,6 +39,22 @@ handles only batching + OTLP network export. When OTel is not configured
 or the feature is off, the crate falls back gracefully to in-process
 instrumentation.
 
+## Runtime Introspection
+
+Use `get_runtime_config()` to inspect the applied config snapshot and
+`get_runtime_status()` to inspect setup state, provider installation, fallback
+mode, and the last setup error:
+
+```rust
+use provide_telemetry::{get_runtime_config, get_runtime_status};
+
+let cfg = get_runtime_config();
+let status = get_runtime_status();
+
+println!("{cfg:?}");
+println!("{status:?}");
+```
+
 ## Examples
 
 ```bash

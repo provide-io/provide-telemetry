@@ -152,6 +152,10 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: "3.11"
+      - name: Prepare collector output directory
+        run: |
+          mkdir -p tests/integration/otel-output-python
+          rm -f tests/integration/otel-output-python/*.json
       - name: Start OTLP collector
         run: |
           docker run -d --name otelcol \
@@ -172,13 +176,23 @@ jobs:
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
         env:
-          UNDEF_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-python"
       - name: Collector logs
         if: always()
         run: docker logs otelcol || true
+      - name: Capture collector logs
+        run: docker logs otelcol > tests/integration/otel-output-python/collector.log 2>&1
+      - name: Verify collector exported all signals
+        run: |
+          grep -q "integration.otlp.smoke" tests/integration/otel-output-python/collector.log
+          grep -q "integration.requests" tests/integration/otel-output-python/collector.log
+          grep -q "integration.otlp.log" tests/integration/otel-output-python/collector.log
       - name: Stop collector
         if: always()
-        run: docker rm -f otelcol || true
+        run: |
+          docker stop otelcol || true
+          docker rm otelcol || true
 
   performance-smoke:
     runs-on: ubuntu-24.04

@@ -9,23 +9,29 @@ import os
 
 import pytest
 
-from provide.telemetry import counter, setup_telemetry, shutdown_telemetry, trace
+from provide.telemetry import counter, get_logger, setup_telemetry, shutdown_telemetry, trace
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.setup import _reset_all_for_tests
 
 pytestmark = [pytest.mark.integration, pytest.mark.otel]
 
 
+def _signal_endpoint(base_endpoint: str | None, signal: str) -> str | None:
+    if not base_endpoint:
+        return None
+    return f"{base_endpoint.rstrip('/')}/v1/{signal}"
+
+
 def test_otlp_collector_smoke() -> None:
     pytest.importorskip("opentelemetry")
     endpoint = os.getenv("PROVIDE_TEST_OTLP_ENDPOINT")
-    traces_endpoint = os.getenv("PROVIDE_TEST_OTLP_TRACES_ENDPOINT") or endpoint
-    metrics_endpoint = os.getenv("PROVIDE_TEST_OTLP_METRICS_ENDPOINT") or endpoint
+    traces_endpoint = os.getenv("PROVIDE_TEST_OTLP_TRACES_ENDPOINT") or _signal_endpoint(endpoint, "traces")
+    metrics_endpoint = os.getenv("PROVIDE_TEST_OTLP_METRICS_ENDPOINT") or _signal_endpoint(endpoint, "metrics")
+    logs_endpoint = os.getenv("PROVIDE_TEST_OTLP_LOGS_ENDPOINT") or _signal_endpoint(endpoint, "logs")
     otlp_headers = os.getenv("PROVIDE_TEST_OTLP_HEADERS")
-    if not traces_endpoint or not metrics_endpoint:
+    if not traces_endpoint or not metrics_endpoint or not logs_endpoint:
         pytest.skip(
-            "PROVIDE_TEST_OTLP_ENDPOINT (or PROVIDE_TEST_OTLP_TRACES_ENDPOINT and PROVIDE_TEST_OTLP_METRICS_ENDPOINT) "
-            "is not set"
+            "PROVIDE_TEST_OTLP_ENDPOINT (or PROVIDE_TEST_OTLP_TRACES_ENDPOINT / METRICS / LOGS endpoints) is not set"
         )
 
     _reset_all_for_tests()
@@ -35,6 +41,7 @@ def test_otlp_collector_smoke() -> None:
             "PROVIDE_TELEMETRY_SERVICE_NAME": "provide-telemetry-integration",
             "PROVIDE_TRACE_ENABLED": "true",
             "PROVIDE_METRICS_ENABLED": "true",
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": logs_endpoint,
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": traces_endpoint,
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": metrics_endpoint,
             **({"OTEL_EXPORTER_OTLP_HEADERS": otlp_headers} if otlp_headers else {}),
@@ -45,6 +52,7 @@ def test_otlp_collector_smoke() -> None:
     @trace("integration.otlp.smoke")
     def _work() -> dict[str, str | None]:
         otel_trace = pytest.importorskip("opentelemetry.trace")
+        get_logger("integration.otlp").info("integration.otlp.log", suite="integration")
         counter("integration.requests").add(1, {"suite": "integration"})
         context = otel_trace.get_current_span().get_span_context()
         trace_id = f"{context.trace_id:032x}" if context.trace_id else None

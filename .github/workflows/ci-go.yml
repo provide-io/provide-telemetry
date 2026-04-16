@@ -107,6 +107,58 @@ jobs:
             go run ./"$d"
           done
 
+  otlp-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.26"
+      - name: Prepare collector output directory
+        run: |
+          mkdir -p ../tests/integration/otel-output-go
+          rm -f ../tests/integration/otel-output-go/*.json
+      - name: Start OTLP collector
+        run: |
+          docker run -d --name otelcol-go \
+            -p 4318:4318 \
+            -p 13133:13133 \
+            -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1
+      - name: Wait for collector health
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "collector failed health check"
+          exit 1
+      - name: Run collector-backed OTLP smoke test
+        run: go test -run TestOTLPCollectorSmoke .
+        env:
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-go"
+      - name: Collector logs
+        if: always()
+        run: docker logs otelcol-go || true
+      - name: Capture collector logs
+        run: docker logs otelcol-go > ../tests/integration/otel-output-go/collector.log 2>&1
+      - name: Verify collector exported all signals
+        run: |
+          grep -q "integration.collector.span" ../tests/integration/otel-output-go/collector.log
+          grep -q "integration.collector.requests" ../tests/integration/otel-output-go/collector.log
+          grep -q "integration.collector.log" ../tests/integration/otel-output-go/collector.log
+      - name: Stop collector
+        if: always()
+        run: |
+          docker stop otelcol-go || true
+          docker rm otelcol-go || true
+
   test-logger:
     runs-on: ubuntu-latest
     defaults:
@@ -160,4 +212,3 @@ jobs:
             exit 1
           fi
           echo "OK: go/tracer has OTel API only, no SDK"
-

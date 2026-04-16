@@ -10,7 +10,7 @@ receivers:
 
 exporters:
   debug:
-    verbosity: basic
+    verbosity: detailed
 
 extensions:
   health_check:
@@ -19,6 +19,9 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
     traces:
       receivers: [otlp]
       exporters: [debug]

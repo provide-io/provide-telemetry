@@ -92,11 +92,7 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
-      # Bump explicitly when the upstream `stable` branch advances.
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
-        with:
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: Prepare collector output directory
         run: |
           mkdir -p ../tests/integration/otel-output-rust
@@ -109,7 +105,15 @@ jobs:
             -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
-        run: ../ci/wait-for-collector.sh
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "collector failed health check"
+          exit 1
       - name: Run collector-backed OTLP smoke test
         run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1
         env:
