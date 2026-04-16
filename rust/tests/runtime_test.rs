@@ -228,10 +228,9 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
     .expect("update should succeed");
 
     // Verify live sampling policy
-    let sp = provide_telemetry::sampling::get_sampling_policy(
-        provide_telemetry::sampling::Signal::Logs,
-    )
-    .expect("sampling policy should exist");
+    let sp =
+        provide_telemetry::sampling::get_sampling_policy(provide_telemetry::sampling::Signal::Logs)
+            .expect("sampling policy should exist");
     assert_eq!(sp.default_rate, 0.25, "sampling policy not updated live");
 
     // Verify live queue policy
@@ -245,30 +244,33 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
     .expect("exporter policy should exist");
     assert_eq!(ep.retries, 2, "exporter policy not updated live");
     assert_eq!(ep.backoff_seconds, 1.5, "exporter backoff not updated live");
-    assert_eq!(ep.timeout_seconds, 22.0, "exporter timeout not updated live");
+    assert_eq!(
+        ep.timeout_seconds, 22.0,
+        "exporter timeout not updated live"
+    );
     assert!(!ep.fail_open, "exporter fail_open not updated live");
 }
 
 #[test]
 fn runtime_test_reload_runtime_from_env_reapplies_runtime_policies() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
-    with_env(
-        &[("PROVIDE_SAMPLING_LOGS_RATE", "1.0")],
-        || {
-            reset_runtime();
-            setup_telemetry().expect("setup should succeed");
+    with_env(&[("PROVIDE_SAMPLING_LOGS_RATE", "1.0")], || {
+        reset_runtime();
+        setup_telemetry().expect("setup should succeed");
 
-            std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.33");
+        std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.33");
 
-            reload_runtime_from_env().expect("reload should succeed");
+        reload_runtime_from_env().expect("reload should succeed");
 
-            let sp = provide_telemetry::sampling::get_sampling_policy(
-                provide_telemetry::sampling::Signal::Logs,
-            )
-            .expect("sampling policy should exist");
-            assert_eq!(sp.default_rate, 0.33, "sampling policy not updated after env reload");
-        },
-    );
+        let sp = provide_telemetry::sampling::get_sampling_policy(
+            provide_telemetry::sampling::Signal::Logs,
+        )
+        .expect("sampling policy should exist");
+        assert_eq!(
+            sp.default_rate, 0.33,
+            "sampling policy not updated after env reload"
+        );
+    });
 }
 
 #[test]
@@ -293,10 +295,9 @@ fn runtime_test_reconfigure_telemetry_reapplies_runtime_policies() {
 
     reconfigure_telemetry(Some(target)).expect("reconfigure should succeed");
 
-    let sp = provide_telemetry::sampling::get_sampling_policy(
-        provide_telemetry::sampling::Signal::Logs,
-    )
-    .expect("sampling policy should exist");
+    let sp =
+        provide_telemetry::sampling::get_sampling_policy(provide_telemetry::sampling::Signal::Logs)
+            .expect("sampling policy should exist");
     assert_eq!(
         sp.default_rate, 0.42,
         "sampling policy not updated live after reconfigure"

@@ -104,7 +104,7 @@ where
     // populates the trace_id / span_id contextvars from synthetic ids).
     #[cfg(feature = "otel")]
     {
-        if crate::otel::otel_installed() {
+        if crate::otel::traces::tracer_provider_installed() {
             let _otel_span = crate::otel::traces::start_span(name);
             increment_emitted(Signal::Traces, 1);
             let result = callback();

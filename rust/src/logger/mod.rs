@@ -21,11 +21,11 @@ use crate::tracer::get_trace_context;
 mod emit;
 mod processors;
 
+use emit::{emit_if_console, emit_if_json};
 pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
     take_json_capture,
 };
-use emit::{emit_if_console, emit_if_json};
 use processors::process_event;
 
 // When the governance feature is disabled, consent is unconditionally granted.
@@ -96,7 +96,7 @@ fn emit_event(mut event: LogEvent) {
     emit_if_json(&event);
     emit_if_console(&event);
     #[cfg(feature = "otel")]
-    if crate::otel::otel_installed() {
+    if crate::otel::logs::logger_provider_installed() {
         crate::otel::logs::emit_log(&event);
     }
     let mut buf = events().lock().expect("logger event lock poisoned");
@@ -239,9 +239,15 @@ fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
     let mut context = get_context();
     if let Some(cfg) = get_runtime_config() {
-        context.entry("service".to_string()).or_insert_with(|| Value::String(cfg.service_name));
-        context.entry("env".to_string()).or_insert_with(|| Value::String(cfg.environment));
-        context.entry("version".to_string()).or_insert_with(|| Value::String(cfg.version));
+        context
+            .entry("service".to_string())
+            .or_insert_with(|| Value::String(cfg.service_name));
+        context
+            .entry("env".to_string())
+            .or_insert_with(|| Value::String(cfg.environment));
+        context
+            .entry("version".to_string())
+            .or_insert_with(|| Value::String(cfg.version));
     }
     LogEvent {
         level: level.to_string(),
@@ -495,7 +501,11 @@ mod tests {
     fn effective_level_matches_exact_module_name() {
         // "foo" == "foo" → exact match → DEBUG override applies
         let cfg = cfg_with_module_level("foo", "DEBUG");
-        assert_eq!(effective_level_threshold("foo", &cfg), 1, "exact name must match");
+        assert_eq!(
+            effective_level_threshold("foo", &cfg),
+            1,
+            "exact name must match"
+        );
     }
 
     #[test]
