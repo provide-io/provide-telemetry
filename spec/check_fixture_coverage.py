@@ -34,6 +34,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     ],
     "typescript": [
         _REPO_ROOT / "typescript" / "tests" / "parity.test.ts",
+        _REPO_ROOT / "typescript" / "tests" / "endpoint.test.ts",
     ],
     "go": [
         _REPO_ROOT / "go" / "parity_test.go",
@@ -50,6 +51,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     ],
     "rust": [
         _REPO_ROOT / "rust" / "tests" / "parity_test.rs",
+        _REPO_ROOT / "rust" / "src" / "otel" / "endpoint.rs",
     ],
 }
 
