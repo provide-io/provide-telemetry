@@ -181,7 +181,6 @@ fn runtime_test_update_runtime_config_applies_hot_fields() {
             security: Some(SecurityConfig {
                 max_attr_value_length: 2048,
                 max_attr_count: 32,
-                max_nesting_depth: 8,
             }),
             slo: Some(SLOConfig {
                 enable_red_metrics: true,
@@ -300,28 +299,30 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
         })
         .expect("update should succeed");
 
-    // Verify live sampling policy
-    let sp =
-        provide_telemetry::sampling::get_sampling_policy(provide_telemetry::sampling::Signal::Logs)
-            .expect("sampling policy should exist");
-    assert_eq!(sp.default_rate, 0.25, "sampling policy not updated live");
+        // Verify live sampling policy
+        let sp = provide_telemetry::sampling::get_sampling_policy(
+            provide_telemetry::sampling::Signal::Logs,
+        )
+        .expect("sampling policy should exist");
+        assert_eq!(sp.default_rate, 0.25, "sampling policy not updated live");
 
         // Verify live queue policy
         let qp = provide_telemetry::get_queue_policy();
         assert_eq!(qp.logs_maxsize, 17, "queue policy not updated live");
 
-    // Verify live exporter policy
-    let ep = provide_telemetry::resilience::get_exporter_policy(
-        provide_telemetry::sampling::Signal::Logs,
-    )
-    .expect("exporter policy should exist");
-    assert_eq!(ep.retries, 2, "exporter policy not updated live");
-    assert_eq!(ep.backoff_seconds, 1.5, "exporter backoff not updated live");
-    assert_eq!(
-        ep.timeout_seconds, 22.0,
-        "exporter timeout not updated live"
-    );
-    assert!(!ep.fail_open, "exporter fail_open not updated live");
+        // Verify live exporter policy
+        let ep = provide_telemetry::resilience::get_exporter_policy(
+            provide_telemetry::sampling::Signal::Logs,
+        )
+        .expect("exporter policy should exist");
+        assert_eq!(ep.retries, 2, "exporter policy not updated live");
+        assert_eq!(ep.backoff_seconds, 1.5, "exporter backoff not updated live");
+        assert_eq!(
+            ep.timeout_seconds, 22.0,
+            "exporter timeout not updated live"
+        );
+        assert!(!ep.fail_open, "exporter fail_open not updated live");
+    });
 }
 
 #[test]
@@ -349,36 +350,39 @@ fn runtime_test_reload_runtime_from_env_reapplies_runtime_policies() {
 #[test]
 fn runtime_test_reconfigure_telemetry_reapplies_runtime_policies() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
-    reset_runtime();
-    setup_telemetry().expect("setup should succeed");
+    with_env(&[], || {
+        reset_runtime();
+        setup_telemetry().expect("setup should succeed");
 
-    let target = TelemetryConfig {
-        sampling: SamplingConfig {
-            logs_rate: 0.42,
-            traces_rate: 1.0,
-            metrics_rate: 1.0,
-        },
-        backpressure: BackpressureConfig {
-            logs_maxsize: 23,
-            traces_maxsize: 0,
-            metrics_maxsize: 0,
-        },
-        ..TelemetryConfig::default()
-    };
+        let target = TelemetryConfig {
+            sampling: SamplingConfig {
+                logs_rate: 0.42,
+                traces_rate: 1.0,
+                metrics_rate: 1.0,
+            },
+            backpressure: BackpressureConfig {
+                logs_maxsize: 23,
+                traces_maxsize: 0,
+                metrics_maxsize: 0,
+            },
+            ..TelemetryConfig::default()
+        };
 
-    reconfigure_telemetry(Some(target)).expect("reconfigure should succeed");
+        reconfigure_telemetry(Some(target)).expect("reconfigure should succeed");
 
-    let sp =
-        provide_telemetry::sampling::get_sampling_policy(provide_telemetry::sampling::Signal::Logs)
-            .expect("sampling policy should exist");
-    assert_eq!(
-        sp.default_rate, 0.42,
-        "sampling policy not updated live after reconfigure"
-    );
+        let sp = provide_telemetry::sampling::get_sampling_policy(
+            provide_telemetry::sampling::Signal::Logs,
+        )
+        .expect("sampling policy should exist");
+        assert_eq!(
+            sp.default_rate, 0.42,
+            "sampling policy not updated live after reconfigure"
+        );
 
-    let qp = provide_telemetry::get_queue_policy();
-    assert_eq!(
-        qp.logs_maxsize, 23,
-        "queue policy not updated live after reconfigure"
-    );
+        let qp = provide_telemetry::get_queue_policy();
+        assert_eq!(
+            qp.logs_maxsize, 23,
+            "queue policy not updated live after reconfigure"
+        );
+    });
 }

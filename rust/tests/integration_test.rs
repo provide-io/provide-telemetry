@@ -375,6 +375,9 @@ fn integration_test_setup_registers_otel_providers() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     reset_runtime();
 
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
+    std::env::set_var(endpoint_key, "http://127.0.0.1:1/never");
     std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-test");
     let config = setup_telemetry().expect("setup should succeed");
 
@@ -382,6 +385,7 @@ fn integration_test_setup_registers_otel_providers() {
     assert!(provide_telemetry::otel::otel_installed_for_tests());
 
     reset_runtime();
+    restore_var(endpoint_key, previous_endpoint);
     std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
 }
 
@@ -393,6 +397,9 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     reset_runtime();
 
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
+    std::env::set_var(endpoint_key, "http://127.0.0.1:1/never");
     std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-test");
     setup_telemetry().expect("setup should succeed");
 
@@ -404,6 +411,7 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
         .contains("OpenTelemetry providers already installed"));
 
     reset_runtime();
+    restore_var(endpoint_key, previous_endpoint);
     std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
 }
 
@@ -415,6 +423,9 @@ fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     reset_runtime();
 
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
+    std::env::set_var(endpoint_key, "http://127.0.0.1:1/never");
     setup_telemetry().expect("first setup should succeed");
     assert!(
         otel_installed_for_tests(),
@@ -434,6 +445,7 @@ fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
     );
 
     reset_runtime();
+    restore_var(endpoint_key, previous_endpoint);
 }
 
 #[cfg(feature = "otel")]
@@ -444,8 +456,11 @@ fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_provide
     let _guard = policy_lock().lock().expect("policy lock poisoned");
     reset_runtime();
 
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
     let protocol_key = "OTEL_EXPORTER_OTLP_PROTOCOL";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
     let previous_protocol = std::env::var(protocol_key).ok();
+    std::env::set_var(endpoint_key, "http://127.0.0.1:1/never");
     std::env::set_var(protocol_key, "definitely-invalid");
 
     setup_telemetry().expect("setup should degrade successfully under fail_open");
@@ -454,6 +469,7 @@ fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_provide
         "otel should remain uninstalled when all provider builds fail open"
     );
 
+    restore_var(endpoint_key, previous_endpoint);
     restore_var(protocol_key, previous_protocol);
     reset_runtime();
 }

@@ -15,10 +15,11 @@
 
 use serde_json::Value;
 
+use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
 use crate::pii::sanitize_payload;
 use crate::runtime::get_runtime_config;
-use crate::schema::{event_name, get_strict_schema};
+use crate::schema::{event_name, get_strict_schema, validate_required_keys};
 
 use super::LogEvent;
 
@@ -27,7 +28,7 @@ use super::LogEvent;
 /// The order matches the Python processor chain (except sampling/consent
 /// which run before this point in `log_event()`).
 pub(super) fn process_event(event: &mut LogEvent) {
-    let cfg = get_runtime_config();
+    let cfg = get_runtime_config().or_else(|| TelemetryConfig::from_env().ok());
     let pii_max_depth = cfg.as_ref().map_or(8, |c| c.pii_max_depth);
     let max_attr_value_length = cfg
         .as_ref()
@@ -194,6 +195,14 @@ fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
 /// is never lost. Cross-language standard: all four languages annotate
 /// and emit rather than drop.
 fn enforce_schema(event: &mut LogEvent) {
+    if let Some(cfg) = get_runtime_config() {
+        if let Err(err) = validate_required_keys(&event.context, &cfg.event_schema.required_keys) {
+            event
+                .context
+                .insert("_schema_error".to_string(), Value::String(err.message));
+            return;
+        }
+    }
     if !get_strict_schema() {
         return;
     }

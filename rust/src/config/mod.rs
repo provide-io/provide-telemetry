@@ -25,6 +25,7 @@ pub struct RuntimeOverrides {
     pub slo: Option<SLOConfig>,
     pub pii_max_depth: Option<usize>,
     pub strict_schema: Option<bool>,
+    pub event_schema: Option<EventSchemaConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,7 +111,8 @@ impl Default for MetricsConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct SchemaConfig {
+pub struct EventSchemaConfig {
+    pub strict_event_name: bool,
     pub required_keys: Vec<String>,
 }
 
@@ -204,7 +206,7 @@ pub struct TelemetryConfig {
     pub logging: LoggingConfig,
     pub tracing: TracingConfig,
     pub metrics: MetricsConfig,
-    pub event_schema: SchemaConfig,
+    pub event_schema: EventSchemaConfig,
     pub sampling: SamplingConfig,
     pub backpressure: BackpressureConfig,
     pub exporter: ExporterPolicyConfig,
@@ -223,7 +225,7 @@ impl Default for TelemetryConfig {
             logging: LoggingConfig::default(),
             tracing: TracingConfig::default(),
             metrics: MetricsConfig::default(),
-            event_schema: SchemaConfig::default(),
+            event_schema: EventSchemaConfig::default(),
             sampling: SamplingConfig::default(),
             backpressure: BackpressureConfig::default(),
             exporter: ExporterPolicyConfig::default(),
@@ -336,7 +338,20 @@ impl TelemetryConfig {
                     .unwrap_or(shared_protocol)
                     .to_string(),
             },
-            event_schema: SchemaConfig::default(),
+            event_schema: EventSchemaConfig {
+                strict_event_name: parse_bool(
+                    env_value(env, &["PROVIDE_TELEMETRY_STRICT_EVENT_NAME"]),
+                    false,
+                    "PROVIDE_TELEMETRY_STRICT_EVENT_NAME",
+                )?,
+                required_keys: env_value(env, &["PROVIDE_TELEMETRY_REQUIRED_KEYS"])
+                    .unwrap_or("")
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            },
             sampling: SamplingConfig {
                 logs_rate: parse_rate(
                     env_value(env, &["PROVIDE_SAMPLING_LOGS_RATE"]),
