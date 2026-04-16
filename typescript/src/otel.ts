@@ -71,9 +71,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     const { OTLPTraceExporter } = otlpTrace;
     const { resourceFromAttributes } = res;
 
+    const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
+    const traceHeaders = cfg.otlpTracesHeaders ?? headers;
     const traceExporter = new OTLPTraceExporter({
-      url: `${endpoint}/v1/traces`,
-      headers,
+      url: traceEndpoint,
+      headers: traceHeaders,
     });
 
     const provider = new BasicTracerProvider({
@@ -100,9 +102,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
     const { OTLPMetricExporter } = otlpMetrics;
 
+    const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
+    const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
     const metricExporter = new OTLPMetricExporter({
-      url: `${endpoint}/v1/metrics`,
-      headers,
+      url: metricsEndpoint,
+      headers: metricsHeaders,
     });
 
     const meterProvider = new MeterProvider({

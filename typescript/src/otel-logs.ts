@@ -69,7 +69,9 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const { logs } = apiLogs;
   const { resourceFromAttributes } = res;
 
-  const logExporter = new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers });
+  const logsEndpoint = cfg.otlpLogsEndpoint ?? `${endpoint}/v1/logs`;
+  const logsHeaders = cfg.otlpLogsHeaders ?? headers;
+  const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: logsHeaders });
   const processor = new BatchLogRecordProcessor(logExporter);
   const provider = new LoggerProvider({
     resource: resourceFromAttributes({
