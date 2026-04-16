@@ -58,67 +58,71 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   }
 
   // ── Tracing ──────────────────────────────────────────────────────────────────
-  try {
-    // These are optional peer deps — TypeScript checks are suppressed intentionally.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const traceBase: any = await import('@opentelemetry/sdk-trace-base' as string);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const otlpTrace: any = await import('@opentelemetry/exporter-trace-otlp-http' as string);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res: any = await import('@opentelemetry/resources' as string);
-    const { trace } = await import('@opentelemetry/api');
+  if (cfg.tracingEnabled) {
+    try {
+      // These are optional peer deps — TypeScript checks are suppressed intentionally.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const traceBase: any = await import('@opentelemetry/sdk-trace-base' as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const otlpTrace: any = await import('@opentelemetry/exporter-trace-otlp-http' as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await import('@opentelemetry/resources' as string);
+      const { trace } = await import('@opentelemetry/api');
 
-    const { BasicTracerProvider, BatchSpanProcessor } = traceBase;
-    const { OTLPTraceExporter } = otlpTrace;
-    const { resourceFromAttributes } = res;
+      const { BasicTracerProvider, BatchSpanProcessor } = traceBase;
+      const { OTLPTraceExporter } = otlpTrace;
+      const { resourceFromAttributes } = res;
 
-    const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
-    const traceHeaders = cfg.otlpTracesHeaders ?? headers;
-    const traceExporter = new OTLPTraceExporter({
-      url: traceEndpoint,
-      headers: traceHeaders,
-    });
+      const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
+      const traceHeaders = cfg.otlpTracesHeaders ?? headers;
+      const traceExporter = new OTLPTraceExporter({
+        url: traceEndpoint,
+        headers: traceHeaders,
+      });
 
-    const provider = new BasicTracerProvider({
-      resource: resourceFromAttributes({
-        'service.name': cfg.serviceName,
-        'deployment.environment': cfg.environment,
-        'service.version': cfg.version,
-      }),
-      spanProcessors: [new BatchSpanProcessor(traceExporter)],
-    });
-    trace.setGlobalTracerProvider(provider);
-    registered.push(provider as ShutdownableProvider);
-    _setProviderSignalInstalled('traces', true);
-  } catch (err) {
-    console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
+      const provider = new BasicTracerProvider({
+        resource: resourceFromAttributes({
+          'service.name': cfg.serviceName,
+          'deployment.environment': cfg.environment,
+          'service.version': cfg.version,
+        }),
+        spanProcessors: [new BatchSpanProcessor(traceExporter)],
+      });
+      trace.setGlobalTracerProvider(provider);
+      registered.push(provider as ShutdownableProvider);
+      _setProviderSignalInstalled('traces', true);
+    } catch (err) {
+      console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
+    }
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sdkMetrics: any = await import('@opentelemetry/sdk-metrics' as string);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const otlpMetrics: any = await import('@opentelemetry/exporter-metrics-otlp-http' as string);
-    const { metrics } = await import('@opentelemetry/api');
-    const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
-    const { OTLPMetricExporter } = otlpMetrics;
+  if (cfg.metricsEnabled) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sdkMetrics: any = await import('@opentelemetry/sdk-metrics' as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const otlpMetrics: any = await import('@opentelemetry/exporter-metrics-otlp-http' as string);
+      const { metrics } = await import('@opentelemetry/api');
+      const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
+      const { OTLPMetricExporter } = otlpMetrics;
 
-    const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
-    const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
-    const metricExporter = new OTLPMetricExporter({
-      url: metricsEndpoint,
-      headers: metricsHeaders,
-    });
+      const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
+      const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
+      const metricExporter = new OTLPMetricExporter({
+        url: metricsEndpoint,
+        headers: metricsHeaders,
+      });
 
-    const meterProvider = new MeterProvider({
-      readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
-    });
-    metrics.setGlobalMeterProvider(meterProvider);
-    registered.push(meterProvider as ShutdownableProvider);
-    _setProviderSignalInstalled('metrics', true);
-  } catch (err) {
-    console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+      const meterProvider = new MeterProvider({
+        readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
+      });
+      metrics.setGlobalMeterProvider(meterProvider);
+      registered.push(meterProvider as ShutdownableProvider);
+      _setProviderSignalInstalled('metrics', true);
+    } catch (err) {
+      console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+    }
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────────────

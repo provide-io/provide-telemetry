@@ -49,6 +49,7 @@ describe('getRuntimeConfig', () => {
     expect(cfg.serviceName).toBeDefined();
     expect(cfg.logLevel).toBeDefined();
     expect(typeof cfg.otelEnabled).toBe('boolean');
+    expect(typeof cfg.tracingEnabled).toBe('boolean');
   });
 
   it('returns a frozen object', () => {
@@ -92,14 +93,14 @@ describe('getRuntimeStatus', () => {
   });
 
   it('reports per-signal provider installation state', () => {
-    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
+    setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: true });
     _setProviderSignalInstalled('logs', true);
     _setProviderSignalInstalled('traces', false);
     _setProviderSignalInstalled('metrics', true);
 
     const status = getRuntimeStatus();
     expect(status.setupDone).toBe(true);
-    expect(status.signals).toEqual({ logs: true, traces: true, metrics: true });
+    expect(status.signals).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.providers).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.fallback).toEqual({ logs: false, traces: true, metrics: false });
   });
@@ -265,6 +266,30 @@ describe('reloadRuntimeFromEnv', () => {
     warnSpy.mockRestore();
   });
 
+  it('warns on tracingEnabled cold-field drift', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ tracingEnabled: false });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('tracingEnabled'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on metricsEnabled cold-field drift', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ metricsEnabled: false });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('metricsEnabled'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
   it('warns on otlpEndpoint cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     reconfigureTelemetry({ otlpEndpoint: 'http://custom:4318' });
@@ -340,6 +365,24 @@ describe('reconfigureTelemetry', () => {
       /provider-changing reconfiguration is unsupported/,
     );
     expect(getRuntimeConfig().otelEnabled).toBe(false);
+  });
+
+  it('rejects tracingEnabled changes after providers are registered', () => {
+    reconfigureTelemetry({ tracingEnabled: false });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ tracingEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().tracingEnabled).toBe(false);
+  });
+
+  it('rejects metricsEnabled changes after providers are registered', () => {
+    reconfigureTelemetry({ metricsEnabled: false });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ metricsEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().metricsEnabled).toBe(false);
   });
 
   it('allows provider field changes when providers are NOT registered', () => {
