@@ -449,6 +449,9 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
+  _normalizeConfig(_config);
+  _configVersion++;
+  _setActiveConfig(_config);
   try {
     applyConfigPolicies(_config);
   } catch (err: unknown) {
@@ -457,6 +460,25 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
     // eslint-disable-next-line no-console
     console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
   }
+}
+
+/** Clamp rates to [0,1] and floor non-negative integers so getConfig() matches effective policy. */
+function _normalizeConfig(cfg: TelemetryConfig): void {
+  const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+  const floorNonNeg = (v: number): number => Math.max(0, Math.floor(v));
+  cfg.samplingLogsRate = clamp01(cfg.samplingLogsRate);
+  cfg.samplingTracesRate = clamp01(cfg.samplingTracesRate);
+  cfg.samplingMetricsRate = clamp01(cfg.samplingMetricsRate);
+  cfg.traceSampleRate = clamp01(cfg.traceSampleRate);
+  cfg.backpressureLogsMaxsize = floorNonNeg(cfg.backpressureLogsMaxsize);
+  cfg.backpressureTracesMaxsize = floorNonNeg(cfg.backpressureTracesMaxsize);
+  cfg.backpressureMetricsMaxsize = floorNonNeg(cfg.backpressureMetricsMaxsize);
+  cfg.exporterLogsRetries = floorNonNeg(cfg.exporterLogsRetries);
+  cfg.exporterTracesRetries = floorNonNeg(cfg.exporterTracesRetries);
+  cfg.exporterMetricsRetries = floorNonNeg(cfg.exporterMetricsRetries);
+  cfg.securityMaxAttrValueLength = floorNonNeg(cfg.securityMaxAttrValueLength);
+  cfg.securityMaxAttrCount = floorNonNeg(cfg.securityMaxAttrCount);
+  cfg.piiMaxDepth = floorNonNeg(cfg.piiMaxDepth);
 }
 
 /** Reset to defaults (used in tests). */
