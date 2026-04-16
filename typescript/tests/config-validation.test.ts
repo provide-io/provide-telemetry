@@ -188,37 +188,37 @@ describe('parseOtlpHeaders — trim and boundary mutation killing', () => {
 describe('envBool — edge cases for mutation killing', () => {
   it('"on" maps to true', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'on' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
   it('"off" maps to false', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'off' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      expect(configFromEnv().tracingEnabled).toBe(false);
     });
   });
 
   it('"yes" maps to true', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'yes' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
   it('"no" maps to false', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'no' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      expect(configFromEnv().tracingEnabled).toBe(false);
     });
   });
 
   it('empty string returns fallback', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
   it('whitespace-only string returns fallback', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '   ' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
@@ -236,13 +236,13 @@ describe('envBool — edge cases for mutation killing', () => {
 
   it('whitespace-padded "true" is accepted (kills MethodExpression raw.trim())', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '  true  ' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
   it('whitespace-padded "false" is accepted', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '  false  ' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      expect(configFromEnv().tracingEnabled).toBe(false);
     });
   });
 });

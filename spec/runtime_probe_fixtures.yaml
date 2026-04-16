@@ -39,6 +39,14 @@ cases:
       providers_cleared: true
       fallback_all: true
 
+  - id: signal_enablement
+    kind: flags
+    expected:
+      setup_done: true
+      logs_enabled: true
+      traces_enabled: false
+      metrics_enabled: false
+
   - id: shutdown_re_setup
     kind: flags
     expected:
