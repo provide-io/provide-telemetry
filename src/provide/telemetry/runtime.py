@@ -208,18 +208,16 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
             ):
                 raise RuntimeError(
                     "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed. "
-                    "Use reconfigure_telemetry() for full provider replacement, or restart the process and call "
-                    "setup_telemetry() with the new config."
+                    "Restart the process and call setup_telemetry() with the new config."
                 )
             shutdown_telemetry()
             return setup_telemetry(target)
-        if _logging_provider_config_changed(current, target):
-            if logger_core._has_otel_log_provider():
-                raise RuntimeError(
-                    "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
-                    "are installed (endpoint/headers/timeout change). Use reconfigure_telemetry() for full "
-                    "provider replacement, or restart the process and call setup_telemetry() with the new config."
-                )
+        if _logging_provider_config_changed(current, target) and logger_core._has_otel_log_provider():
+            raise RuntimeError(
+                "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
+                "are installed (endpoint/headers/timeout change). Restart the process and call "
+                "setup_telemetry() with the new config."
+            )
         return update_runtime_config(_overrides_from_config(target))
 
 

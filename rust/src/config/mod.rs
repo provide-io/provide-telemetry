@@ -115,11 +115,6 @@ impl Default for MetricsConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct SchemaConfig {
-    pub required_keys: Vec<String>,
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SamplingConfig {
     pub logs_rate: f64,
@@ -210,7 +205,6 @@ pub struct TelemetryConfig {
     pub logging: LoggingConfig,
     pub tracing: TracingConfig,
     pub metrics: MetricsConfig,
-    pub event_schema: SchemaConfig,
     pub sampling: SamplingConfig,
     pub backpressure: BackpressureConfig,
     pub exporter: ExporterPolicyConfig,
@@ -229,7 +223,6 @@ impl Default for TelemetryConfig {
             logging: LoggingConfig::default(),
             tracing: TracingConfig::default(),
             metrics: MetricsConfig::default(),
-            event_schema: SchemaConfig::default(),
             sampling: SamplingConfig::default(),
             backpressure: BackpressureConfig::default(),
             exporter: ExporterPolicyConfig::default(),
@@ -346,7 +339,6 @@ impl TelemetryConfig {
                     .unwrap_or(shared_protocol)
                     .to_string(),
             },
-            event_schema: SchemaConfig::default(),
             sampling: SamplingConfig {
                 logs_rate: parse_rate(
                     env_value(env, &["PROVIDE_SAMPLING_LOGS_RATE"]),
