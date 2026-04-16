@@ -413,12 +413,13 @@ class TestF6ReceiptHookDottedPath:
 # ── Review #2: Python-only parity fixes ───────────────────────────────────────
 
 
-class TestLoggingIsColdReloadOnly:
-    """Logging must be cold-reload (matches docs and Go/Rust/TS behavior)."""
+class TestLoggingIsHotReloadable:
+    """Logging config is now hot-reloadable — structlog pipeline is rebuilt
+    via configure_logging(force=True) when the logging config changes."""
 
-    def test_runtime_overrides_has_no_logging_field(self) -> None:
-        """RuntimeOverrides must NOT expose logging — prevents provider leak."""
-        assert not hasattr(RuntimeOverrides(), "logging")
+    def test_runtime_overrides_has_logging_field(self) -> None:
+        """RuntimeOverrides exposes logging for hot-reload."""
+        assert hasattr(RuntimeOverrides(), "logging")
 
 
 class TestFallbackMetricsRetryAfterSetup:
