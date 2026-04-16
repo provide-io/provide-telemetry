@@ -12,6 +12,7 @@ import warnings
 from typing import Any
 
 from provide.telemetry import _otel
+from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.resilience import run_with_resilience
 
@@ -93,13 +94,14 @@ def setup_metrics(config: TelemetryConfig) -> None:
         exporter = run_with_resilience(
             "metrics",
             lambda: exporter_cls(
-                endpoint=config.metrics.otlp_endpoint,
+                endpoint=validate_otlp_endpoint(config.metrics.otlp_endpoint),
                 headers=config.metrics.otlp_headers,
                 timeout=config.exporter.metrics_timeout_seconds,
             ),
         )
-        if exporter is not None:
-            readers.append(reader_cls(exporter))
+        if exporter is None:
+            return
+        readers.append(reader_cls(exporter))
 
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = provider_cls(resource=resource, metric_readers=readers)

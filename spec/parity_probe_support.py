@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +25,14 @@ _PROBE_ENV_DEFAULTS: dict[str, str] = {
     "PROVIDE_LOG_LEVEL": "INFO",
     "PROVIDE_LOG_INCLUDE_TIMESTAMP": "false",
     "PROVIDE_LOG_INCLUDE_CALLER": "false",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "",
+    "OTEL_EXPORTER_OTLP_HEADERS": "",
+    "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "",
+    "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "",
+    "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "",
+    "OTEL_EXPORTER_OTLP_METRICS_HEADERS": "",
 }
 
 # Canonical field renames: {raw_field: canonical_field}.
@@ -66,7 +75,7 @@ def _probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> lis
         ProbeRunner(
             name="python",
             label="Python",
-            cmd=["uv", "run", "python", str(probes / "emit_log_python.py")],
+            cmd=[sys.executable, str(probes / "emit_log_python.py")],
             cwd=repo,
         ),
         ProbeRunner(
@@ -98,7 +107,7 @@ def _runtime_probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]
         ProbeRunner(
             name="python",
             label="Python",
-            cmd=["uv", "run", "python", str(probes / "runtime_probe_python.py")],
+            cmd=[sys.executable, str(probes / "runtime_probe_python.py")],
             cwd=repo,
         ),
         ProbeRunner(
@@ -212,11 +221,17 @@ def _extract_json_line(output: str) -> dict[str, object] | None:
 
 def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
     if case_id == "strict_schema_rejection":
-        return {"PROVIDE_TELEMETRY_STRICT_SCHEMA": "true"}
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     if case_id == "required_keys_rejection":
         return {
             "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
             "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
         }
     if case_id == "invalid_config":
         return {"PROVIDE_LOG_INCLUDE_TIMESTAMP": "definitely-not-a-bool"}
@@ -226,6 +241,11 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "OTEL_EXPORTER_OTLP_PROTOCOL": "definitely-invalid",
         }
     if case_id == "signal_enablement":
+        return {
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "shutdown_re_setup":
         return {
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
