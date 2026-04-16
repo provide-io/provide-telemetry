@@ -212,13 +212,13 @@ describe('envBool — edge cases for mutation killing', () => {
 
   it('empty string returns fallback', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      expect(configFromEnv().otelEnabled).toBe(true);
     });
   });
 
   it('whitespace-only string returns fallback', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: '   ' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      expect(configFromEnv().otelEnabled).toBe(true);
     });
   });
 

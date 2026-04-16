@@ -119,11 +119,36 @@ export function configFromEnv(): TelemetryConfig {
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
       // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
-      return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
+      if (fmt === 'json' || fmt === 'pretty' || fmt === 'console') return fmt;
+      return DEFAULTS.logFormat;
     })(),
     otelEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.otelEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
+    otlpLogsEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpTracesEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpMetricsEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpLogsHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_LOGS_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
+    otlpTracesHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_TRACES_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
+    otlpMetricsHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_METRICS_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
     consoleOutput: true,

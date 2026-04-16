@@ -215,7 +215,7 @@ describe('reloadRuntimeFromEnv', () => {
 
   it('warns on otelEnabled cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ otelEnabled: true });
+    reconfigureTelemetry({ otelEnabled: false });
     reloadRuntimeFromEnv();
     expect(warnSpy).toHaveBeenCalledWith(
       '[provide-telemetry] runtime.cold_field_drift:',
@@ -318,7 +318,7 @@ describe('reconfigureTelemetry — provider change after init resets registered 
   it('providers remain registered after a rejected provider-changing reconfigure', () => {
     _markProvidersRegistered();
     expect(_areProvidersRegistered()).toBe(true);
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow();
+    expect(() => reconfigureTelemetry({ otelEnabled: false })).toThrow();
     expect(_areProvidersRegistered()).toBe(true);
   });
 });
@@ -329,7 +329,7 @@ describe('reconfigureTelemetry — provider lifecycle safety', () => {
     const shutdownFn = vi.fn().mockResolvedValue(undefined);
     _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
+    expect(() => reconfigureTelemetry({ otelEnabled: false })).toThrow(
       /provider-changing reconfiguration is unsupported/,
     );
     expect(flushFn).not.toHaveBeenCalled();
@@ -341,7 +341,7 @@ describe('reconfigureTelemetry — provider lifecycle safety', () => {
   it('does NOT call flush/shutdown when provider fields are unchanged', async () => {
     const flushFn = vi.fn().mockResolvedValue(undefined);
     const shutdownFn = vi.fn().mockResolvedValue(undefined);
-    reconfigureTelemetry({ otelEnabled: false });
+    reconfigureTelemetry({ otelEnabled: true });
     _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
     _markProvidersRegistered();
     // Change a non-provider field
@@ -378,7 +378,7 @@ describe('reconfigureTelemetry — provider lifecycle safety', () => {
   it('rejects provider-changing reconfigure even when the registered provider list is empty', () => {
     _storeRegisteredProviders([]);
     _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
+    expect(() => reconfigureTelemetry({ otelEnabled: false })).toThrow(
       /provider-changing reconfiguration is unsupported/,
     );
   });
