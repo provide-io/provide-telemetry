@@ -138,7 +138,8 @@ class TestReconfigureTelemetryErrorMessages:
     def test_logging_provider_error_contains_setup_telemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Log-provider error must contain 'setup_telemetry()'.
 
-        Kills mutmut_31 (prefix "XX...XX"), mutmut_32 (uppercase).
+        Kills mutmut_30 (suffix "XX...XX" around final sentence),
+        mutmut_31 (prefix "XX...XX"), mutmut_32 (uppercase).
         """
         _, cfg_b = self._setup_log_provider_change(monkeypatch)
         with pytest.raises(RuntimeError) as exc_info:
@@ -147,5 +148,10 @@ class TestReconfigureTelemetryErrorMessages:
         assert "setup_telemetry()" in msg, f"Expected 'setup_telemetry()' in: {msg!r}"
         assert "Restart the process" in msg, f"Expected 'Restart the process' in: {msg!r}"
         assert "SETUP_TELEMETRY()" not in msg
+        # mutmut_30: wraps final sentence in "XX...XX" — message must end cleanly with period
+        assert msg.rstrip().endswith("the new config."), (
+            f"Error message must end with 'the new config.' (no XX suffix), got: {msg!r}"
+        )
+        assert "XXsetup_telemetry" not in msg, f"Must not have 'XX' prefix on setup_telemetry: {msg!r}"
         # mutmut_31: "XX" prefix on "Restart..." — substring still matches
         assert "XXRestart" not in msg, f"Must not start segment with 'XX': {msg!r}"
