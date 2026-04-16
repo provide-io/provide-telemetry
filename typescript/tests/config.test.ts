@@ -189,8 +189,8 @@ describe('configFromEnv — default values', () => {
     expect(configFromEnv().version).toBe('0.0.0');
   });
 
-  it('consoleOutput defaults to false', () => {
-    expect(configFromEnv().consoleOutput).toBe(false);
+  it('consoleOutput defaults to true', () => {
+    expect(configFromEnv().consoleOutput).toBe(true);
   });
 
   it('sanitizeFields defaults to empty array', () => {
@@ -361,24 +361,24 @@ describe('version constant', () => {
   });
 });
 
-describe('config — DEFAULTS.consoleOutput is false (kills BooleanLiteral mutation)', () => {
-  it('consoleOutput defaults to false when not set', () => {
+describe('config — DEFAULTS.consoleOutput is true (kills BooleanLiteral mutation)', () => {
+  it('consoleOutput defaults to true when not set', () => {
     _resetConfig();
     setupTelemetry({ serviceName: 'svc' });
-    expect(getConfig().consoleOutput).toBe(false);
-  });
-
-  it('consoleOutput can be set to true', () => {
-    _resetConfig();
-    setupTelemetry({ serviceName: 'svc', consoleOutput: true });
     expect(getConfig().consoleOutput).toBe(true);
   });
 
-  it('consoleOutput is false in DEFAULTS — getConfig() after reset returns false without setupTelemetry', () => {
-    // This test reads DEFAULTS directly via _resetConfig() without calling setupTelemetry/configFromEnv.
-    // Kills: BooleanLiteral mutation of DEFAULTS.consoleOutput false→true
+  it('consoleOutput can be set to false', () => {
     _resetConfig();
+    setupTelemetry({ serviceName: 'svc', consoleOutput: false });
     expect(getConfig().consoleOutput).toBe(false);
+  });
+
+  it('consoleOutput is true in DEFAULTS — getConfig() after reset returns true without setupTelemetry', () => {
+    // This test reads DEFAULTS directly via _resetConfig() without calling setupTelemetry/configFromEnv.
+    // Kills: BooleanLiteral mutation of DEFAULTS.consoleOutput true→false
+    _resetConfig();
+    expect(getConfig().consoleOutput).toBe(true);
   });
 });
 

@@ -216,6 +216,12 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 export function _clearProviderState(): void {
   _providersRegistered = false;
   _registeredProviders = [];
+  _activeConfig = null;
+}
+
+/** Called by setupTelemetry to keep _activeConfig in sync. */
+export function _setActiveConfig(cfg: TelemetryConfig): void {
+  _activeConfig = cfg;
 }
 
 export function _resetRuntimeForTests(): void {
