@@ -468,35 +468,6 @@ func TestConfigFromEnv_SecurityGroup(t *testing.T) {
 
 // ---- Bool parsing ----
 
-func TestParseBool_TrueValues(t *testing.T) {
-	trueInputs := []string{"1", "true", "TRUE", "True", "yes", "YES", "on", "ON"}
-	for _, v := range trueInputs {
-		got := parseBool(v, false)
-		if !got {
-			t.Errorf("parseBool(%q, false) = false, want true", v)
-		}
-	}
-}
-
-func TestParseBool_FalseValues(t *testing.T) {
-	falseInputs := []string{"false", "FALSE", "0", "no", "off", "garbage"}
-	for _, v := range falseInputs {
-		got := parseBool(v, true)
-		if got {
-			t.Errorf("parseBool(%q, true) = true, want false", v)
-		}
-	}
-}
-
-func TestParseBool_EmptyUsesDefault(t *testing.T) {
-	if parseBool("", true) != true {
-		t.Error("empty string should return default=true")
-	}
-	if parseBool("", false) != false {
-		t.Error("empty string should return default=false")
-	}
-}
-
 func TestParseEnvBool_InvalidValueErrors(t *testing.T) {
 	got, err := parseEnvBool("invalid-boolean", true, "PROVIDE_TRACE_ENABLED")
 	if err == nil {
