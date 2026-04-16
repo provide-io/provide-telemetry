@@ -131,6 +131,12 @@ const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'otelEnabled',
   'otlpEndpoint',
   'otlpHeaders',
+  'otlpLogsEndpoint',
+  'otlpLogsHeaders',
+  'otlpTracesEndpoint',
+  'otlpTracesHeaders',
+  'otlpMetricsEndpoint',
+  'otlpMetricsHeaders',
 ];
 
 /** Reload config from env vars and apply only hot-reloadable fields. */
@@ -185,6 +191,12 @@ const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
   'otelEnabled',
   'otlpEndpoint',
   'otlpHeaders',
+  'otlpLogsEndpoint',
+  'otlpLogsHeaders',
+  'otlpTracesEndpoint',
+  'otlpTracesHeaders',
+  'otlpMetricsEndpoint',
+  'otlpMetricsHeaders',
 ];
 
 /**
