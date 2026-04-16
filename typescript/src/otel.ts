@@ -45,8 +45,9 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   const endpoint = cfg.otlpEndpoint;
   if (!endpoint) {
     // No OTLP endpoint configured — skip export entirely (safe no-export path).
-    // Providers are still marked registered so repeated calls are no-ops.
-    _markProvidersRegistered();
+    // Do NOT mark providers as registered: no real providers exist, so
+    // reconfigureTelemetry() should remain free to install them later
+    // when an endpoint is provided.
     return;
   }
   const registered: ShutdownableProvider[] = [];
