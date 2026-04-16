@@ -16,6 +16,9 @@ import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
 import { setSetupError } from './health';
+import { _setActiveConfig } from './runtime';
+import { configFromEnv } from './config-env';
+export { configFromEnv } from './config-env';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -183,7 +186,7 @@ export interface RuntimeOverrides {
   strictSchema?: boolean;
 }
 
-const DEFAULTS: TelemetryConfig = {
+export const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
   environment: 'dev',
   version: '0.0.0',
@@ -233,169 +236,9 @@ let _config: TelemetryConfig = { ...DEFAULTS };
 /** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
 let _configVersion = 0;
 
-/** Parse an env var as a number, falling back to `fallback` on missing or NaN. */
-function envNumber(key: string, fallback: number): number {
-  const raw = nodeEnv(key);
-  if (raw === undefined) return fallback;
-  const n = Number(raw);
-  return Number.isNaN(n) ? fallback : n;
-}
-
-/** Parse an env var expressed in seconds and return milliseconds. */
-function envSecondsToMs(key: string, fallbackMs: number): number {
-  const raw = nodeEnv(key);
-  if (raw === undefined) return fallbackMs;
-  const n = Number(raw);
-  return Number.isNaN(n) ? fallbackMs : n * 1000;
-}
-
-/** Parse a module_levels string like "mod1=DEBUG,mod2=WARN" into a Record. */
-function parseModuleLevels(raw: string | undefined): Record<string, string> {
-  if (!raw) return {};
-  const result: Record<string, string> = {};
-  for (const pair of raw.split(',')) {
-    const trimmed = pair.trim();
-    if (!trimmed.includes('=')) continue;
-    const [mod, level] = trimmed.split('=', 2).map((s) => s.trim());
-    if (mod && level) result[mod] = level;
-  }
-  return result;
-}
-
-/**
- * Build a TelemetryConfig from environment variables.
- * Uses the same env var names as the Python package.
- * Explicit values passed to setupTelemetry() override env vars.
- */
-export function configFromEnv(): TelemetryConfig {
-  const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
-  const parsedHeaders: Record<string, string> | undefined = otelHeader
-    ? Object.fromEntries(
-        otelHeader
-          .split(',')
-          .map((pair) => {
-            const idx = pair.indexOf('=');
-            if (idx === -1) return [pair.trim(), ''] as [string, string];
-            return [pair.slice(0, idx).trim(), pair.slice(idx + 1).trim()] as [string, string];
-          })
-          .filter(([k]) => k !== ''),
-      )
-    : undefined;
-
-  return {
-    serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
-    environment: nodeEnv('PROVIDE_TELEMETRY_ENV') ?? nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
-    version: nodeEnv('PROVIDE_TELEMETRY_VERSION') ?? nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
-    logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
-    logFormat: (() => {
-      const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
-      // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
-      return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
-    })(),
-    otelEnabled: nodeEnv('PROVIDE_TRACE_ENABLED') === 'true',
-    otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
-    otlpHeaders: parsedHeaders,
-    sanitizeFields: DEFAULTS.sanitizeFields,
-    captureToWindow: true,
-    consoleOutput: false,
-    strictSchema: nodeEnv('PROVIDE_TELEMETRY_STRICT_SCHEMA') === 'true',
-    requiredLogKeys: (() => {
-      const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
-      return raw
-        ? raw
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
-    })(),
-
-    // Logging extras
-    logIncludeTimestamp: nodeEnv('PROVIDE_LOG_INCLUDE_TIMESTAMP') !== 'false',
-    logIncludeCaller: nodeEnv('PROVIDE_LOG_INCLUDE_CALLER') !== 'false',
-    logSanitize: nodeEnv('PROVIDE_LOG_SANITIZE') !== 'false',
-    logCodeAttributes: nodeEnv('PROVIDE_LOG_CODE_ATTRIBUTES') === 'true',
-    logModuleLevels: parseModuleLevels(nodeEnv('PROVIDE_LOG_MODULE_LEVELS')),
-
-    // Tracing
-    traceSampleRate: envNumber('PROVIDE_TRACE_SAMPLE_RATE', DEFAULTS.traceSampleRate),
-
-    // Metrics
-    metricsEnabled: nodeEnv('PROVIDE_METRICS_ENABLED') !== 'false',
-
-    // Per-signal sampling
-    samplingLogsRate: envNumber('PROVIDE_SAMPLING_LOGS_RATE', DEFAULTS.samplingLogsRate),
-    samplingTracesRate: envNumber('PROVIDE_SAMPLING_TRACES_RATE', DEFAULTS.samplingTracesRate),
-    samplingMetricsRate: envNumber('PROVIDE_SAMPLING_METRICS_RATE', DEFAULTS.samplingMetricsRate),
-
-    // Per-signal backpressure
-    backpressureLogsMaxsize: envNumber(
-      'PROVIDE_BACKPRESSURE_LOGS_MAXSIZE',
-      DEFAULTS.backpressureLogsMaxsize,
-    ),
-    backpressureTracesMaxsize: envNumber(
-      'PROVIDE_BACKPRESSURE_TRACES_MAXSIZE',
-      DEFAULTS.backpressureTracesMaxsize,
-    ),
-    backpressureMetricsMaxsize: envNumber(
-      'PROVIDE_BACKPRESSURE_METRICS_MAXSIZE',
-      DEFAULTS.backpressureMetricsMaxsize,
-    ),
-
-    // Per-signal exporter resilience
-    exporterLogsRetries: envNumber('PROVIDE_EXPORTER_LOGS_RETRIES', DEFAULTS.exporterLogsRetries),
-    exporterLogsBackoffMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS',
-      DEFAULTS.exporterLogsBackoffMs,
-    ),
-    exporterLogsTimeoutMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS',
-      DEFAULTS.exporterLogsTimeoutMs,
-    ),
-    exporterLogsFailOpen: nodeEnv('PROVIDE_EXPORTER_LOGS_FAIL_OPEN') !== 'false',
-    exporterTracesRetries: envNumber(
-      'PROVIDE_EXPORTER_TRACES_RETRIES',
-      DEFAULTS.exporterTracesRetries,
-    ),
-    exporterTracesBackoffMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS',
-      DEFAULTS.exporterTracesBackoffMs,
-    ),
-    exporterTracesTimeoutMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS',
-      DEFAULTS.exporterTracesTimeoutMs,
-    ),
-    exporterTracesFailOpen: nodeEnv('PROVIDE_EXPORTER_TRACES_FAIL_OPEN') !== 'false',
-    exporterMetricsRetries: envNumber(
-      'PROVIDE_EXPORTER_METRICS_RETRIES',
-      DEFAULTS.exporterMetricsRetries,
-    ),
-    exporterMetricsBackoffMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS',
-      DEFAULTS.exporterMetricsBackoffMs,
-    ),
-    exporterMetricsTimeoutMs: envSecondsToMs(
-      'PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS',
-      DEFAULTS.exporterMetricsTimeoutMs,
-    ),
-    exporterMetricsFailOpen: nodeEnv('PROVIDE_EXPORTER_METRICS_FAIL_OPEN') !== 'false',
-
-    // SLO
-    sloEnableRedMetrics: nodeEnv('PROVIDE_SLO_ENABLE_RED_METRICS') === 'true',
-    sloEnableUseMetrics: nodeEnv('PROVIDE_SLO_ENABLE_USE_METRICS') === 'true',
-
-    // PII
-    piiMaxDepth: envNonNegativeInt('PROVIDE_LOG_PII_MAX_DEPTH', DEFAULTS.piiMaxDepth),
-
-    // Security
-    securityMaxAttrValueLength: envNumber(
-      'PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH',
-      DEFAULTS.securityMaxAttrValueLength,
-    ),
-    securityMaxAttrCount: envNumber(
-      'PROVIDE_SECURITY_MAX_ATTR_COUNT',
-      DEFAULTS.securityMaxAttrCount,
-    ),
-  };
+/** Return the current config version (used by logger to detect stale root). */
+export function _getConfigVersion(): number {
+  return _configVersion;
 }
 
 /** Return the active TelemetryConfig. */
