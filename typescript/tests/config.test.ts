@@ -192,6 +192,10 @@ describe('configFromEnv — default values', () => {
   it('otelEnabled defaults to false', () => {
     expect(configFromEnv().otelEnabled).toBe(false);
   });
+
+  it('tracingEnabled defaults to true', () => {
+    expect(configFromEnv().tracingEnabled).toBe(true);
+  });
 });
 
 describe('configFromEnv — env var reads', () => {
@@ -246,15 +250,58 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
-  it('reads UNDEF_TRACE_ENABLED=true', () => {
-    withEnv({ UNDEF_TRACE_ENABLED: 'true' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+  it('empty PROVIDE_LOG_FORMAT falls back to console default', () => {
+    withEnv({ PROVIDE_LOG_FORMAT: '' }, () => {
+      expect(configFromEnv().logFormat).toBe('console');
     });
   });
 
-  it('UNDEF_TRACE_ENABLED=false does not enable otel', () => {
-    withEnv({ UNDEF_TRACE_ENABLED: 'false' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+  it('reads PROVIDE_TRACE_ENABLED=true', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'true' }, () => {
+      expect(configFromEnv().tracingEnabled).toBe(true);
+    });
+  });
+
+  it('PROVIDE_TRACE_ENABLED=false disables tracing without disabling OTEL registration', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'false' }, () => {
+      const cfg = configFromEnv();
+      expect(cfg.tracingEnabled).toBe(false);
+      expect(cfg.otelEnabled).toBe(true);
+    });
+  });
+
+  it('boolean env aliases are parsed consistently', () => {
+    withEnv(
+      {
+        PROVIDE_TRACE_ENABLED: 'yes',
+        PROVIDE_METRICS_ENABLED: 'off',
+        PROVIDE_LOG_INCLUDE_TIMESTAMP: ' ',
+      },
+      () => {
+        const cfg = configFromEnv();
+        expect(cfg.tracingEnabled).toBe(true);
+        expect(cfg.metricsEnabled).toBe(false);
+        expect(cfg.logIncludeTimestamp).toBe(true);
+      },
+    );
+  });
+
+  it('covers all accepted boolean env aliases', () => {
+    for (const truthy of ['1', 'true', 'yes', 'on']) {
+      withEnv({ PROVIDE_TRACE_ENABLED: truthy }, () => {
+        expect(configFromEnv().tracingEnabled).toBe(true);
+      });
+    }
+    for (const falsy of ['0', 'false', 'no', 'off']) {
+      withEnv({ PROVIDE_METRICS_ENABLED: falsy }, () => {
+        expect(configFromEnv().metricsEnabled).toBe(false);
+      });
+    }
+  });
+
+  it('invalid boolean env values throw ConfigurationError', () => {
+    withEnv({ PROVIDE_TRACE_ENABLED: 'invalid-boolean' }, () => {
+      expect(() => configFromEnv()).toThrow(ConfigurationError);
     });
   });
 

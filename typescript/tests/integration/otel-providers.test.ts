@@ -132,6 +132,24 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
   });
 
+  it('skips trace provider installation when tracingEnabled is false', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true, tracingEnabled: false });
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPTraceExporter)).not.toHaveBeenCalled();
+    expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(2);
+  });
+
+  it('skips metrics provider installation when metricsEnabled is false', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true, metricsEnabled: false });
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalled();
+    expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(2);
+  });
+
   it('constructs exporters with default endpoint and empty headers when neither is configured', async () => {
     // Pass undefined explicitly so the env-derived OTEL_EXPORTER_OTLP_ENDPOINT is overridden.
     setupTelemetry({

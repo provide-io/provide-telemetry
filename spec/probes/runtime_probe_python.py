@@ -86,6 +86,20 @@ def _case_fail_open_exporter_init() -> dict[str, object]:
     }
 
 
+def _case_signal_enablement() -> dict[str, object]:
+    setup_telemetry()
+    status = get_runtime_status()
+    shutdown_telemetry()
+    signals = status["signals"]
+    return {
+        "case": "signal_enablement",
+        "setup_done": bool(status["setup_done"]),
+        "logs_enabled": bool(signals["logs"]),
+        "traces_enabled": bool(signals["traces"]),
+        "metrics_enabled": bool(signals["metrics"]),
+    }
+
+
 def _case_shutdown_re_setup() -> dict[str, object]:
     setup_telemetry()
     first = get_runtime_status()
@@ -112,6 +126,7 @@ def main() -> int:
         "required_keys_rejection": _case_required_keys_rejection,
         "invalid_config": _case_invalid_config,
         "fail_open_exporter_init": _case_fail_open_exporter_init,
+        "signal_enablement": _case_signal_enablement,
         "shutdown_re_setup": _case_shutdown_re_setup,
     }[case]()
     print(json.dumps(result, sort_keys=True))

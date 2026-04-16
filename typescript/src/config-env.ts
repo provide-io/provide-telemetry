@@ -121,7 +121,8 @@ export function configFromEnv(): TelemetryConfig {
       // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
       return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
     })(),
-    otelEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.otelEnabled),
+    otelEnabled: DEFAULTS.otelEnabled,
+    tracingEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.tracingEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
     sanitizeFields: DEFAULTS.sanitizeFields,
