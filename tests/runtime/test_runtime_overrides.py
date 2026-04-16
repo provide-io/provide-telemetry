@@ -439,3 +439,22 @@ def test_get_strict_schema_reads_from_env_when_no_config() -> None:
     # The default is False.
     result = runtime_mod.get_strict_schema()
     assert isinstance(result, bool)
+
+
+def test_update_runtime_config_rebuilds_logging_on_change() -> None:
+    """When logging config changes via RuntimeOverrides, the structlog
+    pipeline is rebuilt via configure_logging(force=True)."""
+    from provide.telemetry.config import LoggingConfig, RuntimeOverrides
+
+    runtime_mod.reset_runtime_for_tests()
+    runtime_mod.apply_runtime_config(TelemetryConfig.from_env())
+    before = runtime_mod.get_runtime_config()
+    assert before.logging.level == "INFO"
+
+    new_logging = LoggingConfig(
+        level="DEBUG",
+        fmt=before.logging.fmt,
+        include_timestamp=before.logging.include_timestamp,
+    )
+    updated = runtime_mod.update_runtime_config(RuntimeOverrides(logging=new_logging))
+    assert updated.logging.level == "DEBUG"

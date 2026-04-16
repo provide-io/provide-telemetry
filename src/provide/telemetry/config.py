@@ -193,6 +193,8 @@ class RuntimeOverrides:
     slo: SLOConfig | None = None
     pii_max_depth: int | None = None
     strict_schema: bool | None = None
+    logging: LoggingConfig | None = None
+    event_schema: SchemaConfig | None = None
 
     def __post_init__(self) -> None:
         if self.pii_max_depth is not None:

@@ -165,9 +165,13 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     from provide.telemetry.backpressure import release, try_acquire
-    from provide.telemetry.consent import should_allow
     from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
+
+    try:
+        from provide.telemetry.consent import should_allow
+    except ImportError:  # pragma: no cover — governance module stripped
+        should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
 
     if not should_allow("logs", method_name):
         raise structlog.DropEvent()
