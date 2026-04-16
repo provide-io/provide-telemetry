@@ -108,3 +108,12 @@ SPDX-License-Identifier = "Apache-2.0"
 path = ["go/coverage_new.out", "go/coverage.out", "go/logger/coverage.out", "go/logger/cover.out", "go/tracer/cover.out"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  "go/go.work.sum",
+  "go/tests/integration/otel-output-go/collector.log",
+  "tests/integration/otel-output-python/collector.log",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-License-Identifier = "Apache-2.0"

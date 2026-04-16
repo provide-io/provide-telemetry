@@ -10,8 +10,10 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 
-def validate_otlp_endpoint(endpoint: str) -> str:
+def validate_otlp_endpoint(endpoint: str | None) -> str:
     """Return endpoint when it is a valid absolute OTLP HTTP URL, else raise ValueError."""
+    if endpoint is None:
+        raise ValueError("invalid OTLP endpoint: None")
     parsed = urlparse(endpoint)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.hostname is None:
         raise ValueError(f"invalid OTLP endpoint: {endpoint!r}")
