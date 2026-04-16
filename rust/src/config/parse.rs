@@ -136,8 +136,9 @@ fn decode_header_component(raw: &str) -> Result<String, ConfigurationError> {
 /// Example: `"provide.server=DEBUG,asyncio=WARNING"`.
 /// Unknown level strings emit a stderr warning and default to INFO at runtime.
 pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
-    const VALID_LEVELS: &[&str] =
-        &["TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL", "FATAL"];
+    const VALID_LEVELS: &[&str] = &[
+        "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL", "FATAL",
+    ];
     let mut map = HashMap::new();
     for pair in raw.split(',') {
         let pair = pair.trim();
@@ -204,8 +205,9 @@ mod tests {
 
     #[test]
     fn parse_module_levels_valid_levels_no_warning() {
-        let map =
-            parse_module_levels("a=TRACE,b=DEBUG,c=INFO,d=WARN,e=WARNING,f=ERROR,g=CRITICAL,h=FATAL");
+        let map = parse_module_levels(
+            "a=TRACE,b=DEBUG,c=INFO,d=WARN,e=WARNING,f=ERROR,g=CRITICAL,h=FATAL",
+        );
         assert_eq!(map.len(), 8, "all valid levels must parse");
     }
 
