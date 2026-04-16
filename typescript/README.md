@@ -171,6 +171,22 @@ const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
 
+### Runtime inspection
+
+```typescript
+import { getRuntimeConfig, getRuntimeStatus } from '@provide-io/telemetry';
+
+const cfg = getRuntimeConfig();
+const status = getRuntimeStatus();
+
+console.log(cfg.serviceName);
+console.log(status.setupDone, status.providers.traces, status.fallback.logs);
+```
+
+Use `getRuntimeConfig()` after setup or runtime reloads to inspect the applied
+snapshot, and `getRuntimeStatus()` to see provider install state, fallback
+mode, and the last setup error without reading internal modules.
+
 ## React integration
 
 Requires React 18+ as a peer dependency.

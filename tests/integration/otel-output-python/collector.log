@@ -1,0 +1,126 @@
+2026-04-16T00:18:10.918Z	info	service@v0.102.1/service.go:113	Setting up own telemetry...
+2026-04-16T00:18:10.922Z	info	service@v0.102.1/telemetry.go:96	Serving metrics	{"address": ":8888", "level": "Normal"}
+2026-04-16T00:18:10.925Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "traces", "name": "debug"}
+2026-04-16T00:18:10.931Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "logs", "name": "debug"}
+2026-04-16T00:18:10.932Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "metrics", "name": "debug"}
+2026-04-16T00:18:10.939Z	info	service@v0.102.1/service.go:180	Starting otelcol-contrib...	{"Version": "0.102.1", "NumCPU": 2}
+2026-04-16T00:18:10.939Z	info	extensions/extensions.go:34	Starting extensions...
+2026-04-16T00:18:10.940Z	info	extensions/extensions.go:37	Extension is starting...	{"kind": "extension", "name": "health_check"}
+2026-04-16T00:18:10.940Z	info	healthcheckextension@v0.102.0/healthcheckextension.go:35	Starting health_check extension	{"kind": "extension", "name": "health_check", "config": {"Endpoint":"0.0.0.0:13133","TLSSetting":null,"CORS":null,"Auth":null,"MaxRequestBodySize":0,"IncludeMetadata":false,"ResponseHeaders":null,"Path":"/","ResponseBody":null,"CheckCollectorPipeline":{"Enabled":false,"Interval":"5m","ExporterFailureThreshold":5}}}
+2026-04-16T00:18:10.944Z	warn	internal@v0.102.1/warning.go:42	Using the 0.0.0.0 address exposes this server to every network interface, which may facilitate Denial of Service attacks. Enable the feature gate to change the default and remove this warning.	{"kind": "extension", "name": "health_check", "documentation": "https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/security-best-practices.md#safeguards-against-denial-of-service-attacks", "feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:10.946Z	info	extensions/extensions.go:52	Extension started.	{"kind": "extension", "name": "health_check"}
+2026-04-16T00:18:10.946Z	warn	internal@v0.102.1/warning.go:42	Using the 0.0.0.0 address exposes this server to every network interface, which may facilitate Denial of Service attacks. Enable the feature gate to change the default and remove this warning.	{"kind": "receiver", "name": "otlp", "data_type": "logs", "documentation": "https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/security-best-practices.md#safeguards-against-denial-of-service-attacks", "feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:10.946Z	info	otlpreceiver@v0.102.1/otlp.go:152	Starting HTTP server	{"kind": "receiver", "name": "otlp", "data_type": "logs", "endpoint": "0.0.0.0:4318"}
+2026-04-16T00:18:10.949Z	info	healthcheck/handler.go:132	Health Check state change	{"kind": "extension", "name": "health_check", "status": "ready"}
+2026-04-16T00:18:10.949Z	info	service@v0.102.1/service.go:206	Everything is ready. Begin running and processing data.
+2026-04-16T00:18:10.949Z	warn	localhostgate/featuregate.go:63	The default endpoints for all servers in components will change to use localhost instead of 0.0.0.0 in a future version. Use the feature gate to preview the new default.	{"feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:12.146Z	info	TracesExporter	{"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 1}
+2026-04-16T00:18:12.150Z	info	ResourceSpans #0
+Resource SchemaURL: 
+Resource attributes:
+     -> telemetry.sdk.language: Str(python)
+     -> telemetry.sdk.name: Str(opentelemetry)
+     -> telemetry.sdk.version: Str(1.40.0)
+     -> service.name: Str(provide-telemetry-integration)
+     -> service.version: Str(0.0.0)
+ScopeSpans #0
+ScopeSpans SchemaURL: 
+InstrumentationScope test_otlp_integration 
+Span #0
+    Trace ID       : e131f0b27e1e5e28dd6a7ec0cb1016eb
+    Parent ID      : 
+    ID             : d630476f63f9c7bc
+    Name           : integration.otlp.smoke
+    Kind           : Internal
+    Start time     : 2026-04-16 00:18:11.782874 +0000 UTC
+    End time       : 2026-04-16 00:18:11.78394 +0000 UTC
+    Status code    : Unset
+    Status message : 
+	{"kind": "exporter", "data_type": "traces", "name": "debug"}
+2026-04-16T00:18:12.156Z	info	MetricsExporter	{"kind": "exporter", "data_type": "metrics", "name": "debug", "resource metrics": 1, "metrics": 3, "data points": 3}
+2026-04-16T00:18:12.156Z	info	ResourceMetrics #0
+Resource SchemaURL: 
+Resource attributes:
+     -> telemetry.sdk.language: Str(python)
+     -> telemetry.sdk.name: Str(opentelemetry)
+     -> telemetry.sdk.version: Str(1.40.0)
+     -> service.name: Str(provide-telemetry-integration)
+     -> service.version: Str(0.0.0)
+ScopeMetrics #0
+ScopeMetrics SchemaURL: 
+InstrumentationScope opentelemetry-sdk 
+Metric #0
+Descriptor:
+     -> Name: otel.sdk.span.started
+     -> Description: The number of created spans.
+     -> Unit: {span}
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> otel.span.parent.origin: Str(none)
+     -> otel.span.sampling_result: Str(RECORD_AND_SAMPLE)
+StartTimestamp: 2026-04-16 00:18:11.782832 +0000 UTC
+Timestamp: 2026-04-16 00:18:11.821027 +0000 UTC
+Value: 1
+Metric #1
+Descriptor:
+     -> Name: otel.sdk.span.live
+     -> Description: The number of created spans with `recording=true` for which the end operation has not been called yet.
+     -> Unit: {span}
+     -> DataType: Sum
+     -> IsMonotonic: false
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> otel.span.sampling_result: Str(RECORD_AND_SAMPLE)
+StartTimestamp: 2026-04-16 00:18:11.782853 +0000 UTC
+Timestamp: 2026-04-16 00:18:11.821027 +0000 UTC
+Value: 0
+ScopeMetrics #1
+ScopeMetrics SchemaURL: 
+InstrumentationScope provide.telemetry 
+Metric #0
+Descriptor:
+     -> Name: integration.requests
+     -> Description: 
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> suite: Str(integration)
+StartTimestamp: 2026-04-16 00:18:11.783921 +0000 UTC
+Timestamp: 2026-04-16 00:18:11.821027 +0000 UTC
+Value: 1
+Exemplars:
+Exemplar #0
+     -> Trace ID: e131f0b27e1e5e28dd6a7ec0cb1016eb
+     -> Span ID: d630476f63f9c7bc
+     -> Timestamp: 2026-04-16 00:18:11.78391 +0000 UTC
+     -> Value: 1
+	{"kind": "exporter", "data_type": "metrics", "name": "debug"}
+2026-04-16T00:18:12.159Z	info	LogsExporter	{"kind": "exporter", "data_type": "logs", "name": "debug", "resource logs": 1, "log records": 1}
+2026-04-16T00:18:12.159Z	info	ResourceLog #0
+Resource SchemaURL: 
+Resource attributes:
+     -> telemetry.sdk.language: Str(python)
+     -> telemetry.sdk.name: Str(opentelemetry)
+     -> telemetry.sdk.version: Str(1.40.0)
+     -> service.name: Str(provide-telemetry-integration)
+     -> service.version: Str(0.0.0)
+ScopeLogs #0
+ScopeLogs SchemaURL: 
+InstrumentationScope integration.otlp 
+LogRecord #0
+ObservedTimestamp: 2026-04-16 00:18:11.783844 +0000 UTC
+Timestamp: 2026-04-16 00:18:11.783685888 +0000 UTC
+SeverityText: INFO
+SeverityNumber: Info(9)
+Body: Str(2026-04-16T00:18:11.782974Z [info     ] integration.otlp.log           [integration.otlp] env=dev filename=test_otlp_integration.py lineno=55 service=provide-telemetry-integration span_id=d630476f63f9c7bc suite=integration trace_id=e131f0b27e1e5e28dd6a7ec0cb1016eb version=0.0.0)
+Trace ID: e131f0b27e1e5e28dd6a7ec0cb1016eb
+Span ID: d630476f63f9c7bc
+Flags: 1
+	{"kind": "exporter", "data_type": "logs", "name": "debug"}

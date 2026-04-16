@@ -19,6 +19,7 @@ use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
 mod emit;
+mod levels;
 mod processors;
 
 use emit::{emit_if_console, emit_if_json};
@@ -26,6 +27,7 @@ pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
     take_json_capture,
 };
+use levels::{effective_level_threshold, level_order};
 use processors::process_event;
 
 // When the governance feature is disabled, consent is unconditionally granted.
@@ -104,41 +106,6 @@ fn emit_event(mut event: LogEvent) {
         buf.push(event);
     }
     drop(buf);
-}
-
-/// Map level string to a numeric order for comparison.
-/// CRITICAL/FATAL are aliases for ERROR (same severity), matching the
-/// `log` bridge mapping in `level_str_to_log_filter`.
-fn level_order(level: &str) -> u8 {
-    match level.to_ascii_uppercase().as_str() {
-        "TRACE" => 0,
-        "DEBUG" => 1,
-        "INFO" => 2,
-        "WARN" | "WARNING" => 3,
-        "ERROR" | "CRITICAL" | "FATAL" => 4,
-        _ => 2, // default to INFO
-    }
-}
-
-/// Resolve the effective level threshold for a given target (logger name).
-/// Per-module overrides win via longest-prefix match; falls back to the
-/// global default level.
-fn effective_level_threshold(target: &str, config: &crate::config::LoggingConfig) -> u8 {
-    let mut best_match: Option<usize> = None;
-    let mut threshold = level_order(&config.level);
-    for (prefix, lvl) in &config.module_levels {
-        let matches = prefix.is_empty()
-            || target == prefix.as_str()
-            || target.starts_with(&format!("{prefix}."));
-        if matches {
-            let plen = prefix.len();
-            if best_match.map_or(true, |best| plen > best) {
-                best_match = Some(plen);
-                threshold = level_order(lvl);
-            }
-        }
-    }
-    threshold
 }
 
 /// Shared core: gate, build, process, emit, count.
@@ -402,16 +369,6 @@ pub fn buffer_logger(name: Option<&str>) -> BufferLogger {
 // ---------------------------------------------------------------------------
 // log::Log trait — routes log::info!() / log::debug!() etc. through here
 // ---------------------------------------------------------------------------
-
-fn level_str_to_log_filter(level: &str) -> log::LevelFilter {
-    match level.to_uppercase().as_str() {
-        "TRACE" => log::LevelFilter::Trace,
-        "DEBUG" => log::LevelFilter::Debug,
-        "WARN" | "WARNING" => log::LevelFilter::Warn,
-        "ERROR" | "CRITICAL" => log::LevelFilter::Error,
-        _ => log::LevelFilter::Info,
-    }
-}
 
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {

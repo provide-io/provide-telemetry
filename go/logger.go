@@ -11,6 +11,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
@@ -317,10 +319,13 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 		cfg = DefaultTelemetryConfig()
 	}
 	if Logger != nil {
-		if h, ok := Logger.Handler().(*_telemetryHandler); ok {
-			cfg = h.cfg
+		if liveCfg, ok := _telemetryConfigFromHandler(Logger.Handler()); ok {
+			cfg = liveCfg
 		}
 	}
+	_setupMu.Lock()
+	loggerProvider := _otelLoggerProvider
+	_setupMu.Unlock()
 	opts := &slog.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -340,7 +345,18 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 		base = slog.NewTextHandler(os.Stderr, opts)
 	}
 	h := _newTelemetryHandler(base, cfg, name)
-	logger := slog.New(h)
+	var handler slog.Handler = h
+	if loggerProvider != nil {
+		bridgeName := cfg.ServiceName
+		if name != "" {
+			bridgeName = name
+		}
+		handler = newMultiHandler(
+			h,
+			otelslog.NewHandler(bridgeName, otelslog.WithLoggerProvider(loggerProvider)),
+		)
+	}
+	logger := slog.New(handler)
 	traceID, spanID := _getTraceSpanFromContext(ctx)
 	if traceID != "" || spanID != "" {
 		var attrs []any
@@ -353,6 +369,20 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 		return logger.With(attrs...)
 	}
 	return logger
+}
+
+func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) {
+	switch h := handler.(type) {
+	case *_telemetryHandler:
+		return h.cfg, true
+	case *multiHandler:
+		for _, child := range h.handlers {
+			if cfg, ok := _telemetryConfigFromHandler(child); ok {
+				return cfg, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
