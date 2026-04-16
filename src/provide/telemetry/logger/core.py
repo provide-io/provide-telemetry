@@ -16,6 +16,7 @@ from typing import Any, Protocol, cast
 import structlog
 
 from provide.telemetry import _otel
+from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
@@ -175,7 +176,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     exporter = run_with_resilience(
         "logs",
         lambda: otlp_exporter_cls(
-            endpoint=config.logging.otlp_endpoint,
+            endpoint=validate_otlp_endpoint(config.logging.otlp_endpoint),
             headers=config.logging.otlp_headers,
             timeout=config.exporter.logs_timeout_seconds,
         ),

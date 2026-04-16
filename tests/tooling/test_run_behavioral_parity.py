@@ -8,6 +8,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -142,3 +145,108 @@ def test_runtime_probe_case_env_disables_trace_and_metrics_for_signal_enablement
         "PROVIDE_TRACE_ENABLED": "false",
         "PROVIDE_METRICS_ENABLED": "false",
     }
+
+
+def test_runtime_probe_case_env_disables_trace_and_metrics_for_non_provider_python_cases() -> None:
+    module = _load_support_module()
+
+    for case in ("strict_schema_rejection", "required_keys_rejection", "shutdown_re_setup"):
+        env = module._runtime_probe_case_env(case)
+        assert env["PROVIDE_TRACE_ENABLED"] == "false"
+        assert env["PROVIDE_METRICS_ENABLED"] == "false"
+
+
+def test_runtime_probe_python_signal_enablement_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        "PROVIDE_PARITY_PROBE_CASE": "signal_enablement",
+        "PROVIDE_TRACE_ENABLED": "false",
+        "PROVIDE_METRICS_ENABLED": "false",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "signal_enablement"
+    assert payload["traces_enabled"] is False
+    assert payload["metrics_enabled"] is False
+
+
+def test_runtime_probe_python_lazy_init_logger_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        "PROVIDE_PARITY_PROBE_CASE": "lazy_init_logger",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "lazy_init_logger"
+    assert payload["record"]["message"] == "log.output.parity"
+
+
+def test_runtime_probe_python_strict_schema_rejection_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("strict_schema_rejection"),
+        "PROVIDE_PARITY_PROBE_CASE": "strict_schema_rejection",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "strict_schema_rejection"
+    assert payload["schema_error"] is True
+
+
+def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() -> None:
+    module = _load_support_module()
+
+    output_python = next(
+        runner for runner in module._probe_runners(_REPO_ROOT, "cargo", {}) if runner.name == "python"
+    )
+    runtime_python = next(
+        runner for runner in module._runtime_probe_runners(_REPO_ROOT, "cargo", {}) if runner.name == "python"
+    )
+
+    assert output_python.cmd[:2] == [sys.executable, str(_REPO_ROOT / "spec" / "probes" / "emit_log_python.py")]
+    assert runtime_python.cmd[:2] == [
+        sys.executable,
+        str(_REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"),
+    ]
