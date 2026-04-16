@@ -17,6 +17,7 @@ describe('property: configFromEnv()', () => {
             fc.constant(undefined),
             fc.constant('json'),
             fc.constant('pretty'),
+            fc.constant('console'),
             fc.string({ maxLength: 10 }),
           ),
           PROVIDE_TRACE_ENABLED: fc.oneof(
@@ -34,8 +35,13 @@ describe('property: configFromEnv()', () => {
           }
           try {
             const cfg = configFromEnv();
-            // logFormat must be 'json' or 'pretty'
-            if (cfg.logFormat !== 'json' && cfg.logFormat !== 'pretty') return false;
+            // logFormat must be 'json', 'pretty', or 'console'
+            if (
+              cfg.logFormat !== 'json' &&
+              cfg.logFormat !== 'pretty' &&
+              cfg.logFormat !== 'console'
+            )
+              return false;
             // logLevel must be lowercase
             if (cfg.logLevel !== cfg.logLevel.toLowerCase()) return false;
             // otelEnabled must be boolean
@@ -52,14 +58,19 @@ describe('property: configFromEnv()', () => {
     );
   });
 
-  it('logFormat is always json or pretty', () => {
+  it('logFormat is always json, pretty, or console', () => {
     fc.assert(
-      fc.property(fc.boolean(), (useJson) => {
-        process.env['PROVIDE_LOG_FORMAT'] = useJson ? 'json' : 'pretty';
-        const cfg = configFromEnv();
-        delete process.env['PROVIDE_LOG_FORMAT'];
-        return cfg.logFormat === 'json' || cfg.logFormat === 'pretty';
-      }),
+      fc.property(
+        fc.oneof(fc.constant('json'), fc.constant('pretty'), fc.constant('console')),
+        (fmt) => {
+          process.env['PROVIDE_LOG_FORMAT'] = fmt;
+          const cfg = configFromEnv();
+          delete process.env['PROVIDE_LOG_FORMAT'];
+          return (
+            cfg.logFormat === 'json' || cfg.logFormat === 'pretty' || cfg.logFormat === 'console'
+          );
+        },
+      ),
     );
   });
 

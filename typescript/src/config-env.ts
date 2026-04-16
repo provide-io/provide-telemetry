@@ -118,7 +118,7 @@ export function configFromEnv(): TelemetryConfig {
     logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
-      // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
+      // Stryker disable next-line ConditionalExpression: 'console' is DEFAULTS.logFormat so removing its check returns the same default value
       if (fmt === 'json' || fmt === 'pretty' || fmt === 'console') return fmt;
       return DEFAULTS.logFormat;
     })(),

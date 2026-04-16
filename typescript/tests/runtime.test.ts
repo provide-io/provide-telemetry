@@ -248,6 +248,26 @@ describe('reloadRuntimeFromEnv', () => {
     );
     warnSpy.mockRestore();
   });
+
+  it('warns on otlpTracesEndpoint cold-field drift', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpTracesEndpoint: 'http://traces:4318' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpTracesEndpoint'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('rejects per-signal OTLP endpoint change after providers registered', () => {
+    reconfigureTelemetry({ otlpTracesEndpoint: 'http://traces:4318' });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ otlpTracesEndpoint: 'http://other:4318' })).toThrow(
+      /provider-changing reconfiguration/,
+    );
+  });
 });
 
 describe('_markProvidersRegistered / _areProvidersRegistered', () => {

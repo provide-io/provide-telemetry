@@ -187,7 +187,7 @@ export const DEFAULTS: TelemetryConfig = {
   environment: 'dev',
   version: '0.0.0',
   logLevel: 'info',
-  logFormat: 'json',
+  logFormat: 'console',
   otelEnabled: true,
   sanitizeFields: [],
   captureToWindow: true,
