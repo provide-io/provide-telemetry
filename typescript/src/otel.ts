@@ -23,7 +23,8 @@ import type { TelemetryConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
 import { setupOtelLogProvider } from './otel-logs';
 
-const DEFAULT_OTLP_ENDPOINT = 'http://localhost:4318';
+// No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
+// entirely (safe no-export path per docs/ARCHITECTURE.md).
 import {
   type ShutdownableProvider,
   _areProvidersRegistered,
@@ -41,9 +42,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   if (_areProvidersRegistered()) return;
 
   const headers = cfg.otlpHeaders ?? {};
-  const endpoint = cfg.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT;
-  // Validate the base endpoint before attempting any exporter construction.
-  validateOtlpEndpoint(endpoint);
+  const endpoint = cfg.otlpEndpoint;
+  if (!endpoint) {
+    // No OTLP endpoint configured — skip export entirely (safe no-export path).
+    // Providers are still marked registered so repeated calls are no-ops.
+    _markProvidersRegistered();
+    return;
+  }
   const registered: ShutdownableProvider[] = [];
 
   // ── Context manager ──────────────────────────────────────────────────────────
