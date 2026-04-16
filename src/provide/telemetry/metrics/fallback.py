@@ -64,7 +64,10 @@ class Counter:
         return self._otel_counter
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        from provide.telemetry.consent import should_allow
+        try:
+            from provide.telemetry.consent import should_allow
+        except ImportError:  # pragma: no cover — governance module stripped
+            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
 
         if not should_allow("metrics"):
             return
@@ -126,7 +129,10 @@ class Gauge:
         return self._otel_gauge
 
     def add(self, amount: int, attributes: dict[str, str] | None = None) -> None:
-        from provide.telemetry.consent import should_allow
+        try:
+            from provide.telemetry.consent import should_allow
+        except ImportError:  # pragma: no cover — governance module stripped
+            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
 
         if not should_allow("metrics"):
             return
@@ -147,7 +153,10 @@ class Gauge:
             release(ticket)
 
     def set(self, value: int, attributes: dict[str, str] | None = None) -> None:
-        from provide.telemetry.consent import should_allow
+        try:
+            from provide.telemetry.consent import should_allow
+        except ImportError:  # pragma: no cover — governance module stripped
+            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
 
         if not should_allow("metrics"):
             return
@@ -209,7 +218,10 @@ class Histogram:
         return self._otel_histogram
 
     def record(self, value: float, attributes: dict[str, str] | None = None) -> None:
-        from provide.telemetry.consent import should_allow
+        try:
+            from provide.telemetry.consent import should_allow
+        except ImportError:  # pragma: no cover — governance module stripped
+            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
 
         if not should_allow("metrics"):
             return
