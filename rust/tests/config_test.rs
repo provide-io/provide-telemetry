@@ -29,6 +29,8 @@ fn config_test_defaults_match_repo_contract() {
     assert!(cfg.logging.otlp_headers.is_empty());
     assert!(cfg.tracing.enabled);
     assert!(cfg.metrics.enabled);
+    assert!(!cfg.event_schema.strict_event_name);
+    assert!(cfg.event_schema.required_keys.is_empty());
 }
 
 #[test]
@@ -38,6 +40,8 @@ fn config_test_env_overrides_and_header_parsing_follow_repo_behavior() {
         ("PROVIDE_TELEMETRY_ENV", "staging"),
         ("PROVIDE_TELEMETRY_VERSION", "1.2.3"),
         ("PROVIDE_TELEMETRY_STRICT_SCHEMA", "true"),
+        ("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", "true"),
+        ("PROVIDE_TELEMETRY_REQUIRED_KEYS", "request_id, actor_id"),
         ("PROVIDE_LOG_PII_MAX_DEPTH", "3"),
         (
             "OTEL_EXPORTER_OTLP_HEADERS",
@@ -50,6 +54,11 @@ fn config_test_env_overrides_and_header_parsing_follow_repo_behavior() {
     assert_eq!(cfg.environment, "staging");
     assert_eq!(cfg.version, "1.2.3");
     assert!(cfg.strict_schema);
+    assert!(cfg.event_schema.strict_event_name);
+    assert_eq!(
+        cfg.event_schema.required_keys,
+        vec!["request_id", "actor_id"]
+    );
     assert_eq!(cfg.pii_max_depth, 3);
     assert_eq!(
         cfg.logging
@@ -109,4 +118,5 @@ fn config_test_exported_types_are_distinct_and_constructible() {
     assert_eq!(config.to_string(), "config invalid");
     assert_eq!(schema.to_string(), "schema invalid");
     assert!(overrides.strict_schema.is_none());
+    assert!(overrides.event_schema.is_none());
 }

@@ -88,6 +88,9 @@ pub(super) fn install_meter_provider(
     if !cfg.metrics.enabled {
         return Ok(false);
     }
+    if cfg.metrics.otlp_endpoint.is_none() {
+        return Ok(false);
+    }
 
     let exporter = match build_exporter(cfg) {
         Ok(e) => e,
