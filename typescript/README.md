@@ -171,6 +171,65 @@ const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
 
+### Runtime inspection
+
+```typescript
+import { getRuntimeConfig, getRuntimeStatus } from '@provide-io/telemetry';
+
+const cfg = getRuntimeConfig();
+const status = getRuntimeStatus();
+
+console.log(cfg.serviceName);
+console.log(status.setupDone, status.providers.traces, status.fallback.logs);
+```
+
+Use `getRuntimeConfig()` after setup or runtime reloads to inspect the applied
+snapshot, and `getRuntimeStatus()` to see provider install state, fallback
+mode, and the last setup error without reading internal modules.
+
+## React integration
+
+Requires React 18+ as a peer dependency.
+
+```typescript
+import { useTelemetryContext, TelemetryErrorBoundary } from '@provide-io/telemetry/react';
+```
+
+### `useTelemetryContext(values)`
+
+Binds key/value pairs into telemetry context for the lifetime of a component. Automatically cleans up on unmount and re-runs when values change (compared by content, not reference).
+
+```tsx
+function UserDashboard({ userId }: { userId: string }) {
+  useTelemetryContext({ user_id: userId, page: 'dashboard' });
+  return <Dashboard />;
+}
+```
+
+### `TelemetryErrorBoundary`
+
+React error boundary that auto-logs caught render errors via `getLogger('react.error_boundary')`. Accepts a static fallback or a render-prop receiving the error and a reset callback.
+
+```tsx
+<TelemetryErrorBoundary
+  fallback={(error, reset) => <ErrorPage error={error} onRetry={reset} />}
+  onError={(error, info) => reportToSentry(error, info)}
+>
+  <App />
+</TelemetryErrorBoundary>
+```
+
+## Browser support
+
+The library is browser-compatible via conditional exports. OpenTelemetry providers become no-ops in browser environments, so no server-only imports leak into client bundles. No polyfills are required for modern browsers (ES2020+).
+
+Browser-specific options in `setupTelemetry()`:
+
+| Option | Effect |
+|--------|--------|
+| `captureToWindow: true` | Buffers structured logs to `window.__pinoLogs` for devtools inspection |
+| `consoleOutput: true` | Mirrors log output to `console.debug` / `console.log` / `console.warn` / `console.error` |
+
 ## Configuration
 
 All options can be set programmatically via `setupTelemetry()` or via environment variables:

@@ -1,0 +1,37 @@
+2026-04-16T00:18:25.389Z	info	service@v0.102.1/service.go:113	Setting up own telemetry...
+2026-04-16T00:18:25.409Z	info	service@v0.102.1/telemetry.go:96	Serving metrics	{"address": ":8888", "level": "Normal"}
+2026-04-16T00:18:25.437Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "metrics", "name": "debug"}
+2026-04-16T00:18:25.474Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "traces", "name": "debug"}
+2026-04-16T00:18:25.497Z	info	exporter@v0.102.1/exporter.go:275	Development component. May change in the future.	{"kind": "exporter", "data_type": "logs", "name": "debug"}
+2026-04-16T00:18:25.518Z	info	service@v0.102.1/service.go:180	Starting otelcol-contrib...	{"Version": "0.102.1", "NumCPU": 2}
+2026-04-16T00:18:25.519Z	info	extensions/extensions.go:34	Starting extensions...
+2026-04-16T00:18:25.520Z	info	extensions/extensions.go:37	Extension is starting...	{"kind": "extension", "name": "health_check"}
+2026-04-16T00:18:25.523Z	info	healthcheckextension@v0.102.0/healthcheckextension.go:35	Starting health_check extension	{"kind": "extension", "name": "health_check", "config": {"Endpoint":"0.0.0.0:13133","TLSSetting":null,"CORS":null,"Auth":null,"MaxRequestBodySize":0,"IncludeMetadata":false,"ResponseHeaders":null,"Path":"/","ResponseBody":null,"CheckCollectorPipeline":{"Enabled":false,"Interval":"5m","ExporterFailureThreshold":5}}}
+2026-04-16T00:18:25.538Z	warn	internal@v0.102.1/warning.go:42	Using the 0.0.0.0 address exposes this server to every network interface, which may facilitate Denial of Service attacks. Enable the feature gate to change the default and remove this warning.	{"kind": "extension", "name": "health_check", "documentation": "https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/security-best-practices.md#safeguards-against-denial-of-service-attacks", "feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:25.557Z	info	extensions/extensions.go:52	Extension started.	{"kind": "extension", "name": "health_check"}
+2026-04-16T00:18:25.571Z	warn	internal@v0.102.1/warning.go:42	Using the 0.0.0.0 address exposes this server to every network interface, which may facilitate Denial of Service attacks. Enable the feature gate to change the default and remove this warning.	{"kind": "receiver", "name": "otlp", "data_type": "traces", "documentation": "https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/security-best-practices.md#safeguards-against-denial-of-service-attacks", "feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:25.573Z	info	otlpreceiver@v0.102.1/otlp.go:152	Starting HTTP server	{"kind": "receiver", "name": "otlp", "data_type": "traces", "endpoint": "0.0.0.0:4318"}
+2026-04-16T00:18:25.582Z	info	healthcheck/handler.go:132	Health Check state change	{"kind": "extension", "name": "health_check", "status": "ready"}
+2026-04-16T00:18:25.583Z	info	service@v0.102.1/service.go:206	Everything is ready. Begin running and processing data.
+2026-04-16T00:18:25.583Z	warn	localhostgate/featuregate.go:63	The default endpoints for all servers in components will change to use localhost instead of 0.0.0.0 in a future version. Use the feature gate to preview the new default.	{"feature gate ID": "component.UseLocalHostAsDefaultHost"}
+2026-04-16T00:18:27.805Z	info	TracesExporter	{"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 1}
+2026-04-16T00:18:27.808Z	info	ResourceSpans #0
+Resource SchemaURL: https://opentelemetry.io/schemas/1.26.0
+Resource attributes:
+     -> deployment.environment: Str(dev)
+     -> service.name: Str(provide-telemetry-go-integration)
+     -> service.version: Str(0.0.0)
+ScopeSpans #0
+ScopeSpans SchemaURL: 
+InstrumentationScope provide-telemetry-go-integration 
+Span #0
+    Trace ID       : d107d2069c19b9496de91afd8023a24f
+    Parent ID      : 
+    ID             : 41a8f4422c0f55e7
+    Name           : integration.collector.span
+    Kind           : Internal
+    Start time     : 2026-04-16 00:18:27.395624 +0000 UTC
+    End time       : 2026-04-16 00:18:27.395636875 +0000 UTC
+    Status code    : Unset
+    Status message : 
+	{"kind": "exporter", "data_type": "traces", "name": "debug"}

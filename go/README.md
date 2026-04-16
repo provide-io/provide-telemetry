@@ -172,6 +172,20 @@ snap := telemetry.GetHealthSnapshot()
 fmt.Println(snap.LogsEmitted, snap.TracesEmitted, snap.LogsCircuitOpenCount)
 ```
 
+### Runtime inspection
+
+```go
+cfg := telemetry.GetRuntimeConfig()
+status := telemetry.GetRuntimeStatus()
+
+fmt.Println(cfg.ServiceName)
+fmt.Println(status.SetupDone, status.Providers.Traces, status.Fallback.Logs)
+```
+
+Use `GetRuntimeConfig()` to see the applied config snapshot after setup or
+runtime reloads, and `GetRuntimeStatus()` to inspect provider install state,
+fallback mode, and the last setup error without digging into internals.
+
 ### Schema validation
 
 ```go
