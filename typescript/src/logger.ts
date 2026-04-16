@@ -51,6 +51,11 @@ export interface Logger {
 let _root: pino.Logger | null = null;
 let _rootConfigVersion = -1;
 
+function resolveLoggerConfig() {
+  // Before setupTelemetry() runs, logger lazy-init should still honor env config.
+  return _getConfigVersion() === 0 ? configFromEnv() : getConfig();
+}
+
 /**
  * Build the write hook that enriches, sanitizes, captures, and optionally
  * emits each log record.  Config is read dynamically on every invocation so
@@ -61,7 +66,7 @@ export function makeWriteHook() {
   // pino's WriteFn signature uses `object`; we cast internally for safe property access.
   return (obj: object): void => {
     // Read config dynamically — avoids stale-capture bug after _resetConfig().
-    const cfg = getConfig();
+    const cfg = resolveLoggerConfig();
     const o = obj as Record<string, unknown>;
 
     // Consent gate: drop records the current consent level forbids.
@@ -76,24 +81,38 @@ export function makeWriteHook() {
     // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
     if (!o['message']) o['message'] = o['event'] ?? '';
 
-    // Caller info injection — intentionally expensive (creates Error per call).
-    // Stryker disable all
-    if (cfg.logIncludeCaller) {
-      const err = new Error();
-      const stack = err.stack?.split('\n');
-      /* v8 ignore next -- stack is always defined in V8 */
-      if (stack) {
-        for (const frame of stack.slice(1)) {
-          if (
-            !frame.includes('logger.ts') &&
-            !frame.includes('node_modules') &&
-            !frame.includes('pino')
-          ) {
-            const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
-            /* v8 ignore next -- match always succeeds for V8 stack frames */
-            if (match) {
-              o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
-              o['caller_line'] = Number(match[2]);
+    try {
+      // Inject trace/span IDs from manual context first, then any active OTEL span.
+      const ids = getTraceContext();
+      if (ids.trace_id) o['trace_id'] = ids.trace_id;
+      if (ids.span_id) o['span_id'] = ids.span_id;
+
+      // Merge module-level context bindings.
+      Object.assign(o, getContext());
+
+      // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
+      if (!o['message']) o['message'] = o['event'] ?? '';
+
+      // Caller info injection — intentionally expensive (creates Error per call).
+      // Stryker disable all
+      if (cfg.logIncludeCaller) {
+        const err = new Error();
+        const stack = err.stack?.split('\n');
+        /* v8 ignore next -- stack is always defined in V8 */
+        if (stack) {
+          for (const frame of stack.slice(1)) {
+            if (
+              !frame.includes('logger.ts') &&
+              !frame.includes('node_modules') &&
+              !frame.includes('pino')
+            ) {
+              const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
+              /* v8 ignore next -- match always succeeds for V8 stack frames */
+              if (match) {
+                o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
+                o['caller_line'] = Number(match[2]);
+              }
+              break;
             }
             break;
           }
@@ -177,8 +196,10 @@ export function makeWriteHook() {
 function getRootLogger(): pino.Logger {
   const currentVersion = _getConfigVersion();
   // Stryker disable next-line ConditionalExpression
-  if (_root) return _root;
-  const cfg = getConfig();
+  if (_root && _rootConfigVersion === currentVersion) return _root;
+  _root = null;
+  _rootConfigVersion = currentVersion;
+  const cfg = resolveLoggerConfig();
   const hook = makeWriteHook();
 
   // pino only invokes browser.write when process.version is absent (real browser).

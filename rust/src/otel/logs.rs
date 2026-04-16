@@ -73,6 +73,10 @@ pub(super) fn install_logger_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
+    if cfg.logging.otlp_endpoint.is_none() {
+        return Ok(false);
+    }
+
     let exporter = match build_exporter(cfg) {
         Ok(e) => e,
         Err(err) => {

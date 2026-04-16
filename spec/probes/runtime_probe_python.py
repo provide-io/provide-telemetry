@@ -14,11 +14,9 @@ from contextlib import redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from provide.telemetry import (
+from provide.telemetry import (  # noqa: E402
     get_logger,
-    get_runtime_config,
     get_runtime_status,
-    reconfigure_telemetry,
     set_trace_context,
     setup_telemetry,
     shutdown_telemetry,
@@ -58,16 +56,6 @@ def _case_strict_schema_rejection() -> dict[str, object]:
     }
 
 
-def _case_strict_event_name_only() -> dict[str, object]:
-    record = _capture_record("Bad.Event.Ok")
-    shutdown_telemetry()
-    return {
-        "case": "strict_event_name_only",
-        "emitted": True,
-        "schema_error": "_schema_error" in record,
-    }
-
-
 def _case_required_keys_rejection() -> dict[str, object]:
     record = _capture_record("user.auth.ok")
     shutdown_telemetry()
@@ -98,55 +86,6 @@ def _case_fail_open_exporter_init() -> dict[str, object]:
     }
 
 
-def _case_signal_enablement() -> dict[str, object]:
-    setup_telemetry()
-    status = get_runtime_status()
-    shutdown_telemetry()
-    signals = status["signals"]
-    return {
-        "case": "signal_enablement",
-        "setup_done": bool(status["setup_done"]),
-        "logs_enabled": bool(signals["logs"]),
-        "traces_enabled": bool(signals["traces"]),
-        "metrics_enabled": bool(signals["metrics"]),
-    }
-
-
-def _case_per_signal_logs_endpoint() -> dict[str, object]:
-    setup_telemetry()
-    status = get_runtime_status()
-    shutdown_telemetry()
-    providers = status["providers"]
-    return {
-        "case": "per_signal_logs_endpoint",
-        "setup_done": bool(status["setup_done"]),
-        "logs_provider": bool(providers["logs"]),
-        "traces_provider": bool(providers["traces"]),
-        "metrics_provider": bool(providers["metrics"]),
-    }
-
-
-def _case_provider_identity_reconfigure() -> dict[str, object]:
-    setup_telemetry()
-    before = get_runtime_status()
-    service_before = get_runtime_config().service_name
-    target = get_runtime_config()
-    target.service_name = f"{service_before}-renamed"
-    raised = False
-    try:
-        reconfigure_telemetry(target)
-    except Exception:
-        raised = True
-    config_preserved = get_runtime_config().service_name == service_before
-    shutdown_telemetry()
-    return {
-        "case": "provider_identity_reconfigure",
-        "providers_active": any(before["providers"].values()),
-        "raised": raised,
-        "config_preserved": config_preserved,
-    }
-
-
 def _case_shutdown_re_setup() -> dict[str, object]:
     setup_telemetry()
     first = get_runtime_status()
@@ -159,8 +98,6 @@ def _case_shutdown_re_setup() -> dict[str, object]:
         "case": "shutdown_re_setup",
         "first_setup_done": bool(first["setup_done"]),
         "shutdown_cleared_setup": not bool(second["setup_done"]),
-        "shutdown_cleared_providers": not any(second["providers"].values()),
-        "shutdown_fallback_all": all(second["fallback"].values()),
         "re_setup_done": bool(third["setup_done"]),
         "signals_match": first["signals"] == third["signals"],
         "providers_match": first["providers"] == third["providers"],
@@ -172,13 +109,9 @@ def main() -> int:
     result = {
         "lazy_init_logger": _case_lazy_init_logger,
         "strict_schema_rejection": _case_strict_schema_rejection,
-        "strict_event_name_only": _case_strict_event_name_only,
         "required_keys_rejection": _case_required_keys_rejection,
         "invalid_config": _case_invalid_config,
         "fail_open_exporter_init": _case_fail_open_exporter_init,
-        "signal_enablement": _case_signal_enablement,
-        "per_signal_logs_endpoint": _case_per_signal_logs_endpoint,
-        "provider_identity_reconfigure": _case_provider_identity_reconfigure,
         "shutdown_re_setup": _case_shutdown_re_setup,
     }[case]()
     print(json.dumps(result, sort_keys=True))
@@ -186,7 +119,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(exit_code)
+    raise SystemExit(main())

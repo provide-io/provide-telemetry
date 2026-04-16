@@ -18,11 +18,15 @@ import (
 	"github.com/provide-io/provide-telemetry/go/logger"
 )
 
+const (
+	traceID = "0af7651916cd43dd8448eb211c80319c"
+	spanID  = "b7ad6b7169203331"
+)
+
 func main() {
-	cfg := logger.DefaultLogConfig()
-	cfg.Format = logger.LogFormatJSON
-	cfg.ServiceName = os.Getenv("PROVIDE_TELEMETRY_SERVICE_NAME")
-	cfg.Output = os.Stderr
-	logger.Configure(cfg)
-	logger.Logger.Info("log.output.parity", "logger_name", "probe")
+	_, _ = telemetry.SetupTelemetry()
+	ctx := telemetry.SetTraceContext(context.Background(), traceID, spanID)
+	log := telemetry.GetLogger(ctx, "probe")
+	log.Info("log.output.parity", "event", "log.output.parity")
+	_ = os.Stderr.Sync()
 }

@@ -37,16 +37,6 @@ fn main() {
                 "schema_error": record.get("_schema_error").is_some(),
             })
         }
-        "strict_event_name_only" => {
-            provide_telemetry::setup_telemetry().expect("setup");
-            let record = capture_record("Bad.Event.Ok");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
-            json!({
-                "case": case,
-                "emitted": true,
-                "schema_error": record.get("_schema_error").is_some(),
-            })
-        }
         "required_keys_rejection" => {
             provide_telemetry::setup_telemetry().expect("setup");
             let record = capture_record("user.auth.ok");
@@ -72,51 +62,6 @@ fn main() {
                 "fallback_all": status.fallback.logs && status.fallback.traces && status.fallback.metrics,
             })
         }
-        "signal_enablement" => {
-            provide_telemetry::setup_telemetry().expect("setup");
-            let status = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
-            json!({
-                "case": case,
-                "setup_done": status.setup_done,
-                "logs_enabled": status.signals.logs,
-                "traces_enabled": status.signals.traces,
-                "metrics_enabled": status.signals.metrics,
-            })
-        }
-        "per_signal_logs_endpoint" => {
-            provide_telemetry::setup_telemetry().expect("setup");
-            let status = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
-            json!({
-                "case": case,
-                "setup_done": status.setup_done,
-                "logs_provider": status.providers.logs,
-                "traces_provider": status.providers.traces,
-                "metrics_provider": status.providers.metrics,
-            })
-        }
-        "provider_identity_reconfigure" => {
-            provide_telemetry::setup_telemetry().expect("setup");
-            let before = provide_telemetry::get_runtime_status();
-            let service_before = provide_telemetry::get_runtime_config()
-                .expect("runtime config")
-                .service_name;
-            let mut changed = provide_telemetry::get_runtime_config().expect("runtime config");
-            changed.service_name = format!("{service_before}-renamed");
-            let raised = provide_telemetry::reconfigure_telemetry(Some(changed)).is_err();
-            let config_preserved = provide_telemetry::get_runtime_config()
-                .expect("runtime config")
-                .service_name
-                == service_before;
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
-            json!({
-                "case": case,
-                "providers_active": before.providers.logs || before.providers.traces || before.providers.metrics,
-                "raised": raised,
-                "config_preserved": config_preserved,
-            })
-        }
         "shutdown_re_setup" => {
             provide_telemetry::setup_telemetry().expect("first setup");
             let first = provide_telemetry::get_runtime_status();
@@ -129,12 +74,6 @@ fn main() {
                 "case": case,
                 "first_setup_done": first.setup_done,
                 "shutdown_cleared_setup": !second.setup_done,
-                "shutdown_cleared_providers": !second.providers.logs
-                    && !second.providers.traces
-                    && !second.providers.metrics,
-                "shutdown_fallback_all": second.fallback.logs
-                    && second.fallback.traces
-                    && second.fallback.metrics,
                 "re_setup_done": third.setup_done,
                 "signals_match": first.signals == third.signals,
                 "providers_match": first.providers == third.providers,

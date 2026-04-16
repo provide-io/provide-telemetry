@@ -54,6 +54,7 @@ func (h *_telemetryHandler) WithGroup(name string) slog.Handler {
 // Handle executes the processor chain and forwards to the base handler.
 func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyContextFields(ctx, r)
+	r = h.applyLoggerName(r)
 	r = h.applyStandardFields(r)
 	r = h.applyTraceFields(ctx, r)
 
@@ -76,6 +77,20 @@ func (h *_telemetryHandler) clone() *_telemetryHandler {
 	cp.attrs = append([]slog.Attr(nil), h.attrs...)
 	cp.groups = append([]string(nil), h.groups...)
 	return &cp
+}
+
+// applyLoggerName adds the canonical logger_name field when a named logger is in use.
+func (h *_telemetryHandler) applyLoggerName(r slog.Record) slog.Record {
+	if h.name == "" {
+		return r
+	}
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		nr.AddAttrs(a)
+		return true
+	})
+	nr.AddAttrs(slog.String("logger_name", h.name))
+	return nr
 }
 
 // applyContextFields merges bound context fields into the record.
@@ -141,15 +156,17 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 // applySchema validates the event name and required keys when strict mode is enabled.
 // Returns an error if validation fails; the caller drops the record on error.
 func (h *_telemetryHandler) applySchema(r slog.Record) error {
-	if !_strictSchema {
+	if len(h.cfg.EventSchema.RequiredKeys) > 0 {
+		attrs := _attrsToMap(r)
+		if err := ValidateRequiredKeys(attrs, h.cfg.EventSchema.RequiredKeys); err != nil {
+			return err
+		}
+	}
+	if !_readStrictSchema() {
 		return nil
 	}
 	if err := ValidateEventName(r.Message); err != nil {
 		return err
-	}
-	if len(h.cfg.EventSchema.RequiredKeys) > 0 {
-		attrs := _attrsToMap(r)
-		return ValidateRequiredKeys(attrs, h.cfg.EventSchema.RequiredKeys)
 	}
 	return nil
 }
@@ -253,6 +270,9 @@ func _configureLogger(cfg *TelemetryConfig) {
 	opts := &slog.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if !cfg.Logging.IncludeTimestamp && a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
 			if a.Key == slog.MessageKey {
 				a.Key = "message"
 			}
@@ -285,6 +305,9 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	opts := &slog.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if !cfg.Logging.IncludeTimestamp && a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
 			if a.Key == slog.MessageKey {
 				a.Key = "message"
 			}

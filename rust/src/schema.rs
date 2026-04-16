@@ -169,4 +169,18 @@ mod tests {
         assert_eq!(err.message, "invalid event segment: segment[1]=not-valid");
         set_strict_schema(false);
     }
+
+    #[test]
+    fn schema_test_validate_required_keys_matches_python_contract() {
+        let mut data = std::collections::BTreeMap::new();
+        data.insert(
+            "domain".to_string(),
+            serde_json::Value::String("auth".to_string()),
+        );
+        validate_required_keys(&data, &["domain".to_string()]).expect("key should exist");
+
+        let err = validate_required_keys(&data, &["domain".to_string(), "action".to_string()])
+            .expect_err("missing key should fail");
+        assert_eq!(err.message, "missing required keys: action");
+    }
 }

@@ -106,7 +106,7 @@ All implementations export equivalent APIs:
 | Policies | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()` |
 | Safety | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()` |
 | Health | `get_health_snapshot()` |
-| Runtime | `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
+| Runtime | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
 Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
 
@@ -137,7 +137,8 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 ## Documentation
 
 - [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — Python function signatures and examples
+- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — shared semantic contract and Python-centered examples
+- [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) — core guarantees vs feature-gated or idiomatic differences
 - [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
 - [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
 - [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules

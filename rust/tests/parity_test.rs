@@ -10,8 +10,8 @@ use provide_telemetry::{
     extract_w3c_context, get_cardinality_limits, get_health_snapshot, get_queue_policy,
     get_sampling_policy, get_secret_patterns, record_red_metrics, record_use_metrics,
     register_cardinality_limit, register_secret_pattern, reset_secret_patterns_for_tests,
-    sanitize_payload, set_queue_policy, set_sampling_policy, CardinalityLimit, EventSchemaError,
-    PIIMode, PIIRule, QueuePolicy, SamplingPolicy, Signal,
+    sanitize_payload, set_queue_policy, set_sampling_policy, validate_required_keys,
+    CardinalityLimit, EventSchemaError, PIIMode, PIIRule, QueuePolicy, SamplingPolicy, Signal,
 };
 use rstest::rstest;
 

@@ -79,6 +79,9 @@ pub(super) fn install_tracer_provider(
     if !cfg.tracing.enabled {
         return Ok(false);
     }
+    if cfg.tracing.otlp_endpoint.is_none() {
+        return Ok(false);
+    }
 
     let exporter = match build_exporter(cfg) {
         Ok(e) => e,

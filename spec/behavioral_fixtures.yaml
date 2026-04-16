@@ -417,6 +417,12 @@ log_output_format:
     service:
       type: string
       description: "Service name from PROVIDE_TELEMETRY_SERVICE_NAME"
+    env:
+      type: string
+      description: "Environment name from PROVIDE_TELEMETRY_ENV / PROVIDE_ENV"
+    version:
+      type: string
+      description: "Service version from PROVIDE_TELEMETRY_VERSION / PROVIDE_VERSION"
     trace_id:
       type: string
       description: "32-char hex W3C trace identifier"
@@ -445,9 +451,12 @@ log_output_format:
   # Timestamps are disabled so output is deterministic.
   probe_env:
     PROVIDE_TELEMETRY_SERVICE_NAME: "probe"
+    PROVIDE_TELEMETRY_ENV: "parity"
+    PROVIDE_TELEMETRY_VERSION: "1.2.3"
     PROVIDE_LOG_LEVEL: "INFO"
     PROVIDE_LOG_FORMAT: "json"
     PROVIDE_LOG_INCLUDE_TIMESTAMP: "false"
+    PROVIDE_LOG_INCLUDE_CALLER: "false"
   probe_cases:
     - id: "simple_info"
       call: 'logger.info("log.output.parity")'

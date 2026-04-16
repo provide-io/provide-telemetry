@@ -191,8 +191,8 @@ describe('write hook — window.__pinoLogs auto-init', () => {
 });
 
 describe('write hook — OTEL trace_id/span_id injection', () => {
-  it('injects trace_id and span_id when active span has non-zero IDs', () => {
-    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValueOnce({
+  it('injects trace_id and span_id when trace context is available', () => {
+    vi.spyOn(tracing, 'getTraceContext').mockReturnValueOnce({
       trace_id: 'abc123def456abc123def456abc123de',
       span_id: '1234567890abcdef',
     });
@@ -202,6 +202,38 @@ describe('write hook — OTEL trace_id/span_id injection', () => {
     hook(obj);
     expect(obj['trace_id']).toBe('abc123def456abc123def456abc123de');
     expect(obj['span_id']).toBe('1234567890abcdef');
+  });
+});
+
+describe('getLogger lazy init', () => {
+  it('uses env-derived identity and logging flags before setupTelemetry()', () => {
+    _resetConfig();
+    _resetRootLogger();
+    process.env['PROVIDE_TELEMETRY_SERVICE_NAME'] = 'probe';
+    process.env['PROVIDE_TELEMETRY_ENV'] = 'parity';
+    process.env['PROVIDE_TELEMETRY_VERSION'] = '1.2.3';
+    process.env['PROVIDE_LOG_INCLUDE_TIMESTAMP'] = 'false';
+    process.env['PROVIDE_LOG_INCLUDE_CALLER'] = 'false';
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      (window as unknown as Record<string, unknown>)['__pinoLogs'] = [];
+      getLogger('probe').info({ event: 'log.output.parity' }, 'log.output.parity');
+      const logs = (window as unknown as Record<string, unknown[]>)['__pinoLogs'];
+      const record = logs[0] as Record<string, unknown>;
+      expect(record['service']).toBe('probe');
+      expect(record['env']).toBe('parity');
+      expect(record['version']).toBe('1.2.3');
+      expect(record['time']).toBeUndefined();
+      expect(record['caller_file']).toBeUndefined();
+      expect(record['caller_line']).toBeUndefined();
+    } finally {
+      delete process.env['PROVIDE_TELEMETRY_SERVICE_NAME'];
+      delete process.env['PROVIDE_TELEMETRY_ENV'];
+      delete process.env['PROVIDE_TELEMETRY_VERSION'];
+      delete process.env['PROVIDE_LOG_INCLUDE_TIMESTAMP'];
+      delete process.env['PROVIDE_LOG_INCLUDE_CALLER'];
+      consoleSpy.mockRestore();
+    }
   });
 });
 
@@ -335,8 +367,8 @@ describe('write hook — LEVEL_MAP console routing', () => {
 });
 
 describe('write hook — trace context NOT injected when no span', () => {
-  it('does not add trace_id when getActiveTraceIds returns empty', () => {
-    vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({});
+  it('does not add trace_id when getTraceContext returns empty', () => {
+    vi.spyOn(tracing, 'getTraceContext').mockReturnValue({});
     makeCfg();
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'test' };

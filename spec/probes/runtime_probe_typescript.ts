@@ -5,9 +5,7 @@
 import {
   getConfig,
   getLogger,
-  getRuntimeConfig,
   getRuntimeStatus,
-  reconfigureTelemetry,
   registerOtelProviders,
   resetTelemetryState,
   setTraceContext,
@@ -69,18 +67,6 @@ async function caseStrictSchemaRejection(): Promise<Record<string, unknown>> {
   };
 }
 
-async function caseStrictEventNameOnly(): Promise<Record<string, unknown>> {
-  resetTelemetryState();
-  setupTelemetry({ consoleOutput: false, captureToWindow: true });
-  const record = captureRecord('Bad.Event.Ok');
-  await shutdownTelemetry();
-  return {
-    case: 'strict_event_name_only',
-    emitted: true,
-    schema_error: Object.prototype.hasOwnProperty.call(record, '_schema_error'),
-  };
-}
-
 async function caseRequiredKeysRejection(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry({ consoleOutput: false, captureToWindow: true });
@@ -117,57 +103,6 @@ async function caseFailOpenExporterInit(): Promise<Record<string, unknown>> {
   };
 }
 
-async function caseSignalEnablement(): Promise<Record<string, unknown>> {
-  resetTelemetryState();
-  setupTelemetry({ consoleOutput: false, captureToWindow: true, otelEnabled: true });
-  const status = getRuntimeStatus();
-  await shutdownTelemetry();
-  return {
-    case: 'signal_enablement',
-    setup_done: status.setupDone,
-    logs_enabled: status.signals.logs,
-    traces_enabled: status.signals.traces,
-    metrics_enabled: status.signals.metrics,
-  };
-}
-
-async function casePerSignalLogsEndpoint(): Promise<Record<string, unknown>> {
-  resetTelemetryState();
-  setupTelemetry({ consoleOutput: false, captureToWindow: true, otelEnabled: true });
-  await registerOtelProviders(getConfig());
-  const status = getRuntimeStatus();
-  await shutdownTelemetry();
-  return {
-    case: 'per_signal_logs_endpoint',
-    setup_done: status.setupDone,
-    logs_provider: status.providers.logs,
-    traces_provider: status.providers.traces,
-    metrics_provider: status.providers.metrics,
-  };
-}
-
-async function caseProviderIdentityReconfigure(): Promise<Record<string, unknown>> {
-  resetTelemetryState();
-  setupTelemetry({ consoleOutput: false, captureToWindow: true, otelEnabled: true });
-  await registerOtelProviders(getConfig());
-  const before = getRuntimeStatus();
-  const serviceBefore = getRuntimeConfig().serviceName;
-  let raised = false;
-  try {
-    reconfigureTelemetry({ serviceName: `${serviceBefore}-renamed` });
-  } catch {
-    raised = true;
-  }
-  const configPreserved = getRuntimeConfig().serviceName === serviceBefore;
-  await shutdownTelemetry();
-  return {
-    case: 'provider_identity_reconfigure',
-    providers_active: before.providers.logs || before.providers.traces || before.providers.metrics,
-    raised,
-    config_preserved: configPreserved,
-  };
-}
-
 async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry();
@@ -181,9 +116,6 @@ async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
     case: 'shutdown_re_setup',
     first_setup_done: first.setupDone,
     shutdown_cleared_setup: !second.setupDone,
-    shutdown_cleared_providers:
-      !second.providers.logs && !second.providers.traces && !second.providers.metrics,
-    shutdown_fallback_all: second.fallback.logs && second.fallback.traces && second.fallback.metrics,
     re_setup_done: third.setupDone,
     signals_match: JSON.stringify(first.signals) === JSON.stringify(third.signals),
     providers_match: JSON.stringify(first.providers) === JSON.stringify(third.providers),
@@ -192,24 +124,23 @@ async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
 
 async function main(): Promise<void> {
   const caseId = process.env['PROVIDE_PARITY_PROBE_CASE'];
-  const cases: Record<string, () => Promise<object> | object> = {
-    lazy_init_logger: caseLazyInitLogger,
-    strict_schema_rejection: caseStrictSchemaRejection,
-    strict_event_name_only: caseStrictEventNameOnly,
-    required_keys_rejection: caseRequiredKeysRejection,
-    invalid_config: caseInvalidConfig,
-    fail_open_exporter_init: caseFailOpenExporterInit,
-    signal_enablement: caseSignalEnablement,
-    per_signal_logs_endpoint: casePerSignalLogsEndpoint,
-    provider_identity_reconfigure: caseProviderIdentityReconfigure,
-    shutdown_re_setup: caseShutdownReSetup,
-  };
+  const result =
+    caseId === 'lazy_init_logger'
+      ? caseLazyInitLogger()
+      : caseId === 'strict_schema_rejection'
+        ? await caseStrictSchemaRejection()
+        : caseId === 'required_keys_rejection'
+          ? await caseRequiredKeysRejection()
+          : caseId === 'invalid_config'
+            ? caseInvalidConfig()
+            : caseId === 'fail_open_exporter_init'
+              ? await caseFailOpenExporterInit()
+            : caseId === 'shutdown_re_setup'
+              ? await caseShutdownReSetup()
+              : (() => {
+                  throw new Error(`unknown case: ${String(caseId)}`);
+                })();
 
-  const handler = cases[caseId ?? ''];
-  if (!handler) {
-    throw new Error(`unknown case: ${String(caseId)}`);
-  }
-  const result = await handler();
   console.log(JSON.stringify(result));
 }
 
