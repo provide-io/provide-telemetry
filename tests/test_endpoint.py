@@ -12,6 +12,19 @@ import pytest
 from provide.telemetry._endpoint import validate_otlp_endpoint
 
 
+def _find_project_root() -> Path:
+    """Walk up from this file until we find VERSION, anchoring to the real project root."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "VERSION").exists():
+            return parent
+    raise FileNotFoundError("Could not locate project root (no VERSION file found)")  # pragma: no cover
+
+
+_FIXTURES_PATH = _find_project_root() / "spec" / "behavioral_fixtures.yaml"
+_FIXTURES = yaml.safe_load(_FIXTURES_PATH.read_text())
+_ENDPOINT_FIXTURES = _FIXTURES["endpoint_validation"]
+
+
 class TestValidateOtlpEndpoint:
     def test_valid_http_endpoint(self) -> None:
         assert validate_otlp_endpoint("http://localhost:4318") == "http://localhost:4318"

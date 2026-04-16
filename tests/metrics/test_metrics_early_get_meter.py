@@ -18,8 +18,10 @@ from provide.telemetry.metrics.provider import _set_meter_for_test, get_meter, s
 
 
 @pytest.fixture(autouse=True)
-def _clean_meters() -> None:
+def _clean_meters(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
+    # Bypass resilience to avoid circuit-breaker state leaking between tests.
+    monkeypatch.setattr(prov_mod, "run_with_resilience", lambda _signal, factory: factory())
 
 
 class TestEarlyGetMeterDoesNotBlockSetup:
