@@ -46,8 +46,8 @@ pub use classification::{
     ClassificationPolicy, ClassificationRule, DataClass,
 };
 pub use config::{
-    redact_config, BackpressureConfig, ExporterPolicyConfig, LoggingConfig, RuntimeOverrides,
-    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
+    redact_config, BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig,
+    RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
 };
 #[cfg(feature = "governance")]
 pub use consent::{
@@ -85,12 +85,15 @@ pub use resilience::{
     ExporterPolicy,
 };
 pub use runtime::{
-    get_runtime_config, reconfigure_telemetry, reload_runtime_from_env, update_runtime_config,
+    get_runtime_config, get_runtime_status, reconfigure_telemetry, reload_runtime_from_env,
+    update_runtime_config, RuntimeStatus, SignalStatus,
 };
 pub use sampling::{
     get_sampling_policy, set_sampling_policy, should_sample, SamplingPolicy, Signal,
 };
-pub use schema::{event, event_name, get_strict_schema, set_strict_schema, Event};
+pub use schema::{
+    event, event_name, get_strict_schema, set_strict_schema, validate_required_keys, Event,
+};
 pub use setup::{setup_telemetry, shutdown_telemetry};
 pub use slo::{
     classify_error, get_error_count_for_tests, get_request_count_for_tests, record_red_metrics,

@@ -79,6 +79,16 @@ def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
     return event_dict
 
 
+def inject_logger_name(logger: Any, _: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Ensure structured JSON output exposes the logger name canonically."""
+    name = event_dict.get("logger_name") or event_dict.get("logger")
+    if name is None:
+        name = getattr(logger, "name", None)
+    if name:
+        event_dict["logger_name"] = str(name)
+    return event_dict
+
+
 def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) -> str:
     """Generate a stable 12-char hex fingerprint from exception type + top 3 frames."""
     parts = [exc_type.lower()]

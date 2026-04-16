@@ -10,10 +10,10 @@ import {
   type RuntimeOverrides,
   type TelemetryConfig,
   configFromEnv,
-  getConfig,
   setupTelemetry,
 } from './config';
 import { ConfigurationError } from './exceptions';
+import { getHealthSnapshot } from './health';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -21,11 +21,36 @@ export interface ShutdownableProvider {
   shutdown?(): Promise<void>;
 }
 
+export interface RuntimeStatus {
+  setupDone: boolean;
+  signals: {
+    logs: boolean;
+    traces: boolean;
+    metrics: boolean;
+  };
+  providers: {
+    logs: boolean;
+    traces: boolean;
+    metrics: boolean;
+  };
+  fallback: {
+    logs: boolean;
+    traces: boolean;
+    metrics: boolean;
+  };
+  setupError: string | null;
+}
+
 let _activeConfig: TelemetryConfig | null = null;
 // Stryker disable next-line BooleanLiteral: initial false is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _providersRegistered = false;
 // Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _registeredProviders: ShutdownableProvider[] = [];
+let _providerSignals = { logs: false, traces: false, metrics: false };
+
+function resolveEffectiveConfig(): TelemetryConfig {
+  return _activeConfig ?? configFromEnv();
+}
 
 /** Store the live providers so shutdownTelemetry can flush and drain them. */
 export function _storeRegisteredProviders(providers: ShutdownableProvider[]): void {
@@ -47,6 +72,29 @@ export function _areProvidersRegistered(): boolean {
   return _providersRegistered;
 }
 
+export function _setProviderSignalInstalled(signal: 'logs' | 'traces' | 'metrics', installed: boolean): void {
+  _providerSignals[signal] = installed;
+}
+
+export function getRuntimeStatus(): RuntimeStatus {
+  const cfg = resolveEffectiveConfig();
+  return {
+    setupDone: _activeConfig !== null,
+    signals: {
+      logs: true,
+      traces: cfg.otelEnabled,
+      metrics: cfg.metricsEnabled,
+    },
+    providers: { ..._providerSignals },
+    fallback: {
+      logs: !_providerSignals.logs,
+      traces: !_providerSignals.traces,
+      metrics: !_providerSignals.metrics,
+    },
+    setupError: getHealthSnapshot().setupError,
+  };
+}
+
 function deepFreeze<T extends object>(obj: T): Readonly<T> {
   for (const val of Object.values(obj)) {
     // Stryker disable next-line ConditionalExpression,EqualityOperator,LogicalOperator: frozen-object guard — all sub-conditions required but only observable with deeply nested mutable objects
@@ -59,7 +107,7 @@ function deepFreeze<T extends object>(obj: T): Readonly<T> {
 
 /** Return the active runtime config (or live setupTelemetry config if none explicitly set via updateRuntimeConfig). */
 export function getRuntimeConfig(): Readonly<TelemetryConfig> {
-  const cfg = _activeConfig ?? getConfig();
+  const cfg = resolveEffectiveConfig();
   return deepFreeze({ ...cfg });
 }
 
@@ -228,6 +276,7 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 export function _clearProviderState(): void {
   _providersRegistered = false;
   _registeredProviders = [];
+  _providerSignals = { logs: false, traces: false, metrics: false };
   _activeConfig = null;
 }
 
@@ -240,4 +289,5 @@ export function _resetRuntimeForTests(): void {
   _activeConfig = null;
   _providersRegistered = false;
   _registeredProviders = [];
+  _providerSignals = { logs: false, traces: false, metrics: false };
 }

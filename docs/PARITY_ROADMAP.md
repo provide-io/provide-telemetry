@@ -6,6 +6,17 @@ This roadmap turns the repo's parity goal into a concrete work plan. It is
 biased toward developer experience: users should be able to move between
 Python, TypeScript, Go, and Rust without relearning telemetry semantics.
 
+## Status
+
+As of 2026-04-15, the roadmap work below is implemented in the repo and backed
+by the shared behavioral parity suite. The parity runner now checks canonical
+log-envelope fields plus shared lifecycle/config cases for lazy initialization,
+strict-schema rejection, required-key rejection, invalid config, fail-open
+exporter initialization, and shutdown+re-setup.
+
+Treat the remaining sections as the maintained parity contract and regression
+criteria rather than an untriaged backlog.
+
 ## Target Outcome
 
 The target is:
@@ -24,17 +35,13 @@ The target is:
 
 ## Current Focus Areas
 
-The current repo state suggests these priority gaps:
+The main ongoing focus is keeping the achieved contract from drifting:
 
-- Rust logger behavior: level filtering, strict-schema enforcement, and
-  lazy-init envelope fields have been aligned. Required-key enforcement
-  remains unimplemented (dead config was removed; will reintroduce when wired).
-- Rust `otel` feature coverage is advertised more strongly than the current
-  build and lifecycle guarantees justify.
-- The shared parity suite is still narrower than the actual user-facing
-  envelope and runtime behavior.
-- Some public facades still differ in meaning across languages, especially for
-  tracer and logger lifecycle behavior.
+- preserve one semantic contract across Python, TypeScript, Go, and Rust
+- keep optional OTLP paths honest about dependency and feature-gate boundaries
+- extend shared parity probes whenever new user-visible behavior is added
+- keep docs aligned with what the runtime-status and parity suites actually
+  guarantee
 
 ## Workstreams
 

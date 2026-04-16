@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_RUNTIME_PROBE_FIXTURES = _REPO_ROOT / "spec" / "runtime_probe_fixtures.yaml"
 
 
 def _find_rust_toolchain() -> tuple[str, dict[str, str]]:
@@ -197,8 +198,11 @@ def _run_parity(runner: LanguageRunner, *, timeout: int = 300) -> Result:
 _PROBE_ENV: dict[str, str] = {
     "PROVIDE_LOG_FORMAT": "json",
     "PROVIDE_TELEMETRY_SERVICE_NAME": "probe",
+    "PROVIDE_TELEMETRY_ENV": "parity",
+    "PROVIDE_TELEMETRY_VERSION": "1.2.3",
     "PROVIDE_LOG_LEVEL": "INFO",
     "PROVIDE_LOG_INCLUDE_TIMESTAMP": "false",
+    "PROVIDE_LOG_INCLUDE_CALLER": "false",
 }
 
 # Canonical field renames: {raw_field: canonical_field}.
@@ -272,6 +276,38 @@ def _probe_runners(repo: Path) -> list[ProbeRunner]:
     ]
 
 
+def _runtime_probe_runners(repo: Path) -> list[ProbeRunner]:
+    probes = repo / "spec" / "probes"
+    return [
+        ProbeRunner(
+            name="python",
+            label="Python",
+            cmd=["uv", "run", "python", str(probes / "runtime_probe_python.py")],
+            cwd=repo,
+        ),
+        ProbeRunner(
+            name="go",
+            label="Go",
+            cmd=["go", "run", str(probes / "runtime_probe_go" / "main.go")],
+            cwd=repo / "go",
+        ),
+        ProbeRunner(
+            name="typescript",
+            label="TypeScript",
+            cmd=["npx", "tsx", str(probes / "runtime_probe_typescript.ts")],
+            cwd=repo / "typescript",
+            env_extra={"NODE_PATH": str(repo / "typescript" / "node_modules")},
+        ),
+        ProbeRunner(
+            name="rust",
+            label="Rust",
+            cmd=[_CARGO_BIN, "--locked", "run", "--features", "otel", "--example", "runtime_probe", "--quiet"],
+            cwd=repo / "rust",
+            env_extra={**_CARGO_ENV},
+        ),
+    ]
+
+
 def _normalize_log_record(raw: dict[str, object]) -> dict[str, object]:
     """Apply canonical renames, strip noise, normalise level to uppercase string."""
     result: dict[str, object] = {}
@@ -308,6 +344,33 @@ def _run_probe(runner: ProbeRunner, *, timeout: int = 60) -> tuple[str, str]:
         return "", str(exc)
 
 
+def _run_runtime_probe(runner: ProbeRunner, case_id: str, *, timeout: int = 60) -> tuple[str, str]:
+    env = {
+        **os.environ,
+        **_PROBE_ENV,
+        **_runtime_probe_case_env(case_id),
+        "PROVIDE_PARITY_PROBE_CASE": case_id,
+        **runner.env_extra,
+    }
+    try:
+        proc = subprocess.run(  # noqa: S603
+            runner.cmd,
+            capture_output=True,
+            text=True,
+            cwd=runner.cwd,
+            env=env,
+            timeout=timeout,
+        )
+        combined = (proc.stdout + proc.stderr).strip()
+        if proc.returncode != 0 and not combined:
+            return "", f"exit code {proc.returncode}: {proc.stderr.strip()[:200]}"
+        if proc.returncode != 0:
+            return "", combined[:500]
+        return combined, ""
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        return "", str(exc)
+
+
 def _extract_json_line(output: str) -> dict[str, object] | None:
     """Find and parse the first line in output that looks like a JSON object."""
     for line in output.splitlines():
@@ -318,6 +381,24 @@ def _extract_json_line(output: str) -> dict[str, object] | None:
             except json.JSONDecodeError:
                 continue
     return None
+
+
+def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
+    if case_id == "strict_schema_rejection":
+        return {"PROVIDE_TELEMETRY_STRICT_SCHEMA": "true"}
+    if case_id == "required_keys_rejection":
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
+            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id",
+        }
+    if case_id == "invalid_config":
+        return {"PROVIDE_LOG_INCLUDE_TIMESTAMP": "definitely-not-a-bool"}
+    if case_id == "fail_open_exporter_init":
+        return {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://[",
+            "OTEL_EXPORTER_OTLP_PROTOCOL": "definitely-invalid",
+        }
+    return {}
 
 
 _VALID_LEVELS: frozenset[str] = frozenset({"TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL"})
@@ -343,18 +424,34 @@ def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
         lvl = rec.get("level")
         if lvl is not None and str(lvl) not in _VALID_LEVELS:
             mismatches.append(f"  {lang}: 'level' has unexpected value: {lvl!r}")
-    # Optional fields: when present in 2+ languages, they should agree.
-    for field_name in ("service",):
-        present = {lang: rec.get(field_name) for lang, rec in records.items() if rec.get(field_name) is not None}
-        if len(present) >= 2 and len(set(present.values())) > 1:
+    # Optional identity/correlation fields: if any language emits them,
+    # every language should emit the same canonical value.
+    for field_name in ("service", "env", "version", "logger_name", "trace_id", "span_id"):
+        values = {lang: rec.get(field_name) for lang, rec in records.items()}
+        present = {lang: value for lang, value in values.items() if value is not None}
+        if not present:
+            continue
+        missing = sorted(lang for lang, value in values.items() if value is None)
+        if missing:
             mismatches.append(
-                f"  field '{field_name}' differs across languages: "
+                f"  field '{field_name}' presence differs: missing in {', '.join(missing)}"
+            )
+            continue
+        if len(set(present.values())) > 1:
+            mismatches.append(
+                f"  field '{field_name}' differs: "
                 + ", ".join(f"{lang}={v!r}" for lang, v in sorted(present.items()))
             )
-    # Timestamp format validation.
-    for lang, rec in records.items():
-        ts = rec.get("timestamp")
-        if ts is not None and not _ISO8601_RE.match(str(ts)):
+    # Timestamp policy: either every language emits a timestamp or none do.
+    timestamp_values = {lang: rec.get("timestamp") for lang, rec in records.items()}
+    timestamp_present = {lang: value for lang, value in timestamp_values.items() if value is not None}
+    if timestamp_present and len(timestamp_present) != len(records):
+        missing = sorted(lang for lang, value in timestamp_values.items() if value is None)
+        mismatches.append(
+            f"  timestamp presence differs: missing in {', '.join(missing)}"
+        )
+    for lang, ts in timestamp_present.items():
+        if not _ISO8601_RE.match(str(ts)):
             mismatches.append(f"  {lang}: 'timestamp' is not ISO 8601: {ts!r}")
     # trace_id: 32 hex chars; span_id: 16 hex chars.
     for lang, rec in records.items():
@@ -411,7 +508,97 @@ def run_output_check(
         all_ok = False
     else:
         langs = ", ".join(sorted(records))
-        print(f"  MATCH: msg + level + format agree across [{langs}]")
+        print(f"  MATCH: canonical envelope agrees across [{langs}]")
+
+    return all_ok
+
+
+def _load_runtime_probe_fixtures() -> dict[str, object]:
+    import yaml
+
+    return yaml.safe_load(_RUNTIME_PROBE_FIXTURES.read_text(encoding="utf-8"))
+
+
+def run_runtime_probe_check(
+    repo: Path,
+    selected: set[str],
+    *,
+    timeout: int = 60,
+) -> bool:
+    runners = [r for r in _runtime_probe_runners(repo) if r.name in selected]
+    fixtures = _load_runtime_probe_fixtures()
+    cases = fixtures.get("cases", [])
+    all_ok = True
+
+    print()
+    print("── Runtime parity probes ───────────────────────────")
+    for case in cases:
+        case_id = str(case["id"])
+        kind = str(case["kind"])
+        expected = dict(case["expected"])
+        print(f"  case={case_id}")
+        records: dict[str, dict[str, object]] = {}
+        summaries: dict[str, dict[str, object]] = {}
+        case_ok = True
+        for runner in runners:
+            output, err = _run_runtime_probe(runner, case_id, timeout=timeout)
+            if err:
+                print(f"    [{runner.label:12s}] PROBE ERROR: {err}")
+                case_ok = False
+                continue
+            raw = _extract_json_line(output)
+            if raw is None:
+                print(f"    [{runner.label:12s}] NO JSON LINE in output")
+                case_ok = False
+                continue
+            summaries[runner.name] = raw
+            if kind == "record":
+                record = raw.get("record")
+                if not isinstance(record, dict):
+                    print(f"    [{runner.label:12s}] missing record payload")
+                    case_ok = False
+                    continue
+                records[runner.name] = _normalize_log_record(record)
+                print(f"    [{runner.label:12s}] {json.dumps(records[runner.name], sort_keys=True)}")
+            else:
+                print(f"    [{runner.label:12s}] {json.dumps(raw, sort_keys=True)}")
+
+        if not case_ok:
+            all_ok = False
+            continue
+
+        if kind == "record":
+            mismatches = _compare_outputs(records)
+            for field_name, value in expected.items():
+                field_values = {lang: rec.get(field_name) for lang, rec in records.items()}
+                if any(field_value != value for field_value in field_values.values()):
+                    mismatches.append(
+                        f"  field '{field_name}' does not match expected {value!r}: "
+                        + ", ".join(f"{lang}={field_value!r}" for lang, field_value in sorted(field_values.items()))
+                    )
+            if mismatches:
+                print("    MISMATCH:")
+                for mismatch in mismatches:
+                    print(mismatch)
+                all_ok = False
+            else:
+                print("    MATCH")
+            continue
+
+        mismatches: list[str] = []
+        for lang, summary in summaries.items():
+            for field_name, value in expected.items():
+                if summary.get(field_name) != value:
+                    mismatches.append(
+                        f"  {lang}: field '{field_name}' expected {value!r}, got {summary.get(field_name)!r}"
+                    )
+        if mismatches:
+            print("    MISMATCH:")
+            for mismatch in mismatches:
+                print(mismatch)
+            all_ok = False
+        else:
+            print("    MATCH")
 
     return all_ok
 
@@ -512,6 +699,13 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
         )
         if not output_ok:
+            any_fail = True
+        runtime_ok = run_runtime_probe_check(
+            _REPO_ROOT,
+            selected,
+            timeout=args.timeout,
+        )
+        if not runtime_ok:
             any_fail = True
 
     return 1 if any_fail else 0

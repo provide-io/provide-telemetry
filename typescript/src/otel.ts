@@ -27,6 +27,7 @@ import {
   type ShutdownableProvider,
   _areProvidersRegistered,
   _markProvidersRegistered,
+  _setProviderSignalInstalled,
   _storeRegisteredProviders,
 } from './runtime';
 
@@ -88,6 +89,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     });
     trace.setGlobalTracerProvider(provider);
     registered.push(provider as ShutdownableProvider);
+    _setProviderSignalInstalled('traces', true);
   } catch (err) {
     console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
   }
@@ -114,6 +116,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     });
     metrics.setGlobalMeterProvider(meterProvider);
     registered.push(meterProvider as ShutdownableProvider);
+    _setProviderSignalInstalled('metrics', true);
   } catch (err) {
     console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
   }
@@ -121,6 +124,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // ── Logs ─────────────────────────────────────────────────────────────────────
   try {
     registered.push(await setupOtelLogProvider(cfg));
+    _setProviderSignalInstalled('logs', true);
   } catch (err) {
     console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
   }

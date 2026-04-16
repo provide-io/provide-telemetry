@@ -10,8 +10,8 @@ use provide_telemetry::{
     extract_w3c_context, get_cardinality_limits, get_health_snapshot, get_queue_policy,
     get_sampling_policy, get_secret_patterns, record_red_metrics, record_use_metrics,
     register_cardinality_limit, register_secret_pattern, reset_secret_patterns_for_tests,
-    sanitize_payload, set_queue_policy, set_sampling_policy, CardinalityLimit, EventSchemaError,
-    PIIMode, PIIRule, QueuePolicy, SamplingPolicy, Signal,
+    sanitize_payload, set_queue_policy, set_sampling_policy, validate_required_keys,
+    CardinalityLimit, EventSchemaError, PIIMode, PIIRule, QueuePolicy, SamplingPolicy, Signal,
 };
 use rstest::rstest;
 
@@ -38,6 +38,25 @@ fn parity_test_event_rejects_invalid_segment_count() {
         err,
         EventSchemaError::new("event() requires 3 or 4 segments (DA[R]S), got 2")
     );
+}
+
+#[test]
+fn parity_test_required_keys_matches_fixture() {
+    let mut payload = std::collections::BTreeMap::new();
+    payload.insert(
+        "domain".to_string(),
+        serde_json::Value::String("auth".to_string()),
+    );
+    let err = validate_required_keys(&payload, &["domain".to_string(), "action".to_string()])
+        .expect_err("missing required key should fail");
+    assert_eq!(err.message, "missing required keys: action");
+
+    payload.insert(
+        "action".to_string(),
+        serde_json::Value::String("login".to_string()),
+    );
+    validate_required_keys(&payload, &["domain".to_string(), "action".to_string()])
+        .expect("required keys should pass");
 }
 
 #[test]

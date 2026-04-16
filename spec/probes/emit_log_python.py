@@ -21,10 +21,12 @@ import sys
 # Ensure the source tree is importable when run from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.logger.core import configure_logging, get_logger
+from provide.telemetry import get_logger, set_trace_context, setup_telemetry
 
-config = TelemetryConfig.from_env()
-configure_logging(config, force=True)
+TRACE_ID = "0af7651916cd43dd8448eb211c80319c"
+SPAN_ID = "b7ad6b7169203331"
+
+setup_telemetry()
+set_trace_context(TRACE_ID, SPAN_ID)
 log = get_logger("probe")
 log.info("log.output.parity")

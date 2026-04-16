@@ -163,6 +163,21 @@ func _signalEndpointURL(endpoint, signalPath string) string {
 	return strings.TrimRight(trimmed, "/") + signalPath
 }
 
+func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
+	signalURL := _signalEndpointURL(endpoint, signalPath)
+	if signalURL == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(signalURL)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid OTLP endpoint URL %q", signalURL)
+	}
+	return signalURL, nil
+}
+
 func _buildResource(cfg *TelemetryConfig) *sdkresource.Resource {
 	return sdkresource.NewWithAttributes(
 		"https://opentelemetry.io/schemas/1.26.0",
@@ -173,7 +188,10 @@ func _buildResource(cfg *TelemetryConfig) *sdkresource.Resource {
 }
 
 func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider, error) {
-	traceURL := _signalEndpointURL(cfg.Tracing.OTLPEndpoint, "/v1/traces")
+	traceURL, err := _validatedSignalEndpointURL(cfg.Tracing.OTLPEndpoint, "/v1/traces")
+	if err != nil {
+		return nil, err
+	}
 	exporter, err := otlptracehttp.New(context.Background(),
 		otlptracehttp.WithEndpointURL(traceURL),
 		otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders),
@@ -187,27 +205,29 @@ func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider
 	), nil
 }
 
-// _buildDefaultMeterProvider creates an OTLP HTTP-backed MeterProvider from config.
-// Called automatically when cfg.Metrics.OTLPEndpoint is set and no explicit provider
-// was passed to SetupTelemetry.
-//
-// Neither otlpmetrichttp.New nor sdkmetric.NewMeterProvider can return errors at
-// construction time (URL parse errors are swallowed internally by the OTel SDK), so
-// this function always returns a usable provider.
-func _buildDefaultMeterProvider(cfg *TelemetryConfig) *sdkmetric.MeterProvider {
-	metricsURL := _signalEndpointURL(cfg.Metrics.OTLPEndpoint, "/v1/metrics")
-	exporter, _ := otlpmetrichttp.New(context.Background(),
+func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider, error) {
+	metricsURL, err := _validatedSignalEndpointURL(cfg.Metrics.OTLPEndpoint, "/v1/metrics")
+	if err != nil {
+		return nil, err
+	}
+	exporter, err := otlpmetrichttp.New(context.Background(),
 		otlpmetrichttp.WithEndpointURL(metricsURL),
 		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
 	)
+	if err != nil {
+		return nil, err
+	}
 	return sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
 		sdkmetric.WithResource(_buildResource(cfg)),
-	)
+	), nil
 }
 
 func _buildDefaultLoggerProvider(cfg *TelemetryConfig) (*sdklog.LoggerProvider, error) {
-	logsURL := _signalEndpointURL(cfg.Logging.OTLPEndpoint, "/v1/logs")
+	logsURL, err := _validatedSignalEndpointURL(cfg.Logging.OTLPEndpoint, "/v1/logs")
+	if err != nil {
+		return nil, err
+	}
 	exporter, err := otlploghttp.New(context.Background(),
 		otlploghttp.WithEndpointURL(logsURL),
 		otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders),
@@ -247,7 +267,14 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 
 	// Auto-create a MeterProvider from config when none was explicitly supplied.
 	if state.meterProvider == nil && cfg.Metrics.OTLPEndpoint != "" {
-		state.meterProvider = _buildDefaultMeterProvider(cfg)
+		mp, err := _buildDefaultMeterProvider(cfg)
+		if err != nil {
+			if Logger != nil {
+				Logger.Warn("otel.meter_provider_init_failed", slog.String("error", err.Error()))
+			}
+		} else {
+			state.meterProvider = mp
+		}
 	}
 
 	if state.meterProvider != nil {
