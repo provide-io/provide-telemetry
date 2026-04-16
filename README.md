@@ -134,9 +134,11 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 - [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
 - [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — Python function signatures and examples
 - [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
+- [Developer Experience Rubric](https://github.com/provide-io/provide-telemetry/blob/main/docs/DX_RUBRIC.md) — criteria for cross-language consistency and usability
 - [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
 - [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
 - [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Polyglot Parity Roadmap](https://github.com/provide-io/provide-telemetry/blob/main/docs/PARITY_ROADMAP.md) — prioritized work to reach true behavioral parity
 - [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
 - [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
 - [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
