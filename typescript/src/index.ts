@@ -144,6 +144,7 @@ export type { ErrorClassification } from './slo';
 // Propagation
 export {
   extractW3cContext,
+  parseBaggage,
   bindPropagationContext,
   clearPropagationContext,
   getActivePropagationContext,

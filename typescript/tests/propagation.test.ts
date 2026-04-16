@@ -12,10 +12,12 @@ import {
   getActivePropagationContext,
   getActiveOtelContext,
   isFallbackMode,
+  parseBaggage,
   MAX_HEADER_LENGTH,
   MAX_TRACESTATE_PAIRS,
   MAX_BAGGAGE_LENGTH,
 } from '../src/propagation';
+import { _resetContext, getContext } from '../src/context';
 
 afterEach(() => _resetPropagationForTests());
 
@@ -566,6 +568,117 @@ describe('propagation — clearPropagation pops OTel context stack (kills line 1
     expect(getActiveOtelContext()).toBeUndefined(); // first layer had no traceparent → undefined sentinel
     clearPropagationContext(); // pop first layer
     expect(getActiveOtelContext()).toBeUndefined(); // stack is now empty
+  });
+});
+
+describe('parseBaggage — W3C baggage header parsing', () => {
+  it('parses a simple key=value entry', () => {
+    expect(parseBaggage('userId=alice')).toEqual({ userId: 'alice' });
+  });
+
+  it('parses multiple comma-separated entries', () => {
+    expect(parseBaggage('userId=alice,sessionId=xyz')).toEqual({
+      userId: 'alice',
+      sessionId: 'xyz',
+    });
+  });
+
+  it('strips properties after semicolon', () => {
+    expect(parseBaggage('userId=alice;meta=ignored')).toEqual({ userId: 'alice' });
+  });
+
+  it('strips properties after semicolon with multiple entries', () => {
+    expect(parseBaggage('a=1;p=x,b=2')).toEqual({ a: '1', b: '2' });
+  });
+
+  it('skips entries with no equals sign', () => {
+    expect(parseBaggage('noequals,key=val')).toEqual({ key: 'val' });
+  });
+
+  it('skips entries where key is empty (= at position 0)', () => {
+    expect(parseBaggage('=value,key=val')).toEqual({ key: 'val' });
+  });
+
+  it('returns empty object for empty string', () => {
+    expect(parseBaggage('')).toEqual({});
+  });
+
+  it('strips whitespace from keys and values', () => {
+    expect(parseBaggage(' userId = alice ')).toEqual({ userId: 'alice' });
+  });
+
+  it('returns empty object when all entries are invalid', () => {
+    expect(parseBaggage('noequals,alsonoequals')).toEqual({});
+  });
+
+  it('handles value containing equals sign (only first = is the separator)', () => {
+    expect(parseBaggage('key=a=b')).toEqual({ key: 'a=b' });
+  });
+});
+
+describe('bindPropagationContext — baggage.* auto-injection', () => {
+  afterEach(() => {
+    _resetPropagationForTests();
+    _resetContext();
+  });
+
+  it('injects baggage entries as baggage.* log context fields', () => {
+    bindPropagationContext({ baggage: 'userId=alice,sessionId=xyz' });
+    const ctx = getContext();
+    expect(ctx['baggage.userId']).toBe('alice');
+    expect(ctx['baggage.sessionId']).toBe('xyz');
+  });
+
+  it('does not inject baggage.* fields when baggage is absent', () => {
+    bindPropagationContext({ traceId: 'abc' });
+    const ctx = getContext();
+    const baggageKeys = Object.keys(ctx).filter((k) => k.startsWith('baggage.'));
+    expect(baggageKeys).toHaveLength(0);
+  });
+
+  it('does not inject baggage.* fields when baggage is empty string', () => {
+    bindPropagationContext({ baggage: '' });
+    const ctx = getContext();
+    const baggageKeys = Object.keys(ctx).filter((k) => k.startsWith('baggage.'));
+    expect(baggageKeys).toHaveLength(0);
+  });
+});
+
+describe('clearPropagationContext — baggage.* key removal', () => {
+  afterEach(() => {
+    _resetPropagationForTests();
+    _resetContext();
+  });
+
+  it('removes baggage.* keys when the frame is cleared', () => {
+    bindPropagationContext({ baggage: 'userId=alice,sessionId=xyz' });
+    expect(getContext()['baggage.userId']).toBe('alice');
+    clearPropagationContext();
+    const ctx = getContext();
+    expect(ctx['baggage.userId']).toBeUndefined();
+    expect(ctx['baggage.sessionId']).toBeUndefined();
+  });
+
+  it('only removes baggage.* keys from the cleared frame, not outer frames', () => {
+    bindPropagationContext({ baggage: 'outer=1' });
+    bindPropagationContext({ baggage: 'inner=2' });
+    expect(getContext()['baggage.outer']).toBe('1');
+    expect(getContext()['baggage.inner']).toBe('2');
+    clearPropagationContext(); // clears inner frame
+    expect(getContext()['baggage.inner']).toBeUndefined();
+    // outer frame's baggage.* key was injected before the inner bind — still present
+    expect(getContext()['baggage.outer']).toBe('1');
+    clearPropagationContext(); // clears outer frame
+    expect(getContext()['baggage.outer']).toBeUndefined();
+  });
+
+  it('handles clear on frame with no baggage without error', () => {
+    bindPropagationContext({ traceId: 'abc' });
+    expect(() => clearPropagationContext()).not.toThrow();
+  });
+
+  it('handles clear on empty stack without error (no baggage keys to pop)', () => {
+    expect(() => clearPropagationContext()).not.toThrow();
   });
 });
 
