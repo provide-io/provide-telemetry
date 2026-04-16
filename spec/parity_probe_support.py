@@ -225,6 +225,11 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "OTEL_EXPORTER_OTLP_ENDPOINT": "http://[",
             "OTEL_EXPORTER_OTLP_PROTOCOL": "definitely-invalid",
         }
+    if case_id == "signal_enablement":
+        return {
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     return {}
 
 

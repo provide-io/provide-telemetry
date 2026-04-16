@@ -21,6 +21,7 @@ import { randomHex } from './hash';
 import { shouldAllow } from './consent';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
+import { getConfig } from './config';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -211,7 +212,6 @@ function _spanHandler<T>(fn: () => T, span: Span): T {
  */
 export function withTrace<T>(name: string, fn: () => T): T {
   if (!getConfig().tracingEnabled) return fn();
-  // Stryker disable next-line StringLiteral: 'traces' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
   if (!shouldAllow('traces')) return fn();
   if (!shouldSample('traces', name)) return fn();
   const ticket = tryAcquire('traces');

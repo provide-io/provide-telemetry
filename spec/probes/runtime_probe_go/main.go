@@ -99,6 +99,20 @@ func caseFailOpenExporterInit() map[string]any {
 	}
 }
 
+func caseSignalEnablement() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+	status := telemetry.GetRuntimeStatus()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":            "signal_enablement",
+		"setup_done":      status.SetupDone,
+		"logs_enabled":    status.Signals.Logs,
+		"traces_enabled":  status.Signals.Traces,
+		"metrics_enabled": status.Signals.Metrics,
+	}
+}
+
 func caseShutdownReSetup() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -132,6 +146,8 @@ func main() {
 		result = caseInvalidConfig()
 	case "fail_open_exporter_init":
 		result = caseFailOpenExporterInit()
+	case "signal_enablement":
+		result = caseSignalEnablement()
 	case "shutdown_re_setup":
 		result = caseShutdownReSetup()
 	default:

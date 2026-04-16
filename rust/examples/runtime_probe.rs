@@ -62,6 +62,18 @@ fn main() {
                 "fallback_all": status.fallback.logs && status.fallback.traces && status.fallback.metrics,
             })
         }
+        "signal_enablement" => {
+            provide_telemetry::setup_telemetry().expect("setup");
+            let status = provide_telemetry::get_runtime_status();
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            json!({
+                "case": case,
+                "setup_done": status.setup_done,
+                "logs_enabled": status.signals.logs,
+                "traces_enabled": status.signals.traces,
+                "metrics_enabled": status.signals.metrics,
+            })
+        }
         "shutdown_re_setup" => {
             provide_telemetry::setup_telemetry().expect("first setup");
             let first = provide_telemetry::get_runtime_status();

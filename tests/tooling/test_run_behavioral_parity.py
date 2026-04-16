@@ -18,10 +18,11 @@ pytestmark = pytest.mark.tooling
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _SCRIPT = _REPO_ROOT / "spec" / "run_behavioral_parity.py"
+_SUPPORT = _REPO_ROOT / "spec" / "parity_probe_support.py"
 
 
-def _load_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("run_behavioral_parity_test_module", _SCRIPT)
+def _load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -30,8 +31,16 @@ def _load_module() -> ModuleType:
     return module
 
 
+def _load_runner_module() -> ModuleType:
+    return _load_module(_SCRIPT, "run_behavioral_parity_test_module")
+
+
+def _load_support_module() -> ModuleType:
+    return _load_module(_SUPPORT, "parity_probe_support_test_module")
+
+
 def test_normalize_log_record_renames_and_normalizes_fields() -> None:
-    module = _load_module()
+    module = _load_runner_module()
 
     record = module._normalize_log_record(
         {
@@ -60,7 +69,7 @@ def test_normalize_log_record_renames_and_normalizes_fields() -> None:
 
 
 def test_compare_outputs_flags_optional_field_mismatches() -> None:
-    module = _load_module()
+    module = _load_runner_module()
 
     mismatches = module._compare_outputs(
         {
@@ -90,7 +99,7 @@ def test_compare_outputs_flags_optional_field_mismatches() -> None:
 
 
 def test_compare_outputs_flags_timestamp_policy_violation() -> None:
-    module = _load_module()
+    module = _load_runner_module()
 
     mismatches = module._compare_outputs(
         {
@@ -107,7 +116,7 @@ def test_compare_outputs_flags_timestamp_policy_violation() -> None:
 
 
 def test_compare_outputs_flags_trace_context_presence_violation() -> None:
-    module = _load_module()
+    module = _load_runner_module()
 
     mismatches = module._compare_outputs(
         {
@@ -124,3 +133,12 @@ def test_compare_outputs_flags_trace_context_presence_violation() -> None:
     joined = "\n".join(mismatches)
     assert "field 'trace_id' presence differs" in joined
     assert "field 'span_id' presence differs" in joined
+
+
+def test_runtime_probe_case_env_disables_trace_and_metrics_for_signal_enablement() -> None:
+    module = _load_support_module()
+
+    assert module._runtime_probe_case_env("signal_enablement") == {
+        "PROVIDE_TRACE_ENABLED": "false",
+        "PROVIDE_METRICS_ENABLED": "false",
+    }

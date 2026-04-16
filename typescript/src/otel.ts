@@ -71,30 +71,27 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { OTLPTraceExporter } = otlpTrace;
       const { resourceFromAttributes } = res;
 
-      if (tracesEndpoint) {
-        validateOtlpEndpoint(tracesEndpoint);
-        const traceHeaders = cfg.otlpTracesHeaders ?? headers;
-        const rawTraceExporter = new OTLPTraceExporter({
-          url: tracesEndpoint,
-          headers: traceHeaders,
-          timeoutMillis: cfg.exporterTracesTimeoutMs ?? 10000,
-        });
-        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
-        const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
+      const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
+      const traceHeaders = cfg.otlpTracesHeaders ?? headers;
+      const traceExporter = new OTLPTraceExporter({
+        url: traceEndpoint,
+        headers: traceHeaders,
+      });
 
-    const provider = new BasicTracerProvider({
-      resource: resourceFromAttributes({
-        'service.name': cfg.serviceName,
-        'deployment.environment': cfg.environment,
-        'service.version': cfg.version,
-      }),
-      spanProcessors: [new BatchSpanProcessor(traceExporter)],
-    });
-    trace.setGlobalTracerProvider(provider);
-    registered.push(provider as ShutdownableProvider);
-    _setProviderSignalInstalled('traces', true);
-  } catch (err) {
-    console.warn('[undef/telemetry] OTEL trace setup failed (missing peer deps?):', err);
+      const provider = new BasicTracerProvider({
+        resource: resourceFromAttributes({
+          'service.name': cfg.serviceName,
+          'deployment.environment': cfg.environment,
+          'service.version': cfg.version,
+        }),
+        spanProcessors: [new BatchSpanProcessor(traceExporter)],
+      });
+      trace.setGlobalTracerProvider(provider);
+      registered.push(provider as ShutdownableProvider);
+      _setProviderSignalInstalled('traces', true);
+    } catch (err) {
+      console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
+    }
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -108,25 +105,22 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
       const { OTLPMetricExporter } = otlpMetrics;
 
-      if (metricsEndpoint) {
-        validateOtlpEndpoint(metricsEndpoint);
-        const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
-        const rawMetricExporter = new OTLPMetricExporter({
-          url: metricsEndpoint,
-          headers: metricsHeaders,
-          timeoutMillis: cfg.exporterMetricsTimeoutMs ?? 10000,
-        });
-        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
-        const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
+      const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
+      const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
+      const metricExporter = new OTLPMetricExporter({
+        url: metricsEndpoint,
+        headers: metricsHeaders,
+      });
 
-    const meterProvider = new MeterProvider({
-      readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
-    });
-    metrics.setGlobalMeterProvider(meterProvider);
-    registered.push(meterProvider as ShutdownableProvider);
-    _setProviderSignalInstalled('metrics', true);
-  } catch (err) {
-    console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+      const meterProvider = new MeterProvider({
+        readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
+      });
+      metrics.setGlobalMeterProvider(meterProvider);
+      registered.push(meterProvider as ShutdownableProvider);
+      _setProviderSignalInstalled('metrics', true);
+    } catch (err) {
+      console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
+    }
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────────────
