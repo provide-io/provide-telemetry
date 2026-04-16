@@ -89,8 +89,20 @@ pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
             "invalid OTLP endpoint (no host): {endpoint:?}",
         )));
     }
-    // url::Url rejects non-numeric and out-of-range ports during parsing,
-    // so if we reach here the port is either valid or absent.
+    // url::Url rejects non-numeric and out-of-range ports during parsing.
+    // However, it silently accepts empty ports ("http://host:" → port=None).
+    // Detect by checking for a trailing colon in the authority after any
+    // IPv6 bracket (avoids false positives from [::1] colons).
+    if parsed.port().is_none() {
+        let authority = &endpoint[parsed.scheme().len() + 3..]; // skip "scheme://"
+        let after_bracket = authority.rsplit(']').next().unwrap_or(authority);
+        let host_port = after_bracket.split('/').next().unwrap_or("");
+        if host_port.contains(':') {
+            return Err(TelemetryError::new(format!(
+                "invalid OTLP endpoint (empty port): {endpoint:?}",
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -212,5 +224,36 @@ mod tests {
             "error must describe the problem: {}",
             err.message
         );
+    }
+
+    #[test]
+    fn empty_port_returns_error() {
+        let err = validate_endpoint("http://host:").expect_err("empty port should fail");
+        assert!(
+            err.message.contains("empty port"),
+            "error must mention empty port: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn empty_port_with_path_returns_error() {
+        let err =
+            validate_endpoint("http://host:/v1/traces").expect_err("empty port with path should fail");
+        assert!(
+            err.message.contains("empty port"),
+            "error must mention empty port: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn ipv6_with_valid_port_accepted() {
+        assert!(validate_endpoint("http://[::1]:4318").is_ok());
+    }
+
+    #[test]
+    fn ipv6_no_port_accepted() {
+        assert!(validate_endpoint("http://[::1]").is_ok());
     }
 }

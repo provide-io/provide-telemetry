@@ -183,8 +183,13 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 			return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
 		}
 	}
-	// Detect empty port — "http://host:" has Host="host:" but Port()=""
-	if portStr == "" && strings.Contains(parsed.Host, ":") {
+	// Detect empty port — "http://host:" has Host="host:" but Port()="".
+	// Strip IPv6 bracket prefix to avoid false positives from [::1] colons.
+	hostAfterBracket := parsed.Host
+	if idx := strings.LastIndex(parsed.Host, "]"); idx >= 0 {
+		hostAfterBracket = parsed.Host[idx+1:]
+	}
+	if portStr == "" && strings.Contains(hostAfterBracket, ":") {
 		return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
 	}
 	return signalURL, nil
