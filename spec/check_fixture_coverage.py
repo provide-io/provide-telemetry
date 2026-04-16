@@ -30,6 +30,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     "python": [
         _REPO_ROOT / "tests" / "parity" / "test_behavioral_fixtures.py",
         _REPO_ROOT / "tests" / "parity" / "test_behavioral_fixtures_ext.py",
+        _REPO_ROOT / "tests" / "parity" / "test_parity_endpoint_validation.py",
     ],
     "typescript": [
         _REPO_ROOT / "typescript" / "tests" / "parity.test.ts",
@@ -45,6 +46,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
         _REPO_ROOT / "go" / "parity_sampling_test.go",
         _REPO_ROOT / "go" / "parity_schema_test.go",
         _REPO_ROOT / "go" / "parity_slo_test.go",
+        _REPO_ROOT / "go" / "parity_endpoint_test.go",
     ],
     "rust": [
         _REPO_ROOT / "rust" / "tests" / "parity_test.rs",
