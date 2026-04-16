@@ -106,9 +106,9 @@ flowchart LR
     E --> F
     F --> G["add_standard_fields"]
     G --> G2["add_error_fingerprint"]
-    G2 --> H["apply_sampling"]
-    H -->|DropEvent| X["discarded"]
-    H --> I["enforce_event_schema"]
+    G2 --> H["enforce_event_schema"]
+    H --> I["apply_sampling"]
+    I -->|DropEvent| X["discarded"]
     I --> J["sanitize_sensitive_fields"]
     J --> J2{"module_levels?"}
     J2 -->|yes| J3["make_level_filter"]
