@@ -14,7 +14,7 @@
  */
 
 import pino from 'pino';
-import { getConfig } from './config';
+import { getConfig, _getConfigVersion } from './config';
 import { getContext } from './context';
 import { shouldAllow } from './consent';
 import { computeErrorFingerprint } from './fingerprint';
@@ -61,6 +61,7 @@ export interface Logger {
 
 // Pino root instance — lazily created so config is read after setupTelemetry().
 let _root: pino.Logger | null = null;
+let _rootConfigVersion = -1;
 
 /**
  * Build the write hook that enriches, sanitizes, captures, and optionally
@@ -201,7 +202,7 @@ export function makeWriteHook() {
           (console as any)[method](formatPretty(o, supportsColor()));
         } else {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (console as any)[method](o);
+          (console as any)[method](JSON.stringify(o));
         }
       }
     } finally {
@@ -211,8 +212,11 @@ export function makeWriteHook() {
 }
 
 function getRootLogger(): pino.Logger {
+  const currentVersion = _getConfigVersion();
   // Stryker disable next-line ConditionalExpression
-  if (_root) return _root;
+  if (_root && _rootConfigVersion === currentVersion) return _root;
+  _root = null;
+  _rootConfigVersion = currentVersion;
   const cfg = getConfig();
   const hook = makeWriteHook();
 
@@ -316,6 +320,7 @@ export function getLogger(name?: string): Logger {
 // Stryker disable next-line BlockStatement
 export function _resetRootLogger(): void {
   _root = null;
+  _rootConfigVersion = -1;
 }
 
 /** Module-level lazy singleton logger. Mirrors Python: logger = get_logger('default'). */

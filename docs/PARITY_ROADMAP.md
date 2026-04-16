@@ -26,8 +26,9 @@ The target is:
 
 The current repo state suggests these priority gaps:
 
-- Rust logger behavior still diverges on level filtering, strict-schema
-  enforcement, required-key enforcement, and lazy-init envelope fields.
+- Rust logger behavior: level filtering, strict-schema enforcement, and
+  lazy-init envelope fields have been aligned. Required-key enforcement
+  remains unimplemented (dead config was removed; will reintroduce when wired).
 - Rust `otel` feature coverage is advertised more strongly than the current
   build and lifecycle guarantees justify.
 - The shared parity suite is still narrower than the actual user-facing

@@ -14,6 +14,12 @@ Rust follows the same top-level contract from `rust/src/lib.rs`, but context-set
 
 Initialize logging, tracing, and metrics providers. Lock-protected and idempotent — safe to call concurrently. Accepts an optional config; defaults to `TelemetryConfig.from_env()`. Returns the applied config.
 
+> **Per-language signatures:** Python accepts an optional `TelemetryConfig` object.
+> TypeScript accepts `Partial<TelemetryConfig>` overrides merged over env config.
+> Go reads env vars and accepts functional `SetupOption` arguments.
+> Rust reads env vars with no programmatic config argument.
+> All four read `PROVIDE_*` / `OTEL_*` environment variables as the primary config source.
+
 ### `shutdown_telemetry() -> None`
 
 Flush and tear down all providers and reset runtime policies. This clears the package's local setup state, but real OpenTelemetry process-global providers still cannot be replaced in-process once installed. For provider-changing lifecycle transitions, restart the process and call `setup_telemetry()` with the desired config.
