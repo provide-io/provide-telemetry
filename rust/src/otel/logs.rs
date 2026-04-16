@@ -7,7 +7,7 @@
 //! Only compiled under the `otel` cargo feature. Mirrors the
 //! traces.rs and metrics.rs designs: callers continue to go through
 //! `logger::log_event()` (which gates on consent / sampling /
-//! backpressure first); when an `OTEL_INSTALLED` provider is present,
+//! backpressure first); when a logger provider is present,
 //! the same record that goes to stderr also gets pushed through the
 //! global LoggerProvider for OTLP export.
 //!
@@ -15,7 +15,7 @@
 //! stderr stays the local-dev path, OTLP is the production transport,
 //! both fire when configured.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
@@ -30,9 +30,13 @@ use crate::logger::LogEvent;
 
 use super::endpoint::{resolve_protocol, OtlpProtocol};
 
-static LOGGER_PROVIDER: OnceLock<Arc<SdkLoggerProvider>> = OnceLock::new();
+static LOGGER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkLoggerProvider>>>> = OnceLock::new();
 
 const LOGGER_NAME: &str = "provide.telemetry";
+
+fn logger_provider_slot() -> &'static Mutex<Option<Arc<SdkLoggerProvider>>> {
+    LOGGER_PROVIDER.get_or_init(|| Mutex::new(None))
+}
 
 fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
     match p {
@@ -68,13 +72,13 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
 pub(super) fn install_logger_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
-) -> Result<(), TelemetryError> {
+) -> Result<bool, TelemetryError> {
     let exporter = match build_exporter(cfg) {
         Ok(e) => e,
         Err(err) => {
             if cfg.exporter.logs_fail_open {
                 eprintln!("provide_telemetry: logs exporter init failed (fail_open=true): {err}");
-                return Ok(());
+                return Ok(false);
             }
             return Err(err);
         }
@@ -89,16 +93,28 @@ pub(super) fn install_logger_provider(
     // OTel 0.31 doesn't expose a global logger-provider setter (unlike
     // tracer and meter), so we keep the provider only in our OnceLock
     // and emit_log() resolves through it directly.
-    let _ = LOGGER_PROVIDER.set(arc);
-    Ok(())
+    *logger_provider_slot()
+        .lock()
+        .expect("logger provider lock poisoned") = Some(arc);
+    Ok(true)
 }
 
 /// Force-flush and shut down the installed `LoggerProvider`.
 pub(super) fn shutdown_logger_provider() {
-    if let Some(p) = LOGGER_PROVIDER.get() {
+    let mut guard = logger_provider_slot()
+        .lock()
+        .expect("logger provider lock poisoned");
+    if let Some(p) = guard.take() {
         let _ = p.force_flush();
         let _ = p.shutdown();
     }
+}
+
+pub(crate) fn logger_provider_installed() -> bool {
+    logger_provider_slot()
+        .lock()
+        .expect("logger provider lock poisoned")
+        .is_some()
 }
 
 /// Map our level string to OTel severity. Unknown levels default to
@@ -156,7 +172,11 @@ fn parse_hex_u64(hex: &str) -> Option<u64> {
 /// and emit via the installed LoggerProvider. No-op when no provider
 /// has been installed.
 pub(crate) fn emit_log(event: &LogEvent) {
-    let Some(provider) = LOGGER_PROVIDER.get() else {
+    let provider = logger_provider_slot()
+        .lock()
+        .expect("logger provider lock poisoned")
+        .clone();
+    let Some(provider) = provider else {
         return;
     };
     let logger = provider.logger(LOGGER_NAME);

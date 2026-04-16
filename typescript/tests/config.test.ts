@@ -281,8 +281,8 @@ describe('_resetConfig', () => {
 });
 
 describe('version constant', () => {
-  it('exports version as 0.4.0', () => {
-    expect(version).toBe('0.4.0');
+  it('exports version as 0.3.0', () => {
+    expect(version).toBe('0.3.0');
   });
 });
 

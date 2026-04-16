@@ -29,7 +29,9 @@ use super::LogEvent;
 pub(super) fn process_event(event: &mut LogEvent) {
     let cfg = get_runtime_config();
     let pii_max_depth = cfg.as_ref().map_or(8, |c| c.pii_max_depth);
-    let max_attr_value_length = cfg.as_ref().map_or(1024, |c| c.security.max_attr_value_length);
+    let max_attr_value_length = cfg
+        .as_ref()
+        .map_or(1024, |c| c.security.max_attr_value_length);
     let max_attr_count = cfg.as_ref().map_or(64, |c| c.security.max_attr_count);
 
     // 1. DARS extraction (only when Event metadata is attached)
@@ -104,8 +106,17 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
     if max_attr_count > 0 && event.context.len() > max_attr_count {
         use std::collections::HashSet;
         const PRIORITY_KEYS: &[&str] = &[
-            "service", "env", "version", "trace_id", "span_id", "session_id",
-            "domain", "action", "resource", "status", "error_fingerprint",
+            "service",
+            "env",
+            "version",
+            "trace_id",
+            "span_id",
+            "session_id",
+            "domain",
+            "action",
+            "resource",
+            "status",
+            "error_fingerprint",
         ];
         let priority_set: HashSet<&str> = PRIORITY_KEYS.iter().copied().collect();
 
@@ -151,10 +162,9 @@ fn add_error_fingerprint(event: &mut LogEvent) {
         .or_else(|| event.context.get("stacktrace"))
         .and_then(|v| v.as_str());
     let fingerprint = compute_error_fingerprint(error_name, stack);
-    event.context.insert(
-        "error_fingerprint".to_string(),
-        Value::String(fingerprint),
-    );
+    event
+        .context
+        .insert("error_fingerprint".to_string(), Value::String(fingerprint));
 }
 
 /// Sanitize PII/secrets in the context map using the PII rule engine.
@@ -231,11 +241,15 @@ mod tests {
     #[test]
     fn harden_input_strips_control_chars() {
         let mut event = make_event("INFO", "test");
-        event
-            .context
-            .insert("dirty".to_string(), Value::String("hello\x00world\ttab\n".to_string()));
+        event.context.insert(
+            "dirty".to_string(),
+            Value::String("hello\x00world\ttab\n".to_string()),
+        );
         harden_input(&mut event, 1024, 64);
-        assert_eq!(event.context["dirty"].as_str().unwrap(), "helloworld\ttab\n");
+        assert_eq!(
+            event.context["dirty"].as_str().unwrap(),
+            "helloworld\ttab\n"
+        );
     }
 
     #[test]
@@ -255,11 +269,17 @@ mod tests {
         let mut event = make_event("INFO", "test");
         // Add 10 generic keys over a cap of 4
         for i in 0..10 {
-            event.context.insert(format!("extra_{i:02}"), Value::String("x".to_string()));
+            event
+                .context
+                .insert(format!("extra_{i:02}"), Value::String("x".to_string()));
         }
         // Add priority keys — must survive even when over cap
-        event.context.insert("trace_id".to_string(), Value::String("tid-abc".to_string()));
-        event.context.insert("service".to_string(), Value::String("svc".to_string()));
+        event
+            .context
+            .insert("trace_id".to_string(), Value::String("tid-abc".to_string()));
+        event
+            .context
+            .insert("service".to_string(), Value::String("svc".to_string()));
         // Cap at 4: 2 priority keys + 2 generic
         harden_input(&mut event, 1024, 4);
         assert_eq!(event.context.len(), 4, "must cap at 4");
@@ -280,7 +300,12 @@ mod tests {
             .context
             .insert("error".to_string(), Value::String("ValueError".to_string()));
         add_error_fingerprint(&mut event);
-        let fp = event.context.get("error_fingerprint").unwrap().as_str().unwrap();
+        let fp = event
+            .context
+            .get("error_fingerprint")
+            .unwrap()
+            .as_str()
+            .unwrap();
         assert_eq!(fp.len(), 12, "fingerprint should be 12 hex chars");
         assert!(fp.chars().all(|c| c.is_ascii_hexdigit()));
     }

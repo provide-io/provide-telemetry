@@ -15,8 +15,6 @@ pub(crate) mod metrics;
 #[cfg(feature = "otel")]
 mod resource;
 
-static OTEL_INSTALLED: AtomicBool = AtomicBool::new(false);
-
 #[cfg(feature = "otel")]
 pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
     // Build the resource once and clone for each provider (cheap — Resource
@@ -25,7 +23,6 @@ pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError>
     traces::install_tracer_provider(config, resource.clone())?;
     metrics::install_meter_provider(config, resource.clone())?;
     logs::install_logger_provider(config, resource)?;
-    OTEL_INSTALLED.store(true, Ordering::SeqCst);
     Ok(())
 }
 
@@ -41,15 +38,14 @@ pub(crate) fn shutdown_otel() {
         metrics::shutdown_meter_provider();
         logs::shutdown_logger_provider();
     }
-    OTEL_INSTALLED.store(false, Ordering::SeqCst);
 }
 
 pub(crate) fn otel_installed() -> bool {
     #[cfg(feature = "otel")]
     {
-        traces::tracer_provider_installed()
+        return traces::tracer_provider_installed()
             || metrics::meter_provider_installed()
-            || logs::logger_provider_installed()
+            || logs::logger_provider_installed();
     }
 
     #[cfg(not(feature = "otel"))]

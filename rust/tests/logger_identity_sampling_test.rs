@@ -7,13 +7,15 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock};
 
-use provide_telemetry::{
-    LoggingConfig, TelemetryConfig, bind_context, enable_json_capture_for_tests, get_logger,
-    reconfigure_telemetry, reset_logging_config_for_tests, shutdown_telemetry, take_json_capture,
-    Logger,
-};
-use provide_telemetry::sampling::{SamplingPolicy, Signal, _reset_sampling_for_tests, set_sampling_policy};
 use provide_telemetry::health::_reset_health_for_tests;
+use provide_telemetry::sampling::{
+    SamplingPolicy, Signal, _reset_sampling_for_tests, set_sampling_policy,
+};
+use provide_telemetry::{
+    bind_context, enable_json_capture_for_tests, get_logger, reconfigure_telemetry,
+    reset_logging_config_for_tests, shutdown_telemetry, take_json_capture, Logger, LoggingConfig,
+    TelemetryConfig,
+};
 
 static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -57,7 +59,10 @@ fn logger_test_json_emit_includes_service_identity_from_config() {
 
     let parsed: serde_json::Value =
         serde_json::from_str(String::from_utf8(raw).expect("utf8").trim()).expect("valid JSON");
-    assert_eq!(parsed["service"], "test-service", "service must come from config");
+    assert_eq!(
+        parsed["service"], "test-service",
+        "service must come from config"
+    );
     assert_eq!(parsed["env"], "test-env", "env must come from config");
     assert_eq!(parsed["version"], "9.9.9", "version must come from config");
 }
@@ -99,22 +104,30 @@ fn logger_test_per_message_sampling_override_is_applied() {
     // "drop.this.message" → always drop; all other messages → always keep (default_rate 1.0)
     let mut overrides = BTreeMap::new();
     overrides.insert("drop.this.message".to_string(), 0.0_f64);
-    set_sampling_policy(Signal::Logs, SamplingPolicy { default_rate: 1.0, overrides })
-        .expect("set_sampling_policy should succeed");
+    set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: 1.0,
+            overrides,
+        },
+    )
+    .expect("set_sampling_policy should succeed");
 
     let logger = get_logger(Some("tests.per_message"));
 
     let before = provide_telemetry::get_health_snapshot().emitted_logs;
     logger.info("drop.this.message");
     assert_eq!(
-        provide_telemetry::get_health_snapshot().emitted_logs, before,
+        provide_telemetry::get_health_snapshot().emitted_logs,
+        before,
         "message must be dropped when override rate is 0.0"
     );
 
     let before = provide_telemetry::get_health_snapshot().emitted_logs;
     logger.info("other.message");
     assert_eq!(
-        provide_telemetry::get_health_snapshot().emitted_logs, before + 1,
+        provide_telemetry::get_health_snapshot().emitted_logs,
+        before + 1,
         "other messages must pass when default_rate is 1.0"
     );
 
