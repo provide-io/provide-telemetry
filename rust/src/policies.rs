@@ -9,6 +9,7 @@ use crate::backpressure::{set_queue_policy, QueuePolicy};
 use crate::config::TelemetryConfig;
 use crate::resilience::{set_exporter_policy, ExporterPolicy};
 use crate::sampling::{set_sampling_policy, SamplingPolicy, Signal};
+use crate::schema::set_strict_schema;
 
 /// Apply sampling, backpressure, and exporter policies from a TelemetryConfig.
 /// Called on initial setup and on every hot-reload.
@@ -69,4 +70,28 @@ pub(crate) fn apply_policies(config: &TelemetryConfig) {
             allow_blocking_in_event_loop: false,
         },
     );
+    // Sync the strict-schema atomic so event()/event_name()/enforce_schema()
+    // see the same value as the runtime config snapshot.
+    set_strict_schema(config.strict_schema);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::get_strict_schema;
+
+    #[test]
+    fn policies_test_apply_policies_syncs_strict_schema_atomic() {
+        // Verify that apply_policies propagates strict_schema from config
+        // to the AtomicBool used by event()/event_name()/enforce_schema().
+        let mut config = TelemetryConfig::default();
+
+        config.strict_schema = true;
+        apply_policies(&config);
+        assert!(get_strict_schema(), "apply_policies must sync strict_schema=true to atomic");
+
+        config.strict_schema = false;
+        apply_policies(&config);
+        assert!(!get_strict_schema(), "apply_policies must sync strict_schema=false to atomic");
+    }
 }
