@@ -81,7 +81,12 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         .unwrap_or_else(|| {
             TelemetryConfig::from_env()
                 .map(|c| c.logging)
-                .unwrap_or_default()
+                .unwrap_or_else(|err| {
+                    eprintln!(
+                        "provide_telemetry: logging config parse failed, using defaults: {err}"
+                    );
+                    crate::config::LoggingConfig::default()
+                })
         })
 }
 
@@ -115,11 +120,27 @@ fn level_order(level: &str) -> u8 {
     }
 }
 
+/// Resolve the effective level threshold for a given target (logger name).
+/// Per-module overrides win via longest-prefix match; falls back to the
+/// global default level.
+fn effective_level_threshold(target: &str, config: &crate::config::LoggingConfig) -> u8 {
+    let mut best_prefix_len = 0;
+    let mut threshold = level_order(&config.level);
+    for (prefix, lvl) in &config.module_levels {
+        if target.starts_with(prefix.as_str()) && prefix.len() > best_prefix_len {
+            best_prefix_len = prefix.len();
+            threshold = level_order(lvl);
+        }
+    }
+    threshold
+}
+
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
-    // Level filtering: skip events below the configured threshold.
-    let configured_level = active_logging_config().level;
-    if level_order(level) < level_order(&configured_level) {
+    // Level filtering: skip events below the effective threshold
+    // (respects per-module overrides via longest-prefix match).
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
         return;
     }
     if !should_allow("logs", Some(level)) {
@@ -138,8 +159,8 @@ fn log_event(level: &str, target: &str, message: &str) {
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
 fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
-    let configured_level = active_logging_config().level;
-    if level_order(level) < level_order(&configured_level) {
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
         return;
     }
     if !should_allow("logs", Some(level)) {
@@ -332,10 +353,16 @@ impl BufferLogger {
     }
 
     pub fn log(&self, level: &str, message: &str) {
+        let config = active_logging_config();
+        if level_order(level) < effective_level_threshold(&self.target, &config) {
+            return;
+        }
+        let mut event = new_event(&self.target, level, message);
+        process_event(&mut event);
         self.events
             .lock()
             .expect("buffer logger event lock poisoned")
-            .push(new_event(&self.target, level, message));
+            .push(event);
     }
 
     pub fn drain(&self) -> Vec<LogEvent> {

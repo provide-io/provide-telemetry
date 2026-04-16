@@ -13,7 +13,8 @@ use crate::errors::ConfigurationError;
 mod parse;
 
 use parse::{
-    env_value, parse_bool, parse_non_negative_float, parse_otlp_headers, parse_rate, parse_usize,
+    env_value, parse_bool, parse_module_levels, parse_non_negative_float, parse_otlp_headers,
+    parse_rate, parse_usize,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
@@ -44,6 +45,10 @@ pub struct LoggingConfig {
     /// `http/protobuf`, `http/json`, `grpc` (the latter requires the
     /// `otel-grpc` cargo feature).
     pub otlp_protocol: String,
+    /// Per-module log level overrides. Keys are module-name prefixes
+    /// (longest-prefix wins); values are level strings (TRACE/DEBUG/
+    /// INFO/WARN/ERROR). Controlled by `PROVIDE_LOG_MODULE_LEVELS`.
+    pub module_levels: HashMap<String, String>,
 }
 
 impl Default for LoggingConfig {
@@ -55,6 +60,7 @@ impl Default for LoggingConfig {
             otlp_headers: HashMap::new(),
             otlp_endpoint: None,
             otlp_protocol: String::new(),
+            module_levels: HashMap::new(),
         }
     }
 }
@@ -295,6 +301,9 @@ impl TelemetryConfig {
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
+                module_levels: parse_module_levels(
+                    env_value(env, &["PROVIDE_LOG_MODULE_LEVELS"]).unwrap_or(""),
+                ),
             },
             tracing: TracingConfig {
                 enabled: parse_bool(
