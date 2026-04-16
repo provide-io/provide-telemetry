@@ -423,17 +423,19 @@ describe('write hook — config read dynamically (Bug 2 regression)', () => {
     spy.mockRestore();
   });
 
-  it('json format passes object to console, not a pretty string', () => {
+  it('json format passes stringified JSON to console, not a pretty string', () => {
     // Kills: `cfg.logFormat === 'pretty'` → `true` (always uses pretty)
-    // When logFormat is 'json', the object itself is passed to console, not a formatted string.
+    // When logFormat is 'json', the object is JSON-stringified before passing to console.
     makeCfg({ consoleOutput: true, logFormat: 'json' });
     const hook = makeWriteHook();
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     hook({ level: 30, event: 'json.test' });
     expect(spy).toHaveBeenCalledOnce();
     const output = spy.mock.calls[0][0];
-    // JSON path passes the raw log object (type 'object'), not a string
-    expect(typeof output).toBe('object');
+    // JSON path stringifies the object so consumers get parseable JSON on stderr
+    expect(typeof output).toBe('string');
+    const parsed = JSON.parse(output as string) as Record<string, unknown>;
+    expect(parsed['event']).toBe('json.test');
     spy.mockRestore();
   });
 });
