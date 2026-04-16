@@ -132,6 +132,26 @@ fn decode_header_component(raw: &str) -> Result<String, ConfigurationError> {
     Ok(percent_decode_str(raw).decode_utf8_lossy().into_owned())
 }
 
+/// Parse `PROVIDE_LOG_MODULE_LEVELS` — comma-separated `module=LEVEL` pairs.
+/// Example: `"provide.server=DEBUG,asyncio=WARNING"`.
+pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for pair in raw.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        if let Some((module, level)) = pair.split_once('=') {
+            let module = module.trim().to_string();
+            let level = level.trim().to_uppercase();
+            if !module.is_empty() && !level.is_empty() {
+                map.insert(module, level);
+            }
+        }
+    }
+    map
+}
+
 fn has_invalid_percent_encoding(raw: &str) -> bool {
     let bytes = raw.as_bytes();
     let mut idx = 0;

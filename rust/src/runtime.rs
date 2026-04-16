@@ -24,12 +24,17 @@ pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {
 }
 
 pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
+    // Only compare fields that are provider-level (require process restart).
+    // Exporter-level fields (endpoint, protocol) and hot-reloadable fields
+    // (sampling, backpressure, etc.) are NOT compared here.
     current.service_name != target.service_name
         || current.environment != target.environment
         || current.version != target.version
         || current.logging.otlp_headers != target.logging.otlp_headers
-        || current.tracing != target.tracing
-        || current.metrics != target.metrics
+        || current.tracing.enabled != target.tracing.enabled
+        || current.tracing.otlp_headers != target.tracing.otlp_headers
+        || current.metrics.enabled != target.metrics.enabled
+        || current.metrics.otlp_headers != target.metrics.otlp_headers
 }
 
 pub fn get_runtime_config() -> Option<TelemetryConfig> {
