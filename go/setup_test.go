@@ -220,6 +220,7 @@ func TestSetupWithProviderOptions(t *testing.T) {
 	cfg, err := SetupTelemetry(
 		WithTracerProvider(sentinel),
 		WithMeterProvider(sentinel),
+		WithLoggerProvider(sentinel),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

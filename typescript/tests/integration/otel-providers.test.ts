@@ -317,4 +317,81 @@ describe('registerOtelProviders', () => {
     expect(_areProvidersRegistered()).toBe(true);
     warnSpy.mockRestore();
   });
+
+  it('constructs OTLPLogExporter with /v1/logs path', async () => {
+    setupTelemetry({
+      serviceName: 'log-svc',
+      otelEnabled: true,
+      otlpEndpoint: 'http://otel-collector:4318',
+      otlpHeaders: { Authorization: 'Bearer tok' },
+    });
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
+      url: 'http://otel-collector:4318/v1/logs',
+      headers: { Authorization: 'Bearer tok' },
+    });
+  });
+
+  it('wires BatchLogRecordProcessor with the log exporter', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    const fakeExporter = { fake: 'log-exporter' };
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      return fakeExporter;
+    } as never);
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(fakeExporter);
+  });
+
+  it('registers all three providers (trace + metrics + logs)', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(_getRegisteredProviders()).toHaveLength(3);
+  });
+
+  it('is idempotent — second call is a no-op when providers are already registered', async () => {
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    const callCount = vi.mocked(OTLPTraceExporter).mock.calls.length;
+    expect(callCount).toBeGreaterThan(0);
+    // Second call should be a no-op.
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(OTLPTraceExporter).mock.calls.length).toBe(callCount);
+  });
+
+  it('warns and continues when logs SDK throws — other providers still register', async () => {
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      throw new Error('logs peer dep missing');
+    } as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('OTEL logs setup failed'),
+      expect.any(Error),
+    );
+    expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalled();
+    expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
+    expect(_areProvidersRegistered()).toBe(true);
+    expect(_getRegisteredProviders()).toHaveLength(2);
+    warnSpy.mockRestore();
+  });
+
+  it('leaves provider state unset when all OTEL provider setups fail', async () => {
+    vi.mocked(OTLPTraceExporter).mockImplementation(function () {
+      throw new Error('trace peer dep missing');
+    } as never);
+    vi.mocked(OTLPMetricExporter).mockImplementation(function () {
+      throw new Error('metrics peer dep missing');
+    } as never);
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      throw new Error('logs peer dep missing');
+    } as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(_areProvidersRegistered()).toBe(false);
+    expect(_getRegisteredProviders()).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+    warnSpy.mockRestore();
+  });
 });
