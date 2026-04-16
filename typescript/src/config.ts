@@ -205,6 +205,7 @@ export const DEFAULTS: TelemetryConfig = {
   logCodeAttributes: false,
   logModuleLevels: {},
   traceSampleRate: 1.0,
+  tracingEnabled: true,
   metricsEnabled: true,
   samplingLogsRate: 1.0,
   samplingTracesRate: 1.0,

@@ -81,8 +81,8 @@ describe('property: configFromEnv()', () => {
       fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
         process.env['UNDEF_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
-        delete process.env['UNDEF_TRACE_ENABLED'];
-        return typeof cfg.otelEnabled === 'boolean';
+        delete process.env['PROVIDE_TRACE_ENABLED'];
+        return typeof cfg.tracingEnabled === 'boolean';
       }),
     );
   });

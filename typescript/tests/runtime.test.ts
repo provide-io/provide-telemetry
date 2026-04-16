@@ -93,14 +93,14 @@ describe('getRuntimeStatus', () => {
   });
 
   it('reports per-signal provider installation state', () => {
-    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
+    setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: true });
     _setProviderSignalInstalled('logs', true);
     _setProviderSignalInstalled('traces', false);
     _setProviderSignalInstalled('metrics', true);
 
     const status = getRuntimeStatus();
     expect(status.setupDone).toBe(true);
-    expect(status.signals).toEqual({ logs: true, traces: true, metrics: true });
+    expect(status.signals).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.providers).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.fallback).toEqual({ logs: false, traces: true, metrics: false });
   });
@@ -456,6 +456,24 @@ describe('reconfigureTelemetry', () => {
       /provider-changing reconfiguration is unsupported/,
     );
     expect(getRuntimeConfig().otelEnabled).toBe(false);
+  });
+
+  it('rejects tracingEnabled changes after providers are registered', () => {
+    reconfigureTelemetry({ tracingEnabled: false });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ tracingEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().tracingEnabled).toBe(false);
+  });
+
+  it('rejects metricsEnabled changes after providers are registered', () => {
+    reconfigureTelemetry({ metricsEnabled: false });
+    _markProvidersRegistered();
+    expect(() => reconfigureTelemetry({ metricsEnabled: true })).toThrow(
+      /provider-changing reconfiguration is unsupported/,
+    );
+    expect(getRuntimeConfig().metricsEnabled).toBe(false);
   });
 
   it('allows provider field changes when providers are NOT registered', () => {
