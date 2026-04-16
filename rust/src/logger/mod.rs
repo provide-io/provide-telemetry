@@ -124,12 +124,18 @@ fn level_order(level: &str) -> u8 {
 /// Per-module overrides win via longest-prefix match; falls back to the
 /// global default level.
 fn effective_level_threshold(target: &str, config: &crate::config::LoggingConfig) -> u8 {
-    let mut best_prefix_len = 0;
+    let mut best_match: Option<usize> = None;
     let mut threshold = level_order(&config.level);
     for (prefix, lvl) in &config.module_levels {
-        if target.starts_with(prefix.as_str()) && prefix.len() > best_prefix_len {
-            best_prefix_len = prefix.len();
-            threshold = level_order(lvl);
+        let matches = prefix.is_empty()
+            || target == prefix.as_str()
+            || target.starts_with(&format!("{prefix}."));
+        if matches {
+            let plen = prefix.len();
+            if best_match.map_or(true, |best| plen > best) {
+                best_match = Some(plen);
+                threshold = level_order(lvl);
+            }
         }
     }
     threshold
@@ -404,7 +410,17 @@ fn level_str_to_log_filter(level: &str) -> log::LevelFilter {
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
         let config = active_logging_config();
-        metadata.level() <= level_str_to_log_filter(&config.level)
+        // Map log::Level to our severity order (TRACE=0 … ERROR=4) and compare
+        // against the effective threshold for this target, which respects
+        // per-module overrides via longest-dot-hierarchy-prefix match.
+        let record_order: u8 = match metadata.level() {
+            log::Level::Error => 4,
+            log::Level::Warn => 3,
+            log::Level::Info => 2,
+            log::Level::Debug => 1,
+            log::Level::Trace => 0,
+        };
+        record_order >= effective_level_threshold(metadata.target(), &config)
     }
 
     fn log(&self, record: &log::Record<'_>) {
@@ -433,4 +449,81 @@ pub fn set_as_global_logger() -> Result<(), log::SetLoggerError> {
     log::set_logger(&*logger)?;
     log::set_max_level(log::LevelFilter::Trace);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn cfg_with_module_level(module: &str, level: &str) -> crate::config::LoggingConfig {
+        let mut module_levels = HashMap::new();
+        module_levels.insert(module.to_string(), level.to_string());
+        crate::config::LoggingConfig {
+            level: "INFO".to_string(),
+            module_levels,
+            ..crate::config::LoggingConfig::default()
+        }
+    }
+
+    // ── Issue #2: dot-hierarchy prefix matching ───────────────────────────────
+
+    #[test]
+    fn effective_level_does_not_match_partial_string() {
+        // "foobar" must NOT match prefix "foo" — no dot separator between them
+        let cfg = cfg_with_module_level("foo", "DEBUG");
+        // INFO = 2, so global threshold applies
+        assert_eq!(
+            effective_level_threshold("foobar", &cfg),
+            2,
+            "foobar must not match prefix foo (no dot separator)"
+        );
+    }
+
+    #[test]
+    fn effective_level_matches_dot_separated_child() {
+        // "foo.bar" starts with "foo." → should pick up DEBUG override
+        let cfg = cfg_with_module_level("foo", "DEBUG");
+        assert_eq!(
+            effective_level_threshold("foo.bar", &cfg),
+            1,
+            "foo.bar must match prefix foo via dot separator"
+        );
+    }
+
+    #[test]
+    fn effective_level_matches_exact_module_name() {
+        // "foo" == "foo" → exact match → DEBUG override applies
+        let cfg = cfg_with_module_level("foo", "DEBUG");
+        assert_eq!(effective_level_threshold("foo", &cfg), 1, "exact name must match");
+    }
+
+    #[test]
+    fn effective_level_empty_prefix_matches_everything() {
+        // empty prefix is a catch-all
+        let cfg = cfg_with_module_level("", "DEBUG");
+        assert_eq!(
+            effective_level_threshold("anything.at.all", &cfg),
+            1,
+            "empty prefix must match any target"
+        );
+    }
+
+    #[test]
+    fn effective_level_longest_prefix_wins() {
+        let mut module_levels = HashMap::new();
+        module_levels.insert("foo".to_string(), "WARN".to_string());
+        module_levels.insert("foo.bar".to_string(), "DEBUG".to_string());
+        let cfg = crate::config::LoggingConfig {
+            level: "INFO".to_string(),
+            module_levels,
+            ..crate::config::LoggingConfig::default()
+        };
+        // "foo.bar.baz" matches both "foo" and "foo.bar"; "foo.bar" is longer → DEBUG wins
+        assert_eq!(
+            effective_level_threshold("foo.bar.baz", &cfg),
+            1,
+            "longer prefix must win over shorter"
+        );
+    }
 }
