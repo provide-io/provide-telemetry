@@ -11,10 +11,12 @@ use serde::{Deserialize, Serialize};
 use crate::errors::ConfigurationError;
 
 mod parse;
+mod redact;
 
 use parse::{
     env_value, parse_bool, parse_non_negative_float, parse_otlp_headers, parse_rate, parse_usize,
 };
+pub use redact::redact_config;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct RuntimeOverrides {
@@ -474,24 +476,4 @@ impl TelemetryConfig {
             },
         })
     }
-}
-
-pub fn redact_config(cfg: &TelemetryConfig) -> TelemetryConfig {
-    fn mask(headers: &HashMap<String, String>) -> HashMap<String, String> {
-        headers
-            .keys()
-            .map(|k| (k.clone(), "***REDACTED***".to_string()))
-            .collect()
-    }
-    let mut out = cfg.clone();
-    if !out.logging.otlp_headers.is_empty() {
-        out.logging.otlp_headers = mask(&cfg.logging.otlp_headers);
-    }
-    if !out.tracing.otlp_headers.is_empty() {
-        out.tracing.otlp_headers = mask(&cfg.tracing.otlp_headers);
-    }
-    if !out.metrics.otlp_headers.is_empty() {
-        out.metrics.otlp_headers = mask(&cfg.metrics.otlp_headers);
-    }
-    out
 }

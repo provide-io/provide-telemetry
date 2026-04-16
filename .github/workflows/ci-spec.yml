@@ -5,26 +5,30 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
-      - "typescript/src/index.ts"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
       - "go/**"
       - "rust/**"
       - "csharp/**"
       - "VERSION"
       - "typescript/package.json"
       - "pyproject.toml"
+      - ".github/workflows/ci-spec.yml"
   pull_request:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/undef/telemetry/__init__.py"
-      - "typescript/src/index.ts"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
       - "go/**"
       - "rust/**"
       - "csharp/**"
       - "VERSION"
       - "typescript/package.json"
       - "pyproject.toml"
+      - ".github/workflows/ci-spec.yml"
   workflow_dispatch:
 
 permissions:

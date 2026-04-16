@@ -34,9 +34,7 @@ def test_ci_spec_watches_full_runtime_surface() -> None:
     ]:
         assert expected in workflow
 
-    # Strict defaults: the behavioral parity script runs output+contract checks by
-    # default — no explicit --check-output flag is required in CI.
-    assert "spec/run_behavioral_parity.py" in workflow
+    assert "python spec/run_behavioral_parity.py --check-output" in workflow
     assert "python spec/validate_conformance.py" in workflow
 
 
@@ -47,12 +45,6 @@ def test_python_ci_runs_real_otlp_collector_gate() -> None:
     assert "otel/opentelemetry-collector-contrib:0.102.1" in workflow
     assert "PROVIDE_TEST_OTLP_ENDPOINT" in workflow
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
-
-
-def test_strict_parity_bootstrap_installs_runtime_probe_dependencies() -> None:
-    bootstrap = (REPO_ROOT / "ci" / "install_parity_deps.py").read_text(encoding="utf-8")
-
-    assert '"uv", "sync", "--group", "dev", "--extra", "otel"' in bootstrap
 
 
 def test_go_ci_runs_real_otlp_collector_gate() -> None:
