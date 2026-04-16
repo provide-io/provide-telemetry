@@ -88,10 +88,16 @@ mod tests {
 
         config.strict_schema = true;
         apply_policies(&config);
-        assert!(get_strict_schema(), "apply_policies must sync strict_schema=true to atomic");
+        assert!(
+            get_strict_schema(),
+            "apply_policies must sync strict_schema=true to atomic"
+        );
 
         config.strict_schema = false;
         apply_policies(&config);
-        assert!(!get_strict_schema(), "apply_policies must sync strict_schema=false to atomic");
+        assert!(
+            !get_strict_schema(),
+            "apply_policies must sync strict_schema=false to atomic"
+        );
     }
 }

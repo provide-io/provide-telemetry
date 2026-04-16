@@ -407,6 +407,57 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
     std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
 }
 
+#[cfg(feature = "otel")]
+#[test]
+fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
+    use provide_telemetry::{otel::otel_installed_for_tests, setup_telemetry, shutdown_telemetry};
+
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    reset_runtime();
+
+    setup_telemetry().expect("first setup should succeed");
+    assert!(
+        otel_installed_for_tests(),
+        "otel should be marked installed after setup"
+    );
+
+    shutdown_telemetry().expect("shutdown should succeed");
+    assert!(
+        !otel_installed_for_tests(),
+        "otel should be marked uninstalled after shutdown"
+    );
+
+    setup_telemetry().expect("second setup should succeed");
+    assert!(
+        otel_installed_for_tests(),
+        "otel should be reinstalled after shutdown + setup"
+    );
+
+    reset_runtime();
+}
+
+#[cfg(feature = "otel")]
+#[test]
+fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_providers() {
+    use provide_telemetry::{otel::otel_installed_for_tests, setup_telemetry};
+
+    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    reset_runtime();
+
+    let protocol_key = "OTEL_EXPORTER_OTLP_PROTOCOL";
+    let previous_protocol = std::env::var(protocol_key).ok();
+    std::env::set_var(protocol_key, "definitely-invalid");
+
+    setup_telemetry().expect("setup should degrade successfully under fail_open");
+    assert!(
+        !otel_installed_for_tests(),
+        "otel should remain uninstalled when all provider builds fail open"
+    );
+
+    restore_var(protocol_key, previous_protocol);
+    reset_runtime();
+}
+
 #[test]
 fn setup_test_sampling_policy_applied_from_config() {
     use provide_telemetry::{get_sampling_policy, setup_telemetry, shutdown_telemetry};

@@ -8,12 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	otlploghttp "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	otlpmetrichttp "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	otlptracehttp "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	logglobal "go.opentelemetry.io/otel/log/global"
+	otellognoop "go.opentelemetry.io/otel/log/noop"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -25,6 +31,9 @@ var _otelTracerProvider *sdktrace.TracerProvider //nolint:gochecknoglobals
 
 // _otelMeterProvider is the package-level real OTel meter provider, set by _applyOTelProviders.
 var _otelMeterProvider *sdkmetric.MeterProvider //nolint:gochecknoglobals
+
+// _otelLoggerProvider is the package-level real OTel logger provider, set by _applyOTelProviders.
+var _otelLoggerProvider *sdklog.LoggerProvider //nolint:gochecknoglobals
 
 // _otelTracerAdapter implements Tracer using a real OTel tracer.
 type _otelTracerAdapter struct {
@@ -110,6 +119,74 @@ func _warnIfMeterProviderConflict() {
 	}
 }
 
+// _warnIfLoggerProviderConflict logs a warning when a third-party logger provider is
+// already installed in the OTel global before we install ours.
+func _warnIfLoggerProviderConflict() {
+	if _otelLoggerProvider != nil {
+		return // we installed the global ourselves in an active setup cycle
+	}
+	existing := logglobal.GetLoggerProvider()
+	if strings.Contains(fmt.Sprintf("%T", existing), "global") {
+		return // OTel default delegating wrapper — no custom provider set
+	}
+	if _, isSDK := existing.(*sdklog.LoggerProvider); isSDK {
+		return // SDK provider (ours from a prior cycle, or a compatible library)
+	}
+	if Logger != nil {
+		Logger.Warn("otel.logger_provider_conflict",
+			slog.String("existing_type", fmt.Sprintf("%T", existing)),
+			slog.String("action", "overwriting with provide-telemetry logger provider"),
+		)
+	}
+}
+
+func _signalEndpointURL(endpoint, signalPath string) string {
+	trimmed := strings.TrimSpace(endpoint)
+	if trimmed == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(trimmed); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		currentPath := strings.TrimRight(parsed.Path, "/")
+		switch {
+		case currentPath == "":
+			parsed.Path = signalPath
+		case !strings.HasSuffix(currentPath, signalPath):
+			parsed.Path = currentPath + signalPath
+		default:
+			parsed.Path = currentPath
+		}
+		return parsed.String()
+	}
+	if strings.HasSuffix(strings.TrimRight(trimmed, "/"), signalPath) {
+		return trimmed
+	}
+	return strings.TrimRight(trimmed, "/") + signalPath
+}
+
+func _buildResource(cfg *TelemetryConfig) *sdkresource.Resource {
+	return sdkresource.NewWithAttributes(
+		"https://opentelemetry.io/schemas/1.26.0",
+		attribute.String("service.name", cfg.ServiceName),
+		attribute.String("service.version", cfg.Version),
+		attribute.String("deployment.environment", cfg.Environment),
+	)
+}
+
+func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider, error) {
+	traceURL := _signalEndpointURL(cfg.Tracing.OTLPEndpoint, "/v1/traces")
+	exporter, err := otlptracehttp.New(context.Background(),
+		otlptracehttp.WithEndpointURL(traceURL),
+		otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(_buildResource(cfg)),
+	), nil
+}
+
 // _buildDefaultMeterProvider creates an OTLP HTTP-backed MeterProvider from config.
 // Called automatically when cfg.Metrics.OTLPEndpoint is set and no explicit provider
 // was passed to SetupTelemetry.
@@ -118,26 +195,46 @@ func _warnIfMeterProviderConflict() {
 // construction time (URL parse errors are swallowed internally by the OTel SDK), so
 // this function always returns a usable provider.
 func _buildDefaultMeterProvider(cfg *TelemetryConfig) *sdkmetric.MeterProvider {
-	metricsURL := strings.TrimRight(cfg.Metrics.OTLPEndpoint, "/") + "/v1/metrics"
+	metricsURL := _signalEndpointURL(cfg.Metrics.OTLPEndpoint, "/v1/metrics")
 	exporter, _ := otlpmetrichttp.New(context.Background(),
 		otlpmetrichttp.WithEndpointURL(metricsURL),
 		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
 	)
-	res := sdkresource.NewWithAttributes(
-		"https://opentelemetry.io/schemas/1.26.0",
-		attribute.String("service.name", cfg.ServiceName),
-		attribute.String("service.version", cfg.Version),
-		attribute.String("deployment.environment", cfg.Environment),
-	)
 	return sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
-		sdkmetric.WithResource(res),
+		sdkmetric.WithResource(_buildResource(cfg)),
 	)
+}
+
+func _buildDefaultLoggerProvider(cfg *TelemetryConfig) (*sdklog.LoggerProvider, error) {
+	logsURL := _signalEndpointURL(cfg.Logging.OTLPEndpoint, "/v1/logs")
+	exporter, err := otlploghttp.New(context.Background(),
+		otlploghttp.WithEndpointURL(logsURL),
+		otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+		sdklog.WithResource(_buildResource(cfg)),
+	), nil
 }
 
 // _applyOTelProviders wires real OTel providers from state into the package-level singletons.
 // It is called by SetupTelemetry unconditionally to handle both explicit and auto-created providers.
 func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
+	if state.tracerProvider == nil && cfg.Tracing.OTLPEndpoint != "" {
+		tp, err := _buildDefaultTracerProvider(cfg)
+		if err != nil {
+			if Logger != nil {
+				Logger.Warn("otel.tracer_provider_init_failed", slog.String("error", err.Error()))
+			}
+		} else {
+			state.tracerProvider = tp
+		}
+	}
+
 	if state.tracerProvider != nil {
 		if tp, ok := state.tracerProvider.(*sdktrace.TracerProvider); ok {
 			_warnIfTracerProviderConflict()
@@ -161,9 +258,32 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 		}
 	}
 
+	if state.loggerProvider == nil && cfg.Logging.OTLPEndpoint != "" {
+		lp, err := _buildDefaultLoggerProvider(cfg)
+		if err != nil {
+			if Logger != nil {
+				Logger.Warn("otel.logger_provider_init_failed", slog.String("error", err.Error()))
+			}
+		} else {
+			state.loggerProvider = lp
+		}
+	}
+
+	if state.loggerProvider != nil {
+		if lp, ok := state.loggerProvider.(*sdklog.LoggerProvider); ok {
+			_warnIfLoggerProviderConflict()
+			_otelLoggerProvider = lp
+			logglobal.SetLoggerProvider(lp)
+		}
+	}
+
 	// Wire slog → OTel log bridge: adds OTel log bridge as an additional slog handler.
 	if Logger != nil {
-		bridge := otelslog.NewHandler(cfg.ServiceName)
+		bridgeOpts := []otelslog.Option{}
+		if _otelLoggerProvider != nil {
+			bridgeOpts = append(bridgeOpts, otelslog.WithLoggerProvider(_otelLoggerProvider))
+		}
+		bridge := otelslog.NewHandler(cfg.ServiceName, bridgeOpts...)
 		combined := slog.New(newMultiHandler(Logger.Handler(), bridge))
 		Logger = combined
 		slog.SetDefault(Logger)
@@ -191,6 +311,14 @@ func _shutdownOTelProviders(ctx context.Context) error {
 		_otelMeterProvider = nil
 	}
 
+	if _otelLoggerProvider != nil {
+		if err := _otelLoggerProvider.Shutdown(ctx); err != nil && first == nil {
+			first = err
+		}
+		_otelLoggerProvider = nil
+	}
+	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+
 	return first
 }
 
@@ -198,6 +326,8 @@ func _shutdownOTelProviders(ctx context.Context) error {
 func _resetOTelProviders() {
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
+	_otelLoggerProvider = nil
+	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 
 // multiHandler fans a slog.Record out to multiple slog.Handler implementations.

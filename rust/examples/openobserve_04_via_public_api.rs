@@ -35,7 +35,10 @@ fn main() {
         // Standard public-API entry point. Reads the OTEL_EXPORTER_OTLP_*
         // env vars via TelemetryConfig::from_env() inside.
         let cfg = provide_telemetry::setup_telemetry().expect("setup_telemetry");
-        println!("setup ok service={} env={}", cfg.service_name, cfg.environment);
+        println!(
+            "setup ok service={} env={}",
+            cfg.service_name, cfg.environment
+        );
 
         // Emit a span via the public trace() entry point. With OTel
         // installed and the global TracerProvider wired by setup_otel,

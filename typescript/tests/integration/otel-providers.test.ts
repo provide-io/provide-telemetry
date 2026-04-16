@@ -298,4 +298,23 @@ describe('registerOtelProviders', () => {
     expect(_getRegisteredProviders()).toHaveLength(2);
     warnSpy.mockRestore();
   });
+
+  it('leaves provider state unset when all OTEL provider setups fail', async () => {
+    vi.mocked(OTLPTraceExporter).mockImplementation(function () {
+      throw new Error('trace peer dep missing');
+    } as never);
+    vi.mocked(OTLPMetricExporter).mockImplementation(function () {
+      throw new Error('metrics peer dep missing');
+    } as never);
+    vi.mocked(OTLPLogExporter).mockImplementation(function () {
+      throw new Error('logs peer dep missing');
+    } as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    await registerOtelProviders(getConfig());
+    expect(_areProvidersRegistered()).toBe(false);
+    expect(_getRegisteredProviders()).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+    warnSpy.mockRestore();
+  });
 });
