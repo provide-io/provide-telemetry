@@ -14,6 +14,7 @@ from __future__ import annotations
 
 __all__ = [
     "get_runtime_config",
+    "get_runtime_status",
     "get_strict_schema",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
@@ -242,6 +243,32 @@ def get_runtime_config() -> TelemetryConfig:
         if _active_config is None:
             return TelemetryConfig.from_env()
         return copy.deepcopy(_active_config)
+
+
+def get_runtime_status() -> dict[str, object]:
+    """Return runtime/provider status using the shared cross-language shape."""
+    from provide.telemetry.health import get_health_snapshot
+    from provide.telemetry.logger import core as logger_core
+    from provide.telemetry.metrics import provider as metrics_provider
+    from provide.telemetry.tracing import provider as tracing_provider
+
+    cfg = get_runtime_config()
+    providers = {
+        "logs": bool(logger_core._has_otel_log_provider()),
+        "traces": bool(tracing_provider._has_tracing_provider()),
+        "metrics": bool(metrics_provider._has_meter_provider()),
+    }
+    return {
+        "setup_done": _active_config is not None or logger_core._configured,
+        "signals": {
+            "logs": True,
+            "traces": cfg.tracing.enabled,
+            "metrics": cfg.metrics.enabled,
+        },
+        "providers": providers,
+        "fallback": {signal: not installed for signal, installed in providers.items()},
+        "setup_error": get_health_snapshot().setup_error,
+    }
 
 
 def _is_strict_event_name() -> bool:

@@ -14,7 +14,7 @@
  */
 
 import pino from 'pino';
-import { getConfig, _getConfigVersion } from './config';
+import { configFromEnv, getConfig, _getConfigVersion } from './config';
 import { getContext } from './context';
 import { shouldAllow } from './consent';
 import { computeErrorFingerprint } from './fingerprint';
@@ -26,7 +26,7 @@ import { sanitize } from './sanitize';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
 import { shouldSample } from './sampling';
-import { getActiveTraceIds } from './tracing';
+import { getTraceContext } from './tracing';
 
 /** Pino level number → console method name. */
 const LEVEL_MAP: Record<number, string> = {
@@ -63,6 +63,11 @@ export interface Logger {
 let _root: pino.Logger | null = null;
 let _rootConfigVersion = -1;
 
+function resolveLoggerConfig() {
+  // Before setupTelemetry() runs, logger lazy-init should still honor env config.
+  return _getConfigVersion() === 0 ? configFromEnv() : getConfig();
+}
+
 /**
  * Build the write hook that enriches, sanitizes, captures, and optionally
  * emits each log record.  Config is read dynamically on every invocation so
@@ -73,7 +78,7 @@ export function makeWriteHook() {
   // pino's WriteFn signature uses `object`; we cast internally for safe property access.
   return (obj: object): void => {
     // Read config dynamically — avoids stale-capture bug after _resetConfig().
-    const cfg = getConfig();
+    const cfg = resolveLoggerConfig();
     const o = obj as Record<string, unknown>;
 
     // Consent gate: drop records the current consent level forbids.
@@ -90,8 +95,8 @@ export function makeWriteHook() {
     if (!ticket) return;
 
     try {
-      // Inject OTEL trace/span IDs if an active span exists.
-      const ids = getActiveTraceIds();
+      // Inject trace/span IDs from manual context first, then any active OTEL span.
+      const ids = getTraceContext();
       if (ids.trace_id) o['trace_id'] = ids.trace_id;
       if (ids.span_id) o['span_id'] = ids.span_id;
 
@@ -217,7 +222,7 @@ function getRootLogger(): pino.Logger {
   if (_root && _rootConfigVersion === currentVersion) return _root;
   _root = null;
   _rootConfigVersion = currentVersion;
-  const cfg = getConfig();
+  const cfg = resolveLoggerConfig();
   const hook = makeWriteHook();
 
   // pino only invokes browser.write when process.version is absent (real browser).
