@@ -10,6 +10,10 @@
  */
 
 import { shortHash12 } from './hash';
+import {
+  PATTERNS as _GENERATED_PATTERNS,
+  MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH,
+} from './secret-patterns-generated';
 
 /**
  * Default fields redacted from log records. Canonical 17-key list shared across
@@ -42,15 +46,8 @@ const REDACTED = '***';
 /** Default maximum recursion depth for PII sanitization. */
 const _DEFAULT_MAX_DEPTH = 8;
 
-const _MIN_SECRET_LENGTH = 20;
 /* Stryker disable all: regex quantifier mutations produce patterns that still match test values */
-export const _SECRET_PATTERNS: RegExp[] = [
-  /(?:AKIA|ASIA)[A-Z0-9]{16}/, // AWS access key
-  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, // JWT
-  /gh[pos]_[A-Za-z0-9_]{36,}/, // GitHub token
-  /[0-9a-fA-F]{40,}/, // Long hex string
-  /[A-Za-z0-9+/]{40,}={0,2}/, // Long base64 string
-];
+export const _SECRET_PATTERNS: RegExp[] = _GENERATED_PATTERNS.map((p) => p.regex);
 /* Stryker restore all */
 
 /** Named secret pattern for diagnostics / deduplication. */
