@@ -6,8 +6,7 @@
  * Mirrors Python provide.telemetry.propagation.
  */
 
-import { bindContext, getContext, unbindContext } from './context';
-import { getTraceContext, setTraceContext } from './tracing';
+import { bindContext, unbindContext } from './context';
 
 export interface PropagationContext {
   traceparent?: string;
@@ -33,16 +32,8 @@ type PropagationStore = {
   active: PropagationContext;
   stack: PropagationContext[];
   otelCtxStack: unknown[];
-  /**
-   * Parallel stack of prior baggage.* values for each bind frame. Each entry
-   * maps the injected key to its value in the logger context *before* the
-   * frame overwrote it, or BAGGAGE_UNSET if the key was unset. On clear, each
-   * key is either rebound to the prior value or unbound — this preserves the
-   * outer frame's baggage when an inner frame uses the same key.
-   */
-  baggagePriorStack: Array<Record<string, PriorBaggageValue>>;
-  /** Parallel stack of previous {traceId, spanId} before each bind. */
-  traceCtxStack: Array<{ traceId: string | undefined; spanId: string | undefined }>;
+  /** Parallel stack of baggage.* key lists injected by each bind frame. */
+  baggageKeyStack: string[][];
 };
 
 export type PropagationALS = {
@@ -72,7 +63,12 @@ try {
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
 // Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
-let _fallbackStore: PropagationStore = { active: {}, stack: [], otelCtxStack: [] };
+let _fallbackStore: PropagationStore = {
+  active: {},
+  stack: [],
+  otelCtxStack: [],
+  baggageKeyStack: [],
+};
 
 // Emit a one-time warning when the module-level fallback store is activated.
 let _fallbackWarned = false;
@@ -115,8 +111,7 @@ function _ensureStore(): PropagationStore {
       active: { ..._fallbackStore.active },
       stack: _fallbackStore.stack.map((entry) => ({ ...entry })),
       otelCtxStack: [..._fallbackStore.otelCtxStack],
-      baggagePriorStack: _fallbackStore.baggagePriorStack.map((entry) => ({ ...entry })),
-      traceCtxStack: _fallbackStore.traceCtxStack.map((ctx) => ({ ...ctx })),
+      baggageKeyStack: _fallbackStore.baggageKeyStack.map((keys) => [...keys]),
     };
     _als.enterWith(next);
     return next;
@@ -236,37 +231,18 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   }
   /* Stryker restore all */
 
-  // Save previous trace context and bridge propagated IDs.
-  // Restored by clearPropagationContext() so IDs don't leak.
-  const prevTrace = getTraceContext();
-  store.traceCtxStack.push({
-    traceId: prevTrace.trace_id,
-    spanId: prevTrace.span_id,
-  });
-  if (ctx.traceId || ctx.spanId) {
-    setTraceContext(ctx.traceId ?? '', ctx.spanId ?? '');
-  }
-
   // Auto-inject parsed baggage entries as baggage.* log context fields.
-  // Capture prior values so that nested frames overwriting the same baggage
-  // key restore the outer value on clear (instead of leaking an unbind).
-  // Stryker disable BlockStatement: else branch pushing {} is equivalent — clearPropagationContext uses `?? {}` so not pushing {} has the same observable effect
   if (ctx.baggage) {
     const parsed = parseBaggage(ctx.baggage);
-    const prior: Record<string, PriorBaggageValue> = {};
-    const currentCtx = getContext();
+    const injectedKeys: string[] = [];
     for (const [k, v] of Object.entries(parsed)) {
-      const ctxKey = `baggage.${k}`;
-      prior[ctxKey] = Object.prototype.hasOwnProperty.call(currentCtx, ctxKey)
-        ? currentCtx[ctxKey]
-        : BAGGAGE_UNSET;
-      bindContext({ [ctxKey]: v });
+      bindContext({ [`baggage.${k}`]: v });
+      injectedKeys.push(`baggage.${k}`);
     }
-    store.baggagePriorStack.push(prior);
+    store.baggageKeyStack.push(injectedKeys);
   } else {
-    store.baggagePriorStack.push({});
+    store.baggageKeyStack.push([]);
   }
-  // Stryker restore BlockStatement
 }
 
 /**
@@ -287,20 +263,10 @@ export function clearPropagationContext(): void {
     store.active = {};
   }
   store.otelCtxStack.pop();
-  // Restore prior values for baggage.* keys injected by the cleared frame.
-  // Rebind to the outer value when present, unbind only if the key was unset.
-  const priorEntries = store.baggagePriorStack.pop() ?? {};
-  for (const [key, prevValue] of Object.entries(priorEntries)) {
-    if (prevValue === BAGGAGE_UNSET) {
-      unbindContext(key);
-    } else {
-      bindContext({ [key]: prevValue });
-    }
-  }
-  // Restore previous trace context so bridged IDs don't leak.
-  const prevTrace = store.traceCtxStack.pop();
-  if (prevTrace) {
-    setTraceContext(prevTrace.traceId, prevTrace.spanId);
+  // Unbind baggage.* keys injected by the frame being cleared.
+  const baggageKeys = store.baggageKeyStack.pop() ?? [];
+  for (const key of baggageKeys) {
+    unbindContext(key);
   }
 }
 // Stryker enable BlockStatement
@@ -323,7 +289,7 @@ export function _resetPropagationForTests(): void {
   // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
   /* v8 ignore next */
   _als = _AlsConstructor ? new _AlsConstructor() : null;
-  _fallbackStore = { active: {}, stack: [], otelCtxStack: [] };
+  _fallbackStore = { active: {}, stack: [], otelCtxStack: [], baggageKeyStack: [] };
   _fallbackWarned = false;
 }
 
