@@ -169,3 +169,51 @@ def test_get_active_config_returns_none_when_runtime_absent() -> None:
     finally:
         if saved is not None:
             sys.modules["provide.telemetry.runtime"] = saved
+
+
+# ── _LevelFilter dot-hierarchy prefix matching (Issue #2) ──────────────────
+
+
+class TestLevelFilterPrefixSemantics:
+    """_LevelFilter must use dot-hierarchy matching, not raw string prefix."""
+
+    def _make_filter(self, default: str, overrides: dict[str, str]) -> processors_mod._LevelFilter:
+        return processors_mod._LevelFilter(default, overrides)
+
+    def test_partial_string_does_not_match(self) -> None:
+        # "foobar" must NOT match prefix "foo" — no dot separator
+        f = self._make_filter("INFO", {"foo": "DEBUG"})
+        # If it wrongly matched, DEBUG event for "foobar" would pass; it must be dropped.
+        with pytest.raises(structlog.DropEvent):
+            f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foobar"})
+
+    def test_dot_child_matches(self) -> None:
+        # "foo.bar" starts with "foo." → DEBUG override applies → passes through
+        f = self._make_filter("INFO", {"foo": "DEBUG"})
+        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo.bar"})
+        assert result["event"] == "x"
+
+    def test_exact_name_matches(self) -> None:
+        # "foo" == "foo" → exact match → DEBUG override applies → passes through
+        f = self._make_filter("INFO", {"foo": "DEBUG"})
+        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo"})
+        assert result["event"] == "x"
+
+    def test_empty_prefix_matches_all(self) -> None:
+        # Empty prefix is a catch-all → DEBUG for everything
+        f = self._make_filter("INFO", {"": "DEBUG"})
+        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "anything.at.all"})
+        assert result["event"] == "x"
+
+    def test_longer_prefix_wins(self) -> None:
+        # "foo.bar.baz" matches both "foo" (WARN) and "foo.bar" (DEBUG)
+        # Longer prefix "foo.bar" must win → DEBUG → passes
+        f = self._make_filter("INFO", {"foo": "WARN", "foo.bar": "DEBUG"})
+        result = f(None, "debug", {"event": "x", "level": "debug", "logger_name": "foo.bar.baz"})
+        assert result["event"] == "x"
+
+    def test_non_matching_module_uses_global(self) -> None:
+        # "other.module" has no match → global INFO → debug is dropped
+        f = self._make_filter("INFO", {"foo": "DEBUG"})
+        with pytest.raises(structlog.DropEvent):
+            f(None, "debug", {"event": "x", "level": "debug", "logger_name": "other.module"})
