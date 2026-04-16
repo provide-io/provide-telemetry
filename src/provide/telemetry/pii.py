@@ -213,11 +213,15 @@ def _apply_default_sensitive_key_redaction(
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
-                        receipt_hook(".".join(cast(tuple[str, ...], child_path)), "redact", orig_value)  # pragma: no mutate — cast() is a no-op at runtime
+                        receipt_hook(  # pragma: no mutate — cast() is a type-only no-op at runtime
+                            ".".join(cast(tuple[str, ...], child_path)), "redact", orig_value
+                        )
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
-                    receipt_hook(".".join(cast(tuple[str, ...], child_path)), "redact", value)
+                    receipt_hook(
+                        ".".join(cast(tuple[str, ...], child_path)), "redact", value
+                    )  # pragma: no mutate — cast() is a type-only no-op at runtime
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
                     value,
@@ -285,7 +289,9 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         for key, value in list(cast(Any, cleaned).items()):
             label = classification_hook(key, value)
             if label is not None:
-                action = policy_fn(label) if policy_fn is not None else "pass"  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
+                action = (  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
+                    policy_fn(label) if policy_fn is not None else "pass"
+                )
                 if action == "drop":
                     del cleaned[key]
                 else:

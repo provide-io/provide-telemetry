@@ -56,8 +56,13 @@ tracing-opentelemetry = { version = "0.32", optional = true }
 uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 rstest = "0.25"
 tokio = { version = "1.44", features = ["macros"] }
+
+[[bench]]
+name = "hot_path"
+harness = false
 
 [[example]]
 name = "emit_log_probe"

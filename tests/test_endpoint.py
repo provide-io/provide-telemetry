@@ -107,3 +107,73 @@ class TestInjectLoggerName:
 
         result = inject_logger_name(None, "info", {"logger_name": "", "event": "test"})
         assert "logger_name" not in result or result.get("logger_name") == ""
+
+    def test_only_logger_key_used_when_logger_name_absent(self) -> None:
+        """When only 'logger' key is present (not 'logger_name'), it should be used.
+
+        Kills mutmut_6/7/8: get("logger") -> get(None) / get("XXloggerXX") / get("LOGGER").
+        """
+        from provide.telemetry.logger.processors import inject_logger_name
+
+        result = inject_logger_name(None, "info", {"logger": "my.module", "event": "test"})
+        assert result["logger_name"] == "my.module"
+
+    def test_logger_name_takes_priority_over_logger(self) -> None:
+        """When both 'logger_name' and 'logger' are present, 'logger_name' wins.
+
+        Kills mutmut_1 (name=None), mutmut_2 (or->and), mutmut_3/4/5 (key mutations).
+        With mutmut_1: name=None, falls through to getattr which returns None (no attr).
+        With mutmut_2 (and): get("logger_name")="first" is truthy, and get("logger")="second"
+          -> name="second" (wrong).
+        With mutmut_3/4/5: get(None)/(wrong key) returns None for logger_name, falls to logger.
+        """
+        from provide.telemetry.logger.processors import inject_logger_name
+
+        result = inject_logger_name(None, "info", {"logger_name": "first", "logger": "second", "event": "test"})
+        assert result["logger_name"] == "first"
+
+    def test_logger_key_only_no_logger_attr_on_logger_object(self) -> None:
+        """Logger object without .name attr, but 'logger' key in event_dict.
+
+        Kills mutmut_6/7/8 from the code path where 'logger_name' is absent.
+        """
+        from provide.telemetry.logger.processors import inject_logger_name
+
+        result = inject_logger_name(object(), "info", {"logger": "from_dict", "event": "test"})
+        assert result["logger_name"] == "from_dict"
+
+    def test_ipv6_empty_port_raises(self) -> None:
+        """IPv6 with trailing colon (empty port) must raise.
+
+        Kills _check_port mutmut_14/15/17: rsplit("]",1)[-1] variations.
+        For http://[::1]:, netloc=[::1]: -> rsplit("]",1)=["[::1", ":"], [-1]=":"
+        """
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://[::1]:")
+
+    def test_none_error_message_content(self) -> None:
+        """Error message for None endpoint must contain 'invalid OTLP endpoint'.
+
+        Kills validate_otlp_endpoint mutmut_3: "XXinvalid OTLP endpoint: NoneXX".
+        """
+        with pytest.raises(ValueError, match=r"^invalid OTLP endpoint: None$"):
+            validate_otlp_endpoint(None)
+
+    def test_truthy_netloc_but_no_hostname_raises(self) -> None:
+        """URL with netloc=':8080' (truthy) but hostname=None must still raise.
+
+        Kills validate_otlp_endpoint mutmut_8: changes `or not netloc or hostname is None`
+        to `or (not netloc and hostname is None)`. The mutant would skip the check when
+        netloc is truthy even though hostname is None (no actual host).
+        """
+        with pytest.raises(ValueError, match="invalid OTLP endpoint"):
+            validate_otlp_endpoint("http://:8080")
+
+    def test_port_error_includes_endpoint_string(self) -> None:
+        """Port validation error must include the original endpoint string.
+
+        Kills validate_otlp_endpoint mutmut_19: _check_port(parsed, None).
+        With None, the f-string would show "invalid OTLP endpoint port: None".
+        """
+        with pytest.raises(ValueError, match=r"invalid OTLP endpoint port: 'http://host:0'"):
+            validate_otlp_endpoint("http://host:0")
