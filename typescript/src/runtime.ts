@@ -72,7 +72,10 @@ export function _areProvidersRegistered(): boolean {
   return _providersRegistered;
 }
 
-export function _setProviderSignalInstalled(signal: 'logs' | 'traces' | 'metrics', installed: boolean): void {
+export function _setProviderSignalInstalled(
+  signal: 'logs' | 'traces' | 'metrics',
+  installed: boolean,
+): void {
   _providerSignals[signal] = installed;
 }
 

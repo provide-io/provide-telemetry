@@ -156,7 +156,7 @@ def _run_probe(runner: ProbeRunner, probe_env: dict[str, str], *, timeout: int =
     """Run probe; return (combined_output, error_message_or_empty)."""
     env = {**os.environ, **_probe_env(probe_env), **runner.env_extra}
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603
             runner.cmd,
             capture_output=True,
             text=True,
@@ -188,7 +188,7 @@ def _run_runtime_probe(
         **runner.env_extra,
     }
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603
             runner.cmd,
             capture_output=True,
             text=True,
@@ -277,8 +277,7 @@ def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
             continue
         if len(set(present.values())) > 1:
             mismatches.append(
-                f"  field '{field_name}' differs: "
-                + ", ".join(f"{lang}={v!r}" for lang, v in sorted(present.items()))
+                f"  field '{field_name}' differs: " + ", ".join(f"{lang}={v!r}" for lang, v in sorted(present.items()))
             )
     timestamp_values = {lang: rec.get("timestamp") for lang, rec in records.items()}
     timestamp_present = {lang: value for lang, value in timestamp_values.items() if value is not None}
@@ -299,7 +298,7 @@ def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
 
 
 def _load_runtime_probe_fixtures(fixtures_path: Path) -> dict[str, object]:
-    import yaml
+    import yaml  # lazy: allow importing parity_probe_support without PyYAML installed
 
     return yaml.safe_load(fixtures_path.read_text(encoding="utf-8"))
 
