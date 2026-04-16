@@ -123,7 +123,13 @@ def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> Tele
 
 
 def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
-    """Merge overrides into the active config and re-apply hot policies."""
+    """Merge overrides into the active config and re-apply hot policies.
+
+    When logging config changes, the structlog pipeline is rebuilt so
+    level/format/module-level changes take effect immediately.
+    """
+    global _active_config
+    logging_changed = False  # pragma: no mutate — None is also falsy; equivalent mutation
     with _lock:
         base = _active_config if _active_config is not None else TelemetryConfig.from_env()
         merged = _apply_overrides(base, overrides)

@@ -361,6 +361,8 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "OpenTelemetry" in msg, f"Expected 'OpenTelemetry' in error, got: {msg!r}"
         assert "opentelemetry" not in msg.replace("OpenTelemetry", ""), "Must not be lowercase"
+        # mutmut_20: prefix "XX" prepended to "provider-changing..."
+        assert "XXprovider-changing" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
     def test_error_message_contains_reconfigure_telemetry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -391,6 +393,8 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "reconfigure_telemetry()" in msg, f"Expected 'reconfigure_telemetry()' in: {msg!r}"
         assert "Use reconfigure_telemetry()" in msg, f"Expected 'Use reconfigure_telemetry()' in: {msg!r}"
+        # mutmut_23: prefix "XX" prepended to "are installed..."
+        assert "XXare installed" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
     def test_error_message_contains_setup_telemetry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -421,4 +425,6 @@ class TestUpdateRuntimeConfigErrorMessages:
         msg = str(exc_info.value)
         assert "setup_telemetry()" in msg, f"Expected 'setup_telemetry()' in: {msg!r}"
         assert "process and call setup_telemetry()" in msg
+        # mutmut_26: prefix "XX" prepended to "process and call..."
+        assert "XXprocess" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
