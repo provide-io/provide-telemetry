@@ -224,10 +224,16 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_TELEMETRY_ENV` | `development` | Deployment environment (fallback: `PROVIDE_ENV`) |
 | `PROVIDE_TELEMETRY_VERSION` | `unknown` | Service version (fallback: `PROVIDE_VERSION`) |
 | `PROVIDE_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
-| `PROVIDE_LOG_FORMAT` | `json` | Output format: `json` / `pretty` |
-| `PROVIDE_TRACE_ENABLED` | `false` | Enable OTLP export |
+| `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
+| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTLP export |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP base endpoint |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP logs endpoint (overrides shared) |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP traces endpoint (overrides shared) |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP metrics endpoint (overrides shared) |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal logs headers (overrides shared) |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal traces headers (overrides shared) |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal metrics headers (overrides shared) |
 
 ### Pretty renderer
 
