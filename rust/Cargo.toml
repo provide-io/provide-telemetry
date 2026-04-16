@@ -29,6 +29,7 @@ otel = [
     "dep:opentelemetry-semantic-conventions",
     "dep:reqwest",
     "dep:tracing-opentelemetry",
+    "dep:url",
 ]
 # OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
 otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic"]
@@ -51,6 +52,7 @@ sha2 = "0.10"
 thiserror = "1.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
 tracing-opentelemetry = { version = "0.32", optional = true }
+url = { version = "2", optional = true }
 uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
