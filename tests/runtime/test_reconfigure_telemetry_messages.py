@@ -55,6 +55,8 @@ class TestReconfigureTelemetryErrorMessages:
             runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="new-svc"))
         msg = str(exc_info.value)
         assert "OpenTelemetry" in msg
+        # mutmut_11: "XX" prefix on "provider-changing..." — content still present as substring
+        assert "XXprovider-changing" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
     def test_provider_change_error_contains_reconfigure_telemetry(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
@@ -69,6 +71,8 @@ class TestReconfigureTelemetryErrorMessages:
         msg = str(exc_info.value)
         assert "reconfigure_telemetry()" in msg
         assert "Use reconfigure_telemetry()" in msg
+        # mutmut_14: "XX" prefix on "Use reconfigure_telemetry()..." — substring still matches
+        assert "XXUse reconfigure_telemetry" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
     def test_provider_change_error_contains_setup_telemetry(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
@@ -82,6 +86,8 @@ class TestReconfigureTelemetryErrorMessages:
             runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="svc-b"))
         msg = str(exc_info.value)
         assert "setup_telemetry()" in msg
+        # mutmut_17: "XX" prefix on "setup_telemetry()..." — substring still matches
+        assert "XXsetup_telemetry" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
     def _setup_log_provider_change(
         self, monkeypatch: pytest.MonkeyPatch
@@ -114,6 +120,8 @@ class TestReconfigureTelemetryErrorMessages:
         msg = str(exc_info.value)
         assert "OpenTelemetry" in msg, f"Expected 'OpenTelemetry' in: {msg!r}"
         assert msg.count("OpenTelemetry") > 0
+        # mutmut_25: "XX" prefix on "provider-changing logging..." — OpenTelemetry still present
+        assert "XXprovider-changing logging" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
     def test_logging_provider_error_contains_endpoint_hint(
         self, monkeypatch: pytest.MonkeyPatch
@@ -129,6 +137,10 @@ class TestReconfigureTelemetryErrorMessages:
         assert "endpoint" in msg.lower(), f"Expected 'endpoint' in: {msg!r}"
         assert "are installed" in msg, f"Expected 'are installed' in: {msg!r}"
         assert "ARE INSTALLED" not in msg
+        # mutmut_28: "XX" prefix on "are installed..." — "are installed" still a substring
+        assert "XXare installed" not in msg, f"Must not start segment with 'XX': {msg!r}"
+        # mutmut_29: lowercase "use" → "use reconfigure_telemetry()" instead of "Use..."
+        assert "Use reconfigure_telemetry()" in msg, f"'Use' must be capitalized: {msg!r}"
 
     def test_logging_provider_error_contains_setup_telemetry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -145,3 +157,5 @@ class TestReconfigureTelemetryErrorMessages:
         assert "provider replacement" in msg, f"Expected 'provider replacement' in: {msg!r}"
         assert "PROVIDER REPLACEMENT" not in msg
         assert "SETUP_TELEMETRY()" not in msg
+        # mutmut_31: "XX" prefix on "provider replacement..." — substring still matches
+        assert "XXprovider replacement" not in msg, f"Must not start segment with 'XX': {msg!r}"
