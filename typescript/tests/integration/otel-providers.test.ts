@@ -174,11 +174,12 @@ describe('registerOtelProviders', () => {
       otlpHeaders: undefined,
     });
     await registerOtelProviders(getConfig());
-    // No endpoint → safe no-export path: providers marked registered but no exporters created.
+    // No endpoint → safe no-export path: no exporters created, NOT marked registered
+    // so reconfigureTelemetry() can install providers later when an endpoint is set.
     expect(vi.mocked(OTLPTraceExporter)).not.toHaveBeenCalled();
     expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
     expect(vi.mocked(OTLPLogExporter)).not.toHaveBeenCalled();
-    expect(_areProvidersRegistered()).toBe(true);
+    expect(_areProvidersRegistered()).toBe(false);
     expect(_getRegisteredProviders()).toHaveLength(0);
   });
 

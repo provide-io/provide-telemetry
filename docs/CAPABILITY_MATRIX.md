@@ -19,7 +19,7 @@ Legend:
 | Invalid config fails fast at setup | core | core | core | core | core guaranteed |
 | Fail-open exporter initialization degrades to fallback without marking providers installed | core | core | core | feature-gated | core guaranteed when OTLP path is enabled |
 | Shutdown followed by setup restores the same runtime-status shape | core | core | core | core | core guaranteed |
-| `get_runtime_config()` returns effective config before or after explicit setup | core | core | core | core | core guaranteed |
+| `get_runtime_config()` returns effective config after setup (Python/TS also return env fallback before setup; Go/Rust return nil/None) | core | core | core | core | core guaranteed after setup; pre-setup behavior varies |
 | `get_runtime_status()` exposes `setup_done`, `signals`, `providers`, `fallback`, and `setup_error` | core | core | core | core | core guaranteed |
 | Real OTLP traces export | core | core | core | feature-gated | feature/dependency gated |
 | Real OTLP metrics export | core | core | core | feature-gated | feature/dependency gated |
