@@ -6,6 +6,8 @@
  * Mirrors Python provide.telemetry.propagation.
  */
 
+import { bindContext, unbindContext } from './context';
+
 export interface PropagationContext {
   traceparent?: string;
   tracestate?: string;
@@ -26,6 +28,8 @@ type PropagationStore = {
   active: PropagationContext;
   stack: PropagationContext[];
   otelCtxStack: unknown[];
+  /** Parallel stack of baggage.* key lists injected by each bind frame. */
+  baggageKeyStack: string[][];
 };
 
 export type PropagationALS = {
@@ -53,7 +57,12 @@ try {
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
 // Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
-let _fallbackStore: PropagationStore = { active: {}, stack: [], otelCtxStack: [] };
+let _fallbackStore: PropagationStore = {
+  active: {},
+  stack: [],
+  otelCtxStack: [],
+  baggageKeyStack: [],
+};
 
 // Emit a one-time warning when the module-level fallback store is activated.
 let _fallbackWarned = false;
@@ -96,6 +105,7 @@ function _ensureStore(): PropagationStore {
       active: { ..._fallbackStore.active },
       stack: _fallbackStore.stack.map((entry) => ({ ...entry })),
       otelCtxStack: [..._fallbackStore.otelCtxStack],
+      baggageKeyStack: _fallbackStore.baggageKeyStack.map((keys) => [...keys]),
     };
     _als.enterWith(next);
     return next;
@@ -121,6 +131,26 @@ function _parseTraceparent(value: string): { traceId?: string; spanId?: string }
     return {};
   }
   return { traceId: traceId.toLowerCase(), spanId: spanId.toLowerCase() };
+}
+
+/**
+ * Parse a W3C baggage header value into key-value pairs.
+ * Format: ``key1=value1, key2=value2;prop=p``
+ * Properties after ``;`` are stripped. Keys and values are whitespace-stripped.
+ * Mirrors Python provide.telemetry.propagation.parse_baggage.
+ */
+export function parseBaggage(raw: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const member of raw.split(',')) {
+    const kv = member.split(';', 1)[0]; // strip properties
+    const eqIdx = kv.indexOf('=');
+    if (eqIdx < 1) continue; // no '=' or empty key
+    const key = kv.slice(0, eqIdx).trim();
+    if (key) {
+      result[key] = kv.slice(eqIdx + 1).trim();
+    }
+  }
+  return result;
 }
 
 /**
@@ -166,6 +196,8 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
  * Push ctx onto the propagation stack, making it the active context.
  * When traceparent is present and OTel API is available, extracts an OTel
  * context so that child spans created via withTrace() inherit the parent.
+ * When baggage is present, individual entries are injected as baggage.* log
+ * context fields (mirrors Python bind_propagation_context baggage auto-injection).
  */
 export function bindPropagationContext(ctx: PropagationContext): void {
   const store = _ensureStore();
@@ -192,10 +224,24 @@ export function bindPropagationContext(ctx: PropagationContext): void {
     store.otelCtxStack.push(undefined);
   }
   /* Stryker restore all */
+
+  // Auto-inject parsed baggage entries as baggage.* log context fields.
+  if (ctx.baggage) {
+    const parsed = parseBaggage(ctx.baggage);
+    const injectedKeys: string[] = [];
+    for (const [k, v] of Object.entries(parsed)) {
+      bindContext({ [`baggage.${k}`]: v });
+      injectedKeys.push(`baggage.${k}`);
+    }
+    store.baggageKeyStack.push(injectedKeys);
+  } else {
+    store.baggageKeyStack.push([]);
+  }
 }
 
 /**
  * Pop the last saved context, restoring the previous state.
+ * Unbinds any baggage.* log context entries injected by the cleared frame.
  */
 // Stryker disable BlockStatement
 export function clearPropagationContext(): void {
@@ -211,6 +257,11 @@ export function clearPropagationContext(): void {
     store.active = {};
   }
   store.otelCtxStack.pop();
+  // Unbind baggage.* keys injected by the frame being cleared.
+  const baggageKeys = store.baggageKeyStack.pop() ?? [];
+  for (const key of baggageKeys) {
+    unbindContext(key);
+  }
 }
 // Stryker enable BlockStatement
 
@@ -232,7 +283,7 @@ export function _resetPropagationForTests(): void {
   // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
   /* v8 ignore next */
   _als = _AlsConstructor ? new _AlsConstructor() : null;
-  _fallbackStore = { active: {}, stack: [], otelCtxStack: [] };
+  _fallbackStore = { active: {}, stack: [], otelCtxStack: [], baggageKeyStack: [] };
   _fallbackWarned = false;
 }
 

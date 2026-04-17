@@ -46,8 +46,36 @@ func ExtractW3CContext(headers http.Header) PropagationContext {
 }
 
 // BindPropagationContext returns a new context with the PropagationContext bound.
+// If pc.Baggage is non-empty, the raw baggage string is added as "baggage" and
+// each parsed key-value pair is added as "baggage.<key>" in the context fields.
 func BindPropagationContext(ctx context.Context, pc PropagationContext) context.Context {
-	return context.WithValue(ctx, _propagationKey, pc)
+	ctx = context.WithValue(ctx, _propagationKey, pc)
+	if pc.Baggage != "" {
+		fields := map[string]any{"baggage": pc.Baggage}
+		for k, v := range ParseBaggage(pc.Baggage) {
+			fields["baggage."+k] = v
+		}
+		ctx = BindContext(ctx, fields)
+	}
+	return ctx
+}
+
+// ParseBaggage parses a W3C baggage header into key-value pairs.
+// Properties after ';' are stripped. Empty keys are skipped.
+func ParseBaggage(raw string) map[string]string {
+	result := map[string]string{}
+	for _, member := range strings.Split(raw, ",") {
+		kv := strings.SplitN(member, ";", 2)[0] // strip properties
+		eqIdx := strings.Index(kv, "=")
+		if eqIdx < 1 { // no '=' or empty key
+			continue
+		}
+		key := strings.TrimSpace(kv[:eqIdx])
+		if key != "" {
+			result[key] = strings.TrimSpace(kv[eqIdx+1:])
+		}
+	}
+	return result
 }
 
 // GetPropagationContext returns the PropagationContext from ctx, or zero value.
