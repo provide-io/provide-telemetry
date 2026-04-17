@@ -46,6 +46,25 @@ class TestValidateOtlpEndpoint:
         with pytest.raises(ValueError, match="invalid OTLP endpoint"):
             validate_otlp_endpoint(None)
 
+    def test_non_numeric_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:bad")
+
+    def test_negative_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:-1")
+
+    def test_port_out_of_range_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:99999")
+
+    def test_port_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:0")
+
+    def test_valid_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://host:4318") == "http://host:4318"
+
 
 class TestInjectLoggerName:
     """Cover inject_logger_name branches: 85->87 (no name anywhere), 87->89 (falsy name skipped)."""
