@@ -282,7 +282,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
-        for key, value in list(cleaned.items()):
+        for key, value in list(cast(Any, cleaned).items()):
             label = classification_hook(key, value)
             if label is not None:
                 action = policy_fn(label) if policy_fn is not None else "pass"  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
@@ -291,7 +291,7 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
                 else:
                     cleaned[f"__{key}__class"] = label
                     if action in ("redact", "hash", "truncate") and value != _REDACTED:
-                        cleaned[key] = _mask(value, action, 8)  # type: ignore[arg-type]
+                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)
     if isinstance(cleaned, dict):
         return cleaned
     return {}

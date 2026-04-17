@@ -166,7 +166,7 @@ class TestPrettyRendererOutputExactAnsi:
     """Verify exact ANSI sequences appear in rendered output."""
 
     def _render(self, event_dict: dict[str, object], **kwargs: object) -> str:
-        return PrettyRenderer(colors=True, **kwargs)(None, "info", event_dict)  # type: ignore[arg-type]
+        return PrettyRenderer(colors=True, **kwargs)(None, "info", event_dict)  # type: ignore
 
     def test_timestamp_wrapped_in_dim_reset(self) -> None:
         ts = "2026-01-01T00:00:00Z"
