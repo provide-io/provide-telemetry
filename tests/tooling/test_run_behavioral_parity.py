@@ -285,6 +285,7 @@ def test_runtime_probe_python_strict_event_name_only_exits_promptly() -> None:
 
 
 def test_runtime_probe_python_provider_identity_reconfigure_exits_promptly() -> None:
+    pytest.importorskip("opentelemetry")  # requires OTel SDK to activate providers
     support = _load_support_module()
     probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
     env = {
@@ -313,6 +314,7 @@ def test_runtime_probe_python_provider_identity_reconfigure_exits_promptly() -> 
 
 
 def test_runtime_probe_python_per_signal_logs_endpoint_exits_promptly() -> None:
+    pytest.importorskip("opentelemetry")  # requires OTel SDK to activate per-signal provider
     support = _load_support_module()
     probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
     env = {
