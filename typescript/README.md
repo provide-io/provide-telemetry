@@ -36,6 +36,7 @@ setupTelemetry({
   logLevel: 'info',
   logFormat: 'json',
   otelEnabled: true,
+  tracingEnabled: true,
   otlpEndpoint: 'http://localhost:4318',
   otlpHeaders: { Authorization: 'Basic ...' },
 });
@@ -59,7 +60,7 @@ await shutdownTelemetry();
 | `setupTelemetry(config)` | Configure the library. Idempotent — safe to call multiple times. |
 | `getConfig()` | Return the current `TelemetryConfig`. |
 | `configFromEnv()` | Build config from environment variables (see [Configuration](#configuration)). |
-| `registerOtelProviders(cfg)` | Wire OTLP trace + metrics exporters. Call after `setupTelemetry`. |
+| `registerOtelProviders(cfg)` | Wire OTLP log, trace, and metric exporters for the signals enabled in config. Call after `setupTelemetry`. |
 | `shutdownTelemetry()` | Flush and shut down all registered OTel providers. |
 
 ### Logging
@@ -171,6 +172,23 @@ const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
 
+### Runtime inspection
+
+```typescript
+import { getRuntimeConfig, getRuntimeStatus } from '@provide-io/telemetry';
+
+const cfg = getRuntimeConfig();
+const status = getRuntimeStatus();
+
+console.log(cfg.serviceName);
+console.log(status.setupDone, status.providers.traces, status.fallback.logs);
+```
+
+Use `getRuntimeConfig()` after setup or runtime reloads to inspect the applied
+snapshot, and `getRuntimeStatus()` to see signal enablement, provider install
+state, fallback mode, and the last setup error without reading internal
+modules.
+
 ## React integration
 
 Requires React 18+ as a peer dependency.
@@ -236,7 +254,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format (empty = default) |
 | `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_LOG_MODULE_LEVELS` | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing provider (falls back to no-op when false) |
+| `PROVIDE_TRACE_ENABLED` | `true` | Enable the tracing signal and trace-provider setup (logs remain enabled) |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |

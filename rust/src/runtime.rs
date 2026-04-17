@@ -62,10 +62,17 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
         .clone()
 }
 
+fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
+    let guard = active_config()
+        .read()
+        .expect("runtime config lock poisoned");
+    let cfg = guard.clone();
+    (cfg.clone(), cfg.is_some())
+}
+
 pub fn get_runtime_status() -> RuntimeStatus {
-    let cfg =
-        get_runtime_config().unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
-    let setup_done = get_runtime_config().is_some();
+    let (cfg, setup_done) = runtime_config_snapshot();
+    let cfg = cfg.unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
 
     #[cfg(feature = "otel")]
     let providers = SignalStatus {
@@ -263,5 +270,19 @@ mod tests {
         changed.strict_schema = true;
 
         assert!(!provider_config_changed(&current, &changed));
+    }
+
+    #[test]
+    fn runtime_test_runtime_config_snapshot_reports_cfg_and_setup_done_from_one_read() {
+        set_active_config(None);
+        let (cfg, setup_done) = runtime_config_snapshot();
+        assert!(cfg.is_none());
+        assert!(!setup_done);
+
+        let configured = TelemetryConfig::default();
+        set_active_config(Some(configured.clone()));
+        let (cfg, setup_done) = runtime_config_snapshot();
+        assert_eq!(cfg, Some(configured));
+        assert!(setup_done);
     }
 }

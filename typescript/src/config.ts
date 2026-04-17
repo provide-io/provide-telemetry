@@ -32,6 +32,8 @@ export interface TelemetryConfig {
   logFormat: 'json' | 'pretty' | 'console';
   /** When true, registerOtelProviders() will install OTEL SDK providers. setupTelemetry() stores this flag but does not register providers itself. */
   otelEnabled: boolean;
+  /** Enable tracing decorators/instrumentation and trace-provider setup. */
+  tracingEnabled: boolean;
   /** OTLP export endpoint (e.g. "http://localhost:4318"). */
   otlpEndpoint?: string;
   /** OTLP headers as key=value pairs. */
@@ -200,6 +202,7 @@ export const DEFAULTS: TelemetryConfig = {
   logCodeAttributes: false,
   logModuleLevels: {},
   traceSampleRate: 1.0,
+  tracingEnabled: true,
   metricsEnabled: true,
   samplingLogsRate: 1.0,
   samplingTracesRate: 1.0,

@@ -200,6 +200,10 @@ describe('configFromEnv — default values', () => {
   it('otelEnabled defaults to true', () => {
     expect(configFromEnv().otelEnabled).toBe(true);
   });
+
+  it('tracingEnabled defaults to true', () => {
+    expect(configFromEnv().tracingEnabled).toBe(true);
+  });
 });
 
 describe('configFromEnv — env var reads', () => {
@@ -294,13 +298,15 @@ describe('configFromEnv — env var reads', () => {
 
   it('reads PROVIDE_TRACE_ENABLED=true', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'true' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(true);
+      expect(configFromEnv().tracingEnabled).toBe(true);
     });
   });
 
-  it('PROVIDE_TRACE_ENABLED=false does not enable otel', () => {
+  it('PROVIDE_TRACE_ENABLED=false disables tracing without disabling OTEL registration', () => {
     withEnv({ PROVIDE_TRACE_ENABLED: 'false' }, () => {
-      expect(configFromEnv().otelEnabled).toBe(false);
+      const cfg = configFromEnv();
+      expect(cfg.tracingEnabled).toBe(false);
+      expect(cfg.otelEnabled).toBe(true);
     });
   });
 
@@ -313,7 +319,7 @@ describe('configFromEnv — env var reads', () => {
       },
       () => {
         const cfg = configFromEnv();
-        expect(cfg.otelEnabled).toBe(true);
+        expect(cfg.tracingEnabled).toBe(true);
         expect(cfg.metricsEnabled).toBe(false);
         expect(cfg.logIncludeTimestamp).toBe(true);
       },
@@ -323,7 +329,7 @@ describe('configFromEnv — env var reads', () => {
   it('covers all accepted boolean env aliases', () => {
     for (const truthy of ['1', 'true', 'yes', 'on']) {
       withEnv({ PROVIDE_TRACE_ENABLED: truthy }, () => {
-        expect(configFromEnv().otelEnabled).toBe(true);
+        expect(configFromEnv().tracingEnabled).toBe(true);
       });
     }
     for (const falsy of ['0', 'false', 'no', 'off']) {
