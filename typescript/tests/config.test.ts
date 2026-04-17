@@ -1068,6 +1068,56 @@ describe('requiredLogKeys — filter(Boolean) kills empty-string entries', () =>
   });
 });
 
+describe('configFromEnv — per-signal OTLP headers from env vars', () => {
+  function withEnvVars(vars: Record<string, string>, fn: () => void): void {
+    for (const [k, v] of Object.entries(vars)) process.env[k] = v;
+    try {
+      fn();
+    } finally {
+      for (const k of Object.keys(vars)) delete process.env[k];
+    }
+  }
+
+  it('parses OTEL_EXPORTER_OTLP_LOGS_HEADERS into otlpLogsHeaders', () => {
+    withEnvVars({ OTEL_EXPORTER_OTLP_LOGS_HEADERS: 'x-logs-key=logs-val' }, () => {
+      const cfg = configFromEnv();
+      expect(cfg.otlpLogsHeaders).toEqual({ 'x-logs-key': 'logs-val' });
+    });
+  });
+
+  it('parses OTEL_EXPORTER_OTLP_TRACES_HEADERS into otlpTracesHeaders', () => {
+    withEnvVars({ OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'x-traces-key=traces-val' }, () => {
+      const cfg = configFromEnv();
+      expect(cfg.otlpTracesHeaders).toEqual({ 'x-traces-key': 'traces-val' });
+    });
+  });
+
+  it('parses OTEL_EXPORTER_OTLP_METRICS_HEADERS into otlpMetricsHeaders', () => {
+    withEnvVars({ OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'x-metrics-key=metrics-val' }, () => {
+      const cfg = configFromEnv();
+      expect(cfg.otlpMetricsHeaders).toEqual({ 'x-metrics-key': 'metrics-val' });
+    });
+  });
+});
+
+describe('_validateConfig — requireRate throws on out-of-range values', () => {
+  it('throws ConfigurationError when samplingLogsRate is greater than 1', () => {
+    expect(() => setupTelemetry({ samplingLogsRate: 1.5 })).toThrow(ConfigurationError);
+  });
+
+  it('throws ConfigurationError when traceSampleRate is negative', () => {
+    expect(() => setupTelemetry({ traceSampleRate: -0.1 })).toThrow(ConfigurationError);
+  });
+
+  it('throws ConfigurationError when backpressureLogsMaxsize is negative', () => {
+    expect(() => setupTelemetry({ backpressureLogsMaxsize: -1 })).toThrow(ConfigurationError);
+  });
+
+  it('throws ConfigurationError when backpressureTracesMaxsize is a non-integer', () => {
+    expect(() => setupTelemetry({ backpressureTracesMaxsize: 1.5 })).toThrow(ConfigurationError);
+  });
+});
+
 describe('setupTelemetry — emergency fallback', () => {
   it('does not throw when applyConfigPolicies fails with Error', async () => {
     const samplingModule = await import('../src/sampling');
