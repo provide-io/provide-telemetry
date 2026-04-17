@@ -24,7 +24,7 @@ use crate::config::TelemetryConfig;
 use crate::context::{set_trace_context_internal, ContextGuard};
 use crate::errors::TelemetryError;
 
-use super::endpoint::{resolve_protocol, OtlpProtocol};
+use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
 
 static TRACER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkTracerProvider>>>> = OnceLock::new();
 
@@ -52,6 +52,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.tracing.otlp_endpoint {
+        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.tracing.otlp_headers.is_empty() {
@@ -190,6 +191,43 @@ mod tests {
         // Calling shutdown when nothing was ever installed must not
         // panic; the OnceLock is empty.
         shutdown_tracer_provider();
+    }
+
+    #[test]
+    fn build_exporter_rejects_invalid_endpoint_scheme() {
+        let mut cfg = test_config();
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
+        assert!(
+            err.message.contains("scheme"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_fails_closed_by_default() {
+        let mut cfg = test_config();
+        cfg.tracing.enabled = true;
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.traces_fail_open = false;
+        let resource = super::super::resource::build_resource(&cfg);
+        let result = install_tracer_provider(&cfg, resource);
+        assert!(result.is_err(), "bad endpoint must return Err when fail_open=false");
+        let msg = result.unwrap_err().message;
+        assert!(msg.contains("scheme"), "error must mention bad scheme: {msg}");
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_succeeds_when_fail_open() {
+        let mut cfg = test_config();
+        cfg.tracing.enabled = true;
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.traces_fail_open = true;
+        let resource = super::super::resource::build_resource(&cfg);
+        // fail_open means validation failure degrades gracefully
+        install_tracer_provider(&cfg, resource)
+            .expect("fail_open must absorb validation error");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

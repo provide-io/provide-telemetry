@@ -18,6 +18,7 @@
 
 import type { TelemetryConfig } from './config';
 import { getConfig } from './config';
+import { validateOtlpEndpoint } from './endpoint';
 import type { ShutdownableProvider } from './runtime';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
@@ -70,6 +71,7 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const { resourceFromAttributes } = res;
 
   const logsEndpoint = cfg.otlpLogsEndpoint ?? `${endpoint}/v1/logs`;
+  validateOtlpEndpoint(logsEndpoint);
   const logsHeaders = cfg.otlpLogsHeaders ?? headers;
   const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: logsHeaders });
   const processor = new BatchLogRecordProcessor(logExporter);

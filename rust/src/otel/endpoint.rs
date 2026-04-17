@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-//! OTLP transport-protocol resolution.
+//! OTLP transport-protocol resolution and endpoint URL validation.
 //!
 //! Only compiled under the `otel` cargo feature. Used by the
 //! traces/metrics/logs submodules to translate the raw
@@ -11,6 +11,8 @@
 //! requested without the `otel-grpc` feature.
 
 #![allow(dead_code)] // Wired in subsequent checkpoints (traces/metrics/logs).
+
+use url::Url;
 
 use crate::errors::TelemetryError;
 
@@ -56,6 +58,40 @@ pub(super) fn resolve_protocol(raw: &str) -> Result<OtlpProtocol, TelemetryError
             "unknown OTLP protocol {other:?}; expected one of: http/protobuf, http/json, grpc",
         ))),
     }
+}
+
+/// Validate an OTLP endpoint URL.
+///
+/// Returns `Ok(())` for valid HTTP(S) URLs with a host and a valid or
+/// absent port. Returns `Err` for:
+/// - unparsable URLs
+/// - non-`http`/`https` schemes (e.g. `ftp://`)
+/// - missing host
+/// - non-numeric or out-of-range ports (caught by `url::Url` parser)
+///
+/// The OTel OTLP HTTP exporter builder accepts the endpoint string as a
+/// raw `http::Uri` without performing scheme/host/port validation, so
+/// callers must call this function before passing the endpoint to the
+/// builder.
+pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
+    let parsed = Url::parse(endpoint)
+        .map_err(|e| TelemetryError::new(format!("invalid OTLP endpoint {endpoint:?}: {e}")))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(TelemetryError::new(format!(
+                "invalid OTLP endpoint scheme {scheme:?} in {endpoint:?}: expected http or https",
+            )));
+        }
+    }
+    if parsed.host().is_none() {
+        return Err(TelemetryError::new(format!(
+            "invalid OTLP endpoint (no host): {endpoint:?}",
+        )));
+    }
+    // url::Url rejects non-numeric and out-of-range ports during parsing,
+    // so if we reach here the port is either valid or absent.
+    Ok(())
 }
 
 #[cfg(test)]
@@ -110,5 +146,71 @@ mod tests {
     #[test]
     fn grpc_with_feature_is_accepted() {
         assert_eq!(resolve_protocol("grpc").unwrap(), OtlpProtocol::Grpc);
+    }
+
+    // --- validate_endpoint tests ---
+
+    #[test]
+    fn valid_http_endpoint_is_accepted() {
+        assert!(validate_endpoint("http://localhost:4318").is_ok());
+        assert!(validate_endpoint("http://collector.example.com/v1/traces").is_ok());
+        assert!(validate_endpoint("https://otel.example.com:4317/v1/metrics").is_ok());
+    }
+
+    #[test]
+    fn valid_https_endpoint_without_port_is_accepted() {
+        assert!(validate_endpoint("https://collector.example.com").is_ok());
+    }
+
+    #[test]
+    fn invalid_scheme_returns_error() {
+        let err = validate_endpoint("ftp://host:4318").expect_err("ftp should fail");
+        assert!(
+            err.message.contains("scheme") && err.message.contains("ftp"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn grpc_scheme_rejected() {
+        let err = validate_endpoint("grpc://host:4317").expect_err("grpc scheme should fail");
+        assert!(
+            err.message.contains("scheme"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn completely_unparseable_url_returns_error() {
+        let err = validate_endpoint("not_a_url").expect_err("invalid URL should fail");
+        assert!(
+            err.message.contains("invalid OTLP endpoint"),
+            "error must describe the problem: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn out_of_range_port_returns_error() {
+        // url::Url rejects ports > 65535 at parse time.
+        let err = validate_endpoint("http://host:99999").expect_err("out-of-range port should fail");
+        assert!(
+            err.message.contains("invalid OTLP endpoint"),
+            "error must describe the problem: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn empty_host_returns_error() {
+        // "http://:4318/path" has an empty authority; url crate rejects this.
+        let err = validate_endpoint("http://:4318/path").expect_err("empty host should fail");
+        assert!(
+            err.message.contains("invalid OTLP endpoint"),
+            "error must describe the problem: {}",
+            err.message
+        );
     }
 }
