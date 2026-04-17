@@ -214,7 +214,7 @@ def test_production_mode_log_message_and_extras(caplog: pytest.LogCaptureFixture
     assert len(caplog.records) >= 1
     record = caplog.records[0]
     assert record.message == "provide.pii.redaction_receipt"
-    assert record.receipt_id is not None  # type: ignore[attr-defined]
-    assert record.field_path == "password"  # type: ignore[attr-defined]
+    assert record.receipt_id is not None  # type: ignore
+    assert record.field_path == "password"  # type: ignore
     # cleanup
     enable_receipts(enabled=False)
