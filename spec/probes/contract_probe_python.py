@@ -161,9 +161,9 @@ def _op_capture_log(step: dict[str, Any], variables: dict[str, object]) -> None:
         if line.startswith("{"):
             record = json.loads(line)
             break
-    # Normalise: ensure trace_id / span_id / baggage keys have string defaults.
-    for key in ("trace_id", "span_id", "message"):
-        record.setdefault(key, "")
+    # Normalise: ensure message key has a string default (trace_id/span_id are
+    # intentionally absent when propagation context is cleared).
+    record.setdefault("message", "")
     variables[step["into"]] = record
 
 
