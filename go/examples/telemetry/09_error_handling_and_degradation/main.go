@@ -22,7 +22,7 @@ import (
 
 func main() {
 	fmt.Println("Error Handling & Graceful Degradation Demo")
-fmt.Println()
+	fmt.Println()
 
 	// Normal setup — works with or without OTel
 	fmt.Println("Setting up telemetry (works with or without OTel)...")
@@ -39,7 +39,7 @@ fmt.Println()
 
 	// Exception hierarchy demo
 	fmt.Println("Exception Hierarchy Demo")
-fmt.Println()
+	fmt.Println()
 
 	// ConfigurationError
 	fmt.Println("  1. ConfigurationError (invalid config):")
@@ -93,7 +93,7 @@ fmt.Println()
 
 	// Graceful degradation
 	fmt.Println("\nGraceful Degradation Demo")
-fmt.Println()
+	fmt.Println()
 
 	// Metrics work even without OTel
 	c := telemetry.NewCounter("example.errors.requests",

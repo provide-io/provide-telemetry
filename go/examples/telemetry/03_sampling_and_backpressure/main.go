@@ -24,7 +24,7 @@ func tracedWork(ctx context.Context, taskID int) error {
 	concEvt, _ := telemetry.Event("example", "sampling", "concurrent")
 	return telemetry.Trace(ctx, concEvt.Event, func(ctx context.Context) error {
 		requests := telemetry.NewCounter("example.sampling.counter")
-		requests.Add(ctx, 1, )
+		requests.Add(ctx, 1)
 		return nil
 	})
 }
