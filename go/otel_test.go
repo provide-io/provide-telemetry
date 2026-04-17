@@ -10,6 +10,7 @@ import (
 	"time"
 
 	logglobal "go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -490,6 +491,90 @@ func TestValidatedSignalEndpointURL_PortValidation(t *testing.T) {
 	}
 }
 
+func TestSignalEndpointURL_Variants(t *testing.T) {
+	tests := []struct {
+		name       string
+		endpoint   string
+		signalPath string
+		want       string
+	}{
+		{name: "blank endpoint", endpoint: "   ", signalPath: "/v1/logs", want: ""},
+		{name: "root endpoint appends path", endpoint: "http://collector:4318", signalPath: "/v1/traces", want: "http://collector:4318/v1/traces"},
+		{name: "existing path appends signal path", endpoint: "http://collector:4318/base", signalPath: "/v1/metrics", want: "http://collector:4318/base/v1/metrics"},
+		{name: "existing suffix preserved", endpoint: "http://collector:4318/v1/logs", signalPath: "/v1/logs", want: "http://collector:4318/v1/logs"},
+		{name: "unparsed string suffix preserved", endpoint: "collector:4318/v1/logs", signalPath: "/v1/logs", want: "collector:4318/v1/logs"},
+		{name: "unparsed string appends path", endpoint: "collector:4318", signalPath: "/v1/logs", want: "collector:4318/v1/logs"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := _signalEndpointURL(tt.endpoint, tt.signalPath); got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestValidatedSignalEndpointURL_RejectsBlankAndUnsupportedSchemes(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "blank endpoint", input: "   ", wantErr: true},
+		{name: "missing scheme and host", input: "collector:4318", wantErr: true},
+		{name: "unsupported scheme", input: "ftp://collector:4318", wantErr: true},
+		{name: "valid https endpoint", input: "https://collector:4318", wantErr: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := _validatedSignalEndpointURL(tt.input, "/v1/logs")
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected validation error for %q", tt.input)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected validation error for %q: %v", tt.input, err)
+			}
+		})
+	}
+}
+
+func TestBuildDefaultProviders_SuccessAndInvalidEndpoint(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	cfg.Tracing.OTLPEndpoint = "http://collector:4318"
+	cfg.Tracing.OTLPHeaders = map[string]string{"authorization": "Bearer token"}
+	cfg.Metrics.OTLPEndpoint = "http://collector:4318"
+	cfg.Metrics.OTLPHeaders = map[string]string{"x-metrics": "true"}
+	cfg.Logging.OTLPEndpoint = "http://collector:4318"
+	cfg.Logging.OTLPHeaders = map[string]string{"x-logs": "true"}
+
+	if tp, err := _buildDefaultTracerProvider(cfg); err != nil || tp == nil {
+		t.Fatalf("expected tracer provider build success, got tp=%v err=%v", tp, err)
+	}
+	if mp, err := _buildDefaultMeterProvider(cfg); err != nil || mp == nil {
+		t.Fatalf("expected meter provider build success, got mp=%v err=%v", mp, err)
+	}
+	if lp, err := _buildDefaultLoggerProvider(cfg); err != nil || lp == nil {
+		t.Fatalf("expected logger provider build success, got lp=%v err=%v", lp, err)
+	}
+
+	cfg.Tracing.OTLPEndpoint = "   "
+	if tp, err := _buildDefaultTracerProvider(cfg); err == nil || tp != nil {
+		t.Fatalf("expected tracer provider validation failure, got tp=%v err=%v", tp, err)
+	}
+	cfg.Tracing.OTLPEndpoint = "http://collector:4318"
+	cfg.Metrics.OTLPEndpoint = "ftp://collector:4318"
+	if mp, err := _buildDefaultMeterProvider(cfg); err == nil || mp != nil {
+		t.Fatalf("expected meter provider validation failure, got mp=%v err=%v", mp, err)
+	}
+	cfg.Metrics.OTLPEndpoint = "http://collector:4318"
+	cfg.Logging.OTLPEndpoint = "http://["
+	if lp, err := _buildDefaultLoggerProvider(cfg); err == nil || lp != nil {
+		t.Fatalf("expected logger provider validation failure, got lp=%v err=%v", lp, err)
+	}
+}
+
 // testErrorHandler is a slog.Handler that always returns an error from Handle.
 type testErrorHandler struct {
 	err error
@@ -558,5 +643,23 @@ func TestOTel_ShutdownOTelProviders_OnlyMeterError(t *testing.T) {
 	err := _shutdownOTelProviders(ctx)
 	if err == nil {
 		t.Error("expected error from double-shutdown of meter provider")
+	}
+}
+
+func TestOTel_ShutdownOTelProviders_OnlyLoggerProvider(t *testing.T) {
+	_resetOTelProviders()
+	t.Cleanup(func() { _resetOTelProviders() })
+
+	lp := sdklog.NewLoggerProvider()
+	_otelLoggerProvider = lp
+
+	if err := _shutdownOTelProviders(context.Background()); err != nil {
+		t.Fatalf("expected logger-only shutdown to succeed, got %v", err)
+	}
+	if _otelLoggerProvider != nil {
+		t.Fatal("expected logger provider pointer to be cleared after shutdown")
+	}
+	if got := logglobal.GetLoggerProvider(); got == nil {
+		t.Fatal("expected global logger provider to be restored to noop after shutdown")
 	}
 }

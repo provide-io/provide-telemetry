@@ -334,6 +334,31 @@ func TestGetLogger_NonTelemetryHandler(t *testing.T) {
 	}
 }
 
+func TestGetLogger_InvalidEnvFallsBackToDefaultConfig(t *testing.T) {
+	orig := Logger
+	Logger = nil
+	t.Cleanup(func() { Logger = orig })
+	t.Setenv("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool")
+
+	l := GetLogger(context.Background(), "fallback.invalid-env")
+	if l == nil {
+		t.Fatal("GetLogger returned nil when ConfigFromEnv failed")
+	}
+}
+
+func TestTelemetryConfigFromHandler_FindsNestedTelemetryHandler(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	handler := newMultiHandler(slog.NewTextHandler(os.Stderr, nil), _newTelemetryHandler(slog.NewTextHandler(os.Stderr, nil), cfg, "nested"))
+
+	got, ok := _telemetryConfigFromHandler(handler)
+	if !ok {
+		t.Fatal("expected to find telemetry config inside multiHandler")
+	}
+	if got != cfg {
+		t.Fatalf("expected original config pointer, got %+v", got)
+	}
+}
+
 func TestHandler_WithAttrs(t *testing.T) {
 	setupFullSampling(t)
 
@@ -774,6 +799,39 @@ func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
 		t.Fatalf("_configureLogger with JSON format produced non-JSON output: %v\noutput: %s", err, out)
+	}
+}
+
+func TestConfigureLogger_JSONFormat_OmitsTimestampWhenDisabled(t *testing.T) {
+	setupFullSampling(t)
+
+	r, w, _ := os.Pipe()
+	origStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Format = LogFormatJSON
+	cfg.Logging.IncludeTimestamp = false
+	cfg.Logging.Sanitize = false
+	_configureLogger(cfg)
+	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
+
+	Logger.Info("no timestamp please")
+	_ = w.Close()
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	var m map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &m); err != nil {
+		t.Fatalf("expected JSON output, got %v", err)
+	}
+	if _, ok := m[slog.TimeKey]; ok {
+		t.Fatalf("expected %q to be omitted when timestamps are disabled, got %v", slog.TimeKey, m)
+	}
+	if _, ok := m["message"]; !ok {
+		t.Fatalf("expected message key to be renamed, got %v", m)
 	}
 }
 

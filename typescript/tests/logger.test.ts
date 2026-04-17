@@ -543,6 +543,16 @@ describe('write hook — schema validation (strictSchema)', () => {
     spy.mockRestore();
   });
 
+  it('annotates log with _schema_error when strictEventName=true and strictSchema=false', () => {
+    makeCfg({ strictSchema: false, strictEventName: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, event: 'Bad.Event.Ok' });
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toHaveProperty('_schema_error');
+    spy.mockRestore();
+  });
+
   it('annotates log with _schema_error when strictSchema=true and requiredLogKeys missing', () => {
     makeCfg({ strictSchema: true, requiredLogKeys: ['action'] });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});

@@ -79,6 +79,7 @@ func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
 		Exporter:     &cfg.Exporter,
 		Security:     &cfg.Security,
 		SLO:          &cfg.SLO,
+		EventSchema:  &cfg.EventSchema,
 		PIIMaxDepth:  &cfg.Logging.PIIMaxDepth,
 		StrictSchema: &cfg.StrictSchema,
 	}
@@ -99,6 +100,9 @@ func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 	}
 	if overrides.SLO != nil {
 		cfg.SLO = *overrides.SLO
+	}
+	if overrides.EventSchema != nil {
+		cfg.EventSchema = *overrides.EventSchema
 	}
 	if overrides.PIIMaxDepth != nil {
 		cfg.Logging.PIIMaxDepth = *overrides.PIIMaxDepth
