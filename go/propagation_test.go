@@ -339,3 +339,123 @@ func TestExtractW3CContext_AllFieldsPresent(t *testing.T) {
 		t.Errorf("Baggage: want %q, got %q", "sessionId=abc123", pc.Baggage)
 	}
 }
+
+func TestParseBaggage(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   string
+		want  map[string]string
+	}{
+		{
+			name: "simple key-value pair",
+			raw:  "userId=abc123",
+			want: map[string]string{"userId": "abc123"},
+		},
+		{
+			name: "multiple pairs",
+			raw:  "userId=abc,sessionId=xyz",
+			want: map[string]string{"userId": "abc", "sessionId": "xyz"},
+		},
+		{
+			name: "properties after semicolon are stripped",
+			raw:  "key=value;prop1=a;prop2=b",
+			want: map[string]string{"key": "value"},
+		},
+		{
+			name: "whitespace around key and value is stripped",
+			raw:  "  key  =  value  ",
+			want: map[string]string{"key": "value"},
+		},
+		{
+			name: "no equals sign — member skipped",
+			raw:  "invalid",
+			want: map[string]string{},
+		},
+		{
+			name: "empty key (equals at position 0) — skipped",
+			raw:  "=value",
+			want: map[string]string{},
+		},
+		{
+			name: "empty string — no pairs",
+			raw:  "",
+			want: map[string]string{},
+		},
+		{
+			name: "mixed valid and invalid members",
+			raw:  "good=yes,bad,=skip,also=fine",
+			want: map[string]string{"good": "yes", "also": "fine"},
+		},
+		{
+			name: "properties with multiple pairs",
+			raw:  "k1=v1;p=x,k2=v2",
+			want: map[string]string{"k1": "v1", "k2": "v2"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseBaggage(tc.raw)
+			if len(got) != len(tc.want) {
+				t.Errorf("len: want %d, got %d (map: %v)", len(tc.want), len(got), got)
+				return
+			}
+			for k, wantV := range tc.want {
+				if gotV, ok := got[k]; !ok {
+					t.Errorf("missing key %q", k)
+				} else if gotV != wantV {
+					t.Errorf("key %q: want %q, got %q", k, wantV, gotV)
+				}
+			}
+		})
+	}
+}
+
+func TestBindPropagationContext_BaggageFieldsInjected(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Traceparent", validTraceparent())
+	headers.Set("Baggage", "userId=abc123,sessionId=xyz;prop=ignored")
+
+	pc := ExtractW3CContext(headers)
+	ctx := BindPropagationContext(context.Background(), pc)
+
+	fields := GetBoundFields(ctx)
+
+	if v, ok := fields["baggage"]; !ok || v != "userId=abc123,sessionId=xyz;prop=ignored" {
+		t.Errorf("fields[baggage]: want raw baggage string, got %v", v)
+	}
+	if v, ok := fields["baggage.userId"]; !ok || v != "abc123" {
+		t.Errorf("fields[baggage.userId]: want %q, got %v", "abc123", v)
+	}
+	if v, ok := fields["baggage.sessionId"]; !ok || v != "xyz" {
+		t.Errorf("fields[baggage.sessionId]: want %q, got %v", "xyz", v)
+	}
+}
+
+func TestBindPropagationContext_NoBaggage_NoFieldsInjected(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Traceparent", validTraceparent())
+
+	pc := ExtractW3CContext(headers)
+	ctx := BindPropagationContext(context.Background(), pc)
+
+	fields := GetBoundFields(ctx)
+
+	if _, ok := fields["baggage"]; ok {
+		t.Error("expected no baggage field when Baggage is empty")
+	}
+}
+
+// _isHex rejects non-hex characters — cover the return-false branch with a
+// right-length traceID that contains 'z' chars (not valid hex after ToLower).
+func TestExtractW3CContext_InvalidTraceID_NonHexChar(t *testing.T) {
+	headers := http.Header{}
+	// 32 chars, but 'z' is not a valid hex digit.
+	nonHex := strings.Repeat("z", 32)
+	headers.Set("Traceparent", "00-"+nonHex+"-"+_validSpanID+"-"+_validFlags)
+
+	pc := ExtractW3CContext(headers)
+
+	if pc.TraceID != "" {
+		t.Errorf("TraceID: want empty for non-hex traceID, got %q", pc.TraceID)
+	}
+}
