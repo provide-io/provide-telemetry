@@ -7,7 +7,7 @@
  */
 
 import { bindContext, unbindContext } from './context';
-import { setTraceContext } from './tracing';
+import { getTraceContext, setTraceContext } from './tracing';
 
 export interface PropagationContext {
   traceparent?: string;
@@ -31,6 +31,8 @@ type PropagationStore = {
   otelCtxStack: unknown[];
   /** Parallel stack of baggage.* key lists injected by each bind frame. */
   baggageKeyStack: string[][];
+  /** Parallel stack of previous {traceId, spanId} before each bind. */
+  traceCtxStack: Array<{ traceId: string; spanId: string }>;
 };
 
 export type PropagationALS = {
@@ -63,6 +65,7 @@ let _fallbackStore: PropagationStore = {
   stack: [],
   otelCtxStack: [],
   baggageKeyStack: [],
+  traceCtxStack: [],
 };
 
 // Emit a one-time warning when the module-level fallback store is activated.
@@ -107,6 +110,7 @@ function _ensureStore(): PropagationStore {
       stack: _fallbackStore.stack.map((entry) => ({ ...entry })),
       otelCtxStack: [..._fallbackStore.otelCtxStack],
       baggageKeyStack: _fallbackStore.baggageKeyStack.map((keys) => [...keys]),
+      traceCtxStack: _fallbackStore.traceCtxStack.map((ctx) => ({ ...ctx })),
     };
     _als.enterWith(next);
     return next;
@@ -226,9 +230,13 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   }
   /* Stryker restore all */
 
-  // Bridge propagated trace/span IDs into the trace context so logs
-  // emitted before a child span is created still carry upstream IDs.
-  // Matches Python (propagation.py:147) and Rust (propagation.rs:147).
+  // Save previous trace context and bridge propagated IDs.
+  // Restored by clearPropagationContext() so IDs don't leak.
+  const prevTrace = getTraceContext();
+  store.traceCtxStack.push({
+    traceId: prevTrace.trace_id ?? '',
+    spanId: prevTrace.span_id ?? '',
+  });
   if (ctx.traceId || ctx.spanId) {
     setTraceContext(ctx.traceId ?? '', ctx.spanId ?? '');
   }
@@ -270,6 +278,11 @@ export function clearPropagationContext(): void {
   for (const key of baggageKeys) {
     unbindContext(key);
   }
+  // Restore previous trace context so bridged IDs don't leak.
+  const prevTrace = store.traceCtxStack.pop();
+  if (prevTrace) {
+    setTraceContext(prevTrace.traceId, prevTrace.spanId);
+  }
 }
 // Stryker enable BlockStatement
 
@@ -291,7 +304,13 @@ export function _resetPropagationForTests(): void {
   // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
   /* v8 ignore next */
   _als = _AlsConstructor ? new _AlsConstructor() : null;
-  _fallbackStore = { active: {}, stack: [], otelCtxStack: [], baggageKeyStack: [] };
+  _fallbackStore = {
+    active: {},
+    stack: [],
+    otelCtxStack: [],
+    baggageKeyStack: [],
+    traceCtxStack: [],
+  };
   _fallbackWarned = false;
 }
 
