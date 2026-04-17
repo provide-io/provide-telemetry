@@ -312,3 +312,37 @@ class TestPropagationContextDataclass:
         ctx = PropagationContext(None, None, None, None, None)
         assert ctx.traceparent is None
         assert ctx.trace_id is None
+
+
+class TestParseBaggage:
+    """Cover parse_baggage edge cases for 100% branch coverage."""
+
+    def test_parses_simple_baggage(self) -> None:
+        from provide.telemetry.propagation import parse_baggage
+
+        result = parse_baggage("userId=alice,tenant=acme")
+        assert result == {"userId": "alice", "tenant": "acme"}
+
+    def test_strips_properties_after_semicolon(self) -> None:
+        from provide.telemetry.propagation import parse_baggage
+
+        result = parse_baggage("requestId=req-123;ttl=30")
+        assert result == {"requestId": "req-123"}
+
+    def test_skips_members_without_equals(self) -> None:
+        from provide.telemetry.propagation import parse_baggage
+
+        result = parse_baggage("good=val,badmember,also=ok")
+        assert result == {"good": "val", "also": "ok"}
+
+    def test_skips_empty_key(self) -> None:
+        from provide.telemetry.propagation import parse_baggage
+
+        result = parse_baggage("=nokey,real=val")
+        assert result == {"real": "val"}
+
+    def test_empty_string(self) -> None:
+        from provide.telemetry.propagation import parse_baggage
+
+        result = parse_baggage("")
+        assert result == {}

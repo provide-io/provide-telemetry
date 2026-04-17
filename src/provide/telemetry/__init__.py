@@ -65,7 +65,7 @@ if TYPE_CHECKING:
         register_secret_pattern,
         replace_pii_rules,
     )
-    from provide.telemetry.propagation import bind_propagation_context, extract_w3c_context
+    from provide.telemetry.propagation import bind_propagation_context, extract_w3c_context, parse_baggage
     from provide.telemetry.receipts import RedactionReceipt, enable_receipts, get_emitted_receipts_for_tests
     from provide.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
     from provide.telemetry.runtime import (
@@ -127,7 +127,7 @@ _register(
     "register_secret_pattern",
     "replace_pii_rules",
 )
-_register("provide.telemetry.propagation", "bind_propagation_context", "extract_w3c_context")
+_register("provide.telemetry.propagation", "bind_propagation_context", "extract_w3c_context", "parse_baggage")
 _register("provide.telemetry.resilience", "ExporterPolicy", "get_exporter_policy", "set_exporter_policy")
 _register(
     "provide.telemetry.runtime",
@@ -218,6 +218,7 @@ __all__ = [
     "guard_attributes",
     "histogram",
     "logger",
+    "parse_baggage",
     "reconfigure_telemetry",
     "record_red_metrics",
     "record_use_metrics",

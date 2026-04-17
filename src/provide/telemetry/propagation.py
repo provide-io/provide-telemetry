@@ -12,6 +12,7 @@ __all__ = [
     "bind_propagation_context",
     "clear_propagation_context",
     "extract_w3c_context",
+    "parse_baggage",
 ]
 
 import contextvars
@@ -92,6 +93,25 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     )
 
 
+def parse_baggage(raw: str) -> dict[str, str]:
+    """Parse a W3C baggage header into key-value pairs.
+
+    Format: ``key1=value1,key2=value2;property1=p1``
+    Properties after ``;`` are stripped (metadata, not propagated values).
+    Keys and values are stripped of whitespace. Empty keys are skipped.
+    """
+    result: dict[str, str] = {}
+    for member in raw.split(","):
+        kv = member.split(";", 1)[0]  # strip properties
+        if "=" not in kv:
+            continue
+        key, _, value = kv.partition("=")
+        key = key.strip()
+        if key:
+            result[key] = value.strip()
+    return result
+
+
 def bind_propagation_context(context: PropagationContext) -> None:
     logger_ctx = get_context()
     trace_ctx = get_trace_context()
@@ -99,13 +119,14 @@ def bind_propagation_context(context: PropagationContext) -> None:
     otel_token: object | None = None
     if context.traceparent is not None:
         otel_token = attach_w3c_context(context.traceparent, context.tracestate)
-    snapshot = {
+    snapshot: dict[str, object] = {
         "traceparent": logger_ctx.get("traceparent", _MISSING),
         "tracestate": logger_ctx.get("tracestate", _MISSING),
         "baggage": logger_ctx.get("baggage", _MISSING),
         "trace_id": trace_ctx["trace_id"],
         "span_id": trace_ctx["span_id"],
         "otel_token": otel_token,
+        "_baggage_keys": [],  # filled below after parsing
     }
     stack = _restore_stack.get()
     _restore_stack.set((*stack, snapshot))
@@ -115,6 +136,13 @@ def bind_propagation_context(context: PropagationContext) -> None:
         bind_context(tracestate=context.tracestate)
     if context.baggage is not None:
         bind_context(baggage=context.baggage)
+        # Auto-inject parsed baggage entries as baggage.* context fields
+        parsed_keys: list[str] = []
+        for key, value in parse_baggage(context.baggage).items():
+            ctx_key = f"baggage.{key}"
+            bind_context(**{ctx_key: value})
+            parsed_keys.append(ctx_key)
+        snapshot["_baggage_keys"] = parsed_keys
     if context.trace_id is not None or context.span_id is not None:
         set_trace_context(context.trace_id, context.span_id)
 
@@ -141,6 +169,10 @@ def clear_propagation_context() -> None:
             unbind_context(key)
         else:
             bind_context(**{key: value})
+    # Unbind auto-injected baggage.* keys from the cleared frame.
+    raw_keys = previous.get("_baggage_keys", [])
+    for bkey in raw_keys if isinstance(raw_keys, list) else []:
+        unbind_context(str(bkey))
     prev_trace_id = previous["trace_id"]
     prev_span_id = previous["span_id"]
     set_trace_context(
