@@ -93,10 +93,7 @@ def _op_setup(step: dict[str, Any], _variables: dict[str, object]) -> None:
     if overrides:
         setup_telemetry(_build_config(overrides))
     else:
-        # Let env vars flow through (PROVIDE_TELEMETRY_SERVICE_NAME, etc.)
-        # Force JSON format for parseable log capture.
-        os.environ["PROVIDE_LOG_FORMAT"] = "json"
-        setup_telemetry()
+        setup_telemetry(TelemetryConfig(logging=LoggingConfig(fmt="json")))
 
 
 def _op_setup_invalid(step: dict[str, Any], variables: dict[str, object]) -> None:
@@ -161,9 +158,9 @@ def _op_capture_log(step: dict[str, Any], variables: dict[str, object]) -> None:
         if line.startswith("{"):
             record = json.loads(line)
             break
-    # Normalise: ensure message key has a string default (trace_id/span_id are
-    # intentionally absent when propagation context is cleared).
-    record.setdefault("message", "")
+    # Normalise: ensure trace_id / span_id / baggage keys have string defaults.
+    for key in ("trace_id", "span_id", "message"):
+        record.setdefault(key, "")
     variables[step["into"]] = record
 
 
