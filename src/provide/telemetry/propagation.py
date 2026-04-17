@@ -84,6 +84,27 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     )
 
 
+def parse_baggage(raw: str) -> dict[str, str]:
+    """Parse a W3C baggage header into key-value pairs.
+
+    Format: ``key1=value1,key2=value2;property1=p1``
+    Properties after ``;`` are stripped (metadata, not propagated values).
+    Keys and values are stripped of whitespace. Empty keys are skipped.
+    """
+    result: dict[str, str] = {}
+    for member in raw.split(","):
+        kv = member.split(";", 1)[
+            0
+        ]  # strip properties  # pragma: no mutate — [0] gives same result for maxsplit 1/2/omitted
+        if "=" not in kv:
+            continue
+        key, _, value = kv.partition("=")
+        key = key.strip()
+        if key:
+            result[key] = value.strip()
+    return result
+
+
 def bind_propagation_context(context: PropagationContext) -> None:
     if context.traceparent is not None:
         bind_context(traceparent=context.traceparent)
@@ -96,4 +117,36 @@ def bind_propagation_context(context: PropagationContext) -> None:
 
 
 def clear_propagation_context() -> None:
-    set_trace_context(None, None)
+    stack = _restore_stack.get()
+    if stack:
+        previous = stack[-1]
+        _restore_stack.set(stack[:-1])
+    else:
+        previous = {
+            "traceparent": _MISSING,
+            "tracestate": _MISSING,
+            "baggage": _MISSING,
+            "trace_id": None,
+            "span_id": None,
+            "otel_token": None,  # pragma: no mutate
+        }
+    # Detach only the OTel token introduced by this specific bind frame.
+    detach_w3c_context(previous.get("otel_token"))
+    for key in ("traceparent", "tracestate", "baggage"):
+        value = previous[key]
+        if value is _MISSING:
+            unbind_context(key)
+        else:
+            bind_context(**{key: value})
+    # Unbind auto-injected baggage.* keys from the cleared frame.
+    raw_keys = previous.get(
+        "_baggage_keys", []
+    )  # pragma: no mutate — default [] or None both safe: isinstance guard on next line handles both
+    for bkey in raw_keys if isinstance(raw_keys, list) else []:
+        unbind_context(str(bkey))
+    prev_trace_id = previous["trace_id"]
+    prev_span_id = previous["span_id"]
+    set_trace_context(
+        prev_trace_id if isinstance(prev_trace_id, str) or prev_trace_id is None else None,  # pragma: no mutate
+        prev_span_id if isinstance(prev_span_id, str) or prev_span_id is None else None,  # pragma: no mutate
+    )
