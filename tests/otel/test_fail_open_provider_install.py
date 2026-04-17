@@ -103,7 +103,7 @@ def test_setup_metrics_fail_open_exporter_does_not_install_provider(monkeypatch:
         lambda: (_FakeMeterProvider, _FakeResource, lambda exporter: exporter, object),
     )
     monkeypatch.setattr(metrics_provider, "_load_otel_metrics_api", lambda: fake_api)
-    monkeypatch.setattr("provide.telemetry.resilience.run_with_resilience", lambda _signal, _factory: None)
+    monkeypatch.setattr(metrics_provider, "run_with_resilience", lambda _signal, _factory: None)
 
     cfg = TelemetryConfig.from_env(
         {
