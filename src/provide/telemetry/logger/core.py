@@ -160,8 +160,8 @@ def _make_otel_logging_handler(
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        return cast(
-            logging.Handler,  # pragma: no mutate — cast() is a no-op at runtime
+        return cast(  # pragma: no mutate — cast() is a no-op at runtime; node starts here
+            logging.Handler,
             sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider),
         )
 

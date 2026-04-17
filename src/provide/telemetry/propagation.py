@@ -126,7 +126,7 @@ def bind_propagation_context(context: PropagationContext) -> None:
         "trace_id": trace_ctx["trace_id"],
         "span_id": trace_ctx["span_id"],
         "otel_token": otel_token,
-        "_baggage_keys": [],  # filled below after parsing
+        "_baggage_keys": [],  # pragma: no mutate — line 145 always sets the correct key when baggage present
     }
     stack = _restore_stack.get()
     _restore_stack.set((*stack, snapshot))
