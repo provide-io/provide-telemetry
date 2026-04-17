@@ -36,6 +36,22 @@ var _otelMeterProvider *sdkmetric.MeterProvider //nolint:gochecknoglobals
 // _otelLoggerProvider is the package-level real OTel logger provider, set by _applyOTelProviders.
 var _otelLoggerProvider *sdklog.LoggerProvider //nolint:gochecknoglobals
 
+func _defaultOTLPTraceExporterFactory(ctx context.Context, opts ...otlptracehttp.Option) (sdktrace.SpanExporter, error) {
+	return otlptracehttp.New(ctx, opts...)
+}
+
+func _defaultOTLPMetricsExporterFactory(ctx context.Context, opts ...otlpmetrichttp.Option) (sdkmetric.Exporter, error) {
+	return otlpmetrichttp.New(ctx, opts...)
+}
+
+func _defaultOTLPLogExporterFactory(ctx context.Context, opts ...otlploghttp.Option) (sdklog.Exporter, error) {
+	return otlploghttp.New(ctx, opts...)
+}
+
+var _newOTLPTraceExporter = _defaultOTLPTraceExporterFactory     //nolint:gochecknoglobals
+var _newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory //nolint:gochecknoglobals
+var _newOTLPLogExporter = _defaultOTLPLogExporterFactory         //nolint:gochecknoglobals
+
 // _otelTracerAdapter implements Tracer using a real OTel tracer.
 type _otelTracerAdapter struct {
 	inner oteltrace.Tracer
@@ -169,9 +185,6 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
 	}
 	signalURL := _signalEndpointURL(endpoint, signalPath)
-	if signalURL == "" {
-		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
-	}
 	parsed, err := url.Parse(signalURL)
 	if err != nil {
 		return "", err
@@ -215,7 +228,7 @@ func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlptracehttp.New(context.Background(),
+	exporter, err := _newOTLPTraceExporter(context.Background(),
 		otlptracehttp.WithEndpointURL(traceURL),
 		otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders),
 	)
@@ -233,7 +246,7 @@ func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider,
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlpmetrichttp.New(context.Background(),
+	exporter, err := _newOTLPMetricsExporter(context.Background(),
 		otlpmetrichttp.WithEndpointURL(metricsURL),
 		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
 	)
@@ -251,7 +264,7 @@ func _buildDefaultLoggerProvider(cfg *TelemetryConfig) (*sdklog.LoggerProvider, 
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlploghttp.New(context.Background(),
+	exporter, err := _newOTLPLogExporter(context.Background(),
 		otlploghttp.WithEndpointURL(logsURL),
 		otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders),
 	)
@@ -377,6 +390,9 @@ func _resetOTelProviders() {
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
+	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
+	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
+	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
 	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 

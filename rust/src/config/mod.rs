@@ -14,8 +14,8 @@ mod parse;
 mod redact;
 
 use parse::{
-    env_value, parse_bool, parse_module_levels, parse_non_negative_float, parse_otlp_headers,
-    parse_rate, parse_usize,
+    env_value, nonempty_env_value, parse_bool, parse_module_levels, parse_non_negative_float,
+    parse_otlp_headers, parse_rate, parse_usize,
 };
 pub use redact::redact_config;
 
@@ -252,7 +252,7 @@ impl TelemetryConfig {
     pub fn from_map(env: &HashMap<String, String>) -> Result<Self, ConfigurationError> {
         let shared_headers = parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"]))?
             .unwrap_or_default();
-        let shared_endpoint = env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+        let shared_endpoint = nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
         let shared_protocol = env_value(env, &["OTEL_EXPORTER_OTLP_PROTOCOL"]).unwrap_or("");
         // Per the OTLP/HTTP spec, when falling back to the shared endpoint
         // the per-signal path must be appended (/v1/traces, /v1/metrics,
@@ -298,7 +298,7 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
-                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
                     .map(str::to_string)
                     .or_else(|| with_signal_path("v1/logs")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
@@ -324,7 +324,7 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_TRACES_HEADERS"],
                 ))?
                 .unwrap_or_else(|| shared_headers.clone()),
-                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
                     .map(str::to_string)
                     .or_else(|| with_signal_path("v1/traces")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
@@ -342,7 +342,7 @@ impl TelemetryConfig {
                     &["OTEL_EXPORTER_OTLP_METRICS_HEADERS"],
                 ))?
                 .unwrap_or(shared_headers),
-                otlp_endpoint: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
                     .map(str::to_string)
                     .or_else(|| with_signal_path("v1/metrics")),
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"])

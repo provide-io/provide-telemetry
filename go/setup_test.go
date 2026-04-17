@@ -162,6 +162,35 @@ func TestSetupAppliesExporterPolicyFromEnv(t *testing.T) {
 	}
 }
 
+func TestSetupTelemetryStrictEventNameFromEnvWithoutStrictSchema(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_TELEMETRY_STRICT_SCHEMA", "false")
+	t.Setenv("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", "true")
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	cfg := GetRuntimeConfig()
+	if cfg == nil {
+		t.Fatal("expected runtime config after setup")
+	}
+	if cfg.StrictSchema {
+		t.Fatal("strict schema should remain false when only strict event name is enabled")
+	}
+	if !cfg.EventSchema.StrictEventName {
+		t.Fatal("strict event name should be enabled in runtime config")
+	}
+	if !GetStrictSchema() {
+		t.Fatal("effective strict schema should be enabled when strict event name is true")
+	}
+
+	if _, err := EventName("User", "Login", "Ok"); err == nil {
+		t.Fatal("expected strict event-name validation to reject uppercase segments")
+	}
+}
+
 func TestSetupConcurrentOnlyOneInitialises(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

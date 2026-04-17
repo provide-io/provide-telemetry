@@ -167,7 +167,7 @@ export function makeWriteHook() {
         }
       }
       /* v8 ignore next -- V8 cannot fully attribute all ?? branches in a single expression */
-      if (cfg.strictSchema) {
+      if (cfg.strictSchema || cfg.strictEventName) {
         const event = String(o['event'] ?? o['message'] ?? '');
         if (event) {
           try {
