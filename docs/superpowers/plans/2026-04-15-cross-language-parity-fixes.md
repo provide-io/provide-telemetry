@@ -10,6 +10,8 @@
 
 ---
 
+## Tasks
+
 ### Task 1: Fix parity runner normalizer dropping Go keys before rename
 
 The `_normalize_log_record()` function checks the raw key against `_NOISE_FIELDS` *before* applying the rename, so `service.name` is dropped before it becomes the canonical `service`. The fix: remove the Go-style dotted keys from `_NOISE_FIELDS` since they're already handled by `_FIELD_RENAMES`.
