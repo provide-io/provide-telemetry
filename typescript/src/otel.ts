@@ -20,6 +20,7 @@
  */
 
 import type { TelemetryConfig } from './config';
+import { validateOtlpEndpoint } from './endpoint';
 import { setupOtelLogProvider } from './otel-logs';
 
 const DEFAULT_OTLP_ENDPOINT = 'http://localhost:4318';
@@ -41,6 +42,8 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
 
   const headers = cfg.otlpHeaders ?? {};
   const endpoint = cfg.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT;
+  // Validate the base endpoint before attempting any exporter construction.
+  validateOtlpEndpoint(endpoint);
   const registered: ShutdownableProvider[] = [];
 
   // ── Context manager ──────────────────────────────────────────────────────────
@@ -74,6 +77,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { resourceFromAttributes } = res;
 
       const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
+      validateOtlpEndpoint(traceEndpoint);
       const traceHeaders = cfg.otlpTracesHeaders ?? headers;
       const traceExporter = new OTLPTraceExporter({
         url: traceEndpoint,
@@ -108,6 +112,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { OTLPMetricExporter } = otlpMetrics;
 
       const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
+      validateOtlpEndpoint(metricsEndpoint);
       const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
       const metricExporter = new OTLPMetricExporter({
         url: metricsEndpoint,

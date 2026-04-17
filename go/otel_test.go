@@ -460,6 +460,33 @@ func TestOTel_ShutdownOTelProviders_BothError(t *testing.T) {
 	}
 }
 
+func TestValidatedSignalEndpointURL_PortValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid port", "http://host:4318", false},
+		{"no port", "http://host", false},
+		{"non-numeric port", "http://host:bad", true},
+		{"empty port", "http://host:", true},
+		{"port zero", "http://host:0", true},
+		{"port out of range", "http://host:99999", true},
+		{"negative port", "http://host:-1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := _validatedSignalEndpointURL(tt.input, "/v1/traces")
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for %q", tt.input)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error for %q: %v", tt.input, err)
+			}
+		})
+	}
+}
+
 // testErrorHandler is a slog.Handler that always returns an error from Handle.
 type testErrorHandler struct {
 	err error

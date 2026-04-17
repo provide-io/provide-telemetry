@@ -28,7 +28,7 @@ use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 use crate::logger::LogEvent;
 
-use super::endpoint::{resolve_protocol, OtlpProtocol};
+use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
 
 static LOGGER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkLoggerProvider>>>> = OnceLock::new();
 
@@ -57,6 +57,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.logging.otlp_endpoint {
+        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.logging.otlp_headers.is_empty() {
@@ -227,6 +228,40 @@ mod tests {
     #[test]
     fn shutdown_without_install_is_a_noop() {
         shutdown_logger_provider();
+    }
+
+    #[test]
+    fn build_exporter_rejects_invalid_endpoint_scheme() {
+        let mut cfg = test_config();
+        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
+        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
+        assert!(
+            err.message.contains("scheme"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_fails_closed_by_default() {
+        let mut cfg = test_config();
+        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.logs_fail_open = false;
+        let resource = super::super::resource::build_resource(&cfg);
+        let result = install_logger_provider(&cfg, resource);
+        assert!(result.is_err(), "bad endpoint must return Err when fail_open=false");
+        let msg = result.unwrap_err().message;
+        assert!(msg.contains("scheme"), "error must mention bad scheme: {msg}");
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_succeeds_when_fail_open() {
+        let mut cfg = test_config();
+        cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.logs_fail_open = true;
+        let resource = super::super::resource::build_resource(&cfg);
+        install_logger_provider(&cfg, resource)
+            .expect("fail_open must absorb validation error");
     }
 
     #[test]
