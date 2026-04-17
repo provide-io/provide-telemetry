@@ -10,6 +10,8 @@
 
 ---
 
+## Tasks
+
 ### Task 1: Create contract fixtures YAML
 
 **Files:**
