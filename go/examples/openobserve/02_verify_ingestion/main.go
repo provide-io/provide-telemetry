@@ -205,7 +205,7 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	_ = os.Setenv("PROVIDE_EXAMPLE_RUN_ID", runID)
 
 	ctx := context.Background()
-	startUS := time.Now().Add(-2*time.Hour).UnixMicro()
+	startUS := time.Now().Add(-2 * time.Hour).UnixMicro()
 	traceName := "example.openobserve.work." + runID
 	metricStream := strings.ReplaceAll("example.openobserve.requests."+runID, ".", "_")
 	logEvent := "example.openobserve.jsonlog"
@@ -216,8 +216,8 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	beforeTraceHits, _ := searchHits(ctx, baseURL, "traces", auth, startUS, time.Now().UnixMicro())
 	beforeMetricStreams, _ := streamNames(ctx, baseURL, "metrics", auth)
 	before := map[string]any{
-		"logs":                  countLogsForRunID(beforeLogHits, logEvent, runID),
-		"traces":                countTraces(beforeTraceHits, traceName),
+		"logs":                   countLogsForRunID(beforeLogHits, logEvent, runID),
+		"traces":                 countTraces(beforeTraceHits, traceName),
 		"metrics_stream_present": func() bool { _, ok := beforeMetricStreams[metricStream]; return ok }(),
 	}
 	fmt.Printf("before=%v\n", before)
@@ -232,8 +232,8 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	// Poll for up to 30s.
 	deadline := time.Now().Add(30 * time.Second)
 	after := map[string]any{
-		"logs":                  0,
-		"traces":                0,
+		"logs":                   0,
+		"traces":                 0,
 		"metrics_stream_present": false,
 	}
 	for time.Now().Before(deadline) {
