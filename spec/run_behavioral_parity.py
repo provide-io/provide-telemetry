@@ -33,9 +33,8 @@ _SPEC_DIR = Path(__file__).resolve().parent
 if str(_SPEC_DIR) not in sys.path:
     sys.path.insert(0, str(_SPEC_DIR))
 
-from parity_probe_support import (
-    _compare_outputs,
-    _normalize_log_record,
+from parity_probe_support import (  # noqa: E402
+    run_contract_cases,
     run_output_check,
     run_runtime_probe_check,
 )
@@ -211,6 +210,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also run log-output probes and compare canonical JSON fields cross-language",
     )
+    parser.add_argument(
+        "--check-contracts",
+        action="store_true",
+        help="Run contract probe DSL cases",
+    )
     args = parser.parse_args(argv)
 
     selected = {s.strip().lower() for s in args.lang.split(",")}
@@ -292,6 +296,16 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
         )
         if not runtime_ok:
+            any_fail = True
+
+    if args.check_contracts:
+        contracts_ok = run_contract_cases(
+            _REPO_ROOT,
+            selected,
+            _CARGO_BIN,
+            _CARGO_ENV,
+        )
+        if not contracts_ok:
             any_fail = True
 
     return 1 if any_fail else 0
