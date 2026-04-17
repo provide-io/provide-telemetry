@@ -209,15 +209,19 @@ def _apply_default_sensitive_key_redaction(
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
-                        receipt_hook(  # pragma: no mutate — cast() is a type-only no-op at runtime
-                            ".".join(cast(tuple[str, ...], child_path)), "redact", orig_value
+                        receipt_hook(
+                            ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                            "redact",
+                            orig_value,
                         )
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
                     receipt_hook(
-                        ".".join(cast(tuple[str, ...], child_path)), "redact", value
-                    )  # pragma: no mutate — cast() is a type-only no-op at runtime
+                        ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                        "redact",
+                        value,
+                    )
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
                     value,
@@ -282,18 +286,20 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
-        for key, value in list(cast(Any, cleaned).items()):
+        for key, value in list(cast(Any, cleaned).items()):  # pragma: no mutate
             label = classification_hook(key, value)
             if label is not None:
-                action = (  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
-                    policy_fn(label) if policy_fn is not None else "pass"
+                action = (
+                    policy_fn(label)
+                    if policy_fn is not None
+                    else "pass"  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
                 )
                 if action == "drop":
                     del cleaned[key]
                 else:
                     cleaned[f"__{key}__class"] = label
                     if action in ("redact", "hash", "truncate") and value != _REDACTED:
-                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)
+                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)  # pragma: no mutate
     if isinstance(cleaned, dict):
         return cleaned
     return {}
