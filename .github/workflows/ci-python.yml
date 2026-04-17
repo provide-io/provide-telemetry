@@ -159,15 +159,7 @@ jobs:
             -v "$PWD/tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
-        run: |
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "collector failed health check"
-          exit 1
+        run: ci/wait-for-collector.sh
       - run: uv sync --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
         env:

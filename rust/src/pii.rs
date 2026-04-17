@@ -97,6 +97,9 @@ fn is_secret(value: &Value) -> bool {
         Value::String(s) => s,
         _ => return false,
     };
+    if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
+        return false;
+    }
     if builtin_secret_patterns().iter().any(|p| p.is_match(text)) {
         return true;
     }
