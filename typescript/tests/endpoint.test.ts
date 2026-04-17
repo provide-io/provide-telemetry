@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import YAML from 'yaml';
 import { validateOtlpEndpoint } from '../src/endpoint';
 
 describe('validateOtlpEndpoint', () => {
@@ -34,4 +37,40 @@ describe('validateOtlpEndpoint', () => {
   it('rejects empty port', () => {
     expect(() => validateOtlpEndpoint('http://host:')).toThrow(/invalid OTLP endpoint/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Fixture-driven parity tests — shared across all language implementations
+// ---------------------------------------------------------------------------
+
+interface EndpointCase {
+  endpoint: string;
+  description: string;
+}
+
+interface EndpointFixtures {
+  valid: EndpointCase[];
+  invalid: EndpointCase[];
+}
+
+const fixturesPath = resolve(__dirname, '../../spec/behavioral_fixtures.yaml');
+const allFixtures = YAML.parse(readFileSync(fixturesPath, 'utf-8')) as {
+  endpoint_validation: EndpointFixtures;
+};
+const endpointFixtures = allFixtures.endpoint_validation;
+
+describe('endpoint validation parity (shared fixtures)', () => {
+  it.each(endpointFixtures.valid.map((c) => [c.description, c.endpoint] as [string, string]))(
+    'accepts valid: %s',
+    (_desc, endpoint) => {
+      expect(validateOtlpEndpoint(endpoint)).toBe(endpoint);
+    },
+  );
+
+  it.each(endpointFixtures.invalid.map((c) => [c.description, c.endpoint] as [string, string]))(
+    'rejects invalid: %s',
+    (_desc, endpoint) => {
+      expect(() => validateOtlpEndpoint(endpoint)).toThrow();
+    },
+  );
 });

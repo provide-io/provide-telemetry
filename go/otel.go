@@ -165,9 +165,12 @@ func _signalEndpointURL(endpoint, signalPath string) string {
 }
 
 func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
+	if strings.TrimSpace(endpoint) == "" {
+		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
+	}
 	signalURL := _signalEndpointURL(endpoint, signalPath)
 	if signalURL == "" {
-		return "", nil
+		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
 	}
 	parsed, err := url.Parse(signalURL)
 	if err != nil {
@@ -175,6 +178,9 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("invalid OTLP endpoint URL %q", signalURL)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("invalid OTLP endpoint scheme %q in %q", parsed.Scheme, signalURL)
 	}
 	portStr := parsed.Port()
 	if portStr != "" {

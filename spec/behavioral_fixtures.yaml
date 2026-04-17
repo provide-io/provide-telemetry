@@ -463,3 +463,46 @@ log_output_format:
       expected:
         msg: "log.output.parity"
         level: "INFO"
+
+# Cross-language OTLP endpoint validation fixtures.
+# All four languages MUST accept every "valid" endpoint and reject every
+# "invalid" endpoint at setup/provider-registration time — before any
+# export attempt is made.
+endpoint_validation:
+  valid:
+    - endpoint: "http://localhost:4318"
+      description: "standard HTTP with port"
+    - endpoint: "https://collector.example.com"
+      description: "HTTPS without port"
+    - endpoint: "http://host:4318/v1/traces"
+      description: "HTTP with port and path"
+    - endpoint: "http://host"
+      description: "HTTP without port or path"
+    - endpoint: "http://[::1]:4318"
+      description: "IPv6 with port"
+    - endpoint: "http://[::1]"
+      description: "IPv6 without port"
+    - endpoint: "https://otel.example.com:4317/v1/metrics"
+      description: "HTTPS with port and path"
+
+  invalid:
+    - endpoint: ""
+      description: "empty string"
+    - endpoint: "not-a-url"
+      description: "no scheme or host"
+    - endpoint: "ftp://host:4318"
+      description: "wrong scheme (ftp)"
+    - endpoint: "http://"
+      description: "scheme only, no host"
+    - endpoint: "http://host:bad"
+      description: "non-numeric port"
+    - endpoint: "http://host:-1"
+      description: "negative port"
+    - endpoint: "http://host:0"
+      description: "port zero"
+    - endpoint: "http://host:99999"
+      description: "port out of range"
+    - endpoint: "http://host:"
+      description: "empty port"
+    - endpoint: "http://host:/v1/traces"
+      description: "empty port with path"
