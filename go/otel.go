@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -174,6 +175,17 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("invalid OTLP endpoint URL %q", signalURL)
+	}
+	portStr := parsed.Port()
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
+		}
+	}
+	// Detect empty port — "http://host:" has Host="host:" but Port()=""
+	if portStr == "" && strings.Contains(parsed.Host, ":") {
+		return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
 	}
 	return signalURL, nil
 }
