@@ -22,6 +22,7 @@ pytestmark = pytest.mark.tooling
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _SCRIPT = _REPO_ROOT / "spec" / "run_behavioral_parity.py"
 _SUPPORT = _REPO_ROOT / "spec" / "parity_probe_support.py"
+_HARNESS = _REPO_ROOT / "spec" / "contract_probe_harness.py"
 
 
 def _load_module(path: Path, name: str) -> ModuleType:
@@ -42,8 +43,12 @@ def _load_support_module() -> ModuleType:
     return _load_module(_SUPPORT, "parity_probe_support_test_module")
 
 
+def _load_harness_module() -> ModuleType:
+    return _load_module(_HARNESS, "contract_probe_harness_test_module")
+
+
 def test_normalize_log_record_renames_and_normalizes_fields() -> None:
-    module = _load_runner_module()
+    module = _load_support_module()
 
     record = module._normalize_log_record(
         {
@@ -72,7 +77,7 @@ def test_normalize_log_record_renames_and_normalizes_fields() -> None:
 
 
 def test_compare_outputs_flags_optional_field_mismatches() -> None:
-    module = _load_runner_module()
+    module = _load_support_module()
 
     mismatches = module._compare_outputs(
         {
@@ -102,7 +107,7 @@ def test_compare_outputs_flags_optional_field_mismatches() -> None:
 
 
 def test_compare_outputs_flags_timestamp_policy_violation() -> None:
-    module = _load_runner_module()
+    module = _load_support_module()
 
     mismatches = module._compare_outputs(
         {
@@ -119,7 +124,7 @@ def test_compare_outputs_flags_timestamp_policy_violation() -> None:
 
 
 def test_compare_outputs_flags_trace_context_presence_violation() -> None:
-    module = _load_runner_module()
+    module = _load_support_module()
 
     mismatches = module._compare_outputs(
         {
@@ -238,9 +243,7 @@ def test_runtime_probe_python_strict_schema_rejection_exits_promptly() -> None:
 def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() -> None:
     module = _load_support_module()
 
-    output_python = next(
-        runner for runner in module._probe_runners(_REPO_ROOT, "cargo", {}) if runner.name == "python"
-    )
+    output_python = next(runner for runner in module._probe_runners(_REPO_ROOT, "cargo", {}) if runner.name == "python")
     runtime_python = next(
         runner for runner in module._runtime_probe_runners(_REPO_ROOT, "cargo", {}) if runner.name == "python"
     )
@@ -250,3 +253,43 @@ def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() ->
         sys.executable,
         str(_REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"),
     ]
+
+
+@pytest.mark.tooling
+def test_contract_fixtures_contain_all_expected_cases() -> None:
+    """All 6 contract case IDs must be present."""
+    import yaml
+
+    fixtures_path = _REPO_ROOT / "spec" / "contract_fixtures.yaml"
+    data = yaml.safe_load(fixtures_path.read_text())
+    cases = list(data["contract_cases"].keys())
+    expected = [
+        "propagation_to_logger_correlation",
+        "trace_field_precedence",
+        "setup_invalid_overrides",
+        "shutdown_re_setup",
+        "baggage_auto_injection",
+        "propagation_cleanup",
+    ]
+    assert cases == expected
+
+
+@pytest.mark.tooling
+def test_resolve_path_dotted() -> None:
+    """Dotted path a.b resolves nested dicts."""
+    module = _load_harness_module()
+    assert module._resolve_path({"a": {"b": 1}}, "a.b") == 1
+
+
+@pytest.mark.tooling
+def test_resolve_path_bracket_notation() -> None:
+    """Bracket notation a["b.c"] resolves literal key."""
+    module = _load_harness_module()
+    assert module._resolve_path({"a": {"b.c": 2}}, 'a["b.c"]') == 2
+
+
+@pytest.mark.tooling
+def test_resolve_path_missing_returns_none() -> None:
+    """Missing key returns None."""
+    module = _load_harness_module()
+    assert module._resolve_path({"a": {}}, "a.b") is None
