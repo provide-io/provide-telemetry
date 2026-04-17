@@ -84,9 +84,10 @@ mod tests {
     fn policies_test_apply_policies_syncs_strict_schema_atomic() {
         // Verify that apply_policies propagates strict_schema from config
         // to the AtomicBool used by event()/event_name()/enforce_schema().
-        let mut config = TelemetryConfig::default();
-
-        config.strict_schema = true;
+        let mut config = TelemetryConfig {
+            strict_schema: true,
+            ..TelemetryConfig::default()
+        };
         apply_policies(&config);
         assert!(
             get_strict_schema(),

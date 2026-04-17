@@ -81,7 +81,7 @@ fn exec_setup_invalid(step: &Value, variables: &mut BTreeMap<String, Value>) {
     let error = result.err().map(|e| e.to_string()).unwrap_or_default();
 
     // Clean up the env vars we set.
-    for (key, _) in &overrides {
+    for key in overrides.keys() {
         let env_key = match key.as_str() {
             "samplingLogsRate" => "PROVIDE_SAMPLING_LOGS_RATE",
             "samplingTracesRate" => "PROVIDE_SAMPLING_TRACES_RATE",
