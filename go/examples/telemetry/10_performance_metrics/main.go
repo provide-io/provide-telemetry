@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	_defaultIterations  = 10_000
-	_lifecycleIter      = 50
-	_configureIter      = 100
+	_defaultIterations = 10_000
+	_lifecycleIter     = 50
+	_configureIter     = 100
 )
 
 func bench(fn func(), iterations int) float64 {
