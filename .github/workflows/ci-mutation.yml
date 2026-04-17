@@ -51,7 +51,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v8
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
         with:
           workspaces: rust
       - name: Install cargo-mutants
@@ -135,7 +135,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v6  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.25"
       - name: Install gremlins
