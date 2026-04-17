@@ -21,6 +21,7 @@ pub mod metrics;
 pub mod otel;
 pub mod pii;
 mod policies;
+mod secret_patterns_generated;
 pub mod propagation;
 #[cfg(feature = "governance")]
 pub mod receipts;
