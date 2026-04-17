@@ -53,7 +53,10 @@ let _otelLogger: any = null;
  */
 export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<ShutdownableProvider> {
   const headers = cfg.otlpHeaders ?? {};
-  const endpoint = cfg.otlpEndpoint ?? 'http://localhost:4318';
+  const endpoint = cfg.otlpEndpoint;
+  if (!endpoint) {
+    throw new Error('setupOtelLogProvider called without otlpEndpoint configured');
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sdkLogs: any = await import('@opentelemetry/sdk-logs' as string);
