@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       # Python runtime for the orchestrator and Python parity tests
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v8
         with:
           python-version: "3.11"
       # Node.js runtime for TypeScript parity tests
@@ -70,13 +70,13 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       # Go runtime for Go parity tests
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@v6  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.25"
       # Rust toolchain for Rust parity tests
       - uses: dtolnay/rust-toolchain@stable
       # Cache Cargo registry and build artifacts to speed up Rust compilation
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
           workspaces: rust
       # Install Python and TypeScript dependencies
