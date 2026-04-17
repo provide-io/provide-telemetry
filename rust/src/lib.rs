@@ -76,7 +76,9 @@ pub use pii::{
     replace_pii_rules, reset_secret_patterns_for_tests, sanitize_payload, PIIMode, PIIRule,
     SecretPattern,
 };
-pub use propagation::{bind_propagation_context, extract_w3c_context, PropagationContext};
+pub use propagation::{
+    bind_propagation_context, extract_w3c_context, parse_baggage, PropagationContext,
+};
 #[cfg(feature = "governance")]
 pub use receipts::{
     enable_receipts, get_emitted_receipts_for_tests, reset_receipts_for_tests, RedactionReceipt,
