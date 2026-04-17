@@ -65,6 +65,23 @@ class TestValidateOtlpEndpoint:
     def test_valid_port_passes(self) -> None:
         assert validate_otlp_endpoint("http://host:4318") == "http://host:4318"
 
+    def test_empty_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:")
+
+    def test_empty_port_with_path_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:/v1/traces")
+
+    def test_no_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://host/v1/traces") == "http://host/v1/traces"
+
+    def test_ipv6_with_valid_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://[::1]:4318") == "http://[::1]:4318"
+
+    def test_ipv6_no_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://[::1]") == "http://[::1]"
+
 
 class TestInjectLoggerName:
     """Cover inject_logger_name branches: 85->87 (no name anywhere), 87->89 (falsy name skipped)."""
