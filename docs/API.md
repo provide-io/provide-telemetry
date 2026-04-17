@@ -56,6 +56,11 @@ runtime reconfiguration has already run, this is the active in-process
 snapshot. Otherwise it is the environment-derived config that lazy-init would
 use.
 
+> **Per-language behavior before setup:** Python and TypeScript return a config
+> snapshot derived from environment variables even before `setup_telemetry()` is
+> called. Go returns `nil` and Rust returns `None` until explicit setup — callers
+> must check for nil/None before accessing config fields.
+
 ### `get_runtime_status() -> RuntimeStatus`
 
 Return runtime/provider state using the shared cross-language shape:
