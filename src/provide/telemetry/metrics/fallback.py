@@ -67,7 +67,9 @@ class Counter:
         try:
             from provide.telemetry.consent import should_allow
         except ImportError:  # pragma: no cover — governance module stripped
-            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
+
+            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                return True
 
         if not should_allow("metrics"):
             return
@@ -132,7 +134,9 @@ class Gauge:
         try:
             from provide.telemetry.consent import should_allow
         except ImportError:  # pragma: no cover — governance module stripped
-            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
+
+            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                return True
 
         if not should_allow("metrics"):
             return
@@ -156,7 +160,9 @@ class Gauge:
         try:
             from provide.telemetry.consent import should_allow
         except ImportError:  # pragma: no cover — governance module stripped
-            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
+
+            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                return True
 
         if not should_allow("metrics"):
             return
@@ -221,7 +227,9 @@ class Histogram:
         try:
             from provide.telemetry.consent import should_allow
         except ImportError:  # pragma: no cover — governance module stripped
-            should_allow = lambda _signal, _level=None: True  # type: ignore[assignment]  # noqa: E731
+
+            def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                return True
 
         if not should_allow("metrics"):
             return

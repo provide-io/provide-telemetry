@@ -249,9 +249,15 @@ mod tests {
         cfg.exporter.logs_fail_open = false;
         let resource = super::super::resource::build_resource(&cfg);
         let result = install_logger_provider(&cfg, resource);
-        assert!(result.is_err(), "bad endpoint must return Err when fail_open=false");
+        assert!(
+            result.is_err(),
+            "bad endpoint must return Err when fail_open=false"
+        );
         let msg = result.unwrap_err().message;
-        assert!(msg.contains("scheme"), "error must mention bad scheme: {msg}");
+        assert!(
+            msg.contains("scheme"),
+            "error must mention bad scheme: {msg}"
+        );
     }
 
     #[test]
@@ -260,8 +266,7 @@ mod tests {
         cfg.logging.otlp_endpoint = Some("ftp://host:4318".to_string());
         cfg.exporter.logs_fail_open = true;
         let resource = super::super::resource::build_resource(&cfg);
-        install_logger_provider(&cfg, resource)
-            .expect("fail_open must absorb validation error");
+        install_logger_provider(&cfg, resource).expect("fail_open must absorb validation error");
     }
 
     #[test]

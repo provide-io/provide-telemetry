@@ -246,7 +246,7 @@ def test_sanitize_disabled_returns_original(payload: dict[str, str]) -> None:
 @settings(max_examples=30)
 def test_custom_pii_rule_applied(key: str, mode: str) -> None:
     reset_pii_rules_for_tests()
-    register_pii_rule(PIIRule(path=(key,), mode=mode))  # type: ignore[arg-type]
+    register_pii_rule(PIIRule(path=(key,), mode=mode))  # type: ignore
     assert len(get_pii_rules()) == 1
     reset_pii_rules_for_tests()
 

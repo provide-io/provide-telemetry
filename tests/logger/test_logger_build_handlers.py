@@ -24,7 +24,7 @@ def _bypass_resilience(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _passthrough(sig: str, op: object) -> object:
         assert sig == "logs", f"expected signal 'logs', got {sig!r}"
-        return op()  # type: ignore[operator]
+        return op()  # type: ignore
 
     from provide.telemetry import resilience as resilience_mod
 
