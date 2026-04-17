@@ -10,18 +10,21 @@ npm install @provide-io/telemetry
 
 ### Optional OTEL peer dependencies
 
-To export traces and metrics to an OTLP endpoint (e.g. OpenObserve, Jaeger, Tempo):
+To export traces, metrics, and logs to an OTLP endpoint (e.g. OpenObserve, Jaeger, Tempo):
 
 ```bash
 npm install \
   @opentelemetry/sdk-trace-base \
   @opentelemetry/sdk-metrics \
+  @opentelemetry/sdk-logs \
   @opentelemetry/resources \
   @opentelemetry/exporter-trace-otlp-http \
-  @opentelemetry/exporter-metrics-otlp-http
+  @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/api-logs
 ```
 
-All five are optional — the library degrades gracefully to no-op providers when they are absent.
+All eight are optional — the library degrades gracefully to no-op providers when they are absent.
 
 ## Quick start
 

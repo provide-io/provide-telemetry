@@ -5,8 +5,11 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestGetRuntimeConfigNilBeforeSetup(t *testing.T) {
@@ -250,17 +253,17 @@ func TestReloadRuntimeFromEnvConfigFromEnvError(t *testing.T) {
 	}
 }
 
-func TestReconfigureTelemetryRerunsSetup(t *testing.T) {
+func TestReconfigureTelemetryAppliesHotFieldsWithoutProviders(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	cfg1, err := SetupTelemetry()
+	_, err := SetupTelemetry()
 	if err != nil {
 		t.Fatalf("first setup failed: %v", err)
 	}
 
-	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "reconfigured-service")
-
+	// Change a hot field — should succeed (no OTel providers installed).
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "0.5")
 	cfg2, err := ReconfigureTelemetry(context.Background())
 	if err != nil {
 		t.Fatalf("reconfigure failed: %v", err)
@@ -268,12 +271,35 @@ func TestReconfigureTelemetryRerunsSetup(t *testing.T) {
 	if cfg2 == nil {
 		t.Fatal("expected non-nil config after reconfigure")
 	}
-	if cfg2 == cfg1 {
-		t.Error("expected a fresh config pointer after reconfigure")
+	if cfg2.Sampling.LogsRate != 0.5 {
+		t.Errorf("expected LogsRate=0.5, got %f", cfg2.Sampling.LogsRate)
 	}
-	if cfg2.ServiceName != "reconfigured-service" {
-		t.Errorf("expected ServiceName=%q after reconfigure, got %q", "reconfigured-service", cfg2.ServiceName)
+}
+
+func TestReconfigureTelemetryRejectsProviderChangeWithProviders(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	_, err := SetupTelemetry()
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
 	}
+
+	// Simulate installed OTel providers.
+	_otelTracerProvider = &sdktrace.TracerProvider{}
+
+	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "changed-service")
+	_, err = ReconfigureTelemetry(context.Background())
+	if err == nil {
+		t.Error("expected error when provider-changing field differs with providers installed")
+	}
+	var cfgErr *ConfigurationError
+	if !errors.As(err, &cfgErr) {
+		t.Errorf("expected ConfigurationError, got: %T: %v", err, err)
+	}
+
+	// Clean up provider pointer.
+	_otelTracerProvider = nil
 }
 
 func TestRuntimeOverridesAppliesHotFields(t *testing.T) {
@@ -469,51 +495,36 @@ func ptrInt(v int) *int {
 	return &v
 }
 
-func TestReconfigureTelemetry_PropagatesShutdownError(t *testing.T) {
+func TestReconfigureTelemetry_RejectsBeforeSetup(t *testing.T) {
 	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
+	t.Cleanup(func() { resetSetupState(t) })
 
-	// Install an SDK tracer provider, then use a cancelled context so Shutdown
-	// returns an error (flush timed out), and verify ReconfigureTelemetry surfaces it.
-	tp, _ := newInMemoryTP()
-	_, err := SetupTelemetry(WithTracerProvider(tp))
-	if err != nil {
-		t.Fatalf("SetupTelemetry failed: %v", err)
-	}
-
-	cancelledCtx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately to force shutdown error
-
-	_, err = ReconfigureTelemetry(cancelledCtx)
+	_, err := ReconfigureTelemetry(context.Background())
 	if err == nil {
-		t.Error("expected ReconfigureTelemetry to propagate shutdown error, got nil")
+		t.Error("expected error before setup")
 	}
-	if !containsSubstr(err.Error(), "shutdown") {
-		t.Errorf("expected error to contain 'shutdown', got: %v", err)
+	var cfgErr *ConfigurationError
+	if !errors.As(err, &cfgErr) {
+		t.Errorf("expected ConfigurationError, got: %T: %v", err, err)
 	}
 }
 
-func TestReconfigureTelemetry_SucceedsWhenShutdownSucceeds(t *testing.T) {
+func TestReconfigureTelemetry_SucceedsWithHotFieldChangesOnly(t *testing.T) {
 	resetSetupState(t)
-	t.Cleanup(func() {
-		resetOTelGlobal(t)
-		resetSetupState(t)
-	})
+	t.Cleanup(func() { resetSetupState(t) })
 
 	_, err := SetupTelemetry()
 	if err != nil {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
+	// No provider-changing env changes — should succeed.
 	cfg, err := ReconfigureTelemetry(context.Background())
 	if err != nil {
-		t.Errorf("expected ReconfigureTelemetry to succeed, got: %v", err)
+		t.Errorf("expected success with no provider changes, got: %v", err)
 	}
 	if cfg == nil {
-		t.Error("expected non-nil config from ReconfigureTelemetry")
+		t.Error("expected non-nil config")
 	}
 }
 

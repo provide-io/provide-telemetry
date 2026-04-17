@@ -252,14 +252,62 @@ func _checkColdDrift(next *TelemetryConfig) {
 	}
 }
 
-// ReconfigureTelemetry performs a full shutdown followed by a fresh setup using current
-// environment variables. It is equivalent to calling ShutdownTelemetry then SetupTelemetry.
-// If ShutdownTelemetry returns an error (e.g. OTel exporter flush failed on context
-// deadline), ReconfigureTelemetry propagates it without proceeding to re-setup, so callers
-// can distinguish a clean reconfigure from one that may have lost in-flight telemetry data.
+// ReconfigureTelemetry applies hot-reloadable config changes from the current environment.
+// If provider-changing fields (service identity, endpoints, enable flags) differ AND real
+// OTel providers are installed, it returns a ConfigurationError instead of silently
+// restarting — matching the Python/TypeScript/Rust contract.
+// Callers who truly need a provider restart should call ShutdownTelemetry then SetupTelemetry.
 func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryConfig, error) {
-	if err := ShutdownTelemetry(ctx); err != nil {
-		return nil, fmt.Errorf("shutdown: %w", err)
+	_ = ctx // reserved for future use (e.g. shutdown context propagation)
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+
+	if !_setupDone || _runtimeCfg == nil {
+		return nil, NewConfigurationError("telemetry not set up: call SetupTelemetry first")
 	}
-	return SetupTelemetry(opts...)
+
+	target, err := ConfigFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply functional options to interpret caller intent.
+	state := &_setupState{}
+	for _, fn := range opts {
+		fn(state)
+	}
+
+	providersInstalled := _otelTracerProvider != nil || _otelMeterProvider != nil || _otelLoggerProvider != nil
+	if providersInstalled && _providerConfigChanged(_runtimeCfg, target) {
+		return nil, NewConfigurationError(
+			"provider-changing reconfiguration is unsupported after OpenTelemetry providers " +
+				"are installed; restart the process and call SetupTelemetry() with the new config",
+		)
+	}
+
+	// Apply only hot-reloadable fields, preserving cold/provider config.
+	_applyHotFields(_runtimeCfg, target)
+	_applyRuntimePolicies(_runtimeCfg)
+	return cloneTelemetryConfig(_runtimeCfg), nil
+}
+
+func _providerConfigChanged(current, target *TelemetryConfig) bool {
+	return current.ServiceName != target.ServiceName ||
+		current.Environment != target.Environment ||
+		current.Version != target.Version ||
+		current.Tracing.Enabled != target.Tracing.Enabled ||
+		current.Tracing.OTLPEndpoint != target.Tracing.OTLPEndpoint ||
+		current.Metrics.Enabled != target.Metrics.Enabled ||
+		current.Metrics.OTLPEndpoint != target.Metrics.OTLPEndpoint ||
+		current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint
+}
+
+func _applyHotFields(current, fresh *TelemetryConfig) {
+	current.Sampling = fresh.Sampling
+	current.Backpressure = fresh.Backpressure
+	current.Exporter = fresh.Exporter
+	current.Security = fresh.Security
+	current.SLO = fresh.SLO
+	current.StrictSchema = fresh.StrictSchema
+	current.EventSchema = fresh.EventSchema
 }
