@@ -21,7 +21,6 @@ pub mod metrics;
 pub mod otel;
 pub mod pii;
 mod policies;
-mod secret_patterns_generated;
 pub mod propagation;
 #[cfg(feature = "governance")]
 pub mod receipts;
@@ -29,6 +28,7 @@ pub mod resilience;
 mod runtime;
 pub mod sampling;
 pub mod schema;
+mod secret_patterns_generated;
 mod setup;
 pub mod slo;
 pub mod testing;
