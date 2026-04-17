@@ -79,16 +79,15 @@ fn custom_secret_patterns() -> &'static Mutex<Vec<(String, Regex)>> {
 }
 
 fn builtin_secret_patterns() -> &'static [Regex] {
-    static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
-    PATTERNS
+    static COMPILED: OnceLock<Vec<Regex>> = OnceLock::new();
+    COMPILED
         .get_or_init(|| {
-            vec![
-                Regex::new(r"(?:AKIA|ASIA)[A-Z0-9]{16}").expect("valid regex"),
-                Regex::new(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}").expect("valid regex"),
-                Regex::new(r"gh[pos]_[A-Za-z0-9_]{36,}").expect("valid regex"),
-                Regex::new(r"[0-9a-fA-F]{40,}").expect("valid regex"),
-                Regex::new(r"[A-Za-z0-9+/]{40,}={0,2}").expect("valid regex"),
-            ]
+            crate::secret_patterns_generated::PATTERNS
+                .iter()
+                .map(|(_name, pattern)| {
+                    Regex::new(pattern).expect("generated pattern must be valid")
+                })
+                .collect()
         })
         .as_slice()
 }
@@ -123,11 +122,11 @@ pub fn register_secret_pattern(name: &str, pattern: Regex) {
 
 /// Return all secret patterns (built-in and custom).
 pub fn get_secret_patterns() -> Vec<SecretPattern> {
-    let mut out: Vec<SecretPattern> = builtin_secret_patterns()
+    let mut out: Vec<SecretPattern> = crate::secret_patterns_generated::PATTERNS
         .iter()
-        .enumerate()
-        .map(|(i, p)| SecretPattern {
-            name: format!("builtin-{i}"),
+        .zip(builtin_secret_patterns().iter())
+        .map(|((name, _), p)| SecretPattern {
+            name: name.to_string(),
             pattern: p.clone(),
         })
         .collect();
