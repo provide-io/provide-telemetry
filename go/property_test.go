@@ -322,7 +322,7 @@ func TestPropertyExtractW3CInvalidTraceparentEmpty(t *testing.T) {
 	invalidTraceparents := []string{
 		"",
 		"not-a-traceparent",
-		"00-0000000000000000000000000000000-00f067aa0ba902b7-01",  // too short trace ID
+		"00-0000000000000000000000000000000-00f067aa0ba902b7-01", // too short trace ID
 		"00-00000000000000000000000000000000-00f067aa0ba902b7-01", // all-zero trace ID
 		"ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", // invalid version
 	}
