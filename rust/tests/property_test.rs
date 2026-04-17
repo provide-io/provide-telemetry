@@ -11,8 +11,7 @@ use serde_json::{json, Value};
 use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
 use provide_telemetry::{
     compute_error_fingerprint, event, extract_w3c_context, get_sampling_policy, parse_baggage,
-    sanitize_payload, set_sampling_policy, set_strict_schema, should_sample, SamplingPolicy,
-    Signal,
+    sanitize_payload, set_sampling_policy, set_strict_schema, should_sample, SamplingPolicy, Signal,
 };
 
 // ---------------------------------------------------------------------------
@@ -20,11 +19,7 @@ use provide_telemetry::{
 // ---------------------------------------------------------------------------
 
 fn any_signal() -> impl Strategy<Value = Signal> {
-    prop_oneof![
-        Just(Signal::Logs),
-        Just(Signal::Traces),
-        Just(Signal::Metrics),
-    ]
+    prop_oneof![Just(Signal::Logs), Just(Signal::Traces), Just(Signal::Metrics),]
 }
 
 /// Generate a valid W3C traceparent header.
@@ -37,7 +32,8 @@ fn valid_traceparent() -> impl Strategy<Value = String> {
             t != "00000000000000000000000000000000"
         }),
         // span_id: 16 hex chars, not all zeros
-        "[0-9a-f]{16}".prop_filter("span_id must not be all zeros", |s| s != "0000000000000000"),
+        "[0-9a-f]{16}"
+            .prop_filter("span_id must not be all zeros", |s| s != "0000000000000000"),
         // flags: 2 hex chars
         "[0-9a-f]{2}",
     )
@@ -49,15 +45,7 @@ fn valid_traceparent() -> impl Strategy<Value = String> {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 50,
-        failure_persistence: Some(Box::new(
-            proptest::test_runner::FileFailurePersistence::Direct(
-                "tests/property_test.proptest-regressions",
-            ),
-        )),
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(ProptestConfig::with_cases(50))]
 
     #[test]
     fn sampling_rate_zero_never_samples(signal in any_signal()) {
@@ -110,15 +98,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 50,
-        failure_persistence: Some(Box::new(
-            proptest::test_runner::FileFailurePersistence::Direct(
-                "tests/property_test.proptest-regressions",
-            ),
-        )),
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(ProptestConfig::with_cases(50))]
 
     #[test]
     fn sanitize_always_redacts_default_sensitive_keys(
@@ -177,15 +157,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 100,
-        failure_persistence: Some(Box::new(
-            proptest::test_runner::FileFailurePersistence::Direct(
-                "tests/property_test.proptest-regressions",
-            ),
-        )),
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(ProptestConfig::with_cases(100))]
 
     #[test]
     fn event_three_valid_segments_succeeds(
@@ -193,7 +165,6 @@ proptest! {
         b in "[a-z][a-z0-9_]{0,10}",
         c in "[a-z][a-z0-9_]{0,10}",
     ) {
-        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let result = event(&[&a, &b, &c]);
         prop_assert!(result.is_ok(), "3-segment event should succeed: {:?}", result);
@@ -211,7 +182,6 @@ proptest! {
         c in "[a-z][a-z0-9_]{0,10}",
         d in "[a-z][a-z0-9_]{0,10}",
     ) {
-        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let result = event(&[&a, &b, &c, &d]);
         prop_assert!(result.is_ok(), "4-segment event should succeed: {:?}", result);
@@ -227,7 +197,6 @@ proptest! {
         "exclude 3 and 4",
         |c| *c < 3 || *c > 4,
     )) {
-        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let segments: Vec<&str> = (0..count).map(|_| "seg").collect();
         let result = event(&segments);
@@ -238,7 +207,6 @@ proptest! {
     fn event_strict_rejects_hyphens(
         a in "[a-z][a-z0-9_]{0,10}",
     ) {
-        let _guard = acquire_test_state_lock();
         set_strict_schema(true);
         let result = event(&[&a, "has-hyphen", "ok"]);
         prop_assert!(result.is_err(), "strict should reject hyphens");
@@ -251,15 +219,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 200,
-        failure_persistence: Some(Box::new(
-            proptest::test_runner::FileFailurePersistence::Direct(
-                "tests/property_test.proptest-regressions",
-            ),
-        )),
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(ProptestConfig::with_cases(200))]
 
     #[test]
     fn parse_baggage_never_panics(input in "\\PC{0,500}") {
@@ -328,18 +288,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    // Use Direct persistence so the regressions file is reliably resolved from
-    // the crate root for integration tests (SourceParallel emits a warning and
-    // may not discover the file when lib.rs/main.rs cannot be located).
-    #![proptest_config(ProptestConfig {
-        cases: 200,
-        failure_persistence: Some(Box::new(
-            proptest::test_runner::FileFailurePersistence::Direct(
-                "tests/property_test.proptest-regressions",
-            ),
-        )),
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(ProptestConfig::with_cases(200))]
 
     #[test]
     fn fingerprint_always_12_hex(
@@ -370,9 +319,7 @@ proptest! {
         a in "[a-zA-Z]{1,20}",
         b in "[a-zA-Z]{1,20}",
     ) {
-        // compute_error_fingerprint lowercases error_name, so case-only pairs
-        // are intentional duplicates — exclude them from the collision check.
-        prop_assume!(!a.eq_ignore_ascii_case(&b));
+        prop_assume!(a != b);
         let fp_a = compute_error_fingerprint(&a, None);
         let fp_b = compute_error_fingerprint(&b, None);
         // Not a hard guarantee (hash collisions), but extremely unlikely for
