@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+# Contract probe harness lives in spec/contract_probe_harness.py to stay under 500 LOC.
+# Re-export run_contract_cases for callers that import from this module.
+import importlib.util as _ilu
 import json
 import os
 import re
@@ -15,6 +18,15 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_harness_spec = _ilu.spec_from_file_location(
+    "contract_probe_harness", Path(__file__).parent / "contract_probe_harness.py"
+)
+assert _harness_spec is not None and _harness_spec.loader is not None
+_harness_mod = _ilu.module_from_spec(_harness_spec)
+sys.modules["contract_probe_harness"] = _harness_mod  # register before exec for dataclass compat
+_harness_spec.loader.exec_module(_harness_mod)
+run_contract_cases = _harness_mod.run_contract_cases  # type: ignore[attr-defined]
 
 # Env vars injected into every probe process (matches spec/behavioral_fixtures.yaml).
 _PROBE_ENV_DEFAULTS: dict[str, str] = {
