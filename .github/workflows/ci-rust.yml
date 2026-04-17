@@ -80,7 +80,7 @@ jobs:
             -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
-        run: ci/wait-for-collector.sh
+        run: ../ci/wait-for-collector.sh
       - name: Run collector-backed OTLP smoke test
         run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1
         env:
