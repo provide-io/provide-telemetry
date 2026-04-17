@@ -473,6 +473,9 @@ func TestValidatedSignalEndpointURL_PortValidation(t *testing.T) {
 		{"port zero", "http://host:0", true},
 		{"port out of range", "http://host:99999", true},
 		{"negative port", "http://host:-1", true},
+		{"ipv6 with valid port", "http://[::1]:4318", false},
+		{"ipv6 no port", "http://[::1]", false},
+		{"ipv6 empty port", "http://[::1]:", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
