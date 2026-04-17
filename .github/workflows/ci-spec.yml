@@ -85,4 +85,4 @@ jobs:
       # Run all four language parity suites, then run each language's emit probe
       # and cross-compare canonical JSON fields (msg, level) to catch output regressions.
       - name: Behavioral parity check
-        run: python spec/run_behavioral_parity.py --check-output
+        run: uv run python spec/run_behavioral_parity.py --check-output
