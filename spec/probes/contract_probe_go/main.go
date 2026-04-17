@@ -208,14 +208,10 @@ func opCaptureLog(s step, variables map[string]any) {
 	if v, ok := record["trace.id"]; ok {
 		record["trace_id"] = v
 		delete(record, "trace.id")
-	} else {
-		record["trace_id"] = ""
 	}
 	if v, ok := record["span.id"]; ok {
 		record["span_id"] = v
 		delete(record, "span.id")
-	} else {
-		record["span_id"] = ""
 	}
 	// Ensure message key exists.
 	if _, ok := record["message"]; !ok {
