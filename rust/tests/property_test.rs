@@ -169,6 +169,7 @@ proptest! {
         b in "[a-z][a-z0-9_]{0,10}",
         c in "[a-z][a-z0-9_]{0,10}",
     ) {
+        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let result = event(&[&a, &b, &c]);
         prop_assert!(result.is_ok(), "3-segment event should succeed: {:?}", result);
@@ -186,6 +187,7 @@ proptest! {
         c in "[a-z][a-z0-9_]{0,10}",
         d in "[a-z][a-z0-9_]{0,10}",
     ) {
+        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let result = event(&[&a, &b, &c, &d]);
         prop_assert!(result.is_ok(), "4-segment event should succeed: {:?}", result);
@@ -201,6 +203,7 @@ proptest! {
         "exclude 3 and 4",
         |c| *c < 3 || *c > 4,
     )) {
+        let _guard = acquire_test_state_lock();
         set_strict_schema(false);
         let segments: Vec<&str> = (0..count).map(|_| "seg").collect();
         let result = event(&segments);
@@ -211,6 +214,7 @@ proptest! {
     fn event_strict_rejects_hyphens(
         a in "[a-z][a-z0-9_]{0,10}",
     ) {
+        let _guard = acquire_test_state_lock();
         set_strict_schema(true);
         let result = event(&[&a, "has-hyphen", "ok"]);
         prop_assert!(result.is_err(), "strict should reject hyphens");
