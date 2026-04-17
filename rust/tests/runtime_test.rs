@@ -181,6 +181,7 @@ fn runtime_test_update_runtime_config_applies_hot_fields() {
             security: Some(SecurityConfig {
                 max_attr_value_length: 2048,
                 max_attr_count: 32,
+                max_nesting_depth: 8,
             }),
             slo: Some(SLOConfig {
                 enable_red_metrics: true,
