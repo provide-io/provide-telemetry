@@ -89,6 +89,12 @@ pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
             "invalid OTLP endpoint (no host): {endpoint:?}",
         )));
     }
+    // Port 0 is reserved and not a valid OTLP endpoint port.
+    if parsed.port() == Some(0) {
+        return Err(TelemetryError::new(format!(
+            "invalid OTLP endpoint (port 0 is reserved): {endpoint:?}",
+        )));
+    }
     // url::Url rejects non-numeric and out-of-range ports during parsing.
     // However, it silently accepts empty ports ("http://host:" → port=None).
     // Detect by checking for a trailing colon in the authority after any
@@ -255,5 +261,50 @@ mod tests {
     #[test]
     fn ipv6_no_port_accepted() {
         assert!(validate_endpoint("http://[::1]").is_ok());
+    }
+
+    // Parity fixtures from spec/behavioral_fixtures.yaml endpoint_validation section.
+    // Keep in sync with the YAML — the Python CI gate validates all languages
+    // produce the same accept/reject decisions.
+
+    #[test]
+    fn parity_valid_endpoints() {
+        let valid = [
+            "http://localhost:4318",
+            "https://collector.example.com",
+            "http://host:4318/v1/traces",
+            "http://host",
+            "http://[::1]:4318",
+            "http://[::1]",
+            "https://otel.example.com:4317/v1/metrics",
+        ];
+        for ep in valid {
+            assert!(
+                validate_endpoint(ep).is_ok(),
+                "expected valid endpoint {ep:?} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn parity_invalid_endpoints() {
+        let invalid = [
+            "",
+            "not-a-url",
+            "ftp://host:4318",
+            "http://",
+            "http://host:bad",
+            "http://host:-1",
+            "http://host:0",
+            "http://host:99999",
+            "http://host:",
+            "http://host:/v1/traces",
+        ];
+        for ep in invalid {
+            assert!(
+                validate_endpoint(ep).is_err(),
+                "expected invalid endpoint {ep:?} to be rejected"
+            );
+        }
     }
 }

@@ -87,6 +87,7 @@ dev = [
   "codespell>=2.4.1",
   "hypothesis>=6.130.0",
   "mypy>=1.18.0",
+  "types-PyYAML>=6.0.12",
   "mutmut>=3.3.1",
   "pip-audit>=2.7.0",
   "pip-licenses>=5.0.0",

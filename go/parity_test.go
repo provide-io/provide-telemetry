@@ -9,7 +9,8 @@
 //   - parity_schema_test.go      — event name validation (lenient/strict modes)
 //   - parity_slo_test.go         — SLO error classification
 //   - parity_backpressure_test.go — backpressure queue policy
-//   - parity_cardinality_test.go — cardinality limit clamping
-//   - parity_config_test.go      — OTLP header parsing and error fingerprinting
+//   - parity_cardinality_test.go  — cardinality limit clamping
+//   - parity_config_test.go       — OTLP header parsing and error fingerprinting
+//   - parity_endpoint_test.go     — endpoint URL validation (valid/invalid fixtures)
 
 package telemetry
