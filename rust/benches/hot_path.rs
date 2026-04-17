@@ -37,10 +37,5 @@ fn bench_parse_baggage(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_sampling,
-    bench_pii_sanitize,
-    bench_parse_baggage
-);
+criterion_group!(benches, bench_sampling, bench_pii_sanitize, bench_parse_baggage);
 criterion_main!(benches);
