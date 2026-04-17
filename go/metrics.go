@@ -251,6 +251,7 @@ func (g *_otelGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr)
 		return
 	}
 	defer Release(signalMetrics)
+	// OTel Float64Gauge uses Record (not Set) per the OTel Go API convention.
 	g.inner.Record(ctx, value, _recordOptions(attrs)...)
 	_incMetricsRecorded()
 }
