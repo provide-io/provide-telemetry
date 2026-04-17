@@ -57,9 +57,11 @@ export interface TelemetryConfig {
    * Set true during local development for live devtools inspection.
    */
   consoleOutput: boolean;
-  /** Enforce strict event name validation (3-5 dot-separated segments). */
+  /** Master schema strictness switch. */
   strictSchema: boolean;
-  /** Keys required on every log record when strictSchema is enabled. */
+  /** Enforce strict event-name validation even when strictSchema is false. */
+  strictEventName: boolean;
+  /** Keys required on every log record. */
   requiredLogKeys: string[];
 
   // — Logging extras —
@@ -183,6 +185,7 @@ export interface RuntimeOverrides {
 
   // Schema
   strictSchema?: boolean;
+  strictEventName?: boolean;
 }
 
 export const DEFAULTS: TelemetryConfig = {
@@ -196,6 +199,7 @@ export const DEFAULTS: TelemetryConfig = {
   captureToWindow: true,
   consoleOutput: true,
   strictSchema: false,
+  strictEventName: false,
   requiredLogKeys: [],
   logIncludeTimestamp: true,
   logIncludeCaller: true,

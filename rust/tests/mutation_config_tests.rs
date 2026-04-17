@@ -276,6 +276,32 @@ fn otlp_endpoint_signal_specific_overrides_shared_verbatim() {
 }
 
 #[test]
+fn otlp_endpoint_blank_signal_specific_vars_do_not_mask_shared_fallback() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318"),
+        ("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", ""),
+        ("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", ""),
+        ("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", ""),
+    ])
+    .unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/logs"),
+        "blank logs endpoint should behave as unset and fall back to shared"
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/traces"),
+        "blank traces endpoint should behave as unset and fall back to shared"
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/metrics"),
+        "blank metrics endpoint should behave as unset and fall back to shared"
+    );
+}
+
+#[test]
 fn otlp_endpoint_is_none_when_neither_shared_nor_signal_env_set() {
     let cfg = config_from(&[]).unwrap();
     assert!(cfg.logging.otlp_endpoint.is_none());

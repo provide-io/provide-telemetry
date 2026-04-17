@@ -30,6 +30,12 @@ describe('setStrictSchema / getStrictSchema', () => {
     expect(getStrictSchema()).toBe(true);
   });
 
+  it('getStrictSchema treats strictEventName as enabling strict validation', () => {
+    _resetStrictSchemaForTests();
+    setupTelemetry({ strictSchema: false, strictEventName: true });
+    expect(getStrictSchema()).toBe(true);
+  });
+
   it('setStrictSchema overrides config and getStrictSchema returns override', () => {
     setupTelemetry({ strictSchema: false });
     setStrictSchema(true);
