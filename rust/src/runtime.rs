@@ -48,10 +48,13 @@ pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &Teleme
     current.service_name != target.service_name
         || current.environment != target.environment
         || current.version != target.version
+        || current.logging.otlp_endpoint != target.logging.otlp_endpoint
         || current.logging.otlp_headers != target.logging.otlp_headers
         || current.tracing.enabled != target.tracing.enabled
+        || current.tracing.otlp_endpoint != target.tracing.otlp_endpoint
         || current.tracing.otlp_headers != target.tracing.otlp_headers
         || current.metrics.enabled != target.metrics.enabled
+        || current.metrics.otlp_endpoint != target.metrics.otlp_endpoint
         || current.metrics.otlp_headers != target.metrics.otlp_headers
 }
 
@@ -254,6 +257,18 @@ mod tests {
 
         let mut changed = current.clone();
         changed.metrics.enabled = !changed.metrics.enabled;
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.logging.otlp_endpoint = Some("http://other:4318".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.tracing.otlp_endpoint = Some("http://other:4318".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.metrics.otlp_endpoint = Some("http://other:4318".into());
         assert!(provider_config_changed(&current, &changed));
     }
 

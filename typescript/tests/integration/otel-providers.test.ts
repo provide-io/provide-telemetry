@@ -138,7 +138,12 @@ describe('registerOtelProviders', () => {
   });
 
   it('skips trace provider installation when tracingEnabled is false', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true, tracingEnabled: false });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      tracingEnabled: false,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(vi.mocked(OTLPTraceExporter)).not.toHaveBeenCalled();
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalled();
@@ -147,7 +152,12 @@ describe('registerOtelProviders', () => {
   });
 
   it('skips metrics provider installation when metricsEnabled is false', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true, metricsEnabled: false });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      metricsEnabled: false,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalled();
     expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
@@ -155,7 +165,7 @@ describe('registerOtelProviders', () => {
     expect(_getRegisteredProviders()).toHaveLength(2);
   });
 
-  it('constructs exporters with default endpoint and empty headers when neither is configured', async () => {
+  it('is a no-op (no exporters created) when no otlpEndpoint is configured', async () => {
     // Pass undefined explicitly so the env-derived OTEL_EXPORTER_OTLP_ENDPOINT is overridden.
     setupTelemetry({
       serviceName: 'my-svc',
@@ -164,16 +174,12 @@ describe('registerOtelProviders', () => {
       otlpHeaders: undefined,
     });
     await registerOtelProviders(getConfig());
-    expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
-      url: 'http://localhost:4318/v1/traces',
-      headers: {},
-    });
-    expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
-      url: 'http://localhost:4318/v1/metrics',
-      headers: {},
-    });
+    // No endpoint → safe no-export path: providers marked registered but no exporters created.
+    expect(vi.mocked(OTLPTraceExporter)).not.toHaveBeenCalled();
+    expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
+    expect(vi.mocked(OTLPLogExporter)).not.toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(3);
+    expect(_getRegisteredProviders()).toHaveLength(0);
   });
 
   it('passes provided otlpEndpoint and otlpHeaders to both exporters', async () => {
@@ -195,7 +201,11 @@ describe('registerOtelProviders', () => {
   });
 
   it('passes service resource attributes to resourceFromAttributes', async () => {
-    setupTelemetry({ serviceName: 'attr-svc', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'attr-svc',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
       'service.name': 'attr-svc',
@@ -205,7 +215,11 @@ describe('registerOtelProviders', () => {
   });
 
   it('wires BatchSpanProcessor with the trace exporter', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     const fakeExporter = { fake: 'exporter' };
     vi.mocked(OTLPTraceExporter).mockImplementation(function () {
       return fakeExporter;
@@ -215,7 +229,11 @@ describe('registerOtelProviders', () => {
   });
 
   it('wires PeriodicExportingMetricReader with the metrics exporter', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     const fakeExporter = { fake: 'metrics-exporter' };
     vi.mocked(OTLPMetricExporter).mockImplementation(function () {
       return fakeExporter;
@@ -231,7 +249,11 @@ describe('registerOtelProviders', () => {
       throw new Error('trace peer dep missing');
     } as never);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('OTEL trace setup failed'),
@@ -248,7 +270,11 @@ describe('registerOtelProviders', () => {
       throw new Error('metrics peer dep missing');
     } as never);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('OTEL metrics setup failed'),
@@ -274,7 +300,11 @@ describe('registerOtelProviders', () => {
   });
 
   it('wires BatchLogRecordProcessor with the log exporter', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     const fakeExporter = { fake: 'log-exporter' };
     vi.mocked(OTLPLogExporter).mockImplementation(function () {
       return fakeExporter;
@@ -284,13 +314,21 @@ describe('registerOtelProviders', () => {
   });
 
   it('registers all three providers (trace + metrics + logs)', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(_getRegisteredProviders()).toHaveLength(3);
   });
 
   it('is idempotent — second call is a no-op when providers are already registered', async () => {
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     const callCount = vi.mocked(OTLPTraceExporter).mock.calls.length;
     expect(callCount).toBeGreaterThan(0);
@@ -304,7 +342,11 @@ describe('registerOtelProviders', () => {
       throw new Error('logs peer dep missing');
     } as never);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('OTEL logs setup failed'),
@@ -328,7 +370,11 @@ describe('registerOtelProviders', () => {
       throw new Error('logs peer dep missing');
     } as never);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setupTelemetry({ serviceName: 'test', otelEnabled: true });
+    setupTelemetry({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    });
     await registerOtelProviders(getConfig());
     expect(_areProvidersRegistered()).toBe(false);
     expect(_getRegisteredProviders()).toHaveLength(0);
