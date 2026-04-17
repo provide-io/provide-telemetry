@@ -138,25 +138,21 @@ async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
 
 async function main(): Promise<void> {
   const caseId = process.env['PROVIDE_PARITY_PROBE_CASE'];
-  const result =
-    caseId === 'lazy_init_logger'
-      ? caseLazyInitLogger()
-      : caseId === 'strict_schema_rejection'
-        ? await caseStrictSchemaRejection()
-        : caseId === 'required_keys_rejection'
-          ? await caseRequiredKeysRejection()
-          : caseId === 'invalid_config'
-            ? caseInvalidConfig()
-            : caseId === 'fail_open_exporter_init'
-              ? await caseFailOpenExporterInit()
-            : caseId === 'signal_enablement'
-              ? await caseSignalEnablement()
-            : caseId === 'shutdown_re_setup'
-              ? await caseShutdownReSetup()
-              : (() => {
-                  throw new Error(`unknown case: ${String(caseId)}`);
-                })();
+  const cases: Record<string, () => Promise<object> | object> = {
+    lazy_init_logger: caseLazyInitLogger,
+    strict_schema_rejection: caseStrictSchemaRejection,
+    required_keys_rejection: caseRequiredKeysRejection,
+    invalid_config: caseInvalidConfig,
+    fail_open_exporter_init: caseFailOpenExporterInit,
+    signal_enablement: caseSignalEnablement,
+    shutdown_re_setup: caseShutdownReSetup,
+  };
 
+  const handler = cases[caseId ?? ''];
+  if (!handler) {
+    throw new Error(`unknown case: ${String(caseId)}`);
+  }
+  const result = await handler();
   console.log(JSON.stringify(result));
 }
 

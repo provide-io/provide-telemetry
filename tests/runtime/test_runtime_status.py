@@ -28,7 +28,7 @@ def test_get_runtime_status_defaults_to_fallback_before_setup() -> None:
     assert status["fallback"] == {"logs": True, "traces": True, "metrics": True}
 
 
-def test_get_runtime_status_reports_provider_and_signal_state(monkeypatch) -> None:
+def test_get_runtime_status_reports_provider_and_signal_state(monkeypatch: pytest.MonkeyPatch) -> None:
     setup_telemetry()
     monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
     monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: False)

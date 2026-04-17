@@ -305,7 +305,9 @@ def test_setup_metrics_with_exporter_endpoint_but_resilience_returns_none(monkey
     )
     monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _s, _o: None)
     setup_metrics(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"}))
-    provider_cls.assert_called_once_with(resource="res", metric_readers=[])
+    # When resilience returns None (exporter creation failed), setup_metrics bails
+    # before creating the provider — fail-open behavior.
+    provider_cls.assert_not_called()
 
 
 def test_shutdown_metrics_calls_provider_shutdown() -> None:

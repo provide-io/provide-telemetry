@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
-      - uses: actions/setup-go@v6  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
         with:
           go-version: "1.25"
 
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
@@ -100,7 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"

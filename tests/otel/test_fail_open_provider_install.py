@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.metrics import provider as metrics_provider
 from provide.telemetry.tracing import provider as tracing_provider
@@ -64,7 +66,7 @@ class _FakeMeterApi:
         return object()
 
 
-def test_setup_tracing_fail_open_exporter_does_not_install_provider(monkeypatch) -> None:
+def test_setup_tracing_fail_open_exporter_does_not_install_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     tracing_provider._reset_tracing_for_tests()
     fake_api = _FakeTracerApi()
 
@@ -90,7 +92,7 @@ def test_setup_tracing_fail_open_exporter_does_not_install_provider(monkeypatch)
     assert tracing_provider._has_tracing_provider() is False
 
 
-def test_setup_metrics_fail_open_exporter_does_not_install_provider(monkeypatch) -> None:
+def test_setup_metrics_fail_open_exporter_does_not_install_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     metrics_provider._set_meter_for_test(None)
     fake_api = _FakeMeterApi()
 
@@ -114,3 +116,67 @@ def test_setup_metrics_fail_open_exporter_does_not_install_provider(monkeypatch)
 
     assert fake_api.provider is None
     assert metrics_provider._has_meter_provider() is False
+
+
+def test_setup_tracing_fail_open_shuts_down_provider_when_callable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the callable(shutdown) → shutdown() branch in tracing/provider.py:146->148."""
+    tracing_provider._reset_tracing_for_tests()
+    fake_api = _FakeTracerApi()
+
+    class _TrackingProvider:
+        shutdown_called = False
+
+        def __init__(self, resource: object = None) -> None:
+            pass
+
+        def add_span_processor(self, _p: object) -> None:
+            pass
+
+        def shutdown(self) -> None:
+            _TrackingProvider.shutdown_called = True
+
+    monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    monkeypatch.setattr(
+        tracing_provider,
+        "_load_otel_tracing_components",
+        lambda: (_FakeResource, _TrackingProvider, lambda exporter: exporter, object),
+    )
+    monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: fake_api)
+    monkeypatch.setattr("provide.telemetry.resilience.run_with_resilience", lambda _signal, _factory: None)
+
+    cfg = TelemetryConfig.from_env(
+        {"PROVIDE_TRACE_ENABLED": "true", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}
+    )
+    tracing_provider.setup_tracing(cfg)
+    assert _TrackingProvider.shutdown_called, "provider.shutdown() must be called on fail-open"
+
+
+def test_setup_tracing_fail_open_no_shutdown_method(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the not-callable(shutdown) branch in tracing/provider.py:146->148."""
+    tracing_provider._reset_tracing_for_tests()
+    fake_api = _FakeTracerApi()
+
+    class _NoShutdownProvider:
+        def __init__(self, resource: object = None) -> None:
+            pass
+
+        def add_span_processor(self, _p: object) -> None:
+            pass
+
+        # No shutdown method — getattr returns None, callable(None) is False.
+
+    monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    monkeypatch.setattr(
+        tracing_provider,
+        "_load_otel_tracing_components",
+        lambda: (_FakeResource, _NoShutdownProvider, lambda exporter: exporter, object),
+    )
+    monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: fake_api)
+    monkeypatch.setattr("provide.telemetry.resilience.run_with_resilience", lambda _signal, _factory: None)
+
+    cfg = TelemetryConfig.from_env(
+        {"PROVIDE_TRACE_ENABLED": "true", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}
+    )
+    # Should not raise — gracefully skips shutdown when not callable.
+    tracing_provider.setup_tracing(cfg)
+    assert tracing_provider._has_tracing_provider() is False

@@ -788,20 +788,6 @@ func validateNonNegativeFloat(v float64, field string) error {
 	return nil
 }
 
-// parseBool interprets "1", "true", "yes", "on" (case-insensitive) as true;
-// empty string returns the default; anything else returns false.
-func parseBool(value string, defaultVal bool) bool {
-	if value == "" {
-		return defaultVal
-	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
 func parseEnvBool(value string, defaultVal bool, field string) (bool, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
