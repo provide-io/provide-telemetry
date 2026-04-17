@@ -14,7 +14,7 @@ from contextlib import redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from provide.telemetry import (  # noqa: E402
+from provide.telemetry import (
     get_logger,
     get_runtime_status,
     set_trace_context,
