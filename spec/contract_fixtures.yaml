@@ -118,6 +118,6 @@ contract_cases:
         into: last_log
       - op: shutdown
     expect:
-      last_log.trace_id: null
-      last_log.span_id: null
-      'last_log["baggage.userId"]': null
+      last_log.trace_id: ""
+      last_log.span_id: ""
+      'last_log["baggage.userId"]': ""
