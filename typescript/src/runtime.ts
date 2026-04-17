@@ -82,7 +82,7 @@ export function getRuntimeStatus(): RuntimeStatus {
     setupDone: _activeConfig !== null,
     signals: {
       logs: true,
-      traces: cfg.otelEnabled,
+      traces: cfg.tracingEnabled,
       metrics: cfg.metricsEnabled,
     },
     providers: { ..._providerSignals },
@@ -177,6 +177,8 @@ const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'environment',
   'version',
   'otelEnabled',
+  'tracingEnabled',
+  'metricsEnabled',
   'otlpEndpoint',
   'otlpHeaders',
   'otlpLogsEndpoint',
@@ -237,6 +239,8 @@ export function reloadRuntimeFromEnv(): void {
 
 const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
   'otelEnabled',
+  'tracingEnabled',
+  'metricsEnabled',
   'otlpEndpoint',
   'otlpHeaders',
   'otlpLogsEndpoint',

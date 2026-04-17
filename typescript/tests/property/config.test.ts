@@ -46,6 +46,8 @@ describe('property: configFromEnv()', () => {
             if (cfg.logLevel !== cfg.logLevel.toLowerCase()) return false;
             // otelEnabled must be boolean
             if (typeof cfg.otelEnabled !== 'boolean') return false;
+            // tracingEnabled must be boolean
+            if (typeof cfg.tracingEnabled !== 'boolean') return false;
             return true;
           } finally {
             for (const [k, v] of Object.entries(saved)) {
@@ -74,13 +76,13 @@ describe('property: configFromEnv()', () => {
     );
   });
 
-  it('otelEnabled is always boolean', () => {
+  it('tracingEnabled is always boolean', () => {
     fc.assert(
       fc.property(fc.oneof(fc.constant('true'), fc.constant('false'), fc.constant('')), (val) => {
         process.env['PROVIDE_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
         delete process.env['PROVIDE_TRACE_ENABLED'];
-        return typeof cfg.otelEnabled === 'boolean';
+        return typeof cfg.tracingEnabled === 'boolean';
       }),
     );
   });

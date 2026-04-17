@@ -122,7 +122,8 @@ export function configFromEnv(): TelemetryConfig {
       if (fmt === 'json' || fmt === 'pretty' || fmt === 'console') return fmt;
       return DEFAULTS.logFormat;
     })(),
-    otelEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.otelEnabled),
+    otelEnabled: DEFAULTS.otelEnabled,
+    tracingEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.tracingEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
     otlpLogsEndpoint: (() => {

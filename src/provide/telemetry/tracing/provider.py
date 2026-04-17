@@ -13,6 +13,7 @@ from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
 from provide.telemetry import _otel
+from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.tracing.context import get_trace_context, set_trace_context
 
@@ -135,13 +136,17 @@ def setup_tracing(config: TelemetryConfig) -> None:
         exporter = run_with_resilience(
             "traces",
             lambda: exporter_cls(
-                endpoint=config.tracing.otlp_endpoint,
+                endpoint=validate_otlp_endpoint(config.tracing.otlp_endpoint),
                 headers=config.tracing.otlp_headers,
                 timeout=config.exporter.traces_timeout_seconds,
             ),
         )
-        if exporter is not None:
-            provider.add_span_processor(processor_cls(exporter))
+        if exporter is None:
+            shutdown = getattr(provider, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+            return
+        provider.add_span_processor(processor_cls(exporter))
 
     with _provider_lock:
         if _provider_configured or _setup_generation != gen:

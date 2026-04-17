@@ -59,3 +59,54 @@ jobs:
           python-version: "3.11"
       - name: Validate Rust conformance
         run: uv run python spec/validate_conformance.py --lang rust
+
+  otlp-integration:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare collector output directory
+        run: |
+          mkdir -p ../tests/integration/otel-output-rust
+          rm -f ../tests/integration/otel-output-rust/*.json
+      - name: Start OTLP collector
+        run: |
+          docker run -d --name otelcol-rust \
+            -p 4318:4318 \
+            -p 13133:13133 \
+            -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1
+      - name: Wait for collector health
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13133/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "collector failed health check"
+          exit 1
+      - name: Run collector-backed OTLP smoke test
+        run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+          PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-rust"
+      - name: Collector logs
+        if: always()
+        run: docker logs otelcol-rust || true
+      - name: Capture collector logs
+        run: docker logs otelcol-rust > ../tests/integration/otel-output-rust/collector.log 2>&1
+      - name: Verify collector exported all signals
+        run: |
+          grep -q "integration.collector.span" ../tests/integration/otel-output-rust/collector.log
+          grep -q "integration.collector.requests" ../tests/integration/otel-output-rust/collector.log
+          grep -q "integration.collector.log" ../tests/integration/otel-output-rust/collector.log
+      - name: Stop collector
+        if: always()
+        run: |
+          docker stop otelcol-rust || true
+          docker rm otelcol-rust || true

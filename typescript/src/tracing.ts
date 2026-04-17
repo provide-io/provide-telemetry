@@ -21,6 +21,7 @@ import { randomHex } from './hash';
 import { shouldAllow } from './consent';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
+import { getConfig } from './config';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -217,6 +218,7 @@ function _spanHandler<T>(fn: () => T, span: Span): T {
  * Mirrors Python @trace decorator behaviour: records exceptions, sets ERROR status.
  */
 export function withTrace<T>(name: string, fn: () => T): T {
+  if (!getConfig().tracingEnabled) return fn();
   if (!shouldAllow('traces')) return fn();
   if (!shouldSample('traces', name)) return fn();
   const ticket = tryAcquire('traces');
