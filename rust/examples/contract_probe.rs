@@ -55,10 +55,7 @@ fn exec_setup(step: &Value) {
     provide_telemetry::setup_telemetry().ok();
 }
 
-fn exec_setup_invalid(
-    step: &Value,
-    variables: &mut BTreeMap<String, Value>,
-) {
+fn exec_setup_invalid(step: &Value, variables: &mut BTreeMap<String, Value>) {
     let into = as_str(step, "into");
     let overrides = as_object(step, "overrides");
 
@@ -251,12 +248,11 @@ fn main() {
         std::env::var("PROVIDE_CONTRACT_CASE").expect("PROVIDE_CONTRACT_CASE env var required");
 
     let yaml_path = std::path::Path::new("../spec/contract_fixtures.yaml");
-    let yaml_content = std::fs::read_to_string(yaml_path)
-        .unwrap_or_else(|_| {
-            // Also try from the repo root (in case cwd is the repo root).
-            std::fs::read_to_string("spec/contract_fixtures.yaml")
-                .expect("cannot read spec/contract_fixtures.yaml")
-        });
+    let yaml_content = std::fs::read_to_string(yaml_path).unwrap_or_else(|_| {
+        // Also try from the repo root (in case cwd is the repo root).
+        std::fs::read_to_string("spec/contract_fixtures.yaml")
+            .expect("cannot read spec/contract_fixtures.yaml")
+    });
 
     let doc: Value = serde_yaml::from_str(&yaml_content).expect("failed to parse YAML");
     let cases = doc
