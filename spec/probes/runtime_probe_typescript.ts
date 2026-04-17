@@ -103,6 +103,20 @@ async function caseFailOpenExporterInit(): Promise<Record<string, unknown>> {
   };
 }
 
+async function caseSignalEnablement(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  setupTelemetry({ consoleOutput: false, captureToWindow: true, otelEnabled: true });
+  const status = getRuntimeStatus();
+  await shutdownTelemetry();
+  return {
+    case: 'signal_enablement',
+    setup_done: status.setupDone,
+    logs_enabled: status.signals.logs,
+    traces_enabled: status.signals.traces,
+    metrics_enabled: status.signals.metrics,
+  };
+}
+
 async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry();
@@ -135,6 +149,8 @@ async function main(): Promise<void> {
             ? caseInvalidConfig()
             : caseId === 'fail_open_exporter_init'
               ? await caseFailOpenExporterInit()
+            : caseId === 'signal_enablement'
+              ? await caseSignalEnablement()
             : caseId === 'shutdown_re_setup'
               ? await caseShutdownReSetup()
               : (() => {
