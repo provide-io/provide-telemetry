@@ -7,9 +7,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from provide.telemetry._endpoint import validate_otlp_endpoint
+
+_FIXTURES_PATH = Path(__file__).resolve().parent.parent / "spec" / "behavioral_fixtures.yaml"
+_FIXTURES = yaml.safe_load(_FIXTURES_PATH.read_text())
+_ENDPOINT_FIXTURES = _FIXTURES["endpoint_validation"]
 
 
 class TestValidateOtlpEndpoint:
@@ -81,6 +88,17 @@ class TestValidateOtlpEndpoint:
 
     def test_ipv6_no_port_passes(self) -> None:
         assert validate_otlp_endpoint("http://[::1]") == "http://[::1]"
+
+
+class TestEndpointFixtureParity:
+    @pytest.mark.parametrize("case", _ENDPOINT_FIXTURES["valid"], ids=lambda c: c["description"])
+    def test_parity_valid_endpoint(self, case: dict[str, str]) -> None:
+        assert validate_otlp_endpoint(case["endpoint"]) == case["endpoint"]
+
+    @pytest.mark.parametrize("case", _ENDPOINT_FIXTURES["invalid"], ids=lambda c: c["description"])
+    def test_parity_invalid_endpoint(self, case: dict[str, str]) -> None:
+        with pytest.raises(ValueError):
+            validate_otlp_endpoint(case["endpoint"])
 
 
 class TestInjectLoggerName:
