@@ -8,8 +8,9 @@ use std::sync::{Mutex, OnceLock};
 
 use provide_telemetry::{
     enable_receipts, get_emitted_receipts_for_tests, register_classification_rule,
-    register_pii_rule, reset_receipts_for_tests, sanitize_payload, set_consent_level, should_allow,
-    ClassificationRule, ConsentLevel, DataClass, PIIMode, PIIRule,
+    register_pii_rule, reset_receipts_for_tests, sanitize_payload, set_classification_policy,
+    set_consent_level, should_allow, ClassificationPolicy, ClassificationRule, ConsentLevel,
+    DataClass, PIIMode, PIIRule,
 };
 
 static GOVERNANCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -40,6 +41,16 @@ fn governance_test_classification_labels_are_added_to_sanitized_output() {
     let _guard = governance_lock().lock().expect("governance lock poisoned");
     provide_telemetry::clear_classification_rules();
     provide_telemetry::replace_pii_rules(Vec::new());
+    // Use a "pass" policy so classification only adds tags, without dropping or
+    // re-masking values that were already processed by explicit PIIRules above.
+    set_classification_policy(ClassificationPolicy {
+        public: "pass".to_string(),
+        internal: "pass".to_string(),
+        pii: "pass".to_string(),
+        phi: "pass".to_string(),
+        pci: "pass".to_string(),
+        secret: "pass".to_string(), // pragma: allowlist secret
+    });
 
     register_classification_rule(ClassificationRule::new("ssn", DataClass::Pii));
     register_classification_rule(ClassificationRule::new("card_number", DataClass::Pci));
@@ -62,8 +73,17 @@ fn governance_test_classification_labels_are_added_to_sanitized_output() {
     assert_eq!(cleaned["ssn"], "***");
     assert_eq!(cleaned["__ssn__class"], "PII");
     assert_eq!(cleaned["__card_number__class"], "PCI");
-    assert_eq!(cleaned["__diagnosis__class"], "PHI");
+    // diagnosis was dropped by the explicit PIIRule before the classification
+    // step runs — the classification block only iterates keys present in the
+    // cleaned map, so no __diagnosis__class tag is added (matches Python parity).
+    assert!(
+        cleaned.get("__diagnosis__class").is_none(),
+        "diagnosis was dropped by PIIRule before classification runs"
+    );
     assert!(cleaned.get("diagnosis").is_none());
+
+    // Restore default policy for other tests.
+    set_classification_policy(ClassificationPolicy::default());
 }
 
 #[test]
