@@ -597,15 +597,3 @@ func TestReconfigureTelemetry_SucceedsWithHotFieldChangesOnly(t *testing.T) {
 		t.Error("expected non-nil config")
 	}
 }
-
-func containsSubstr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-			return false
-		}())
-}

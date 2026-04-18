@@ -283,8 +283,8 @@ func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) 
 	}
 }
 
-// _configureLogger builds the Logger package var from cfg and sets it as slog's default.
-func _configureLogger(cfg *TelemetryConfig) {
+// _baseLogHandler builds the base slog.Handler (JSON or text) for the given config.
+func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 	opts := &slog.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -297,14 +297,31 @@ func _configureLogger(cfg *TelemetryConfig) {
 			return a
 		},
 	}
-	var base slog.Handler
 	if cfg.Logging.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
-	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
+		return slog.NewJSONHandler(os.Stderr, opts)
 	}
-	h := _newTelemetryHandler(base, cfg, "")
-	Logger = slog.New(h)
+	return slog.NewTextHandler(os.Stderr, opts)
+}
+
+// _attachTraceContext adds trace.id / span.id from ctx to logger when present.
+func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger {
+	traceID, spanID := _getTraceSpanFromContext(ctx)
+	if traceID == "" && spanID == "" {
+		return logger
+	}
+	var attrs []any
+	if traceID != "" {
+		attrs = append(attrs, slog.String("trace.id", traceID))
+	}
+	if spanID != "" {
+		attrs = append(attrs, slog.String("span.id", spanID))
+	}
+	return logger.With(attrs...)
+}
+
+// _configureLogger builds the Logger package var from cfg and sets it as slog's default.
+func _configureLogger(cfg *TelemetryConfig) {
+	Logger = slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, ""))
 	slog.SetDefault(Logger)
 }
 
@@ -326,49 +343,15 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	_setupMu.Lock()
 	loggerProvider := _otelLoggerProvider
 	_setupMu.Unlock()
-	opts := &slog.HandlerOptions{
-		Level: LevelTrace,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if !cfg.Logging.IncludeTimestamp && a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
-			if a.Key == slog.MessageKey {
-				a.Key = "message"
-			}
-			return a
-		},
-	}
-	var base slog.Handler
-	if cfg.Logging.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
-	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
-	}
-	h := _newTelemetryHandler(base, cfg, name)
-	var handler slog.Handler = h
+	handler := _newTelemetryHandler(_baseLogHandler(cfg), cfg, name)
 	if loggerProvider != nil {
-		bridgeName := cfg.ServiceName
-		if name != "" {
-			bridgeName = name
-		}
+		bridgeName := cmp.Or(name, cfg.ServiceName)
 		handler = newMultiHandler(
-			h,
+			handler,
 			otelslog.NewHandler(bridgeName, otelslog.WithLoggerProvider(loggerProvider)),
 		)
 	}
-	logger := slog.New(handler)
-	traceID, spanID := _getTraceSpanFromContext(ctx)
-	if traceID != "" || spanID != "" {
-		var attrs []any
-		if traceID != "" {
-			attrs = append(attrs, slog.String("trace.id", traceID))
-		}
-		if spanID != "" {
-			attrs = append(attrs, slog.String("span.id", spanID))
-		}
-		return logger.With(attrs...)
-	}
-	return logger
+	return _attachTraceContext(slog.New(handler), ctx)
 }
 
 func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) {

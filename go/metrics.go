@@ -343,6 +343,8 @@ func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
 		return attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	case slog.KindUint64:
 		return attribute.Int64(attr.Key, int64(value.Uint64()))
+	case slog.KindAny, slog.KindGroup, slog.KindLogValuer:
+		return attribute.String(attr.Key, fmt.Sprint(value.Any()))
 	default:
 		return attribute.String(attr.Key, fmt.Sprint(value.Any()))
 	}

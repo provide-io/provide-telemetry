@@ -280,7 +280,6 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
   }
 
   setupTelemetry(proposed);
-  _activeConfig = proposed;
 }
 
 /** Clear provider registration state. Called by shutdownTelemetry after flush/shutdown. */

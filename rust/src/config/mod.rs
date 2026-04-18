@@ -193,6 +193,7 @@ pub struct SLOConfig {
 pub struct SecurityConfig {
     pub max_attr_value_length: usize,
     pub max_attr_count: usize,
+    pub max_nesting_depth: usize,
 }
 
 impl Default for SecurityConfig {
@@ -200,6 +201,7 @@ impl Default for SecurityConfig {
         Self {
             max_attr_value_length: 1024,
             max_attr_count: 64,
+            max_nesting_depth: 8,
         }
     }
 }
@@ -481,6 +483,11 @@ impl TelemetryConfig {
                     env_value(env, &["PROVIDE_SECURITY_MAX_ATTR_COUNT"]),
                     64,
                     "PROVIDE_SECURITY_MAX_ATTR_COUNT",
+                )?,
+                max_nesting_depth: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_NESTING_DEPTH"]),
+                    8,
+                    "PROVIDE_SECURITY_MAX_NESTING_DEPTH",
                 )?,
             },
         })

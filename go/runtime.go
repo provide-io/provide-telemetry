@@ -314,4 +314,6 @@ func _applyHotFields(current, fresh *TelemetryConfig) {
 	current.SLO = fresh.SLO
 	current.StrictSchema = fresh.StrictSchema
 	current.EventSchema = fresh.EventSchema
+	current.Logging.PIIMaxDepth = fresh.Logging.PIIMaxDepth
+	current.Logging.ModuleLevels = fresh.Logging.ModuleLevels
 }
