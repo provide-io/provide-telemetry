@@ -83,9 +83,10 @@ segments; `event_name()` accepts 3–5 segments.
 use provide_telemetry::{trace, get_trace_context};
 
 trace("db.query.ok", || {
-    let (trace_id, span_id) = get_trace_context();
+    let ctx = get_trace_context(); // BTreeMap<String, Option<String>>
+    let trace_id = ctx.get("trace_id").and_then(|v| v.as_deref());
     // ... do work ...
-})?;
+});
 ```
 
 ### Metrics
@@ -93,14 +94,14 @@ trace("db.query.ok", || {
 ```rust
 use provide_telemetry::{counter, gauge, histogram};
 
-let reqs = counter("http.requests", None)?;
-reqs.increment(1);
+let reqs = counter("http.requests", None, None);
+reqs.add(1.0, None);
 
-let lat = histogram("http.duration_ms", None)?;
-lat.record(14.2);
+let lat = histogram("http.duration_ms", Some("ms"), None);
+lat.record(14.2, None);
 
-let cpu = gauge("cpu.utilization", None)?;
-cpu.set(72.5);
+let cpu = gauge("cpu.utilization", Some("percent"), None);
+cpu.set(72.5, None);
 ```
 
 ### Context binding
@@ -239,11 +240,12 @@ emitted to the configured endpoint:
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://traces:4318/v1/traces` | Signal-specific override (used verbatim, no path appending). |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds. |
 
-**Tokio runtime requirement:** when built with `--features otel`, the SDK's
-batch span processor and periodic metrics reader require an active tokio
-multi-threaded runtime. Call `setup_telemetry()` from within a
-`#[tokio::main]` function or an explicit `tokio::runtime::Builder`
-runtime:
+**Tokio runtime requirement:** this crate depends on `tokio` (for
+`run_with_resilience` retry/timeout logic) regardless of feature flags.
+With `--features otel` the SDK's batch span processor and periodic metrics
+reader additionally require an active multi-threaded runtime. Call
+`setup_telemetry()` from within a `#[tokio::main]` function or an
+explicit `tokio::runtime::Builder` runtime:
 
 ```rust
 #[tokio::main]
