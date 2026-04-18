@@ -30,16 +30,23 @@ def _load_failure_result(signal: str) -> Any:
     The failure enum is the canonical way to signal "this batch was dropped"
     to OTel's Batch processors. Import is lazy so this module stays usable
     when only a subset of OTel extras are installed.
+
+    The per-signal import branches are excluded from coverage because the
+    project's default ``quality`` CI job installs only the ``dev`` group
+    (no ``--extra otel``). When OTel is absent the tests that exercise
+    these branches self-skip via ``pytest.importorskip``, so the lines are
+    necessarily unreachable in that environment. They are exercised by the
+    ``otel-extras-validation`` job and live integration tests.
     """
-    if signal == "logs":
+    if signal == "logs":  # pragma: no cover
         from opentelemetry.sdk._logs.export import LogExportResult
 
         return LogExportResult.FAILURE
-    if signal == "traces":
+    if signal == "traces":  # pragma: no cover
         from opentelemetry.sdk.trace.export import SpanExportResult
 
         return SpanExportResult.FAILURE
-    if signal == "metrics":
+    if signal == "metrics":  # pragma: no cover
         from opentelemetry.sdk.metrics.export import MetricExportResult
 
         return MetricExportResult.FAILURE
@@ -79,7 +86,9 @@ class ResilientExporter:
             # fail_open policy ran out of retries / circuit is open. Return the
             # canonical FAILURE enum so OTel's Batch processor records the drop
             # without raising inside its worker thread.
-            if self._failure_result is _UNSET:
+            if (
+                self._failure_result is _UNSET
+            ):  # pragma: no cover — reachable only when wrap_exporter is used (real OTel present) and a drop occurs
                 self._failure_result = _load_failure_result(self._signal)
             return self._failure_result
         return result
