@@ -50,11 +50,14 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       # Go runtime for Go parity tests
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.25"
       # Rust toolchain for Rust parity tests
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       # Cache Cargo registry and build artifacts to speed up Rust compilation
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
         with:
@@ -85,11 +88,14 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       # Go runtime for Go contract probe
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.25"
       # Rust toolchain for Rust contract probe
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       # Cache Cargo registry and build artifacts to speed up Rust compilation
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
         with:
