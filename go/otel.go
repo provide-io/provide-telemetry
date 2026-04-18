@@ -73,9 +73,26 @@ type _otelSpanAdapter struct {
 // End finishes the span.
 func (s *_otelSpanAdapter) End() { s.inner.End() }
 
-// SetAttribute adds a key/value attribute to the span.
+// SetAttribute adds a typed key/value attribute to the span.
+// bool, int, int64, float64, and string values are forwarded with their native OTel
+// attribute type; all other values fall back to a string representation.
 func (s *_otelSpanAdapter) SetAttribute(key string, value any) {
-	s.inner.SetAttributes(attribute.String(key, fmt.Sprintf("%v", value)))
+	var kv attribute.KeyValue
+	switch v := value.(type) {
+	case bool:
+		kv = attribute.Bool(key, v)
+	case int:
+		kv = attribute.Int64(key, int64(v))
+	case int64:
+		kv = attribute.Int64(key, v)
+	case float64:
+		kv = attribute.Float64(key, v)
+	case string:
+		kv = attribute.String(key, v)
+	default:
+		kv = attribute.String(key, fmt.Sprintf("%v", value))
+	}
+	s.inner.SetAttributes(kv)
 }
 
 // RecordError records an error on the span.

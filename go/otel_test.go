@@ -301,7 +301,58 @@ func TestOTel_SpanAdapter_Methods(t *testing.T) {
 	span.End()                        // should not panic
 }
 
-// ── 10. SetupTelemetry with non-OTel provider type is gracefully ignored ──────
+// ── 10. SetAttribute preserves native attribute types (no stringify regression) ──
+
+func TestOTel_SpanAdapter_SetAttribute_TypedValues(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	tp, exp := newInMemoryTP()
+	_, err := SetupTelemetry(WithTracerProvider(tp))
+	if err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	ctx, span := DefaultTracer.Start(context.Background(), "attr-type-test")
+	_ = ctx
+	span.SetAttribute("b", true)
+	span.SetAttribute("i", 42)
+	span.SetAttribute("i64", int64(1000))
+	span.SetAttribute("f64", 3.14)
+	span.SetAttribute("s", "hello")
+	span.SetAttribute("other", struct{}{})
+	span.End()
+
+	spans := exp.GetSpans()
+	if len(spans) == 0 {
+		t.Fatal("no spans recorded")
+	}
+	attrs := map[string]interface{}{}
+	for _, kv := range spans[0].Attributes {
+		attrs[string(kv.Key)] = kv.Value.AsInterface()
+	}
+
+	if v, ok := attrs["b"]; !ok || v != true {
+		t.Errorf("bool attr: got %v (%T), want true", attrs["b"], attrs["b"])
+	}
+	if v, ok := attrs["i"]; !ok || v != int64(42) {
+		t.Errorf("int attr: got %v (%T), want int64(42)", attrs["i"], attrs["i"])
+	}
+	if v, ok := attrs["i64"]; !ok || v != int64(1000) {
+		t.Errorf("int64 attr: got %v (%T), want int64(1000)", attrs["i64"], attrs["i64"])
+	}
+	if v, ok := attrs["f64"]; !ok || v != 3.14 {
+		t.Errorf("float64 attr: got %v (%T), want 3.14", attrs["f64"], attrs["f64"])
+	}
+	if v, ok := attrs["s"]; !ok || v != "hello" {
+		t.Errorf("string attr: got %v (%T), want \"hello\"", attrs["s"], attrs["s"])
+	}
+	if _, ok := attrs["other"]; !ok {
+		t.Error("other attr: missing from span")
+	}
+}
+
+// ── 11. SetupTelemetry with non-OTel provider type is gracefully ignored ──────
 
 func TestOTel_WrongProviderType_Ignored(t *testing.T) {
 	resetSetupState(t)
