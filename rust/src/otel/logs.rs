@@ -29,6 +29,7 @@ use crate::errors::TelemetryError;
 use crate::logger::LogEvent;
 
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
+use super::resilient::ResilientLogExporter;
 
 static LOGGER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkLoggerProvider>>>> = OnceLock::new();
 
@@ -91,7 +92,7 @@ pub(super) fn install_logger_provider(
 
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(exporter)
+        .with_batch_exporter(ResilientLogExporter::new(exporter))
         .build();
 
     let arc = Arc::new(provider);
