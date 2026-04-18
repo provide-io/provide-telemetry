@@ -65,7 +65,7 @@ jobs:
       # Run all four language parity suites, then run each language's emit probe
       # and cross-compare canonical JSON fields (msg, level) to catch output regressions.
       - name: Behavioral parity check (output format)
-        run: python spec/run_behavioral_parity.py --check-output
+        run: uv run python spec/run_behavioral_parity.py --check-output
 
   # Contract probe DSL — step-based cross-language semantic tests that exercise real
   # public APIs (setup, bind_propagation, emit_log, clear_propagation, etc.) and
@@ -101,4 +101,4 @@ jobs:
       # Cases exercise: propagation→logger correlation, trace field precedence,
       # config validation, lifecycle, baggage injection, propagation cleanup.
       - name: Contract probe check (cross-language semantics)
-        run: python spec/run_behavioral_parity.py --check-contracts
+        run: uv run python spec/run_behavioral_parity.py --check-contracts
