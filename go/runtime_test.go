@@ -597,3 +597,39 @@ func TestReconfigureTelemetry_SucceedsWithHotFieldChangesOnly(t *testing.T) {
 		t.Error("expected non-nil config")
 	}
 }
+
+func TestProviderConfigChanged_DetectsOTLPHeaderChanges(t *testing.T) {
+	base := &TelemetryConfig{
+		ServiceName: "svc",
+		Tracing:     TracingConfig{OTLPHeaders: map[string]string{}},
+		Metrics:     MetricsConfig{OTLPHeaders: map[string]string{}},
+		Logging:     LoggingConfig{OTLPHeaders: map[string]string{}},
+	}
+
+	// Tracing header rotation must be detected.
+	withTracingHeader := cloneTelemetryConfig(base)
+	withTracingHeader.Tracing.OTLPHeaders["Authorization"] = "Bearer new"
+	if !_providerConfigChanged(base, withTracingHeader) {
+		t.Error("tracing header change must trigger provider-changed")
+	}
+
+	// Metrics header rotation must be detected.
+	withMetricsHeader := cloneTelemetryConfig(base)
+	withMetricsHeader.Metrics.OTLPHeaders["Authorization"] = "Bearer new"
+	if !_providerConfigChanged(base, withMetricsHeader) {
+		t.Error("metrics header change must trigger provider-changed")
+	}
+
+	// Logging header rotation must be detected.
+	withLoggingHeader := cloneTelemetryConfig(base)
+	withLoggingHeader.Logging.OTLPHeaders["Authorization"] = "Bearer new"
+	if !_providerConfigChanged(base, withLoggingHeader) {
+		t.Error("logging header change must trigger provider-changed")
+	}
+
+	// Identical headers must not trigger provider-changed.
+	same := cloneTelemetryConfig(base)
+	if _providerConfigChanged(base, same) {
+		t.Error("identical config must not trigger provider-changed")
+	}
+}
