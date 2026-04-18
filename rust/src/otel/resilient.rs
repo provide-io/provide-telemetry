@@ -4,12 +4,37 @@
 //
 //! Per-export resilience wrappers for OTel SDK exporters.
 //!
-//! The `SpanExporter`, `LogExporter`, and `PushMetricExporter` traits use
-//! `impl Future` return types, which prevents implementing them via the generic
-//! `run_with_resilience` function (which requires `F: Fn() -> Fut` with a
-//! nameable `Fut`). Instead, each wrapper inlines the retry/timeout/
-//! circuit-breaker loop that reads from the same `POLICIES` and `CIRCUITS`
-//! static maps as `run_with_resilience` in `resilience.rs`.
+//! ## Why this duplicates the loop in `resilience.rs`
+//!
+//! The generic [`crate::resilience::run_with_resilience`] requires
+//! `F: Fn() -> Fut` with `Fut: Future<Output = Result<T, TelemetryError>>`.
+//! Two concrete obstacles prevent straight reuse from the exporter traits:
+//!
+//! 1. `PushMetricExporter::export` receives `&ResourceMetrics` and the type
+//!    does not implement `Clone`, so a `Fn` closure that clones the batch per
+//!    retry cannot be constructed. `SpanData` and `LogRecord` *are* `Clone`,
+//!    so a partial reuse (traces/logs only) would split the policy loop
+//!    across three call sites instead of consolidating it — strictly worse
+//!    for drift risk than the current single inline loop.
+//! 2. The OTel result type is [`OTelSdkResult`] (`Result<(), OTelSdkError>`),
+//!    not [`crate::errors::TelemetryError`], and the variants the SDK expects
+//!    (`Timeout(Duration)`, `InternalFailure(String)`) would need bespoke
+//!    mapping on every call site.
+//!
+//! Rather than refactor `run_with_resilience` to support `FnOnce` plus a
+//! second generic error type (which would complicate the public API consumed
+//! by non-exporter callers such as scheduled flush helpers), this module
+//! inlines the same loop body and coordinates through the shared
+//! `POLICIES` + `CIRCUITS` static maps in `resilience.rs`. The helper hooks
+//! [`_record_circuit_failure_for_wrappers`] /
+//! [`_record_circuit_success_for_wrappers`] keep the state-update logic in a
+//! single place so the two loops cannot drift on that front.
+//!
+//! Invariant: any change to retry/backoff/timeout/circuit-breaker semantics
+//! MUST be applied in both `run_with_resilience` *and* `run_resilience_loop`.
+//! The existing test suite in this module exercises the same matrix of cases
+//! as `tests/resilience/` (success, fail-open drop, fail-closed surface,
+//! retries, circuit trip, shutdown/flush) to catch any divergence.
 //!
 //! The wrapper reads `ExporterPolicy` and circuit state on every `export()`
 //! call, so hot-reloaded policies take effect immediately — the same guarantee
