@@ -417,6 +417,26 @@ def _build_kind_overrides(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Capability gates
+# ---------------------------------------------------------------------------
+
+# Languages that always advertise the governance capability.
+# Python, TypeScript, and Go ship governance as a first-class module.
+# Rust ships governance under the `governance` cargo feature which is included
+# in the default feature set (default = ["governance"] in Cargo.toml), so it
+# is treated as always-present here unless the checker is extended to support
+# feature-stripped builds.
+_GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust"})
+
+
+def _language_has_capability(lang: str, capability: str) -> bool:
+    """Return True if *lang* is expected to export symbols gated on *capability*."""
+    if capability == "governance":
+        return lang in _GOVERNANCE_LANGUAGES
+    return False
+
+
 def _check_language(
     lang: str,
     symbols: list[dict[str, object]],
@@ -426,6 +446,10 @@ def _check_language(
 
     errors: missing required symbols or undocumented kind mismatches (exit code 1)
     kind_notes: kind mismatches that are documented deviations in the spec YAML (notes only)
+
+    A symbol is checked when:
+      - required: true  (always checked), OR
+      - capability: <cap> AND the language advertises that capability
     """
     exports: dict[str, str]
     transform: Callable[[str], str]
@@ -449,14 +473,26 @@ def _check_language(
     kind_notes: list[str] = []
 
     for sym in symbols:
-        if not sym.get("required", False):
+        required = bool(sym.get("required", False))
+        capability = sym.get("capability")
+        capability_active = isinstance(capability, str) and _language_has_capability(lang, capability)
+
+        if not required and not capability_active:
             continue
+
         spec_name = str(sym["name"])
         spec_kind = str(sym.get("kind", "function"))
         expected = transform(spec_name)
 
         if expected not in exports:
-            errors.append(f"  MISSING: {lang} does not export '{expected}' (spec: {spec_name})")
+            if required:
+                errors.append(f"  MISSING: {lang} does not export '{expected}' (spec: {spec_name})")
+            else:
+                # capability-gated only: missing governance export is an error
+                errors.append(
+                    f"  MISSING [governance]: {lang} does not export '{expected}'"
+                    f" (spec: {spec_name}, capability: {capability})"
+                )
             continue
 
         actual_kind = exports[expected]
