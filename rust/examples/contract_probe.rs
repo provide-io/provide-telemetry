@@ -145,7 +145,23 @@ fn exec_bind_context(step: &Value, guards: &mut Guards) {
 fn exec_emit_log(step: &Value) {
     let message = as_str(step, "message");
     let logger = provide_telemetry::get_logger(Some("contract"));
-    logger.info(message);
+    // Pass any step-local structured fields (excluding "event" which duplicates
+    // the message in the contract DSL, matching Python and Go probe behaviour).
+    let extra: BTreeMap<String, Value> = step
+        .get("fields")
+        .and_then(|f| f.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter(|(k, _)| k.as_str() != "event")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if extra.is_empty() {
+        logger.info(message);
+    } else {
+        logger.info_fields(message, &extra);
+    }
 }
 
 fn exec_capture_log(step: &Value, variables: &mut BTreeMap<String, Value>) {

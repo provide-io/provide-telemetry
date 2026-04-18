@@ -72,9 +72,9 @@ func (c *_signalHealthCounters) loadLatencyMs() float64 {
 }
 
 var (
-	_healthLogs    _signalHealthCounters
-	_healthTraces  _signalHealthCounters
-	_healthMetrics _signalHealthCounters
+	_healthLogs       _signalHealthCounters
+	_healthTraces     _signalHealthCounters
+	_healthMetrics    _signalHealthCounters
 	_setupErrorHealth atomic.Value // always stores string
 )
 
@@ -155,15 +155,15 @@ func _setSetupError(msg string) { _setupErrorHealth.Store(msg) }
 
 // Backward-compatible wrappers — used by sampling, backpressure, and resilience.
 
-func _incLogsEmitted()           { _healthLogs.emitted.Add(1) }
-func _incLogsDropped()           { _healthLogs.dropped.Add(1) }
-func _incSpansStarted()          { _healthTraces.emitted.Add(1) }
-func _incSpansDropped()          { _healthTraces.dropped.Add(1) }
-func _incMetricsRecorded()       { _healthMetrics.emitted.Add(1) }
-func _incMetricsDropped()        { _healthMetrics.dropped.Add(1) }
-func _incLogsExportErrors()      { _healthLogs.exportFailures.Add(1) }
-func _incSpansExportErrors()     { _healthTraces.exportFailures.Add(1) }
-func _incMetricsExportErrors()   { _healthMetrics.exportFailures.Add(1) }
+func _incLogsEmitted()         { _healthLogs.emitted.Add(1) }
+func _incLogsDropped()         { _healthLogs.dropped.Add(1) }
+func _incSpansStarted()        { _healthTraces.emitted.Add(1) }
+func _incSpansDropped()        { _healthTraces.dropped.Add(1) }
+func _incMetricsRecorded()     { _healthMetrics.emitted.Add(1) }
+func _incMetricsDropped()      { _healthMetrics.dropped.Add(1) }
+func _incLogsExportErrors()    { _healthLogs.exportFailures.Add(1) }
+func _incSpansExportErrors()   { _healthTraces.exportFailures.Add(1) }
+func _incMetricsExportErrors() { _healthMetrics.exportFailures.Add(1) }
 
 func _resetHealth() {
 	_healthLogs.reset()

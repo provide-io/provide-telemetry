@@ -108,6 +108,35 @@ fn emit_event(mut event: LogEvent) {
     drop(buf);
 }
 
+/// Like `log_event` but merges extra caller-supplied fields into the event context.
+fn log_event_with_fields(
+    level: &str,
+    target: &str,
+    message: &str,
+    extra: &BTreeMap<String, Value>,
+) {
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
+        return;
+    }
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    let mut event = new_event(target, level, message);
+    for (k, v) in extra {
+        event.context.insert(k.clone(), v.clone());
+    }
+    emit_event(event);
+    increment_emitted(Signal::Logs, 1);
+    release(ticket);
+}
+
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
     // Level filtering: skip events below the effective threshold
@@ -256,6 +285,27 @@ impl Logger {
 
     pub fn log(&self, level: &str, message: &str) {
         log_event(level, &self.target, message);
+    }
+
+    /// Emit with extra step-local structured fields merged into the event context.
+    pub fn log_fields(&self, level: &str, message: &str, fields: &BTreeMap<String, Value>) {
+        log_event_with_fields(level, &self.target, message, fields);
+    }
+
+    pub fn debug_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("DEBUG", message, fields);
+    }
+
+    pub fn info_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("INFO", message, fields);
+    }
+
+    pub fn warn_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("WARN", message, fields);
+    }
+
+    pub fn error_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("ERROR", message, fields);
     }
 
     pub fn debug_event(&self, event: &crate::schema::Event) {

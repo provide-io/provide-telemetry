@@ -37,7 +37,7 @@ func computeErrorFingerprint(errType, callSite string) string {
 
 func demoErrorFingerprint(ctx context.Context) {
 	fmt.Println("--- Error Fingerprinting ---")
-fmt.Println()
+	fmt.Println()
 
 	// Same error type without callsite produces the same fingerprint.
 	fpA := computeErrorFingerprint("ValueError", "")
@@ -74,7 +74,7 @@ fmt.Println()
 
 func demoSessionCorrelation(ctx context.Context) {
 	fmt.Println("--- Session Correlation ---")
-fmt.Println()
+	fmt.Println()
 
 	log := telemetry.GetLogger(ctx, "examples.session")
 
@@ -98,7 +98,7 @@ fmt.Println()
 
 func main() {
 	fmt.Println("Error Fingerprinting and Session Correlation Demo")
-fmt.Println()
+	fmt.Println()
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {

@@ -139,7 +139,7 @@ type _fakeOTelSpan struct {
 }
 
 func (f *_fakeOTelSpan) SpanContext() oteltrace.SpanContext { return f.sc }
-func (f *_fakeOTelSpan) IsRecording() bool                 { return false }
+func (f *_fakeOTelSpan) IsRecording() bool                  { return false }
 
 // _customTracer is a test-only Tracer implementation.
 type _customTracer struct{}
@@ -150,8 +150,8 @@ func (c *_customTracer) Start(ctx context.Context, _ string) (context.Context, t
 
 type _customSpan struct{}
 
-func (s *_customSpan) End()                               {}
-func (s *_customSpan) SetAttribute(_ string, _ any)      {}
-func (s *_customSpan) RecordError(_ error)                {}
-func (s *_customSpan) SpanID() string                     { return "custom-span" }
-func (s *_customSpan) TraceID() string                    { return "custom-trace" }
+func (s *_customSpan) End()                         {}
+func (s *_customSpan) SetAttribute(_ string, _ any) {}
+func (s *_customSpan) RecordError(_ error)          {}
+func (s *_customSpan) SpanID() string               { return "custom-span" }
+func (s *_customSpan) TraceID() string              { return "custom-trace" }

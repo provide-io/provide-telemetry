@@ -360,9 +360,9 @@ func TestExtractW3CContext_AllFieldsPresent(t *testing.T) {
 
 func TestParseBaggage(t *testing.T) {
 	tests := []struct {
-		name  string
-		raw   string
-		want  map[string]string
+		name string
+		raw  string
+		want map[string]string
 	}{
 		{
 			name: "simple key-value pair",

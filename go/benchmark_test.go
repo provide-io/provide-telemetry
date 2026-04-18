@@ -60,8 +60,8 @@ func BenchmarkShouldSample_WithOverride(b *testing.B) {
 func BenchmarkSanitizePayload_SmallFlat(b *testing.B) {
 	_resetPIIRules()
 	payload := map[string]any{
-		"password":   "secret",   //nolint:gosec // benchmark data
-		"token":      "abc",      //nolint:gosec // benchmark data
+		"password":   "secret", //nolint:gosec // benchmark data
+		"token":      "abc",    //nolint:gosec // benchmark data
 		"request_id": "r1",
 	}
 	b.ResetTimer()
@@ -87,8 +87,8 @@ func BenchmarkSanitizePayload_LargeFlat(b *testing.B) {
 func BenchmarkSanitizePayload_Disabled(b *testing.B) {
 	_resetPIIRules()
 	payload := map[string]any{
-		"password":   "secret",   //nolint:gosec // benchmark data
-		"token":      "abc",      //nolint:gosec // benchmark data
+		"password":   "secret", //nolint:gosec // benchmark data
+		"token":      "abc",    //nolint:gosec // benchmark data
 		"request_id": "r1",
 	}
 	b.ResetTimer()
