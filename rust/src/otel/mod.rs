@@ -45,9 +45,9 @@ pub(crate) fn shutdown_otel() {
 pub(crate) fn otel_installed() -> bool {
     #[cfg(feature = "otel")]
     {
-        return traces::tracer_provider_installed()
+        traces::tracer_provider_installed()
             || metrics::meter_provider_installed()
-            || logs::logger_provider_installed();
+            || logs::logger_provider_installed()
     }
 
     #[cfg(not(feature = "otel"))]
