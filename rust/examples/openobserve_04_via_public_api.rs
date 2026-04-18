@@ -44,7 +44,7 @@ fn main() {
         // installed and the global TracerProvider wired by setup_otel,
         // this routes through SdkTracerProvider -> BatchSpanProcessor ->
         // OTLP HTTP exporter to the configured endpoint.
-        let _ = provide_telemetry::trace("example.public_api.work", || {
+        provide_telemetry::trace("example.public_api.work", || {
             let ctx = provide_telemetry::get_trace_context();
             let trace_id = ctx
                 .get("trace_id")
