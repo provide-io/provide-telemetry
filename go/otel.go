@@ -258,8 +258,9 @@ func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every ExportSpans() applies retry/timeout/circuit-breaker policy.
 	return sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithBatcher(_wrapSpanExporter(exporter)),
 		sdktrace.WithResource(_buildResource(cfg)),
 	), nil
 }
@@ -276,8 +277,9 @@ func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider,
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every Export() applies retry/timeout/circuit-breaker policy.
 	return sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter))),
 		sdkmetric.WithResource(_buildResource(cfg)),
 	), nil
 }
@@ -294,8 +296,9 @@ func _buildDefaultLoggerProvider(cfg *TelemetryConfig) (*sdklog.LoggerProvider, 
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every Export() applies retry/timeout/circuit-breaker policy.
 	return sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(_wrapLogExporter(exporter))),
 		sdklog.WithResource(_buildResource(cfg)),
 	), nil
 }

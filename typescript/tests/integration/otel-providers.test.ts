@@ -198,14 +198,17 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
       url: 'http://traces-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
       url: 'http://metrics-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://logs-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(_areProvidersRegistered()).toBe(true);
     expect(_getRegisteredProviders()).toHaveLength(3);
@@ -226,10 +229,12 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
       url: 'http://metrics-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://logs-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(_areProvidersRegistered()).toBe(true);
     expect(_getRegisteredProviders()).toHaveLength(2);
@@ -249,11 +254,13 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
       url: 'http://traces-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPMetricExporter)).not.toHaveBeenCalled();
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://logs-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(_areProvidersRegistered()).toBe(true);
     expect(_getRegisteredProviders()).toHaveLength(2);
@@ -273,10 +280,12 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
       url: 'http://traces-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
       url: 'http://metrics-collector:4318',
       headers: {},
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPLogExporter)).not.toHaveBeenCalled();
     expect(_areProvidersRegistered()).toBe(true);
@@ -296,6 +305,7 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://otel-collector:4318/v1/logs',
       headers: {},
+      timeoutMillis: 10000,
     });
   });
 
@@ -310,10 +320,12 @@ describe('registerOtelProviders', () => {
     expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
       url: 'http://otel-collector:4318/v1/traces',
       headers: { Authorization: 'Bearer secret' },
+      timeoutMillis: 10000,
     });
     expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
       url: 'http://otel-collector:4318/v1/metrics',
       headers: { Authorization: 'Bearer secret' },
+      timeoutMillis: 10000,
     });
   });
 
@@ -342,7 +354,12 @@ describe('registerOtelProviders', () => {
       return fakeExporter;
     } as never);
     await registerOtelProviders(getConfig());
-    expect(vi.mocked(BatchSpanProcessor)).toHaveBeenCalledWith(fakeExporter);
+    // Exporter is wrapped in a resilient-export proxy so every export() call
+    // applies retry/timeout/circuit-breaker policy. Verify the underlying
+    // fields are preserved via objectContaining rather than strict equality.
+    expect(vi.mocked(BatchSpanProcessor)).toHaveBeenCalledWith(
+      expect.objectContaining({ fake: 'exporter' }),
+    );
   });
 
   it('wires PeriodicExportingMetricReader with the metrics exporter', async () => {
@@ -357,7 +374,7 @@ describe('registerOtelProviders', () => {
     } as never);
     await registerOtelProviders(getConfig());
     expect(vi.mocked(PeriodicExportingMetricReader)).toHaveBeenCalledWith({
-      exporter: fakeExporter,
+      exporter: expect.objectContaining({ fake: 'metrics-exporter' }),
     });
   });
 

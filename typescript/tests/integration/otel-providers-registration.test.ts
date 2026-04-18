@@ -133,6 +133,7 @@ describe('registerOtelProviders registration paths', () => {
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://otel-collector:4318/v1/logs',
       headers: { Authorization: 'Bearer tok' },
+      timeoutMillis: 10000,
     });
   });
 
@@ -147,7 +148,10 @@ describe('registerOtelProviders registration paths', () => {
       return fakeExporter;
     } as never);
     await registerOtelProviders(getConfig());
-    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(fakeExporter);
+    // Exporter is wrapped in a resilient-export proxy; identity is lost.
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(
+      expect.objectContaining({ fake: 'log-exporter' }),
+    );
   });
 
   it('registers all three providers (trace + metrics + logs)', async () => {

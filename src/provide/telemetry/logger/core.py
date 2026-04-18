@@ -178,6 +178,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         return handlers
 
     from provide.telemetry.resilience import run_with_resilience
+    from provide.telemetry.resilient_exporter import wrap_exporter
 
     logs_api_mod, sdk_logs_mod, sdk_logs_export_mod, resource_cls, otlp_exporter_cls = components
     if _can_reuse_otel_log_provider(_active_config, config):
@@ -186,7 +187,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
 
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
-    exporter = run_with_resilience(
+    raw_exporter = run_with_resilience(
         "logs",
         lambda: otlp_exporter_cls(
             endpoint=validate_otlp_endpoint(config.logging.otlp_endpoint),
@@ -194,8 +195,11 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
             timeout=config.exporter.logs_timeout_seconds,
         ),
     )
-    if exporter is None:
+    if raw_exporter is None:
         return handlers
+    # Wrap so every export() call applies retry/timeout/circuit-breaker policy,
+    # not just the one-shot construction probe above.
+    exporter = wrap_exporter("logs", raw_exporter)
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
     handlers.append(_make_otel_logging_handler(sdk_logs_mod, provider, level, config))

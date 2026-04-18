@@ -15,6 +15,7 @@ from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.resilience import run_with_resilience
+from provide.telemetry.resilient_exporter import wrap_exporter
 
 
 def _has_otel_metrics() -> bool:
@@ -108,7 +109,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
     provider_cls, resource_cls, reader_cls, exporter_cls = components
     readers: list[Any] = []
     if config.metrics.otlp_endpoint:
-        exporter = run_with_resilience(
+        raw_exporter = run_with_resilience(
             "metrics",
             lambda: exporter_cls(
                 endpoint=validate_otlp_endpoint(config.metrics.otlp_endpoint),
@@ -116,9 +117,10 @@ def setup_metrics(config: TelemetryConfig) -> None:
                 timeout=config.exporter.metrics_timeout_seconds,
             ),
         )
-        if exporter is None:
+        if raw_exporter is None:
             return
-        readers.append(reader_cls(exporter))
+        # Wrap so every export() call applies retry/timeout/circuit-breaker policy.
+        readers.append(reader_cls(wrap_exporter("metrics", raw_exporter)))
 
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = provider_cls(resource=resource, metric_readers=readers)

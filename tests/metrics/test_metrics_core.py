@@ -211,6 +211,9 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     # Bypass resilience layer to avoid mutmut trampoline interference during clean test
     monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _sig, op: op())
+    # Bypass the resilient-export wrapper so reader_cls sees the raw exporter —
+    # the wrapping behavior is covered by tests/resilience/test_resilient_exporter.py.
+    monkeypatch.setattr(provider_mod, "wrap_exporter", lambda _sig, inner: inner)
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"})
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})

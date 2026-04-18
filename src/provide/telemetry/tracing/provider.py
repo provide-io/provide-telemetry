@@ -138,8 +138,9 @@ def setup_tracing(config: TelemetryConfig) -> None:
     provider = provider_cls(resource=resource)
     if config.tracing.otlp_endpoint:
         from provide.telemetry.resilience import run_with_resilience
+        from provide.telemetry.resilient_exporter import wrap_exporter
 
-        exporter = run_with_resilience(
+        raw_exporter = run_with_resilience(
             "traces",
             lambda: exporter_cls(
                 endpoint=validate_otlp_endpoint(config.tracing.otlp_endpoint),
@@ -147,12 +148,13 @@ def setup_tracing(config: TelemetryConfig) -> None:
                 timeout=config.exporter.traces_timeout_seconds,
             ),
         )
-        if exporter is None:
+        if raw_exporter is None:
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 shutdown()
             return
-        provider.add_span_processor(processor_cls(exporter))
+        # Wrap so every export() call applies retry/timeout/circuit-breaker policy.
+        provider.add_span_processor(processor_cls(wrap_exporter("traces", raw_exporter)))
 
     with _provider_lock:
         if _provider_configured or _setup_generation != gen:

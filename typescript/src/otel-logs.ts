@@ -19,6 +19,7 @@
 import type { TelemetryConfig } from './config';
 import { getConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
+import { wrapResilientExporter } from './resilient-exporter';
 import type { ShutdownableProvider } from './runtime';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
@@ -81,7 +82,16 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const logsEndpoint = normalizeEndpoint(cfg.otlpLogsEndpoint) ?? `${endpoint}/v1/logs`;
   validateOtlpEndpoint(logsEndpoint);
   const logsHeaders = cfg.otlpLogsHeaders ?? headers;
-  const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: logsHeaders });
+  const rawLogExporter = new OTLPLogExporter({
+    url: logsEndpoint,
+    headers: logsHeaders,
+    // Fall back to 10s when the caller supplies a TelemetryConfig without the
+    // field set (e.g. tests constructing partial configs). Production callers
+    // always receive the DEFAULTS-merged config from setupTelemetry().
+    timeoutMillis: cfg.exporterLogsTimeoutMs ?? 10000,
+  });
+  // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
+  const logExporter = wrapResilientExporter('logs', rawLogExporter);
   const processor = new BatchLogRecordProcessor(logExporter);
   const provider = new LoggerProvider({
     resource: resourceFromAttributes({
