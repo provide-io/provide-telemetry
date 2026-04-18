@@ -177,6 +177,8 @@ export {
 // Optional governance module — strippable
 export type { DataClass, ClassificationRule, ClassificationPolicy } from './classification';
 export {
+  classifyKey,
+  registerClassificationRule,
   registerClassificationRules,
   setClassificationPolicy,
   getClassificationPolicy,
