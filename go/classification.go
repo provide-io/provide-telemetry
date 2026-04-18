@@ -69,6 +69,11 @@ func RegisterClassificationRules(rules []ClassificationRule) {
 	SetPolicyHook(_lookupPolicyAction)
 }
 
+// RegisterClassificationRule adds a single rule and installs the classification hook on the PII engine.
+func RegisterClassificationRule(rule ClassificationRule) {
+	RegisterClassificationRules([]ClassificationRule{rule})
+}
+
 // _lookupPolicyAction returns the action for a classification label from the current policy.
 func _lookupPolicyAction(label string) string {
 	_classificationMu.RLock()
@@ -117,6 +122,16 @@ func _classifyField(key string, _ any) string {
 		}
 	}
 	return ""
+}
+
+// ClassifyKey returns the DataClass for a key when a rule matches, or nil when none match.
+func ClassifyKey(key string) *DataClass {
+	label := _classifyField(key, nil)
+	if label == "" {
+		return nil
+	}
+	class := DataClass(label)
+	return &class
 }
 
 // ResetClassificationForTests resets all classification state and removes the hook.
