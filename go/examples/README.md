@@ -1,8 +1,5 @@
 # Go Examples
 
-SPDX-License-Identifier: Apache-2.0
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-
 Run any example from the repo root:
 
 ```bash

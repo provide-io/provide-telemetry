@@ -1,8 +1,5 @@
 # Rust Crate
 
-SPDX-License-Identifier: Apache-2.0
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-
 `provide-telemetry` ships a Rust crate in this repo under `rust/`.
 
 ## Cargo Features
