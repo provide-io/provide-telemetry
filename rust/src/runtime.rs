@@ -468,12 +468,12 @@ mod tests {
             "sampling rate must update"
         );
 
-        // Cleanup: remove env vars and reset global state so subsequent tests
-        // (e.g. schema tests that check strict_schema defaults) start clean.
+        // Cleanup: remove env vars and reset all global telemetry state so
+        // subsequent tests (sampling, backpressure, schema, resilience, etc.)
+        // start from a known clean slate.
         env::remove_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS");
         env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
-        set_active_config(None);
-        crate::resilience::_reset_resilience_for_tests();
+        crate::testing::reset_telemetry_state();
     }
 
     #[test]
