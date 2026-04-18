@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(feature = "governance")]
-use crate::classification::classify_key;
+use crate::classification::{classify_key, get_classification_policy};
 #[cfg(feature = "governance")]
 use crate::receipts::emit_receipt;
 
@@ -197,6 +197,17 @@ fn mask_value(value: &Value, mode: &PIIMode, truncate_to: usize) -> Option<Value
     }
 }
 
+/// Segment-wise path match: `"*"` in *rule_path* matches any single segment.
+fn match_rule_path(rule_path: &[String], child_path: &[String]) -> bool {
+    if rule_path.len() != child_path.len() {
+        return false;
+    }
+    rule_path
+        .iter()
+        .zip(child_path.iter())
+        .all(|(rp, cp)| rp == "*" || rp == cp)
+}
+
 fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usize) -> Value {
     if max_depth == 0 {
         return node.clone();
@@ -208,7 +219,10 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
             for (key, value) in map {
                 let mut child_path = path.to_vec();
                 child_path.push(key.clone());
-                if let Some(rule) = rules.iter().find(|rule| rule.path == child_path) {
+                if let Some(rule) = rules
+                    .iter()
+                    .find(|rule| match_rule_path(&rule.path, &child_path))
+                {
                     if let Some(masked) = mask_value(value, &rule.mode, rule.truncate_to) {
                         out.insert(key.clone(), masked);
                     }
@@ -240,12 +254,18 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
             }
             Value::Object(out)
         }
-        Value::Array(values) => Value::Array(
-            values
-                .iter()
-                .map(|value| apply_rules(value, path, rules, max_depth - 1))
-                .collect(),
-        ),
+        // Fix 5: push "*" as path segment when recursing into array elements so
+        // rules like ["users", "*", "email"] can match each element's "email" key.
+        Value::Array(values) => {
+            let mut star_path = path.to_vec();
+            star_path.push("*".to_string());
+            Value::Array(
+                values
+                    .iter()
+                    .map(|value| apply_rules(value, &star_path, rules, max_depth - 1))
+                    .collect(),
+            )
+        }
         _ => node.clone(),
     }
 }
@@ -257,11 +277,36 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
     let rules = get_pii_rules();
     let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
     #[cfg(feature = "governance")]
-    if let (Value::Object(original), Value::Object(map)) = (payload, &mut cleaned) {
-        let keys: Vec<String> = original.keys().cloned().collect();
+    if let Value::Object(map) = &mut cleaned {
+        let policy = get_classification_policy();
+        // Collect keys first to avoid borrow issues during mutation.
+        let keys: Vec<String> = map.keys().cloned().collect();
         for key in keys {
             if let Some(label) = classify_key(&key) {
-                map.insert(format!("__{key}__class"), Value::String(label));
+                let action = policy.lookup_action(&label);
+                if action == "drop" {
+                    map.remove(&key);
+                } else {
+                    // For redact/hash/truncate: replace value unless already sentinel.
+                    if matches!(action, "redact" | "hash" | "truncate") {
+                        if let Some(current) = map.get(&key) {
+                            let already_redacted =
+                                current.as_str().map(|s| s == REDACTED).unwrap_or(false);
+                            if !already_redacted {
+                                // Truncation width matches Python's hardcoded 8.
+                                let mode = match action {
+                                    "redact" => PIIMode::Redact,
+                                    "hash" => PIIMode::Hash,
+                                    _ => PIIMode::Truncate,
+                                };
+                                if let Some(masked) = mask_value(current, &mode, 8) {
+                                    map.insert(key.clone(), masked);
+                                }
+                            }
+                        }
+                    }
+                    map.insert(format!("__{key}__class"), Value::String(label));
+                }
             }
         }
     }
