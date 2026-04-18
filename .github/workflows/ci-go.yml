@@ -26,7 +26,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       - name: Run tests with coverage
@@ -47,7 +47,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       # Build golangci-lint v2 from source — v2 module path supports Go 1.25 and the v2 config format.
@@ -65,7 +65,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       - name: Install security tools
@@ -87,7 +87,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       - name: Run go vet
@@ -100,7 +100,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       # Build and run each standalone telemetry example (no live backend required)
@@ -119,7 +119,7 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       - name: Prepare collector output directory
@@ -163,7 +163,7 @@ jobs:
         working-directory: go/logger
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       # Verify go/logger builds and tests independently with zero OTel deps
@@ -194,7 +194,7 @@ jobs:
         working-directory: go/tracer
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
       # Verify go/tracer builds and tests independently with OTel API only (no SDK)
