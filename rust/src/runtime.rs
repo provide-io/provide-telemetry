@@ -213,10 +213,20 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
         );
     }
 
+    // Exporter timeout fields are baked into OTLP exporters at construction
+    // time. Preserve the installed values *before* passing to
+    // update_runtime_config so that apply_policies() pushes the correct
+    // (old) timeouts into the live ExporterPolicy — preventing a split-brain
+    // where the config snapshot and get_exporter_policy() disagree.
+    let mut hot_exporter = fresh.exporter;
+    hot_exporter.logs_timeout_seconds = current.exporter.logs_timeout_seconds;
+    hot_exporter.traces_timeout_seconds = current.exporter.traces_timeout_seconds;
+    hot_exporter.metrics_timeout_seconds = current.exporter.metrics_timeout_seconds;
+
     let overrides = RuntimeOverrides {
         sampling: Some(fresh.sampling),
         backpressure: Some(fresh.backpressure),
-        exporter: Some(fresh.exporter),
+        exporter: Some(hot_exporter),
         security: Some(fresh.security),
         slo: Some(fresh.slo),
         pii_max_depth: Some(fresh.pii_max_depth),
@@ -235,11 +245,6 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     next.tracing.otlp_headers = current.tracing.otlp_headers;
     next.metrics.enabled = current.metrics.enabled;
     next.metrics.otlp_headers = current.metrics.otlp_headers;
-    // Exporter timeout fields are baked into OTLP exporters at construction
-    // time — keep the installed values so the config snapshot stays honest.
-    next.exporter.logs_timeout_seconds = current.exporter.logs_timeout_seconds;
-    next.exporter.traces_timeout_seconds = current.exporter.traces_timeout_seconds;
-    next.exporter.metrics_timeout_seconds = current.exporter.metrics_timeout_seconds;
 
     set_active_config(Some(next.clone()));
     Ok(next)
@@ -412,47 +417,58 @@ mod tests {
     }
 
     #[test]
-    fn runtime_test_timeout_fields_are_not_applied_by_reload_from_env() {
-        // Establish a baseline config with custom timeout values.
-        let mut base = TelemetryConfig::default();
-        base.exporter.logs_timeout_seconds = 7.0;
-        base.exporter.traces_timeout_seconds = 8.0;
-        base.exporter.metrics_timeout_seconds = 9.0;
-        set_active_config(Some(base.clone()));
+    fn runtime_test_reload_preserves_timeouts_in_both_snapshot_and_live_policy() {
+        use std::env;
+        // Set up with custom timeouts.
+        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "7.0");
+        env::set_var("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "8.0");
+        env::set_var("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "9.0");
+        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "1.0");
+        set_active_config(Some(
+            TelemetryConfig::from_env().expect("config must parse"),
+        ));
+        // Seed the live exporter policy with the installed timeouts.
+        apply_policies(&get_runtime_config().expect("config must exist"));
 
-        // reload_runtime_from_env restores provider-baked timeout fields.
-        // Simulate what it does: build overrides from a "fresh" config
-        // with different timeout values, apply them, then restore cold fields.
-        let fresh_exporter = crate::config::ExporterPolicyConfig {
-            logs_timeout_seconds: 99.0,
-            traces_timeout_seconds: 99.0,
-            metrics_timeout_seconds: 99.0,
-            ..crate::config::ExporterPolicyConfig::default()
-        };
-        let overrides = crate::RuntimeOverrides {
-            exporter: Some(fresh_exporter),
-            ..crate::RuntimeOverrides::default()
-        };
-        let mut next = update_runtime_config(overrides).expect("update must succeed");
-        // Restore provider-baked fields (mirrors what reload_runtime_from_env does).
-        next.exporter.logs_timeout_seconds = base.exporter.logs_timeout_seconds;
-        next.exporter.traces_timeout_seconds = base.exporter.traces_timeout_seconds;
-        next.exporter.metrics_timeout_seconds = base.exporter.metrics_timeout_seconds;
-        set_active_config(Some(next.clone()));
+        // Verify initial live policy has the installed timeout.
+        let initial_policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
+            .expect("policy must exist");
+        assert_eq!(
+            initial_policy.timeout_seconds, 7.0,
+            "initial logs timeout must be 7.0"
+        );
 
-        let stored = get_runtime_config().expect("config must exist");
+        // Change the timeout env var and trigger a real reload.
+        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "99.0");
+        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.5");
+
+        let reloaded = reload_runtime_from_env().expect("reload must succeed");
+
+        // Config snapshot must show old timeout (provider-baked, not hot-reloadable).
         assert_eq!(
-            stored.exporter.logs_timeout_seconds, 7.0,
-            "logs timeout must be preserved"
+            reloaded.exporter.logs_timeout_seconds, 7.0,
+            "config snapshot timeout must not be updated by reload"
         );
+
+        // Live exporter policy must ALSO show old timeout — no split-brain.
+        let policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
+            .expect("policy must exist");
         assert_eq!(
-            stored.exporter.traces_timeout_seconds, 8.0,
-            "traces timeout must be preserved"
+            policy.timeout_seconds, 7.0,
+            "live exporter policy timeout must not be updated by reload"
         );
+
+        // Hot-reloadable field (sampling rate) must be updated.
         assert_eq!(
-            stored.exporter.metrics_timeout_seconds, 9.0,
-            "metrics timeout must be preserved"
+            reloaded.sampling.logs_rate, 0.5,
+            "sampling rate must be updated by reload"
         );
+
+        // Cleanup env vars.
+        env::remove_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS");
+        env::remove_var("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS");
+        env::remove_var("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS");
+        env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
     }
 
     #[test]
