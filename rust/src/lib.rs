@@ -48,7 +48,8 @@ pub use classification::{
 };
 pub use config::{
     redact_config, BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig,
-    RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
+    MetricsConfig, RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
+    TracingConfig,
 };
 #[cfg(feature = "governance")]
 pub use consent::{

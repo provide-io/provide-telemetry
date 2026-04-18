@@ -366,3 +366,22 @@ fn otel_metric_export_interval_rejects_non_integer() {
         "non-integer interval must be rejected as ConfigurationError"
     );
 }
+
+#[test]
+fn metrics_config_serde_backward_compat_missing_interval_field() {
+    // Verifies that a MetricsConfig JSON blob that pre-dates the
+    // metric_export_interval_ms field still deserializes successfully
+    // and falls back to the 60 000 ms default.
+    let json_without_interval = r#"{
+        "enabled": true,
+        "otlp_headers": {},
+        "otlp_endpoint": null,
+        "otlp_protocol": ""
+    }"#;
+    let cfg: provide_telemetry::MetricsConfig = serde_json::from_str(json_without_interval)
+        .expect("MetricsConfig missing interval field must deserialize via serde default");
+    assert_eq!(
+        cfg.metric_export_interval_ms, 60_000,
+        "missing field must fall back to the 60 000 ms default"
+    );
+}
