@@ -21,6 +21,10 @@ import {
   parseOtlpHeaders,
   setupTelemetry,
   getQueuePolicy,
+  getHealthSnapshot,
+  setQueuePolicy,
+  tryAcquire,
+  release,
   computeErrorFingerprint,
   reconfigureTelemetry,
   registerCardinalityLimit,
@@ -97,6 +101,16 @@ describe('parity: sampling', () => {
     expect(() => shouldSample('logs')).not.toThrow();
     expect(() => shouldSample('traces')).not.toThrow();
     expect(() => shouldSample('metrics')).not.toThrow();
+  });
+});
+
+describe('parity: sampling_signal_validation', () => {
+  afterEach(() => _resetSamplingForTests());
+
+  it('rejects invalid signal names', () => {
+    expect(() => shouldSample('invalid')).toThrow();
+    expect(() => shouldSample('log')).toThrow();
+    expect(() => shouldSample('')).toThrow();
   });
 });
 
@@ -392,6 +406,35 @@ describe('parity: backpressure_default', () => {
     expect(policy.maxLogs).toBe(0);
     expect(policy.maxTraces).toBe(0);
     expect(policy.maxMetrics).toBe(0);
+  });
+});
+
+describe('parity: backpressure_unlimited', () => {
+  afterEach(() => setQueuePolicy({ maxLogs: 0, maxTraces: 0, maxMetrics: 0 }));
+
+  it('does not block acquisitions when queue limits are unlimited', () => {
+    const first = tryAcquire('logs');
+    const second = tryAcquire('logs');
+
+    expect(first).toEqual({ signal: 'logs', token: 0 });
+    expect(second).toEqual({ signal: 'logs', token: 0 });
+
+    if (first) release(first);
+    if (second) release(second);
+  });
+});
+
+describe('parity: health_snapshot', () => {
+  it('returns the canonical health snapshot shape', () => {
+    expect(getHealthSnapshot()).toMatchObject({
+      logsEmitted: expect.any(Number),
+      tracesEmitted: expect.any(Number),
+      metricsEmitted: expect.any(Number),
+      logsDropped: expect.any(Number),
+      tracesDropped: expect.any(Number),
+      metricsDropped: expect.any(Number),
+      setupError: null,
+    });
   });
 });
 
