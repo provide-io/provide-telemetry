@@ -105,6 +105,10 @@ pub struct MetricsConfig {
     pub otlp_endpoint: Option<String>,
     /// OTLP transport protocol for metrics. See `LoggingConfig::otlp_protocol`.
     pub otlp_protocol: String,
+    /// How often (in milliseconds) the `PeriodicReader` pushes metrics to the
+    /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
+    /// Default: 60 000 ms (60 seconds).
+    pub metric_export_interval_ms: u64,
 }
 
 impl Default for MetricsConfig {
@@ -114,6 +118,7 @@ impl Default for MetricsConfig {
             otlp_headers: HashMap::new(),
             otlp_endpoint: None,
             otlp_protocol: String::new(),
+            metric_export_interval_ms: 60_000,
         }
     }
 }
@@ -350,6 +355,11 @@ impl TelemetryConfig {
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
+                metric_export_interval_ms: parse_usize(
+                    env_value(env, &["OTEL_METRIC_EXPORT_INTERVAL"]),
+                    60_000,
+                    "OTEL_METRIC_EXPORT_INTERVAL",
+                )? as u64,
             },
             event_schema: EventSchemaConfig {
                 strict_event_name: parse_bool(

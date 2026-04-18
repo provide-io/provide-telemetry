@@ -339,3 +339,30 @@ fn otlp_protocol_defaults_to_empty_string_when_unset() {
     assert_eq!(cfg.tracing.otlp_protocol, "");
     assert_eq!(cfg.metrics.otlp_protocol, "");
 }
+
+#[test]
+fn otel_metric_export_interval_defaults_to_sixty_seconds() {
+    let cfg = config_from(&[]).unwrap();
+    assert_eq!(
+        cfg.metrics.metric_export_interval_ms, 60_000,
+        "default export interval must be 60 000 ms"
+    );
+}
+
+#[test]
+fn otel_metric_export_interval_parsed_from_env() {
+    let cfg = config_from(&[("OTEL_METRIC_EXPORT_INTERVAL", "5000")]).unwrap();
+    assert_eq!(
+        cfg.metrics.metric_export_interval_ms, 5_000,
+        "custom interval must be taken from env var"
+    );
+}
+
+#[test]
+fn otel_metric_export_interval_rejects_non_integer() {
+    let result = config_from(&[("OTEL_METRIC_EXPORT_INTERVAL", "1.5")]);
+    assert!(
+        result.is_err(),
+        "non-integer interval must be rejected as ConfigurationError"
+    );
+}

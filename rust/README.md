@@ -207,6 +207,7 @@ All options come from environment variables:
 | `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | `8` | Maximum PII sanitization recursion depth |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Percent-encoded `key=value` auth headers |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds (`--features otel`) |
 
 ## Cargo features
 
@@ -236,6 +237,21 @@ emitted to the configured endpoint:
 | `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Basic%20dXNlcjpwYXNz` | Shared auth header (percent-encoded). |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Default. Also accepts `http/json`. `grpc` requires `--features otel-grpc`. |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://traces:4318/v1/traces` | Signal-specific override (used verbatim, no path appending). |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds. |
+
+**Tokio runtime requirement:** when built with `--features otel`, the SDK's
+batch span processor and periodic metrics reader require an active tokio
+multi-threaded runtime. Call `setup_telemetry()` from within a
+`#[tokio::main]` function or an explicit `tokio::runtime::Builder`
+runtime:
+
+```rust
+#[tokio::main]
+async fn main() {
+    provide_telemetry::setup_telemetry().expect("telemetry setup");
+    // ...
+}
+```
 
 Architecture: `consent`, `sampling`, `backpressure`, and `resilience`
 modules act as pre-filters. The OTel SDK sits behind them and handles
