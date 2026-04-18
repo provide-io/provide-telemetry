@@ -397,3 +397,38 @@ def test_resolve_path_missing_returns_none() -> None:
     """Missing key returns None."""
     module = _load_harness_module()
     assert module._resolve_path({"a": {}}, "a.b") is None
+
+
+def test_has_otel_stack_returns_false_when_package_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """_has_otel_stack must return False when any required package is absent."""
+    module = _load_support_module()
+    real_find_spec = importlib.util.find_spec
+
+    def patched(name: str) -> object:
+        if name == "opentelemetry.sdk":
+            return None
+        return real_find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", patched)
+    assert not module._has_otel_stack()
+
+
+def test_run_runtime_probe_check_raises_when_otel_stack_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """run_runtime_probe_check must raise RuntimeError with install hint when OTel absent."""
+    module = _load_support_module()
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
+
+    fixtures = tmp_path / "fixtures.yaml"
+    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+
+    with pytest.raises(RuntimeError, match=r"opentelemetry-sdk\[otlp\]"):
+        module.run_runtime_probe_check(
+            repo=_REPO_ROOT,
+            selected={"python"},
+            cargo_bin="cargo",
+            cargo_env={},
+            probe_env={},
+            fixtures_path=fixtures,
+        )

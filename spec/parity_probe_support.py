@@ -47,6 +47,24 @@ _PROBE_ENV_DEFAULTS: dict[str, str] = {
     "OTEL_EXPORTER_OTLP_METRICS_HEADERS": "",
 }
 
+# Case IDs whose Python probe subprocess requires the OTel extras to be installed.
+_OTEL_REQUIRED_CASE_IDS: frozenset[str] = frozenset({"per_signal_logs_endpoint", "provider_identity_reconfigure"})
+
+
+def _has_otel_stack() -> bool:
+    """Return True when the full OpenTelemetry SDK + OTLP exporter stack is importable."""
+    import importlib.util as ilu
+
+    return all(
+        ilu.find_spec(pkg) is not None
+        for pkg in (
+            "opentelemetry",
+            "opentelemetry.sdk",
+            "opentelemetry.exporter.otlp.proto.http",
+        )
+    )
+
+
 # Canonical field renames: {raw_field: canonical_field}.
 # Applied before comparison so all languages share the same key names.
 _FIELD_RENAMES: dict[str, str] = {
@@ -397,6 +415,16 @@ def run_runtime_probe_check(
     runners = [r for r in _runtime_probe_runners(repo, cargo_bin, cargo_env) if r.name in selected]
     fixtures = _load_runtime_probe_fixtures(fixtures_path)
     cases = fixtures.get("cases", [])
+
+    # Fail early with a clear install hint if OTel-required cases are in the fixture
+    # list but the opentelemetry-sdk[otlp] extra is not installed.
+    otel_case_ids = {str(c["id"]) for c in cases} & _OTEL_REQUIRED_CASE_IDS
+    if otel_case_ids and not _has_otel_stack():
+        raise RuntimeError(
+            f"Runtime probe cases {sorted(otel_case_ids)} require the "
+            "opentelemetry-sdk[otlp] extra — run: uv sync --extra otel"
+        )
+
     all_ok = True
 
     print()
