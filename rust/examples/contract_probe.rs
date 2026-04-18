@@ -239,7 +239,7 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "emit_log" => exec_emit_log(step),
             "capture_log" => exec_capture_log(step, &mut variables),
             "get_runtime_status" => exec_get_runtime_status(step, &mut variables),
-            unknown => eprintln!("warning: unknown op '{unknown}', skipping"),
+            unknown => panic!("unsupported contract operation: '{unknown}'"),
         }
     }
 

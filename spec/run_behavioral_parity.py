@@ -328,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
             selected,
             _CARGO_BIN,
             _CARGO_ENV,
+            timeout=args.timeout,
         )
         if not contracts_ok:
             any_fail = True

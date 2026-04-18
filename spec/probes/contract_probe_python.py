@@ -93,7 +93,10 @@ def _op_setup(step: dict[str, Any], _variables: dict[str, object]) -> None:
     if overrides:
         setup_telemetry(_build_config(overrides))
     else:
-        setup_telemetry(TelemetryConfig(logging=LoggingConfig(fmt="json")))
+        # Let env vars flow through (PROVIDE_TELEMETRY_SERVICE_NAME, etc.)
+        # Force JSON format for parseable log capture.
+        os.environ["PROVIDE_LOG_FORMAT"] = "json"
+        setup_telemetry()
 
 
 def _op_setup_invalid(step: dict[str, Any], variables: dict[str, object]) -> None:
