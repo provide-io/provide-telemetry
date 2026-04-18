@@ -49,7 +49,15 @@ fn valid_traceparent() -> impl Strategy<Value = String> {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(50))]
+    #![proptest_config(ProptestConfig {
+        cases: 50,
+        failure_persistence: Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(
+                "tests/property_test.proptest-regressions",
+            ),
+        )),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn sampling_rate_zero_never_samples(signal in any_signal()) {
@@ -102,7 +110,15 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(50))]
+    #![proptest_config(ProptestConfig {
+        cases: 50,
+        failure_persistence: Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(
+                "tests/property_test.proptest-regressions",
+            ),
+        )),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn sanitize_always_redacts_default_sensitive_keys(
@@ -161,7 +177,15 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(100))]
+    #![proptest_config(ProptestConfig {
+        cases: 100,
+        failure_persistence: Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(
+                "tests/property_test.proptest-regressions",
+            ),
+        )),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn event_three_valid_segments_succeeds(
@@ -227,7 +251,15 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(200))]
+    #![proptest_config(ProptestConfig {
+        cases: 200,
+        failure_persistence: Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(
+                "tests/property_test.proptest-regressions",
+            ),
+        )),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn parse_baggage_never_panics(input in "\\PC{0,500}") {
