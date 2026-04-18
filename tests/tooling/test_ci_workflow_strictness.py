@@ -34,7 +34,9 @@ def test_ci_spec_watches_full_runtime_surface() -> None:
     ]:
         assert expected in workflow
 
-    assert "python spec/run_behavioral_parity.py --check-output" in workflow
+    # Strict defaults: the behavioral parity script runs output+contract checks by
+    # default — no explicit --check-output flag is required in CI.
+    assert "spec/run_behavioral_parity.py" in workflow
     assert "python spec/validate_conformance.py" in workflow
 
 
