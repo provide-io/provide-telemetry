@@ -32,32 +32,18 @@ def _load_validate_conformance_module() -> ModuleType:
 
 
 def test_conformance_governance_gaps_reported() -> None:
-    """Governance-gated symbols missing from Python/TypeScript/Go are flagged by the checker.
-
-    register_classification_rule (singular) and classify_key are not yet exported
-    by Python, TypeScript, or Go — these are real governance gaps exposed by the
-    new capability-gate check.  Sibling PRs must add these exports to close the
-    gaps and allow this test to be updated to assert exit code 0.
-
-    Until those PRs land, this test documents the known failures rather than
-    masking them.
-    """
+    """Governance-gated symbols should now pass conformance without missing exports."""
     result = subprocess.run(
         [sys.executable, str(_SCRIPT)],
         capture_output=True,
         text=True,
         cwd=str(_REPO_ROOT),
     )
-    # Known governance gaps — conformance currently exits 1.
-    # Once sibling PRs add register_classification_rule + classify_key to
-    # Python/TypeScript/Go, this assertion changes to returncode == 0.
-    assert result.returncode == 1, (
-        "Expected conformance to fail on governance gaps; got exit 0.\n"
-        "If all governance symbols are now present, update this test to assert exit 0."
+    assert result.returncode == 0, (
+        "Expected conformance to pass now that the governance exports exist:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
-    assert "MISSING [governance]" in result.stdout, "Expected governance gap messages in output"
-    assert "register_classification_rule" in result.stdout
-    assert "classify_key" in result.stdout
+    assert "MISSING [governance]" not in result.stdout
 
 
 def test_conformance_detects_missing_symbol(tmp_path: Path) -> None:
