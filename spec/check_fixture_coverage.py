@@ -62,8 +62,8 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     ],
 }
 
-_PROBE_CATEGORY_PATH_HINTS: dict[str, tuple[str, ...]] = {
-    "log_output_format": ("emit_log",),
+_CATEGORY_CONTENT_MARKERS: dict[str, tuple[str, ...]] = {
+    "log_output_format": ("log.output.parity",),
 }
 
 
@@ -121,23 +121,18 @@ def _category_variants(category: str) -> list[str]:
     return list(dict.fromkeys(variants))  # deduplicate while preserving order
 
 
+def _category_search_terms(category: str) -> list[str]:
+    """Return all content terms that count as coverage for a category."""
+    return list(
+        dict.fromkeys(
+            [*_category_variants(category), *_CATEGORY_CONTENT_MARKERS.get(category, ())]
+        )
+    )
+
+
 def _category_mentioned(category: str, corpus: str) -> bool:
     """Return True if any variant of category appears in corpus (case-insensitive)."""
-    return any(re.search(re.escape(variant), corpus, re.IGNORECASE) for variant in _category_variants(category))
-
-
-def _category_covered_by_paths(category: str, paths: list[Path]) -> bool:
-    """Return True when known probe-only categories are represented by scanned file paths."""
-    hints = _PROBE_CATEGORY_PATH_HINTS.get(category)
-    if hints is None:
-        return False
-
-    return any(
-        hint in path.as_posix()
-        for path in paths
-        if path.exists()
-        for hint in hints
-    )
+    return any(re.search(re.escape(term), corpus, re.IGNORECASE) for term in _category_search_terms(category))
 
 
 def run_report(fixtures_path: Path, language_files: dict[str, list[Path]]) -> dict[str, dict[str, bool]]:
@@ -146,9 +141,7 @@ def run_report(fixtures_path: Path, language_files: dict[str, list[Path]]) -> di
     coverage: dict[str, dict[str, bool]] = {}
     for lang, paths in language_files.items():
         corpus = _read_language_corpus(paths)
-        coverage[lang] = {
-            cat: _category_mentioned(cat, corpus) or _category_covered_by_paths(cat, paths) for cat in categories
-        }
+        coverage[lang] = {cat: _category_mentioned(cat, corpus) for cat in categories}
     return coverage
 
 
