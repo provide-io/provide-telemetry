@@ -6,10 +6,11 @@
 //!
 //! Mirrors the Python `processors.py` pipeline:
 //! 1. DARS extraction — extract domain/action/resource/status from Event
-//! 2. Harden input — truncate values, strip control chars, limit attr count
-//! 3. Error fingerprint — compute stable hash for error-level events
-//! 4. PII sanitization — redact/hash sensitive fields via `pii.rs`
-//! 5. Schema enforcement — validate event name format when strict mode is on
+//! 2. Logger name injection — insert target as logger_name field if absent
+//! 3. Harden input — truncate values, strip control chars, limit attr count
+//! 4. Error fingerprint — compute stable hash for error-level events
+//! 5. PII sanitization — redact/hash sensitive fields via `pii.rs`
+//! 6. Schema enforcement — validate event name format when strict mode is on
 //!
 //! Called from `log_event()` after the event is built and before emission.
 
@@ -38,16 +39,19 @@ pub(super) fn process_event(event: &mut LogEvent) {
     // 1. DARS extraction (only when Event metadata is attached)
     extract_dars_fields(event);
 
-    // 2. Harden input
+    // 2. Logger name injection — inserts target as logger_name if not already set
+    inject_logger_name(event);
+
+    // 3. Harden input
     harden_input(event, max_attr_value_length, max_attr_count);
 
-    // 3. Error fingerprint
+    // 4. Error fingerprint
     add_error_fingerprint(event);
 
-    // 4. PII sanitization
+    // 5. PII sanitization
     sanitize_context(event, pii_max_depth);
 
-    // 5. Schema enforcement (validate event name when strict mode is on)
+    // 6. Schema enforcement (validate event name when strict mode is on)
     // Annotates with _schema_error instead of dropping — cross-language
     // standard: all four languages (Python/TypeScript/Go/Rust) annotate and emit.
     enforce_schema(event);
@@ -73,6 +77,18 @@ fn extract_dars_fields(event: &mut LogEvent) {
         event
             .context
             .insert("status".to_string(), Value::String(meta.status.clone()));
+    }
+}
+
+/// Inject the logger's target name as `logger_name` into the context.
+/// Only sets the field when it is absent — caller-provided values are
+/// preserved. Matches Python's `inject_logger_name` processor.
+fn inject_logger_name(event: &mut LogEvent) {
+    if !event.target.is_empty() {
+        event
+            .context
+            .entry("logger_name".to_string())
+            .or_insert_with(|| Value::String(event.target.clone()));
     }
 }
 
@@ -121,6 +137,7 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
             "trace_id",
             "span_id",
             "session_id",
+            "logger_name",
             "domain",
             "action",
             "resource",
@@ -408,5 +425,64 @@ mod tests {
             "valid name should not be flagged"
         );
         crate::schema::set_strict_schema(false);
+    }
+
+    #[test]
+    fn inject_logger_name_sets_target_as_logger_name() {
+        let mut event = make_event("INFO", "auth.login.ok");
+        event.target = "myapp.auth".to_string();
+        inject_logger_name(&mut event);
+        assert_eq!(
+            event.context.get("logger_name").and_then(|v| v.as_str()),
+            Some("myapp.auth"),
+            "target should be injected as logger_name"
+        );
+    }
+
+    #[test]
+    fn inject_logger_name_does_not_overwrite_caller_provided_value() {
+        let mut event = make_event("INFO", "auth.login.ok");
+        event.target = "myapp.auth".to_string();
+        event.context.insert(
+            "logger_name".to_string(),
+            Value::String("explicit".to_string()),
+        );
+        inject_logger_name(&mut event);
+        assert_eq!(
+            event.context.get("logger_name").and_then(|v| v.as_str()),
+            Some("explicit"),
+            "caller-set logger_name must not be overwritten"
+        );
+    }
+
+    #[test]
+    fn inject_logger_name_skips_empty_target() {
+        let mut event = make_event("INFO", "auth.login.ok");
+        event.target = String::new();
+        inject_logger_name(&mut event);
+        assert!(
+            !event.context.contains_key("logger_name"),
+            "empty target must not inject logger_name"
+        );
+    }
+
+    #[test]
+    fn harden_input_preserves_logger_name_as_priority_key() {
+        let mut event = make_event("INFO", "test");
+        for i in 0..10 {
+            event
+                .context
+                .insert(format!("extra_{i:02}"), Value::String("x".to_string()));
+        }
+        event.context.insert(
+            "logger_name".to_string(),
+            Value::String("my.logger".to_string()),
+        );
+        // Cap at 3 — logger_name must survive as a priority key
+        harden_input(&mut event, 1024, 3);
+        assert!(
+            event.context.contains_key("logger_name"),
+            "logger_name must survive attribute capping as a priority key"
+        );
     }
 }
