@@ -86,6 +86,12 @@ def _has_tracing_provider() -> bool:
         return _provider_ref is not None or _otel_global_set
 
 
+def _has_live_tracing_provider() -> bool:
+    """Return True if a live tracing provider is currently installed."""
+    with _provider_lock:
+        return _provider_ref is not None
+
+
 def setup_tracing(config: TelemetryConfig) -> None:
     global _provider_configured, _provider_ref, _otel_global_set
     global _baseline_tracer_provider, _baseline_captured

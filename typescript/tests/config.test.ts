@@ -256,6 +256,17 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
+  it('PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true enables strictEventName without forcing strictSchema', () => {
+    withEnv(
+      { PROVIDE_TELEMETRY_STRICT_SCHEMA: 'false', PROVIDE_TELEMETRY_STRICT_EVENT_NAME: 'true' },
+      () => {
+        const cfg = configFromEnv();
+        expect(cfg.strictSchema).toBe(false);
+        expect(cfg.strictEventName).toBe(true);
+      },
+    );
+  });
+
   it('requiredLogKeys defaults to empty array', () => {
     expect(configFromEnv().requiredLogKeys).toEqual([]);
   });

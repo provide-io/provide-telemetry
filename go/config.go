@@ -126,6 +126,7 @@ type RuntimeOverrides struct {
 	Exporter     *ExporterPolicyConfig
 	Security     *SecurityConfig
 	SLO          *SLOConfig
+	EventSchema  *SchemaConfig
 	PIIMaxDepth  *int
 	StrictSchema *bool
 }

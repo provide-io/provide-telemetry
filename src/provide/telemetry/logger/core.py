@@ -367,6 +367,12 @@ def _has_otel_log_provider() -> bool:
         return _otel_log_provider is not None or _otel_log_global_set
 
 
+def _has_real_otel_log_provider() -> bool:
+    """Return True if a live OTel log provider is currently installed."""
+    with _lock:
+        return _otel_log_provider is not None
+
+
 def get_logger(name: str | None = None) -> _TraceWrapper:
     if not _configured:
         from provide.telemetry.config import TelemetryConfig

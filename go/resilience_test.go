@@ -174,7 +174,7 @@ func TestRunWithResilience_ContextTimeoutPropagated(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	time.Sleep(5 * time.Millisecond)
+	<-ctx.Done()
 
 	err := RunWithResilience(ctx, signalLogs, func(inner context.Context) error {
 		return inner.Err()

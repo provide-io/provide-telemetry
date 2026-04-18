@@ -238,6 +238,13 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
         }
+    if case_id == "strict_event_name_only":
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
+            "PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "true",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     if case_id == "required_keys_rejection":
         return {
             "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
@@ -256,6 +263,16 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
         return {
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "per_signal_logs_endpoint":
+        return {
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4318/v1/logs",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "provider_identity_reconfigure":
+        return {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
         }
     if case_id == "shutdown_re_setup":
         return {

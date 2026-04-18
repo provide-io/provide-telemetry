@@ -119,6 +119,11 @@ describe('updateRuntimeConfig', () => {
     expect(getRuntimeConfig().samplingMetricsRate).toBe(0.7);
   });
 
+  it('applies strictEventName as a hot runtime field', () => {
+    updateRuntimeConfig({ strictEventName: true });
+    expect(getRuntimeConfig().strictEventName).toBe(true);
+  });
+
   it('ignores undefined values in overrides', () => {
     updateRuntimeConfig({ samplingLogsRate: 0.5 });
     const before = getRuntimeConfig().samplingTracesRate;
@@ -403,6 +408,26 @@ describe('reconfigureTelemetry', () => {
       /provider-changing reconfiguration is unsupported/,
     );
     expect(getRuntimeConfig().otlpEndpoint).toBe('http://old:4318');
+  });
+
+  it('rejects service identity changes after providers are registered', () => {
+    reconfigureTelemetry({
+      serviceName: 'old-service',
+      environment: 'dev',
+      version: '1.0.0',
+    });
+    _markProvidersRegistered();
+
+    expect(() =>
+      reconfigureTelemetry({
+        serviceName: 'new-service',
+        environment: 'prod',
+        version: '2.0.0',
+      }),
+    ).toThrow(/provider-changing reconfiguration is unsupported/);
+    expect(getRuntimeConfig().serviceName).toBe('old-service');
+    expect(getRuntimeConfig().environment).toBe('dev');
+    expect(getRuntimeConfig().version).toBe('1.0.0');
   });
 });
 

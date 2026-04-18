@@ -65,14 +65,14 @@ afterEach(() => {
 });
 
 describe('setupOtelLogProvider', () => {
-  it('throws when called without otlpEndpoint configured', async () => {
+  it('throws when called without any OTLP log endpoint configured', async () => {
     await expect(
       setupOtelLogProvider({
         serviceName: 'test',
         otelEnabled: true,
         // otlpEndpoint intentionally omitted
       } as never),
-    ).rejects.toThrow('setupOtelLogProvider called without otlpEndpoint configured');
+    ).rejects.toThrow('setupOtelLogProvider called without an OTLP log endpoint configured');
   });
 
   it('throws when SDK peer dep is missing (caller handles graceful degradation)', async () => {

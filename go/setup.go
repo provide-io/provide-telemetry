@@ -95,7 +95,7 @@ func _applyRuntimePolicies(cfg *TelemetryConfig) {
 	})
 
 	_configureLogger(cfg)
-	SetStrictSchema(cfg.StrictSchema)
+	SetStrictSchema(cfg.StrictSchema || cfg.EventSchema.StrictEventName)
 }
 
 // SetupTelemetry initialises all telemetry subsystems from environment variables.

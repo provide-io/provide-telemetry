@@ -203,9 +203,9 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
         current = get_runtime_config()
         if _provider_config_changed(current, target):
             if (
-                logger_core._has_otel_log_provider()
-                or tracing_provider._has_tracing_provider()
-                or metrics_provider._has_meter_provider()
+                logger_core._has_real_otel_log_provider()
+                or tracing_provider._has_live_tracing_provider()
+                or metrics_provider._has_live_meter_provider()
             ):
                 raise RuntimeError(
                     "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed. "
@@ -213,7 +213,7 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
                 )
             shutdown_telemetry()
             return setup_telemetry(target)
-        if _logging_provider_config_changed(current, target) and logger_core._has_otel_log_provider():
+        if _logging_provider_config_changed(current, target) and logger_core._has_real_otel_log_provider():
             raise RuntimeError(
                 "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
                 "are installed (endpoint/headers/timeout change). Restart the process and call "
@@ -257,9 +257,9 @@ def get_runtime_status() -> dict[str, object]:
     with setup_mod._lock:
         setup_done = setup_mod._setup_done
     providers = {
-        "logs": bool(logger_core._has_otel_log_provider()),
-        "traces": bool(tracing_provider._has_tracing_provider()),
-        "metrics": bool(metrics_provider._has_meter_provider()),
+        "logs": bool(logger_core._has_real_otel_log_provider()),
+        "traces": bool(tracing_provider._has_live_tracing_provider()),
+        "metrics": bool(metrics_provider._has_live_meter_provider()),
     }
     return {
         "setup_done": setup_done,

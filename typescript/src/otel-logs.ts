@@ -46,6 +46,11 @@ let _loggerProvider: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _otelLogger: any = null;
 
+function normalizeEndpoint(endpoint: string | undefined): string | undefined {
+  const trimmed = endpoint?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 /**
  * Construct an OTLPLogExporter + LoggerProvider and register it globally.
  * Returns a ShutdownableProvider so the caller can flush/shutdown it.
@@ -53,9 +58,9 @@ let _otelLogger: any = null;
  */
 export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<ShutdownableProvider> {
   const headers = cfg.otlpHeaders ?? {};
-  const endpoint = cfg.otlpEndpoint;
+  const endpoint = normalizeEndpoint(cfg.otlpLogsEndpoint) ?? normalizeEndpoint(cfg.otlpEndpoint);
   if (!endpoint) {
-    throw new Error('setupOtelLogProvider called without otlpEndpoint configured');
+    throw new Error('setupOtelLogProvider called without an OTLP log endpoint configured');
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,7 +78,7 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const { logs } = apiLogs;
   const { resourceFromAttributes } = res;
 
-  const logsEndpoint = cfg.otlpLogsEndpoint ?? `${endpoint}/v1/logs`;
+  const logsEndpoint = normalizeEndpoint(cfg.otlpLogsEndpoint) ?? `${endpoint}/v1/logs`;
   validateOtlpEndpoint(logsEndpoint);
   const logsHeaders = cfg.otlpLogsHeaders ?? headers;
   const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: logsHeaders });

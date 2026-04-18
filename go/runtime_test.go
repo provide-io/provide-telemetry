@@ -191,6 +191,39 @@ func TestReloadRuntimeFromEnvUpdatesConfig(t *testing.T) {
 	}
 }
 
+func TestReloadRuntimeFromEnvStrictEventNameWithoutStrictSchema(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Setenv("PROVIDE_TELEMETRY_STRICT_SCHEMA", "false")
+	t.Setenv("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", "true")
+
+	if err := ReloadRuntimeFromEnv(); err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+	cfg := GetRuntimeConfig()
+	if cfg == nil {
+		t.Fatal("expected runtime config after reload")
+	}
+	if cfg.StrictSchema {
+		t.Fatal("strict schema should remain false when only strict event name is enabled")
+	}
+	if !cfg.EventSchema.StrictEventName {
+		t.Fatal("strict event name should be enabled in runtime config after reload")
+	}
+	if !GetStrictSchema() {
+		t.Fatal("effective strict schema should be enabled when strict event name is true")
+	}
+
+	if _, err := EventName("User", "Login", "Ok"); err == nil {
+		t.Fatal("expected strict event-name validation to reject uppercase segments after reload")
+	}
+}
+
 func TestReloadRuntimeFromEnvReappliesRuntimePolicies(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
@@ -300,6 +333,43 @@ func TestReconfigureTelemetryRejectsProviderChangeWithProviders(t *testing.T) {
 
 	// Clean up provider pointer.
 	_otelTracerProvider = nil
+}
+
+func TestReconfigureTelemetry_ReturnsConfigFromEnvError(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "not-a-float")
+
+	if _, err := ReconfigureTelemetry(context.Background()); err == nil {
+		t.Fatal("expected config parse error during reconfigure")
+	}
+}
+
+func TestReconfigureTelemetry_AppliesOptionIntentWithoutChangingRuntimeState(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	cfg, err := ReconfigureTelemetry(
+		context.Background(),
+		WithTracerProvider(struct{}{}),
+		WithMeterProvider(struct{}{}),
+		WithLoggerProvider(struct{}{}),
+	)
+	if err != nil {
+		t.Fatalf("reconfigure with options failed: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config after reconfigure")
+	}
 }
 
 func TestRuntimeOverridesAppliesHotFields(t *testing.T) {
