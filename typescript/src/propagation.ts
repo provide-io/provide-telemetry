@@ -6,7 +6,7 @@
  * Mirrors Python provide.telemetry.propagation.
  */
 
-import { bindContext, unbindContext } from './context';
+import { bindContext, getContext, unbindContext } from './context';
 import { getTraceContext, setTraceContext } from './tracing';
 
 export interface PropagationContext {
@@ -24,13 +24,23 @@ export const MAX_TRACESTATE_PAIRS = 32;
 /** Maximum length (in characters) for the baggage header value. */
 export const MAX_BAGGAGE_LENGTH = 8192;
 
+/** Sentinel: a baggage.* key was unbound (not set) prior to an inject frame. */
+const BAGGAGE_UNSET = Symbol('propagation.baggage.unset');
+type PriorBaggageValue = unknown | typeof BAGGAGE_UNSET;
+
 // ── AsyncLocalStorage type (Node.js / Cloudflare Workers) ─────────────────────
 type PropagationStore = {
   active: PropagationContext;
   stack: PropagationContext[];
   otelCtxStack: unknown[];
-  /** Parallel stack of baggage.* key lists injected by each bind frame. */
-  baggageKeyStack: string[][];
+  /**
+   * Parallel stack of prior baggage.* values for each bind frame. Each entry
+   * maps the injected key to its value in the logger context *before* the
+   * frame overwrote it, or BAGGAGE_UNSET if the key was unset. On clear, each
+   * key is either rebound to the prior value or unbound — this preserves the
+   * outer frame's baggage when an inner frame uses the same key.
+   */
+  baggagePriorStack: Array<Record<string, PriorBaggageValue>>;
   /** Parallel stack of previous {traceId, spanId} before each bind. */
   traceCtxStack: Array<{ traceId: string; spanId: string }>;
 };
@@ -64,7 +74,7 @@ let _fallbackStore: PropagationStore = {
   active: {},
   stack: [],
   otelCtxStack: [],
-  baggageKeyStack: [],
+  baggagePriorStack: [],
   traceCtxStack: [],
 };
 
@@ -109,7 +119,7 @@ function _ensureStore(): PropagationStore {
       active: { ..._fallbackStore.active },
       stack: _fallbackStore.stack.map((entry) => ({ ...entry })),
       otelCtxStack: [..._fallbackStore.otelCtxStack],
-      baggageKeyStack: _fallbackStore.baggageKeyStack.map((keys) => [...keys]),
+      baggagePriorStack: _fallbackStore.baggagePriorStack.map((entry) => ({ ...entry })),
       traceCtxStack: _fallbackStore.traceCtxStack.map((ctx) => ({ ...ctx })),
     };
     _als.enterWith(next);
@@ -242,16 +252,22 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   }
 
   // Auto-inject parsed baggage entries as baggage.* log context fields.
+  // Capture prior values so that nested frames overwriting the same baggage
+  // key restore the outer value on clear (instead of leaking an unbind).
   if (ctx.baggage) {
     const parsed = parseBaggage(ctx.baggage);
-    const injectedKeys: string[] = [];
+    const prior: Record<string, PriorBaggageValue> = {};
+    const currentCtx = getContext();
     for (const [k, v] of Object.entries(parsed)) {
-      bindContext({ [`baggage.${k}`]: v });
-      injectedKeys.push(`baggage.${k}`);
+      const ctxKey = `baggage.${k}`;
+      prior[ctxKey] = Object.prototype.hasOwnProperty.call(currentCtx, ctxKey)
+        ? currentCtx[ctxKey]
+        : BAGGAGE_UNSET;
+      bindContext({ [ctxKey]: v });
     }
-    store.baggageKeyStack.push(injectedKeys);
+    store.baggagePriorStack.push(prior);
   } else {
-    store.baggageKeyStack.push([]);
+    store.baggagePriorStack.push({});
   }
 }
 
@@ -273,10 +289,15 @@ export function clearPropagationContext(): void {
     store.active = {};
   }
   store.otelCtxStack.pop();
-  // Unbind baggage.* keys injected by the frame being cleared.
-  const baggageKeys = store.baggageKeyStack.pop() ?? [];
-  for (const key of baggageKeys) {
-    unbindContext(key);
+  // Restore prior values for baggage.* keys injected by the cleared frame.
+  // Rebind to the outer value when present, unbind only if the key was unset.
+  const priorEntries = store.baggagePriorStack.pop() ?? {};
+  for (const [key, prevValue] of Object.entries(priorEntries)) {
+    if (prevValue === BAGGAGE_UNSET) {
+      unbindContext(key);
+    } else {
+      bindContext({ [key]: prevValue });
+    }
   }
   // Restore previous trace context so bridged IDs don't leak.
   const prevTrace = store.traceCtxStack.pop();
@@ -308,7 +329,7 @@ export function _resetPropagationForTests(): void {
     active: {},
     stack: [],
     otelCtxStack: [],
-    baggageKeyStack: [],
+    baggagePriorStack: [],
     traceCtxStack: [],
   };
   _fallbackWarned = false;
