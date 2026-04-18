@@ -310,15 +310,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         if not output_ok:
             any_fail = True
-        runtime_ok = run_runtime_probe_check(
-            _REPO_ROOT,
-            selected,
-            _CARGO_BIN,
-            _CARGO_ENV,
-            _PROBE_ENV,
-            _RUNTIME_PROBE_FIXTURES,
-            timeout=args.timeout,
-        )
+        try:
+            runtime_ok = run_runtime_probe_check(
+                _REPO_ROOT,
+                selected,
+                _CARGO_BIN,
+                _CARGO_ENV,
+                _PROBE_ENV,
+                _RUNTIME_PROBE_FIXTURES,
+                timeout=args.timeout,
+            )
+        except RuntimeError as exc:
+            print(f"[runtime-probe] ERROR: {exc}", file=sys.stderr)
+            runtime_ok = False
         if not runtime_ok:
             any_fail = True
 
