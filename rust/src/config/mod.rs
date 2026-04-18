@@ -108,6 +108,10 @@ pub struct MetricsConfig {
     /// How often (in milliseconds) the `PeriodicReader` pushes metrics to the
     /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
     /// Default: 60 000 ms (60 seconds).
+    ///
+    /// `#[serde(default)]` ensures previously-serialized `MetricsConfig` JSON/TOML
+    /// that pre-dates this field deserializes without error (uses `60_000`).
+    #[serde(default = "MetricsConfig::default_interval_ms")]
     pub metric_export_interval_ms: u64,
 }
 
@@ -118,8 +122,18 @@ impl Default for MetricsConfig {
             otlp_headers: HashMap::new(),
             otlp_endpoint: None,
             otlp_protocol: String::new(),
-            metric_export_interval_ms: 60_000,
+            metric_export_interval_ms: Self::default_interval_ms(),
         }
+    }
+
+    // Used by `#[serde(default)]` on `metric_export_interval_ms` so that
+    // previously-serialized MetricsConfig values missing the field still
+    // deserialize successfully.
+}
+
+impl MetricsConfig {
+    fn default_interval_ms() -> u64 {
+        60_000
     }
 }
 
