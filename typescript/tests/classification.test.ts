@@ -4,14 +4,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   _classifyField,
-  classifyKey,
   getClassificationPolicy,
-  registerClassificationRule,
   registerClassificationRules,
   resetClassificationForTests,
   setClassificationPolicy,
 } from '../src/classification';
 import type { ClassificationPolicy, ClassificationRule, DataClass } from '../src/classification';
+import {
+  classifyKey,
+  registerClassificationRule,
+} from '../src/index';
 import {
   resetPiiRulesForTests,
   sanitizePayload,
@@ -77,7 +79,9 @@ describe('hook state', () => {
 
   it('registerClassificationRule delegates to plural registration', () => {
     registerClassificationRule({ pattern: 'email', classification: 'PII' });
-    expect(_classifyField('email', 'alice@example.com')).toBe('PII');
+    const obj: Record<string, unknown> = { email: 'alice@example.com' };
+    sanitizePayload(obj);
+    expect(obj['__email__class']).toBe('PII');
   });
 
   it('registerClassificationRules installs the hook', () => {
