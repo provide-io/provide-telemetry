@@ -66,6 +66,30 @@ func RegisterClassificationRules(rules []ClassificationRule) {
 	_classificationRules = append(_classificationRules, rules...)
 	_classificationMu.Unlock()
 	SetClassificationHook(_classifyField)
+	SetPolicyHook(_lookupPolicyAction)
+}
+
+// _lookupPolicyAction returns the action for a classification label from the current policy.
+func _lookupPolicyAction(label string) string {
+	_classificationMu.RLock()
+	defer _classificationMu.RUnlock()
+	p := _classificationPolicy
+	switch label {
+	case string(DataClassPublic):
+		return p.Public
+	case string(DataClassInternal):
+		return p.Internal
+	case string(DataClassPII):
+		return p.PII
+	case string(DataClassPHI):
+		return p.PHI
+	case string(DataClassPCI):
+		return p.PCI
+	case string(DataClassSecret):
+		return p.Secret
+	default:
+		return "pass"
+	}
 }
 
 // SetClassificationPolicy updates the active classification policy.
@@ -102,4 +126,5 @@ func ResetClassificationForTests() {
 	_classificationPolicy = defaultClassificationPolicy()
 	_classificationMu.Unlock()
 	SetClassificationHook(nil)
+	SetPolicyHook(nil)
 }

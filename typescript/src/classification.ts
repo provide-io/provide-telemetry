@@ -8,7 +8,7 @@
  * If this file is deleted, the PII engine runs unchanged (hook stays null).
  */
 
-import { setClassificationHook } from './pii';
+import { setClassificationHook, setPolicyHook } from './pii';
 
 /** Data classification labels. */
 export type DataClass = 'PUBLIC' | 'INTERNAL' | 'PII' | 'PHI' | 'PCI' | 'SECRET';
@@ -68,6 +68,13 @@ export function registerClassificationRules(rules: ClassificationRule[]): void {
     _rules.push({ compiled: _compileGlob(rule.pattern), classification: rule.classification });
   }
   setClassificationHook(_classifyField);
+  setPolicyHook(_lookupPolicyAction);
+}
+
+/** Look up the policy action for a given classification label. */
+function _lookupPolicyAction(label: string): string {
+  const policy = _policy as unknown as Record<string, string>;
+  return policy[label] ?? 'pass';
 }
 
 /** Replace the current classification policy. */
@@ -95,4 +102,5 @@ export function resetClassificationForTests(): void {
   _rules.length = 0;
   _policy = { ..._DEFAULT_POLICY };
   setClassificationHook(null);
+  setPolicyHook(null);
 }

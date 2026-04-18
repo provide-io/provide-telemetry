@@ -144,6 +144,8 @@ export let _classificationHook: ((key: string, value: unknown) => string | null)
 export let _receiptHook:
   | ((fieldPath: string, action: string, originalValue: unknown) => void)
   | null = null;
+/** Policy hook — returns the action ('drop'|'redact'|'hash'|'truncate'|'pass') for a label. */
+export let _policyHook: ((label: string) => string) | null = null;
 
 export function setClassificationHook(
   fn: ((key: string, value: unknown) => string | null) | null,
@@ -155,6 +157,10 @@ export function setReceiptHook(
   fn: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
 ): void {
   _receiptHook = fn;
+}
+
+export function setPolicyHook(fn: ((label: string) => string) | null): void {
+  _policyHook = fn;
 }
 
 // Overridable hash function — allows tests to exercise the fallback path.
@@ -328,6 +334,7 @@ export function resetPiiRulesForTests(): void {
   _hashFnOverride = null;
   _classificationHook = null;
   _receiptHook = null;
+  _policyHook = null;
   _customSecretPatterns.clear();
 }
 
@@ -351,6 +358,7 @@ export function sanitizePayload(
   // Capture hooks once at call time to avoid repeated reads.
   const receiptHook = _receiptHook;
   const classHook = _classificationHook;
+  const policyHook = _policyHook;
   let current: unknown = obj;
 
   // Apply registered rules first.
@@ -394,12 +402,34 @@ export function sanitizePayload(
     }
     // Stryker enable all
 
-    // Apply classification tags for top-level keys if hook is registered.
+    // Apply classification tags and policy actions for top-level keys if hook is registered.
     if (classHook !== null) {
       for (const key of Object.keys(obj)) {
         const label = classHook(key, obj[key]);
         if (label !== null) {
-          obj[`__${key}__class`] = label;
+          const action = policyHook !== null ? policyHook(label) : 'pass';
+          if (action === 'drop') {
+            delete obj[key];
+            // No class tag for dropped keys — key no longer exists in payload.
+          } else {
+            obj[`__${key}__class`] = label;
+            if (
+              (action === 'redact' || action === 'hash' || action === 'truncate') &&
+              obj[key] !== REDACTED
+            ) {
+              const limit = 8;
+              const val = obj[key];
+              if (action === 'redact') {
+                obj[key] = REDACTED;
+              } else if (action === 'hash') {
+                obj[key] = _hashValue(String(val));
+              } else {
+                // truncate
+                const text = String(val);
+                obj[key] = text.length > limit ? text.slice(0, limit) + '...' : text;
+              }
+            }
+          }
         }
       }
     }

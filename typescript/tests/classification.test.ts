@@ -10,7 +10,12 @@ import {
   setClassificationPolicy,
 } from '../src/classification';
 import type { ClassificationPolicy, ClassificationRule, DataClass } from '../src/classification';
-import { resetPiiRulesForTests, sanitizePayload, _classificationHook } from '../src/pii';
+import {
+  resetPiiRulesForTests,
+  sanitizePayload,
+  _classificationHook,
+  _policyHook,
+} from '../src/pii';
 
 afterEach(() => {
   resetClassificationForTests();
@@ -96,11 +101,13 @@ describe('classification tags', () => {
     expect(obj['__name__class']).toBeUndefined();
   });
 
-  it('adds PHI tag', () => {
+  it('drops PHI key (default policy: PHI=drop)', () => {
     registerClassificationRules([{ pattern: 'dob', classification: 'PHI' }]);
     const obj: Record<string, unknown> = { dob: '1990-01-01' };
     sanitizePayload(obj);
-    expect(obj['__dob__class']).toBe('PHI');
+    // PHI defaults to "drop" — key is removed and no class tag appears.
+    expect(obj['dob']).toBeUndefined();
+    expect(obj['__dob__class']).toBeUndefined();
   });
 
   it('adds PCI tag', () => {
@@ -254,5 +261,211 @@ describe('all DataClass labels', () => {
   it('SECRET label', () => {
     registerClassificationRules([{ pattern: 'api_token', classification: 'SECRET' }]);
     expect(_classifyField('api_token', 'xyz')).toBe('SECRET');
+  });
+});
+
+// ── Policy hook installation ──────────────────────────────────────────────────
+
+describe('policy hook', () => {
+  it('_policyHook is null before rules are registered', () => {
+    expect(_policyHook).toBeNull();
+  });
+
+  it('_policyHook returns pass for an unknown label', () => {
+    registerClassificationRules([]);
+    // The hook is installed — call it with a label not in any DataClass.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const action = _policyHook!('UNKNOWN_LABEL');
+    expect(action).toBe('pass');
+  });
+
+  it('_policyHook is installed after registerClassificationRules', () => {
+    registerClassificationRules([{ pattern: 'email', classification: 'PII' }]);
+    expect(_policyHook).not.toBeNull();
+  });
+
+  it('_policyHook is cleared by resetClassificationForTests', () => {
+    registerClassificationRules([{ pattern: 'email', classification: 'PII' }]);
+    resetClassificationForTests();
+    expect(_policyHook).toBeNull();
+  });
+});
+
+// ── Policy action dispatch ────────────────────────────────────────────────────
+
+describe('policy action: drop', () => {
+  it('drop action removes the key entirely', () => {
+    registerClassificationRules([{ pattern: 'dob', classification: 'PHI' }]);
+    // PHI default = "drop"
+    const obj: Record<string, unknown> = { dob: '1990-01-01', name: 'Alice' };
+    sanitizePayload(obj);
+    expect(obj['dob']).toBeUndefined();
+    expect(obj['name']).toBe('Alice');
+  });
+
+  it('drop action: no __key__class tag for dropped key', () => {
+    registerClassificationRules([{ pattern: 'dob', classification: 'PHI' }]);
+    const obj: Record<string, unknown> = { dob: '1990-01-01' };
+    sanitizePayload(obj);
+    expect(obj['__dob__class']).toBeUndefined();
+  });
+
+  it('drop action via custom policy', () => {
+    registerClassificationRules([{ pattern: 'name', classification: 'PII' }]);
+    setClassificationPolicy({
+      PUBLIC: 'pass',
+      INTERNAL: 'pass',
+      PII: 'drop',
+      PHI: 'drop',
+      PCI: 'hash',
+      SECRET: 'drop', // pragma: allowlist secret
+    });
+    const obj: Record<string, unknown> = { name: 'Alice' };
+    sanitizePayload(obj);
+    expect(obj['name']).toBeUndefined();
+    expect(obj['__name__class']).toBeUndefined();
+  });
+});
+
+describe('policy action: redact', () => {
+  it('redact action replaces value with *** and adds class tag', () => {
+    registerClassificationRules([{ pattern: 'email', classification: 'PII' }]);
+    // PII default = "redact"
+    const obj: Record<string, unknown> = { email: 'alice@example.com' };
+    sanitizePayload(obj);
+    expect(obj['email']).toBe('***');
+    expect(obj['__email__class']).toBe('PII');
+  });
+
+  it('redact action via custom policy', () => {
+    registerClassificationRules([{ pattern: 'dob', classification: 'PHI' }]);
+    setClassificationPolicy({
+      PUBLIC: 'pass',
+      INTERNAL: 'pass',
+      PII: 'redact',
+      PHI: 'redact',
+      PCI: 'hash',
+      SECRET: 'drop', // pragma: allowlist secret
+    });
+    const obj: Record<string, unknown> = { dob: '1990-01-01' };
+    sanitizePayload(obj);
+    expect(obj['dob']).toBe('***');
+    expect(obj['__dob__class']).toBe('PHI');
+  });
+
+  it('already-redacted value is not double-masked', () => {
+    registerClassificationRules([{ pattern: 'email', classification: 'PII' }]);
+    const obj: Record<string, unknown> = { email: '***' };
+    sanitizePayload(obj);
+    // Value stays *** (no double masking), class tag still added.
+    expect(obj['email']).toBe('***');
+    expect(obj['__email__class']).toBe('PII');
+  });
+});
+
+describe('policy action: hash', () => {
+  it('hash action replaces value with 12-char hex hash and adds class tag', () => {
+    registerClassificationRules([{ pattern: 'card_num', classification: 'PCI' }]);
+    // PCI default = "hash"
+    const obj: Record<string, unknown> = { card_num: '4111111111111111' };
+    sanitizePayload(obj);
+    // Value should be a 12-char lowercase hex string.
+    expect(typeof obj['card_num']).toBe('string');
+    expect((obj['card_num'] as string).length).toBe(12);
+    expect(/^[0-9a-f]{12}$/.test(obj['card_num'] as string)).toBe(true);
+    expect(obj['__card_num__class']).toBe('PCI');
+  });
+
+  it('hash of the same value is deterministic', () => {
+    registerClassificationRules([{ pattern: 'card_num', classification: 'PCI' }]);
+    const obj1: Record<string, unknown> = { card_num: '4111111111111111' };
+    const obj2: Record<string, unknown> = { card_num: '4111111111111111' };
+    sanitizePayload(obj1);
+    sanitizePayload(obj2);
+    expect(obj1['card_num']).toBe(obj2['card_num']);
+  });
+});
+
+describe('policy action: truncate', () => {
+  it('truncate action shortens a long value and adds class tag', () => {
+    registerClassificationRules([{ pattern: 'notes', classification: 'INTERNAL' }]);
+    setClassificationPolicy({
+      PUBLIC: 'pass',
+      INTERNAL: 'truncate',
+      PII: 'redact',
+      PHI: 'drop',
+      PCI: 'hash',
+      SECRET: 'drop', // pragma: allowlist secret
+    });
+    const obj: Record<string, unknown> = { notes: 'abcdefghijklmnop' };
+    sanitizePayload(obj);
+    // Truncated to 8 chars + '...'
+    expect(obj['notes']).toBe('abcdefgh...');
+    expect(obj['__notes__class']).toBe('INTERNAL');
+  });
+
+  it('truncate action leaves short values unchanged', () => {
+    registerClassificationRules([{ pattern: 'notes', classification: 'INTERNAL' }]);
+    setClassificationPolicy({
+      PUBLIC: 'pass',
+      INTERNAL: 'truncate',
+      PII: 'redact',
+      PHI: 'drop',
+      PCI: 'hash',
+      SECRET: 'drop', // pragma: allowlist secret
+    });
+    const obj: Record<string, unknown> = { notes: 'short' };
+    sanitizePayload(obj);
+    expect(obj['notes']).toBe('short');
+    expect(obj['__notes__class']).toBe('INTERNAL');
+  });
+});
+
+describe('policy action: pass', () => {
+  it('pass action leaves value unchanged but adds class tag', () => {
+    registerClassificationRules([{ pattern: 'status', classification: 'PUBLIC' }]);
+    // PUBLIC default = "pass"
+    const obj: Record<string, unknown> = { status: 'ok' };
+    sanitizePayload(obj);
+    expect(obj['status']).toBe('ok');
+    expect(obj['__status__class']).toBe('PUBLIC');
+  });
+
+  it('unknown action falls back to pass: value unchanged, tag added', () => {
+    registerClassificationRules([{ pattern: 'foo', classification: 'PUBLIC' }]);
+    setClassificationPolicy({
+      PUBLIC: 'unknown_action',
+      INTERNAL: 'pass',
+      PII: 'redact',
+      PHI: 'drop',
+      PCI: 'hash',
+      SECRET: 'drop', // pragma: allowlist secret
+    });
+    const obj: Record<string, unknown> = { foo: 'bar' };
+    sanitizePayload(obj);
+    expect(obj['foo']).toBe('bar');
+    expect(obj['__foo__class']).toBe('PUBLIC');
+  });
+});
+
+// ── Strippable governance: no classification module ───────────────────────────
+
+describe('strippable governance', () => {
+  it('sanitizePayload works correctly when no classification rules are registered', () => {
+    // No registerClassificationRules call — hooks stay null.
+    const obj: Record<string, unknown> = { email: 'alice@example.com', name: 'Alice' };
+    sanitizePayload(obj);
+    // email is in DEFAULT_SANITIZE_FIELDS? No — email is intentionally excluded.
+    // No class tags should appear.
+    expect(Object.keys(obj).some((k) => k.endsWith('__class'))).toBe(false);
+  });
+
+  it('sanitizePayload default redaction still works without classification module', () => {
+    const obj: Record<string, unknown> = { password: 'hunter2', name: 'Alice' }; // pragma: allowlist secret
+    sanitizePayload(obj);
+    // password is in DEFAULT_SANITIZE_FIELDS — should be redacted.
+    expect(obj['password']).toBe('***');
+    // No class tags.
+    expect(Object.keys(obj).some((k) => k.endsWith('__class'))).toBe(false);
   });
 });
