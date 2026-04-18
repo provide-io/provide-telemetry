@@ -417,9 +417,11 @@ def run_runtime_probe_check(
     cases = fixtures.get("cases", [])
 
     # Fail early with a clear install hint if OTel-required cases are in the fixture
-    # list but the opentelemetry-sdk[otlp] extra is not installed.
+    # list, the Python runner is selected, and the opentelemetry-sdk[otlp] extra is
+    # not installed.  Guard is skipped when Python is not in `selected` so that
+    # subset runs (e.g. --lang go,rust,typescript) are unaffected.
     otel_case_ids = {str(c["id"]) for c in cases} & _OTEL_REQUIRED_CASE_IDS
-    if otel_case_ids and not _has_otel_stack():
+    if "python" in selected and otel_case_ids and not _has_otel_stack():
         raise RuntimeError(
             f"Runtime probe cases {sorted(otel_case_ids)} require the "
             "opentelemetry-sdk[otlp] extra — run: uv sync --extra otel"

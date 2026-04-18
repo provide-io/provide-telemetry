@@ -434,3 +434,29 @@ def test_run_runtime_probe_check_raises_when_otel_stack_missing(
             probe_env={},
             fixtures_path=fixtures,
         )
+
+
+def test_run_runtime_probe_check_does_not_raise_when_python_not_selected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Guard must not fire when Python is absent from selected, even if OTel stack is missing."""
+    module = _load_support_module()
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
+
+    fixtures = tmp_path / "fixtures.yaml"
+    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+
+    # Should not raise — Python runner is excluded, so OTel stack is irrelevant.
+    # The call may still fail for other reasons (no runners matched), but not with
+    # the OTel RuntimeError.
+    try:
+        module.run_runtime_probe_check(
+            repo=_REPO_ROOT,
+            selected={"go", "rust", "typescript"},
+            cargo_bin="cargo",
+            cargo_env={},
+            probe_env={},
+            fixtures_path=fixtures,
+        )
+    except RuntimeError as exc:
+        assert "opentelemetry-sdk" not in str(exc), f"OTel guard fired unexpectedly for non-Python selected set: {exc}"
