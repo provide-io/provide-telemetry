@@ -270,6 +270,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
         "shutdown_re_setup",
         "baggage_auto_injection",
         "propagation_cleanup",
+        "propagation_cleanup_preserves_bound_context",
     ]
     assert cases == expected
 
