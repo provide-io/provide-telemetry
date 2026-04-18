@@ -214,14 +214,24 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     }
 
     // Exporter timeout fields are baked into OTLP exporters at construction
-    // time. Preserve the installed values *before* passing to
-    // update_runtime_config so that apply_policies() pushes the correct
-    // (old) timeouts into the live ExporterPolicy — preventing a split-brain
-    // where the config snapshot and get_exporter_policy() disagree.
+    // time.  Only freeze them per-signal when the signal's OTel provider is
+    // actually live — otherwise they remain hot-reloadable.  Preserving them
+    // *before* update_runtime_config ensures apply_policies() and the stored
+    // snapshot always agree (no split-brain).
+    #[allow(unused_mut)] // `mut` is only exercised when the `otel` feature is enabled
     let mut hot_exporter = fresh.exporter;
-    hot_exporter.logs_timeout_seconds = current.exporter.logs_timeout_seconds;
-    hot_exporter.traces_timeout_seconds = current.exporter.traces_timeout_seconds;
-    hot_exporter.metrics_timeout_seconds = current.exporter.metrics_timeout_seconds;
+    #[cfg(feature = "otel")]
+    {
+        if crate::otel::logs::logger_provider_installed() {
+            hot_exporter.logs_timeout_seconds = current.exporter.logs_timeout_seconds;
+        }
+        if crate::otel::traces::tracer_provider_installed() {
+            hot_exporter.traces_timeout_seconds = current.exporter.traces_timeout_seconds;
+        }
+        if crate::otel::metrics::meter_provider_installed() {
+            hot_exporter.metrics_timeout_seconds = current.exporter.metrics_timeout_seconds;
+        }
+    }
 
     let overrides = RuntimeOverrides {
         sampling: Some(fresh.sampling),
@@ -417,58 +427,53 @@ mod tests {
     }
 
     #[test]
-    fn runtime_test_reload_preserves_timeouts_in_both_snapshot_and_live_policy() {
+    fn runtime_test_reload_timeout_hot_when_no_provider_snapshot_matches_live_policy() {
+        // Serialize against other tests that touch env or runtime state.
+        let _guard = crate::testing::acquire_test_state_lock();
         use std::env;
-        // Set up with custom timeouts.
+
+        // Set up with a known timeout.
         env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "7.0");
-        env::set_var("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "8.0");
-        env::set_var("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "9.0");
         env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "1.0");
         set_active_config(Some(
             TelemetryConfig::from_env().expect("config must parse"),
         ));
-        // Seed the live exporter policy with the installed timeouts.
         apply_policies(&get_runtime_config().expect("config must exist"));
 
-        // Verify initial live policy has the installed timeout.
-        let initial_policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
-            .expect("policy must exist");
-        assert_eq!(
-            initial_policy.timeout_seconds, 7.0,
-            "initial logs timeout must be 7.0"
-        );
-
-        // Change the timeout env var and trigger a real reload.
+        // No OTel provider is installed in this unit-test environment, so the
+        // timeout field is hot-reloadable.  Change it and reload.
         env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "99.0");
         env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.5");
 
         let reloaded = reload_runtime_from_env().expect("reload must succeed");
 
-        // Config snapshot must show old timeout (provider-baked, not hot-reloadable).
+        // Without a live provider, timeout IS hot-reloadable.
         assert_eq!(
-            reloaded.exporter.logs_timeout_seconds, 7.0,
-            "config snapshot timeout must not be updated by reload"
+            reloaded.exporter.logs_timeout_seconds, 99.0,
+            "timeout must be hot-reloadable when no OTel provider is installed"
         );
 
-        // Live exporter policy must ALSO show old timeout — no split-brain.
+        // The key invariant: config snapshot and live exporter policy agree —
+        // no split-brain regardless of which path (freeze or update) was taken.
         let policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
             .expect("policy must exist");
         assert_eq!(
-            policy.timeout_seconds, 7.0,
-            "live exporter policy timeout must not be updated by reload"
+            policy.timeout_seconds, reloaded.exporter.logs_timeout_seconds,
+            "live exporter policy must match the config snapshot (no split-brain)"
         );
 
-        // Hot-reloadable field (sampling rate) must be updated.
+        // Hot-reloadable non-timeout field also updated correctly.
         assert_eq!(
             reloaded.sampling.logs_rate, 0.5,
-            "sampling rate must be updated by reload"
+            "sampling rate must update"
         );
 
-        // Cleanup env vars.
+        // Cleanup: remove env vars and reset global state so subsequent tests
+        // (e.g. schema tests that check strict_schema defaults) start clean.
         env::remove_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS");
-        env::remove_var("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS");
-        env::remove_var("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS");
         env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
+        set_active_config(None);
+        crate::resilience::_reset_resilience_for_tests();
     }
 
     #[test]
