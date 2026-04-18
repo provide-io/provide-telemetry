@@ -84,4 +84,4 @@ jobs:
         run: python ci/install_parity_deps.py
       # Run all four language parity suites and report results
       - name: Behavioral parity check
-        run: python spec/run_behavioral_parity.py
+        run: uv run python spec/run_behavioral_parity.py --check-output
