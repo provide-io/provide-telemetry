@@ -4,11 +4,15 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Cross-language fixture coverage reporter.
+"""Cross-language fixture coverage gate.
 
 For each top-level category in spec/behavioral_fixtures.yaml, checks whether
 each language's parity test file(s) mention that category (case-insensitive).
-Exits 0 and prints a coverage table — it is a report, not a hard gate.
+Exits 0 only when every gap is listed in spec/fixture_coverage_allowlist.yaml.
+Unallowlisted gaps cause exit code 1 so CI fails instead of silently drifting.
+
+To accept a known gap, add an entry to spec/fixture_coverage_allowlist.yaml
+with a reason and owner field.
 
 Usage:
     python spec/check_fixture_coverage.py
@@ -21,6 +25,7 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_ALLOWLIST_PATH = _REPO_ROOT / "spec" / "fixture_coverage_allowlist.yaml"
 
 # ---------------------------------------------------------------------------
 # Language → parity test file paths (relative to repo root)
@@ -61,6 +66,28 @@ def _load_categories(fixtures_path: Path) -> list[str]:
     import yaml
 
     return list(yaml.safe_load(fixtures_path.read_text(encoding="utf-8")).keys())
+
+
+def _load_allowlist(allowlist_path: Path) -> set[tuple[str, str]]:
+    """Return the set of (lang, category) pairs that are explicitly allowed to be missing."""
+    if not allowlist_path.exists():
+        return set()
+    import yaml
+
+    data = yaml.safe_load(allowlist_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return set()
+    entries = data.get("allowlist", [])
+    if not isinstance(entries, list):
+        return set()
+    result: set[tuple[str, str]] = set()
+    for entry in entries:
+        if isinstance(entry, dict):
+            lang = entry.get("lang")
+            cat = entry.get("category")
+            if isinstance(lang, str) and isinstance(cat, str):
+                result.add((lang, cat))
+    return result
 
 
 def _read_language_corpus(paths: list[Path]) -> str:
@@ -146,6 +173,35 @@ def main() -> int:
 
     coverage = run_report(fixtures_path, _LANGUAGE_FILES)
     _print_report(coverage)
+
+    allowlist = _load_allowlist(_ALLOWLIST_PATH)
+
+    # Collect gaps that are NOT in the allowlist
+    unallowlisted: list[tuple[str, str]] = []
+    for lang, cat_map in coverage.items():
+        for cat, covered in cat_map.items():
+            if not covered and (lang, cat) not in allowlist:
+                unallowlisted.append((lang, cat))
+
+    if unallowlisted:
+        print()
+        print(f"FAILED — {len(unallowlisted)} unallowlisted gap(s):")
+        for lang, cat in sorted(unallowlisted):
+            print(f"  {lang}: '{cat}' — add to spec/fixture_coverage_allowlist.yaml with reason+owner")
+        return 1
+
+    # Warn about allowlist entries that are no longer needed (coverage closed)
+    stale: list[tuple[str, str]] = []
+    for lang, cat in allowlist:
+        lang_cov = coverage.get(lang, {})
+        if lang_cov.get(cat):
+            stale.append((lang, cat))
+    if stale:
+        print()
+        print(f"NOTE — {len(stale)} allowlist entry/entries are now covered and can be removed:")
+        for lang, cat in sorted(stale):
+            print(f"  {lang}: '{cat}' is now covered — remove from fixture_coverage_allowlist.yaml")
+
     return 0
 
 
