@@ -606,30 +606,50 @@ func TestProviderConfigChanged_DetectsOTLPHeaderChanges(t *testing.T) {
 		Logging:     LoggingConfig{OTLPHeaders: map[string]string{}},
 	}
 
-	// Tracing header rotation must be detected.
+	// Tracing header rotation must be detected when tracer is live.
 	withTracingHeader := cloneTelemetryConfig(base)
 	withTracingHeader.Tracing.OTLPHeaders["Authorization"] = "Bearer new"
-	if !_providerConfigChanged(base, withTracingHeader) {
-		t.Error("tracing header change must trigger provider-changed")
+	if !_providerConfigChanged(base, withTracingHeader, true, false, false) {
+		t.Error("tracing header change must trigger provider-changed when tracer is live")
 	}
 
-	// Metrics header rotation must be detected.
+	// Tracing header change must NOT trigger when tracer is NOT live.
+	if _providerConfigChanged(base, withTracingHeader, false, false, false) {
+		t.Error("tracing header change must not trigger provider-changed when no provider is live")
+	}
+
+	// Metrics header rotation must be detected when meter is live.
 	withMetricsHeader := cloneTelemetryConfig(base)
 	withMetricsHeader.Metrics.OTLPHeaders["Authorization"] = "Bearer new"
-	if !_providerConfigChanged(base, withMetricsHeader) {
-		t.Error("metrics header change must trigger provider-changed")
+	if !_providerConfigChanged(base, withMetricsHeader, false, true, false) {
+		t.Error("metrics header change must trigger provider-changed when meter is live")
 	}
 
-	// Logging header rotation must be detected.
+	// Metrics header change must NOT trigger when only tracer is live.
+	if _providerConfigChanged(base, withMetricsHeader, true, false, false) {
+		t.Error("metrics header change must not trigger when metrics provider is not live")
+	}
+
+	// Logging header rotation must be detected when logger is live.
 	withLoggingHeader := cloneTelemetryConfig(base)
 	withLoggingHeader.Logging.OTLPHeaders["Authorization"] = "Bearer new"
-	if !_providerConfigChanged(base, withLoggingHeader) {
-		t.Error("logging header change must trigger provider-changed")
+	if !_providerConfigChanged(base, withLoggingHeader, false, false, true) {
+		t.Error("logging header change must trigger provider-changed when logger is live")
 	}
 
-	// Identical headers must not trigger provider-changed.
+	// Logging header change must NOT trigger when only tracer+meter are live.
+	if _providerConfigChanged(base, withLoggingHeader, true, true, false) {
+		t.Error("logging header change must not trigger when log provider is not live")
+	}
+
+	// Identical config must not trigger provider-changed regardless of which providers are live.
 	same := cloneTelemetryConfig(base)
-	if _providerConfigChanged(base, same) {
+	if _providerConfigChanged(base, same, true, true, true) {
 		t.Error("identical config must not trigger provider-changed")
+	}
+
+	// No providers live — must never trigger.
+	if _providerConfigChanged(base, withTracingHeader, false, false, false) {
+		t.Error("no live providers must never trigger provider-changed")
 	}
 }
