@@ -59,6 +59,7 @@ uuid = { version = "1.18", features = ["v4"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
 rstest = "0.25"
+serde_yaml = "0.9"
 tokio = { version = "1.44", features = ["macros"] }
 
 [[bench]]
@@ -67,6 +68,9 @@ harness = false
 
 [[example]]
 name = "emit_log_probe"
+
+[[example]]
+name = "contract_probe"
 
 [[example]]
 name = "telemetry_14_data_governance"
