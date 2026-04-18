@@ -63,6 +63,28 @@ def test_check_fixture_coverage_outputs_all_yaml_categories() -> None:
         assert cat in result.stdout, f"Category '{cat}' missing from coverage report output"
 
 
+def test_check_fixture_coverage_omits_low_risk_false_positive_gaps() -> None:
+    """Closed TypeScript and Go fixture coverage should not be reported as gaps."""
+    result = subprocess.run(
+        [sys.executable, str(_SCRIPT)],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+    )
+    assert result.returncode == 0
+
+    unexpected_gaps = [
+        "typescript: missing 'backpressure_unlimited'",
+        "typescript: missing 'sampling_signal_validation'",
+        "typescript: missing 'health_snapshot'",
+        "typescript: missing 'log_output_format'",
+        "go: missing 'log_output_format'",
+    ]
+
+    for gap in unexpected_gaps:
+        assert gap not in result.stdout, f"Unexpected false-positive coverage gap reported: {gap}"
+
+
 def test_check_fixture_coverage_python_all_covered() -> None:
     """All YAML categories should show OK for Python in the coverage matrix."""
     module = _load_module()
@@ -97,6 +119,17 @@ def test_category_mentioned_returns_false_when_absent() -> None:
     module = _load_module()
     corpus = "describe('sampling', () => { ... })"
     assert not module._category_mentioned("cardinality_clamping", corpus)
+
+
+def test_probe_only_category_can_be_covered_by_scanned_probe_path(tmp_path: Path) -> None:
+    """Known probe-only categories should count coverage from included probe files."""
+    module = _load_module()
+    probe = tmp_path / "spec" / "probes" / "emit_log_typescript.ts"
+    probe.parent.mkdir(parents=True)
+    probe.write_text("// probe", encoding="utf-8")
+
+    assert module._category_covered_by_paths("log_output_format", [probe])
+    assert not module._category_covered_by_paths("health_snapshot", [probe])
 
 
 def test_run_report_missing_file_treated_as_empty(tmp_path: Path) -> None:

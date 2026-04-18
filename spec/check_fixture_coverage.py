@@ -40,6 +40,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     "typescript": [
         _REPO_ROOT / "typescript" / "tests" / "parity.test.ts",
         _REPO_ROOT / "typescript" / "tests" / "endpoint.test.ts",
+        _REPO_ROOT / "spec" / "probes" / "emit_log_typescript.ts",
     ],
     "go": [
         _REPO_ROOT / "go" / "parity_test.go",
@@ -53,11 +54,16 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
         _REPO_ROOT / "go" / "parity_schema_test.go",
         _REPO_ROOT / "go" / "parity_slo_test.go",
         _REPO_ROOT / "go" / "parity_endpoint_test.go",
+        _REPO_ROOT / "spec" / "probes" / "emit_log_go" / "main.go",
     ],
     "rust": [
         _REPO_ROOT / "rust" / "tests" / "parity_test.rs",
         _REPO_ROOT / "rust" / "src" / "otel" / "endpoint.rs",
     ],
+}
+
+_PROBE_CATEGORY_PATH_HINTS: dict[str, tuple[str, ...]] = {
+    "log_output_format": ("emit_log",),
 }
 
 
@@ -120,13 +126,29 @@ def _category_mentioned(category: str, corpus: str) -> bool:
     return any(re.search(re.escape(variant), corpus, re.IGNORECASE) for variant in _category_variants(category))
 
 
+def _category_covered_by_paths(category: str, paths: list[Path]) -> bool:
+    """Return True when known probe-only categories are represented by scanned file paths."""
+    hints = _PROBE_CATEGORY_PATH_HINTS.get(category)
+    if hints is None:
+        return False
+
+    return any(
+        hint in path.as_posix()
+        for path in paths
+        if path.exists()
+        for hint in hints
+    )
+
+
 def run_report(fixtures_path: Path, language_files: dict[str, list[Path]]) -> dict[str, dict[str, bool]]:
     """Build coverage matrix: {language: {category: covered}}."""
     categories = _load_categories(fixtures_path)
     coverage: dict[str, dict[str, bool]] = {}
     for lang, paths in language_files.items():
         corpus = _read_language_corpus(paths)
-        coverage[lang] = {cat: _category_mentioned(cat, corpus) for cat in categories}
+        coverage[lang] = {
+            cat: _category_mentioned(cat, corpus) or _category_covered_by_paths(cat, paths) for cat in categories
+        }
     return coverage
 
 
