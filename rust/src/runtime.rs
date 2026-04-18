@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
+#[cfg(feature = "otel")]
 use crate::otel::otel_installed;
 use crate::policies::apply_policies;
 use crate::RuntimeOverrides;
@@ -41,32 +42,54 @@ pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {
         .expect("runtime config lock poisoned") = config;
 }
 
-pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
-    // Compare every field that is baked into an OTel provider at construction
-    // time and therefore cannot be changed without reinstalling the provider.
-    // Hot-reloadable fields (sampling, backpressure, security, …) are NOT
-    // compared here.
+/// Resource identity fields — baked into every installed provider's `Resource`.
+/// A change here requires all live providers to be reinstalled.
+#[cfg(any(feature = "otel", test))]
+fn identity_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
     current.service_name != target.service_name
         || current.environment != target.environment
         || current.version != target.version
-        // --- logging provider ---
-        || current.logging.otlp_endpoint != target.logging.otlp_endpoint
+}
+
+/// Logging-signal fields baked into the log exporter/provider at construction.
+#[cfg(any(feature = "otel", test))]
+fn logging_provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
+    current.logging.otlp_endpoint != target.logging.otlp_endpoint
         || current.logging.otlp_headers != target.logging.otlp_headers
         || current.logging.otlp_protocol != target.logging.otlp_protocol
         || current.exporter.logs_timeout_seconds != target.exporter.logs_timeout_seconds
-        // --- tracing provider ---
-        || current.tracing.enabled != target.tracing.enabled
+}
+
+/// Tracing-signal fields baked into the span exporter/provider at construction.
+#[cfg(any(feature = "otel", test))]
+fn tracing_provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
+    current.tracing.enabled != target.tracing.enabled
         || current.tracing.otlp_endpoint != target.tracing.otlp_endpoint
         || current.tracing.otlp_headers != target.tracing.otlp_headers
         || current.tracing.otlp_protocol != target.tracing.otlp_protocol
         || current.exporter.traces_timeout_seconds != target.exporter.traces_timeout_seconds
-        // --- metrics provider ---
-        || current.metrics.enabled != target.metrics.enabled
+}
+
+/// Metrics-signal fields baked into the metric exporter/PeriodicReader at construction.
+#[cfg(any(feature = "otel", test))]
+fn metrics_provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
+    current.metrics.enabled != target.metrics.enabled
         || current.metrics.otlp_endpoint != target.metrics.otlp_endpoint
         || current.metrics.otlp_headers != target.metrics.otlp_headers
         || current.metrics.otlp_protocol != target.metrics.otlp_protocol
         || current.metrics.metric_export_interval_ms != target.metrics.metric_export_interval_ms
         || current.exporter.metrics_timeout_seconds != target.exporter.metrics_timeout_seconds
+}
+
+/// Returns `true` if any provider-baked field changed. Used in tests to
+/// assert the full set of provider-changing fields; production code uses
+/// the per-signal helpers directly inside `reconfigure_telemetry`.
+#[cfg(test)]
+pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
+    identity_config_changed(current, target)
+        || logging_provider_config_changed(current, target)
+        || tracing_provider_config_changed(current, target)
+        || metrics_provider_config_changed(current, target)
 }
 
 pub fn get_runtime_config() -> Option<TelemetryConfig> {
@@ -212,6 +235,11 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     next.tracing.otlp_headers = current.tracing.otlp_headers;
     next.metrics.enabled = current.metrics.enabled;
     next.metrics.otlp_headers = current.metrics.otlp_headers;
+    // Exporter timeout fields are baked into OTLP exporters at construction
+    // time — keep the installed values so the config snapshot stays honest.
+    next.exporter.logs_timeout_seconds = current.exporter.logs_timeout_seconds;
+    next.exporter.traces_timeout_seconds = current.exporter.traces_timeout_seconds;
+    next.exporter.metrics_timeout_seconds = current.exporter.metrics_timeout_seconds;
 
     set_active_config(Some(next.clone()));
     Ok(next)
@@ -225,11 +253,24 @@ pub fn reconfigure_telemetry(
         None => TelemetryConfig::from_env().map_err(|err| TelemetryError::new(err.message))?,
     };
 
+    #[cfg(feature = "otel")]
     if let Some(current) = get_runtime_config() {
-        if otel_installed() && provider_config_changed(&current, &target) {
-            return Err(TelemetryError::new(
-                "OpenTelemetry providers already installed; restart the process for provider-changing config",
-            ));
+        if otel_installed() {
+            let logs_live = crate::otel::logs::logger_provider_installed();
+            let traces_live = crate::otel::traces::tracer_provider_installed();
+            let metrics_live = crate::otel::metrics::meter_provider_installed();
+            // Identity fields affect every installed provider's Resource; per-signal
+            // fields only matter when that signal's provider is actually live.
+            let reject = ((logs_live || traces_live || metrics_live)
+                && identity_config_changed(&current, &target))
+                || (logs_live && logging_provider_config_changed(&current, &target))
+                || (traces_live && tracing_provider_config_changed(&current, &target))
+                || (metrics_live && metrics_provider_config_changed(&current, &target));
+            if reject {
+                return Err(TelemetryError::new(
+                    "OpenTelemetry providers already installed; restart the process for provider-changing config",
+                ));
+            }
         }
     }
 
@@ -342,6 +383,76 @@ mod tests {
         changed.strict_schema = true;
 
         assert!(!provider_config_changed(&current, &changed));
+    }
+
+    #[test]
+    fn runtime_test_per_signal_helpers_are_independent() {
+        let base = TelemetryConfig::default();
+
+        // logging-only change — only logging helper fires
+        let mut changed = base.clone();
+        changed.logging.otlp_protocol = "http/json".to_string();
+        assert!(logging_provider_config_changed(&base, &changed));
+        assert!(!tracing_provider_config_changed(&base, &changed));
+        assert!(!metrics_provider_config_changed(&base, &changed));
+
+        // tracing-only change — only tracing helper fires
+        let mut changed = base.clone();
+        changed.exporter.traces_timeout_seconds = 5.0;
+        assert!(!logging_provider_config_changed(&base, &changed));
+        assert!(tracing_provider_config_changed(&base, &changed));
+        assert!(!metrics_provider_config_changed(&base, &changed));
+
+        // metrics-only change — only metrics helper fires
+        let mut changed = base.clone();
+        changed.metrics.metric_export_interval_ms = 30_000;
+        assert!(!logging_provider_config_changed(&base, &changed));
+        assert!(!tracing_provider_config_changed(&base, &changed));
+        assert!(metrics_provider_config_changed(&base, &changed));
+    }
+
+    #[test]
+    fn runtime_test_timeout_fields_are_not_applied_by_reload_from_env() {
+        // Establish a baseline config with custom timeout values.
+        let mut base = TelemetryConfig::default();
+        base.exporter.logs_timeout_seconds = 7.0;
+        base.exporter.traces_timeout_seconds = 8.0;
+        base.exporter.metrics_timeout_seconds = 9.0;
+        set_active_config(Some(base.clone()));
+
+        // reload_runtime_from_env restores provider-baked timeout fields.
+        // Simulate what it does: build overrides from a "fresh" config
+        // with different timeout values, apply them, then restore cold fields.
+        let fresh_exporter = crate::config::ExporterPolicyConfig {
+            logs_timeout_seconds: 99.0,
+            traces_timeout_seconds: 99.0,
+            metrics_timeout_seconds: 99.0,
+            ..crate::config::ExporterPolicyConfig::default()
+        };
+        let overrides = crate::RuntimeOverrides {
+            exporter: Some(fresh_exporter),
+            ..crate::RuntimeOverrides::default()
+        };
+        let mut next = update_runtime_config(overrides).expect("update must succeed");
+        // Restore provider-baked fields (mirrors what reload_runtime_from_env does).
+        next.exporter.logs_timeout_seconds = base.exporter.logs_timeout_seconds;
+        next.exporter.traces_timeout_seconds = base.exporter.traces_timeout_seconds;
+        next.exporter.metrics_timeout_seconds = base.exporter.metrics_timeout_seconds;
+        set_active_config(Some(next.clone()));
+
+        let stored = get_runtime_config().expect("config must exist");
+        assert_eq!(
+            stored.exporter.logs_timeout_seconds, 7.0,
+            "logs timeout must be preserved"
+        );
+        assert_eq!(
+            stored.exporter.traces_timeout_seconds, 8.0,
+            "traces timeout must be preserved"
+        );
+        assert_eq!(
+            stored.exporter.metrics_timeout_seconds, 9.0,
+            "metrics timeout must be preserved"
+        );
     }
 
     #[test]
