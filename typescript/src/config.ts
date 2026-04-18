@@ -15,6 +15,7 @@
 import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
+import { ConfigurationError } from './exceptions';
 import { setSetupError } from './health';
 import { _setActiveConfig } from './runtime';
 import { configFromEnv } from './config-env';
@@ -290,7 +291,7 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
  */
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
-  _normalizeConfig(_config);
+  _validateConfig(_config);
   _configVersion++;
   _setActiveConfig(_config);
   try {
@@ -302,23 +303,31 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   }
 }
 
-/** Clamp rates to [0,1] and floor non-negative integers so getConfig() matches effective policy. */
-function _normalizeConfig(cfg: TelemetryConfig): void {
-  const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-  const floorNonNeg = (v: number): number => Math.max(0, Math.floor(v));
-  cfg.samplingLogsRate = clamp01(cfg.samplingLogsRate);
-  cfg.samplingTracesRate = clamp01(cfg.samplingTracesRate);
-  cfg.samplingMetricsRate = clamp01(cfg.samplingMetricsRate);
-  cfg.traceSampleRate = clamp01(cfg.traceSampleRate);
-  cfg.backpressureLogsMaxsize = floorNonNeg(cfg.backpressureLogsMaxsize);
-  cfg.backpressureTracesMaxsize = floorNonNeg(cfg.backpressureTracesMaxsize);
-  cfg.backpressureMetricsMaxsize = floorNonNeg(cfg.backpressureMetricsMaxsize);
-  cfg.exporterLogsRetries = floorNonNeg(cfg.exporterLogsRetries);
-  cfg.exporterTracesRetries = floorNonNeg(cfg.exporterTracesRetries);
-  cfg.exporterMetricsRetries = floorNonNeg(cfg.exporterMetricsRetries);
-  cfg.securityMaxAttrValueLength = floorNonNeg(cfg.securityMaxAttrValueLength);
-  cfg.securityMaxAttrCount = floorNonNeg(cfg.securityMaxAttrCount);
-  cfg.piiMaxDepth = floorNonNeg(cfg.piiMaxDepth);
+/** Validate config values — reject out-of-range instead of silently clamping (fail-fast contract). */
+function _validateConfig(cfg: TelemetryConfig): void {
+  const requireRate = (name: string, v: number): void => {
+    if (!Number.isFinite(v) || v < 0 || v > 1) {
+      throw new ConfigurationError(`${name} must be in [0, 1], got ${String(v)}`);
+    }
+  };
+  const requireNonNegInt = (name: string, v: number): void => {
+    if (!Number.isInteger(v) || v < 0) {
+      throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(v)}`);
+    }
+  };
+  requireRate('samplingLogsRate', cfg.samplingLogsRate);
+  requireRate('samplingTracesRate', cfg.samplingTracesRate);
+  requireRate('samplingMetricsRate', cfg.samplingMetricsRate);
+  requireRate('traceSampleRate', cfg.traceSampleRate);
+  requireNonNegInt('backpressureLogsMaxsize', cfg.backpressureLogsMaxsize);
+  requireNonNegInt('backpressureTracesMaxsize', cfg.backpressureTracesMaxsize);
+  requireNonNegInt('backpressureMetricsMaxsize', cfg.backpressureMetricsMaxsize);
+  requireNonNegInt('exporterLogsRetries', cfg.exporterLogsRetries);
+  requireNonNegInt('exporterTracesRetries', cfg.exporterTracesRetries);
+  requireNonNegInt('exporterMetricsRetries', cfg.exporterMetricsRetries);
+  requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
+  requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
+  requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
 }
 
 /** Reset to defaults (used in tests). */
