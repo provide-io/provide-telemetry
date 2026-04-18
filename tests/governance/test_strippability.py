@@ -100,7 +100,9 @@ def test_governance_modules_absent_from_lazy_registry_until_accessed() -> None:
     from provide.telemetry import _LAZY_REGISTRY
 
     # Verify governance symbols ARE registered (they're opt-in, not absent)
+    assert "register_classification_rule" in _LAZY_REGISTRY
     assert "register_classification_rules" in _LAZY_REGISTRY
+    assert "classify_key" in _LAZY_REGISTRY
     assert "get_consent_level" in _LAZY_REGISTRY
     assert "enable_receipts" in _LAZY_REGISTRY
 

@@ -18,7 +18,9 @@ from provide.telemetry.classification import (
     DataClass,
     _classify_field,
     _reset_classification_for_tests,
+    classify_key,
     get_classification_policy,
+    register_classification_rule,
     register_classification_rules,
     set_classification_policy,
 )
@@ -73,6 +75,12 @@ def test_no_rules_hook_is_none() -> None:
 def test_register_rules_installs_hook() -> None:
     rule = ClassificationRule(pattern="email", classification=DataClass.PII)
     register_classification_rules([rule])
+    assert pii_mod._classification_hook is not None
+
+
+def test_register_single_rule_wrapper_installs_hook() -> None:
+    rule = ClassificationRule(pattern="email", classification=DataClass.PII)
+    register_classification_rule(rule)
     assert pii_mod._classification_hook is not None
 
 
@@ -154,6 +162,13 @@ def test_classify_field_returns_none_when_no_match() -> None:
     register_classification_rules([ClassificationRule(pattern="dob", classification=DataClass.PHI)])
     label = _classify_field("email", "alice@example.com")
     assert label is None
+
+
+def test_classify_key_returns_dataclass_member() -> None:
+    register_classification_rule(ClassificationRule(pattern="email", classification=DataClass.PII))
+
+    assert classify_key("email") is DataClass.PII
+    assert classify_key("missing") is None
 
 
 # ── set/get_classification_policy ────────────────────────────────────────────
