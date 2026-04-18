@@ -29,6 +29,7 @@ class TestEarlyGetMeterDoesNotBlockSetup:
     noop meter under ``_meters["provide.telemetry"]`` that would cause
     setup_metrics() to short-circuit and skip installing the real provider."""
 
+    @pytest.mark.otel
     def test_setup_metrics_installs_provider_after_early_get_meter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(prov_mod, "_HAS_OTEL_METRICS", True)
 
@@ -170,6 +171,7 @@ class TestHasRealMeterProviderMutants:
         assert result is False
 
 
+@pytest.mark.otel
 class TestSetupMetricsSetsGlobalFlag:
     """Kill setup_metrics mutmut_52/53: _meter_global_set = True → None/False."""
 

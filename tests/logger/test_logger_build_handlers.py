@@ -137,6 +137,7 @@ def test_build_handlers_with_otel_endpoint_when_components_missing(monkeypatch: 
     assert isinstance(handlers[0], logging.StreamHandler)
 
 
+@pytest.mark.otel
 def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
@@ -224,6 +225,7 @@ def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> N
     assert core_mod._otel_log_provider is provider
 
 
+@pytest.mark.otel
 def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
@@ -308,6 +310,7 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     assert exporter._inner.timeout == 10.0
 
 
+@pytest.mark.otel
 def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
