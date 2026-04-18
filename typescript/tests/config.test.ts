@@ -14,6 +14,12 @@ import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
 import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure';
 import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience';
 import { ConfigurationError } from '../src/exceptions';
+import {
+  isFallbackMode,
+  _disablePropagationALSForTest,
+  _restorePropagationALSForTest,
+} from '../src/propagation';
+import { resetTelemetryState } from '../src/testing';
 
 afterEach(() => {
   _resetConfig();
@@ -833,6 +839,42 @@ describe('setupTelemetry applies sampling policies', () => {
     expect(getSamplingPolicy('logs').defaultRate).toBe(1.0);
     expect(getSamplingPolicy('traces').defaultRate).toBe(1.0);
     expect(getSamplingPolicy('metrics').defaultRate).toBe(1.0);
+  });
+});
+
+describe('setupTelemetry ALS guard', () => {
+  it('does not throw when ALS is available (normal Node.js path)', () => {
+    expect(isFallbackMode()).toBe(false);
+    expect(() => setupTelemetry()).not.toThrow();
+  });
+
+  it('throws ConfigurationError when ALS is unavailable in a Node.js environment', () => {
+    const savedAls = _disablePropagationALSForTest();
+    try {
+      expect(isFallbackMode()).toBe(true);
+      expect(() => setupTelemetry()).toThrow(ConfigurationError);
+      expect(() => setupTelemetry()).toThrow(/AsyncLocalStorage unavailable/);
+    } finally {
+      _restorePropagationALSForTest(savedAls);
+      resetTelemetryState();
+    }
+  });
+
+  it('does not throw when ALS is unavailable in a non-Node environment', () => {
+    const savedAls = _disablePropagationALSForTest();
+    const savedVersionsDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      'versions',
+    ) as PropertyDescriptor;
+    Object.defineProperty(process, 'versions', { value: {}, configurable: true });
+    try {
+      expect(isFallbackMode()).toBe(true);
+      expect(() => setupTelemetry()).not.toThrow();
+    } finally {
+      Object.defineProperty(process, 'versions', savedVersionsDescriptor);
+      _restorePropagationALSForTest(savedAls);
+      resetTelemetryState();
+    }
   });
 });
 
