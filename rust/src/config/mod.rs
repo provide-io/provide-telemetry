@@ -20,6 +20,7 @@ use parse::{
 pub use redact::redact_config;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RuntimeOverrides {
     pub sampling: Option<SamplingConfig>,
     pub backpressure: Option<BackpressureConfig>,
@@ -32,6 +33,7 @@ pub struct RuntimeOverrides {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LoggingConfig {
     pub level: String,
     pub fmt: String,
@@ -69,6 +71,7 @@ impl Default for LoggingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TracingConfig {
     pub enabled: bool,
     /// Per-signal sample rate for traces (PROVIDE_TRACE_SAMPLE_RATE).
@@ -96,6 +99,7 @@ impl Default for TracingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MetricsConfig {
     pub enabled: bool,
     pub otlp_headers: HashMap<String, String>,
@@ -108,7 +112,6 @@ pub struct MetricsConfig {
     /// How often (in milliseconds) the `PeriodicReader` pushes metrics to the
     /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
     /// Default: 60 000 ms (60 seconds).
-    #[serde(default = "default_metric_export_interval_ms")]
     pub metric_export_interval_ms: u64,
 }
 
@@ -129,12 +132,14 @@ impl Default for MetricsConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct EventSchemaConfig {
     pub strict_event_name: bool,
     pub required_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SamplingConfig {
     pub logs_rate: f64,
     pub traces_rate: f64,
@@ -152,6 +157,7 @@ impl Default for SamplingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct BackpressureConfig {
     pub logs_maxsize: usize,
     pub traces_maxsize: usize,
@@ -159,6 +165,7 @@ pub struct BackpressureConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExporterPolicyConfig {
     pub logs_retries: usize,
     pub traces_retries: usize,
@@ -194,12 +201,14 @@ impl Default for ExporterPolicyConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SLOConfig {
     pub enable_red_metrics: bool,
     pub enable_use_metrics: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SecurityConfig {
     pub max_attr_value_length: usize,
     pub max_attr_count: usize,
@@ -217,6 +226,7 @@ impl Default for SecurityConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TelemetryConfig {
     pub service_name: String,
     pub environment: String,

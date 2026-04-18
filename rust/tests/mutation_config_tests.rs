@@ -367,21 +367,50 @@ fn otel_metric_export_interval_rejects_non_integer() {
     );
 }
 
+// --- serde #[serde(default)] coverage ---
+// Every public config struct now carries #[serde(default)] so that
+// deserializing a partial/empty JSON object succeeds and missing fields
+// fall back to the struct's Default impl.
+
 #[test]
-fn metrics_config_serde_backward_compat_missing_interval_field() {
-    // Verifies that a MetricsConfig JSON blob that pre-dates the
-    // metric_export_interval_ms field still deserializes successfully
-    // and falls back to the 60 000 ms default.
-    let json_without_interval = r#"{
-        "enabled": true,
-        "otlp_headers": {},
-        "otlp_endpoint": null,
-        "otlp_protocol": ""
-    }"#;
-    let cfg: provide_telemetry::MetricsConfig = serde_json::from_str(json_without_interval)
-        .expect("MetricsConfig missing interval field must deserialize via serde default");
-    assert_eq!(
-        cfg.metric_export_interval_ms, 60_000,
-        "missing field must fall back to the 60 000 ms default"
-    );
+fn config_structs_serde_default_empty_object() {
+    // All sub-config structs must deserialize from {} without error.
+    serde_json::from_str::<provide_telemetry::MetricsConfig>("{}")
+        .expect("MetricsConfig must deserialize from {}");
+    serde_json::from_str::<provide_telemetry::TracingConfig>("{}")
+        .expect("TracingConfig must deserialize from {}");
+    serde_json::from_str::<provide_telemetry::SecurityConfig>("{}")
+        .expect("SecurityConfig must deserialize from {}");
+}
+
+#[test]
+fn security_config_serde_default_values() {
+    let cfg: provide_telemetry::SecurityConfig =
+        serde_json::from_str("{}").expect("SecurityConfig empty object must use defaults");
+    assert_eq!(cfg.max_attr_value_length, 1024);
+    assert_eq!(cfg.max_attr_count, 64);
+    assert_eq!(cfg.max_nesting_depth, 8);
+}
+
+#[test]
+fn metrics_config_serde_missing_interval_uses_default() {
+    // Partial JSON (no metric_export_interval_ms) must still deserialize.
+    let cfg: provide_telemetry::MetricsConfig =
+        serde_json::from_str(r#"{"enabled": true, "otlp_headers": {}, "otlp_protocol": ""}"#)
+            .expect("MetricsConfig missing interval field must deserialize");
+    assert_eq!(cfg.metric_export_interval_ms, 60_000);
+}
+
+#[test]
+fn telemetry_config_serde_round_trip_with_defaults() {
+    // A TelemetryConfig serialized to JSON and back must survive even if
+    // the JSON is then trimmed to just the service_name field.
+    let partial = r#"{"service_name": "round-trip-test"}"#;
+    let cfg: provide_telemetry::TelemetryConfig = serde_json::from_str(partial)
+        .expect("TelemetryConfig with only service_name must deserialize");
+    assert_eq!(cfg.service_name, "round-trip-test");
+    assert_eq!(cfg.environment, "dev");
+    assert_eq!(cfg.security.max_attr_value_length, 1024);
+    assert_eq!(cfg.metrics.metric_export_interval_ms, 60_000);
+    assert!((cfg.sampling.logs_rate - 1.0).abs() < f64::EPSILON);
 }
