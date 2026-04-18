@@ -49,6 +49,14 @@ def test_python_ci_runs_real_otlp_collector_gate() -> None:
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
 
 
+def test_strict_parity_bootstrap_installs_runtime_probe_dependencies() -> None:
+    bootstrap = (REPO_ROOT / "ci" / "install_parity_deps.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"uv", "sync", "--group", "dev", "--extra", "otel"' in bootstrap
+
+
 def test_go_ci_runs_real_otlp_collector_gate() -> None:
     workflow = CI_GO.read_text(encoding="utf-8")
 
