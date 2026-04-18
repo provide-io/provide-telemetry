@@ -142,6 +142,7 @@ class TestFallbackLazyResolve:
 # ── Issue #16: double-checked locking race in provider setup ───────────
 
 
+@pytest.mark.otel
 class TestProviderDoubleCheckLocking:
     def test_metrics_setup_discards_when_another_thread_won(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """If _meter_provider is set between the two lock acquisitions, discard the new provider."""

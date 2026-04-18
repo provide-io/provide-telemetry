@@ -106,6 +106,7 @@ class _FakeMeterProvider:
         self.shutdown_calls += 1
 
 
+@pytest.mark.otel
 def test_setup_then_shutdown_then_setup_reinitializes_otel_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_all_for_tests()
 
