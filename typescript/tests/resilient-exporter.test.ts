@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetResilienceForTests, getCircuitState, setExporterPolicy } from '../src/resilience';
 import { type ExportResultLike, wrapResilientExporter } from '../src/resilient-exporter';
 
-/* Stryker disable all -- pending follow-up mutation strategy for this module */
-
 const EXPORT_RESULT_SUCCESS = 0;
 const EXPORT_RESULT_FAILED = 1;
 
@@ -147,6 +145,108 @@ describe('wrapResilientExporter', () => {
     const wrapped = wrapResilientExporter('logs', inner);
     expect(wrapped.forceFlush).toBeUndefined();
   });
-});
 
-/* Stryker restore all */
+  it('uses fallback error message when inner callback result has no error field', async () => {
+    // Covers: result?.error ?? new Error('exporter reported FAILED')
+    // Mutant: StringLiteral — changes the fallback string
+    // Mutant: OptionalChaining — drops '?' on result?.error
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 0, failOpen: false });
+    const inner: CallbackExporter = {
+      export(_items, cb) {
+        // Report FAILED with no error property — exercises the nullish coalescing branch.
+        cb({ code: EXPORT_RESULT_FAILED });
+      },
+      async shutdown() {
+        /* no-op */
+      },
+    };
+    const wrapped = wrapResilientExporter('logs', inner);
+    const result = await exportAsync(wrapped, []);
+    expect(result.code).toBe(EXPORT_RESULT_FAILED);
+    expect(result.error?.message).toBe('exporter reported FAILED');
+  });
+
+  it('preserves the error object from inner callback when one is provided', async () => {
+    // Covers: result?.error ?? ... — when result.error IS present, it must pass through.
+    // Mutant: OptionalChaining — if ? is removed, non-nullish result.error still passes;
+    // this test verifies the positive path so the logical operator mutant is also killed.
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 0, failOpen: false });
+    const innerError = new Error('specific inner error');
+    const inner = makeFake({ behaviour: 'fail' });
+    // Override to use a specific known error instance.
+    inner.export = (_items, cb) => {
+      inner.state.calls += 1;
+      cb({ code: EXPORT_RESULT_FAILED, error: innerError });
+    };
+    const wrapped = wrapResilientExporter('logs', inner);
+    const result = await exportAsync(wrapped, []);
+    expect(result.code).toBe(EXPORT_RESULT_FAILED);
+    expect(result.error).toBe(innerError);
+  });
+
+  it('wraps non-Error sync throw as Error in the fail-closed rejection path', async () => {
+    // Covers: err instanceof Error ? err : new Error(String(err)) in the catch block
+    // Mutant: ObjectLiteral — error field replaced with empty object {}
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 0, failOpen: false });
+    const inner: CallbackExporter = {
+      export(_items, _cb) {
+        // Throw a non-Error value (string) synchronously.
+        throw 'string-throw-42';
+      },
+      async shutdown() {
+        /* no-op */
+      },
+    };
+    const wrapped = wrapResilientExporter('logs', inner);
+    const result = await exportAsync(wrapped, []);
+    expect(result.code).toBe(EXPORT_RESULT_FAILED);
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error?.message).toContain('string-throw-42');
+  });
+
+  it('passes the Error instance through unchanged in the fail-closed rejection path', async () => {
+    // Covers: err instanceof Error ? err : new Error(String(err)) — true branch
+    // Mutant: ObjectLiteral — checks error field is the original Error, not a wrapped one
+    setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 0, failOpen: false });
+    const thrownError = new Error('direct-throw');
+    const inner: CallbackExporter = {
+      export(_items, _cb) {
+        throw thrownError;
+      },
+      async shutdown() {
+        /* no-op */
+      },
+    };
+    const wrapped = wrapResilientExporter('logs', inner);
+    const result = await exportAsync(wrapped, []);
+    expect(result.code).toBe(EXPORT_RESULT_FAILED);
+    expect(result.error).toBe(thrownError);
+  });
+
+  it('distinguishes FAILED from SUCCESS: result.code check controls resolve vs reject', async () => {
+    // Covers: result && result.code !== EXPORT_RESULT_FAILED
+    // Mutant: LogicalOperator — '&&' changed to '||', or '!==' changed to '==='
+    // The wrapped callback must resolve on SUCCESS and reject on FAILED.
+    setExporterPolicy('logs', { retries: 1, backoffMs: 0, timeoutMs: 0, failOpen: true });
+    let callCount = 0;
+    const inner: CallbackExporter = {
+      export(_items, cb) {
+        callCount += 1;
+        // First call: FAILED (triggers retry). Second call: SUCCESS.
+        if (callCount === 1) {
+          cb({ code: EXPORT_RESULT_FAILED });
+        } else {
+          cb({ code: EXPORT_RESULT_SUCCESS });
+        }
+      },
+      async shutdown() {
+        /* no-op */
+      },
+    };
+    const wrapped = wrapResilientExporter('logs', inner);
+    const result = await exportAsync(wrapped, []);
+    expect(result.code).toBe(EXPORT_RESULT_SUCCESS);
+    // retries=1 means 1 initial attempt + 1 retry = 2 total calls.
+    expect(callCount).toBe(2);
+  });
+});
