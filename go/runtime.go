@@ -282,8 +282,7 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		fn(state)
 	}
 
-	providersInstalled := _otelTracerProvider != nil || _otelMeterProvider != nil || _otelLoggerProvider != nil
-	if providersInstalled && _providerConfigChanged(_runtimeCfg, target) {
+	if _providerConfigChanged(_runtimeCfg, target, _otelTracerProvider != nil, _otelMeterProvider != nil, _otelLoggerProvider != nil) {
 		return nil, NewConfigurationError(
 			"provider-changing reconfiguration is unsupported after OpenTelemetry providers " +
 				"are installed; restart the process and call SetupTelemetry() with the new config",
@@ -296,21 +295,38 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 	return cloneTelemetryConfig(_runtimeCfg), nil
 }
 
-func _providerConfigChanged(current, target *TelemetryConfig) bool {
-	// Compare every field baked into OTel providers at construction time.
-	// OTLP headers are passed to exporters at init; rotation requires
-	// provider reinstallation.
-	return current.ServiceName != target.ServiceName ||
+// _providerConfigChanged returns true when reconfiguration would require
+// reinstalling at least one live OTel provider. tracerLive/meterLive/loggerLive
+// reflect which signal providers are currently installed; signal-specific fields
+// are only checked when the corresponding provider is live.
+func _providerConfigChanged(current, target *TelemetryConfig, tracerLive, meterLive, loggerLive bool) bool {
+	anyLive := tracerLive || meterLive || loggerLive
+	if !anyLive {
+		return false
+	}
+	// Identity fields (service name/env/version) are baked into every provider's
+	// Resource — a change here requires all live providers to be reinstalled.
+	if current.ServiceName != target.ServiceName ||
 		current.Environment != target.Environment ||
-		current.Version != target.Version ||
-		current.Tracing.Enabled != target.Tracing.Enabled ||
+		current.Version != target.Version {
+		return true
+	}
+	// Per-signal fields: only flag when that signal's provider is live.
+	if tracerLive && (current.Tracing.Enabled != target.Tracing.Enabled ||
 		current.Tracing.OTLPEndpoint != target.Tracing.OTLPEndpoint ||
-		!maps.Equal(current.Tracing.OTLPHeaders, target.Tracing.OTLPHeaders) ||
-		current.Metrics.Enabled != target.Metrics.Enabled ||
+		!maps.Equal(current.Tracing.OTLPHeaders, target.Tracing.OTLPHeaders)) {
+		return true
+	}
+	if meterLive && (current.Metrics.Enabled != target.Metrics.Enabled ||
 		current.Metrics.OTLPEndpoint != target.Metrics.OTLPEndpoint ||
-		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders) ||
-		current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
-		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)
+		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders)) {
+		return true
+	}
+	if loggerLive && (current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
+		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)) {
+		return true
+	}
+	return false
 }
 
 func _applyHotFields(current, fresh *TelemetryConfig) {
