@@ -213,7 +213,8 @@ mod tests {
     #[test]
     fn out_of_range_port_returns_error() {
         // url::Url rejects ports > 65535 at parse time.
-        let err = validate_endpoint("http://host:99999").expect_err("out-of-range port should fail");
+        let err =
+            validate_endpoint("http://host:99999").expect_err("out-of-range port should fail");
         assert!(
             err.message.contains("invalid OTLP endpoint"),
             "error must describe the problem: {}",
@@ -244,8 +245,8 @@ mod tests {
 
     #[test]
     fn empty_port_with_path_returns_error() {
-        let err =
-            validate_endpoint("http://host:/v1/traces").expect_err("empty port with path should fail");
+        let err = validate_endpoint("http://host:/v1/traces")
+            .expect_err("empty port with path should fail");
         assert!(
             err.message.contains("empty port"),
             "error must mention empty port: {}",
