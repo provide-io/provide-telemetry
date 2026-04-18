@@ -1,9 +1,28 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* Stryker disable all -- dynamic import('...' as string) prevents Stryker's V8 perTest
-   coverage from attributing any coverage to specific tests; all mutations in this file
-   show covered:0 even though integration tests exercise every branch. */
+/* Stryker disable all
+ *
+ * WHY: This file uses `await import('pkg' as string)` so Stryker's V8
+ * perTest coverage instrumentor cannot trace which test exercises which
+ * mutation — every mutant shows covered:0 and is reported as "no coverage"
+ * rather than being killed.  Switching to static imports is out of scope:
+ * the dynamic pattern is the load-bearing mechanism that keeps all OTel
+ * peer deps tree-shakeable for bundler users who set otelEnabled:false.
+ *
+ * TRADEOFF: mutations in this file are not killed by unit tests.
+ * The risk is accepted because:
+ *   1. Integration tests in tests/integration/otel-providers-registration.test.ts
+ *      and tests/integration/otel-providers.test.ts exercise every branch
+ *      with real OTel SDK objects, giving strong behavioural confidence.
+ *   2. The logic here is thin wiring (endpoint resolution + provider
+ *      construction); the resilience-policy and export-path mutations that
+ *      matter most are covered at 100% in resilient-exporter.ts and
+ *      resilience.ts, which use static imports.
+ *
+ * If a future Stryker version can track V8 coverage through dynamic imports,
+ * remove this exemption and add targeted unit tests.
+ */
 
 /**
  * Optional OTEL SDK wiring — only activated when setupTelemetry({ otelEnabled: true }) is called.
