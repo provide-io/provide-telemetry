@@ -58,6 +58,12 @@ def _has_meter_provider() -> bool:
         return _meter_provider is not None or _meter_global_set
 
 
+def _has_live_meter_provider() -> bool:
+    """Return True if a live meter provider is currently installed."""
+    with _meter_lock:
+        return _meter_provider is not None
+
+
 def setup_metrics(config: TelemetryConfig) -> None:
     global _meter_provider, _meter_global_set
     global _baseline_meter_provider, _baseline_captured

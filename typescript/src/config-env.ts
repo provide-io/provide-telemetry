@@ -154,6 +154,7 @@ export function configFromEnv(): TelemetryConfig {
     captureToWindow: true,
     consoleOutput: true,
     strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
+    strictEventName: envBool('PROVIDE_TELEMETRY_STRICT_EVENT_NAME', DEFAULTS.strictEventName),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
       return raw

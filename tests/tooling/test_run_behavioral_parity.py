@@ -155,10 +155,28 @@ def test_runtime_probe_case_env_disables_trace_and_metrics_for_signal_enablement
 def test_runtime_probe_case_env_disables_trace_and_metrics_for_non_provider_python_cases() -> None:
     module = _load_support_module()
 
-    for case in ("strict_schema_rejection", "required_keys_rejection", "shutdown_re_setup"):
+    for case in ("strict_schema_rejection", "strict_event_name_only", "required_keys_rejection", "shutdown_re_setup"):
         env = module._runtime_probe_case_env(case)
         assert env["PROVIDE_TRACE_ENABLED"] == "false"
         assert env["PROVIDE_METRICS_ENABLED"] == "false"
+
+
+def test_runtime_probe_case_env_adds_shared_endpoint_for_provider_identity_reconfigure() -> None:
+    module = _load_support_module()
+
+    assert module._runtime_probe_case_env("provider_identity_reconfigure") == {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+    }
+
+
+def test_runtime_probe_case_env_adds_traces_endpoint_for_signal_local_case() -> None:
+    module = _load_support_module()
+
+    assert module._runtime_probe_case_env("per_signal_logs_endpoint") == {
+        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4318/v1/logs",
+        "PROVIDE_TRACE_ENABLED": "false",
+        "PROVIDE_METRICS_ENABLED": "false",
+    }
 
 
 def test_runtime_probe_python_signal_enablement_exits_promptly() -> None:
@@ -238,6 +256,89 @@ def test_runtime_probe_python_strict_schema_rejection_exits_promptly() -> None:
     payload = json.loads(proc.stdout.strip())
     assert payload["case"] == "strict_schema_rejection"
     assert payload["schema_error"] is True
+
+
+def test_runtime_probe_python_strict_event_name_only_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("strict_event_name_only"),
+        "PROVIDE_PARITY_PROBE_CASE": "strict_event_name_only",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "strict_event_name_only"
+    assert payload["schema_error"] is True
+
+
+def test_runtime_probe_python_provider_identity_reconfigure_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("provider_identity_reconfigure"),
+        "PROVIDE_PARITY_PROBE_CASE": "provider_identity_reconfigure",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "provider_identity_reconfigure"
+    assert payload["providers_active"] is True
+    assert payload["raised"] is True
+    assert payload["config_preserved"] is True
+
+
+def test_runtime_probe_python_per_signal_logs_endpoint_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("per_signal_logs_endpoint"),
+        "PROVIDE_PARITY_PROBE_CASE": "per_signal_logs_endpoint",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "per_signal_logs_endpoint"
+    assert payload["setup_done"] is True
+    assert payload["logs_provider"] is True
+    assert payload["traces_provider"] is False
+    assert payload["metrics_provider"] is False
 
 
 def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() -> None:

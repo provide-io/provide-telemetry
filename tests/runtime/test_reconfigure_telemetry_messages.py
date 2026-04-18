@@ -39,9 +39,9 @@ class TestReconfigureTelemetryErrorMessages:
         from provide.telemetry.metrics import provider as metrics_provider
         from provide.telemetry.tracing import provider as tracing_provider
 
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
-        monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: True)
-        monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        monkeypatch.setattr(tracing_provider, "_has_live_tracing_provider", lambda: True)
+        monkeypatch.setattr(metrics_provider, "_has_live_meter_provider", lambda: False)
 
     def test_provider_change_error_contains_opentelemetry(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
@@ -97,9 +97,9 @@ class TestReconfigureTelemetryErrorMessages:
         from provide.telemetry.tracing import provider as tracing_provider
 
         runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
-        monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: False)
-        monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        monkeypatch.setattr(tracing_provider, "_has_live_tracing_provider", lambda: False)
+        monkeypatch.setattr(metrics_provider, "_has_live_meter_provider", lambda: False)
         cfg_a = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
         cfg_b = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"})
         return cfg_a, cfg_b

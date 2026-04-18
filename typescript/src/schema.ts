@@ -9,7 +9,7 @@ import { getConfig } from './config';
 import { TelemetryError } from './exceptions';
 
 // Module-level strict-schema override.
-// null = not set; use getConfig().strictSchema.
+// null = not set; use getConfig().strictSchema / strictEventName.
 // true/false = explicitly overridden via setStrictSchema().
 let _strictSchemaOverride: boolean | null = null;
 
@@ -28,12 +28,14 @@ export function setStrictSchema(enabled: boolean): void {
 }
 
 /**
- * Return the current strict-schema flag.
- * Returns the override value if set, otherwise falls back to getConfig().strictSchema.
+ * Return whether strict event-name validation is currently enabled.
+ * Returns the override value if set, otherwise falls back to the effective
+ * config value: strictSchema || strictEventName.
  */
 export function getStrictSchema(): boolean {
   if (_strictSchemaOverride !== null) return _strictSchemaOverride;
-  return getConfig().strictSchema;
+  const cfg = getConfig();
+  return cfg.strictSchema || cfg.strictEventName;
 }
 
 /** Reset the strict-schema override. For use in tests only. */

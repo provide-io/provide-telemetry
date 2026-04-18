@@ -68,6 +68,18 @@ func caseStrictSchemaRejection() map[string]any {
 	}
 }
 
+func caseStrictEventNameOnly() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+	record := captureRecord("Bad.Event.Ok")
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":         "strict_event_name_only",
+		"emitted":      true,
+		"schema_error": record["_schema_error"] != nil,
+	}
+}
+
 func caseRequiredKeysRejection() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -113,6 +125,37 @@ func caseSignalEnablement() map[string]any {
 	}
 }
 
+func casePerSignalLogsEndpoint() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+	status := telemetry.GetRuntimeStatus()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":             "per_signal_logs_endpoint",
+		"setup_done":       status.SetupDone,
+		"logs_provider":    status.Providers.Logs,
+		"traces_provider":  status.Providers.Traces,
+		"metrics_provider": status.Providers.Metrics,
+	}
+}
+
+func caseProviderIdentityReconfigure() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+	before := telemetry.GetRuntimeStatus()
+	serviceBefore := telemetry.GetRuntimeConfig().ServiceName
+	_ = os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", serviceBefore+"-renamed")
+	_, err := telemetry.ReconfigureTelemetry(context.Background())
+	configPreserved := telemetry.GetRuntimeConfig().ServiceName == serviceBefore
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":             "provider_identity_reconfigure",
+		"providers_active": before.Providers.Logs || before.Providers.Traces || before.Providers.Metrics,
+		"raised":           err != nil,
+		"config_preserved": configPreserved,
+	}
+}
+
 func caseShutdownReSetup() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -126,9 +169,15 @@ func caseShutdownReSetup() map[string]any {
 		"case":                   "shutdown_re_setup",
 		"first_setup_done":       first.SetupDone,
 		"shutdown_cleared_setup": !second.SetupDone,
-		"re_setup_done":          third.SetupDone,
-		"signals_match":          first.Signals == third.Signals,
-		"providers_match":        first.Providers == third.Providers,
+		"shutdown_cleared_providers": !second.Providers.Logs &&
+			!second.Providers.Traces &&
+			!second.Providers.Metrics,
+		"shutdown_fallback_all": second.Fallback.Logs &&
+			second.Fallback.Traces &&
+			second.Fallback.Metrics,
+		"re_setup_done":   third.SetupDone,
+		"signals_match":   first.Signals == third.Signals,
+		"providers_match": first.Providers == third.Providers,
 	}
 }
 
@@ -140,6 +189,8 @@ func main() {
 		result = caseLazyInitLogger()
 	case "strict_schema_rejection":
 		result = caseStrictSchemaRejection()
+	case "strict_event_name_only":
+		result = caseStrictEventNameOnly()
 	case "required_keys_rejection":
 		result = caseRequiredKeysRejection()
 	case "invalid_config":
@@ -148,6 +199,10 @@ func main() {
 		result = caseFailOpenExporterInit()
 	case "signal_enablement":
 		result = caseSignalEnablement()
+	case "per_signal_logs_endpoint":
+		result = casePerSignalLogsEndpoint()
+	case "provider_identity_reconfigure":
+		result = caseProviderIdentityReconfigure()
 	case "shutdown_re_setup":
 		result = caseShutdownReSetup()
 	default:

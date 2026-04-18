@@ -236,11 +236,15 @@ export function reloadRuntimeFromEnv(): void {
     sloEnableUseMetrics: fresh.sloEnableUseMetrics,
     piiMaxDepth: fresh.piiMaxDepth,
     strictSchema: fresh.strictSchema,
+    strictEventName: fresh.strictEventName,
   };
   updateRuntimeConfig(overrides);
 }
 
 const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
+  'serviceName',
+  'environment',
+  'version',
   'otelEnabled',
   'tracingEnabled',
   'metricsEnabled',
