@@ -102,6 +102,7 @@ describe('setupOtelLogProvider', () => {
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://localhost:4318/v1/logs',
       headers: {},
+      timeoutMillis: 10000,
     });
   });
 
@@ -115,6 +116,7 @@ describe('setupOtelLogProvider', () => {
     expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
       url: 'http://otel:4318/v1/logs',
       headers: { Authorization: 'Bearer tok' },
+      timeoutMillis: 10000,
     });
   });
 
@@ -128,7 +130,11 @@ describe('setupOtelLogProvider', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(fakeExporter);
+    // Exporter is wrapped in a resilient-export proxy, so assert on the
+    // preserved underlying field rather than identity.
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(
+      expect.objectContaining({ fake: 'log-exporter' }),
+    );
   });
 
   it('constructs LoggerProvider with processors array containing the BatchLogRecordProcessor', async () => {
