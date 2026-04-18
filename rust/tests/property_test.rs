@@ -327,7 +327,9 @@ proptest! {
         a in "[a-zA-Z]{1,20}",
         b in "[a-zA-Z]{1,20}",
     ) {
-        prop_assume!(a != b);
+        // compute_error_fingerprint lowercases error_name, so case-only pairs
+        // are intentional duplicates — exclude them from the collision check.
+        prop_assume!(!a.eq_ignore_ascii_case(&b));
         let fp_a = compute_error_fingerprint(&a, None);
         let fp_b = compute_error_fingerprint(&b, None);
         // Not a hard guarantee (hash collisions), but extremely unlikely for
