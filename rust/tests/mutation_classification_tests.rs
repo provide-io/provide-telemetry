@@ -69,29 +69,82 @@ mod classification_mutation {
         );
     }
 
-    // ── match_glob: empty-suffix guard (the `""` check) ─────────────────────
+    // ── match_glob: internal wildcard (mid-pattern `*`) ─────────────────────
 
-    // Kills: `""` changed to something else — the `split_once('*')` guard would
-    // fire for patterns like "a*b" and incorrectly use starts_with("a").
-    // If guard is removed: "a*b" matches "anything" because starts_with("a") is true.
-    // With correct guard: "a*b" has non-empty suffix, falls through to pattern == key.
+    // Kills: a matcher that only handles trailing `*` and falls through to
+    // exact match for mid-pattern `*`, which would make "user*_id" NOT match
+    // "user_id".  The correct fnmatch semantics require `*` anywhere to match
+    // any (including empty) run of characters.
     #[test]
-    fn glob_non_trailing_wildcard_is_exact_match_only() {
+    fn glob_internal_wildcard_matches_middle_segment() {
         let _guard = cls_lock().lock().expect("cls lock");
         clear_classification_rules();
-        // Pattern contains * but not at the end — should only exact-match the literal string.
         register_classification_rule(ClassificationRule::new("user*_id", DataClass::Pii));
-        // The literal string "user*_id" does not equal "user_id", so no match.
+        // "*" in the middle can match zero chars → "user_id" matches.
         assert_eq!(
-            classify_key("user_id"),
-            None,
-            "mid-pattern wildcard is not supported; must fall back to exact pattern match"
-        );
-        // The literal string matches only itself.
-        assert_eq!(
-            classify_key("user*_id").as_deref(),
+            classify_key("user_id").as_deref(),
             Some("PII"),
-            "non-trailing wildcard pattern must match the literal pattern string"
+            "mid-pattern wildcard must match with zero chars consumed"
+        );
+        // "*" can also match one or more chars → "user_123_id" matches.
+        assert_eq!(
+            classify_key("user_123_id").as_deref(),
+            Some("PII"),
+            "mid-pattern wildcard must match with non-empty run of chars"
+        );
+        // Anchoring is still enforced: suffix after * must match literally.
+        assert_eq!(
+            classify_key("user_id_extra"),
+            None,
+            "mid-pattern wildcard must not match when suffix does not align"
+        );
+    }
+
+    // Kills: a matcher that treats `*` as match-all even with no leading prefix.
+    #[test]
+    fn glob_leading_wildcard_matches_suffix() {
+        let _guard = cls_lock().lock().expect("cls lock");
+        clear_classification_rules();
+        register_classification_rule(ClassificationRule::new("*_id", DataClass::Internal));
+        assert_eq!(
+            classify_key("user_id").as_deref(),
+            Some("INTERNAL"),
+            "leading wildcard must match key ending with suffix"
+        );
+        assert_eq!(
+            classify_key("order_123_id").as_deref(),
+            Some("INTERNAL"),
+            "leading wildcard must match key with arbitrary prefix"
+        );
+        // A key that doesn't end with "_id" must not match.
+        assert_eq!(
+            classify_key("user_name"),
+            None,
+            "leading wildcard must not match key without required suffix"
+        );
+    }
+
+    // Kills: a matcher that collapses multiple `*` into a single wildcard
+    // incorrectly or fails to handle them.
+    #[test]
+    fn glob_multiple_wildcards_match_complex_patterns() {
+        let _guard = cls_lock().lock().expect("cls lock");
+        clear_classification_rules();
+        register_classification_rule(ClassificationRule::new("user*id*", DataClass::Pii));
+        assert_eq!(
+            classify_key("user_id").as_deref(),
+            Some("PII"),
+            "multiple wildcards must match key with both segments present"
+        );
+        assert_eq!(
+            classify_key("user_foo_id_bar").as_deref(),
+            Some("PII"),
+            "multiple wildcards must match key with extra chars in both positions"
+        );
+        assert_eq!(
+            classify_key("userid").as_deref(),
+            Some("PII"),
+            "multiple wildcards must match when wildcard spans zero chars"
         );
     }
 
