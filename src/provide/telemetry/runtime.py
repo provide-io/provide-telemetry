@@ -247,10 +247,10 @@ def get_runtime_config() -> TelemetryConfig:
 
 def get_runtime_status() -> dict[str, object]:
     """Return runtime/provider status using the shared cross-language shape."""
+    from provide.telemetry import setup as setup_mod
     from provide.telemetry.health import get_health_snapshot
     from provide.telemetry.logger import core as logger_core
     from provide.telemetry.metrics import provider as metrics_provider
-    from provide.telemetry import setup as setup_mod
     from provide.telemetry.tracing import provider as tracing_provider
 
     cfg = get_runtime_config()
