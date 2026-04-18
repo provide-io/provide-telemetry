@@ -22,6 +22,7 @@
 import type { TelemetryConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
 import { setupOtelLogProvider } from './otel-logs';
+import { wrapResilientExporter } from './resilient-exporter';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
 // entirely (safe no-export path per docs/ARCHITECTURE.md).
@@ -102,10 +103,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       if (tracesEndpoint) {
         validateOtlpEndpoint(tracesEndpoint);
         const traceHeaders = cfg.otlpTracesHeaders ?? headers;
-        const traceExporter = new OTLPTraceExporter({
+        const rawTraceExporter = new OTLPTraceExporter({
           url: tracesEndpoint,
           headers: traceHeaders,
+          timeoutMillis: cfg.exporterTracesTimeoutMs ?? 10000,
         });
+        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
+        const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
         const provider = new BasicTracerProvider({
           resource: resourceFromAttributes({
@@ -138,10 +142,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       if (metricsEndpoint) {
         validateOtlpEndpoint(metricsEndpoint);
         const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
-        const metricExporter = new OTLPMetricExporter({
+        const rawMetricExporter = new OTLPMetricExporter({
           url: metricsEndpoint,
           headers: metricsHeaders,
+          timeoutMillis: cfg.exporterMetricsTimeoutMs ?? 10000,
         });
+        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
+        const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
 
         const meterProvider = new MeterProvider({
           readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],

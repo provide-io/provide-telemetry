@@ -93,6 +93,7 @@ def test_setup_tracing_already_configured_branch(monkeypatch: pytest.MonkeyPatch
 
 
 def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry import resilient_exporter as resilient_exporter_mod
     from provide.telemetry.resilience import reset_resilience_for_tests
 
     reset_resilience_for_tests()
@@ -110,6 +111,9 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
         "_load_otel_tracing_components",
         lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
     )
+    # Bypass the resilient-export wrapper so processor_cls sees the raw exporter —
+    # wrapping behavior is covered by tests/resilience/test_resilient_exporter.py.
+    monkeypatch.setattr(resilient_exporter_mod, "wrap_exporter", lambda _sig, inner: inner)
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://trace"})
     provider_mod.setup_tracing(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
