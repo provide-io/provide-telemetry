@@ -7,6 +7,7 @@
  */
 
 import { bindContext, unbindContext } from './context';
+import { setTraceContext } from './tracing';
 
 export interface PropagationContext {
   traceparent?: string;
@@ -224,6 +225,13 @@ export function bindPropagationContext(ctx: PropagationContext): void {
     store.otelCtxStack.push(undefined);
   }
   /* Stryker restore all */
+
+  // Bridge propagated trace/span IDs into the trace context so logs
+  // emitted before a child span is created still carry upstream IDs.
+  // Matches Python (propagation.py:147) and Rust (propagation.rs:147).
+  if (ctx.traceId || ctx.spanId) {
+    setTraceContext(ctx.traceId ?? '', ctx.spanId ?? '');
+  }
 
   // Auto-inject parsed baggage entries as baggage.* log context fields.
   if (ctx.baggage) {

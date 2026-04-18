@@ -50,6 +50,12 @@ func ExtractW3CContext(headers http.Header) PropagationContext {
 // each parsed key-value pair is added as "baggage.<key>" in the context fields.
 func BindPropagationContext(ctx context.Context, pc PropagationContext) context.Context {
 	ctx = context.WithValue(ctx, _propagationKey, pc)
+	// Bridge propagated trace/span IDs into the trace context so logs
+	// emitted before a child span is created still carry upstream IDs.
+	// Matches Python (propagation.py:147) and Rust (propagation.rs:147).
+	if pc.TraceID != "" || pc.SpanID != "" {
+		ctx = SetTraceContext(ctx, pc.TraceID, pc.SpanID)
+	}
 	if pc.Baggage != "" {
 		fields := map[string]any{"baggage": pc.Baggage}
 		for k, v := range ParseBaggage(pc.Baggage) {

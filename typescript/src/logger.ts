@@ -95,13 +95,12 @@ export function makeWriteHook() {
     if (!ticket) return;
 
     try {
-      // Inject trace/span IDs from manual context first, then any active OTEL span.
+      // Merge module-level context bindings first, then overlay trace context
+      // so real trace/span IDs always win over user-bound values.
+      Object.assign(o, getContext());
       const ids = getTraceContext();
       if (ids.trace_id) o['trace_id'] = ids.trace_id;
       if (ids.span_id) o['span_id'] = ids.span_id;
-
-      // Merge module-level context bindings.
-      Object.assign(o, getContext());
 
       // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
       if (!o['message']) o['message'] = o['event'] ?? '';
