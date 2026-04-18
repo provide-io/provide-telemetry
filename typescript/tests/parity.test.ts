@@ -6,7 +6,7 @@
  * Python and Go have equivalent test files validating the same fixtures.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   setSamplingPolicy,
   shouldSample,
@@ -32,6 +32,8 @@ import {
   clearCardinalityLimits,
   validateRequiredKeys,
 } from '../src/index';
+import { _resetHealthForTests } from '../src/health';
+import { _resetResilienceForTests } from '../src/resilience';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
 
@@ -425,14 +427,73 @@ describe('parity: backpressure_unlimited', () => {
 });
 
 describe('parity: health_snapshot', () => {
-  it('returns the canonical health snapshot shape', () => {
-    expect(getHealthSnapshot()).toMatchObject({
-      logsEmitted: expect.any(Number),
-      tracesEmitted: expect.any(Number),
-      metricsEmitted: expect.any(Number),
-      logsDropped: expect.any(Number),
-      tracesDropped: expect.any(Number),
-      metricsDropped: expect.any(Number),
+  const canonicalFields = [
+    'logsEmitted',
+    'logsDropped',
+    'exportFailuresLogs',
+    'retriesLogs',
+    'exportLatencyMsLogs',
+    'asyncBlockingRiskLogs',
+    'circuitStateLogs',
+    'circuitOpenCountLogs',
+    'tracesEmitted',
+    'tracesDropped',
+    'exportFailuresTraces',
+    'retriesTraces',
+    'exportLatencyMsTraces',
+    'asyncBlockingRiskTraces',
+    'circuitStateTraces',
+    'circuitOpenCountTraces',
+    'metricsEmitted',
+    'metricsDropped',
+    'exportFailuresMetrics',
+    'retriesMetrics',
+    'exportLatencyMsMetrics',
+    'asyncBlockingRiskMetrics',
+    'circuitStateMetrics',
+    'circuitOpenCountMetrics',
+    'setupError',
+  ];
+
+  beforeEach(() => {
+    _resetHealthForTests();
+    _resetResilienceForTests();
+  });
+
+  afterEach(() => {
+    _resetHealthForTests();
+    _resetResilienceForTests();
+  });
+
+  it('returns the canonical 25-field layout with reset defaults', () => {
+    const snapshot = getHealthSnapshot();
+
+    expect(Object.keys(snapshot)).toEqual(canonicalFields);
+    expect(snapshot).toEqual({
+      logsEmitted: 0,
+      logsDropped: 0,
+      exportFailuresLogs: 0,
+      retriesLogs: 0,
+      exportLatencyMsLogs: 0,
+      asyncBlockingRiskLogs: 0,
+      circuitStateLogs: 'closed',
+      circuitOpenCountLogs: 0,
+      tracesEmitted: 0,
+      tracesDropped: 0,
+      exportFailuresTraces: 0,
+      retriesTraces: 0,
+      exportLatencyMsTraces: 0,
+      asyncBlockingRiskTraces: 0,
+      circuitStateTraces: 'closed',
+      circuitOpenCountTraces: 0,
+      metricsEmitted: 0,
+      metricsDropped: 0,
+      exportFailuresMetrics: 0,
+      retriesMetrics: 0,
+      exportLatencyMsMetrics: 0,
+      asyncBlockingRiskMetrics: 0,
+      circuitStateMetrics: 'closed',
+      circuitOpenCountMetrics: 0,
       setupError: null,
     });
   });
