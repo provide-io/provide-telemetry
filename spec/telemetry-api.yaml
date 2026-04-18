@@ -5,6 +5,21 @@
 # Canonical API surface for all provide-telemetry language implementations.
 # Each language MUST export equivalents of every `required: true` symbol,
 # using its idiomatic naming convention (see naming_conventions below).
+#
+# Symbol fields:
+#   name:       snake_case canonical name (transformed per naming_conventions above)
+#   kind:       function | instance | type | decorator
+#   required:   true  → missing symbol is a conformance error for ALL languages
+#               false → symbol is optional unless capability gate applies
+#   capability: when present, specifies which capability module must be present for this
+#               symbol to be required.  validate_conformance.py checks capability-gated
+#               symbols when the language advertises that capability.
+#               Supported values: "governance"
+#               Capability rules by language:
+#                 python, typescript, go — governance always present (first-class module)
+#                 rust                  — governance present when the `governance` feature
+#                                         is enabled (it is in the default feature set)
+#   note:       human-readable description or rationale
 
 spec_version: "1"
 
@@ -198,38 +213,48 @@ api:
     - name: register_classification_rules
       kind: function
       required: false
+      capability: governance
       note: "Strippable — only present when classification module is installed"
     - name: register_classification_rule
       kind: function
       required: false
+      capability: governance
       note: "Convenience wrapper for single-rule registration. Equivalent to register_classification_rules([rule])."
     - name: classify_key
       kind: function
       required: false
+      capability: governance
       note: "Return the DataClass label for a key if a rule matches, else null/None/nil."
     - name: set_classification_policy
       kind: function
       required: false
+      capability: governance
     - name: get_classification_policy
       kind: function
       required: false
+      capability: governance
     - name: set_consent_level
       kind: function
       required: false
+      capability: governance
       note: "Strippable — only present when consent module is installed"
     - name: get_consent_level
       kind: function
       required: false
+      capability: governance
     - name: should_allow
       kind: function
       required: false
+      capability: governance
     - name: enable_receipts
       kind: function
       required: false
+      capability: governance
       note: "Strippable — only present when receipts module is installed"
     - name: redact_config
       kind: function
       required: false
+      capability: governance
       note: "Returns a safe copy of TelemetryConfig with secrets masked"
 
   errors:
@@ -269,22 +294,27 @@ api:
     - name: DataClass
       kind: type
       required: false
+      capability: governance
       note: "Strippable governance type"
     - name: ClassificationRule
       kind: type
       required: false
+      capability: governance
       note: "Strippable governance type"
     - name: ClassificationPolicy
       kind: type
       required: false
+      capability: governance
       note: "Strippable governance type"
     - name: ConsentLevel
       kind: type
       required: false
+      capability: governance
       note: "Strippable governance type"
     - name: RedactionReceipt
       kind: type
       required: false
+      capability: governance
       note: "Strippable governance type"
 
 config_defaults:

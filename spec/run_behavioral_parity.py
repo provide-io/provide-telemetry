@@ -10,10 +10,15 @@ Each language has its own parity test suite that validates the same
 spec/behavioral_fixtures.yaml contracts. This script runs all four suites
 and reports a unified pass/fail matrix.
 
+By default both output-format probes (--check-output) and contract DSL probes
+(--check-contracts) are enabled.  Use --skip-output or --skip-contracts to
+disable them for ad-hoc debugging.
+
 Usage:
-    python spec/run_behavioral_parity.py                    # run all languages
-    python spec/run_behavioral_parity.py --lang python,go   # run subset
-    python spec/run_behavioral_parity.py --check-output     # also compare JSON log output
+    python spec/run_behavioral_parity.py                          # run all languages (strict)
+    python spec/run_behavioral_parity.py --lang python,go         # run subset
+    python spec/run_behavioral_parity.py --skip-output            # skip log-output probes
+    python spec/run_behavioral_parity.py --skip-contracts         # skip contract DSL probes
 
 Exit code 0 if every checked language passes, 1 otherwise.
 """
@@ -230,15 +235,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Print full test output for failing languages",
     )
     parser.add_argument(
-        "--check-output",
+        "--skip-output",
         action="store_true",
-        help="Also run log-output probes and compare canonical JSON fields cross-language",
+        default=False,
+        help="Skip log-output probes (default: probes are run)",
     )
     parser.add_argument(
-        "--check-contracts",
+        "--skip-contracts",
         action="store_true",
-        help="Run contract probe DSL cases",
+        default=False,
+        help="Skip contract probe DSL cases (default: cases are run)",
     )
+    # Legacy opt-in flags kept for backward compatibility — they are now no-ops
+    # because output and contract checks are on by default.  Passing them still
+    # works and produces the same result.
+    parser.add_argument("--check-output", action="store_true", default=True, help=argparse.SUPPRESS)
+    parser.add_argument("--check-contracts", action="store_true", default=True, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     selected = {s.strip().lower() for s in args.lang.split(",")}
@@ -298,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
             print(r.output)
             print()
 
-    if args.check_output:
+    if not args.skip_output:
         output_ok = run_output_check(
             _REPO_ROOT,
             selected,
@@ -326,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         if not runtime_ok:
             any_fail = True
 
-    if args.check_contracts:
+    if not args.skip_contracts:
         contracts_ok = run_contract_cases(
             _REPO_ROOT,
             selected,

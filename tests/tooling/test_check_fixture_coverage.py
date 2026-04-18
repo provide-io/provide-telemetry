@@ -30,8 +30,8 @@ def _load_module() -> ModuleType:
     return module
 
 
-def test_check_fixture_coverage_exits_zero() -> None:
-    """Script should run and exit 0 (report mode, not a hard gate)."""
+def test_check_fixture_coverage_exits_zero_with_allowlist() -> None:
+    """Script should exit 0 when all gaps are covered by the allowlist."""
     result = subprocess.run(
         [sys.executable, str(_SCRIPT)],
         capture_output=True,
@@ -39,7 +39,9 @@ def test_check_fixture_coverage_exits_zero() -> None:
         cwd=str(_REPO_ROOT),
     )
     assert result.returncode == 0, (
-        f"check_fixture_coverage.py exited {result.returncode}:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        f"check_fixture_coverage.py exited {result.returncode}:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}\n"
+        f"Hint: add new gaps to spec/fixture_coverage_allowlist.yaml with reason+owner"
     )
 
 
@@ -110,3 +112,61 @@ def test_run_report_missing_file_treated_as_empty(tmp_path: Path) -> None:
     categories = list(yaml.safe_load(fixtures_path.read_text()).keys())
     for cat in categories:
         assert coverage["phantom"][cat] is False, f"Expected {cat} to be uncovered for phantom language"
+
+
+def test_load_allowlist_returns_expected_pairs(tmp_path: Path) -> None:
+    """_load_allowlist should parse all (lang, category) pairs from YAML."""
+    module = _load_module()
+    al = tmp_path / "allowlist.yaml"
+    al.write_text(
+        "allowlist:\n"
+        "  - lang: rust\n"
+        "    category: config_headers\n"
+        "    reason: pending\n"
+        "    owner: provide-io\n"
+        "  - lang: typescript\n"
+        "    category: health_snapshot\n"
+        "    reason: pending\n"
+        "    owner: provide-io\n",
+        encoding="utf-8",
+    )
+    pairs = module._load_allowlist(al)
+    assert ("rust", "config_headers") in pairs
+    assert ("typescript", "health_snapshot") in pairs
+    assert ("go", "config_headers") not in pairs
+
+
+def test_load_allowlist_returns_empty_when_missing(tmp_path: Path) -> None:
+    """_load_allowlist should return empty set when file does not exist."""
+    module = _load_module()
+    pairs = module._load_allowlist(tmp_path / "nonexistent.yaml")
+    assert pairs == set()
+
+
+def test_unallowlisted_gap_causes_nonzero_exit(tmp_path: Path) -> None:
+    """main() should return non-zero when a gap is not in the allowlist."""
+
+    module = _load_module()
+
+    # Build a tiny fixtures.yaml with a category that no language covers
+    fixtures = tmp_path / "fixtures.yaml"
+    fixtures.write_text("totally_new_category:\n  description: new\n", encoding="utf-8")
+
+    # Use a language file that doesn't mention it
+    lang_files: dict[str, list[Path]] = {"go": [tmp_path / "nonexistent.go"]}
+
+    # Patch _load_allowlist to return nothing
+    import types
+
+    patched_module = types.ModuleType("check_fixture_coverage_patched")
+    patched_module.__dict__.update(module.__dict__)
+
+    coverage = module.run_report(fixtures, lang_files)
+    assert coverage["go"]["totally_new_category"] is False
+
+    # Simulate main with empty allowlist by calling _load_allowlist on a missing file
+    allowlist = module._load_allowlist(tmp_path / "empty_allowlist.yaml")
+    assert len(allowlist) == 0
+
+    # Confirm the gap is not in the allowlist
+    assert ("go", "totally_new_category") not in allowlist

@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Known fixture-coverage gaps that are explicitly accepted.
+# Each entry MUST include a reason and owner so the gap is a visible TODO,
+# not silent drift.  Remove entries here when the gap is closed.
+#
+# Format:
+#   - lang: <language>         # python | typescript | go | rust
+#     category: <category>    # top-level key in behavioral_fixtures.yaml
+#     reason: >               # why the gap is acceptable right now
+#       ...
+#     owner: <github-handle>  # who is responsible for closing this gap
+#     tracking: <issue-url>   # optional: link to tracking issue or PR
+
+allowlist:
+  # -------------------------------------------------------------------------
+  # Rust gaps — implementation pending
+  # -------------------------------------------------------------------------
+  - lang: rust
+    category: config_headers
+    reason: >
+      Rust config-header parsing fixture coverage not yet added to parity_test.rs.
+      The test text does not yet mention "config_headers" / "configHeaders".
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: default_sensitive_keys
+    reason: >
+      Rust default-sensitive-keys test not yet added to parity_test.rs.
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: backpressure_unlimited
+    reason: >
+      Rust backpressure-unlimited fixture coverage pending sibling PR that adds
+      backpressure tests to parity_test.rs.
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: sampling_signal_validation
+    reason: >
+      Rust sampling-signal-validation fixture coverage pending sibling PR.
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: schema_strict_mode
+    reason: >
+      Rust schema-strict-mode fixture coverage pending sibling PR.
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: pii_depth
+    reason: >
+      Rust pii_depth fixture coverage not yet added to parity_test.rs.
+    owner: provide-io
+    tracking: ""
+
+  - lang: rust
+    category: log_output_format
+    reason: >
+      Rust log-output-format probe not yet implemented (emit_log_rust probe exists
+      but test file does not mention "log_output_format").
+    owner: provide-io
+    tracking: ""
+
+  # -------------------------------------------------------------------------
+  # TypeScript gaps — implementation pending
+  # -------------------------------------------------------------------------
+  - lang: typescript
+    category: backpressure_unlimited
+    reason: >
+      TypeScript backpressure-unlimited test not yet present in parity.test.ts.
+      Pending sibling PR that adds the backpressure fixture coverage.
+    owner: provide-io
+    tracking: ""
+
+  - lang: typescript
+    category: sampling_signal_validation
+    reason: >
+      TypeScript sampling-signal-validation test not yet present in parity.test.ts.
+    owner: provide-io
+    tracking: ""
+
+  - lang: typescript
+    category: health_snapshot
+    reason: >
+      TypeScript health-snapshot test not yet present in parity.test.ts.
+    owner: provide-io
+    tracking: ""
+
+  - lang: typescript
+    category: log_output_format
+    reason: >
+      TypeScript log-output-format probe not yet implemented.
+    owner: provide-io
+    tracking: ""
+
+  # -------------------------------------------------------------------------
+  # Go gaps
+  # -------------------------------------------------------------------------
+  - lang: go
+    category: log_output_format
+    reason: >
+      Go log-output-format probe not yet implemented.
+    owner: provide-io
+    tracking: ""
