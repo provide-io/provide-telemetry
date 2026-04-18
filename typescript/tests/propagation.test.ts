@@ -603,6 +603,11 @@ describe('parseBaggage — W3C baggage header parsing', () => {
     expect(parseBaggage('')).toEqual({});
   });
 
+  it('skips entries where key trims to empty string (whitespace before =)', () => {
+    // " =value" has eqIdx=1 (passes eqIdx<1 check) but key trims to ""
+    expect(parseBaggage(' =value,key=val')).toEqual({ key: 'val' });
+  });
+
   it('strips whitespace from keys and values', () => {
     expect(parseBaggage(' userId = alice ')).toEqual({ userId: 'alice' });
   });
@@ -679,6 +684,31 @@ describe('clearPropagationContext — baggage.* key removal', () => {
 
   it('handles clear on empty stack without error (no baggage keys to pop)', () => {
     expect(() => clearPropagationContext()).not.toThrow();
+  });
+});
+
+describe('bindPropagationContext — spanId without traceId covers traceId ?? "" branch', () => {
+  afterEach(() => {
+    _resetPropagationForTests();
+    _resetContext();
+  });
+
+  it('sets trace context with empty traceId when only spanId is provided', () => {
+    // ctx.traceId is undefined → ctx.traceId ?? '' takes the '' (right-hand) branch at line 241
+    // ctx.spanId is truthy → the if condition (ctx.traceId || ctx.spanId) is satisfied
+    bindPropagationContext({ spanId: 'only-span-id-no-trace' });
+    const active = getActivePropagationContext();
+    expect(active.spanId).toBe('only-span-id-no-trace');
+  });
+
+  it('does not call setTraceContext when neither traceId nor spanId is set', () => {
+    // Neither ctx.traceId nor ctx.spanId → if (ctx.traceId || ctx.spanId) is false
+    // This covers the false branch at line 241 (setTraceContext is NOT called).
+    const ctx = getContext();
+    const prevTraceId = ctx.trace_id;
+    bindPropagationContext({ baggage: 'k=v' });
+    // trace context should remain unchanged
+    expect(getContext().trace_id).toBe(prevTraceId);
   });
 });
 

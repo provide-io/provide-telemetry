@@ -90,4 +90,6 @@ def test_reconfigure_telemetry_rejects_provider_changing_logging_with_installed_
     monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
 
     with pytest.raises(RuntimeError, match="provider-changing logging reconfiguration is unsupported"):
-        runtime_mod.reconfigure_telemetry(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"}))
+        runtime_mod.reconfigure_telemetry(
+            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"})
+        )

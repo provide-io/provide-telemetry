@@ -65,6 +65,16 @@ afterEach(() => {
 });
 
 describe('setupOtelLogProvider', () => {
+  it('throws when called without otlpEndpoint configured', async () => {
+    await expect(
+      setupOtelLogProvider({
+        serviceName: 'test',
+        otelEnabled: true,
+        // otlpEndpoint intentionally omitted
+      } as never),
+    ).rejects.toThrow('setupOtelLogProvider called without otlpEndpoint configured');
+  });
+
   it('throws when SDK peer dep is missing (caller handles graceful degradation)', async () => {
     vi.mocked(OTLPLogExporter).mockImplementation(function () {
       throw new Error('peer dep missing');

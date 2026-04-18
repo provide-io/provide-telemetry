@@ -89,4 +89,85 @@ describe('redactConfig', () => {
     const headers = result.otlpHeaders as Record<string, string>;
     expect(headers['X-Key']).toBe('1234****');
   });
+
+  it('masks per-signal logs headers', () => {
+    const cfg = {
+      otlpLogsHeaders: { Authorization: 'Bearer secret-logs-token' }, // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('secret-logs-token');
+    const headers = result.otlpLogsHeaders as Record<string, string>;
+    expect(headers.Authorization).toBe('Bear****');
+  });
+
+  it('masks per-signal traces headers', () => {
+    const cfg = {
+      otlpTracesHeaders: { 'X-Api-Key': 'traces-secret-key' }, // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('traces-secret-key');
+    const headers = result.otlpTracesHeaders as Record<string, string>;
+    expect(headers['X-Api-Key']).toBe('trac****');
+  });
+
+  it('masks per-signal metrics headers', () => {
+    const cfg = {
+      otlpMetricsHeaders: { Authorization: 'Bearer metrics-token' }, // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('metrics-token');
+    const headers = result.otlpMetricsHeaders as Record<string, string>;
+    expect(headers.Authorization).toBe('Bear****');
+  });
+
+  it('does not mask per-signal headers when field is absent', () => {
+    const cfg = { serviceName: 'svc' } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(result.otlpLogsHeaders).toBeUndefined();
+    expect(result.otlpTracesHeaders).toBeUndefined();
+    expect(result.otlpMetricsHeaders).toBeUndefined();
+  });
+
+  it('does not mask per-signal headers when field is empty object', () => {
+    const cfg = {
+      otlpLogsHeaders: {},
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(result.otlpLogsHeaders).toEqual({});
+  });
+
+  it('masks per-signal logs endpoint credentials', () => {
+    const cfg = {
+      otlpLogsEndpoint: 'https://user:p4ssw0rd@logs.example.com', // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('p4ssw0rd');
+    expect(result.otlpLogsEndpoint as string).toContain('****');
+  });
+
+  it('masks per-signal traces endpoint credentials', () => {
+    const cfg = {
+      otlpTracesEndpoint: 'https://user:p4ssw0rd@traces.example.com', // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('p4ssw0rd');
+    expect(result.otlpTracesEndpoint as string).toContain('****');
+  });
+
+  it('masks per-signal metrics endpoint credentials', () => {
+    const cfg = {
+      otlpMetricsEndpoint: 'https://user:p4ssw0rd@metrics.example.com', // pragma: allowlist secret
+    } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(JSON.stringify(result)).not.toContain('p4ssw0rd');
+    expect(result.otlpMetricsEndpoint as string).toContain('****');
+  });
+
+  it('does not mask per-signal endpoints when fields are absent', () => {
+    const cfg = { serviceName: 'svc' } as Partial<TelemetryConfig> as TelemetryConfig;
+    const result = redactConfig(cfg);
+    expect(result.otlpLogsEndpoint).toBeUndefined();
+    expect(result.otlpTracesEndpoint).toBeUndefined();
+    expect(result.otlpMetricsEndpoint).toBeUndefined();
+  });
 });
