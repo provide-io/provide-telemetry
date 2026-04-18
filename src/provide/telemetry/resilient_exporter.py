@@ -46,6 +46,9 @@ def _load_failure_result(signal: str) -> Any:
     raise ValueError(f"unknown signal {signal!r}")
 
 
+_UNSET = object()
+
+
 class ResilientExporter:
     """Policy-enforcing proxy around an OTel exporter.
 
@@ -53,14 +56,21 @@ class ResilientExporter:
     ``export`` runs under ``run_with_resilience`` so retries, timeouts, and
     circuit-breaker state apply to live transport traffic — not only to the
     construction-time probe performed by each provider's setup code.
+
+    The OTel FAILURE enum is loaded lazily on first drop so that construction
+    never requires ``opentelemetry`` to be importable. Tests that inject fake
+    OTel components without the real SDK present can construct the wrapper
+    without triggering ``ModuleNotFoundError``.
     """
 
     __slots__ = ("_failure_result", "_inner", "_signal")
 
-    def __init__(self, signal: str, inner: Any, failure_result: Any | None = None) -> None:
+    def __init__(self, signal: str, inner: Any, failure_result: Any = _UNSET) -> None:
         self._signal = signal
         self._inner = inner
-        self._failure_result = failure_result if failure_result is not None else _load_failure_result(signal)
+        # Keep the sentinel until the first drop; `_load_failure_result` is
+        # called from `export()` only on the fail-open path.
+        self._failure_result = failure_result
 
     def export(self, *args: Any, **kwargs: Any) -> Any:
         inner_export = self._inner.export
@@ -69,6 +79,8 @@ class ResilientExporter:
             # fail_open policy ran out of retries / circuit is open. Return the
             # canonical FAILURE enum so OTel's Batch processor records the drop
             # without raising inside its worker thread.
+            if self._failure_result is _UNSET:
+                self._failure_result = _load_failure_result(self._signal)
             return self._failure_result
         return result
 
