@@ -4,7 +4,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   _classifyField,
+  classifyKey,
   getClassificationPolicy,
+  registerClassificationRule,
   registerClassificationRules,
   resetClassificationForTests,
   setClassificationPolicy,
@@ -71,6 +73,11 @@ describe('hook state', () => {
   it('hook is null before any rules are registered', () => {
     // After afterEach reset, hook should be null.
     expect(_classificationHook).toBeNull();
+  });
+
+  it('registerClassificationRule delegates to plural registration', () => {
+    registerClassificationRule({ pattern: 'email', classification: 'PII' });
+    expect(_classifyField('email', 'alice@example.com')).toBe('PII');
   });
 
   it('registerClassificationRules installs the hook', () => {
@@ -163,6 +170,15 @@ describe('glob pattern escaping', () => {
 describe('no match', () => {
   it('returns null when no rules registered', () => {
     expect(_classifyField('email', 'alice@example.com')).toBeNull();
+  });
+
+  it('classifyKey returns the classification for a matching key', () => {
+    registerClassificationRule({ pattern: 'email', classification: 'PII' });
+    expect(classifyKey('email', 'alice@example.com')).toBe('PII');
+  });
+
+  it('classifyKey returns null for a missing key', () => {
+    expect(classifyKey('missing')).toBeNull();
   });
 
   it('returns null when no rule matches', () => {

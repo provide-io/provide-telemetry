@@ -71,6 +71,11 @@ export function registerClassificationRules(rules: ClassificationRule[]): void {
   setPolicyHook(_lookupPolicyAction);
 }
 
+/** Register a single classification rule. */
+export function registerClassificationRule(rule: ClassificationRule): void {
+  registerClassificationRules([rule]);
+}
+
 /** Look up the policy action for a given classification label. */
 function _lookupPolicyAction(label: string): string {
   const policy = _policy as unknown as Record<string, string>;
@@ -95,6 +100,11 @@ export function _classifyField(key: string, _value: unknown): string | null {
     }
   }
   return null;
+}
+
+/** Public convenience wrapper for key classification. */
+export function classifyKey(key: string, value?: unknown): DataClass | null {
+  return _classifyField(key, value) as DataClass | null;
 }
 
 /** Reset all classification state and remove the hook (test helper). */
