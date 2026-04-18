@@ -18,6 +18,7 @@ import {
   MAX_BAGGAGE_LENGTH,
 } from '../src/propagation';
 import { _resetContext, getContext } from '../src/context';
+import { getTraceContext, _resetTraceContext } from '../src/tracing';
 
 afterEach(() => _resetPropagationForTests());
 
@@ -710,9 +711,14 @@ describe('clearPropagationContext — baggage.* key removal', () => {
 });
 
 describe('bindPropagationContext — spanId without traceId covers traceId ?? "" branch', () => {
+  beforeEach(() => {
+    _resetPropagationForTests();
+    _resetTraceContext();
+  });
   afterEach(() => {
     _resetPropagationForTests();
     _resetContext();
+    _resetTraceContext();
   });
 
   it('sets trace context with empty traceId when only spanId is provided', () => {
@@ -731,6 +737,28 @@ describe('bindPropagationContext — spanId without traceId covers traceId ?? ""
     bindPropagationContext({ baggage: 'k=v' });
     // trace context should remain unchanged
     expect(getContext().trace_id).toBe(prevTraceId);
+  });
+
+  it('traceId without spanId: getTraceContext span_id is absent (not "Stryker was here!" fallback)', () => {
+    // ctx.traceId is defined, ctx.spanId is undefined →
+    // setTraceContext(traceId, ctx.spanId ?? '') is called
+    // The '' fallback normalises to undefined in setTraceContext, so span_id must be absent.
+    bindPropagationContext({ traceId: 'aaaa1111bbbb2222cccc3333dddd4444' });
+    const tc = getTraceContext();
+    expect(tc.trace_id).toBe('aaaa1111bbbb2222cccc3333dddd4444');
+    // span_id must NOT be a non-empty stray string (kills StringLiteral mutation on line 251)
+    expect(tc.span_id).toBeUndefined();
+  });
+
+  it('spanId without traceId: getTraceContext trace_id is absent (kills StringLiteral mutation on ctx.traceId ?? "")', () => {
+    // ctx.traceId is undefined, ctx.spanId is truthy →
+    // setTraceContext(ctx.traceId ?? '', ctx.spanId) is called
+    // The '' fallback normalises to undefined in setTraceContext, so trace_id must be absent.
+    // StringLiteral mutation: ctx.traceId ?? "Stryker was here!" would set trace_id to that string.
+    bindPropagationContext({ spanId: 'only-span-id-no-trace' });
+    const tc = getTraceContext();
+    // trace_id must NOT be a non-empty stray string
+    expect(tc.trace_id).toBeUndefined();
   });
 });
 
@@ -848,5 +876,182 @@ describe('propagation — fallback warning emitted once', () => {
     } finally {
       _restorePropagationALSForTest(saved2);
     }
+  });
+});
+
+describe('clearPropagationContext — trace context restoration (Bug: empty-string trace IDs)', () => {
+  beforeEach(() => {
+    _resetPropagationForTests();
+    _resetTraceContext();
+  });
+  afterEach(() => {
+    _resetPropagationForTests();
+    _resetTraceContext();
+  });
+
+  it('getTraceContext() returns {} after bind + clear with no outer context', () => {
+    // Before fix: returned {trace_id: '', span_id: ''} due to ?? '' coercion
+    bindPropagationContext({
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      spanId: '00f067aa0ba902b7',
+    });
+    clearPropagationContext();
+    expect(getTraceContext()).toEqual({});
+  });
+
+  it('getTraceContext() returns {} when called without any bind/clear ever', () => {
+    // Isolated clear with no prior bind — should never produce empty strings
+    clearPropagationContext();
+    expect(getTraceContext()).toEqual({});
+  });
+
+  it('nested bind: clearing inner frame restores outer trace ID exactly (not empty string)', () => {
+    // Bind outer context with a real trace ID
+    bindPropagationContext({
+      traceId: 'aaaa1111bbbb2222cccc3333dddd4444',
+      spanId: '1234567890abcdef', // pragma: allowlist secret
+    });
+    // Bind inner context with a different trace ID
+    bindPropagationContext({
+      traceId: 'ffff1111eeee2222dddd3333cccc4444',
+      spanId: 'fedcba9876543210', // pragma: allowlist secret
+    });
+    expect(getTraceContext().trace_id).toBe('ffff1111eeee2222dddd3333cccc4444');
+
+    // Clear inner — must restore the outer trace ID, not '' or undefined
+    clearPropagationContext();
+    expect(getTraceContext().trace_id).toBe('aaaa1111bbbb2222cccc3333dddd4444');
+    expect(getTraceContext().span_id).toBe('1234567890abcdef');
+
+    // Clear outer — trace context must be fully empty
+    clearPropagationContext();
+    expect(getTraceContext()).toEqual({});
+  });
+});
+
+describe('bindPropagationContext — baggagePriorStack pushed for no-baggage frames (kills line 270 BlockStatement)', () => {
+  let _savedAls: ReturnType<typeof _disablePropagationALSForTest>;
+
+  beforeEach(() => {
+    _resetPropagationForTests();
+    _resetContext();
+    _resetTraceContext();
+    // Use fallback mode so mutations in _fallbackStore are exercised directly
+    _savedAls = _disablePropagationALSForTest();
+  });
+
+  afterEach(() => {
+    _restorePropagationALSForTest(_savedAls);
+    _resetPropagationForTests();
+    _resetContext();
+    _resetTraceContext();
+  });
+
+  it('clearing a no-baggage frame after a baggage frame keeps stacks balanced', () => {
+    // Bind a frame without baggage (pushes empty map to baggagePriorStack)
+    bindPropagationContext({ traceId: 'no-bag' });
+    // Bind a frame with baggage (pushes real map to baggagePriorStack)
+    bindPropagationContext({ baggage: 'k=v' });
+    expect(getContext()['baggage.k']).toBe('v');
+    // Clear the baggage frame — must pop from baggagePriorStack (remove 'k')
+    clearPropagationContext();
+    expect(getContext()['baggage.k']).toBeUndefined();
+    // Clear the no-baggage frame — baggagePriorStack pop must not crash (empty map was pushed)
+    // If the else branch is removed, no entry is pushed and baggagePriorStack becomes unbalanced
+    expect(() => clearPropagationContext()).not.toThrow();
+    expect(getActivePropagationContext().traceId).toBeUndefined();
+  });
+
+  it('baggagePriorStack depth matches bind depth — no-baggage frames push empty map so pop succeeds', () => {
+    // Three no-baggage binds: each must push an empty map so clearPropagationContext
+    // can pop without underflowing the stack.
+    bindPropagationContext({ traceId: 'a' });
+    bindPropagationContext({ traceId: 'b' });
+    bindPropagationContext({ traceId: 'c' });
+    // All three clears must not throw (each pop finds an entry)
+    // If else {} removes the push, after three binds only 0 entries are in baggagePriorStack
+    // and each clear pops undefined (misaligned), making outer baggage restore break silently.
+    clearPropagationContext();
+    expect(getActivePropagationContext().traceId).toBe('b');
+    clearPropagationContext();
+    expect(getActivePropagationContext().traceId).toBe('a');
+    clearPropagationContext();
+    expect(getActivePropagationContext().traceId).toBeUndefined();
+  });
+
+  it('no-baggage frame followed by baggage frame: outer frame baggage.* key is absent after both cleared', () => {
+    // Frame 1: no baggage — empty map pushed to baggagePriorStack
+    bindPropagationContext({ traceId: 'outer' });
+    // Frame 2: has baggage — real map pushed
+    bindPropagationContext({ baggage: 'x=1' });
+    expect(getContext()['baggage.x']).toBe('1');
+    // Pop frame 2 → baggage.x removed (prior for frame 2 was BAGGAGE_UNSET)
+    clearPropagationContext();
+    expect(getContext()['baggage.x']).toBeUndefined();
+    // Pop frame 1 → empty map popped — no crash, no residual baggage
+    clearPropagationContext();
+    expect(getContext()['baggage.x']).toBeUndefined();
+    expect(getActivePropagationContext().traceId).toBeUndefined();
+  });
+});
+
+describe('_resetPropagationForTests — resets fallback stack arrays to empty (kills ArrayDeclaration mutants on lines 330/332/333)', () => {
+  let _savedAls: ReturnType<typeof _disablePropagationALSForTest>;
+
+  beforeEach(() => {
+    _resetPropagationForTests();
+    _resetContext();
+    _resetTraceContext();
+    // Disable ALS so all operations use _fallbackStore directly — mutations on
+    // _fallbackStore initialisation are only observable in fallback mode.
+    _savedAls = _disablePropagationALSForTest();
+  });
+
+  afterEach(() => {
+    _restorePropagationALSForTest(_savedAls);
+    _resetPropagationForTests();
+    _resetContext();
+    _resetTraceContext();
+  });
+
+  it('stack[] is empty after reset — clearPropagationContext on empty stack does not restore stale active context', () => {
+    // If stack=["Stryker was here"] after reset, clearPropagationContext() would:
+    //   restored = stack.pop() = "Stryker was here"
+    //   store.active = "Stryker was here" ?? {} = "Stryker was here"
+    //   getActivePropagationContext() = { ...store.active } = { 0:'S', 1:'t', ... }
+    // An empty stack produces: store.active = {} → getActivePropagationContext() = {}
+    clearPropagationContext(); // no prior bind — stack must be []
+    const active = getActivePropagationContext();
+    // Must be exactly {} — no character-index keys from string spread
+    expect(active).toEqual({});
+    expect(Object.keys(active).length).toBe(0);
+  });
+
+  it('baggagePriorStack[] is empty after reset — clearPropagationContext does not iterate over stale string entry', () => {
+    // If baggagePriorStack=["Stryker was here"], clearPropagationContext() would:
+    //   priorEntries = pop() = "Stryker was here"
+    //   Object.entries("Stryker was here") = [["0","S"],["1","t"],...] — calls bindContext for each char
+    // An empty baggagePriorStack produces: priorEntries = {} → no bindContext calls
+    clearPropagationContext(); // no prior bind — baggagePriorStack must be []
+    const ctx = getContext();
+    // Must have no character-index keys that would come from iterating the string
+    expect(ctx['0']).toBeUndefined();
+    expect(ctx['1']).toBeUndefined();
+    const numericKeys = Object.keys(ctx).filter((k) => /^\d+$/.test(k));
+    expect(numericKeys).toHaveLength(0);
+  });
+
+  it('traceCtxStack[] is empty after reset — clearPropagationContext with no bind does not call setTraceContext', () => {
+    // Whether traceCtxStack=[] or ["Stryker was here"], the end result of setTraceContext
+    // may be the same (string has no .traceId/.spanId → undefined → no-op).
+    // Verify: after two clears (one with a bind, one without), trace context is empty.
+    bindPropagationContext({
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      spanId: '00f067aa0ba902b7',
+    });
+    clearPropagationContext(); // pops the entry we pushed
+    // Now traceCtxStack should be empty. A second clear must not restore a stale trace ID.
+    clearPropagationContext();
+    expect(getTraceContext()).toEqual({});
   });
 });
