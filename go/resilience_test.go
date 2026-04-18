@@ -654,7 +654,7 @@ func TestCB_CooldownUsesMultiplication(t *testing.T) {
 	SetExporterPolicy(signal, ExporterPolicy{Retries: 0, BackoffSeconds: 0, TimeoutSeconds: 5.0, FailOpen: false})
 
 	_tripCircuitBreaker(signal)
-	_setOpenCount(signal, 2) // cooldown = 30s * 4 = 120s (correct) vs 30s / 4 = 7.5s (mutant)
+	_setOpenCount(signal, 2)                                      // cooldown = 30s * 4 = 120s (correct) vs 30s / 4 = 7.5s (mutant)
 	_setCircuitTrippedAt(signal, time.Now().Add(-10*time.Second)) // 10s ago
 
 	// With correct cooldown (120s): elapsed=10s < 120s → CB rejects → fn NOT called.
