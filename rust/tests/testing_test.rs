@@ -6,6 +6,7 @@
 use provide_telemetry::context::{bind_context, get_context};
 use provide_telemetry::health::{get_health_snapshot, record_export_failure};
 use provide_telemetry::sampling::Signal;
+use provide_telemetry::schema::{get_strict_schema, set_strict_schema};
 use provide_telemetry::testing::{reset_telemetry_state, reset_trace_context};
 use provide_telemetry::tracer::{get_trace_context, set_trace_context};
 use serde_json::json;
@@ -50,6 +51,20 @@ fn testing_test_reset_trace_context_clears_manually_set_trace_context() {
             .get("trace_id")
             .and_then(|value: &Option<String>| value.clone()),
         None
+    );
+}
+
+#[test]
+fn testing_test_reset_telemetry_state_clears_strict_schema() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    set_strict_schema(true);
+    assert!(get_strict_schema(), "strict_schema must be true after set");
+
+    reset_telemetry_state();
+
+    assert!(
+        !get_strict_schema(),
+        "reset_telemetry_state must clear STRICT_SCHEMA to false"
     );
 }
 
