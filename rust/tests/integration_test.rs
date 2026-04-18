@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::runtime::Builder;
 
+use provide_telemetry::testing::acquire_test_state_lock;
 use provide_telemetry::{
     get_circuit_state, get_health_snapshot, release, run_with_resilience, set_exporter_policy,
     set_queue_policy, set_sampling_policy, should_sample, try_acquire, ExporterPolicy, QueuePolicy,
@@ -47,12 +47,6 @@ mod slo_health;
 #[path = "../examples/support/w3c_propagation.rs"]
 mod w3c_propagation;
 
-static POLICY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-fn policy_lock() -> &'static Mutex<()> {
-    POLICY_LOCK.get_or_init(|| Mutex::new(()))
-}
-
 fn reset_policies() {
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
@@ -91,7 +85,7 @@ fn integration_test_e2e_tracer_provider_builds_with_http_exporter() {
 
 #[test]
 fn integration_test_basic_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = basic_telemetry::run_demo().expect("basic telemetry example should succeed");
 
     assert_eq!(summary.iterations, 3);
@@ -106,7 +100,7 @@ fn integration_test_basic_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_w3c_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = w3c_propagation::run_demo().expect("w3c propagation example should succeed");
 
     assert_eq!(
@@ -123,7 +117,7 @@ fn integration_test_w3c_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_sampling_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = sampling_backpressure::run_demo().expect("sampling example should succeed");
 
     assert!(!summary.logs_routine_sampled);
@@ -136,7 +130,7 @@ fn integration_test_sampling_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_runtime_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = runtime_reconfigure::run_demo().expect("runtime example should succeed");
 
     assert_eq!(summary.before_logs_rate, 1.0);
@@ -147,7 +141,7 @@ fn integration_test_runtime_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_pii_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = pii_cardinality::run_demo().expect("pii/cardinality example should succeed");
 
     assert_eq!(summary.hashed_email_len, 12);
@@ -159,7 +153,7 @@ fn integration_test_pii_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_resilience_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = exporter_resilience::run_demo().expect("resilience example should succeed");
 
     assert!(summary.fail_open_result_is_none);
@@ -171,7 +165,7 @@ fn integration_test_resilience_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_slo_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = slo_health::run_demo().expect("slo example should succeed");
 
     assert_eq!(summary.classify_404.as_deref(), Some("client_error"));
@@ -181,7 +175,7 @@ fn integration_test_slo_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_full_hardening_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = full_hardening::run_demo().expect("hardening example should succeed");
 
     assert_eq!(summary.pii_rules_active, 2);
@@ -192,7 +186,7 @@ fn integration_test_full_hardening_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_error_degradation_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = error_degradation::run_demo().expect("error/degradation example should succeed");
 
     assert!(summary.configuration_error_seen);
@@ -202,7 +196,7 @@ fn integration_test_error_degradation_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_performance_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = performance_metrics::run_demo().expect("performance example should succeed");
 
     assert!(summary.event_ns > 0.0);
@@ -212,7 +206,7 @@ fn integration_test_performance_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_lazy_loading_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = lazy_loading::run_demo().expect("lazy loading example should succeed");
 
     assert!(!summary.slo_loaded_before_classify);
@@ -223,7 +217,7 @@ fn integration_test_lazy_loading_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_error_sessions_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = error_sessions::run_demo().expect("error/session example should succeed");
 
     assert_eq!(summary.value_error_a, summary.value_error_b);
@@ -236,7 +230,7 @@ fn integration_test_error_sessions_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_security_hardening_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = security_hardening::run_demo().expect("security example should succeed");
 
     assert!(summary.secret_redacted);
@@ -247,7 +241,7 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
 #[cfg(feature = "governance")]
 #[test]
 fn integration_test_data_governance_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     let summary = data_governance::run_demo().expect("data governance example should succeed");
 
     assert!(summary.full_logs_debug_allowed);
@@ -272,7 +266,7 @@ fn reset_runtime() {
 
 #[test]
 fn integration_test_sampling_drop_increments_health() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_policies();
     set_sampling_policy(
         Signal::Logs,
@@ -292,7 +286,7 @@ fn integration_test_sampling_drop_increments_health() {
 
 #[test]
 fn integration_test_bounded_queue_drop_increments_health() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_policies();
     set_queue_policy(QueuePolicy {
         logs_maxsize: 1,
@@ -320,7 +314,7 @@ fn integration_test_bounded_queue_drop_increments_health() {
 
 #[test]
 fn integration_test_circuit_breaker_trips_after_three_timeouts() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_policies();
     let runtime = Builder::new_current_thread()
         .enable_all()
@@ -372,7 +366,7 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
 fn integration_test_setup_registers_otel_providers() {
     use provide_telemetry::setup_telemetry;
 
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_runtime();
 
     let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -394,7 +388,7 @@ fn integration_test_setup_registers_otel_providers() {
 fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
     use provide_telemetry::{get_runtime_config, reconfigure_telemetry, setup_telemetry};
 
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_runtime();
 
     let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -420,7 +414,7 @@ fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
 fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
     use provide_telemetry::{otel::otel_installed_for_tests, setup_telemetry, shutdown_telemetry};
 
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_runtime();
 
     let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -453,7 +447,7 @@ fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
 fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_providers() {
     use provide_telemetry::{otel::otel_installed_for_tests, setup_telemetry};
 
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_runtime();
 
     let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -478,7 +472,7 @@ fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_provide
 fn setup_test_sampling_policy_applied_from_config() {
     use provide_telemetry::{get_sampling_policy, setup_telemetry, shutdown_telemetry};
 
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_test_state_lock();
     reset_policies();
     let _ = shutdown_telemetry();
 

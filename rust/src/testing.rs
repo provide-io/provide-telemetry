@@ -31,7 +31,7 @@ fn test_state_lock() -> &'static Mutex<()> {
 
 /// Serialize tests that mutate process-global telemetry state.
 pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
-    test_state_lock().lock().expect("test state lock poisoned")
+    test_state_lock().lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Reset all telemetry state to keep tests isolated.
