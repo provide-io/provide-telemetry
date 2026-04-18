@@ -252,6 +252,41 @@ class TestBindClearLifecycle:
         assert get_context() == {}
         assert get_trace_context() == {"trace_id": None, "span_id": None}
 
+    def test_nested_same_baggage_key_restores_outer_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Regression: inner frame overwriting the same baggage.foo key as the outer
+        # frame must restore the outer value on clear, not unbind it.
+        monkeypatch.setattr(propagation_mod, "attach_w3c_context", MagicMock(return_value=None))
+        monkeypatch.setattr(propagation_mod, "detach_w3c_context", lambda _t: None)
+
+        outer = PropagationContext(
+            traceparent=None,
+            tracestate=None,
+            baggage="foo=outer",
+            trace_id=None,
+            span_id=None,
+        )
+        inner = PropagationContext(
+            traceparent=None,
+            tracestate=None,
+            baggage="foo=inner",
+            trace_id=None,
+            span_id=None,
+        )
+        bind_propagation_context(outer)
+        assert get_context()["baggage.foo"] == "outer"
+
+        bind_propagation_context(inner)
+        assert get_context()["baggage.foo"] == "inner"
+
+        clear_propagation_context()
+        # Outer value must be preserved, not unbound.
+        assert get_context()["baggage.foo"] == "outer"
+        assert get_context()["baggage"] == "foo=outer"
+
+        clear_propagation_context()
+        assert "baggage.foo" not in get_context()
+        assert "baggage" not in get_context()
+
 
 # ── Async context isolation ────────────────────────────────────────────
 

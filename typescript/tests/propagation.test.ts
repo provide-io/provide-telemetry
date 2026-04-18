@@ -685,6 +685,28 @@ describe('clearPropagationContext — baggage.* key removal', () => {
   it('handles clear on empty stack without error (no baggage keys to pop)', () => {
     expect(() => clearPropagationContext()).not.toThrow();
   });
+
+  it('restores outer baggage value when inner frame overwrites the same key', () => {
+    // Regression: inner frame binding baggage.foo must not leak an unbind on clear.
+    bindPropagationContext({ baggage: 'foo=outer' });
+    expect(getContext()['baggage.foo']).toBe('outer');
+
+    bindPropagationContext({ baggage: 'foo=inner' });
+    expect(getContext()['baggage.foo']).toBe('inner');
+
+    clearPropagationContext(); // clears inner frame
+    expect(getContext()['baggage.foo']).toBe('outer');
+
+    clearPropagationContext(); // clears outer frame
+    expect(getContext()['baggage.foo']).toBeUndefined();
+  });
+
+  it('unbinds baggage.* key introduced by the frame when no outer value existed', () => {
+    bindPropagationContext({ baggage: 'brand-new=1' });
+    expect(getContext()['baggage.brand-new']).toBe('1');
+    clearPropagationContext();
+    expect(getContext()['baggage.brand-new']).toBeUndefined();
+  });
 });
 
 describe('bindPropagationContext — spanId without traceId covers traceId ?? "" branch', () => {
