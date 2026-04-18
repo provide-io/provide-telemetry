@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+name: 📐 CI — Surface Conformance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spec/telemetry-api.yaml"
+      - "spec/validate_conformance.py"
+      - "scripts/check_version_sync.py"
+      - "VERSION"
+      - "src/provide/telemetry/__init__.py"
+      - "typescript/src/index.ts"
+      - "go/telemetry.go"
+      - "rust/src/lib.rs"
+      - ".github/workflows/ci-surface.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "spec/telemetry-api.yaml"
+      - "spec/validate_conformance.py"
+      - "scripts/check_version_sync.py"
+      - "VERSION"
+      - "src/provide/telemetry/__init__.py"
+      - "typescript/src/index.ts"
+      - "go/telemetry.go"
+      - "rust/src/lib.rs"
+      - ".github/workflows/ci-surface.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Verify each language exports exactly the symbols declared in spec/telemetry-api.yaml.
+  conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.11"
+      # Checks all four languages match the API surface in spec/telemetry-api.yaml
+      - name: API conformance check
+        run: python spec/validate_conformance.py
+
+  # Ensure all four languages share the same major.minor version from VERSION.
+  version-sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.11"
+      # Verifies VERSION file matches pyproject.toml, package.json, go.mod, Cargo.toml
+      - name: Version sync check
+        run: python scripts/check_version_sync.py

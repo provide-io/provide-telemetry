@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+name: 📐 CI — Contract Parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spec/**"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
+      - "go/**"
+      - "rust/src/**"
+      - "rust/examples/contract_probe.rs"
+      - "VERSION"
+      - ".github/workflows/ci-contracts.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "spec/**"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
+      - "go/**"
+      - "rust/src/**"
+      - "rust/examples/contract_probe.rs"
+      - "VERSION"
+      - ".github/workflows/ci-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Cross-language log output format parity — runs all 4 language parity suites
+  # then compares canonical JSON fields (message, level, service, env, version, trace_id).
+  output-parity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # Python runtime for the orchestrator and Python parity tests
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
+      # Node.js runtime for TypeScript parity tests
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      # Go runtime for Go parity tests
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.25"
+      # Rust toolchain for Rust parity tests
+      - uses: dtolnay/rust-toolchain@stable
+      # Cache Cargo registry and build artifacts to speed up Rust compilation
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+        with:
+          workspaces: rust
+      # Install Python and TypeScript dependencies
+      - name: Install dependencies
+        run: python ci/install_parity_deps.py
+      # Run all four language parity suites, then run each language's emit probe
+      # and cross-compare canonical JSON fields (msg, level) to catch output regressions.
+      - name: Behavioral parity check (output format)
+        run: python spec/run_behavioral_parity.py --check-output
+
+  # Contract probe DSL — step-based cross-language semantic tests that exercise real
+  # public APIs (setup, bind_propagation, emit_log, clear_propagation, etc.) and
+  # cross-compare observable outputs across all four languages.
+  contract-probes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # Python runtime for the orchestrator and Python contract probe
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
+      # Node.js runtime for TypeScript contract probe
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      # Go runtime for Go contract probe
+      - uses: actions/setup-go@v5  # TODO: pin to SHA when stable SHA is known
+        with:
+          go-version: "1.25"
+      # Rust toolchain for Rust contract probe
+      - uses: dtolnay/rust-toolchain@stable
+      # Cache Cargo registry and build artifacts to speed up Rust compilation
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+        with:
+          workspaces: rust
+      # Install Python and TypeScript dependencies
+      - name: Install dependencies
+        run: python ci/install_parity_deps.py
+      # Run all 6 contract cases across all 4 languages and cross-compare results.
+      # Cases exercise: propagation→logger correlation, trace field precedence,
+      # config validation, lifecycle, baggage injection, propagation cleanup.
+      - name: Contract probe check (cross-language semantics)
+        run: python spec/run_behavioral_parity.py --check-contracts
