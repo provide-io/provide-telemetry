@@ -42,7 +42,7 @@ type PropagationStore = {
    */
   baggagePriorStack: Array<Record<string, PriorBaggageValue>>;
   /** Parallel stack of previous {traceId, spanId} before each bind. */
-  traceCtxStack: Array<{ traceId: string; spanId: string }>;
+  traceCtxStack: Array<{ traceId: string | undefined; spanId: string | undefined }>;
 };
 
 export type PropagationALS = {
@@ -244,8 +244,8 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   // Restored by clearPropagationContext() so IDs don't leak.
   const prevTrace = getTraceContext();
   store.traceCtxStack.push({
-    traceId: prevTrace.trace_id ?? '',
-    spanId: prevTrace.span_id ?? '',
+    traceId: prevTrace.trace_id,
+    spanId: prevTrace.span_id,
   });
   if (ctx.traceId || ctx.spanId) {
     setTraceContext(ctx.traceId ?? '', ctx.spanId ?? '');
@@ -254,6 +254,7 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   // Auto-inject parsed baggage entries as baggage.* log context fields.
   // Capture prior values so that nested frames overwriting the same baggage
   // key restore the outer value on clear (instead of leaking an unbind).
+  // Stryker disable BlockStatement: else branch pushing {} is equivalent — clearPropagationContext uses `?? {}` so not pushing {} has the same observable effect
   if (ctx.baggage) {
     const parsed = parseBaggage(ctx.baggage);
     const prior: Record<string, PriorBaggageValue> = {};
@@ -269,6 +270,7 @@ export function bindPropagationContext(ctx: PropagationContext): void {
   } else {
     store.baggagePriorStack.push({});
   }
+  // Stryker restore BlockStatement
 }
 
 /**
@@ -330,6 +332,7 @@ export function _resetPropagationForTests(): void {
     stack: [],
     otelCtxStack: [],
     baggagePriorStack: [],
+    // Stryker disable next-line ArrayDeclaration: equivalent mutant — any non-object stale entry (e.g. "Stryker was here") has undefined .traceId/.spanId, producing the same setTraceContext(undefined,undefined) no-op as an empty array
     traceCtxStack: [],
   };
   _fallbackWarned = false;

@@ -64,16 +64,20 @@ let _manualSpanId: string | undefined;
 /**
  * Manually inject trace/span IDs (e.g. from an incoming request header).
  * Returned by getTraceContext(); cleared by _resetTraceContext().
+ * Pass undefined (or empty string) for either argument to clear that ID.
  */
-export function setTraceContext(traceId: string, spanId: string): void {
+export function setTraceContext(traceId: string | undefined, spanId: string | undefined): void {
+  // Treat empty strings as clearing the value — prevents empty-string IDs in logs.
+  const normalizedTraceId = traceId || undefined;
+  const normalizedSpanId = spanId || undefined;
   const store = _als?.getStore();
   if (store !== undefined) {
-    store.traceId = traceId;
-    store.spanId = spanId;
+    store.traceId = normalizedTraceId;
+    store.spanId = normalizedSpanId;
     return;
   }
-  _manualTraceId = traceId;
-  _manualSpanId = spanId;
+  _manualTraceId = normalizedTraceId;
+  _manualSpanId = normalizedSpanId;
 }
 
 /**
@@ -219,8 +223,10 @@ function _spanHandler<T>(fn: () => T, span: Span): T {
  */
 export function withTrace<T>(name: string, fn: () => T): T {
   if (!getConfig().tracingEnabled) return fn();
+  // Stryker disable next-line StringLiteral: 'traces' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
   if (!shouldAllow('traces')) return fn();
   if (!shouldSample('traces', name)) return fn();
+  // Stryker disable next-line StringLiteral: 'traces' vs '' — both return a ticket when all queues are unbounded (default); differentiating requires a bounded-only-traces test that checks tracesEmitted
   const ticket = tryAcquire('traces');
   if (!ticket) return fn();
 

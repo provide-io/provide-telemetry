@@ -446,6 +446,24 @@ describe('withTrace — OTel propagation context wiring', () => {
     withSpy.mockRestore();
   });
 
+  it('releases traces backpressure ticket in the OTel-propagation-context path (kills BlockStatement on release)', () => {
+    // Exercises the if (activeCtx) { try { … } finally { release(ticket) } } branch.
+    // If release(ticket) were removed in that branch, the second withTrace call would be blocked.
+    setQueuePolicy({ maxLogs: 0, maxTraces: 1, maxMetrics: 0 });
+    bindPropagationContext({
+      traceparent: VALID_TRACEPARENT,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
+      spanId: '00f067aa0ba902b7',
+    });
+    _resetHealthForTests();
+    withTrace('first.propagated.span', () => undefined);
+    expect(getHealthSnapshot().tracesEmitted).toBe(1);
+    // Ticket must have been released — second call should also succeed.
+    withTrace('second.propagated.span', () => undefined);
+    expect(getHealthSnapshot().tracesEmitted).toBe(2);
+    setQueuePolicy({ maxLogs: 0, maxTraces: 0, maxMetrics: 0 });
+  });
+
   it('withTrace calls otelContext.with only once when no propagation context (line 120 check)', () => {
     // No bindPropagationContext — getActiveOtelContext() returns undefined
     // In this case, withTrace falls through to startActiveSpan without calling otelContext.with explicitly.
@@ -545,6 +563,29 @@ describe('withTrace — enforcement gates', () => {
       called = true;
     });
     expect(called).toBe(true);
+    if (ticket) release(ticket);
+  });
+
+  it('releases traces backpressure ticket so successive withTrace calls succeed (kills BlockStatement on release)', () => {
+    // Use a bounded queue of 1 trace slot. If release(ticket) were removed,
+    // the second withTrace call would be backpressure-blocked and tracesEmitted would stay at 1.
+    setQueuePolicy({ maxLogs: 0, maxTraces: 1, maxMetrics: 0 });
+    withTrace('first.span', () => undefined);
+    expect(getHealthSnapshot().tracesEmitted).toBe(1);
+    // Second call must succeed — ticket from first call must have been released.
+    withTrace('second.span', () => undefined);
+    expect(getHealthSnapshot().tracesEmitted).toBe(2);
+  });
+
+  it('withTrace is gated by traces backpressure, not metrics (kills StringLiteral tryAcquire mutation)', () => {
+    // Fill only the traces slot; metrics is unbounded. If tryAcquire used '' or 'metrics',
+    // the traces slot would not be checked and tracesEmitted would increment.
+    setQueuePolicy({ maxLogs: 0, maxTraces: 1, maxMetrics: 0 });
+    const ticket = tryAcquire('traces'); // fill the traces slot
+    expect(ticket).toBeTruthy();
+    withTrace('blocked.span', () => undefined);
+    // Should be backpressure-blocked — tracesEmitted must NOT increment
+    expect(getHealthSnapshot().tracesEmitted).toBe(0);
     if (ticket) release(ticket);
   });
 });
