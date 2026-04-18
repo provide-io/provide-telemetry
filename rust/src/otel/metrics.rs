@@ -38,6 +38,7 @@ use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
+use super::resilient::ResilientMetricExporter;
 
 static METER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkMeterProvider>>>> = OnceLock::new();
 static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new();
@@ -106,7 +107,7 @@ pub(super) fn install_meter_provider(
         }
     };
 
-    let reader = PeriodicReader::builder(exporter)
+    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter))
         .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
         .build();
 

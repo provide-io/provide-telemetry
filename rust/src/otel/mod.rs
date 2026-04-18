@@ -13,6 +13,8 @@ pub(crate) mod logs;
 #[cfg(feature = "otel")]
 pub(crate) mod metrics;
 #[cfg(feature = "otel")]
+pub(crate) mod resilient;
+#[cfg(feature = "otel")]
 mod resource;
 #[cfg(feature = "otel")]
 pub(crate) mod traces;

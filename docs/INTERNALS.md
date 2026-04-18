@@ -101,7 +101,7 @@ The resilience layer wraps export operations with retry, timeout, and circuit-br
 | Python     | `resilience.py` + `resilient_exporter.py` | Per-export: every `BatchProcessor.export()` call applies the policy. |
 | TypeScript | `resilience.ts` + `resilient-exporter.ts` | Per-export: callback-based exporters are wrapped so each batch runs under the policy. |
 | Go         | `resilience.go` + `resilient_exporter.go` | Per-export: `ExportSpans`/`Export` delegate through `RunWithResilience`. |
-| Rust       | `resilience.rs`                 | **Construction-time only** (known gap — see Rust follow-up). Each batch export after provider registration runs through the OTel SDK's own transport path without the `resilience.rs` policy applied. |
+| Rust       | `resilience.rs` + `otel/resilient.rs` | Per-export: `ResilientSpanExporter`, `ResilientLogExporter`, and `ResilientMetricExporter` wrap the OTLP exporters so every batch export runs the retry/timeout/circuit-breaker loop against the same shared `POLICIES` and `CIRCUITS` state as `run_with_resilience`. |
 
 ### Timeout Execution
 

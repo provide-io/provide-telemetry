@@ -79,9 +79,14 @@ pub(crate) fn apply_policies(config: &TelemetryConfig) {
 mod tests {
     use super::*;
     use crate::schema::get_strict_schema;
+    use crate::testing::acquire_test_state_lock;
 
     #[test]
     fn policies_test_apply_policies_syncs_strict_schema_atomic() {
+        // Acquire the global test-state lock so that apply_policies() calls to
+        // set_exporter_policy() do not race with resilient-exporter tests that
+        // set per-signal policies (e.g. fail_open=false).
+        let _g = acquire_test_state_lock();
         // Verify that apply_policies propagates strict_schema from config
         // to the AtomicBool used by event()/event_name()/enforce_schema().
         let mut config = TelemetryConfig {
