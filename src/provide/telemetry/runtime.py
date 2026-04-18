@@ -159,9 +159,9 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
             logging_changed = True
         merged = _apply_overrides(base, overrides)
         if _logging_provider_config_changed(base, merged):
-            from provide.telemetry.logger.core import _has_otel_log_provider
+            from provide.telemetry.logger.core import _has_real_otel_log_provider
 
-            if _has_otel_log_provider():
+            if _has_real_otel_log_provider():
                 raise RuntimeError(
                     "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
                     "are installed. Use reconfigure_telemetry() for full provider replacement, or restart the "

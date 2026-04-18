@@ -42,20 +42,31 @@ pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {
 }
 
 pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
-    // Only compare fields that are provider-level (require process restart).
-    // Exporter-level fields (endpoint, protocol) and hot-reloadable fields
-    // (sampling, backpressure, etc.) are NOT compared here.
+    // Compare every field that is baked into an OTel provider at construction
+    // time and therefore cannot be changed without reinstalling the provider.
+    // Hot-reloadable fields (sampling, backpressure, security, …) are NOT
+    // compared here.
     current.service_name != target.service_name
         || current.environment != target.environment
         || current.version != target.version
+        // --- logging provider ---
         || current.logging.otlp_endpoint != target.logging.otlp_endpoint
         || current.logging.otlp_headers != target.logging.otlp_headers
+        || current.logging.otlp_protocol != target.logging.otlp_protocol
+        || current.exporter.logs_timeout_seconds != target.exporter.logs_timeout_seconds
+        // --- tracing provider ---
         || current.tracing.enabled != target.tracing.enabled
         || current.tracing.otlp_endpoint != target.tracing.otlp_endpoint
         || current.tracing.otlp_headers != target.tracing.otlp_headers
+        || current.tracing.otlp_protocol != target.tracing.otlp_protocol
+        || current.exporter.traces_timeout_seconds != target.exporter.traces_timeout_seconds
+        // --- metrics provider ---
         || current.metrics.enabled != target.metrics.enabled
         || current.metrics.otlp_endpoint != target.metrics.otlp_endpoint
         || current.metrics.otlp_headers != target.metrics.otlp_headers
+        || current.metrics.otlp_protocol != target.metrics.otlp_protocol
+        || current.metrics.metric_export_interval_ms != target.metrics.metric_export_interval_ms
+        || current.exporter.metrics_timeout_seconds != target.exporter.metrics_timeout_seconds
 }
 
 pub fn get_runtime_config() -> Option<TelemetryConfig> {
@@ -269,6 +280,52 @@ mod tests {
 
         let mut changed = current.clone();
         changed.metrics.otlp_endpoint = Some("http://other:4318".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        // --- headers (all three signals) ---
+        let mut changed = current.clone();
+        changed
+            .tracing
+            .otlp_headers
+            .insert("auth".into(), "tok".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed
+            .metrics
+            .otlp_headers
+            .insert("auth".into(), "tok".into());
+        assert!(provider_config_changed(&current, &changed));
+
+        // --- protocol (all three signals) ---
+        let mut changed = current.clone();
+        changed.logging.otlp_protocol = "http/json".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.tracing.otlp_protocol = "http/json".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.metrics.otlp_protocol = "http/json".to_string();
+        assert!(provider_config_changed(&current, &changed));
+
+        // --- exporter timeouts (baked into exporter at construction) ---
+        let mut changed = current.clone();
+        changed.exporter.logs_timeout_seconds = 5.0;
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.exporter.traces_timeout_seconds = 5.0;
+        assert!(provider_config_changed(&current, &changed));
+
+        let mut changed = current.clone();
+        changed.exporter.metrics_timeout_seconds = 5.0;
+        assert!(provider_config_changed(&current, &changed));
+
+        // --- metrics export interval (baked into PeriodicReader) ---
+        let mut changed = current.clone();
+        changed.metrics.metric_export_interval_ms = 30_000;
         assert!(provider_config_changed(&current, &changed));
     }
 
