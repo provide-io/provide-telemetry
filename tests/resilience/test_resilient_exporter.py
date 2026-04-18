@@ -74,6 +74,7 @@ def _make_wrapper(signal: str, inner: Any) -> ResilientExporter:
 
 @pytest.mark.otel
 def test_load_failure_result_returns_each_signal_enum() -> None:
+    pytest.importorskip("opentelemetry")
     # Lazy import — real enums; the fact that the value is distinct per signal
     # is what we care about, not the specific values.
     logs = _load_failure_result("logs")
@@ -180,6 +181,7 @@ def test_getattr_forwards_unknown_attributes() -> None:
 
 @pytest.mark.otel
 def test_wrap_exporter_helper_uses_real_failure_enum_lookup() -> None:
+    pytest.importorskip("opentelemetry")
     fake = _FakeExporter(_Success)
     wrapper = wrap_exporter("logs", fake)
     # Real OTel LogExportResult.FAILURE is returned on fail-open drop.
@@ -189,6 +191,7 @@ def test_wrap_exporter_helper_uses_real_failure_enum_lookup() -> None:
 
 @pytest.mark.otel
 def test_wrap_exporter_returns_real_failure_enum_on_drop() -> None:
+    pytest.importorskip("opentelemetry")
     from opentelemetry.sdk._logs.export import LogExportResult
 
     set_exporter_policy("logs", ExporterPolicy(retries=0, timeout_seconds=0.0, fail_open=True))
