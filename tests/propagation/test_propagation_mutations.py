@@ -385,7 +385,7 @@ class TestBindPropagationContext:
         assert len(detach_calls) == 1  # outer not yet detached
 
         propagation_mod.clear_propagation_context()
-        assert detach_calls[-1] == "token-0"
+        assert detach_calls[-1] == "token-0"  # type: ignore[comparison-overlap]
         assert len(detach_calls) == 2
 
     def test_inner_bind_without_traceparent_does_not_detach_outer_token(self, monkeypatch: pytest.MonkeyPatch) -> None:

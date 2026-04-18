@@ -213,9 +213,15 @@ mod tests {
         cfg.exporter.traces_fail_open = false;
         let resource = super::super::resource::build_resource(&cfg);
         let result = install_tracer_provider(&cfg, resource);
-        assert!(result.is_err(), "bad endpoint must return Err when fail_open=false");
+        assert!(
+            result.is_err(),
+            "bad endpoint must return Err when fail_open=false"
+        );
         let msg = result.unwrap_err().message;
-        assert!(msg.contains("scheme"), "error must mention bad scheme: {msg}");
+        assert!(
+            msg.contains("scheme"),
+            "error must mention bad scheme: {msg}"
+        );
     }
 
     #[test]
@@ -226,8 +232,7 @@ mod tests {
         cfg.exporter.traces_fail_open = true;
         let resource = super::super::resource::build_resource(&cfg);
         // fail_open means validation failure degrades gracefully
-        install_tracer_provider(&cfg, resource)
-            .expect("fail_open must absorb validation error");
+        install_tracer_provider(&cfg, resource).expect("fail_open must absorb validation error");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

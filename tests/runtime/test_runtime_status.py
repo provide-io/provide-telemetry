@@ -61,8 +61,8 @@ def test_get_runtime_status_traces_provider_true(monkeypatch: pytest.MonkeyPatch
 
     status = get_runtime_status()
 
-    assert status["providers"]["traces"] is True  # type: ignore[index]
-    assert status["fallback"]["traces"] is False  # type: ignore[index]
+    assert status["providers"]["traces"] is True  # type: ignore
+    assert status["fallback"]["traces"] is False  # type: ignore
 
 
 def test_get_runtime_status_setup_error_key_name() -> None:

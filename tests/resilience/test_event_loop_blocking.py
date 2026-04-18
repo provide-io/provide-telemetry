@@ -224,7 +224,7 @@ async def test_retry_loop_skip_executor_false_when_timeout_zero() -> None:
         skip_executor: bool = False,
     ) -> object:
         seen_skip.append(skip_executor)
-        return original_run(sig, op, timeout, skip_executor=skip_executor)  # type: ignore[arg-type]
+        return original_run(sig, op, timeout, skip_executor=skip_executor)  # type: ignore
 
     policy = ExporterPolicy(timeout_seconds=0.0, allow_blocking_in_event_loop=False)
     set_exporter_policy("traces", policy)

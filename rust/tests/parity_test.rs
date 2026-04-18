@@ -288,7 +288,9 @@ fn parity_test_get_secret_patterns_includes_builtins() {
     // Names now come from secret_patterns_generated (e.g. "aws_key", "jwt") — not ordinal "builtin-N"
     let known_builtins = ["aws_key", "jwt", "github_token", "long_hex", "long_base64"];
     assert!(
-        patterns.iter().any(|p| known_builtins.contains(&p.name.as_str())),
+        patterns
+            .iter()
+            .any(|p| known_builtins.contains(&p.name.as_str())),
         "expected at least one generated built-in pattern name, got: {:?}",
         patterns.iter().map(|p| &p.name).collect::<Vec<_>>()
     );
