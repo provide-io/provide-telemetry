@@ -48,3 +48,31 @@ def test_get_runtime_status_lazy_logger_does_not_mark_setup_done() -> None:
     status = get_runtime_status()
 
     assert status["setup_done"] is False
+
+
+def test_get_runtime_status_traces_provider_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When tracing provider is installed, providers.traces must be True.
+
+    Kills get_runtime_status mutmut_9: bool(tracing_provider._has_tracing_provider()) → bool(None).
+    bool(None) is always False, so this mutant would report traces=False even when provider is active.
+    """
+    setup_telemetry()
+    monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: True)
+
+    status = get_runtime_status()
+
+    assert status["providers"]["traces"] is True  # type: ignore
+    assert status["fallback"]["traces"] is False  # type: ignore
+
+
+def test_get_runtime_status_setup_error_key_name() -> None:
+    """The status dict must have 'setup_error' key (exact case).
+
+    Kills get_runtime_status mutmut_29: "setup_error" → "XXsetup_errorXX".
+    Kills get_runtime_status mutmut_30: "setup_error" → "SETUP_ERROR".
+    """
+    status = get_runtime_status()
+
+    assert "setup_error" in status, f"Expected 'setup_error' key, got keys: {list(status.keys())}"
+    assert "XXsetup_errorXX" not in status
+    assert "SETUP_ERROR" not in status

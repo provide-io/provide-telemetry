@@ -70,7 +70,7 @@ class TestConsentSignalArgument:
             calls.append(args)
             return True
 
-        return calls, _spy  # type: ignore[return-value]
+        return calls, _spy  # type: ignore
 
     def test_counter_add_calls_should_allow_with_metrics(self) -> None:
         """Counter.add must call should_allow("metrics")."""

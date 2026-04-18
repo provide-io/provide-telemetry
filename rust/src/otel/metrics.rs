@@ -241,6 +241,47 @@ mod tests {
     }
 
     #[test]
+    fn build_exporter_rejects_invalid_endpoint_scheme() {
+        let mut cfg = test_config();
+        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
+        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
+        assert!(
+            err.message.contains("scheme"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_fails_closed_by_default() {
+        let mut cfg = test_config();
+        cfg.metrics.enabled = true;
+        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.metrics_fail_open = false;
+        let resource = super::super::resource::build_resource(&cfg);
+        let result = install_meter_provider(&cfg, resource);
+        assert!(
+            result.is_err(),
+            "bad endpoint must return Err when fail_open=false"
+        );
+        let msg = result.unwrap_err().message;
+        assert!(
+            msg.contains("scheme"),
+            "error must mention bad scheme: {msg}"
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_succeeds_when_fail_open() {
+        let mut cfg = test_config();
+        cfg.metrics.enabled = true;
+        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.metrics_fail_open = true;
+        let resource = super::super::resource::build_resource(&cfg);
+        install_meter_provider(&cfg, resource).expect("fail_open must absorb validation error");
+    }
+
+    #[test]
     fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
         let mut cfg = test_config();
         cfg.metrics.otlp_endpoint = Some("http://127.0.0.1:1/never/v1/metrics".to_string());
