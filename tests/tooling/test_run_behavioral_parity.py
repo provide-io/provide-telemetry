@@ -399,7 +399,7 @@ def test_resolve_path_missing_returns_none() -> None:
     assert module._resolve_path({"a": {}}, "a.b") is None
 
 
-def test_has_otel_stack_returns_false_when_package_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_has_otel_stack_returns_false_when_package_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """_has_otel_stack must return False when any required package is absent."""
     module = _load_support_module()
     real_find_spec = importlib.util.find_spec
