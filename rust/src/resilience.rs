@@ -12,8 +12,8 @@ use crate::errors::TelemetryError;
 use crate::health::{increment_retries, record_export_failure, record_export_latency};
 use crate::sampling::Signal;
 
-const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
-const CIRCUIT_COOLDOWN: Duration = Duration::from_secs(30);
+pub(crate) const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+pub(crate) const CIRCUIT_COOLDOWN: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExporterPolicy {
@@ -189,6 +189,32 @@ where
         Ok(None)
     } else {
         Err(last_err)
+    }
+}
+
+/// Record a failed export attempt into the shared circuit-breaker state.
+/// Called by resilient exporter wrappers in `otel/resilient.rs` which cannot
+/// use `run_with_resilience` directly (RPIT futures prevent `Fn() -> Fut`).
+pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal) {
+    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+    if let Some(state) = circuit_lock.get_mut(&signal) {
+        state.consecutive_timeouts += 1;
+        if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+            state.open_count += 1;
+            state.tripped_at = Some(Instant::now());
+        }
+    }
+}
+
+/// Record a successful export attempt — reset consecutive_timeouts so the
+/// circuit can close again. Called by resilient exporter wrappers.
+pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
+    if let Some(state) = circuits()
+        .lock()
+        .expect("circuit lock poisoned")
+        .get_mut(&signal)
+    {
+        state.consecutive_timeouts = 0;
     }
 }
 
