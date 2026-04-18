@@ -234,7 +234,7 @@ class TestComputeErrorFingerprintFrameExtraction:
         """
         with patch("provide.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
             mock_extract.return_value = [traceback.FrameSummary("C:\\Users\\user\\project\\app.py", 1, "my_func")]
-            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore
         expected = hashlib.sha256(b"valueerror:app:my_func").hexdigest()[:12]
         assert result == expected
 
@@ -249,7 +249,7 @@ class TestComputeErrorFingerprintFrameExtraction:
         """
         with patch("provide.telemetry.logger.processors.traceback.extract_tb") as mock_extract:
             mock_extract.return_value = [traceback.FrameSummary("/path/to/module.test.py", 1, "helper")]
-            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore
         expected = hashlib.sha256(b"valueerror:module.test:helper").hexdigest()[:12]
         assert result == expected
 
@@ -265,6 +265,6 @@ class TestComputeErrorFingerprintFrameExtraction:
             frame.filename = "/path/to/app.py"
             frame.name = ""  # falsy — triggers the `or` branch
             mock_extract.return_value = [frame]
-            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore[arg-type]
+            result = _compute_error_fingerprint("ValueError", "fake_tb")  # type: ignore
         expected = hashlib.sha256(b"valueerror:app:").hexdigest()[:12]
         assert result == expected

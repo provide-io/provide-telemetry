@@ -180,7 +180,7 @@ def test_reload_runtime_from_env_warns_on_cold_change(
 
     assert any("runtime.cold_field_drift" in record.message for record in caplog.records)
     drift_record = next(r for r in caplog.records if "runtime.cold_field_drift" in r.message)
-    assert "service_name" in drift_record.fields  # type: ignore[attr-defined]
+    assert "service_name" in drift_record.fields  # type: ignore
 
 
 def test_reload_runtime_from_env_no_active_config(

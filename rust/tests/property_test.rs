@@ -11,7 +11,8 @@ use serde_json::{json, Value};
 use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
 use provide_telemetry::{
     compute_error_fingerprint, event, extract_w3c_context, get_sampling_policy, parse_baggage,
-    sanitize_payload, set_sampling_policy, set_strict_schema, should_sample, SamplingPolicy, Signal,
+    sanitize_payload, set_sampling_policy, set_strict_schema, should_sample, SamplingPolicy,
+    Signal,
 };
 
 // ---------------------------------------------------------------------------
@@ -19,7 +20,11 @@ use provide_telemetry::{
 // ---------------------------------------------------------------------------
 
 fn any_signal() -> impl Strategy<Value = Signal> {
-    prop_oneof![Just(Signal::Logs), Just(Signal::Traces), Just(Signal::Metrics),]
+    prop_oneof![
+        Just(Signal::Logs),
+        Just(Signal::Traces),
+        Just(Signal::Metrics),
+    ]
 }
 
 /// Generate a valid W3C traceparent header.
@@ -32,8 +37,7 @@ fn valid_traceparent() -> impl Strategy<Value = String> {
             t != "00000000000000000000000000000000"
         }),
         // span_id: 16 hex chars, not all zeros
-        "[0-9a-f]{16}"
-            .prop_filter("span_id must not be all zeros", |s| s != "0000000000000000"),
+        "[0-9a-f]{16}".prop_filter("span_id must not be all zeros", |s| s != "0000000000000000"),
         // flags: 2 hex chars
         "[0-9a-f]{2}",
     )
