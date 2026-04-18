@@ -177,6 +177,15 @@ def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any
     from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
 
+    try:
+        from provide.telemetry.consent import should_allow
+    except ImportError:  # pragma: no cover — governance module stripped
+
+        def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+            return True
+
+    if not should_allow("logs", method_name):
+        raise structlog.DropEvent()
     event_name = str(event_dict.get("event", ""))  # pragma: no mutate
     if should_sample("logs", event_name):
         increment_emitted("logs")

@@ -174,3 +174,85 @@ async def test_setup_metrics_warns_in_event_loop() -> None:
         assert len(metrics_warns) == 1
     finally:
         _set_meter_for_test(None)
+
+
+# ── skip_executor: fractional timeout boundary ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_skip_executor_active_with_fractional_timeout() -> None:
+    """timeout_seconds=0.5 must trigger skip_executor in event loop (> 0, not > 1).
+
+    Kills: `timeout_seconds > 0` → `timeout_seconds > 1` (mutmut_7) in both
+    _apply_event_loop_limits and _retry_loop.  With the mutation, 0.5 > 1 is
+    False so skip_executor is False and _get_timeout_executor IS called.
+    """
+    policy = ExporterPolicy(timeout_seconds=0.5, allow_blocking_in_event_loop=False)
+    set_exporter_policy("traces", policy)
+
+    def op() -> str:
+        return "ok"
+
+    with patch(
+        "provide.telemetry.resilience._get_timeout_executor",
+        wraps=_get_timeout_executor,
+    ) as mock_exec:
+        result = run_with_resilience("traces", op)
+
+    assert result == "ok"
+    mock_exec.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retry_loop_skip_executor_false_when_timeout_zero() -> None:
+    """skip_executor must be False when timeout_seconds=0 in event loop.
+
+    Kills: `timeout_seconds > 0` → `timeout_seconds >= 0` (mutmut_6) in
+    _retry_loop.  With >= 0 the flag is True for timeout=0, but the correct
+    behaviour is False (no executor skip triggered purely by a zero timeout).
+    """
+    import provide.telemetry.resilience as _res
+
+    seen_skip: list[bool] = []
+    original_run = _res._run_attempt_with_timeout
+
+    def _capturing(
+        sig: object,
+        op: object,
+        timeout: float,
+        *,
+        skip_executor: bool = False,
+    ) -> object:
+        seen_skip.append(skip_executor)
+        return original_run(sig, op, timeout, skip_executor=skip_executor)  # type: ignore
+
+    policy = ExporterPolicy(timeout_seconds=0.0, allow_blocking_in_event_loop=False)
+    set_exporter_policy("traces", policy)
+
+    with patch("provide.telemetry.resilience._run_attempt_with_timeout", side_effect=_capturing):
+        run_with_resilience("traces", lambda: "ok")
+
+    assert seen_skip == [False], f"skip_executor must be False when timeout_seconds=0, got {seen_skip}"
+
+
+@pytest.mark.asyncio
+async def test_event_loop_setup_warning_emitted_with_fractional_timeout() -> None:
+    """timeout_seconds=0.5 must emit the event-loop setup warning (> 0, not > 1).
+
+    Kills: `timeout_seconds > 0` → `timeout_seconds > 1` (mutmut_7) in
+    _apply_event_loop_limits.  With the mutation, skip_executor is False for
+    0.5 so _warn_event_loop_setup is never called and no RuntimeWarning is
+    emitted — the assertion below catches the discrepancy.
+    """
+    policy = ExporterPolicy(timeout_seconds=0.5, allow_blocking_in_event_loop=False)
+    set_exporter_policy("metrics", policy)
+
+    def op() -> str:
+        return "ok"
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        run_with_resilience("metrics", op)
+
+    bypass_warns = [x for x in w if "event loop" in str(x.message).lower() and "bypass" in str(x.message).lower()]
+    assert len(bypass_warns) >= 1, "setup warning must be emitted when timeout_seconds=0.5 and in event loop"

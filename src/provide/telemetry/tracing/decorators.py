@@ -31,6 +31,15 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                 from provide.telemetry.health import increment_emitted
                 from provide.telemetry.sampling import should_sample
 
+                try:
+                    from provide.telemetry.consent import should_allow
+                except ImportError:  # pragma: no cover — governance module stripped
+
+                    def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                        return True
+
+                if not should_allow("traces"):
+                    return await fn(*args, **kwargs)
                 if not should_sample("traces", span_name):
                     return await fn(*args, **kwargs)
                 ticket = try_acquire("traces")
@@ -55,6 +64,15 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             from provide.telemetry.health import increment_emitted
             from provide.telemetry.sampling import should_sample
 
+            try:
+                from provide.telemetry.consent import should_allow
+            except ImportError:  # pragma: no cover — governance module stripped
+
+                def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
+                    return True
+
+            if not should_allow("traces"):
+                return fn(*args, **kwargs)
             if not should_sample("traces", span_name):
                 return fn(*args, **kwargs)
             ticket = try_acquire("traces")
