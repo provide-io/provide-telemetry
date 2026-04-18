@@ -334,7 +334,7 @@ class TestUpdateRuntimeConfigErrorMessages:
         from provide.telemetry.logger import core as logger_core
 
         runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
@@ -362,7 +362,7 @@ class TestUpdateRuntimeConfigErrorMessages:
         from provide.telemetry.logger import core as logger_core
 
         runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
@@ -390,7 +390,7 @@ class TestUpdateRuntimeConfigErrorMessages:
         from provide.telemetry.logger import core as logger_core
 
         runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.update_runtime_config(
                 RuntimeOverrides(
