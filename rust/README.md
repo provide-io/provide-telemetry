@@ -97,10 +97,10 @@ use provide_telemetry::{counter, gauge, histogram};
 let reqs = counter("http.requests", None, None);
 reqs.add(1.0, None);
 
-let lat = histogram("http.duration_ms", Some("ms"), None);
+let lat = histogram("http.duration_ms", Some("HTTP request duration"), Some("ms"));
 lat.record(14.2, None);
 
-let cpu = gauge("cpu.utilization", Some("percent"), None);
+let cpu = gauge("cpu.utilization", Some("CPU utilization ratio"), Some("percent"));
 cpu.set(72.5, None);
 ```
 
