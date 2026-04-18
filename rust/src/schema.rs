@@ -32,6 +32,11 @@ pub fn get_strict_schema() -> bool {
     STRICT_SCHEMA.load(Ordering::Relaxed)
 }
 
+/// Reset strict-schema flag to the default (false) for test isolation.
+pub fn _reset_schema_for_tests() {
+    STRICT_SCHEMA.store(false, Ordering::Relaxed);
+}
+
 fn segment_re() -> &'static Regex {
     static SEGMENT_RE: OnceLock<Regex> = OnceLock::new();
     SEGMENT_RE.get_or_init(|| Regex::new(r"^[a-z][a-z0-9_]*$").expect("valid regex"))
