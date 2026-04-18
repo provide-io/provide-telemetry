@@ -96,6 +96,18 @@ func TestRegisterClassificationRules_InstallsHook(t *testing.T) {
 	}
 }
 
+func TestRegisterClassificationRule_InstallsHook(t *testing.T) {
+	resetClassification(t)
+	resetPII(t)
+	RegisterClassificationRule(ClassificationRule{Pattern: "email", Classification: DataClassPII})
+	_piiMu.RLock()
+	hook := _classificationHook
+	_piiMu.RUnlock()
+	if hook == nil {
+		t.Error("expected hook to be installed after RegisterClassificationRule")
+	}
+}
+
 // ── Register empty list still installs hook ───────────────────────────────────
 
 func TestRegisterClassificationRules_EmptyList_InstallsHook(t *testing.T) {
@@ -204,6 +216,25 @@ func TestClassifyField_NoRules_ReturnsEmpty(t *testing.T) {
 	label := _classifyField("email", "alice@example.com")
 	if label != "" {
 		t.Errorf("expected empty string with no rules, got %q", label)
+	}
+}
+
+func TestClassifyKey_ReturnsPointerOrNil(t *testing.T) {
+	resetClassification(t)
+	RegisterClassificationRules([]ClassificationRule{
+		{Pattern: "email", Classification: DataClassPII},
+	})
+
+	got := ClassifyKey("email")
+	if got == nil {
+		t.Fatal("expected ClassifyKey to return a pointer for a matching key")
+	}
+	if *got != DataClassPII {
+		t.Errorf("expected %q, got %q", DataClassPII, *got)
+	}
+
+	if miss := ClassifyKey("name"); miss != nil {
+		t.Errorf("expected nil for unmatched key, got %v", *miss)
 	}
 }
 
