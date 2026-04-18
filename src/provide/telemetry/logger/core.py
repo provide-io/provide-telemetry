@@ -161,8 +161,9 @@ def _make_otel_logging_handler(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         return cast(
-            logging.Handler, sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
-        )  # pragma: no mutate — cast() is a no-op; cast(None, ...) is equivalent
+            logging.Handler,  # pragma: no mutate — cast() is a no-op at runtime
+            sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider),
+        )
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:

@@ -102,9 +102,7 @@ def parse_baggage(raw: str) -> dict[str, str]:
     """
     result: dict[str, str] = {}
     for member in raw.split(","):
-        kv = member.split(";", 1)[
-            0
-        ]  # strip properties  # pragma: no mutate — [0] gives same result for maxsplit 1/2/omitted
+        kv = member.split(";", 1)[0]  # strip properties  # pragma: no mutate
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")
@@ -172,9 +170,7 @@ def clear_propagation_context() -> None:
         else:
             bind_context(**{key: value})
     # Unbind auto-injected baggage.* keys from the cleared frame.
-    raw_keys = previous.get(
-        "_baggage_keys", []
-    )  # pragma: no mutate — default [] or None both safe: isinstance guard on next line handles both
+    raw_keys = previous.get("_baggage_keys", [])  # pragma: no mutate
     for bkey in raw_keys if isinstance(raw_keys, list) else []:
         unbind_context(str(bkey))
     prev_trace_id = previous["trace_id"]
