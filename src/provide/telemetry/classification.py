@@ -15,7 +15,9 @@ __all__ = [
     "ClassificationPolicy",
     "ClassificationRule",
     "DataClass",
+    "classify_key",
     "get_classification_policy",
+    "register_classification_rule",
     "register_classification_rules",
     "set_classification_policy",
 ]
@@ -73,6 +75,11 @@ def register_classification_rules(rules: list[ClassificationRule]) -> None:
     pii_mod._policy_hook = _lookup_policy_action
 
 
+def register_classification_rule(rule: ClassificationRule) -> None:
+    """Register a single classification rule."""
+    register_classification_rules([rule])
+
+
 def set_classification_policy(policy: ClassificationPolicy) -> None:
     """Replace the current classification policy."""
     global _policy
@@ -93,6 +100,12 @@ def _classify_field(key: str, _value: Any) -> str | None:
             if fnmatch.fnmatch(key, rule.pattern):
                 return rule.classification.value
     return None
+
+
+def classify_key(key: str, value: Any | None = None) -> DataClass | None:
+    """Return the DataClass member for key if a rule matches, else None."""
+    label = _classify_field(key, value)
+    return DataClass(label) if label is not None else None
 
 
 def _reset_classification_for_tests() -> None:
