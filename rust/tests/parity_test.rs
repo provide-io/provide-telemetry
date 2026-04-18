@@ -273,9 +273,9 @@ fn parity_test_record_use_metrics_does_not_panic() {
 fn parity_test_register_secret_pattern_custom_detection() {
     let _guard = parity_lock().lock().expect("parity lock");
     reset_secret_patterns_for_tests();
-    let pattern = regex::Regex::new(r"MYTOKEN-[A-Z0-9]{8}").expect("valid regex");
+    let pattern = regex::Regex::new(r"MYTOKEN-[A-Z0-9]{12,}").expect("valid regex");
     register_secret_pattern("mytoken", pattern);
-    let payload = json!({"key": "MYTOKEN-ABCD1234"}); // pragma: allowlist secret
+    let payload = json!({"key": "MYTOKEN-ABCD12345678"}); // pragma: allowlist secret (20+ chars to pass MIN_SECRET_LENGTH)
     let result = sanitize_payload(&payload, true, 32);
     assert_eq!(result["key"], "***");
     reset_secret_patterns_for_tests();
