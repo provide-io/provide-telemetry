@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"strings"
 )
@@ -296,14 +297,20 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 }
 
 func _providerConfigChanged(current, target *TelemetryConfig) bool {
+	// Compare every field baked into OTel providers at construction time.
+	// OTLP headers are passed to exporters at init; rotation requires
+	// provider reinstallation.
 	return current.ServiceName != target.ServiceName ||
 		current.Environment != target.Environment ||
 		current.Version != target.Version ||
 		current.Tracing.Enabled != target.Tracing.Enabled ||
 		current.Tracing.OTLPEndpoint != target.Tracing.OTLPEndpoint ||
+		!maps.Equal(current.Tracing.OTLPHeaders, target.Tracing.OTLPHeaders) ||
 		current.Metrics.Enabled != target.Metrics.Enabled ||
 		current.Metrics.OTLPEndpoint != target.Metrics.OTLPEndpoint ||
-		current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint
+		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders) ||
+		current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
+		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)
 }
 
 func _applyHotFields(current, fresh *TelemetryConfig) {
