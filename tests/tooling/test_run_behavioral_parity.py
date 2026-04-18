@@ -460,3 +460,30 @@ def test_run_runtime_probe_check_does_not_raise_when_python_not_selected(
         )
     except RuntimeError as exc:
         assert "opentelemetry-sdk" not in str(exc), f"OTel guard fired unexpectedly for non-Python selected set: {exc}"
+
+
+def test_cli_main_prints_clean_error_and_fails_when_otel_stack_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CLI main() must print a clean [runtime-probe] ERROR line and return non-zero
+    when run_runtime_probe_check raises RuntimeError (OTel stack absent)."""
+    runner = _load_runner_module()
+
+    # Patch run_runtime_probe_check on the loaded runner module to simulate the
+    # OTel guard firing.
+    monkeypatch.setattr(
+        runner,
+        "run_runtime_probe_check",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "Runtime probe cases ['per_signal_logs_endpoint'] require the opentelemetry-sdk[otlp] extra — run: uv sync --extra otel"
+            )
+        ),
+    )
+
+    exit_code = runner.main(["--check-output", "--lang", "python"])
+
+    captured = capsys.readouterr()
+    assert exit_code != 0, "main() should return non-zero when runtime probe raises"
+    assert "[runtime-probe] ERROR:" in captured.err
+    assert "opentelemetry-sdk[otlp]" in captured.err
