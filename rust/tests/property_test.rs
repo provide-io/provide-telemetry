@@ -296,7 +296,18 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(200))]
+    // Use Direct persistence so the regressions file is reliably resolved from
+    // the crate root for integration tests (SourceParallel emits a warning and
+    // may not discover the file when lib.rs/main.rs cannot be located).
+    #![proptest_config(ProptestConfig {
+        cases: 200,
+        failure_persistence: Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(
+                "tests/property_test.proptest-regressions",
+            ),
+        )),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn fingerprint_always_12_hex(
