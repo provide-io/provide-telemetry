@@ -121,15 +121,21 @@ def test_category_mentioned_returns_false_when_absent() -> None:
     assert not module._category_mentioned("cardinality_clamping", corpus)
 
 
-def test_probe_only_category_can_be_covered_by_scanned_probe_path(tmp_path: Path) -> None:
-    """Known probe-only categories should count coverage from included probe files."""
+def test_probe_only_category_requires_canonical_probe_content_marker(tmp_path: Path) -> None:
+    """Known probe-only categories should count coverage from probe contents, not just file names."""
     module = _load_module()
     probe = tmp_path / "spec" / "probes" / "emit_log_typescript.ts"
     probe.parent.mkdir(parents=True)
-    probe.write_text("// probe", encoding="utf-8")
+    probe.write_text("log.output.parity\n", encoding="utf-8")
+    path_only_probe = tmp_path / "spec" / "probes" / "emit_log_go" / "main.go"
+    path_only_probe.parent.mkdir(parents=True)
+    path_only_probe.write_text("// no canonical log marker here\n", encoding="utf-8")
 
-    assert module._category_covered_by_paths("log_output_format", [probe])
-    assert not module._category_covered_by_paths("health_snapshot", [probe])
+    assert module._category_mentioned("log_output_format", probe.read_text(encoding="utf-8"))
+    assert not module._category_mentioned(
+        "log_output_format",
+        path_only_probe.read_text(encoding="utf-8"),
+    )
 
 
 def test_run_report_missing_file_treated_as_empty(tmp_path: Path) -> None:
