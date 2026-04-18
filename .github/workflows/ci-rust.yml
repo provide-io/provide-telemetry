@@ -41,7 +41,11 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      # Bump explicitly when the upstream `stable` branch advances.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       # Format check only on Linux default (no point repeating per OS/feature)
       - name: Cargo fmt (Linux default only)
         if: matrix.os == 'ubuntu-24.04' && matrix.features == ''
@@ -70,7 +74,11 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      # Bump explicitly when the upstream `stable` branch advances.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       - name: Prepare collector output directory
         run: |
           mkdir -p ../tests/integration/otel-output-rust

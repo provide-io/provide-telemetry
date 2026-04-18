@@ -152,3 +152,4 @@ node_modules/
 *.tar.gz
 *.tgz
 *.whl
+# Stray npm/vite artifacts created at repo root by some tooling runs
