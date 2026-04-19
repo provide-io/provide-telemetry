@@ -17,14 +17,45 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from parity_probe_support import ProbeRunner
 
 
-def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object, object, object]:
+class SharedHelpers(NamedTuple):
+    """Typed view of the shared symbols pulled from parity_probe_support.
+
+    Replaces a previous positional 7-tuple — accessing fields by name avoids
+    silent breakage when entries are added or reordered.
+    """
+
+    ProbeRunner: type[ProbeRunner]
+    OTEL_REQUIRED_CASE_IDS: frozenset[str]
+    compare_outputs: object
+    extract_json_line: object
+    has_otel_stack: object
+    normalize_log_record: object
+    probe_env: object
+
+
+def _from_module(mod: object) -> SharedHelpers:
+    return SharedHelpers(
+        ProbeRunner=mod.ProbeRunner,  # type: ignore[attr-defined]
+        OTEL_REQUIRED_CASE_IDS=mod._OTEL_REQUIRED_CASE_IDS,  # type: ignore[attr-defined]
+        compare_outputs=mod._compare_outputs,  # type: ignore[attr-defined]
+        extract_json_line=mod._extract_json_line,  # type: ignore[attr-defined]
+        has_otel_stack=mod._has_otel_stack,  # type: ignore[attr-defined]
+        normalize_log_record=mod._normalize_log_record,  # type: ignore[attr-defined]
+        probe_env=mod._probe_env,  # type: ignore[attr-defined]
+    )
+
+
+def _shared() -> SharedHelpers:
     """Lazy lookup of shared helpers from parity_probe_support.
+
+    Returns a typed ``SharedHelpers`` view; callers access fields by name
+    (e.g. ``_shared().ProbeRunner``) rather than by tuple position.
 
     Resolution order (deterministic):
       1. The canonical ``parity_probe_support`` entry in ``sys.modules`` if
@@ -46,15 +77,7 @@ def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object
 
     canonical = sys.modules.get("parity_probe_support")
     if canonical is not None:
-        return (
-            canonical.ProbeRunner,
-            canonical._OTEL_REQUIRED_CASE_IDS,
-            canonical._compare_outputs,
-            canonical._extract_json_line,
-            canonical._has_otel_stack,
-            canonical._normalize_log_record,
-            canonical._probe_env,
-        )
+        return _from_module(canonical)
 
     target = "parity_probe_support.py"
     for mod in list(sys.modules.values()):
@@ -62,39 +85,15 @@ def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object
             continue
         mod_file = getattr(mod, "__file__", None)
         if mod_file and mod_file.endswith(target):
-            return (
-                mod.ProbeRunner,
-                mod._OTEL_REQUIRED_CASE_IDS,
-                mod._compare_outputs,
-                mod._extract_json_line,
-                mod._has_otel_stack,
-                mod._normalize_log_record,
-                mod._probe_env,
-            )
+            return _from_module(mod)
 
-    from parity_probe_support import (  # type: ignore[import-not-found]
-        _OTEL_REQUIRED_CASE_IDS,
-        ProbeRunner,
-        _compare_outputs,
-        _extract_json_line,
-        _has_otel_stack,
-        _normalize_log_record,
-        _probe_env,
-    )
+    import parity_probe_support  # type: ignore[import-not-found]
 
-    return (
-        ProbeRunner,
-        _OTEL_REQUIRED_CASE_IDS,
-        _compare_outputs,
-        _extract_json_line,
-        _has_otel_stack,
-        _normalize_log_record,
-        _probe_env,
-    )
+    return _from_module(parity_probe_support)
 
 
 def _runtime_probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> list[ProbeRunner]:
-    ProbeRunner = _shared()[0]
+    ProbeRunner = _shared().ProbeRunner
     probes = repo / "spec" / "probes"
     return [
         ProbeRunner(
@@ -184,10 +183,10 @@ def _run_runtime_probe(
     *,
     timeout: int = 60,
 ) -> tuple[str, str]:
-    _, _, _, _, _, _, _probe_env = _shared()
+    probe_env_fn = _shared().probe_env
     env = {
         **os.environ,
-        **_probe_env(probe_env),
+        **probe_env_fn(probe_env),  # type: ignore[operator]
         **_runtime_probe_case_env(case_id),
         "PROVIDE_PARITY_PROBE_CASE": case_id,
         **runner.env_extra,
@@ -228,15 +227,12 @@ def run_runtime_probe_check(
     *,
     timeout: int = 60,
 ) -> bool:
-    (
-        _,
-        _OTEL_REQUIRED_CASE_IDS,
-        _compare_outputs,
-        _extract_json_line,
-        _has_otel_stack,
-        _normalize_log_record,
-        _,
-    ) = _shared()
+    helpers = _shared()
+    _OTEL_REQUIRED_CASE_IDS = helpers.OTEL_REQUIRED_CASE_IDS
+    _compare_outputs = helpers.compare_outputs
+    _extract_json_line = helpers.extract_json_line
+    _has_otel_stack = helpers.has_otel_stack
+    _normalize_log_record = helpers.normalize_log_record
     runners = [r for r in _runtime_probe_runners(repo, cargo_bin, cargo_env) if r.name in selected]
     fixtures = _load_runtime_probe_fixtures(fixtures_path)
     cases = fixtures.get("cases", [])
