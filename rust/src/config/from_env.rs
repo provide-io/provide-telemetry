@@ -1,0 +1,274 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
+
+//! Environment-variable parsing for `TelemetryConfig`. Split out of
+//! `config/mod.rs` so the file stays under the 500-LOC ceiling.
+
+use std::collections::HashMap;
+use std::env;
+
+use super::parse::{
+    env_value, nonempty_env_value, parse_bool, parse_module_levels, parse_non_negative_float,
+    parse_otlp_headers, parse_rate, parse_usize,
+};
+use super::{
+    BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig, MetricsConfig,
+    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
+};
+use crate::errors::ConfigurationError;
+
+impl TelemetryConfig {
+    pub fn from_env() -> Result<Self, ConfigurationError> {
+        let env_map = env::vars().collect::<HashMap<_, _>>();
+        Self::from_map(&env_map)
+    }
+
+    pub fn from_map(env: &HashMap<String, String>) -> Result<Self, ConfigurationError> {
+        let shared_headers = parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"]))?
+            .unwrap_or_default();
+        let shared_endpoint = nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+        let shared_protocol = env_value(env, &["OTEL_EXPORTER_OTLP_PROTOCOL"]).unwrap_or("");
+        // Per the OTLP/HTTP spec, when falling back to the shared endpoint
+        // the per-signal path must be appended (/v1/traces, /v1/metrics,
+        // /v1/logs). Signal-specific endpoint env vars are used verbatim.
+        let with_signal_path = |signal_path: &str| -> Option<String> {
+            shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
+        };
+
+        Ok(Self {
+            service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])
+                .unwrap_or("provide-service")
+                .to_string(),
+            environment: env_value(env, &["PROVIDE_TELEMETRY_ENV", "PROVIDE_ENV"])
+                .unwrap_or("dev")
+                .to_string(),
+            version: env_value(env, &["PROVIDE_TELEMETRY_VERSION", "PROVIDE_VERSION"])
+                .unwrap_or("0.0.0")
+                .to_string(),
+            strict_schema: parse_bool(
+                env_value(env, &["PROVIDE_TELEMETRY_STRICT_SCHEMA"]),
+                false,
+                "PROVIDE_TELEMETRY_STRICT_SCHEMA",
+            )?,
+            pii_max_depth: parse_usize(
+                env_value(env, &["PROVIDE_LOG_PII_MAX_DEPTH"]),
+                8,
+                "PROVIDE_LOG_PII_MAX_DEPTH",
+            )?,
+            logging: LoggingConfig {
+                level: env_value(env, &["PROVIDE_LOG_LEVEL"])
+                    .unwrap_or("INFO")
+                    .to_string(),
+                fmt: env_value(env, &["PROVIDE_LOG_FORMAT"])
+                    .unwrap_or("console")
+                    .to_string(),
+                include_timestamp: parse_bool(
+                    env_value(env, &["PROVIDE_LOG_INCLUDE_TIMESTAMP"]),
+                    true,
+                    "PROVIDE_LOG_INCLUDE_TIMESTAMP",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],
+                ))?
+                .unwrap_or_else(|| shared_headers.clone()),
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/logs")),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
+                module_levels: parse_module_levels(
+                    env_value(env, &["PROVIDE_LOG_MODULE_LEVELS"]).unwrap_or(""),
+                ),
+            },
+            tracing: TracingConfig {
+                enabled: parse_bool(
+                    env_value(env, &["PROVIDE_TRACE_ENABLED"]),
+                    true,
+                    "PROVIDE_TRACE_ENABLED",
+                )?,
+                sample_rate: parse_rate(
+                    env_value(env, &["PROVIDE_TRACE_SAMPLE_RATE"]),
+                    1.0,
+                    "PROVIDE_TRACE_SAMPLE_RATE",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_TRACES_HEADERS"],
+                ))?
+                .unwrap_or_else(|| shared_headers.clone()),
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/traces")),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
+            },
+            metrics: MetricsConfig {
+                enabled: parse_bool(
+                    env_value(env, &["PROVIDE_METRICS_ENABLED"]),
+                    true,
+                    "PROVIDE_METRICS_ENABLED",
+                )?,
+                otlp_headers: parse_otlp_headers(env_value(
+                    env,
+                    &["OTEL_EXPORTER_OTLP_METRICS_HEADERS"],
+                ))?
+                .unwrap_or(shared_headers),
+                otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
+                    .map(str::to_string)
+                    .or_else(|| with_signal_path("v1/metrics")),
+                otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"])
+                    .unwrap_or(shared_protocol)
+                    .to_string(),
+                metric_export_interval_ms: parse_usize(
+                    env_value(env, &["OTEL_METRIC_EXPORT_INTERVAL"]),
+                    60_000,
+                    "OTEL_METRIC_EXPORT_INTERVAL",
+                )? as u64,
+            },
+            event_schema: EventSchemaConfig {
+                strict_event_name: parse_bool(
+                    env_value(env, &["PROVIDE_TELEMETRY_STRICT_EVENT_NAME"]),
+                    false,
+                    "PROVIDE_TELEMETRY_STRICT_EVENT_NAME",
+                )?,
+                required_keys: env_value(env, &["PROVIDE_TELEMETRY_REQUIRED_KEYS"])
+                    .unwrap_or("")
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            },
+            sampling: SamplingConfig {
+                logs_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_LOGS_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_LOGS_RATE",
+                )?,
+                traces_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_TRACES_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_TRACES_RATE",
+                )?,
+                metrics_rate: parse_rate(
+                    env_value(env, &["PROVIDE_SAMPLING_METRICS_RATE"]),
+                    1.0,
+                    "PROVIDE_SAMPLING_METRICS_RATE",
+                )?,
+            },
+            backpressure: BackpressureConfig {
+                logs_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_LOGS_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_LOGS_MAXSIZE",
+                )?,
+                traces_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_TRACES_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_TRACES_MAXSIZE",
+                )?,
+                metrics_maxsize: parse_usize(
+                    env_value(env, &["PROVIDE_BACKPRESSURE_METRICS_MAXSIZE"]),
+                    0,
+                    "PROVIDE_BACKPRESSURE_METRICS_MAXSIZE",
+                )?,
+            },
+            exporter: ExporterPolicyConfig {
+                logs_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_LOGS_RETRIES",
+                )?,
+                traces_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_TRACES_RETRIES",
+                )?,
+                metrics_retries: parse_usize(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_RETRIES"]),
+                    0,
+                    "PROVIDE_EXPORTER_METRICS_RETRIES",
+                )?,
+                logs_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS",
+                )?,
+                traces_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS",
+                )?,
+                metrics_backoff_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"]),
+                    0.0,
+                    "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS",
+                )?,
+                logs_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS",
+                )?,
+                traces_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS",
+                )?,
+                metrics_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"]),
+                    10.0,
+                    "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
+                )?,
+                logs_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_LOGS_FAIL_OPEN",
+                )?,
+                traces_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_TRACES_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_TRACES_FAIL_OPEN",
+                )?,
+                metrics_fail_open: parse_bool(
+                    env_value(env, &["PROVIDE_EXPORTER_METRICS_FAIL_OPEN"]),
+                    true,
+                    "PROVIDE_EXPORTER_METRICS_FAIL_OPEN",
+                )?,
+            },
+            slo: SLOConfig {
+                enable_red_metrics: parse_bool(
+                    env_value(env, &["PROVIDE_SLO_ENABLE_RED_METRICS"]),
+                    false,
+                    "PROVIDE_SLO_ENABLE_RED_METRICS",
+                )?,
+                enable_use_metrics: parse_bool(
+                    env_value(env, &["PROVIDE_SLO_ENABLE_USE_METRICS"]),
+                    false,
+                    "PROVIDE_SLO_ENABLE_USE_METRICS",
+                )?,
+            },
+            security: SecurityConfig {
+                max_attr_value_length: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH"]),
+                    1024,
+                    "PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH",
+                )?,
+                max_attr_count: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_ATTR_COUNT"]),
+                    64,
+                    "PROVIDE_SECURITY_MAX_ATTR_COUNT",
+                )?,
+                max_nesting_depth: parse_usize(
+                    env_value(env, &["PROVIDE_SECURITY_MAX_NESTING_DEPTH"]),
+                    8,
+                    "PROVIDE_SECURITY_MAX_NESTING_DEPTH",
+                )?,
+            },
+        })
+    }
+}
