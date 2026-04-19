@@ -17,7 +17,13 @@
 
 import { trace } from '@opentelemetry/api';
 
-import { setupTelemetry, registerOtelProviders, withTrace, getActiveTraceIds } from '../src/index';
+import {
+  getConfig,
+  registerOtelProviders,
+  setupTelemetry,
+  withTrace,
+  getActiveTraceIds,
+} from '../src/index';
 
 async function main(): Promise<void> {
   const backendUrl = process.env['E2E_BACKEND_URL'];
@@ -50,8 +56,11 @@ async function main(): Promise<void> {
   // registerOtelProviders installs the AsyncLocalStorageContextManager so
   // startActiveSpan propagates spans through async boundaries automatically.
   setupTelemetry(cfg);
-  // registerOtelProviders is async — must be awaited before creating spans.
-  await registerOtelProviders(cfg);
+  // Pass the merged config (cfg above is a Partial<TelemetryConfig> overlay
+  // that lacks defaults like tracingEnabled). setupTelemetry stores the
+  // merged result; getConfig() returns it. Using cfg directly would skip
+  // provider registration entirely, leaving startActiveSpan as a no-op.
+  await registerOtelProviders(getConfig());
 
   let capturedTraceId: string | undefined;
 
