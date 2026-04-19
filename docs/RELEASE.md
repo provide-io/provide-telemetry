@@ -40,8 +40,7 @@ Prerequisites: run from a git repository checkout and ensure Docker daemon is ru
 
 ## Local Act Validation (Docker-in-Docker)
 
-When Docker access is proxied through `colima` (macOS) or you need to reuse the host daemon,
-configure the socket before running `act`:
+When Docker access is proxied through `colima` (macOS) or you need to reuse the host daemon, configure the socket before running `act`:
 
 ```bash
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
@@ -56,8 +55,7 @@ act -W .github/workflows/ci.yml workflow_dispatch -j quality \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
 ```
 
-For jobs that do not require Docker inside the container (for example `docs-quality`), disable
-daemon socket bind-mount:
+For jobs that do not require Docker inside the container (for example `docs-quality`), disable daemon socket bind-mount:
 
 ```bash
 act -W .github/workflows/ci.yml pull_request -j docs-quality \
@@ -72,32 +70,36 @@ Document any socket/mount issues and rerun once host access is restored.
 ### Python (PyPI)
 
 1. Push tag `vX.Y.Z`.
-2. Create GitHub release from tag.
-3. `release.yml` runs build and `twine check`.
-4. `publish-pypi` job uploads to PyPI via trusted publisher (OIDC — no token required).
+1. Create GitHub release from tag.
+1. `release.yml` runs build and `twine check`.
+1. `publish-pypi` job uploads to PyPI via trusted publisher (OIDC — no token required).
 
 ### TypeScript (npm)
 
 Prerequisites (one-time setup):
+
 - Create an `npm` environment in GitHub repo Settings → Environments.
 - Add `NPM_TOKEN` as a repository secret (generate at npmjs.com → Access Tokens → Granular).
 
 Release steps:
+
 1. Same tag/release as Python — both publish jobs fire from the same `release.yml`.
-2. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
-3. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
+1. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
+1. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
 
 ### Go (pkg.go.dev)
 
 Go modules publish automatically when a git tag is pushed — no explicit upload step.
 
 Prerequisites (one-time setup):
+
 - Ensure `go/VERSION` and `go/CHANGELOG.md` are updated.
 - The `go/LICENSE` file must be present at the module root (already committed).
 
 Release steps:
+
 1. Same tag `vX.Y.Z` as Python/TypeScript — `go get github.com/provide-io/provide-telemetry/go@vX.Y.Z` will resolve once the tag is pushed.
-2. pkg.go.dev picks up the new version automatically within a few minutes of the tag being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
+1. pkg.go.dev picks up the new version automatically within a few minutes of the tag being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
 
 ### Go validation before release
 

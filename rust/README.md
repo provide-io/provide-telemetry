@@ -1,11 +1,8 @@
 # provide-telemetry/rust
 
-SPDX-License-Identifier: Apache-2.0
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+SPDX-License-Identifier: Apache-2.0 SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 
-Structured logging + OpenTelemetry traces and metrics for Rust — feature
-parity with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry)
-Python, TypeScript, and Go packages.
+Structured logging + OpenTelemetry traces and metrics for Rust — feature parity with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry) Python, TypeScript, and Go packages.
 
 ## Install
 
@@ -44,13 +41,13 @@ fn main() {
 
 ### Setup
 
-| Export | Description |
-|--------|-------------|
-| `setup_telemetry()` | Idempotent init from environment variables. |
+| Export                             | Description                                           |
+| ---------------------------------- | ----------------------------------------------------- |
+| `setup_telemetry()`                | Idempotent init from environment variables.           |
 | `reconfigure_telemetry(overrides)` | Hot-reload sampling / backpressure / exporter policy. |
-| `shutdown_telemetry()` | Flush and shut down all providers. |
-| `get_runtime_config()` | Inspect the applied config snapshot. |
-| `get_runtime_status()` | Inspect provider state, fallback mode, last error. |
+| `shutdown_telemetry()`             | Flush and shut down all providers.                    |
+| `get_runtime_config()`             | Inspect the applied config snapshot.                  |
+| `get_runtime_status()`             | Inspect provider state, fallback mode, last error.    |
 
 ### Logging
 
@@ -74,8 +71,7 @@ let ev = event(&["auth", "login", "ok"]).expect("valid event name");
 logger.info_event(&ev);
 ```
 
-Event names follow the DA(R)S pattern: `event()` accepts 3–4 dot-separated
-segments; `event_name()` accepts 3–5 segments.
+Event names follow the DA(R)S pattern: `event()` accepts 3–4 dot-separated segments; `event_name()` accepts 3–5 segments.
 
 ### Tracing
 
@@ -159,8 +155,7 @@ let clean = sanitize_payload(&payload, true, 8);
 // clean["user"]["ssn"] == "***"
 ```
 
-Built-in: redacts `password`, `token`, `secret`, `authorization`, `api_key`,
-and similar keys by default.
+Built-in: redacts `password`, `token`, `secret`, `authorization`, `api_key`, and similar keys by default.
 
 ### Health snapshot
 
@@ -190,33 +185,33 @@ mod tests {
 
 All options come from environment variables:
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
-| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment |
-| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` |
-| `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
-| `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Enforce DA(R)S event name format |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
-| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
-| `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
-| `PROVIDE_SAMPLING_LOGS_RATE` | `1.0` | Log sampling rate `[0.0, 1.0]` |
-| `PROVIDE_BACKPRESSURE_LOGS_MAXSIZE` | `1000` | Max queued log events before backpressure |
-| `PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH` | `1024` | Truncate long field values at this byte count |
-| `PROVIDE_SECURITY_MAX_ATTR_COUNT` | `64` | Maximum context attributes per log record |
-| `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | `8` | Maximum PII sanitization recursion depth |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Percent-encoded `key=value` auth headers |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds (`--features otel`) |
+| Env var                                  | Default           | Description                                               |
+| ---------------------------------------- | ----------------- | --------------------------------------------------------- |
+| `PROVIDE_TELEMETRY_SERVICE_NAME`         | `provide-service` | Service identity                                          |
+| `PROVIDE_TELEMETRY_ENV`                  | `dev`             | Deployment environment                                    |
+| `PROVIDE_TELEMETRY_VERSION`              | `0.0.0`           | Service version                                           |
+| `PROVIDE_LOG_LEVEL`                      | `INFO`            | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR`  |
+| `PROVIDE_LOG_FORMAT`                     | `console`         | Output format: `console` / `json` / `pretty`              |
+| `PROVIDE_TELEMETRY_STRICT_SCHEMA`        | `false`           | Enforce DA(R)S event name format                          |
+| `PROVIDE_TRACE_ENABLED`                  | `true`            | Enable tracing                                            |
+| `PROVIDE_TRACE_SAMPLE_RATE`              | `1.0`             | Trace sample rate `[0.0, 1.0]`                            |
+| `PROVIDE_METRICS_ENABLED`                | `true`            | Enable metrics                                            |
+| `PROVIDE_SAMPLING_LOGS_RATE`             | `1.0`             | Log sampling rate `[0.0, 1.0]`                            |
+| `PROVIDE_BACKPRESSURE_LOGS_MAXSIZE`      | `1000`            | Max queued log events before backpressure                 |
+| `PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH` | `1024`            | Truncate long field values at this byte count             |
+| `PROVIDE_SECURITY_MAX_ATTR_COUNT`        | `64`              | Maximum context attributes per log record                 |
+| `PROVIDE_SECURITY_MAX_NESTING_DEPTH`     | `8`               | Maximum PII sanitization recursion depth                  |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`            | —                 | OTLP base endpoint (e.g. `http://localhost:4318`)         |
+| `OTEL_EXPORTER_OTLP_HEADERS`             | —                 | Percent-encoded `key=value` auth headers                  |
+| `OTEL_METRIC_EXPORT_INTERVAL`            | `60000`           | Metrics push interval in milliseconds (`--features otel`) |
 
 ## Cargo features
 
-| Feature | Default | Description |
-|---------|---------|-------------|
-| `governance` | yes | Data governance / consent gating. Without this, `should_allow` is always true. |
-| `otel` | no | Real OTLP export for traces, metrics, and logs via `opentelemetry-otlp` (HTTP/protobuf). When off, the crate provides in-process fallback instrumentation (noop tracer, in-process metrics, stderr-only logs). |
-| `otel-grpc` | no | Adds gRPC transport on top of `otel`. Requires `tonic` (heavier dep tree). |
+| Feature      | Default | Description                                                                                                                                                                                                    |
+| ------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `governance` | yes     | Data governance / consent gating. Without this, `should_allow` is always true.                                                                                                                                 |
+| `otel`       | no      | Real OTLP export for traces, metrics, and logs via `opentelemetry-otlp` (HTTP/protobuf). When off, the crate provides in-process fallback instrumentation (noop tracer, in-process metrics, stderr-only logs). |
+| `otel-grpc`  | no      | Adds gRPC transport on top of `otel`. Requires `tonic` (heavier dep tree).                                                                                                                                     |
 
 ```bash
 cargo build                        # default (governance, no OTel)
@@ -227,25 +222,17 @@ cargo build --no-default-features  # minimal fallback-only build
 
 ## OTLP export
 
-When built with `--features otel`, `setup_telemetry()` installs real
-`TracerProvider`, `MeterProvider`, and `LoggerProvider` backed by OTLP
-HTTP/protobuf exporters. All three signals (traces, metrics, logs) are
-emitted to the configured endpoint:
+When built with `--features otel`, `setup_telemetry()` installs real `TracerProvider`, `MeterProvider`, and `LoggerProvider` backed by OTLP HTTP/protobuf exporters. All three signals (traces, metrics, logs) are emitted to the configured endpoint:
 
-| Env Var | Example | Notes |
-|---------|---------|-------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Shared base URL; per-signal paths (`/v1/traces`, `/v1/metrics`, `/v1/logs`) are appended automatically. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Basic%20dXNlcjpwYXNz` | Shared auth header (percent-encoded). |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Default. Also accepts `http/json`. `grpc` requires `--features otel-grpc`. |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://traces:4318/v1/traces` | Signal-specific override (used verbatim, no path appending). |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds. |
+| Env Var                              | Example                              | Notes                                                                                                   |
+| ------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | `http://localhost:4318`              | Shared base URL; per-signal paths (`/v1/traces`, `/v1/metrics`, `/v1/logs`) are appended automatically. |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | `Authorization=Basic%20dXNlcjpwYXNz` | Shared auth header (percent-encoded).                                                                   |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `http/protobuf`                      | Default. Also accepts `http/json`. `grpc` requires `--features otel-grpc`.                              |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://traces:4318/v1/traces`       | Signal-specific override (used verbatim, no path appending).                                            |
+| `OTEL_METRIC_EXPORT_INTERVAL`        | `60000`                              | Metrics push interval in milliseconds.                                                                  |
 
-**Tokio runtime requirement:** this crate depends on `tokio` (for
-`run_with_resilience` retry/timeout logic) regardless of feature flags.
-With `--features otel` the SDK's batch span processor and periodic metrics
-reader additionally require an active multi-threaded runtime. Call
-`setup_telemetry()` from within a `#[tokio::main]` function or an
-explicit `tokio::runtime::Builder` runtime:
+**Tokio runtime requirement:** this crate depends on `tokio` (for `run_with_resilience` retry/timeout logic) regardless of feature flags. With `--features otel` the SDK's batch span processor and periodic metrics reader additionally require an active multi-threaded runtime. Call `setup_telemetry()` from within a `#[tokio::main]` function or an explicit `tokio::runtime::Builder` runtime:
 
 ```rust
 #[tokio::main]
@@ -255,17 +242,11 @@ async fn main() {
 }
 ```
 
-Architecture: `consent`, `sampling`, `backpressure`, and `resilience`
-modules act as pre-filters. The OTel SDK sits behind them and handles
-batching + OTLP network export only. When OTel is unconfigured or the
-feature is off, the crate falls back gracefully to in-process
-instrumentation (stderr logs, noop tracer, in-process counters).
+Architecture: `consent`, `sampling`, `backpressure`, and `resilience` modules act as pre-filters. The OTel SDK sits behind them and handles batching + OTLP network export only. When OTel is unconfigured or the feature is off, the crate falls back gracefully to in-process instrumentation (stderr logs, noop tracer, in-process counters).
 
 ## Spec conformance
 
-This crate implements every `required: true` symbol in
-[`spec/telemetry-api.yaml`](../spec/telemetry-api.yaml), with names
-converted to Rust snake_case per the spec's `naming_conventions.rust` rule.
+This crate implements every `required: true` symbol in [`spec/telemetry-api.yaml`](../spec/telemetry-api.yaml), with names converted to Rust snake_case per the spec's `naming_conventions.rust` rule.
 
 Run the conformance validator:
 
@@ -298,9 +279,7 @@ cargo run --features otel --example e2e_cross_language_client
 cargo run --features otel --example e2e_cross_language_server -- --port 18765
 ```
 
-The example suite covers the same numbered telemetry topics as Python,
-TypeScript, and Go, includes OpenObserve integration examples, and keeps
-the OTLP E2E client/server pair used by the cross-language verification flow.
+The example suite covers the same numbered telemetry topics as Python, TypeScript, and Go, includes OpenObserve integration examples, and keeps the OTLP E2E client/server pair used by the cross-language verification flow.
 
 ## Requirements
 
