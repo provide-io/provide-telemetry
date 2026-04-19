@@ -125,7 +125,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const rawTraceExporter = new OTLPTraceExporter({
           url: tracesEndpoint,
           headers: traceHeaders,
-          timeoutMillis: cfg.exporterTracesTimeoutMs ?? 10000,
+          timeoutMillis: cfg.exporterTracesTimeoutMs,
         });
         // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
         const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
@@ -164,7 +164,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const rawMetricExporter = new OTLPMetricExporter({
           url: metricsEndpoint,
           headers: metricsHeaders,
-          timeoutMillis: cfg.exporterMetricsTimeoutMs ?? 10000,
+          timeoutMillis: cfg.exporterMetricsTimeoutMs,
         });
         // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
         const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
