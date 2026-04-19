@@ -70,10 +70,18 @@ export function wrapResilientExporter<T extends ResilientExportable>(signal: str
           // fail_closed path: runWithResilience rejected. Surface to the
           // processor as FAILED so it records the drop rather than crashing
           // inside a background timer handler.
+          /* v8 ignore start */
+          // err is unknown at the catch boundary; the ternary is defensive
+          // against runWithResilience rejecting with a non-Error value.
+          // The inner runOnce on line 56 already coerces sync throws to Error,
+          // so in practice err is always an Error here. The branch is unreachable
+          // through normal exporter failure paths and not worth a contrived
+          // mock-rejection test for one branch arm.
           resultCallback({
             code: EXPORT_RESULT_FAILED,
             error: err instanceof Error ? err : new Error(String(err)),
           });
+          /* v8 ignore stop */
         },
       );
     },
