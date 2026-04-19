@@ -1,0 +1,8 @@
+{
+  "_about": "Per-operation perf budgets in nanoseconds for the Rust implementation. measured = `cargo bench --bench hot_path -- --quick` parsed via scripts/parse_criterion.py. baseline_ns is the median (criterion's middle estimate) on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier.",
+  "macos-arm64": {
+    "should_sample_logs": {"baseline_ns": 14,    "tolerance_multiplier": 5.0},
+    "sanitize_payload":   {"baseline_ns": 1025,  "tolerance_multiplier": 5.0},
+    "parse_baggage":      {"baseline_ns": 370,   "tolerance_multiplier": 5.0}
+  }
+}
