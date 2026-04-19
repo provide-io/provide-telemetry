@@ -115,8 +115,12 @@ pub(super) fn shutdown_tracer_provider() {
         .lock()
         .expect("tracer provider lock poisoned");
     if let Some(p) = guard.take() {
-        let _ = p.force_flush();
-        let _ = p.shutdown();
+        if let Err(err) = p.force_flush() {
+            eprintln!("provide_telemetry: traces force_flush failed: {err:?}");
+        }
+        if let Err(err) = p.shutdown() {
+            eprintln!("provide_telemetry: traces shutdown failed: {err:?}");
+        }
     }
 }
 
