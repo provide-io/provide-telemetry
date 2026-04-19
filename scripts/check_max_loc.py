@@ -147,8 +147,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    roots = [Path(root) for root in args.roots]
     repo_root = Path(__file__).parent.parent
+    # Anchor relative roots to the repo so the gate scans the same tree
+    # regardless of the caller's cwd. Without this, invoking the script
+    # from outside the repo silently passes (no roots exist).
+    roots = [Path(root) if Path(root).is_absolute() else repo_root / root for root in args.roots]
     extensions = tuple(args.extensions)
     allowlist = _load_allowlist(args.allowlist)
     offenders, grandfathered = find_loc_offenders(roots, args.max_lines, extensions, allowlist, repo_root)
