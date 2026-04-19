@@ -200,7 +200,17 @@ def test_browser_trace_links_browser_and_python_spans() -> None:
             trace_id = page.locator("#trace-id").text_content() or ""
             browser.close()
 
-        assert len(trace_id) == 32, f"Expected 32-char trace_id from browser DOM, got: {trace_id!r}"
+        # Surface browser console output regardless of trace_id outcome — without
+        # this, an all-zero trace_id (no provider registered) silently fails far
+        # later at the OpenObserve cross-reference, hiding the actual cause
+        # (typically a peer-dep import failure inside registerOtelProviders).
+        if not (len(trace_id) == 32 and any(c != "0" for c in trace_id)):
+            print("\n[browser console messages]\n" + "\n".join(console_messages), file=sys.stderr)
+
+        assert len(trace_id) == 32 and any(c != "0" for c in trace_id), (
+            f"Expected real 32-char trace_id from browser DOM, got: {trace_id!r}\n"
+            f"Console messages:\n" + "\n".join(console_messages)
+        )
 
         # Flush and stop the Python backend.
         try:

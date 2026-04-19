@@ -15,7 +15,12 @@
  *   #status   — "done" on success, "error: <msg>" on failure
  */
 
-import { registerOtelProviders, setupTelemetry, shutdownTelemetry } from '../src/index.js';
+import {
+  getConfig,
+  registerOtelProviders,
+  setupTelemetry,
+  shutdownTelemetry,
+} from '../src/index.js';
 import { trace } from '@opentelemetry/api';
 
 async function run(): Promise<void> {
@@ -39,7 +44,13 @@ async function run(): Promise<void> {
   };
 
   setupTelemetry(cfg);
-  await registerOtelProviders(cfg);
+  // Pass the merged config (cfg above is a Partial<TelemetryConfig> overlay
+  // that is missing required defaults like tracingEnabled). setupTelemetry
+  // stores the merged result; getConfig() returns it. Using cfg directly
+  // here would leave tracingEnabled undefined and skip provider registration
+  // entirely, so trace.getTracer() would return a no-op ProxyTracer and the
+  // emitted traceparent would be all-zero.
+  await registerOtelProviders(getConfig());
 
   const tracer = trace.getTracer('browser-e2e');
   let traceId = '';
