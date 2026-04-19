@@ -17,7 +17,7 @@ import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
 import { ConfigurationError } from './exceptions';
 import { setSetupError } from './health';
-import { isFallbackMode } from './propagation';
+import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation';
 import { _setActiveConfig } from './runtime';
 import { configFromEnv } from './config-env';
 export { configFromEnv } from './config-env';
@@ -297,18 +297,29 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
 export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   _config = { ...configFromEnv(), ...overrides };
   _validateConfig(_config);
-  if (isFallbackMode()) {
-    const isNodeLike =
-      typeof process !== 'undefined' &&
-      typeof process.versions === 'object' &&
-      typeof (process.versions as Record<string, unknown>).node === 'string';
-    if (isNodeLike) {
-      throw new ConfigurationError(
-        'AsyncLocalStorage unavailable in a Node.js environment — ' +
-          'concurrent requests would share propagation context. ' +
-          'Check that node:async_hooks is not excluded from your bundler config.',
-      );
+  const isNodeLike =
+    typeof process !== 'undefined' &&
+    typeof process.versions === 'object' &&
+    typeof (process.versions as Record<string, unknown>).node === 'string';
+  const fallbackMessage =
+    'AsyncLocalStorage unavailable in a Node.js environment — ' +
+    'concurrent requests would share propagation context. ' +
+    'Check that node:async_hooks is not excluded from your bundler config.';
+  if (isNodeLike && isFallbackMode()) {
+    if (isPropagationInitDone()) {
+      // Init has settled and ALS is genuinely unavailable — fail loud as before.
+      throw new ConfigurationError(fallbackMessage);
     }
+    // Init still racing (typical of tsx/ESM Node where propagation.ts loads
+    // node:async_hooks via fire-and-forget `await import`). Defer the check
+    // to after init resolves; record + warn instead of throwing because the
+    // call site has already returned by the time we know the verdict.
+    void awaitPropagationInit().then(() => {
+      if (isFallbackMode()) {
+        setSetupError(fallbackMessage);
+        console.warn(`[provide-telemetry] ${fallbackMessage}`);
+      }
+    });
   }
   _configVersion++;
   _setActiveConfig(_config);
