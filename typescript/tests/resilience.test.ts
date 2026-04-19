@@ -172,7 +172,10 @@ describe('runWithResilience — timeout', () => {
 
 describe('runWithResilience — circuit breaker', () => {
   it('trips after 3 consecutive TelemetryTimeoutErrors', async () => {
-    setExporterPolicy('traces', { timeoutMs: 0, failOpen: true, retries: 0 });
+    // timeoutMs > 0 so the breaker gate engages (timeout=0 explicitly bypasses it,
+    // matching Python/Go contract). The fn itself rejects synchronously with a
+    // TelemetryTimeoutError so the wrapper-imposed timeout never elapses.
+    setExporterPolicy('traces', { timeoutMs: 1000, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     await runWithResilience('traces', timeoutFn); // 1
     await runWithResilience('traces', timeoutFn); // 2
@@ -188,7 +191,7 @@ describe('runWithResilience — circuit breaker', () => {
   });
 
   it('circuit breaker with failOpen=false throws on open circuit', async () => {
-    setExporterPolicy('metrics', { timeoutMs: 0, failOpen: false, retries: 0 });
+    setExporterPolicy('metrics', { timeoutMs: 1000, failOpen: false, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // suppress errors from the tripping calls (failOpen=false, but not circuit yet)
     for (let i = 0; i < 3; i++) {
@@ -293,8 +296,8 @@ describe('runWithResilience — retriesLogs health counter', () => {
 
 describe('runWithResilience — circuit breaker per signal', () => {
   it('circuit breaker for traces signal trips independently of logs', async () => {
-    setExporterPolicy('traces', { timeoutMs: 0, failOpen: true, retries: 0 });
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('traces', { timeoutMs: 1000, failOpen: true, retries: 0 });
+    setExporterPolicy('logs', { timeoutMs: 1000, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // Trip traces circuit
     await runWithResilience('traces', timeoutFn);
@@ -433,7 +436,7 @@ describe('resilience — health increments (kills StringLiteral on exportFailure
   it('increments exportFailuresLogs specifically via circuit breaker open path', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 1000, failOpen: true });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     // Trip the circuit (3 consecutive timeouts — each increments exportFailuresLogs)
     await runWithResilience('logs', timeoutFn); // failure 1
@@ -473,7 +476,7 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
   it('increments exportFailuresLogs when circuit is tripped and call rejected', async () => {
     _resetResilienceForTests();
     _resetHealthForTests();
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 1000, failOpen: true });
     // Trip circuit
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     await runWithResilience('logs', timeoutFn);
@@ -487,7 +490,7 @@ describe('resilience — circuit breaker error messages (kills StringLiteral on 
 
   it('throws with "circuit breaker open" message when failOpen=false', async () => {
     _resetResilienceForTests();
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: false });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 1000, failOpen: false });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('t'));
     for (let i = 0; i < 3; i++) {
       try {
@@ -558,10 +561,28 @@ describe('getCircuitState', () => {
   });
 });
 
+describe('runWithResilience — timeout-disabled bypasses circuit gate', () => {
+  it('timeoutMs=0 bypasses the breaker even when it is open', async () => {
+    // Mirrors Python (resilience.py:177) and Go (resilience.go:170): when
+    // timeout enforcement is off, the breaker has no signal to act on and
+    // must not reject callers — the gate is bypassed entirely.
+    setExporterPolicy('metrics', { timeoutMs: 0, failOpen: false, retries: 0 });
+    // Pre-load the breaker into open + active cooldown.
+    _setConsecutiveTimeoutsForTests('metrics', CIRCUIT_BREAKER_THRESHOLD);
+    let called = false;
+    const result = await runWithResilience('metrics', async () => {
+      called = true;
+      return 'allowed';
+    });
+    expect(called).toBe(true);
+    expect(result).toBe('allowed');
+  });
+});
+
 describe('exponential backoff on circuit breaker', () => {
   it('doubles cooldown after repeated trips', async () => {
     vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('logs', { timeoutMs: 1000, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
 
     // First trip: 3 consecutive timeouts -> openCount=1, cooldown = 30s * 2^1 = 60s
@@ -602,7 +623,7 @@ describe('exponential backoff on circuit breaker', () => {
 describe('half-open probe — success decays openCount', () => {
   it('decrements openCount on successful half-open probe', async () => {
     vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('logs', { timeoutMs: 1000, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
 
     // Trip circuit: openCount -> 1
@@ -625,7 +646,7 @@ describe('half-open probe — success decays openCount', () => {
 describe('half-open probe — failure on non-timeout re-opens', () => {
   it('re-opens circuit and increments openCount on non-timeout failure during half-open', async () => {
     vi.useFakeTimers();
-    setExporterPolicy('logs', { timeoutMs: 0, failOpen: true, retries: 0 });
+    setExporterPolicy('logs', { timeoutMs: 1000, failOpen: true, retries: 0 });
     const timeoutFn = () => Promise.reject(new TelemetryTimeoutError('timeout'));
     const normalFail = () => Promise.reject(new Error('non-timeout'));
 
@@ -714,7 +735,7 @@ describe('half-open probe mutation-kills', () => {
     // Kills: Math.max(0, N-1) -> Math.min(0, N-1). With N=2: max(0,1)=1 but min(0,1)=0.
     // Must start from "CB open + cooldown expired" so runWithResilience itself sets _halfOpenProbing=true
     // before calling fn (manually setting _halfOpenProbing=true is rejected by the concurrent-probe guard).
-    setExporterPolicy('logs', { retries: 0, timeoutMs: 0, failOpen: true });
+    setExporterPolicy('logs', { retries: 0, timeoutMs: 1000, failOpen: true });
     _setConsecutiveTimeoutsForTests('logs', CIRCUIT_BREAKER_THRESHOLD);
     _setOpenCountForTests('logs', 2);
     _setCircuitTrippedAtForTests('logs', Date.now() - CIRCUIT_BASE_COOLDOWN_MS * 10); // cooldown expired

@@ -99,8 +99,12 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             },
         )?;
         for _ in 0..4 {
+            // Sleep longer than timeout_seconds so the wrapper-imposed
+            // tokio::time::timeout fires; only real timeouts count toward the
+            // circuit breaker (matches Python/Go/TypeScript contract).
             let _ = run_with_resilience::<_, _, ()>(Signal::Metrics, || async {
-                Err(TelemetryError::new("timeout"))
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                Ok(())
             })
             .await?;
         }

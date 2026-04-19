@@ -69,9 +69,10 @@ fn circuit_gate(signal: Signal) -> bool {
 }
 
 /// Inform the shared circuit-breaker state and health counters about a failed
-/// export attempt.
-fn on_export_failure(signal: Signal) {
-    _record_circuit_failure_for_wrappers(signal);
+/// export attempt. `is_timeout` discriminates timeout failures from other
+/// errors so the breaker only counts true timeouts (Python/Go/TS contract).
+fn on_export_failure(signal: Signal, is_timeout: bool) {
+    _record_circuit_failure_for_wrappers(signal, is_timeout);
     record_export_failure(signal);
 }
 
@@ -107,7 +108,10 @@ where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = OTelSdkResult> + Send,
 {
-    if circuit_gate(signal) {
+    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
+    // Circuit breaker is only consulted when timeout enforcement is on,
+    // matching Python (resilience.py:177) and Go (resilience.go:170).
+    if !timeout.is_zero() && circuit_gate(signal) {
         return if policy.fail_open {
             ResilienceOutcome::FailOpenDrop
         } else {
@@ -115,7 +119,6 @@ where
         };
     }
 
-    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
     let max_attempts = policy.retries + 1;
     let mut last_err = String::from("no attempts made");
 
@@ -128,12 +131,12 @@ where
         }
 
         let started = Instant::now();
-        let result = if timeout.is_zero() {
-            make_fut().await
+        let (result, wrapper_timeout) = if timeout.is_zero() {
+            (make_fut().await, false)
         } else {
             match tokio::time::timeout(timeout, make_fut()).await {
-                Ok(inner) => inner,
-                Err(_) => Err(OTelSdkError::Timeout(timeout)),
+                Ok(inner) => (inner, false),
+                Err(_) => (Err(OTelSdkError::Timeout(timeout)), true),
             }
         };
 
@@ -143,7 +146,10 @@ where
                 return ResilienceOutcome::Success;
             }
             Err(err) => {
-                on_export_failure(signal);
+                // Treat both wrapper-imposed and SDK-reported timeouts as
+                // breaker-eligible failures; everything else resets the counter.
+                let is_timeout = wrapper_timeout || matches!(err, OTelSdkError::Timeout(_));
+                on_export_failure(signal, is_timeout);
                 last_err = format!("{err}");
             }
         }
@@ -229,7 +235,8 @@ async fn run_log_resilience_loop<E: LogExporter>(
     )],
     exporter: &E,
 ) -> ResilienceOutcome {
-    if circuit_gate(signal) {
+    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
+    if !timeout.is_zero() && circuit_gate(signal) {
         return if policy.fail_open {
             ResilienceOutcome::FailOpenDrop
         } else {
@@ -237,7 +244,6 @@ async fn run_log_resilience_loop<E: LogExporter>(
         };
     }
 
-    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
     let max_attempts = policy.retries + 1;
     let mut last_err = String::from("no attempts made");
 
@@ -256,12 +262,12 @@ async fn run_log_resilience_loop<E: LogExporter>(
         let rebatch = LogBatch::new(&refs);
 
         let started = Instant::now();
-        let result = if timeout.is_zero() {
-            exporter.export(rebatch).await
+        let (result, wrapper_timeout) = if timeout.is_zero() {
+            (exporter.export(rebatch).await, false)
         } else {
             match tokio::time::timeout(timeout, exporter.export(rebatch)).await {
-                Ok(inner) => inner,
-                Err(_) => Err(OTelSdkError::Timeout(timeout)),
+                Ok(inner) => (inner, false),
+                Err(_) => (Err(OTelSdkError::Timeout(timeout)), true),
             }
         };
 
@@ -271,7 +277,8 @@ async fn run_log_resilience_loop<E: LogExporter>(
                 return ResilienceOutcome::Success;
             }
             Err(err) => {
-                on_export_failure(signal);
+                let is_timeout = wrapper_timeout || matches!(err, OTelSdkError::Timeout(_));
+                on_export_failure(signal, is_timeout);
                 last_err = format!("{err}");
             }
         }
@@ -409,6 +416,7 @@ mod tests {
     struct StubSpanExporter {
         calls: Arc<AtomicU32>,
         fail_first_n: u32,
+        fail_as_timeout: bool,
     }
 
     impl StubSpanExporter {
@@ -416,6 +424,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: 0,
+                fail_as_timeout: false,
             }
         }
 
@@ -423,6 +432,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: n,
+                fail_as_timeout: false,
             }
         }
 
@@ -430,6 +440,15 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: u32::MAX,
+                fail_as_timeout: false,
+            }
+        }
+
+        fn new_always_timeout() -> Self {
+            Self {
+                calls: Arc::new(AtomicU32::new(0)),
+                fail_first_n: u32::MAX,
+                fail_as_timeout: true,
             }
         }
     }
@@ -438,7 +457,11 @@ mod tests {
         async fn export(&self, _batch: Vec<SpanData>) -> OTelSdkResult {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             if n < self.fail_first_n {
-                Err(OTelSdkError::InternalFailure("stub failure".into()))
+                if self.fail_as_timeout {
+                    Err(OTelSdkError::Timeout(Duration::from_secs(1)))
+                } else {
+                    Err(OTelSdkError::InternalFailure("stub failure".into()))
+                }
             } else {
                 Ok(())
             }
@@ -449,6 +472,7 @@ mod tests {
     struct StubLogExporter {
         calls: Arc<AtomicU32>,
         fail_first_n: u32,
+        fail_as_timeout: bool,
     }
 
     impl StubLogExporter {
@@ -456,6 +480,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: 0,
+                fail_as_timeout: false,
             }
         }
 
@@ -463,6 +488,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: n,
+                fail_as_timeout: false,
             }
         }
 
@@ -470,6 +496,15 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: u32::MAX,
+                fail_as_timeout: false,
+            }
+        }
+
+        fn new_always_timeout() -> Self {
+            Self {
+                calls: Arc::new(AtomicU32::new(0)),
+                fail_first_n: u32::MAX,
+                fail_as_timeout: true,
             }
         }
     }
@@ -478,7 +513,11 @@ mod tests {
         async fn export(&self, _batch: LogBatch<'_>) -> OTelSdkResult {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             if n < self.fail_first_n {
-                Err(OTelSdkError::InternalFailure("stub failure".into()))
+                if self.fail_as_timeout {
+                    Err(OTelSdkError::Timeout(Duration::from_secs(1)))
+                } else {
+                    Err(OTelSdkError::InternalFailure("stub failure".into()))
+                }
             } else {
                 Ok(())
             }
@@ -489,6 +528,7 @@ mod tests {
     struct StubMetricExporter {
         calls: Arc<AtomicU32>,
         fail_first_n: u32,
+        fail_as_timeout: bool,
     }
 
     impl StubMetricExporter {
@@ -496,6 +536,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: 0,
+                fail_as_timeout: false,
             }
         }
 
@@ -503,6 +544,7 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: n,
+                fail_as_timeout: false,
             }
         }
 
@@ -510,6 +552,15 @@ mod tests {
             Self {
                 calls: Arc::new(AtomicU32::new(0)),
                 fail_first_n: u32::MAX,
+                fail_as_timeout: false,
+            }
+        }
+
+        fn new_always_timeout() -> Self {
+            Self {
+                calls: Arc::new(AtomicU32::new(0)),
+                fail_first_n: u32::MAX,
+                fail_as_timeout: true,
             }
         }
     }
@@ -518,7 +569,11 @@ mod tests {
         async fn export(&self, _metrics: &ResourceMetrics) -> OTelSdkResult {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             if n < self.fail_first_n {
-                Err(OTelSdkError::InternalFailure("stub failure".into()))
+                if self.fail_as_timeout {
+                    Err(OTelSdkError::Timeout(Duration::from_secs(1)))
+                } else {
+                    Err(OTelSdkError::InternalFailure("stub failure".into()))
+                }
             } else {
                 Ok(())
             }
@@ -637,13 +692,15 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                // Non-zero timeout so the circuit gate is consulted, and
+                // the stub returns Timeout errors so the breaker counts them.
+                timeout_seconds: 1.0,
                 fail_open: true,
                 ..ExporterPolicy::default()
             },
         )
         .unwrap();
-        let stub = StubSpanExporter::new_always_fail();
+        let stub = StubSpanExporter::new_always_timeout();
         let calls = stub.calls.clone();
         let w = ResilientSpanExporter::new(stub);
         rt().block_on(async {
@@ -673,13 +730,13 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                timeout_seconds: 1.0,
                 fail_open: false,
                 ..ExporterPolicy::default()
             },
         )
         .unwrap();
-        let stub = StubSpanExporter::new_always_fail();
+        let stub = StubSpanExporter::new_always_timeout();
         let calls = stub.calls.clone();
         let w = ResilientSpanExporter::new(stub);
         rt().block_on(async {
@@ -813,13 +870,13 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                timeout_seconds: 1.0,
                 fail_open: true,
                 ..ExporterPolicy::default()
             },
         )
         .unwrap();
-        let stub = StubLogExporter::new_always_fail();
+        let stub = StubLogExporter::new_always_timeout();
         let calls = stub.calls.clone();
         let w = ResilientLogExporter::new(stub);
         let data = empty_log_batch_data();
@@ -948,13 +1005,13 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                timeout_seconds: 1.0,
                 fail_open: true,
                 ..ExporterPolicy::default()
             },
         )
         .unwrap();
-        let stub = StubMetricExporter::new_always_fail();
+        let stub = StubMetricExporter::new_always_timeout();
         let calls = stub.calls.clone();
         let w = ResilientMetricExporter::new(stub);
         let rm = empty_resource_metrics();
