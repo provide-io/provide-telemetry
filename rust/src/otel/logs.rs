@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime};
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
 use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::logs::{SdkLoggerProvider, SimpleLogProcessor};
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::Resource;
 use serde_json::Value;
 
@@ -29,8 +29,7 @@ use crate::errors::TelemetryError;
 use crate::logger::LogEvent;
 
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
-// ResilientLogExporter currently unused in production (see traces.rs comment).
-// Wrapper tests still exercise it; restored when we move back to BatchLogProcessor.
+use super::resilient::ResilientLogExporter;
 
 static LOGGER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkLoggerProvider>>>> = OnceLock::new();
 
@@ -91,14 +90,9 @@ pub(super) fn install_logger_provider(
         }
     };
 
-    // SimpleLogProcessor (sync, inline export per record) instead of
-    // BatchLogProcessor — until upstream fixes the BSP/reqwest reactor
-    // mismatch in opentelemetry-rust 0.31. Wrapper omitted for the same
-    // reason as in traces.rs (one record = one HTTP call, no batch to retry,
-    // wrapper hung CI). Restore when moving back to BSP.
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
-        .with_log_processor(SimpleLogProcessor::new(exporter))
+        .with_batch_exporter(ResilientLogExporter::new(exporter))
         .build();
 
     let arc = Arc::new(provider);
