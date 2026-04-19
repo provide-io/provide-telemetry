@@ -54,20 +54,45 @@ export type PropagationALS = {
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
 let _AlsConstructor: (new () => PropagationALS) | null = null;
-// Stryker disable BlockStatement: module-level await/try block runs once at import time — cannot be tested by unit tests
-try {
-  // Dynamic ESM import so this works in both Node ESM (where `require` is
-  // undefined) and Node CJS (where dynamic import returns a Promise of the
-  // module). In browsers, `node:async_hooks` is unresolvable and the import
-  // rejects — caught below, leaving _als null and triggering fallback mode.
-  const als = (await import('node:async_hooks')) as {
-    AsyncLocalStorage: new () => PropagationALS;
-  };
-  _AlsConstructor = als.AsyncLocalStorage;
-  _als = new _AlsConstructor();
-} catch {
-  // Not available — fall back to module-level store below.
-}
+// Stryker disable BlockStatement: module-level init block runs once at import time — cannot be tested by unit tests
+//
+// Three load environments must be supported:
+//   1. CJS Node (tsx default, transpiled CJS bundles): `require` is defined;
+//      load synchronously. tsx/esbuild forbid top-level await in CJS output,
+//      so we must NOT use `await import` at module scope.
+//   2. ESM Node (modern bundlers, .mjs entrypoints): `require` is undefined;
+//      fire off an async import without awaiting it at top level. Calls that
+//      happen before the import resolves use the module-level fallback store
+//      (with a one-time warning) — the racing window is tiny in practice.
+//   3. Browsers / Workers / Deno: neither path resolves `node:async_hooks`;
+//      both branches throw or reject, _als stays null, fallback store used.
+(function initAsyncStorage(): void {
+  try {
+    if (typeof require === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const als = require('node:async_hooks') as {
+        AsyncLocalStorage: new () => PropagationALS;
+      };
+      _AlsConstructor = als.AsyncLocalStorage;
+      _als = new _AlsConstructor();
+      return;
+    }
+  } catch {
+    // CJS path failed (e.g. browserified bundle where require throws) —
+    // fall through to async import.
+  }
+  void (async () => {
+    try {
+      const als = (await import('node:async_hooks')) as {
+        AsyncLocalStorage: new () => PropagationALS;
+      };
+      _AlsConstructor = als.AsyncLocalStorage;
+      _als = new _AlsConstructor();
+    } catch {
+      // node:async_hooks unresolvable — leave _als null and use fallback.
+    }
+  })();
+})();
 // Stryker restore BlockStatement
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
