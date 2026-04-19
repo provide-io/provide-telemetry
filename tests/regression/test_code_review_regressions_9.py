@@ -131,7 +131,7 @@ def test_runtime_probe_shared_prefers_canonical_when_both_loaded() -> None:
         aliased._OTEL_REQUIRED_CASE_IDS = frozenset({"alias_sentinel"})  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
         try:
-            import _runtime_probe  # type: ignore[import-not-found]
+            import _runtime_probe
 
             shared = _runtime_probe._shared()
             assert shared[1] is canonical._OTEL_REQUIRED_CASE_IDS, (
