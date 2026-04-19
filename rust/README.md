@@ -287,6 +287,15 @@ the OTLP E2E client/server pair used by the cross-language verification flow.
 
 - Rust 1.81+
 
+## Performance gate
+
+Hot-path benchmarks (`benches/hot_path.rs`) run on every CI push as the
+`performance-smoke` job, comparing per-op measurements against
+`baselines/perf-rust.json` for the runner's OS bucket. Locally:
+`make perf-rust`. See [`docs/PERFORMANCE.md`](../docs/PERFORMANCE.md) for
+the gate's design (5x default tolerance, OS-tagged baselines) and how to
+seed or refresh entries.
+
 ## License
 
 Apache-2.0. See [LICENSE](../LICENSES/Apache-2.0.txt).
