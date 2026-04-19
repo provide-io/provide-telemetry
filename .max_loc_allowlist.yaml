@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Grandfathered LOC violators. Each entry is a temporary exemption granted
+# because the file already exceeds 500 lines. The `ceiling` is the line count
+# at the time the file was added — the file may not grow above it. Entries
+# should be removed as files are split or shrunk.
+#
+# New code MUST keep files under 500 lines. Do not add entries to this file
+# without explicit approval.
+
+allowlist:
+  # ── Go ─────────────────────────────────────────────────────────────────────
+  - path: go/classification_test.go
+    ceiling: 648
+    reason: Test file growing with new governance assertions; split planned.
+  - path: go/config_test.go
+    ceiling: 1361
+    reason: Largest test file in the repo; needs aggressive split into sub-suites.
+  - path: go/config.go
+    ceiling: 928
+    reason: Source config module; split env-parse + accessors into helper files.
+  - path: go/logger_test.go
+    ceiling: 939
+    reason: Test file; split by feature (formatters, processors, levels).
+  - path: go/logger/coverage_test.go
+    ceiling: 516
+    reason: Coverage-edge tests; split or fold into sibling logger tests.
+  - path: go/otel_test.go
+    ceiling: 716
+    reason: OTel wiring tests; split per-signal (logs/traces/metrics).
+  - path: go/pii_test.go
+    ceiling: 773
+    reason: PII test file; split by rule type (default-keys, secret patterns, custom rules).
+  - path: go/resilience_test.go
+    ceiling: 845
+    reason: Resilience test file; split by concern (retries, timeouts, circuit breaker).
+  - path: go/runtime_test.go
+    ceiling: 655
+    reason: Runtime hot-reload tests; split by API surface.
+
+  # ── Rust ───────────────────────────────────────────────────────────────────
+  - path: rust/src/config/mod.rs
+    ceiling: 520
+    reason: Config module barely over; split env parse helpers into sibling.
+  - path: rust/src/logger/mod.rs
+    ceiling: 546
+    reason: Logger module just over; split format/output into sibling.
+  - path: rust/src/otel/resilient.rs
+    ceiling: 1052
+    reason: Three exporter wrappers + tests in one file; split by signal.
+  - path: rust/src/resilience.rs
+    ceiling: 689
+    reason: Implementation + extensive tests; move tests to tests/resilience_test.rs.
+  - path: rust/tests/integration_test.rs
+    ceiling: 507
+    reason: Integration test file just over; split by example category.
+  - path: rust/tests/logger_test.rs
+    ceiling: 755
+    reason: Logger integration tests; split by formatter/processor.
+
+  # ── Python ─────────────────────────────────────────────────────────────────
+  - path: spec/parity_probe_support.py
+    ceiling: 502
+    reason: Probe DSL just over; extract case-runner helper module.
+  - path: spec/validate_conformance.py
+    ceiling: 558
+    reason: Conformance script; split symbol discovery from comparison logic.
+
+  # ── TypeScript ─────────────────────────────────────────────────────────────
+  - path: typescript/tests/config.test.ts
+    ceiling: 1198
+    reason: Largest TS test file; split env parse / runtime config / overrides.
+  - path: typescript/tests/logger.test.ts
+    ceiling: 896
+    reason: Logger test file; split by formatter and processor concern.
+  - path: typescript/tests/metrics.test.ts
+    ceiling: 839
+    reason: Metrics test file; split by instrument (counter/gauge/histogram).
+  - path: typescript/tests/otel-logs.test.ts
+    ceiling: 572
+    reason: OTel logs wiring tests; split init vs export.
+  - path: typescript/tests/parity.test.ts
+    ceiling: 725
+    reason: Parity test file; split by fixture category.
+  - path: typescript/tests/pii.test.ts
+    ceiling: 717
+    reason: PII test file; split by rule type.
+  - path: typescript/tests/propagation.test.ts
+    ceiling: 1057
+    reason: Propagation test file; split W3C parse / bind-clear / baggage.
+  - path: typescript/tests/resilience.test.ts
+    ceiling: 872
+    reason: Resilience test file; split by retry / timeout / circuit breaker.
+  - path: typescript/tests/runtime.test.ts
+    ceiling: 547
+    reason: Runtime test file just over; split hot-reload from snapshot.
+  - path: typescript/tests/tracing.test.ts
+    ceiling: 659
+    reason: Tracing test file; split decorator from manual span suites.
