@@ -25,7 +25,9 @@ use crate::context::{set_trace_context_internal, ContextGuard};
 use crate::errors::TelemetryError;
 
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
-use super::resilient::ResilientSpanExporter;
+// ResilientSpanExporter is currently unused in production (we use SimpleSpanProcessor
+// inline export — see comment in install_tracer_provider). Wrapper tests still
+// exercise it; restored to production use once we can move back to BatchSpanProcessor.
 
 static TRACER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkTracerProvider>>>> = OnceLock::new();
 
@@ -95,16 +97,20 @@ pub(super) fn install_tracer_provider(
     };
 
     // SimpleSpanProcessor (sync, inline export per span) instead of
-    // BatchSpanProcessor — see docs/UPSTREAM_OTEL_RUST_BSP_BUG.md.
-    // Until upstream fixes the BSP/reqwest reactor mismatch in
-    // opentelemetry-rust 0.31, BSP panics on its dedicated non-tokio thread
-    // and no exports reach the collector. SimpleSpanProcessor exports inline
-    // on the producer's tokio context where a reactor is available.
+    // BatchSpanProcessor — until upstream fixes the BSP/reqwest reactor
+    // mismatch in opentelemetry-rust 0.31, BSP panics on its dedicated
+    // non-tokio thread and no exports reach the collector.
+    //
+    // ResilientSpanExporter wrapper deliberately omitted from this path:
+    // SimpleSpanProcessor exports each span exactly once inline on the
+    // producer's tokio context, so the wrapper's batch-retry/circuit-breaker
+    // semantics don't apply (one span = one HTTP call, no batching to retry).
+    // Wrapping it caused indefinite hangs in CI from the wrapper's async
+    // machinery interacting with the sync inline export. Restore the wrapper
+    // when we move back to BSP after upstream fix.
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_span_processor(SimpleSpanProcessor::new(ResilientSpanExporter::new(
-            exporter,
-        )))
+        .with_span_processor(SimpleSpanProcessor::new(exporter))
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
