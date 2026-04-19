@@ -128,8 +128,12 @@ pub(super) fn shutdown_meter_provider() {
         .lock()
         .expect("meter provider lock poisoned");
     if let Some(p) = guard.take() {
-        let _ = p.force_flush();
-        let _ = p.shutdown();
+        if let Err(err) = p.force_flush() {
+            eprintln!("provide_telemetry: metrics force_flush failed: {err:?}");
+        }
+        if let Err(err) = p.shutdown() {
+            eprintln!("provide_telemetry: metrics shutdown failed: {err:?}");
+        }
     }
     // Drop cached instruments so a subsequent install gets fresh ones.
     if let Some(m) = COUNTERS.get() {

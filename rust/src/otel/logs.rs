@@ -109,8 +109,12 @@ pub(super) fn shutdown_logger_provider() {
         .lock()
         .expect("logger provider lock poisoned");
     if let Some(p) = guard.take() {
-        let _ = p.force_flush();
-        let _ = p.shutdown();
+        if let Err(err) = p.force_flush() {
+            eprintln!("provide_telemetry: logs force_flush failed: {err:?}");
+        }
+        if let Err(err) = p.shutdown() {
+            eprintln!("provide_telemetry: logs shutdown failed: {err:?}");
+        }
     }
 }
 
