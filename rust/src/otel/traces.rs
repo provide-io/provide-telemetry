@@ -17,7 +17,7 @@ use std::time::Duration;
 use opentelemetry::global;
 use opentelemetry::trace::{Span, Tracer};
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
+use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider, SimpleSpanProcessor};
 use opentelemetry_sdk::Resource;
 
 use crate::config::TelemetryConfig;
@@ -94,9 +94,17 @@ pub(super) fn install_tracer_provider(
         }
     };
 
+    // SimpleSpanProcessor (sync, inline export per span) instead of
+    // BatchSpanProcessor — see docs/UPSTREAM_OTEL_RUST_BSP_BUG.md.
+    // Until upstream fixes the BSP/reqwest reactor mismatch in
+    // opentelemetry-rust 0.31, BSP panics on its dedicated non-tokio thread
+    // and no exports reach the collector. SimpleSpanProcessor exports inline
+    // on the producer's tokio context where a reactor is available.
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(ResilientSpanExporter::new(exporter))
+        .with_span_processor(SimpleSpanProcessor::new(ResilientSpanExporter::new(
+            exporter,
+        )))
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
