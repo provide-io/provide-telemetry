@@ -37,6 +37,27 @@ func TestHandler_PIISanitization(t *testing.T) {
 	}
 }
 
+// TestHandler_PIISanitization_MessageContent regression-tests the fix for the
+// secret-in-message leak. Before the fix, applyPII sanitized only attributes
+// and rebuilt the slog.Record with r.Message unchanged — secrets embedded in
+// the message string itself (e.g. log.Info("token AKIA...")) leaked verbatim.
+func TestHandler_PIISanitization_MessageContent(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = true
+
+	var buf bytes.Buffer
+	l := newTestLogger(&buf, cfg, "")
+	// AWS access key ID — matches a built-in secret pattern.
+	l.Info("token AKIAIOSFODNN7EXAMPLE leaked") // pragma: allowlist secret
+
+	out := buf.String()
+	if strings.Contains(out, "AKIAIOSFODNN7EXAMPLE") { // pragma: allowlist secret
+		t.Errorf("secret leaked verbatim in message: %s", out)
+	}
+}
+
 func TestHandler_PIISanitize_Disabled(t *testing.T) {
 	setupFullSampling(t)
 
