@@ -4,38 +4,29 @@
 //
 //! Per-export resilience wrappers for OTel SDK exporters.
 //!
-//! ## Why this still has its own loop body (`run_resilience_loop`)
+//! ## Why a separate file
 //!
-//! The generic [`crate::resilience::run_with_resilience`] is parameterised
-//! over `Result<T, TelemetryError>`. The OTel SDK exporter traits return
-//! [`OTelSdkResult`] (`Result<(), OTelSdkError>`) and expect specific
-//! variants (`Timeout(Duration)`, `InternalFailure(String)`) for wrapper-
-//! imposed timeouts. Bridging those at every callsite would push more
-//! mapping code into the wrappers than the loop body itself contains.
+//! The generic [`crate::resilience::run_with_resilience`] is hard-typed to
+//! `Result<T, TelemetryError>` for backwards compatibility with downstream
+//! callers. The OTel SDK exporter traits return [`OTelSdkResult`]
+//! (`Result<(), OTelSdkError>`) instead, so this module exists only to
+//! adapt the SDK trait signatures. The retry/timeout/backoff/circuit-breaker
+//! body itself lives in [`crate::resilience::run_with_resilience_inner`] and
+//! is shared between both callsites — there is exactly one loop body, so
+//! semantics cannot drift.
 //!
-//! All three OTel exporter wrappers (Span, Metric, Log) now share a single
-//! loop body — `run_resilience_loop` — even though `LogBatch<'_>` borrows
-//! its data: the Log wrapper rebuilds the batch inside an async-block
-//! closure per attempt, so the future state machine owns the `refs` slice
-//! for the duration of each `export()` call.
-//!
-//! State mutations (`_record_circuit_failure_for_wrappers`,
-//! `_record_circuit_success_for_wrappers`,
-//! `_check_and_start_probe_for_wrappers`) live in `resilience.rs` and are
-//! shared between this loop and `run_with_resilience` — the breaker
-//! semantics cannot drift between the two files. Only the loop scaffolding
-//! (timeout enforcement, backoff, retry counting) is duplicated, and any
-//! semantic change to it MUST be mirrored in both files. The test suites
-//! in this module and `tests/resilience/` exercise the same matrix
-//! (success, fail-open drop, fail-closed surface, retries, circuit trip,
-//! shutdown/flush) to catch any divergence.
+//! All three OTel exporter wrappers (Span, Metric, Log) delegate to the same
+//! inner primitive even though `LogBatch<'_>` borrows its data: the Log
+//! wrapper rebuilds the batch inside an async-block closure per attempt, so
+//! the future state machine owns the `refs` slice for the duration of each
+//! `export()` call.
 //!
 //! The wrapper reads `ExporterPolicy` and circuit state on every `export()`
 //! call, so hot-reloaded policies take effect immediately — the same guarantee
 //! as `run_with_resilience`.
 
 use std::fmt;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::logs::{LogBatch, LogExporter};
@@ -45,127 +36,36 @@ use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::trace::{SpanData, SpanExporter};
 use opentelemetry_sdk::Resource;
 
-use crate::health::{increment_retries, record_export_failure, record_export_latency};
-use crate::resilience::{
-    _check_and_start_probe_for_wrappers, _record_circuit_failure_for_wrappers,
-    _record_circuit_success_for_wrappers, get_exporter_policy, ExporterPolicy,
-};
+use crate::resilience::{get_exporter_policy, run_with_resilience_inner, ExporterPolicy};
 use crate::sampling::Signal;
 
-// ── Circuit-breaker helpers ───────────────────────────────────────────────────
+// ── Adapter from the generic primitive to OTelSdkResult ──────────────────────
 
-/// Check the circuit for `signal`.  Returns `true` (caller must reject) when
-/// the circuit is fully open (cooldown active) or a half-open probe is already
-/// in flight.  Returns `false` when the caller may proceed; if the cooldown has
-/// just elapsed this also marks the probe as in-flight.
-fn circuit_gate(signal: Signal) -> bool {
-    _check_and_start_probe_for_wrappers(signal)
-}
-
-/// Inform the shared circuit-breaker state and health counters about a failed
-/// export attempt. `is_timeout` discriminates timeout failures from other
-/// errors so the breaker only counts true timeouts (Python/Go/TS contract).
-fn on_export_failure(signal: Signal, is_timeout: bool) {
-    _record_circuit_failure_for_wrappers(signal, is_timeout);
-    record_export_failure(signal);
-}
-
-/// Inform the shared circuit-breaker state and health counters about a
-/// successful export.
-fn on_export_success(signal: Signal, started: Instant) {
-    _record_circuit_success_for_wrappers(signal);
-    record_export_latency(signal, started.elapsed().as_secs_f64() * 1000.0);
-}
-
-// ── Core retry loop ───────────────────────────────────────────────────────────
-
-/// The resolved outcome of a resilience evaluation.
-enum ResilienceOutcome {
-    Success,
-    /// Circuit was open, fail_open=true — drop silently.
-    FailOpenDrop,
-    /// Circuit was open, fail_open=false — surface error.
-    FailClosedOpen,
-    /// All retries exhausted, fail_open=true — drop silently.
-    FailOpenExhausted,
-    /// All retries exhausted, fail_open=false — surface last error.
-    FailClosedExhausted(String),
-}
-
-/// Run `make_fut` under the retry/timeout/circuit-breaker policy for `signal`.
-async fn run_resilience_loop<F, Fut>(
+/// Run `make_fut` under the per-signal resilience policy and translate the
+/// generic result into `OTelSdkResult`. `Ok(_)` (success or fail-open drop)
+/// becomes `Ok(())`; `Err(e)` surfaces the exporter's own variant unchanged
+/// (preserving `Timeout(_)` distinct from `InternalFailure(_)`).
+async fn run_otel_resilience<F, Fut>(
     signal: Signal,
     policy: &ExporterPolicy,
     make_fut: F,
-) -> ResilienceOutcome
+) -> OTelSdkResult
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = OTelSdkResult> + Send,
 {
-    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
-    // Circuit breaker is only consulted when timeout enforcement is on,
-    // matching Python (resilience.py:177) and Go (resilience.go:170).
-    if !timeout.is_zero() && circuit_gate(signal) {
-        return if policy.fail_open {
-            ResilienceOutcome::FailOpenDrop
-        } else {
-            ResilienceOutcome::FailClosedOpen
-        };
-    }
-
-    let max_attempts = policy.retries + 1;
-    let mut last_err = String::from("no attempts made");
-
-    for attempt in 0..max_attempts {
-        if attempt > 0 {
-            if policy.backoff_seconds > 0.0 {
-                tokio::time::sleep(Duration::from_secs_f64(policy.backoff_seconds)).await;
-            }
-            increment_retries(signal, 1);
-        }
-
-        let started = Instant::now();
-        let (result, wrapper_timeout) = if timeout.is_zero() {
-            (make_fut().await, false)
-        } else {
-            match tokio::time::timeout(timeout, make_fut()).await {
-                Ok(inner) => (inner, false),
-                Err(_) => (Err(OTelSdkError::Timeout(timeout)), true),
-            }
-        };
-
-        match result {
-            Ok(()) => {
-                on_export_success(signal, started);
-                return ResilienceOutcome::Success;
-            }
-            Err(err) => {
-                // Treat both wrapper-imposed and SDK-reported timeouts as
-                // breaker-eligible failures; everything else resets the counter.
-                let is_timeout = wrapper_timeout || matches!(err, OTelSdkError::Timeout(_));
-                on_export_failure(signal, is_timeout);
-                last_err = format!("{err}");
-            }
-        }
-    }
-
-    if policy.fail_open {
-        ResilienceOutcome::FailOpenExhausted
-    } else {
-        ResilienceOutcome::FailClosedExhausted(last_err)
-    }
-}
-
-/// Convert a `ResilienceOutcome` to the `OTelSdkResult` the SDK expects.
-fn outcome_to_sdk_result(outcome: ResilienceOutcome) -> OTelSdkResult {
-    match outcome {
-        ResilienceOutcome::Success
-        | ResilienceOutcome::FailOpenDrop
-        | ResilienceOutcome::FailOpenExhausted => Ok(()),
-        ResilienceOutcome::FailClosedOpen => {
-            Err(OTelSdkError::InternalFailure("circuit breaker open".into()))
-        }
-        ResilienceOutcome::FailClosedExhausted(msg) => Err(OTelSdkError::InternalFailure(msg)),
+    match run_with_resilience_inner(
+        signal,
+        policy,
+        make_fut,
+        OTelSdkError::Timeout,
+        |e| matches!(e, OTelSdkError::Timeout(_)),
+        || OTelSdkError::InternalFailure("circuit breaker open".into()),
+    )
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
     }
 }
 
@@ -192,9 +92,7 @@ impl<E: SpanExporter> fmt::Debug for ResilientSpanExporter<E> {
 impl<E: SpanExporter> SpanExporter for ResilientSpanExporter<E> {
     async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
         let policy = get_exporter_policy(Signal::Traces).unwrap_or_default();
-        let outcome =
-            run_resilience_loop(Signal::Traces, &policy, || self.inner.export(batch.clone())).await;
-        outcome_to_sdk_result(outcome)
+        run_otel_resilience(Signal::Traces, &policy, || self.inner.export(batch.clone())).await
     }
 
     fn shutdown(&mut self) -> OTelSdkResult {
@@ -250,7 +148,7 @@ impl<E: LogExporter> LogExporter for ResilientLogExporter<E> {
         // Reconstruct the borrowed LogBatch inside an async block per attempt —
         // the future state machine owns `refs` for the duration of `export()`,
         // so the closure satisfies `Fn() -> Fut` despite the borrowed batch.
-        let outcome = run_resilience_loop(Signal::Logs, &policy, || async {
+        run_otel_resilience(Signal::Logs, &policy, || async {
             let refs: Vec<(
                 &opentelemetry_sdk::logs::SdkLogRecord,
                 &opentelemetry::InstrumentationScope,
@@ -258,8 +156,7 @@ impl<E: LogExporter> LogExporter for ResilientLogExporter<E> {
             let rebatch = LogBatch::new(&refs);
             self.inner.export(rebatch).await
         })
-        .await;
-        outcome_to_sdk_result(outcome)
+        .await
     }
 
     fn shutdown(&self) -> OTelSdkResult {
@@ -301,9 +198,7 @@ impl<E: PushMetricExporter> fmt::Debug for ResilientMetricExporter<E> {
 impl<E: PushMetricExporter> PushMetricExporter for ResilientMetricExporter<E> {
     async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let policy = get_exporter_policy(Signal::Metrics).unwrap_or_default();
-        let outcome =
-            run_resilience_loop(Signal::Metrics, &policy, || self.inner.export(metrics)).await;
-        outcome_to_sdk_result(outcome)
+        run_otel_resilience(Signal::Metrics, &policy, || self.inner.export(metrics)).await
     }
 
     fn force_flush(&self) -> OTelSdkResult {
