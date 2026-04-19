@@ -88,6 +88,8 @@ pub(super) fn install_logger_provider(
         }
     };
 
+    // BISECT: bypass ResilientLogExporter wrapper (same reactor-panic
+    // diagnosis as traces.rs).
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
         .with_batch_exporter(exporter)
