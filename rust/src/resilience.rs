@@ -145,11 +145,19 @@ where
     Fut: Future<Output = Result<T, E>>,
 {
     let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
+    // tokio::time::timeout / sleep require an active tokio reactor. When the
+    // caller is the OTel SDK's dedicated BatchProcessor thread (which is NOT
+    // a tokio runtime), the timeout wrapper would panic with "there is no
+    // reactor running". Detect that case and fall through to a plain await:
+    // the underlying HTTP exporter still has its own timeout from
+    // SpanExporter::with_timeout, so the operation cannot hang forever.
+    let has_tokio_reactor = tokio::runtime::Handle::try_current().is_ok();
+    let timeout_active = !timeout.is_zero() && has_tokio_reactor;
     // Circuit-breaker gate is only consulted when timeout enforcement is on,
     // matching Python (resilience.py:177) and Go (resilience.go:170). When
     // timeout=0 the policy explicitly opts out of timeout-driven failure
     // accounting, so the breaker has no signal to act on.
-    if !timeout.is_zero() && _check_and_start_probe_for_wrappers(signal) {
+    if timeout_active && _check_and_start_probe_for_wrappers(signal) {
         return if policy.fail_open {
             Ok(None)
         } else {
@@ -162,14 +170,14 @@ where
 
     for attempt in 0..max_attempts {
         if attempt > 0 {
-            if policy.backoff_seconds > 0.0 {
+            if policy.backoff_seconds > 0.0 && has_tokio_reactor {
                 tokio::time::sleep(Duration::from_secs_f64(policy.backoff_seconds)).await;
             }
             increment_retries(signal, 1);
         }
 
         let started = Instant::now();
-        let (result, wrapper_timeout) = if timeout.is_zero() {
+        let (result, wrapper_timeout) = if !timeout_active {
             (operation().await, false)
         } else {
             match tokio::time::timeout(timeout, operation()).await {
