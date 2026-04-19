@@ -50,9 +50,7 @@ def test_python_ci_runs_real_otlp_collector_gate() -> None:
 
 
 def test_strict_parity_bootstrap_installs_runtime_probe_dependencies() -> None:
-    bootstrap = (REPO_ROOT / "ci" / "install_parity_deps.py").read_text(
-        encoding="utf-8"
-    )
+    bootstrap = (REPO_ROOT / "ci" / "install_parity_deps.py").read_text(encoding="utf-8")
 
     assert '"uv", "sync", "--group", "dev", "--extra", "otel"' in bootstrap
 

@@ -83,12 +83,18 @@ _SKIP = "\033[33mSKIP\033[0m"
 
 @dataclass
 class LanguageRunner:
-    """How to run parity tests for one language."""
+    """How to run parity tests for one language.
+
+    ``run_cmds`` is the authoritative list of commands to execute in sequence.
+    Every command in the list must succeed for the runner to be considered
+    passing.  Use multiple entries when the language's test suite is split
+    across several binaries or invocations (e.g. Rust integration test crates).
+    """
 
     name: str
     label: str
     check_cmd: list[str]  # command to verify runtime is available
-    run_cmd: list[str]  # command to run the parity tests
+    run_cmds: list[list[str]]  # one or more commands to run the full parity suite
     cwd: Path  # working directory
     env_extra: dict[str, str] = field(default_factory=dict)
 
@@ -99,14 +105,17 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             name="python",
             label="Python",
             check_cmd=["uv", "--version"],
-            run_cmd=[
-                "uv",
-                "run",
-                "python",
-                "scripts/run_pytest_gate.py",
-                "tests/parity/",
-                "--no-cov",
-                "-q",
+            # tests/parity/ directory run covers all Python parity test files.
+            run_cmds=[
+                [
+                    "uv",
+                    "run",
+                    "python",
+                    "scripts/run_pytest_gate.py",
+                    "tests/parity/",
+                    "--no-cov",
+                    "-q",
+                ],
             ],
             cwd=repo,
         ),
@@ -114,28 +123,62 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             name="typescript",
             label="TypeScript",
             check_cmd=["node", "--version"],
-            run_cmd=["npx", "vitest", "run", "tests/parity.test.ts"],
+            # Run both parity files counted by check_fixture_coverage.py:
+            #   tests/parity.test.ts  — core parity suite
+            #   tests/endpoint.test.ts — endpoint-validation parity
+            # The whole test directory is NOT used to avoid attributing unrelated
+            # failures to the parity gate.
+            run_cmds=[
+                ["npx", "vitest", "run", "tests/parity.test.ts", "tests/endpoint.test.ts"],
+            ],
             cwd=repo / "typescript",
         ),
         LanguageRunner(
             name="go",
             label="Go",
             check_cmd=["go", "version"],
-            run_cmd=["go", "test", "-run", "TestParity", "-v", "-count=1", "./..."],
+            # -run accepts a regex: TestParity matches TestParity_* files; the pipe
+            # also matches TestEndpointValidationParity from parity_endpoint_test.go
+            # which does not carry the TestParity prefix.
+            run_cmds=[
+                [
+                    "go",
+                    "test",
+                    "-run",
+                    "TestParity|TestEndpointValidationParity",
+                    "-v",
+                    "-count=1",
+                    "./...",
+                ],
+            ],
             cwd=repo / "go",
         ),
         LanguageRunner(
             name="rust",
             label="Rust",
             check_cmd=[_CARGO_BIN, "--version"],
-            run_cmd=[
-                _CARGO_BIN,
-                "--locked",
-                "test",
-                "--test",
-                "parity_test",
-                "--",
-                "--test-threads=1",
+            # Each integration test file is a separate binary in Rust; --test only
+            # selects one binary at a time.  We invoke cargo test once per parity
+            # binary so that all three files counted by check_fixture_coverage.py
+            # are actually executed:
+            #   parity_test         (rust/tests/parity_test.rs)
+            #   parity_extra_test   (rust/tests/parity_extra_test.rs)
+            #   parity_pii_fixes_test (rust/tests/parity_pii_fixes_test.rs)
+            # --test-threads=1 is required for all three because they share global
+            # state (logging config, PII rules, queue policy).
+            # RUST_MIN_STACK=8388608 is set in env_extra for all invocations.
+            run_cmds=[
+                [_CARGO_BIN, "--locked", "test", "--test", "parity_test", "--", "--test-threads=1"],
+                [_CARGO_BIN, "--locked", "test", "--test", "parity_extra_test", "--", "--test-threads=1"],
+                [
+                    _CARGO_BIN,
+                    "--locked",
+                    "test",
+                    "--test",
+                    "parity_pii_fixes_test",
+                    "--",
+                    "--test-threads=1",
+                ],
             ],
             cwd=repo / "rust",
             # 8 MiB stack prevents overflow when all parity tests run sequentially
@@ -175,31 +218,53 @@ def _runtime_available(runner: LanguageRunner) -> bool:
 
 
 def _run_parity(runner: LanguageRunner, *, timeout: int = 300) -> Result:
-    """Run parity tests and return a Result."""
+    """Run all parity commands for a language and return an aggregated Result.
+
+    Each command in ``runner.run_cmds`` is executed in order.  The first
+    failure stops execution and returns a "fail" result so that later commands
+    (which may depend on compilation artefacts from earlier ones) are not run
+    against a broken build.
+    """
     env = {**os.environ, **runner.env_extra}
     start = time.monotonic()
-    try:
-        proc = subprocess.run(  # noqa: S603
-            runner.run_cmd,
-            capture_output=True,
-            text=True,
-            cwd=runner.cwd,
-            env=env,
-            timeout=timeout,
-        )
-        elapsed = time.monotonic() - start
-        status = "pass" if proc.returncode == 0 else "fail"
-        output = (proc.stdout + proc.stderr).strip()
-    except subprocess.TimeoutExpired:
-        elapsed = time.monotonic() - start
-        status = "fail"
-        output = f"TIMEOUT after {timeout}s"
+    all_output: list[str] = []
+    for cmd in runner.run_cmds:
+        try:
+            proc = subprocess.run(  # noqa: S603
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=runner.cwd,
+                env=env,
+                timeout=timeout,
+            )
+            all_output.append((proc.stdout + proc.stderr).strip())
+            if proc.returncode != 0:
+                elapsed = time.monotonic() - start
+                return Result(
+                    lang=runner.name,
+                    label=runner.label,
+                    status="fail",
+                    duration_s=elapsed,
+                    output="\n".join(all_output),
+                )
+        except subprocess.TimeoutExpired:
+            elapsed = time.monotonic() - start
+            all_output.append(f"TIMEOUT after {timeout}s")
+            return Result(
+                lang=runner.name,
+                label=runner.label,
+                status="fail",
+                duration_s=elapsed,
+                output="\n".join(all_output),
+            )
+    elapsed = time.monotonic() - start
     return Result(
         lang=runner.name,
         label=runner.label,
-        status=status,
+        status="pass",
         duration_s=elapsed,
-        output=output,
+        output="\n".join(all_output),
     )
 
 
