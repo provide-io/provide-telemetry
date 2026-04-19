@@ -24,11 +24,32 @@ if TYPE_CHECKING:
 
 
 def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object, object, object]:
-    """Lazy import of shared helpers from parity_probe_support.
+    """Lazy lookup of shared helpers from parity_probe_support.
 
-    Done inside this function to avoid a circular import — parity_probe_support
-    re-exports symbols from this module for backwards compatibility.
+    Resolves the support module via ``sys.modules`` first (matching by file
+    path) so that callers who loaded ``parity_probe_support`` under an alias
+    — e.g. via ``importlib.util.spec_from_file_location`` in tooling/tests —
+    get the same module instance, preserving monkeypatches and shared state.
+    Falls back to a canonical import if no aliased copy is loaded yet.
     """
+    import sys
+
+    target = "parity_probe_support.py"
+    for mod in list(sys.modules.values()):
+        if mod is None:
+            continue
+        mod_file = getattr(mod, "__file__", None)
+        if mod_file and mod_file.endswith(target):
+            return (
+                mod.ProbeRunner,
+                mod._OTEL_REQUIRED_CASE_IDS,
+                mod._compare_outputs,
+                mod._extract_json_line,
+                mod._has_otel_stack,
+                mod._normalize_log_record,
+                mod._probe_env,
+            )
+
     from parity_probe_support import (  # type: ignore[import-not-found]
         _OTEL_REQUIRED_CASE_IDS,
         ProbeRunner,
