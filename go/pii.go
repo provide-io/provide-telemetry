@@ -113,6 +113,55 @@ func _resetPIIRules() {
 	_receiptHook = nil
 }
 
+// _applyClassificationPolicy applies classification tags and policy actions (drop/redact/hash/truncate/pass)
+// to each top-level key in result that matches the classHook. Keys with action "drop" are removed.
+// All other matching keys get a "__key__class" tag; masking actions additionally replace the value.
+// The result map is mutated in place.
+func _applyClassificationPolicy(
+	result map[string]any,
+	classHook func(string, any) string,
+	policyHook func(string) string,
+) {
+	// Collect keys first to avoid mutating the map while iterating.
+	keys := make([]string, 0, len(result))
+	for k := range result {
+		keys = append(keys, k)
+	}
+	for _, k := range keys {
+		v := result[k]
+		label := classHook(k, v)
+		if label == "" {
+			continue
+		}
+		action := piicore.PIIModePass
+		if policyHook != nil {
+			action = policyHook(label)
+		}
+		if action == piicore.PIIModeDrop {
+			delete(result, k)
+			// No class tag for dropped keys.
+			continue
+		}
+		result["__"+k+"__class"] = label
+		_applyMaskAction(result, k, v, action)
+	}
+}
+
+// _applyMaskAction replaces result[k] with a masked value when action is redact/hash/truncate,
+// unless the current value is already the redaction sentinel. Pass and unknown actions are no-ops.
+func _applyMaskAction(result map[string]any, k string, v any, action string) {
+	if action != piicore.PIIModeRedact && action != piicore.PIIModeHash && action != piicore.PIIModeTruncate {
+		return
+	}
+	if strVal, ok := v.(string); ok && strVal == piicore.Redacted {
+		return // already redacted — do not double-mask
+	}
+	masked, drop := piicore.ApplyMode(v, action, 8)
+	if !drop {
+		result[k] = masked
+	}
+}
+
 // SanitizePayload applies PII sanitization to the given payload map and returns
 // a new map with sensitive fields redacted, dropped, hashed, or truncated.
 // The input map is never mutated.

@@ -11,6 +11,8 @@ package telemetry
 import (
 	"path/filepath"
 	"sync"
+
+	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // DataClass represents a data classification label.
@@ -45,8 +47,8 @@ type ClassificationPolicy struct {
 // defaultClassificationPolicy returns a policy with sensible defaults.
 func defaultClassificationPolicy() ClassificationPolicy {
 	return ClassificationPolicy{
-		Public:   "pass",
-		Internal: "pass",
+		Public:   piicore.PIIModePass,
+		Internal: piicore.PIIModePass,
 		PII:      "redact",
 		PHI:      "drop",
 		PCI:      "hash",
@@ -93,7 +95,7 @@ func _lookupPolicyAction(label string) string {
 	case string(DataClassSecret):
 		return p.Secret
 	default:
-		return "pass"
+		return piicore.PIIModePass
 	}
 }
 

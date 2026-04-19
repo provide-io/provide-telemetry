@@ -80,9 +80,11 @@ class TestTypeScriptRunnerCoverage:
         # Only check .ts test files (probes live under spec/ and are not run by vitest)
         test_files = [p for p in ts_files if str(p).endswith(".test.ts")]
         for path in test_files:
-            # Match by filename relative to the typescript/ directory
-            rel = path.relative_to(_REPO_ROOT / "typescript")
-            assert str(rel) in tokens, (
+            # Match by filename relative to the typescript/ directory.
+            # Use as_posix() so the comparison works on Windows where
+            # str(rel) yields backslashes but the runner emits POSIX paths.
+            rel = path.relative_to(_REPO_ROOT / "typescript").as_posix()
+            assert rel in tokens, (
                 f"TypeScript parity test file '{rel}' is counted by "
                 "check_fixture_coverage.py but is not in the vitest run_cmds"
             )
