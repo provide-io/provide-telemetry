@@ -49,7 +49,15 @@ fn otlp_collector_smoke() {
         .expect("tokio runtime");
 
     runtime.block_on(async {
-        setup_telemetry().expect("setup_telemetry should succeed");
+        eprintln!("[otlp_collector_smoke] before setup_telemetry");
+        let cfg = setup_telemetry().expect("setup_telemetry should succeed");
+        eprintln!(
+            "[otlp_collector_smoke] after setup_telemetry: tracing.enabled={} tracing.endpoint={:?} metrics.enabled={} metrics.endpoint={:?}",
+            cfg.tracing.enabled,
+            cfg.tracing.otlp_endpoint,
+            cfg.metrics.enabled,
+            cfg.metrics.otlp_endpoint,
+        );
 
         let requests = counter(
             "integration.collector.requests",
@@ -62,7 +70,9 @@ fn otlp_collector_smoke() {
             requests.add(1.0, None);
         });
 
+        eprintln!("[otlp_collector_smoke] before shutdown_telemetry");
         shutdown_telemetry().expect("shutdown_telemetry should succeed");
+        eprintln!("[otlp_collector_smoke] after shutdown_telemetry");
     });
 
     reset_telemetry_state();
