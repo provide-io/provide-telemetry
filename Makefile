@@ -1,4 +1,4 @@
-.PHONY: test lint memray memray-flamegraph memray-analyze memray-baseline perf-smoke bench bench-python bench-typescript bench-go stress stress-typescript stress-go
+.PHONY: test lint memray memray-flamegraph memray-analyze memray-baseline perf-smoke perf perf-python perf-typescript perf-go perf-rust perf-baseline-python perf-baseline-typescript perf-baseline-go perf-baseline-rust bench bench-python bench-typescript bench-go stress stress-typescript stress-go
 
 MEMRAY_OUTPUT_DIR ?= memray-output
 
@@ -31,8 +31,43 @@ memray-analyze: ## Run tracemalloc audit for Python-level allocations
 memray-baseline: ## Update memray regression baselines
 	MEMRAY_UPDATE_BASELINE=1 uv run pytest tests/memray/ -m memray -v --no-cov -p no:provide_telemetry
 
-perf-smoke: ## Run performance smoke benchmarks
+perf-smoke: ## Run Python performance smoke benchmarks (legacy report-only path; prefer `make perf-python`)
 	uv run python scripts/run_performance_smoke.py --iterations 200000 --runs 3
+
+# ── Perf-budget gate ─────────────────────────────────────────────────────────
+# Each `perf-<lang>` target runs that language's hot-path benchmarks and pipes
+# the output through scripts/perf_check.py, which compares the measurements
+# against baselines/perf-<lang>.json for the host's OS bucket. Fails with exit
+# code 1 if any operation exceeds its budget (baseline_ns * tolerance_multiplier).
+# `perf` runs all four sequentially. `perf-baseline-<lang>` prints fresh
+# measurements WITHOUT comparison — copy the JSON into the baseline file by
+# hand to seed or refresh a bucket.
+
+perf: perf-python perf-typescript perf-go perf-rust ## Run perf-budget gate for all four languages
+
+perf-python: ## Run perf-budget gate for Python only
+	uv run python scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json | uv run python scripts/perf_check.py --lang python
+
+perf-typescript: ## Run perf-budget gate for TypeScript only
+	cd typescript && npx tsx scripts/perf-smoke.ts --emit-json | uv run --project .. python ../scripts/perf_check.py --lang typescript
+
+perf-go: ## Run perf-budget gate for Go only
+	cd go && go test -bench=. -benchtime=100ms -run=^$$ . | uv run --project .. python ../scripts/parse_go_bench.py | uv run --project .. python ../scripts/perf_check.py --lang go
+
+perf-rust: ## Run perf-budget gate for Rust only
+	cd rust && cargo bench --bench hot_path -- --quick | uv run --project .. python ../scripts/parse_criterion.py | uv run --project .. python ../scripts/perf_check.py --lang rust
+
+perf-baseline-python: ## Print fresh Python perf measurements (paste into baselines/perf-python.json)
+	uv run python scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json
+
+perf-baseline-typescript: ## Print fresh TypeScript perf measurements (paste into baselines/perf-typescript.json)
+	cd typescript && npx tsx scripts/perf-smoke.ts --emit-json
+
+perf-baseline-go: ## Print fresh Go perf measurements (paste into baselines/perf-go.json)
+	cd go && go test -bench=. -benchtime=100ms -run=^$$ . | uv run --project .. python ../scripts/parse_go_bench.py
+
+perf-baseline-rust: ## Print fresh Rust perf measurements (paste into baselines/perf-rust.json)
+	cd rust && cargo bench --bench hot_path -- --quick | uv run --project .. python ../scripts/parse_criterion.py
 
 bench: ## Run benchmarks for all languages side-by-side
 	./scripts/bench.sh all
