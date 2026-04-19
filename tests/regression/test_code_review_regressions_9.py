@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -79,9 +80,22 @@ def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
     sentinel = frozenset({"sentinel_for_regression_9"})
     aliased._OTEL_REQUIRED_CASE_IDS = sentinel  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
-    # Hide any canonical copy that other tests in the suite may have loaded,
-    # so the aliased-by-path branch is the one under test. Restored in finally.
-    canonical_saved = sys.modules.pop("parity_probe_support", None)
+    # Hide ALL existing parity_probe_support copies (canonical + any
+    # aliases that other tests loaded via importlib.util) so the alias
+    # under test is the only candidate matching the file path scan.
+    # Restored in finally so we don't leak across tests.
+    target_filename = "parity_probe_support.py"
+    hidden: dict[str, types.ModuleType] = {}
+    for mod_name in list(sys.modules.keys()):
+        mod = sys.modules.get(mod_name)
+        if mod is None or mod is aliased:
+            continue
+        mod_file = getattr(mod, "__file__", None)
+        if mod_file and mod_file.endswith(target_filename):
+            popped = sys.modules.pop(mod_name)
+            if popped is not None:
+                hidden[mod_name] = popped
+
     inserted_spec = False
     try:
         if str(spec_dir) not in sys.path:
@@ -99,8 +113,7 @@ def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
         if inserted_spec:
             sys.path.remove(str(spec_dir))
         sys.modules.pop("aliased_pps_for_test", None)
-        if canonical_saved is not None:
-            sys.modules["parity_probe_support"] = canonical_saved
+        sys.modules.update(hidden)
 
 
 @pytest.mark.tooling

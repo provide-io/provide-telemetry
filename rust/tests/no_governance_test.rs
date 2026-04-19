@@ -72,14 +72,18 @@ fn no_governance_pii_rules_applied() {
     replace_pii_rules(vec![]);
 }
 
-/// Health snapshot is available and has non-negative counters without governance.
+/// Health snapshot is available without governance — just access each
+/// counter field to compile-check structural existence. Fields are unsigned,
+/// so a `>= 0` assertion would be tautological (clippy deny).
 #[test]
 fn no_governance_health_snapshot_available() {
     let snap = get_health_snapshot();
-    assert!(snap.emitted_logs >= 0);
-    assert!(snap.dropped_logs >= 0);
-    assert!(snap.emitted_traces >= 0);
-    assert!(snap.emitted_metrics >= 0);
+    let _ = (
+        snap.emitted_logs,
+        snap.dropped_logs,
+        snap.emitted_traces,
+        snap.emitted_metrics,
+    );
 }
 
 /// Counter instrument works without governance.
