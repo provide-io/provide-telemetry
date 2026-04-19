@@ -1,9 +1,8 @@
 # Go Changelog
 
-All notable changes to `github.com/provide-io/provide-telemetry/go`.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to `github.com/provide-io/provide-telemetry/go`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
----
+______________________________________________________________________
 
 ## [0.2.4] — 2026-04-08
 
@@ -19,7 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`export_latency_ms` always 0** — wired `_recordExportLatencyForSignal` into `RunWithResilience` on success
 - **`validateRuntimeOverrides` cyclomatic complexity** — extracted sub-validators to reduce complexity from 17 → 8
 
----
+______________________________________________________________________
 
 ## [0.2.3] — 2026-04-06
 
@@ -35,7 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **CI: gosec submodule exclusion** — `cmd/e2e_cross_language_client` excluded from gosec scan (separate module requiring Go 1.26); fixes failures on Dependabot action-bump PRs
 
----
+______________________________________________________________________
 
 ## [0.2.2] — 2026-04-06
 
@@ -64,7 +63,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 100% statement coverage enforced on every push
 - `-race` flag on all test runs
 
----
+______________________________________________________________________
 
 ## [0.2.0] — 2026-04-01
 

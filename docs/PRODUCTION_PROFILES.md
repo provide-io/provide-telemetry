@@ -1,7 +1,6 @@
 # Production Profiles
 
-This page provides copy/paste environment presets for common production modes.
-All profiles assume Python 3.11+ and `setup_telemetry()` called at process startup.
+This page provides copy/paste environment presets for common production modes. All profiles assume Python 3.11+ and `setup_telemetry()` called at process startup.
 
 ## Strict Profile
 
@@ -76,21 +75,15 @@ export OPENOBSERVE_PASSWORD=Complexpass#123
 
 Profile changes involve two mechanisms with different scopes:
 
-**Hot-reconfigurable** (no restart, via `update_runtime_config()`):
-sampling policies, backpressure queue limits, exporter retry/timeout policies,
-schema strictness / event-schema fields, and safe logging pipeline settings
-(level / format / module-levels / pretty options).
+**Hot-reconfigurable** (no restart, via `update_runtime_config()`): sampling policies, backpressure queue limits, exporter retry/timeout policies, schema strictness / event-schema fields, and safe logging pipeline settings (level / format / module-levels / pretty options).
 
-**Requires restart** (process restart; do not rely on `reconfigure_telemetry()` once OTel providers are installed):
-provider-changing OTLP log settings after the global OTel log provider is live,
-tracer/meter providers, and OTLP endpoints.
+**Requires restart** (process restart; do not rely on `reconfigure_telemetry()` once OTel providers are installed): provider-changing OTLP log settings after the global OTel log provider is live, tracer/meter providers, and OTLP endpoints.
 
 Recommended procedure:
 
 1. Call `update_runtime_config()` to adjust sampling, resilience, schema, or safe logging settings.
-2. If provider changes are needed, restart the process with the new env/config and call `setup_telemetry()` during startup.
-   `reconfigure_telemetry()` only hot-applies runtime policy changes; for provider-changing config after OTel providers are installed it raises `RuntimeError` and tells the caller to restart.
-3. Monitor health snapshot counters (drops, retries, export failures).
+1. If provider changes are needed, restart the process with the new env/config and call `setup_telemetry()` during startup. `reconfigure_telemetry()` only hot-applies runtime policy changes; for provider-changing config after OTel providers are installed it raises `RuntimeError` and tells the caller to restart.
+1. Monitor health snapshot counters (drops, retries, export failures).
 
 ## Async Exporter Safety
 
@@ -105,5 +98,4 @@ export PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS=0.0
 export PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS=0.0
 ```
 
-If you intentionally allow blocking retry behavior inside the event loop, set:
-`PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`.
+If you intentionally allow blocking retry behavior inside the event loop, set: `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`.
