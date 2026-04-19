@@ -131,8 +131,12 @@ where
     Fut: Future<Output = Result<T, TelemetryError>>,
 {
     let policy = get_exporter_policy(signal)?;
-    // Circuit breaker gate: check state and, if applicable, start a half-open probe.
-    {
+    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
+    // Circuit breaker gate is only consulted when timeout enforcement is on,
+    // matching Python (resilience.py:177) and Go (resilience.go:170). When
+    // timeout=0 the policy explicitly opts out of timeout-driven failure
+    // accounting, so the breaker has no signal to act on.
+    if !timeout.is_zero() {
         let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
         if let Some(state) = circuit_lock.get_mut(&signal) {
             if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
@@ -161,7 +165,6 @@ where
         }
     }
 
-    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
     let max_attempts = policy.retries + 1;
     let mut last_err = TelemetryError::new("no attempts made");
 
@@ -175,12 +178,12 @@ where
         }
 
         let started = Instant::now();
-        let result = if timeout.is_zero() {
-            operation().await
+        let (result, is_timeout) = if timeout.is_zero() {
+            (operation().await, false)
         } else {
             match tokio::time::timeout(timeout, operation()).await {
-                Ok(inner) => inner,
-                Err(_) => Err(TelemetryError::new("operation timed out")),
+                Ok(inner) => (inner, false),
+                Err(_) => (Err(TelemetryError::new("operation timed out")), true),
             }
         };
 
@@ -211,12 +214,17 @@ where
                         state.half_open_probing = false;
                         state.open_count += 1;
                         state.tripped_at = Some(Instant::now());
-                    } else {
+                    } else if is_timeout {
+                        // Only timeouts contribute to the breaker counter; other
+                        // failures reset it. Mirrors Python (resilience.py:154),
+                        // Go (resilience.go:118), and TS (resilience.ts:180).
                         state.consecutive_timeouts += 1;
                         if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
                             state.open_count += 1;
                             state.tripped_at = Some(Instant::now());
                         }
+                    } else {
+                        state.consecutive_timeouts = 0;
                     }
                 }
                 last_err = err;
@@ -235,7 +243,11 @@ where
 /// Called by resilient exporter wrappers in `otel/resilient.rs` which cannot
 /// use `run_with_resilience` directly (RPIT futures prevent `Fn() -> Fut`).
 /// Handles both normal (increment + trip) and half-open probe (re-open) paths.
-pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal) {
+///
+/// `is_timeout` discriminates timeout failures from other errors. Only
+/// timeouts increment the breaker counter; other failures reset it. Mirrors
+/// Python (resilience.py:154), Go (resilience.go:118), and TS (resilience.ts:180).
+pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: bool) {
     let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
     if let Some(state) = circuit_lock.get_mut(&signal) {
         if state.half_open_probing {
@@ -243,12 +255,14 @@ pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal) {
             state.half_open_probing = false;
             state.open_count += 1;
             state.tripped_at = Some(Instant::now());
-        } else {
+        } else if is_timeout {
             state.consecutive_timeouts += 1;
             if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
                 state.open_count += 1;
                 state.tripped_at = Some(Instant::now());
             }
+        } else {
+            state.consecutive_timeouts = 0;
         }
     }
 }
@@ -427,7 +441,8 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                // Non-zero so the circuit gate runs (timeout=0 bypasses it).
+                timeout_seconds: 1.0,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
@@ -469,7 +484,7 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                timeout_seconds: 1.0,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
@@ -513,7 +528,7 @@ mod tests {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.0,
+                timeout_seconds: 1.0,
                 fail_open: false,
                 allow_blocking_in_event_loop: false,
             },
@@ -581,5 +596,94 @@ mod tests {
         let state = get_circuit_state(Signal::Logs).expect("state should exist");
         assert_eq!(state.0, "closed");
         assert_eq!(state.1, 0);
+    }
+
+    #[test]
+    fn resilience_test_non_timeout_failures_do_not_trip_breaker() {
+        // Mirrors Python (resilience.py:154), Go (resilience.go:118), TS
+        // (resilience.ts:180): only timeouts count toward consecutive_timeouts;
+        // any other failure resets the counter.
+        let _guard = acquire_test_state_lock();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        _reset_resilience_for_tests();
+        set_exporter_policy(
+            Signal::Logs,
+            ExporterPolicy {
+                retries: 0,
+                backoff_seconds: 0.0,
+                // Non-zero so the gate runs; the operation itself returns
+                // immediately so timeout never elapses — failures are
+                // semantically "other," not timeouts.
+                timeout_seconds: 1.0,
+                fail_open: true,
+                allow_blocking_in_event_loop: false,
+            },
+        )
+        .expect("policy should set");
+
+        // Five non-timeout failures must not trip the breaker.
+        for _ in 0..5 {
+            let _ = runtime.block_on(async {
+                run_with_resilience(Signal::Logs, || async {
+                    Err::<(), _>(TelemetryError::new("not a timeout"))
+                })
+                .await
+            });
+        }
+        let state = get_circuit_state(Signal::Logs).expect("state should exist");
+        assert_eq!(
+            state.0, "closed",
+            "non-timeout failures must not trip the breaker"
+        );
+        assert_eq!(state.1, 0, "open_count must remain 0 with no timeouts");
+    }
+
+    #[test]
+    fn resilience_test_zero_timeout_bypasses_circuit_gate() {
+        // Mirrors Python (resilience.py:177) and Go (resilience.go:170): when
+        // timeout enforcement is off, the breaker has no signal to act on and
+        // must not reject callers — the gate is bypassed entirely.
+        let _guard = acquire_test_state_lock();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        _reset_resilience_for_tests();
+        set_exporter_policy(
+            Signal::Logs,
+            ExporterPolicy {
+                retries: 0,
+                backoff_seconds: 0.0,
+                timeout_seconds: 0.0, // disabled — bypass the breaker
+                fail_open: false,
+                allow_blocking_in_event_loop: false,
+            },
+        )
+        .expect("policy should set");
+
+        // Pre-load the breaker into the open state with active cooldown.
+        {
+            let mut lock = circuits().lock().expect("circuit lock poisoned");
+            let state = lock
+                .get_mut(&Signal::Logs)
+                .expect("logs state should exist");
+            state.consecutive_timeouts = CIRCUIT_BREAKER_THRESHOLD;
+            state.open_count = 1;
+            state.tripped_at = Some(Instant::now());
+        }
+
+        // The breaker is "open" but timeout=0 must bypass the gate, so the
+        // operation actually runs and returns its result.
+        let result = runtime.block_on(async {
+            run_with_resilience(Signal::Logs, || async { Ok::<_, TelemetryError>(7u32) }).await
+        });
+        assert_eq!(
+            result.unwrap(),
+            Some(7u32),
+            "timeout=0 must bypass the gate even when breaker is open"
+        );
     }
 }
