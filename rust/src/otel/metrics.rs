@@ -105,8 +105,10 @@ pub(super) fn install_meter_provider(
         }
     };
 
+    // BISECT: bypass ResilientMetricExporter wrapper (same reactor-panic
+    // diagnosis as traces.rs).
     let reader = PeriodicReader::builder(exporter)
-        .with_interval(Duration::from_secs(60))
+        .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
         .build();
 
     let provider = SdkMeterProvider::builder()
