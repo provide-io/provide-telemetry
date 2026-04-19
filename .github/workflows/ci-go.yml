@@ -88,6 +88,23 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+  performance-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version: "1.26"
+      # Run all benchmarks once each (-benchtime=1x) so a hot-path benchmark
+      # going completely broken (compile error, panic) is caught in CI.
+      # Report-only — no threshold enforcement, mirrors the Python perf-smoke
+      # pattern; matches the reasoning in scripts/run_performance_smoke.py.
+      - name: Go bench (smoke, -benchtime=1x)
+        run: go test -bench=. -benchtime=1x -run=^$ .
+
   examples:
     runs-on: ubuntu-latest
     defaults:
