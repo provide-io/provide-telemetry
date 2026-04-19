@@ -94,9 +94,13 @@ pub(super) fn install_tracer_provider(
         }
     };
 
+    // BISECT: bypass ResilientSpanExporter wrapper to test whether it's the
+    // cause of the BSP-thread panics (no tokio reactor on the BSP thread →
+    // tokio::time::timeout in our wrapper panics → BSP task dies → channel
+    // closed before exports happen). Will restore wrapper after diagnosing.
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(ResilientSpanExporter::new(exporter))
+        .with_batch_exporter(exporter)
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
