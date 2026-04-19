@@ -7,6 +7,8 @@
 
 use std::env;
 
+use std::time::Duration;
+
 use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
 use provide_telemetry::{counter, get_logger, setup_telemetry, shutdown_telemetry, trace};
 use tokio::runtime::Builder;
@@ -70,9 +72,19 @@ fn otlp_collector_smoke() {
             requests.add(1.0, None);
         });
 
+        // Let the BSP/PMR/LRP background tasks observe the queued items.
+        // Without this, BatchSpanProcessor's scheduled export hasn't fired
+        // yet and force_flush below races with the spawn.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
         eprintln!("[otlp_collector_smoke] before shutdown_telemetry");
         shutdown_telemetry().expect("shutdown_telemetry should succeed");
         eprintln!("[otlp_collector_smoke] after shutdown_telemetry");
+
+        // Hold the runtime open briefly so any in-flight export tasks
+        // spawned by shutdown can complete their HTTP POST to the collector
+        // before the runtime is dropped (which would cancel them).
+        tokio::time::sleep(Duration::from_secs(2)).await;
     });
 
     reset_telemetry_state();
