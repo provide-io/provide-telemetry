@@ -13,12 +13,6 @@ const importMs = performance.now() - importStart;
 
 const { setupTelemetry, getLogger, counter, withTrace, sanitize } = mod;
 
-// In tsx's ESM loader path, propagation.ts initializes AsyncLocalStorage
-// via a fire-and-forget `await import('node:async_hooks')` because top-level
-// await is forbidden in CJS output. Yield a tick so that init resolves
-// before setupTelemetry runs its ALS-availability check.
-await new Promise((resolve) => setTimeout(resolve, 50));
-
 setupTelemetry({ serviceName: 'perf-smoke', logLevel: 'silent' });
 
 interface Result {
