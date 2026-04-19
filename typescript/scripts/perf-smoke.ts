@@ -13,6 +13,12 @@ const importMs = performance.now() - importStart;
 
 const { setupTelemetry, getLogger, counter, withTrace, sanitize } = mod;
 
+// In tsx's ESM loader path, propagation.ts initializes AsyncLocalStorage
+// via a fire-and-forget `await import('node:async_hooks')` because top-level
+// await is forbidden in CJS output. Yield a tick so that init resolves
+// before setupTelemetry runs its ALS-availability check.
+await new Promise((resolve) => setTimeout(resolve, 50));
+
 setupTelemetry({ serviceName: 'perf-smoke', logLevel: 'silent' });
 
 interface Result {
@@ -62,7 +68,22 @@ bench('sanitize()', 10_000, () => {
   sanitize(piiPayload);
 });
 
-// --- Print table ---
+// --- Output ---
+// JSON-emit mode (--emit-json or PERF_EMIT_JSON=1) prints a single flat
+// {op_name: ns_per_op} blob suitable for piping into scripts/perf_check.py.
+// Default mode keeps the human-readable table for interactive use.
+const emitJson = process.argv.includes('--emit-json') || process.env['PERF_EMIT_JSON'] === '1';
+
+if (emitJson) {
+  const blob: Record<string, number> = {};
+  for (const r of results) {
+    // ns_per_op = (ms * 1_000_000) / count
+    blob[r.operation] = Math.round((r.ms * 1_000_000) / r.count);
+  }
+  console.log(JSON.stringify(blob));
+  process.exit(0);
+}
+
 const header = ['Operation', 'Count', 'Time (ms)', 'ops/sec'];
 const rows = results.map((r) => [
   r.operation,
@@ -71,13 +92,10 @@ const rows = results.map((r) => [
   r.opsPerSec.toLocaleString(),
 ]);
 
-const colWidths = header.map((h, i) =>
-  Math.max(h.length, ...rows.map((r) => r[i].length)),
-);
+const colWidths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
 
 const sep = colWidths.map((w) => '-'.repeat(w)).join(' | ');
-const fmtRow = (cols: string[]) =>
-  cols.map((c, i) => c.padStart(colWidths[i])).join(' | ');
+const fmtRow = (cols: string[]) => cols.map((c, i) => c.padStart(colWidths[i])).join(' | ');
 
 console.log();
 console.log('Performance Smoke Test Results');
