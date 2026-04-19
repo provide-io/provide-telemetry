@@ -62,6 +62,16 @@ let _propagationInitPromise: Promise<void> = Promise.resolve();
 //      (with a one-time warning) — the racing window is tiny in practice.
 //   3. Browsers / Workers / Deno: neither path resolves `node:async_hooks`;
 //      both branches throw or reject, _als stays null, fallback store used.
+/* v8 ignore start */
+// Module-level init IIFE. Behavior is exercised end-to-end:
+//   * vitest loader hits the CJS sync-require branch (lines 81-87).
+//   * tsx-as-ESM (every TS example, parity probes) hits the async-import
+//     branch (lines 91-103).
+//   * Browsers/workers hit the catch (line 89) on the require attempt.
+// Branch and line coverage cannot capture all three from a single test
+// loader, so this whole IIFE is excluded; correctness is asserted by the
+// observable downstream state (isFallbackMode, isPropagationInitDone) which
+// have full coverage and by the typescript-examples-smoke CI job.
 (function initAsyncStorage(): void {
   try {
     if (typeof require === 'function') {
@@ -92,6 +102,7 @@ let _propagationInitPromise: Promise<void> = Promise.resolve();
     }
   })();
 })();
+/* v8 ignore stop */
 // Stryker restore BlockStatement
 
 /**
@@ -358,4 +369,17 @@ export function _disablePropagationALSForTest(): PropagationALS | null {
 /** Re-enable AsyncLocalStorage after testing (pass value from _disable call). */
 export function _restorePropagationALSForTest(saved: PropagationALS | null): void {
   _als = saved;
+}
+
+/**
+ * Override the propagation-init-done flag for testing. Returns the previous
+ * value so the caller can restore it. Used to exercise setupTelemetry's
+ * deferred-check branch (which fires only when init is still racing — a state
+ * not naturally reachable in unit tests because module-level init has long
+ * since settled by the time the test runs).
+ */
+export function _setPropagationInitDoneForTest(done: boolean): boolean {
+  const prev = _propagationInitDone;
+  _propagationInitDone = done;
+  return prev;
 }
