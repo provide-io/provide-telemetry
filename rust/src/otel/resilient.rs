@@ -73,17 +73,11 @@ where
 
 /// Wraps any `SpanExporter` so that every `export()` call runs under the
 /// per-signal resilience policy from `resilience.rs`.
-///
-/// Unused in production while we use SimpleSpanProcessor (single-span
-/// inline export, no batching, no retry). Restored when upstream OTel
-/// fixes the BSP/reqwest reactor bug and we move back to BatchSpanProcessor.
-#[allow(dead_code)]
 pub struct ResilientSpanExporter<E: SpanExporter> {
     inner: E,
 }
 
 impl<E: SpanExporter> ResilientSpanExporter<E> {
-    #[allow(dead_code)]
     pub fn new(inner: E) -> Self {
         Self { inner }
     }
@@ -125,16 +119,11 @@ impl<E: SpanExporter> SpanExporter for ResilientSpanExporter<E> {
 ///
 /// `LogBatch<'_>` borrows its data, so the records are collected into an owned
 /// `Vec` before each retry attempt.
-///
-/// Unused in production (see ResilientSpanExporter docstring); restored when
-/// we move back to BatchLogProcessor.
-#[allow(dead_code)]
 pub struct ResilientLogExporter<E: LogExporter> {
     inner: E,
 }
 
 impl<E: LogExporter> ResilientLogExporter<E> {
-    #[allow(dead_code)]
     pub fn new(inner: E) -> Self {
         Self { inner }
     }
