@@ -43,9 +43,22 @@ def find_loc_offenders(roots: Iterable[Path], max_lines: int) -> list[tuple[Path
     offenders: list[tuple[Path, int]] = []
     for path in sorted(_iter_python_files(roots)):
         lines = _line_count(path)
-        if lines > max_lines:
-            offenders.append((path, lines))
-    return offenders
+        if lines <= max_lines:
+            continue
+        try:
+            rel_path = path.resolve().relative_to(repo_root.resolve())
+        except ValueError:
+            rel_path = path
+        # Normalise to forward slashes so the allowlist file (cross-platform
+        # YAML using POSIX separators) matches on Windows where Path stringifies
+        # with backslashes.
+        rel = rel_path.as_posix()
+        ceiling = allowlist.get(rel)
+        if ceiling is not None and lines <= ceiling:
+            grandfathered.append((path, lines))
+        else:
+            real_offenders.append((path, lines))
+    return real_offenders, grandfathered
 
 
 def main() -> int:

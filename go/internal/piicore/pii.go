@@ -27,6 +27,7 @@ const (
 	PIIModeDrop     = "drop"
 	PIIModeHash     = "hash"
 	PIIModeTruncate = "truncate"
+	PIIModePass     = "pass"
 )
 
 // Exported sentinel values used by both callers.
