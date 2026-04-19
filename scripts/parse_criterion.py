@@ -26,10 +26,20 @@ import sys
 _UNIT_TO_NS = {
     "ns": 1.0,
     "us": 1_000.0,
-    "µs": 1_000.0,
     "ms": 1_000_000.0,
     "s": 1_000_000_000.0,
 }
+
+
+def _normalize_unit(unit: str) -> str:
+    """Map any micro-prefix codepoint to ASCII ``u`` so the dict lookup is
+    encoding-independent. Criterion emits U+00B5 (MICRO SIGN); some shells
+    or terminals re-encode to U+03BC (GREEK SMALL LETTER MU); legacy CP1252
+    pipelines may produce yet another representation. Collapsing to ``u``
+    sidesteps all of that.
+    """
+    return unit.replace("\u00b5", "u").replace("\u03bc", "u")
+
 
 _LINE = re.compile(
     r"^(\S+)\s+time:\s+\[\s*"
@@ -40,15 +50,21 @@ _LINE = re.compile(
 
 
 def main() -> int:
+    # Read stdin tolerantly — some Windows runners pipe raw CP1252 bytes for
+    # the micro sign even though Python expects UTF-8 by default. errors=replace
+    # keeps the unit-normalization step working regardless of the source encoding.
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
     emitted = 0
     for line in sys.stdin:
         match = _LINE.match(line)
         if not match:
             continue
-        op, value, unit = match.group(1), float(match.group(2)), match.group(3)
+        op, value, raw_unit = match.group(1), float(match.group(2)), match.group(3)
+        unit = _normalize_unit(raw_unit)
         scale = _UNIT_TO_NS.get(unit)
         if scale is None:
-            print(f"parse_criterion: unknown time unit {unit!r} for {op!r}", file=sys.stderr)
+            print(f"parse_criterion: unknown time unit {raw_unit!r} for {op!r}", file=sys.stderr)
             continue
         ns_per_op = value * scale
         print(json.dumps({"operation": op, "ns_per_op": ns_per_op}))

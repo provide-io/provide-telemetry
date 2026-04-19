@@ -1,5 +1,5 @@
 {
-  "_about": "Per-operation perf budgets in nanoseconds for the Go implementation. measured = `go test -bench=. -benchtime=100ms -run=^$ .` parsed via scripts/parse_go_bench.py. baseline_ns is the median per-iteration timing on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier.",
+  "_about": "Per-operation perf budgets in nanoseconds for the Go implementation. measured = `go test -bench=. -benchtime=100ms -run=^$ .` parsed via scripts/parse_go_bench.py. baseline_ns is the median per-iteration timing on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Linux/Windows entries seeded from a CI run on commit 47c231f (ubuntu-latest / windows-2025).",
   "macos-arm64": {
     "BenchmarkEventName_3Segments":        {"baseline_ns": 38,   "tolerance_multiplier": 5.0},
     "BenchmarkEventName_5Segments":        {"baseline_ns": 53,   "tolerance_multiplier": 5.0},
@@ -14,5 +14,35 @@
     "BenchmarkCounter_Add":                {"baseline_ns": 47,   "tolerance_multiplier": 5.0},
     "BenchmarkGauge_Set":                  {"baseline_ns": 46,   "tolerance_multiplier": 5.0},
     "BenchmarkHistogram_Record":           {"baseline_ns": 49,   "tolerance_multiplier": 5.0}
+  },
+  "linux-x86_64": {
+    "BenchmarkEventName_3Segments":        {"baseline_ns": 63,   "tolerance_multiplier": 5.0},
+    "BenchmarkEventName_5Segments":        {"baseline_ns": 77,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_RateOne":       {"baseline_ns": 32,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_RateZero":      {"baseline_ns": 34,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_WithOverride":  {"baseline_ns": 39,   "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_SmallFlat":  {"baseline_ns": 420,  "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_LargeFlat":  {"baseline_ns": 5072, "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_Disabled":   {"baseline_ns": 233,  "tolerance_multiplier": 5.0},
+    "BenchmarkTryAcquireRelease_Unlimited":{"baseline_ns": 33,   "tolerance_multiplier": 5.0},
+    "BenchmarkGetHealthSnapshot":          {"baseline_ns": 86,   "tolerance_multiplier": 5.0},
+    "BenchmarkCounter_Add":                {"baseline_ns": 92,   "tolerance_multiplier": 5.0},
+    "BenchmarkGauge_Set":                  {"baseline_ns": 92,   "tolerance_multiplier": 5.0},
+    "BenchmarkHistogram_Record":           {"baseline_ns": 97,   "tolerance_multiplier": 5.0}
+  },
+  "windows-x86_64": {
+    "BenchmarkEventName_3Segments":        {"baseline_ns": 64,   "tolerance_multiplier": 5.0},
+    "BenchmarkEventName_5Segments":        {"baseline_ns": 95,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_RateOne":       {"baseline_ns": 27,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_RateZero":      {"baseline_ns": 25,   "tolerance_multiplier": 5.0},
+    "BenchmarkShouldSample_WithOverride":  {"baseline_ns": 35,   "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_SmallFlat":  {"baseline_ns": 468,  "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_LargeFlat":  {"baseline_ns": 5536, "tolerance_multiplier": 5.0},
+    "BenchmarkSanitizePayload_Disabled":   {"baseline_ns": 311,  "tolerance_multiplier": 5.0},
+    "BenchmarkTryAcquireRelease_Unlimited":{"baseline_ns": 12,   "tolerance_multiplier": 5.0},
+    "BenchmarkGetHealthSnapshot":          {"baseline_ns": 65,   "tolerance_multiplier": 5.0},
+    "BenchmarkCounter_Add":                {"baseline_ns": 51,   "tolerance_multiplier": 5.0},
+    "BenchmarkGauge_Set":                  {"baseline_ns": 49,   "tolerance_multiplier": 5.0},
+    "BenchmarkHistogram_Record":           {"baseline_ns": 48,   "tolerance_multiplier": 5.0}
   }
 }

@@ -1,5 +1,5 @@
 {
-  "_about": "Per-operation perf budgets in nanoseconds for the Python implementation. measured = scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json. baseline_ns is the median measurement on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Update via `make perf-baseline-python` (Linux+macOS locally; Windows generated on CI workflow_dispatch).",
+  "_about": "Per-operation perf budgets in nanoseconds for the Python implementation. measured = scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json. baseline_ns is the median measurement on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Linux/Windows entries seeded from a CI run on commit 94a5d83 (ubuntu-24.04 / windows-2025).",
   "macos-arm64": {
     "event_name_ns": {"baseline_ns": 157.0, "tolerance_multiplier": 5.0},
     "should_sample_ns": {"baseline_ns": 113.0, "tolerance_multiplier": 5.0},
@@ -8,5 +8,23 @@
     "counter_add_ns": {"baseline_ns": 1655.0, "tolerance_multiplier": 5.0},
     "histogram_record_ns": {"baseline_ns": 1663.0, "tolerance_multiplier": 5.0},
     "health_snapshot_ns": {"baseline_ns": 1665.0, "tolerance_multiplier": 5.0}
+  },
+  "linux-x86_64": {
+    "event_name_ns": {"baseline_ns": 281.0, "tolerance_multiplier": 5.0},
+    "should_sample_ns": {"baseline_ns": 224.0, "tolerance_multiplier": 5.0},
+    "sanitize_ns": {"baseline_ns": 2559.0, "tolerance_multiplier": 5.0},
+    "trace_decorator_ns": {"baseline_ns": 9338.0, "tolerance_multiplier": 5.0},
+    "counter_add_ns": {"baseline_ns": 4714.0, "tolerance_multiplier": 5.0},
+    "histogram_record_ns": {"baseline_ns": 4807.0, "tolerance_multiplier": 5.0},
+    "health_snapshot_ns": {"baseline_ns": 2890.0, "tolerance_multiplier": 5.0}
+  },
+  "windows-x86_64": {
+    "event_name_ns": {"baseline_ns": 300.0, "tolerance_multiplier": 5.0},
+    "should_sample_ns": {"baseline_ns": 238.0, "tolerance_multiplier": 5.0},
+    "sanitize_ns": {"baseline_ns": 2978.0, "tolerance_multiplier": 5.0},
+    "trace_decorator_ns": {"baseline_ns": 10571.0, "tolerance_multiplier": 5.0},
+    "counter_add_ns": {"baseline_ns": 5265.0, "tolerance_multiplier": 5.0},
+    "histogram_record_ns": {"baseline_ns": 5327.0, "tolerance_multiplier": 5.0},
+    "health_snapshot_ns": {"baseline_ns": 3382.0, "tolerance_multiplier": 5.0}
   }
 }

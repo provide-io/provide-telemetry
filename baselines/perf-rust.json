@@ -1,8 +1,17 @@
 {
-  "_about": "Per-operation perf budgets in nanoseconds for the Rust implementation. measured = `cargo bench --bench hot_path -- --quick` parsed via scripts/parse_criterion.py. baseline_ns is the median (criterion's middle estimate) on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier.",
+  "_about": "Per-operation perf budgets in nanoseconds for the Rust implementation. measured = `cargo bench --bench hot_path -- --quick` parsed via scripts/parse_criterion.py. baseline_ns is the median (criterion's middle estimate) on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Linux entry seeded from a CI run on commit 47c231f (ubuntu-24.04). Windows sanitize_payload entry seeded from CI on commit after parse_criterion encoding fix.",
   "macos-arm64": {
-    "should_sample_logs": {"baseline_ns": 14,    "tolerance_multiplier": 5.0},
-    "sanitize_payload":   {"baseline_ns": 1025,  "tolerance_multiplier": 5.0},
-    "parse_baggage":      {"baseline_ns": 370,   "tolerance_multiplier": 5.0}
+    "should_sample_logs": {"baseline_ns": 14,   "tolerance_multiplier": 5.0},
+    "sanitize_payload":   {"baseline_ns": 1025, "tolerance_multiplier": 5.0},
+    "parse_baggage":      {"baseline_ns": 370,  "tolerance_multiplier": 5.0}
+  },
+  "linux-x86_64": {
+    "should_sample_logs": {"baseline_ns": 32,   "tolerance_multiplier": 5.0},
+    "sanitize_payload":   {"baseline_ns": 1145, "tolerance_multiplier": 5.0},
+    "parse_baggage":      {"baseline_ns": 546,  "tolerance_multiplier": 5.0}
+  },
+  "windows-x86_64": {
+    "should_sample_logs": {"baseline_ns": 31,   "tolerance_multiplier": 5.0},
+    "parse_baggage":      {"baseline_ns": 671,  "tolerance_multiplier": 5.0}
   }
 }
