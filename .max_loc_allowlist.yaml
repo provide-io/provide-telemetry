@@ -12,14 +12,10 @@
 
 allowlist:
   # ── Go ─────────────────────────────────────────────────────────────────────
-  - path: go/classification_test.go
-    ceiling: 648
-    reason: Test file growing with new governance assertions; split planned.
 
   # ── Rust ───────────────────────────────────────────────────────────────────
-  - path: rust/tests/logger_test.rs
-    ceiling: 755
-    reason: Logger integration tests; split by formatter/processor.
+  # (no Rust violators remaining)
+
 
   # ── Python ─────────────────────────────────────────────────────────────────
   # (no Python violators — both files split into siblings under 500)
@@ -49,9 +45,6 @@ allowlist:
   - path: typescript/tests/resilience.test.ts
     ceiling: 872
     reason: Resilience test file; split by retry / timeout / circuit breaker.
-  - path: typescript/tests/runtime.test.ts
-    ceiling: 547
-    reason: Runtime test file just over; split hot-reload from snapshot.
   - path: typescript/tests/tracing.test.ts
     ceiling: 659
     reason: Tracing test file; split decorator from manual span suites.
