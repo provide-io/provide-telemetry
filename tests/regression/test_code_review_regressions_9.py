@@ -90,9 +90,8 @@ def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
         import _runtime_probe  # type: ignore[import-not-found]
 
         shared = _runtime_probe._shared()
-        # Tuple layout: (ProbeRunner, _OTEL_REQUIRED_CASE_IDS, ...) — index 1.
-        assert shared[1] is sentinel, (
-            "_shared() returned a different _OTEL_REQUIRED_CASE_IDS than the aliased "
+        assert shared.OTEL_REQUIRED_CASE_IDS is sentinel, (
+            "_shared() returned a different OTEL_REQUIRED_CASE_IDS than the aliased "
             "parity_probe_support — likely re-imported by canonical name and created "
             "a duplicate module instance."
         )
@@ -134,7 +133,7 @@ def test_runtime_probe_shared_prefers_canonical_when_both_loaded() -> None:
             import _runtime_probe
 
             shared = _runtime_probe._shared()
-            assert shared[1] is canonical._OTEL_REQUIRED_CASE_IDS, (
+            assert shared.OTEL_REQUIRED_CASE_IDS is canonical._OTEL_REQUIRED_CASE_IDS, (
                 "_shared() must prefer the canonical module when both copies are loaded "
                 "(deterministic resolution); got the aliased sentinel instead."
             )
