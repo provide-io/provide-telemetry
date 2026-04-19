@@ -117,11 +117,11 @@ pub fn get_circuit_state(signal: Signal) -> Result<(String, u32, f64), Telemetry
     Ok(("closed".to_string(), state.open_count, 0.0))
 }
 
-/// Sibling loop: the OTel exporter wrappers in `otel/resilient.rs` inline the
-/// same retry/timeout/circuit-breaker body because `PushMetricExporter` takes
-/// a non-`Clone` batch reference and the exporter traits return `impl Future`
-/// of `OTelSdkResult`, which don't fit `Fn() -> Fut` / `TelemetryError` here.
-/// Any change to the policy loop semantics must be applied in both files.
+/// Sibling loop: `otel/resilient.rs::run_resilience_loop` mirrors this body
+/// for OTel SDK exporters because their result type is `OTelSdkResult` rather
+/// than `TelemetryError`. State mutations are shared via the `_for_wrappers`
+/// helpers below; only the loop scaffolding (timeout/backoff/retry) is
+/// duplicated and must be kept in sync between the two files.
 pub async fn run_with_resilience<F, Fut, T>(
     signal: Signal,
     operation: F,
