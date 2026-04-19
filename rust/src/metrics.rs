@@ -101,7 +101,7 @@ pub struct Gauge {
 }
 
 impl Gauge {
-    pub fn add(&self, value: f64, _attributes: Option<BTreeMap<String, String>>) {
+    pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
         }
@@ -114,10 +114,18 @@ impl Gauge {
         let Some(ticket) = try_acquire(Signal::Metrics) else {
             return;
         };
-        self.state
-            .lock()
-            .expect("gauge state lock poisoned")
-            .last_value += value;
+        #[cfg_attr(not(feature = "otel"), allow(unused_variables))]
+        let new_absolute = {
+            let mut state = self.state.lock().expect("gauge state lock poisoned");
+            state.last_value += value;
+            state.last_value
+        };
+        #[cfg(feature = "otel")]
+        if crate::otel::metrics::meter_provider_installed() {
+            crate::otel::metrics::record_gauge_set(&self.name, new_absolute, attributes.as_ref());
+        }
+        #[cfg(not(feature = "otel"))]
+        let _ = &attributes;
         increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
