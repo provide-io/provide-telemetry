@@ -94,7 +94,7 @@ jobs:
       - name: Wait for collector health
         run: ../ci/wait-for-collector.sh
       - name: Run collector-backed OTLP smoke test
-        run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1
+        run: cargo test --manifest-path Cargo.toml --features otel --test otlp_collector_test -- --test-threads=1 --nocapture
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318"
           PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
