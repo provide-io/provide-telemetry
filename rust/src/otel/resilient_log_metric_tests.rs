@@ -433,3 +433,41 @@ fn metric_exporter_temporality_forwarded() {
     let w = ResilientMetricExporter::new(stub);
     assert_eq!(w.temporality(), Temporality::Cumulative);
 }
+
+// ── Variant preservation through run_otel_resilience ─────────────────────
+// Pins the behavioral contract introduced by the resilience-loop unification:
+// when an SDK exporter returns OTelSdkError::Timeout(_), the wrapper must
+// surface it as Timeout(_) — NOT flatten to InternalFailure(format!("{e}")).
+// Distinct timeout vs internal-failure variants matter for downstream OTel
+// SDK consumers that branch on the error kind.
+
+#[test]
+fn log_exporter_preserves_timeout_variant_through_wrapper() {
+    let _g = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    set_exporter_policy(
+        Signal::Logs,
+        ExporterPolicy {
+            retries: 0,
+            fail_open: false,
+            timeout_seconds: 0.0, // disable wrapper timeout — SDK error is the only source
+            ..ExporterPolicy::default()
+        },
+    )
+    .unwrap();
+    let stub = StubLogExporter::new_always_timeout();
+    let w = ResilientLogExporter::new(stub);
+    let data = empty_log_batch_data();
+    let refs: Vec<_> = data.iter().map(|(r, s)| (r, s)).collect();
+    let batch = LogBatch::new(&refs);
+    rt().block_on(async move {
+        let err = w
+            .export(batch)
+            .await
+            .expect_err("fail-closed must surface SDK error");
+        assert!(
+            matches!(err, OTelSdkError::Timeout(_)),
+            "wrapper must preserve OTelSdkError::Timeout variant, got: {err:?}"
+        );
+    });
+}
