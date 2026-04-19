@@ -35,19 +35,19 @@ def test_half_cpu_count_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
     assert gate._half_cpu_count() == 1
 
 
-def test_build_pytest_cmd_caps_to_half_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pytest_args_caps_to_half_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: 24)
-    cmd = gate._build_pytest_cmd(24, ["tests/property", "--no-cov"])
-    assert cmd == ["uv", "run", "pytest", "-n", "12", "tests/property", "--no-cov"]
+    args = gate._build_pytest_args(24, ["tests/property", "--no-cov"])
+    assert args == ["-n", "12", "tests/property", "--no-cov"]
 
 
-def test_build_pytest_cmd_defaults_to_single_worker_with_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pytest_args_defaults_to_single_worker_with_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: 24)
-    cmd = gate._build_pytest_cmd(None, [])
-    assert cmd == ["uv", "run", "pytest", "-n", "1"]
+    args = gate._build_pytest_args(None, [])
+    assert args == ["-n", "1"]
 
 
-def test_build_pytest_cmd_defaults_to_half_cpu_without_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pytest_args_defaults_to_half_cpu_without_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate.os, "cpu_count", lambda: 24)
-    cmd = gate._build_pytest_cmd(None, ["--no-cov"])
-    assert cmd == ["uv", "run", "pytest", "-n", "12", "--no-cov"]
+    args = gate._build_pytest_args(None, ["--no-cov"])
+    assert args == ["-n", "12", "--no-cov"]

@@ -45,15 +45,27 @@ shutdown_telemetry()
 **TypeScript:**
 
 ```typescript
-import { setupTelemetry, getLogger, shutdownTelemetry } from '@provide-io/telemetry';
+import {
+  setupTelemetry,
+  getConfig,
+  getLogger,
+  registerOtelProviders,
+  shutdownTelemetry,
+} from '@provide-io/telemetry';
 
 setupTelemetry({ serviceName: 'my-app' });
+// Required to actually export to an OTLP collector — setupTelemetry alone
+// configures policies but does not register SDK providers.
+await registerOtelProviders(getConfig());
+
 const log = getLogger('api');
 log.info({ event: 'app.start.ok', requestId: 'req-1' });
 await shutdownTelemetry();
 ```
 
 All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration.
+
+**On wire-format parity**: the JSON shape emitted by each language is *semantically* equivalent but not byte-identical. Go follows OpenTelemetry semantic conventions for its standard fields (`service.name`, `service.env`, `service.version`, `trace.id`, `span.id`); Python, TypeScript, and Rust use snake_case (`service`, `env`, `version`, `trace_id`, `span_id`). The cross-language parity harness in `spec/` normalises these key forms before comparing outputs (see `_FIELD_RENAMES` in `spec/parity_probe_support.py`), so semantic equivalence is what's tested and guaranteed — not literal wire-format identity. Consumers parsing logs across languages should normalize to whichever convention they prefer.
 
 ## Configuration
 
