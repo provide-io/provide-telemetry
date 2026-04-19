@@ -40,6 +40,12 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
+      # uv is needed for the perf-gate comparator (scripts/perf_check.py).
+      # Matches the rest of this repo's CI; perf_check uses only stdlib so no
+      # additional Python deps are installed (no `uv sync` here).
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
       - name: SPDX header check
         shell: bash
         run: |
@@ -58,6 +64,12 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run test:coverage
+      # Pipe perf-smoke output through perf_check.py — compares each measurement
+      # against baselines/perf-typescript.json for this runner's OS bucket. Missing
+      # buckets exit 0 with a hint so seeding via CI is straightforward.
+      - name: Run perf gate
+        shell: bash
+        run: npx tsx scripts/perf-smoke.ts --emit-json | uv run --no-project python ../scripts/perf_check.py --lang typescript
 
   typescript-examples-smoke:
     runs-on: ubuntu-24.04
