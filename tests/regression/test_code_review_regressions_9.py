@@ -57,11 +57,15 @@ def test_check_max_loc_scans_repo_when_invoked_from_outside_cwd(tmp_path: Path) 
 
 @pytest.mark.tooling
 def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
-    """``_shared()`` must return symbols from the already-loaded
-    ``parity_probe_support`` module even when it was loaded under an alias.
+    """``_shared()`` must return symbols from an already-loaded aliased
+    ``parity_probe_support`` module when no canonical copy is loaded.
 
-    A re-import by canonical name would create a separate module instance,
-    losing any monkeypatches applied to the alias.
+    Resolution order in ``_shared()`` is: canonical-by-name → aliased-by-path
+    → fresh canonical import. This test exercises the middle branch by
+    temporarily removing the canonical entry from ``sys.modules`` so the
+    aliased copy (loaded via ``importlib.util``) is the only candidate left.
+    Without the path-scan fallback, ``_shared()`` would fresh-import a
+    second canonical instance and lose the alias's monkeypatches entirely.
     """
     spec_dir = REPO_ROOT / "spec"
     pps_path = spec_dir / "parity_probe_support.py"
@@ -75,6 +79,9 @@ def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
     sentinel = frozenset({"sentinel_for_regression_9"})
     aliased._OTEL_REQUIRED_CASE_IDS = sentinel  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
+    # Hide any canonical copy that other tests in the suite may have loaded,
+    # so the aliased-by-path branch is the one under test. Restored in finally.
+    canonical_saved = sys.modules.pop("parity_probe_support", None)
     inserted_spec = False
     try:
         if str(spec_dir) not in sys.path:
@@ -93,3 +100,46 @@ def test_runtime_probe_shared_resolves_aliased_parity_module() -> None:
         if inserted_spec:
             sys.path.remove(str(spec_dir))
         sys.modules.pop("aliased_pps_for_test", None)
+        if canonical_saved is not None:
+            sys.modules["parity_probe_support"] = canonical_saved
+
+
+@pytest.mark.tooling
+def test_runtime_probe_shared_prefers_canonical_when_both_loaded() -> None:
+    """When both canonical and aliased copies are loaded, ``_shared()`` must
+    deterministically return the canonical one — matches Python's default
+    import semantics and avoids ambiguity in mixed environments (e.g. a
+    pytest run where one test loaded the alias and another loaded canonical).
+    """
+    spec_dir = REPO_ROOT / "spec"
+    pps_path = spec_dir / "parity_probe_support.py"
+
+    # Ensure canonical is loaded.
+    inserted_spec = False
+    if str(spec_dir) not in sys.path:
+        sys.path.insert(0, str(spec_dir))
+        inserted_spec = True
+    try:
+        import parity_probe_support as canonical  # type: ignore[import-not-found]
+
+        # Load a second copy under an alias and monkeypatch it with a sentinel.
+        spec = importlib.util.spec_from_file_location("aliased_pps_for_test_2", str(pps_path))
+        assert spec is not None and spec.loader is not None
+        aliased = importlib.util.module_from_spec(spec)
+        sys.modules["aliased_pps_for_test_2"] = aliased
+        spec.loader.exec_module(aliased)
+        aliased._OTEL_REQUIRED_CASE_IDS = frozenset({"alias_sentinel"})  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+
+        try:
+            import _runtime_probe  # type: ignore[import-not-found]
+
+            shared = _runtime_probe._shared()
+            assert shared[1] is canonical._OTEL_REQUIRED_CASE_IDS, (
+                "_shared() must prefer the canonical module when both copies are loaded "
+                "(deterministic resolution); got the aliased sentinel instead."
+            )
+        finally:
+            sys.modules.pop("aliased_pps_for_test_2", None)
+    finally:
+        if inserted_spec:
+            sys.path.remove(str(spec_dir))
