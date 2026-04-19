@@ -100,5 +100,10 @@ jobs:
         run: python ci/install_parity_deps.py
       # Run all four language parity suites with strict defaults: output-format probes
       # and contract DSL cases are both on by default (no flags required).
+      # Each language runner covers every parity file counted by check_fixture_coverage.py:
+      #   Python    — tests/parity/ (whole directory)
+      #   TypeScript — tests/parity.test.ts + tests/endpoint.test.ts
+      #   Go        — TestParity* + TestEndpointValidationParity (all parity_*_test.go files)
+      #   Rust      — parity_test + parity_extra_test + parity_pii_fixes_test (three binaries)
       - name: Behavioral parity check
         run: uv run python spec/run_behavioral_parity.py
