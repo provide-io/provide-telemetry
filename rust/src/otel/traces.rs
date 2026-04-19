@@ -115,9 +115,11 @@ pub(super) fn shutdown_tracer_provider() {
         .lock()
         .expect("tracer provider lock poisoned");
     if let Some(p) = guard.take() {
-        if let Err(err) = p.force_flush() {
-            eprintln!("provide_telemetry: traces force_flush failed: {err:?}");
-        }
+        // shutdown() internally drains queued spans before returning, so
+        // an explicit force_flush() beforehand is redundant — and in OTel
+        // SDK 0.31 with rt-tokio, a force_flush followed by shutdown
+        // surfaced "channel is empty and sending half is closed" because
+        // shutdown was already initiated by the flush path. Just shutdown.
         if let Err(err) = p.shutdown() {
             eprintln!("provide_telemetry: traces shutdown failed: {err:?}");
         }

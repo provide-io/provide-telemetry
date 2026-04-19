@@ -130,9 +130,8 @@ pub(super) fn shutdown_meter_provider() {
         .lock()
         .expect("meter provider lock poisoned");
     if let Some(p) = guard.take() {
-        if let Err(err) = p.force_flush() {
-            eprintln!("provide_telemetry: metrics force_flush failed: {err:?}");
-        }
+        // shutdown() drains internally; explicit force_flush before shutdown
+        // confused the SDK channel state (see traces.rs comment).
         if let Err(err) = p.shutdown() {
             eprintln!("provide_telemetry: metrics shutdown failed: {err:?}");
         }
