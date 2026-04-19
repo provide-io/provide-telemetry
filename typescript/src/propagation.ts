@@ -54,11 +54,13 @@ export type PropagationALS = {
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
 let _AlsConstructor: (new () => PropagationALS) | null = null;
-// Stryker disable BlockStatement: module-level try/catch runs once at import time — cannot be tested by unit tests
+// Stryker disable BlockStatement: module-level await/try block runs once at import time — cannot be tested by unit tests
 try {
-  // Dynamic require so the import doesn't break browser bundles.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const als = require('node:async_hooks') as {
+  // Dynamic ESM import so this works in both Node ESM (where `require` is
+  // undefined) and Node CJS (where dynamic import returns a Promise of the
+  // module). In browsers, `node:async_hooks` is unresolvable and the import
+  // rejects — caught below, leaving _als null and triggering fallback mode.
+  const als = (await import('node:async_hooks')) as {
     AsyncLocalStorage: new () => PropagationALS;
   };
   _AlsConstructor = als.AsyncLocalStorage;
