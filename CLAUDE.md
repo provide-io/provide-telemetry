@@ -49,9 +49,9 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 
 ## Quality Constraints
 
-- **100% branch coverage** is enforced — every new code path needs test coverage.
-- **100% mutation kill score** is required in CI — tests must detect behavioural changes.
-- **500 LOC max per file** — split files before they exceed this limit.
+- **100% branch coverage** is enforced for Python, TypeScript, and Go. Rust runs `cargo test` without a coverage gate.
+- **100% mutation kill score** is the target in CI. Python and Go are fully gated. TypeScript uses Stryker with file-scoped exemptions for OTel wiring modules (see `typescript/stryker.config.mjs`). Rust is not mutation-gated.
+- **500 LOC max per file** — enforced for Python via `scripts/check_max_loc.py`. TS/Go/Rust are not gated; keep new files under 500 when practical but pre-existing files may exceed this.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
 - Pytest markers: `otel`, `integration`, `e2e`, `tooling`, `memray`, `slow` — tag tests appropriately.
