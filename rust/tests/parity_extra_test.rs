@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
+use provide_telemetry::testing::acquire_test_state_lock;
 use provide_telemetry::{
     configure_logging, enable_json_capture_for_tests, get_logger, reset_logging_config_for_tests,
     sanitize_payload, set_queue_policy, set_strict_schema, take_json_capture, LoggingConfig,
@@ -182,6 +183,7 @@ fn parity_test_default_sensitive_keys_case_insensitive() {
 #[test]
 fn parity_test_backpressure_unlimited_zero_size_always_succeeds() {
     // Queue size 0 → unlimited; every acquire must succeed.
+    let _guard = acquire_test_state_lock();
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     set_queue_policy(QueuePolicy {
         logs_maxsize: 0,
@@ -195,6 +197,7 @@ fn parity_test_backpressure_unlimited_zero_size_always_succeeds() {
 #[test]
 fn parity_test_backpressure_unlimited_100_acquires_all_succeed() {
     // 100 consecutive acquires on an unlimited queue must all succeed.
+    let _guard = acquire_test_state_lock();
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     set_queue_policy(QueuePolicy {
         logs_maxsize: 0,
@@ -213,6 +216,7 @@ fn parity_test_backpressure_unlimited_100_acquires_all_succeed() {
 #[test]
 fn parity_test_backpressure_unlimited_bounded_rejects_second() {
     // With size=1 the second un-released acquire must be rejected.
+    let _guard = acquire_test_state_lock();
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     set_queue_policy(QueuePolicy {
         logs_maxsize: 1,
@@ -272,16 +276,9 @@ fn parity_test_sampling_signal_validation_valid_metrics_accepted() {
 // set_strict_schema(false) accepts uppercase/mixed-case segments;
 // set_strict_schema(true) rejects them.
 
-// Use a dedicated mutex so schema-mode tests don't race each other.
-static SCHEMA_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-
-fn schema_lock() -> &'static std::sync::Mutex<()> {
-    SCHEMA_LOCK.get_or_init(|| std::sync::Mutex::new(()))
-}
-
 #[test]
 fn parity_test_schema_strict_mode_lenient_accepts_uppercase() {
-    let _guard = schema_lock().lock().expect("schema lock poisoned");
+    let _guard = acquire_test_state_lock();
     provide_telemetry::schema::_reset_schema_for_tests();
     set_strict_schema(false);
     let result = provide_telemetry::event(&["A", "B", "C"]);
@@ -294,7 +291,7 @@ fn parity_test_schema_strict_mode_lenient_accepts_uppercase() {
 
 #[test]
 fn parity_test_schema_strict_mode_lenient_accepts_mixed_case() {
-    let _guard = schema_lock().lock().expect("schema lock poisoned");
+    let _guard = acquire_test_state_lock();
     provide_telemetry::schema::_reset_schema_for_tests();
     set_strict_schema(false);
     let result = provide_telemetry::event(&["User", "Login", "Ok"]);
@@ -307,7 +304,7 @@ fn parity_test_schema_strict_mode_lenient_accepts_mixed_case() {
 
 #[test]
 fn parity_test_schema_strict_mode_strict_rejects_uppercase() {
-    let _guard = schema_lock().lock().expect("schema lock poisoned");
+    let _guard = acquire_test_state_lock();
     provide_telemetry::schema::_reset_schema_for_tests();
     set_strict_schema(true);
     let result = provide_telemetry::event(&["User", "login", "ok"]);
@@ -320,7 +317,7 @@ fn parity_test_schema_strict_mode_strict_rejects_uppercase() {
 
 #[test]
 fn parity_test_schema_strict_mode_strict_accepts_valid_lowercase() {
-    let _guard = schema_lock().lock().expect("schema lock poisoned");
+    let _guard = acquire_test_state_lock();
     provide_telemetry::schema::_reset_schema_for_tests();
     set_strict_schema(true);
     let result = provide_telemetry::event(&["user", "login", "ok"]);
@@ -402,6 +399,7 @@ fn parity_test_pii_depth_default_is_eight() {
 fn parity_test_log_output_format_json_contains_parity_marker() {
     // Configure JSON logging, capture output, emit the canonical probe message,
     // then verify the captured line contains the log.output.parity marker.
+    let _guard = acquire_test_state_lock();
     configure_logging(LoggingConfig {
         fmt: "json".to_string(),
         include_timestamp: false,
