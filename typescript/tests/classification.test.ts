@@ -10,10 +10,7 @@ import {
   setClassificationPolicy,
 } from '../src/classification';
 import type { ClassificationPolicy, ClassificationRule, DataClass } from '../src/classification';
-import {
-  classifyKey,
-  registerClassificationRule,
-} from '../src/index';
+import { classifyKey, registerClassificationRule } from '../src/index';
 import {
   resetPiiRulesForTests,
   sanitizePayload,

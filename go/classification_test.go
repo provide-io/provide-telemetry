@@ -225,7 +225,7 @@ func TestClassifyKey_ReturnsPointerOrNil(t *testing.T) {
 		{Pattern: "email", Classification: DataClassPII},
 	})
 
-	got := ClassifyKey("email")
+	got := ClassifyKey("email", nil)
 	if got == nil {
 		t.Fatal("expected ClassifyKey to return a pointer for a matching key")
 	}
@@ -233,7 +233,7 @@ func TestClassifyKey_ReturnsPointerOrNil(t *testing.T) {
 		t.Errorf("expected %q, got %q", DataClassPII, *got)
 	}
 
-	if miss := ClassifyKey("name"); miss != nil {
+	if miss := ClassifyKey("name", nil); miss != nil {
 		t.Errorf("expected nil for unmatched key, got %v", *miss)
 	}
 }
