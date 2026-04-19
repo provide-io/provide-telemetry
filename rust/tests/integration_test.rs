@@ -265,14 +265,6 @@ fn integration_test_data_governance_example_summary_matches_demo_flow() {
     assert!(summary.receipt_hmac_prefix_len >= 8);
 }
 
-#[cfg(feature = "otel")]
-fn reset_runtime() {
-    use provide_telemetry::shutdown_telemetry;
-
-    let _ = shutdown_telemetry();
-    provide_telemetry::otel::_reset_otel_for_tests();
-}
-
 #[test]
 fn integration_test_sampling_drop_increments_health() {
     let _guard = acquire_fresh_lock();
