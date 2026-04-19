@@ -144,7 +144,7 @@ func _applyClassificationPolicy(
 		if label == "" {
 			continue
 		}
-		action := "pass"
+		action := piicore.PIIModePass
 		if policyHook != nil {
 			action = policyHook(label)
 		}

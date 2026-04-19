@@ -113,9 +113,13 @@ def find_loc_offenders(
         if lines <= max_lines:
             continue
         try:
-            rel = str(path.resolve().relative_to(repo_root.resolve()))
+            rel_path = path.resolve().relative_to(repo_root.resolve())
         except ValueError:
-            rel = str(path)
+            rel_path = path
+        # Normalise to forward slashes so the allowlist file (cross-platform
+        # YAML using POSIX separators) matches on Windows where Path stringifies
+        # with backslashes.
+        rel = rel_path.as_posix()
         ceiling = allowlist.get(rel)
         if ceiling is not None and lines <= ceiling:
             grandfathered.append((path, lines))

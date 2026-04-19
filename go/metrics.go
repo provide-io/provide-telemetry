@@ -342,7 +342,14 @@ func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
 	case slog.KindTime:
 		return attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	case slog.KindUint64:
-		return attribute.Int64(attr.Key, int64(value.Uint64()))
+		// Guard the uint64 -> int64 conversion so values > MaxInt64 don't wrap
+		// into negatives (gosec G115). Out-of-range values fall through to a
+		// string attribute so the original numeric magnitude is preserved.
+		u := value.Uint64()
+		if u > uint64(math.MaxInt64) {
+			return attribute.String(attr.Key, fmt.Sprint(u))
+		}
+		return attribute.Int64(attr.Key, int64(u))
 	case slog.KindAny, slog.KindGroup, slog.KindLogValuer:
 		return attribute.String(attr.Key, fmt.Sprint(value.Any()))
 	default:

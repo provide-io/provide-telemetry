@@ -298,35 +298,48 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 // _providerConfigChanged returns true when reconfiguration would require
 // reinstalling at least one live OTel provider. tracerLive/meterLive/loggerLive
 // reflect which signal providers are currently installed; signal-specific fields
-// are only checked when the corresponding provider is live.
+// are only checked when the corresponding provider is live. Decomposed into
+// per-signal helpers to keep cyclomatic complexity below the lint threshold.
 func _providerConfigChanged(current, target *TelemetryConfig, tracerLive, meterLive, loggerLive bool) bool {
-	anyLive := tracerLive || meterLive || loggerLive
-	if !anyLive {
+	if !tracerLive && !meterLive && !loggerLive {
 		return false
 	}
-	// Identity fields (service name/env/version) are baked into every provider's
-	// Resource — a change here requires all live providers to be reinstalled.
-	if current.ServiceName != target.ServiceName ||
+	if _identityFieldsChanged(current, target) {
+		return true
+	}
+	if tracerLive && _tracerFieldsChanged(current, target) {
+		return true
+	}
+	if meterLive && _meterFieldsChanged(current, target) {
+		return true
+	}
+	return loggerLive && _loggerFieldsChanged(current, target)
+}
+
+// _identityFieldsChanged reports whether service name/env/version differ.
+// These are baked into every provider's Resource, so a change forces all
+// live providers to be reinstalled.
+func _identityFieldsChanged(current, target *TelemetryConfig) bool {
+	return current.ServiceName != target.ServiceName ||
 		current.Environment != target.Environment ||
-		current.Version != target.Version {
-		return true
-	}
-	// Per-signal fields: only flag when that signal's provider is live.
-	if tracerLive && (current.Tracing.Enabled != target.Tracing.Enabled ||
+		current.Version != target.Version
+}
+
+func _tracerFieldsChanged(current, target *TelemetryConfig) bool {
+	return current.Tracing.Enabled != target.Tracing.Enabled ||
 		current.Tracing.OTLPEndpoint != target.Tracing.OTLPEndpoint ||
-		!maps.Equal(current.Tracing.OTLPHeaders, target.Tracing.OTLPHeaders)) {
-		return true
-	}
-	if meterLive && (current.Metrics.Enabled != target.Metrics.Enabled ||
+		!maps.Equal(current.Tracing.OTLPHeaders, target.Tracing.OTLPHeaders)
+}
+
+func _meterFieldsChanged(current, target *TelemetryConfig) bool {
+	return current.Metrics.Enabled != target.Metrics.Enabled ||
 		current.Metrics.OTLPEndpoint != target.Metrics.OTLPEndpoint ||
-		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders)) {
-		return true
-	}
-	if loggerLive && (current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
-		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)) {
-		return true
-	}
-	return false
+		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders)
+}
+
+func _loggerFieldsChanged(current, target *TelemetryConfig) bool {
+	return current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
+		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)
 }
 
 func _applyHotFields(current, fresh *TelemetryConfig) {

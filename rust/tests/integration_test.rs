@@ -3,7 +3,6 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 use std::sync::MutexGuard;
-use std::time::Duration;
 
 use tokio::runtime::Builder;
 
@@ -325,16 +324,21 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.01,
+                timeout_seconds: 0.05,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
         )
         .expect("policy should set");
 
+        // Use a future that never resolves so the wrapper-imposed timeout
+        // is guaranteed to fire. Earlier code relied on `sleep(25ms) >
+        // timeout(10ms)` which flaked on macOS-15 CI runners with high
+        // scheduling jitter (occasionally the sleep completed before the
+        // timeout actually fired).
         for _ in 0..3 {
             let result = run_with_resilience(Signal::Logs, || async {
-                tokio::time::sleep(Duration::from_millis(25)).await;
+                std::future::pending::<()>().await;
                 Ok::<_, provide_telemetry::TelemetryError>(())
             })
             .await

@@ -57,7 +57,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             retries: 2,
             backoff_seconds: 0.01,
             // Short timeout so the wrapper-imposed deadline fires below.
-            timeout_seconds: 0.01,
+            timeout_seconds: 0.05,
             fail_open: true,
             allow_blocking_in_event_loop: false,
         },
@@ -69,10 +69,11 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         .map_err(|err| TelemetryError::new(format!("failed to build runtime: {err}")))?;
     runtime.block_on(async {
         for _ in 0..4 {
-            // Sleep longer than timeout_seconds so tokio::time::timeout fires;
-            // only real timeouts count toward the circuit breaker.
+            // future::pending() never resolves, so the wrapper-imposed timeout
+            // MUST fire. Earlier `sleep(50ms) > timeout(10ms)` flaked on
+            // macOS-15 CI runners with high scheduling jitter.
             let _: Option<()> = run_with_resilience(Signal::Metrics, || async {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                std::future::pending::<()>().await;
                 Ok(())
             })
             .await?;
