@@ -53,19 +53,19 @@ use opentelemetry_sdk::Resource;
 
 use crate::health::{increment_retries, record_export_failure, record_export_latency};
 use crate::resilience::{
-    _record_circuit_failure_for_wrappers, _record_circuit_success_for_wrappers,
-    get_exporter_policy, ExporterPolicy,
+    _check_and_start_probe_for_wrappers, _record_circuit_failure_for_wrappers,
+    _record_circuit_success_for_wrappers, get_exporter_policy, ExporterPolicy,
 };
 use crate::sampling::Signal;
 
 // ── Circuit-breaker helpers ───────────────────────────────────────────────────
 
-/// Returns true when the circuit for `signal` is open and the cooldown has
-/// not yet expired.
-fn circuit_is_open(signal: Signal) -> bool {
-    crate::resilience::get_circuit_state(signal)
-        .map(|(state, _, remaining)| state == "open" && remaining > 0.0)
-        .unwrap_or(false)
+/// Check the circuit for `signal`.  Returns `true` (caller must reject) when
+/// the circuit is fully open (cooldown active) or a half-open probe is already
+/// in flight.  Returns `false` when the caller may proceed; if the cooldown has
+/// just elapsed this also marks the probe as in-flight.
+fn circuit_gate(signal: Signal) -> bool {
+    _check_and_start_probe_for_wrappers(signal)
 }
 
 /// Inform the shared circuit-breaker state and health counters about a failed
@@ -107,7 +107,7 @@ where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = OTelSdkResult> + Send,
 {
-    if circuit_is_open(signal) {
+    if circuit_gate(signal) {
         return if policy.fail_open {
             ResilienceOutcome::FailOpenDrop
         } else {
@@ -229,7 +229,7 @@ async fn run_log_resilience_loop<E: LogExporter>(
     )],
     exporter: &E,
 ) -> ResilienceOutcome {
-    if circuit_is_open(signal) {
+    if circuit_gate(signal) {
         return if policy.fail_open {
             ResilienceOutcome::FailOpenDrop
         } else {
