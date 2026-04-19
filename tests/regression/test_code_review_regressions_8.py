@@ -43,18 +43,25 @@ class TestConsentBlocksLogs:
         assert get_health_snapshot().emitted_logs == 0
 
     def test_apply_sampling_allows_warning_at_functional_consent(self) -> None:
+        from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+
         set_consent_level(ConsentLevel.FUNCTIONAL)
         set_sampling_policy("logs", SamplingPolicy(default_rate=1.0))
         reset_health_for_tests()
         result = apply_sampling(None, "warning", {"event": "test.consent.functional.warn"})
+        # apply_sampling now stashes a backpressure ticket — strip it for comparison.
+        result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "test.consent.functional.warn"}
         assert get_health_snapshot().emitted_logs == 1
 
     def test_apply_sampling_allows_full_consent(self) -> None:
+        from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+
         set_consent_level(ConsentLevel.FULL)
         set_sampling_policy("logs", SamplingPolicy(default_rate=1.0))
         reset_health_for_tests()
         result = apply_sampling(None, "info", {"event": "test.consent.full"})
+        result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "test.consent.full"}
         assert get_health_snapshot().emitted_logs == 1
 
@@ -164,9 +171,12 @@ class TestLogBackpressure:
         assert get_health_snapshot().emitted_logs == 0
 
     def test_apply_sampling_succeeds_with_unlimited_queue(self) -> None:
+        from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+
         set_sampling_policy("logs", SamplingPolicy(default_rate=1.0))
         reset_health_for_tests()
         result = apply_sampling(None, "info", {"event": "unlimited.log"})
+        result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "unlimited.log"}
         assert get_health_snapshot().emitted_logs == 1
 

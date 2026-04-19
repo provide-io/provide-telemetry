@@ -29,6 +29,7 @@ from provide.telemetry.logger.processors import (
     inject_logger_name,
     make_level_filter,
     merge_runtime_context,
+    release_backpressure_ticket,
     rename_event_to_message,
     sanitize_sensitive_fields,
 )
@@ -286,15 +287,22 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             # DO contribute to emitted_logs. The ordering ensures _schema_error is
             # set before apply_sampling evaluates the record.
             enforce_event_schema(config),
+        ]
+    )
+
+    # Per-module level filter — runs BEFORE apply_sampling so we don't
+    # acquire backpressure tickets for records the filter is going to drop,
+    # AND so the DropEvent path doesn't strand a ticket between
+    # apply_sampling (acquire) and release_backpressure_ticket (release).
+    if config.logging.module_levels:
+        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
+
+    processors.extend(
+        [
             apply_sampling,
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )
-
-    # Per-module level filter — placed late so enrichment processors
-    # run first.  Only added when module_levels are configured.
-    if config.logging.module_levels:
-        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
 
     if config.logging.include_caller:
         processors.append(
@@ -305,6 +313,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
                 ]
             )
         )
+
+    # Release the backpressure ticket immediately before the renderer so the
+    # ticket bounds sanitization + caller-capture (the expensive work) but is
+    # not held across renderer serialization or handler I/O. event_dict is a
+    # plain dict at this point; it stops being a dict once the renderer runs.
+    processors.append(release_backpressure_ticket)
 
     renderer: Any
     if config.logging.fmt == "json":
