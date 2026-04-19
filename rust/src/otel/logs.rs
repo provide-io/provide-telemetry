@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime};
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
 use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_sdk::logs::{SdkLoggerProvider, SimpleLogProcessor};
 use opentelemetry_sdk::Resource;
 use serde_json::Value;
 
@@ -90,9 +90,11 @@ pub(super) fn install_logger_provider(
         }
     };
 
+    // SimpleLogProcessor (sync, inline export per record) instead of
+    // BatchLogProcessor — see docs/UPSTREAM_OTEL_RUST_BSP_BUG.md.
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(ResilientLogExporter::new(exporter))
+        .with_log_processor(SimpleLogProcessor::new(ResilientLogExporter::new(exporter)))
         .build();
 
     let arc = Arc::new(provider);
