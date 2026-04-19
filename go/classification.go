@@ -125,9 +125,7 @@ func _classifyField(key string, _ any) string {
 }
 
 // ClassifyKey returns the DataClass for a key when a rule matches, or nil when none match.
-// The value parameter is accepted for cross-language signature parity (Python and
-// TypeScript pass the value alongside the key) but is not currently consulted.
-func ClassifyKey(key string, _ any) *DataClass {
+func ClassifyKey(key string) *DataClass {
 	label := _classifyField(key, nil)
 	if label == "" {
 		return nil
