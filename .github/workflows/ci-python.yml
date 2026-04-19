@@ -183,11 +183,12 @@ jobs:
         run: docker logs otelcol || true
       - name: Capture collector logs
         run: docker logs otelcol > tests/integration/otel-output-python/collector.log 2>&1
+      # Poll the collector log until every required signal name appears, with
+      # a 30s deadline (see ci/verify-collector-signals.sh for rationale).
       - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.otlp.smoke" tests/integration/otel-output-python/collector.log
-          grep -q "integration.requests" tests/integration/otel-output-python/collector.log
-          grep -q "integration.otlp.log" tests/integration/otel-output-python/collector.log
+        env:
+          OTELCOL_CONTAINER: otelcol
+        run: ./ci/verify-collector-signals.sh tests/integration/otel-output-python/collector.log integration.otlp.smoke integration.requests integration.otlp.log
       - name: Stop collector
         if: always()
         run: |
