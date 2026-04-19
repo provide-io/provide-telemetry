@@ -1,0 +1,284 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+
+"""Runtime-probe helpers for behavioral parity checks.
+
+Split out of ``parity_probe_support`` to keep that file under the 500-LOC
+ceiling. Imports the shared ProbeRunner type and small utilities from the
+parent module — the parent does NOT import from this module to avoid cycles.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from parity_probe_support import ProbeRunner
+
+
+def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object, object, object]:
+    """Lazy import of shared helpers from parity_probe_support.
+
+    Done inside this function to avoid a circular import — parity_probe_support
+    re-exports symbols from this module for backwards compatibility.
+    """
+    from parity_probe_support import (  # type: ignore[import-not-found]
+        _OTEL_REQUIRED_CASE_IDS,
+        ProbeRunner,
+        _compare_outputs,
+        _extract_json_line,
+        _has_otel_stack,
+        _normalize_log_record,
+        _probe_env,
+    )
+
+    return (
+        ProbeRunner,
+        _OTEL_REQUIRED_CASE_IDS,
+        _compare_outputs,
+        _extract_json_line,
+        _has_otel_stack,
+        _normalize_log_record,
+        _probe_env,
+    )
+
+
+def _runtime_probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> list[ProbeRunner]:
+    ProbeRunner = _shared()[0]
+    probes = repo / "spec" / "probes"
+    return [
+        ProbeRunner(
+            name="python",
+            label="Python",
+            cmd=[sys.executable, str(probes / "runtime_probe_python.py")],
+            cwd=repo,
+        ),
+        ProbeRunner(
+            name="go",
+            label="Go",
+            cmd=["go", "run", str(probes / "runtime_probe_go" / "main.go")],
+            cwd=repo / "go",
+        ),
+        ProbeRunner(
+            name="typescript",
+            label="TypeScript",
+            cmd=["npx", "tsx", str(probes / "runtime_probe_typescript.ts")],
+            cwd=repo / "typescript",
+            env_extra={"NODE_PATH": str(repo / "typescript" / "node_modules")},
+        ),
+        ProbeRunner(
+            name="rust",
+            label="Rust",
+            cmd=[cargo_bin, "--locked", "run", "--features", "otel", "--example", "runtime_probe", "--quiet"],
+            cwd=repo / "rust",
+            env_extra={**cargo_env},
+        ),
+    ]
+
+
+def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
+    if case_id == "strict_schema_rejection":
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "strict_event_name_only":
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
+            "PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "true",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "required_keys_rejection":
+        return {
+            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
+            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "invalid_config":
+        return {"PROVIDE_LOG_INCLUDE_TIMESTAMP": "definitely-not-a-bool"}
+    if case_id == "fail_open_exporter_init":
+        return {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://[",
+            "OTEL_EXPORTER_OTLP_PROTOCOL": "definitely-invalid",
+        }
+    if case_id == "signal_enablement":
+        return {
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "per_signal_logs_endpoint":
+        return {
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4318/v1/logs",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "provider_identity_reconfigure":
+        return {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+        }
+    if case_id == "shutdown_re_setup":
+        return {
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    return {}
+
+
+def _run_runtime_probe(
+    runner: ProbeRunner,
+    case_id: str,
+    probe_env: dict[str, str],
+    *,
+    timeout: int = 60,
+) -> tuple[str, str]:
+    _, _, _, _, _, _, _probe_env = _shared()
+    env = {
+        **os.environ,
+        **_probe_env(probe_env),
+        **_runtime_probe_case_env(case_id),
+        "PROVIDE_PARITY_PROBE_CASE": case_id,
+        **runner.env_extra,
+    }
+    try:
+        proc = subprocess.run(  # noqa: S603
+            runner.cmd,
+            capture_output=True,
+            text=True,
+            cwd=runner.cwd,
+            env=env,
+            timeout=timeout,
+            check=False,
+        )
+        combined = (proc.stdout + proc.stderr).strip()
+        if proc.returncode != 0 and not combined:
+            return "", f"exit code {proc.returncode}: {proc.stderr.strip()[:200]}"
+        if proc.returncode != 0:
+            return "", combined[:500]
+        return combined, ""
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        return "", str(exc)
+
+
+def _load_runtime_probe_fixtures(fixtures_path: Path) -> dict[str, object]:
+    import yaml  # lazy: allow importing without PyYAML installed
+
+    return yaml.safe_load(fixtures_path.read_text(encoding="utf-8"))
+
+
+def run_runtime_probe_check(
+    repo: Path,
+    selected: set[str],
+    cargo_bin: str,
+    cargo_env: dict[str, str],
+    probe_env: dict[str, str],
+    fixtures_path: Path,
+    *,
+    timeout: int = 60,
+) -> bool:
+    (
+        _,
+        _OTEL_REQUIRED_CASE_IDS,
+        _compare_outputs,
+        _extract_json_line,
+        _has_otel_stack,
+        _normalize_log_record,
+        _,
+    ) = _shared()
+    runners = [r for r in _runtime_probe_runners(repo, cargo_bin, cargo_env) if r.name in selected]
+    fixtures = _load_runtime_probe_fixtures(fixtures_path)
+    cases = fixtures.get("cases", [])
+
+    # Fail early with a clear install hint if OTel-required cases are in the fixture
+    # list, the Python runner is selected, and the opentelemetry-sdk[otlp] extra is
+    # not installed.  Guard is skipped when Python is not in `selected` so that
+    # subset runs (e.g. --lang go,rust,typescript) are unaffected.
+    otel_case_ids = {str(c["id"]) for c in cases} & _OTEL_REQUIRED_CASE_IDS
+    if "python" in selected and otel_case_ids and not _has_otel_stack():
+        raise RuntimeError(
+            f"Runtime probe cases {sorted(otel_case_ids)} require the "
+            "opentelemetry-sdk[otlp] extra — run: uv sync --extra otel"
+        )
+
+    all_ok = True
+
+    print()
+    print("── Runtime parity probes ───────────────────────────")
+    for case in cases:
+        case_id = str(case["id"])
+        kind = str(case["kind"])
+        expected = dict(case["expected"])
+        print(f"  case={case_id}")
+        records: dict[str, dict[str, object]] = {}
+        summaries: dict[str, dict[str, object]] = {}
+        case_ok = True
+        for runner in runners:
+            output, err = _run_runtime_probe(runner, case_id, probe_env, timeout=timeout)
+            if err:
+                print(f"    [{runner.label:12s}] PROBE ERROR: {err}")
+                case_ok = False
+                continue
+            raw = _extract_json_line(output)
+            if raw is None:
+                print(f"    [{runner.label:12s}] NO JSON LINE in output")
+                case_ok = False
+                continue
+            summaries[runner.name] = raw
+            if kind == "record":
+                record = raw.get("record")
+                if not isinstance(record, dict):
+                    print(f"    [{runner.label:12s}] missing record payload")
+                    case_ok = False
+                    continue
+                records[runner.name] = _normalize_log_record(record)
+                print(f"    [{runner.label:12s}] {json.dumps(records[runner.name], sort_keys=True)}")
+            else:
+                print(f"    [{runner.label:12s}] {json.dumps(raw, sort_keys=True)}")
+
+        if not case_ok:
+            all_ok = False
+            continue
+
+        if kind == "record":
+            mismatches = _compare_outputs(records)
+            for field_name, value in expected.items():
+                field_values = {lang: rec.get(field_name) for lang, rec in records.items()}
+                if any(field_value != value for field_value in field_values.values()):
+                    mismatches.append(
+                        f"  field '{field_name}' does not match expected {value!r}: "
+                        + ", ".join(f"{lang}={field_value!r}" for lang, field_value in sorted(field_values.items()))
+                    )
+            if mismatches:
+                print("    MISMATCH:")
+                for mismatch in mismatches:
+                    print(mismatch)
+                all_ok = False
+            else:
+                print("    MATCH")
+            continue
+
+        mismatches_other: list[str] = []
+        for lang, summary in summaries.items():
+            for field_name, value in expected.items():
+                if summary.get(field_name) != value:
+                    mismatches_other.append(
+                        f"  {lang}: field '{field_name}' expected {value!r}, got {summary.get(field_name)!r}"
+                    )
+        if mismatches_other:
+            print("    MISMATCH:")
+            for mismatch in mismatches_other:
+                print(mismatch)
+            all_ok = False
+        else:
+            print("    MATCH")
+
+    return all_ok

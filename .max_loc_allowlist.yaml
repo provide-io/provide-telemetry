@@ -61,12 +61,7 @@ allowlist:
     reason: Logger integration tests; split by formatter/processor.
 
   # ── Python ─────────────────────────────────────────────────────────────────
-  - path: spec/parity_probe_support.py
-    ceiling: 502
-    reason: Probe DSL just over; extract case-runner helper module.
-  - path: spec/validate_conformance.py
-    ceiling: 558
-    reason: Conformance script; split symbol discovery from comparison logic.
+  # (no Python violators — both files split into siblings under 500)
 
   # ── TypeScript ─────────────────────────────────────────────────────────────
   - path: typescript/tests/config.test.ts
