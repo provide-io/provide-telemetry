@@ -21,30 +21,4 @@ allowlist:
   # (no Python violators — both files split into siblings under 500)
 
   # ── TypeScript ─────────────────────────────────────────────────────────────
-  - path: typescript/tests/config.test.ts
-    ceiling: 1198
-    reason: Largest TS test file; split env parse / runtime config / overrides.
-  - path: typescript/tests/logger.test.ts
-    ceiling: 896
-    reason: Logger test file; split by formatter and processor concern.
-  - path: typescript/tests/metrics.test.ts
-    ceiling: 839
-    reason: Metrics test file; split by instrument (counter/gauge/histogram).
-  - path: typescript/tests/otel-logs.test.ts
-    ceiling: 572
-    reason: OTel logs wiring tests; split init vs export.
-  - path: typescript/tests/parity.test.ts
-    ceiling: 725
-    reason: Parity test file; split by fixture category.
-  - path: typescript/tests/pii.test.ts
-    ceiling: 717
-    reason: PII test file; split by rule type.
-  - path: typescript/tests/propagation.test.ts
-    ceiling: 1057
-    reason: Propagation test file; split W3C parse / bind-clear / baggage.
-  - path: typescript/tests/resilience.test.ts
-    ceiling: 872
-    reason: Resilience test file; split by retry / timeout / circuit breaker.
-  - path: typescript/tests/tracing.test.ts
-    ceiling: 659
-    reason: Tracing test file; split decorator from manual span suites.
+  # (no TypeScript violators remaining)
