@@ -83,8 +83,8 @@ Use `PROVIDE_TELEMETRY_REQUIRED_KEYS` to enforce package-specific requirements.
 When adding new telemetry fields:
 
 1. Keep old field names for at least one release cycle.
-2. Introduce aliases in dashboards/queries first.
-3. Announce canonical key in changelog and docs.
+1. Introduce aliases in dashboards/queries first.
+1. Announce canonical key in changelog and docs.
 
 ## Python File Header Convention
 

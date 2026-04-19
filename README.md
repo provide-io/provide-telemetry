@@ -2,10 +2,7 @@
 
 Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`).
 
-[![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
-[![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
-[![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml)
-[![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
+[![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml) [![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml) [![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml) [![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
@@ -59,15 +56,15 @@ All implementations share the same API surface, event naming conventions, and co
 
 All runtime config is via environment variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level |
-| `PROVIDE_LOG_FORMAT` | `console` | Renderer: `console`, `json`, or `pretty` |
-| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment |
-| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing |
-| `PROVIDE_METRICS_ENABLED` | `true` | Enable OTel metrics |
+| Variable                         | Default           | Description                              |
+| -------------------------------- | ----------------- | ---------------------------------------- |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity                         |
+| `PROVIDE_LOG_LEVEL`              | `INFO`            | Log level                                |
+| `PROVIDE_LOG_FORMAT`             | `console`         | Renderer: `console`, `json`, or `pretty` |
+| `PROVIDE_TELEMETRY_ENV`          | `dev`             | Deployment environment                   |
+| `PROVIDE_TELEMETRY_VERSION`      | `0.0.0`           | Service version                          |
+| `PROVIDE_TRACE_ENABLED`          | `true`            | Enable OTel tracing                      |
+| `PROVIDE_METRICS_ENABLED`        | `true`            | Enable OTel metrics                      |
 
 See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
 
@@ -92,16 +89,16 @@ See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs
 
 All implementations export equivalent APIs (signatures vary per language idiom):
 
-| Category | Functions |
-|----------|-----------|
-| Lifecycle | `setup_telemetry()`, `shutdown_telemetry()` |
-| Logging | `get_logger()`, `bind_context()`, `clear_context()` |
-| Tracing | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()` |
-| Metrics | `counter()`, `gauge()`, `histogram()` |
-| Policies | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()` |
-| Safety | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()` |
-| Health | `get_health_snapshot()` |
-| Runtime | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
+| Category  | Functions                                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Lifecycle | `setup_telemetry()`, `shutdown_telemetry()`                                                                                       |
+| Logging   | `get_logger()`, `bind_context()`, `clear_context()`                                                                               |
+| Tracing   | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()`                                                              |
+| Metrics   | `counter()`, `gauge()`, `histogram()`                                                                                             |
+| Policies  | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()`                                                            |
+| Safety    | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()`                                   |
+| Health    | `get_health_snapshot()`                                                                                                           |
+| Runtime   | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
 Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
 

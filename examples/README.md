@@ -2,8 +2,7 @@
 
 ## Telemetry
 
-Event naming in examples follows the DA(R)S pattern: 3 segments (domain.action.status) or 4 segments (domain.action.resource.status).
-Use `provide.telemetry.event(*segments)` when composing structured events.
+Event naming in examples follows the DA(R)S pattern: 3 segments (domain.action.status) or 4 segments (domain.action.resource.status). Use `provide.telemetry.event(*segments)` when composing structured events.
 
 - `telemetry/01_basic_telemetry.py`
   - Local console/json logging.

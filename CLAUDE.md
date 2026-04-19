@@ -5,12 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 **Setup:**
+
 ```bash
 uv sync --group dev                        # Base dev dependencies
 uv sync --group dev --extra otel           # Include OpenTelemetry extras
 ```
 
 **Run tests:**
+
 ```bash
 uv run python scripts/run_pytest_gate.py                             # Core suite (100% coverage enforced)
 uv run python scripts/run_pytest_gate.py -k "test_name"             # Single test
@@ -21,6 +23,7 @@ uv run python scripts/run_pytest_gate.py -k hypothesis --no-cov -q  # Property-b
 ```
 
 **Lint/type-check:**
+
 ```bash
 uv run ruff format --check .
 uv run ruff check .
@@ -30,6 +33,7 @@ uv run codespell
 ```
 
 **Custom gates:**
+
 ```bash
 uv run python scripts/check_max_loc.py --max-lines 500   # No file may exceed 500 lines
 uv run python scripts/check_spdx_headers.py              # All source files need SPDX headers
@@ -37,6 +41,7 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 
 ```
 
 **Memory profiling:**
+
 ```bash
 make memray                                                # Run all memray stress tests
 make memray-flamegraph                                     # Generate HTML flamegraphs
@@ -109,12 +114,12 @@ src/provide/telemetry/
 
 All runtime config comes from environment variables, parsed via `TelemetryConfig.from_env()`:
 
-| Prefix | Controls |
-|--------|----------|
-| `PROVIDE_TELEMETRY_*` | Service name, env, version, schema strictness |
-| `PROVIDE_LOG_*` | Log level, format, caller info, sanitization |
-| `PROVIDE_TRACE_*` | Tracing enabled, sample rate |
-| `PROVIDE_METRICS_*` | Metrics enabled |
+| Prefix                 | Controls                                       |
+| ---------------------- | ---------------------------------------------- |
+| `PROVIDE_TELEMETRY_*`  | Service name, env, version, schema strictness  |
+| `PROVIDE_LOG_*`        | Log level, format, caller info, sanitization   |
+| `PROVIDE_TRACE_*`      | Tracing enabled, sample rate                   |
+| `PROVIDE_METRICS_*`    | Metrics enabled                                |
 | `OTEL_EXPORTER_OTLP_*` | OTLP endpoint/headers (standard OTel env vars) |
 
 ## Testing Conventions

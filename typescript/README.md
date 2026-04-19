@@ -58,13 +58,13 @@ await shutdownTelemetry();
 
 ### Setup
 
-| Export | Description |
-|--------|-------------|
-| `setupTelemetry(config)` | Configure the library. Idempotent — safe to call multiple times. |
-| `getConfig()` | Return the current `TelemetryConfig`. |
-| `configFromEnv()` | Build config from environment variables (see [Configuration](#configuration)). |
+| Export                       | Description                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `setupTelemetry(config)`     | Configure the library. Idempotent — safe to call multiple times.                                           |
+| `getConfig()`                | Return the current `TelemetryConfig`.                                                                      |
+| `configFromEnv()`            | Build config from environment variables (see [Configuration](#configuration)).                             |
 | `registerOtelProviders(cfg)` | Wire OTLP log, trace, and metric exporters for the signals enabled in config. Call after `setupTelemetry`. |
-| `shutdownTelemetry()` | Flush and shut down all registered OTel providers. |
+| `shutdownTelemetry()`        | Flush and shut down all registered OTel providers.                                                         |
 
 ### Logging
 
@@ -187,10 +187,7 @@ console.log(cfg.serviceName);
 console.log(status.setupDone, status.providers.traces, status.fallback.logs);
 ```
 
-Use `getRuntimeConfig()` after setup or runtime reloads to inspect the applied
-snapshot, and `getRuntimeStatus()` to see signal enablement, provider install
-state, fallback mode, and the last setup error without reading internal
-modules.
+Use `getRuntimeConfig()` after setup or runtime reloads to inspect the applied snapshot, and `getRuntimeStatus()` to see signal enablement, provider install state, fallback mode, and the last setup error without reading internal modules.
 
 ## React integration
 
@@ -230,43 +227,45 @@ The library is browser-compatible via conditional exports. OpenTelemetry provide
 
 Browser-specific options in `setupTelemetry()`:
 
-| Option | Effect |
-|--------|--------|
-| `captureToWindow: true` | Buffers structured logs to `window.__pinoLogs` for devtools inspection |
-| `consoleOutput: true` | Mirrors log output to `console.debug` / `console.log` / `console.warn` / `console.error` |
+| Option                  | Effect                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `captureToWindow: true` | Buffers structured logs to `window.__pinoLogs` for devtools inspection                   |
+| `consoleOutput: true`   | Mirrors log output to `console.debug` / `console.log` / `console.warn` / `console.error` |
 
 ## Configuration
 
 All options can be set programmatically via `setupTelemetry()` or via environment variables:
 
 <!-- BEGIN GENERATED CONFIG: typescript_summary -->
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity attached to all signals |
-| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
-| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Application version tag |
-| `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Master switch: when true, overrides event name strictness to on |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `PROVIDE_LOG_FORMAT` | `console` | Renderer: console, json, or pretty |
-| `PROVIDE_LOG_INCLUDE_TIMESTAMP` | `true` | Add ISO-8601 timestamp to each log event |
-| `PROVIDE_LOG_INCLUDE_CALLER` | `true` | Add filename and line number to each log event |
-| `PROVIDE_LOG_SANITIZE` | `true` | Enable PII/sensitive field redaction in log output |
-| `PROVIDE_LOG_PII_MAX_DEPTH` | `8` | Maximum nesting depth for PII/sensitive field traversal during sanitization |
-| `PROVIDE_LOG_CODE_ATTRIBUTES` | `false` | Attach code attributes to OTel log records |
-| `PROVIDE_LOG_PRETTY_KEY_COLOR` | `dim` | ANSI color name for keys in pretty format (see named colors below) |
-| `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format (empty = default) |
-| `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
-| `PROVIDE_LOG_MODULE_LEVELS` | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable the tracing signal and trace-provider setup (logs remain enabled) |
-| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP endpoint for logs |
-| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal OTLP headers for logs |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP endpoint for traces |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal OTLP headers for traces |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP endpoint for metrics |
-| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal OTLP headers for metrics |
+
+| Env var                               | Default           | Description                                                                 |
+| ------------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `PROVIDE_TELEMETRY_SERVICE_NAME`      | `provide-service` | Service identity attached to all signals                                    |
+| `PROVIDE_TELEMETRY_ENV`               | `dev`             | Deployment environment tag (e.g. dev, staging, prod)                        |
+| `PROVIDE_TELEMETRY_VERSION`           | `0.0.0`           | Application version tag                                                     |
+| `PROVIDE_TELEMETRY_STRICT_SCHEMA`     | `false`           | Master switch: when true, overrides event name strictness to on             |
+| `PROVIDE_LOG_LEVEL`                   | `INFO`            | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL                     |
+| `PROVIDE_LOG_FORMAT`                  | `console`         | Renderer: console, json, or pretty                                          |
+| `PROVIDE_LOG_INCLUDE_TIMESTAMP`       | `true`            | Add ISO-8601 timestamp to each log event                                    |
+| `PROVIDE_LOG_INCLUDE_CALLER`          | `true`            | Add filename and line number to each log event                              |
+| `PROVIDE_LOG_SANITIZE`                | `true`            | Enable PII/sensitive field redaction in log output                          |
+| `PROVIDE_LOG_PII_MAX_DEPTH`           | `8`               | Maximum nesting depth for PII/sensitive field traversal during sanitization |
+| `PROVIDE_LOG_CODE_ATTRIBUTES`         | `false`           | Attach code attributes to OTel log records                                  |
+| `PROVIDE_LOG_PRETTY_KEY_COLOR`        | `dim`             | ANSI color name for keys in pretty format (see named colors below)          |
+| `PROVIDE_LOG_PRETTY_VALUE_COLOR`      | `""`              | ANSI color name for values in pretty format (empty = default)               |
+| `PROVIDE_LOG_PRETTY_FIELDS`           | `""`              | Comma-separated field names to display in pretty format                     |
+| `PROVIDE_LOG_MODULE_LEVELS`           | `""`              | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING)  |
+| `PROVIDE_TRACE_ENABLED`               | `true`            | Enable the tracing signal and trace-provider setup (logs remain enabled)    |
+| `PROVIDE_TRACE_SAMPLE_RATE`           | `1.0`             | Trace sampling rate (0.0-1.0)                                               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`         | —                 | Shared OTLP endpoint (fallback for all signals)                             |
+| `OTEL_EXPORTER_OTLP_HEADERS`          | —                 | Shared OTLP headers (fallback for all signals)                              |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | —                 | Per-signal OTLP endpoint for logs                                           |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS`     | —                 | Per-signal OTLP headers for logs                                            |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | —                 | Per-signal OTLP endpoint for traces                                         |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`   | —                 | Per-signal OTLP headers for traces                                          |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | —                 | Per-signal OTLP endpoint for metrics                                        |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS`  | —                 | Per-signal OTLP headers for metrics                                         |
+
 <!-- END GENERATED CONFIG: typescript_summary -->
 
 ### Pretty renderer

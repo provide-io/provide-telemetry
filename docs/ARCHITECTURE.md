@@ -10,12 +10,12 @@
 ## High-Level Layers
 
 1. Public facade (`provide.telemetry`): stable imports and setup lifecycle.
-2. Configuration (`TelemetryConfig`): env-driven, strongly typed runtime config.
-3. Logging: structlog processors with contextvars-backed request/session propagation and optional OTLP log export.
-4. Tracing: OTel provider if available, no-op tracer fallback otherwise.
-5. Metrics: OTel meter provider if available, in-process fallback wrappers otherwise.
-6. ASGI/WebSocket adapters: request context extraction and propagation.
-7. Rust crate (`rust/`): guard-based context API, fallback facades, and optional `otel` feature wiring.
+1. Configuration (`TelemetryConfig`): env-driven, strongly typed runtime config.
+1. Logging: structlog processors with contextvars-backed request/session propagation and optional OTLP log export.
+1. Tracing: OTel provider if available, no-op tracer fallback otherwise.
+1. Metrics: OTel meter provider if available, in-process fallback wrappers otherwise.
+1. ASGI/WebSocket adapters: request context extraction and propagation.
+1. Rust crate (`rust/`): guard-based context API, fallback facades, and optional `otel` feature wiring.
 
 ## High-Level Component Flow
 
@@ -155,38 +155,38 @@ flowchart TD
 
 ## Subsystem Inventory
 
-| Module | Responsibility |
-|--------|---------------|
-| `__init__.py` | Public API facade, 76 exports |
-| `setup.py` | Lock-protected init/shutdown coordinator with rollback |
-| `config.py` | Pydantic-free dataclass config, env var parsing |
-| `runtime.py` | Hot-reload API, provider-change detection |
-| `logger/core.py` | Structlog pipeline, handler construction, OTel log export |
-| `logger/context.py` | Contextvars for request/session context |
-| `logger/processors.py` | Processor chain: schema, sampling, PII, standard fields |
-| `logger/pretty.py` | Pretty renderer with configurable colors |
-| `tracing/provider.py` | OTel TracerProvider or no-op fallback |
-| `tracing/context.py` | Contextvars for trace_id/span_id |
-| `tracing/decorators.py` | `@trace` async decorator |
-| `metrics/provider.py` | OTel MeterProvider or fallback |
-| `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
-| `metrics/instruments.py` | Re-export shim for Counter/Gauge/Histogram (delegates to `fallback.py`) |
-| `metrics/fallback.py` | In-process fallback Counter/Gauge/Histogram with sampling, backpressure, exemplar, and cardinality guard |
-| `classification.py` | Data classification engine with per-field sensitivity rules |
-| `consent.py` | Consent-aware telemetry collection gate |
-| `receipts.py` | Cryptographic redaction receipts for audit trails |
-| `schema/events.py` | Event name validation, required-key enforcement |
-| `sampling.py` | Per-signal probabilistic sampling with overrides |
-| `backpressure.py` | Bounded queue ticket system |
-| `resilience.py` | Retry, timeout, circuit breaker, ThreadPoolExecutor |
-| `pii.py` | PII rule engine with nested traversal |
-| `cardinality.py` | TTL-based attribute cardinality guards |
-| `health.py` | Self-observability counters and snapshot |
-| `propagation.py` | W3C traceparent/tracestate/baggage extraction |
-| `slo.py` | RED/USE metric helpers |
-| `exceptions.py` | TelemetryError, ConfigurationError |
-| `asgi/middleware.py` | ASGI middleware for request context |
-| `asgi/websocket.py` | WebSocket context helpers |
+| Module                   | Responsibility                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `__init__.py`            | Public API facade, 76 exports                                                                            |
+| `setup.py`               | Lock-protected init/shutdown coordinator with rollback                                                   |
+| `config.py`              | Pydantic-free dataclass config, env var parsing                                                          |
+| `runtime.py`             | Hot-reload API, provider-change detection                                                                |
+| `logger/core.py`         | Structlog pipeline, handler construction, OTel log export                                                |
+| `logger/context.py`      | Contextvars for request/session context                                                                  |
+| `logger/processors.py`   | Processor chain: schema, sampling, PII, standard fields                                                  |
+| `logger/pretty.py`       | Pretty renderer with configurable colors                                                                 |
+| `tracing/provider.py`    | OTel TracerProvider or no-op fallback                                                                    |
+| `tracing/context.py`     | Contextvars for trace_id/span_id                                                                         |
+| `tracing/decorators.py`  | `@trace` async decorator                                                                                 |
+| `metrics/provider.py`    | OTel MeterProvider or fallback                                                                           |
+| `metrics/api.py`         | `counter()`, `gauge()`, `histogram()` constructors                                                       |
+| `metrics/instruments.py` | Re-export shim for Counter/Gauge/Histogram (delegates to `fallback.py`)                                  |
+| `metrics/fallback.py`    | In-process fallback Counter/Gauge/Histogram with sampling, backpressure, exemplar, and cardinality guard |
+| `classification.py`      | Data classification engine with per-field sensitivity rules                                              |
+| `consent.py`             | Consent-aware telemetry collection gate                                                                  |
+| `receipts.py`            | Cryptographic redaction receipts for audit trails                                                        |
+| `schema/events.py`       | Event name validation, required-key enforcement                                                          |
+| `sampling.py`            | Per-signal probabilistic sampling with overrides                                                         |
+| `backpressure.py`        | Bounded queue ticket system                                                                              |
+| `resilience.py`          | Retry, timeout, circuit breaker, ThreadPoolExecutor                                                      |
+| `pii.py`                 | PII rule engine with nested traversal                                                                    |
+| `cardinality.py`         | TTL-based attribute cardinality guards                                                                   |
+| `health.py`              | Self-observability counters and snapshot                                                                 |
+| `propagation.py`         | W3C traceparent/tracestate/baggage extraction                                                            |
+| `slo.py`                 | RED/USE metric helpers                                                                                   |
+| `exceptions.py`          | TelemetryError, ConfigurationError                                                                       |
+| `asgi/middleware.py`     | ASGI middleware for request context                                                                      |
+| `asgi/websocket.py`      | WebSocket context helpers                                                                                |
 
 ## Strippable Governance Modules
 
@@ -194,11 +194,11 @@ The three governance modules — `classification`, `consent`, and `receipts` —
 
 The integration contract is **hook injection**: the PII engine in each language holds nullable hook variables (`_classificationHook`, `_receiptHook`). Governance modules register themselves into these hooks when present; when absent the hooks stay nil/null and the PII engine runs unchanged.
 
-| Language | How to exclude | CI verification |
-|----------|---------------|-----------------|
-| Rust | `cargo build --no-default-features` (removes `governance` Cargo feature) | `ci-strip-governance.yml` |
-| Go | `go build -tags nogovernance ./...` | `ci-strip-governance.yml` |
-| Python | Files are independently importable; core never imports them | `tests/test_strip_governance.py` |
+| Language   | How to exclude                                                            | CI verification                  |
+| ---------- | ------------------------------------------------------------------------- | -------------------------------- |
+| Rust       | `cargo build --no-default-features` (removes `governance` Cargo feature)  | `ci-strip-governance.yml`        |
+| Go         | `go build -tags nogovernance ./...`                                       | `ci-strip-governance.yml`        |
+| Python     | Files are independently importable; core never imports them               | `tests/test_strip_governance.py` |
 | TypeScript | Governance lives in isolated modules; consumers tree-shake unused exports | `tests/strip-governance.test.ts` |
 
 Governance symbols are marked `required: false` in `spec/telemetry-api.yaml`.

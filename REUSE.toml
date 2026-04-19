@@ -118,6 +118,9 @@ path = [
   "go/tests/integration/otel-output-go/collector.log",
   "tests/integration/otel-output-python/collector.log",
   "rust/tests/property_test.proptest-regressions",
+  ".trufflehog-exclude-paths.txt",
+  "rust/Cargo.lock",
+  "rust/README.md",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"

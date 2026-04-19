@@ -5,9 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # provide-telemetry/go
 
-Structured logging + OpenTelemetry traces and metrics for Go — feature parity
-with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry) Python and
-TypeScript packages.
+Structured logging + OpenTelemetry traces and metrics for Go — feature parity with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry) Python and TypeScript packages.
 
 ## Install
 
@@ -19,8 +17,7 @@ Requires Go 1.22+.
 
 ### Optional OTel peer dependencies
 
-To export traces and metrics to an OTLP endpoint (e.g. OpenObserve, Jaeger,
-Tempo), wire real SDK providers at setup time:
+To export traces and metrics to an OTLP endpoint (e.g. OpenObserve, Jaeger, Tempo), wire real SDK providers at setup time:
 
 ```go
 import (
@@ -32,8 +29,7 @@ tp := sdktrace.NewTracerProvider(/* exporters */)
 cfg, err := telemetry.SetupTelemetry(telemetry.WithTracerProvider(tp))
 ```
 
-When no providers are supplied the library degrades gracefully to no-op
-tracers and meters — it never panics or errors on missing OTel.
+When no providers are supplied the library degrades gracefully to no-op tracers and meters — it never panics or errors on missing OTel.
 
 ## Quick start
 
@@ -66,12 +62,12 @@ func main() {
 
 ### Setup
 
-| Export | Description |
-|--------|-------------|
-| `SetupTelemetry(opts...)` | Idempotent init from environment variables. Returns `*TelemetryConfig`. |
-| `ShutdownTelemetry(ctx)` | Flush and shut down all OTel providers. |
-| `ConfigFromEnv()` | Parse environment variables into a `*TelemetryConfig`. |
-| `DefaultTelemetryConfig()` | Return a config with all defaults applied. |
+| Export                     | Description                                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `SetupTelemetry(opts...)`  | Idempotent init from environment variables. Returns `*TelemetryConfig`. |
+| `ShutdownTelemetry(ctx)`   | Flush and shut down all OTel providers.                                 |
+| `ConfigFromEnv()`          | Parse environment variables into a `*TelemetryConfig`.                  |
+| `DefaultTelemetryConfig()` | Return a config with all defaults applied.                              |
 
 ### Logging
 
@@ -81,9 +77,7 @@ logger.Info("request.received.ok", slog.Int("status", 200))
 logger.Error("db.query.error", slog.String("table", "users"))
 ```
 
-Event names follow the DA(R)S pattern: `Event()` accepts exactly 3 segments
-(`domain.action.status`) or 4 segments (`domain.action.resource.status`).
-`EventName()` accepts 3–5 segments.
+Event names follow the DA(R)S pattern: `Event()` accepts exactly 3 segments (`domain.action.status`) or 4 segments (`domain.action.resource.status`). `EventName()` accepts 3–5 segments.
 
 ### Tracing
 
@@ -182,9 +176,7 @@ fmt.Println(cfg.ServiceName)
 fmt.Println(status.SetupDone, status.Providers.Traces, status.Fallback.Logs)
 ```
 
-Use `GetRuntimeConfig()` to see the applied config snapshot after setup or
-runtime reloads, and `GetRuntimeStatus()` to inspect provider install state,
-fallback mode, and the last setup error without digging into internals.
+Use `GetRuntimeConfig()` to see the applied config snapshot after setup or runtime reloads, and `GetRuntimeStatus()` to inspect provider install state, fallback mode, and the last setup error without digging into internals.
 
 ### Schema validation
 
@@ -218,24 +210,22 @@ func TestMyThing(t *testing.T) {
 
 All options can be set via environment variables:
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
-| `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment |
-| `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` |
-| `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
-| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
-| `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
+| Env var                          | Default           | Description                                              |
+| -------------------------------- | ----------------- | -------------------------------------------------------- |
+| `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity                                         |
+| `PROVIDE_TELEMETRY_ENV`          | `dev`             | Deployment environment                                   |
+| `PROVIDE_TELEMETRY_VERSION`      | `0.0.0`           | Service version                                          |
+| `PROVIDE_LOG_LEVEL`              | `INFO`            | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` |
+| `PROVIDE_LOG_FORMAT`             | `console`         | Output format: `console` / `json` / `pretty`             |
+| `PROVIDE_TRACE_ENABLED`          | `true`            | Enable tracing                                           |
+| `PROVIDE_TRACE_SAMPLE_RATE`      | `1.0`             | Trace sample rate `[0.0, 1.0]`                           |
+| `PROVIDE_METRICS_ENABLED`        | `true`            | Enable metrics                                           |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`    | —                 | OTLP base endpoint (e.g. `http://localhost:4318`)        |
+| `OTEL_EXPORTER_OTLP_HEADERS`     | —                 | Comma-separated `key=value` auth headers                 |
 
 ## Spec conformance
 
-This package implements every `required: true` symbol in
-[`spec/telemetry-api.yaml`](../spec/telemetry-api.yaml), with names converted
-to Go PascalCase per the spec's `naming_conventions.go` rule.
+This package implements every `required: true` symbol in [`spec/telemetry-api.yaml`](../spec/telemetry-api.yaml), with names converted to Go PascalCase per the spec's `naming_conventions.go` rule.
 
 Run the conformance validator:
 

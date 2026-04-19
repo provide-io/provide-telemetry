@@ -11,14 +11,11 @@ See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/com
 
 ## Core Environment Variables
 
-All environment variables with types, defaults, and descriptions are documented in the
-[Configuration Reference](CONFIGURATION.md). The most commonly set variables are
-`PROVIDE_TELEMETRY_SERVICE_NAME`, `PROVIDE_LOG_LEVEL`, and `PROVIDE_LOG_FORMAT`.
+All environment variables with types, defaults, and descriptions are documented in the [Configuration Reference](CONFIGURATION.md). The most commonly set variables are `PROVIDE_TELEMETRY_SERVICE_NAME`, `PROVIDE_LOG_LEVEL`, and `PROVIDE_LOG_FORMAT`.
 
 ## Event Naming Policy
 
-Canonical naming rules and examples live in [`docs/CONVENTIONS.md`](CONVENTIONS.md).
-Operationally, keep strict validation enabled unless you are in an explicit migration window.
+Canonical naming rules and examples live in [`docs/CONVENTIONS.md`](CONVENTIONS.md). Operationally, keep strict validation enabled unless you are in an explicit migration window.
 
 ## Failure Behavior
 
@@ -61,8 +58,7 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --m
 uv run python scripts/run_performance_smoke.py --iterations 300000
 ```
 
-Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.
-Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
+Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts. Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
 
 ## Mutation Policy Files
 
@@ -93,8 +89,7 @@ act -W .github/workflows/ci.yml workflow_dispatch -j quality \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
 ```
 
-For jobs that do not need Docker inside the job container (for example `docs-quality`), disable
-daemon socket bind-mount to avoid macOS/Colima mount issues:
+For jobs that do not need Docker inside the job container (for example `docs-quality`), disable daemon socket bind-mount to avoid macOS/Colima mount issues:
 
 ```bash
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
@@ -107,9 +102,8 @@ Document any socket/mount errors encountered.
 
 ## OpenObserve Validation
 
-After running `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` with the `OPENOBSERVE_*`
-env vars in place, verify telemetry landed:
+After running `uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q` with the `OPENOBSERVE_*` env vars in place, verify telemetry landed:
 
 1. Browse `http://localhost:5080/web/streams?org_identifier=default` and look for `provide-telemetry` streams.
-2. Search for `e2e.openobserve.span` or the metric stream name from `e2e/test_openobserve_e2e.py`.
-3. Rerun the examples in `examples/openobserve/` if nothing appears immediately, then refresh the UI.
+1. Search for `e2e.openobserve.span` or the metric stream name from `e2e/test_openobserve_e2e.py`.
+1. Rerun the examples in `examples/openobserve/` if nothing appears immediately, then refresh the UI.
