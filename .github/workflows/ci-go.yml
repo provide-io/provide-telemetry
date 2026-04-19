@@ -89,7 +89,11 @@ jobs:
         run: go vet ./...
 
   performance-smoke:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: go
@@ -98,12 +102,19 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
-      # Run all benchmarks once each (-benchtime=1x) so a hot-path benchmark
-      # going completely broken (compile error, panic) is caught in CI.
-      # Report-only — no threshold enforcement, mirrors the Python perf-smoke
-      # pattern; matches the reasoning in scripts/run_performance_smoke.py.
-      - name: Go bench (smoke, -benchtime=1x)
-        run: go test -bench=. -benchtime=1x -run=^$ .
+      # uv provides a consistent Python invocation across OSes for the
+      # perf_check.py + parse_go_bench.py pipeline. Both scripts use stdlib
+      # only, so no `uv sync` here.
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
+      # Run all benchmarks (-benchtime=100ms ≈ 1.5s total wall time) and pipe
+      # through parse_go_bench → perf_check, which compares each per-op timing
+      # against baselines/perf-go.json for this runner's OS bucket. Missing
+      # buckets exit 0 with a hint so seeding via CI is straightforward.
+      - name: Run perf gate
+        shell: bash
+        run: go test -bench=. -benchtime=100ms -run=^$ . | uv run --no-project python ../scripts/parse_go_bench.py | uv run --no-project python ../scripts/perf_check.py --lang go
 
   examples:
     runs-on: ubuntu-latest
