@@ -1,0 +1,12 @@
+{
+  "_about": "Per-operation perf budgets in nanoseconds for the Python implementation. measured = scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json. baseline_ns is the median measurement on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Update via `make perf-baseline-python` (Linux+macOS locally; Windows generated on CI workflow_dispatch).",
+  "macos-arm64": {
+    "event_name_ns": {"baseline_ns": 157.0, "tolerance_multiplier": 3.0},
+    "should_sample_ns": {"baseline_ns": 113.0, "tolerance_multiplier": 3.0},
+    "sanitize_ns": {"baseline_ns": 1371.0, "tolerance_multiplier": 3.0},
+    "trace_decorator_ns": {"baseline_ns": 3471.0, "tolerance_multiplier": 3.0},
+    "counter_add_ns": {"baseline_ns": 1655.0, "tolerance_multiplier": 3.0},
+    "histogram_record_ns": {"baseline_ns": 1663.0, "tolerance_multiplier": 3.0},
+    "health_snapshot_ns": {"baseline_ns": 1665.0, "tolerance_multiplier": 3.0}
+  }
+}
