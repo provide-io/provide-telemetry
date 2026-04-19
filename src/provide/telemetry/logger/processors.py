@@ -173,7 +173,11 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
     return _processor
 
 
-def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+_BACKPRESSURE_TICKET_KEY = "__provide_telemetry_backpressure_ticket__"
+
+
+def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    from provide.telemetry.backpressure import try_acquire
     from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
 
@@ -187,10 +191,40 @@ def apply_sampling(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any
     if not should_allow("logs", method_name):
         raise structlog.DropEvent()
     event_name = str(event_dict.get("event", ""))  # pragma: no mutate
-    if should_sample("logs", event_name):
-        increment_emitted("logs")
-        return event_dict
-    return {"event": "telemetry.log.dropped", "dropped_event": event_name}
+    if not should_sample("logs", event_name):
+        raise structlog.DropEvent()
+    ticket = try_acquire("logs")
+    if ticket is None:
+        raise structlog.DropEvent()  # backpressure full; dropped counter already incremented
+    increment_emitted("logs")
+    # Stash the ticket; release_backpressure_ticket (final processor, after the
+    # renderer) drops it. This bounds queue depth across the actual emit work
+    # — sanitization, caller capture, rendering — instead of releasing
+    # immediately as the original code did.
+    event_dict[_BACKPRESSURE_TICKET_KEY] = ticket
+    return event_dict
+
+
+def release_backpressure_ticket(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Release the backpressure ticket stashed by apply_sampling.
+
+    Positioned just BEFORE the renderer in the chain — the renderer consumes
+    event_dict and returns a string, after which the ticket would be
+    unreachable. Releasing here bounds the ticket across sanitization,
+    caller-capture, and any per-module level filtering. The remaining work
+    (renderer serialisation + handler I/O) runs without the ticket; both are
+    cheap compared to sanitization, and parity with TS/Go/Rust holds for
+    bounding the expensive PII path.
+
+    The level filter is positioned BEFORE apply_sampling so its DropEvent
+    path doesn't strand a ticket between acquire and this release.
+    """
+    from provide.telemetry.backpressure import release
+
+    ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
+    if ticket is not None:
+        release(ticket)
+    return event_dict
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
