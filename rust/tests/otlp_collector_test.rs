@@ -15,9 +15,25 @@ fn otlp_collector_smoke() {
     let _guard = acquire_test_state_lock();
     reset_telemetry_state();
 
-    if env::var("PROVIDE_TEST_OTLP_ENDPOINT").is_err() {
+    let Ok(endpoint) = env::var("PROVIDE_TEST_OTLP_ENDPOINT") else {
         eprintln!("PROVIDE_TEST_OTLP_ENDPOINT not set — skipping OTLP collector test");
         return;
+    };
+
+    // Enable each signal explicitly. Without these, the OTel install paths
+    // bail out as no-ops and nothing is exported to the collector — the
+    // workflow can't infer them just from the endpoint being set. Mirrors
+    // the Go test's `t.Setenv("PROVIDE_TRACE_ENABLED", "true")` pattern.
+    // SAFETY: tests are serialised via acquire_test_state_lock above, so
+    // mutating process-global env here cannot race other test threads.
+    unsafe {
+        env::set_var(
+            "PROVIDE_TELEMETRY_SERVICE_NAME",
+            "provide-telemetry-rust-integration",
+        );
+        env::set_var("PROVIDE_TRACE_ENABLED", "true");
+        env::set_var("PROVIDE_METRICS_ENABLED", "true");
+        env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", &endpoint);
     }
 
     setup_telemetry().expect("setup_telemetry should succeed");
