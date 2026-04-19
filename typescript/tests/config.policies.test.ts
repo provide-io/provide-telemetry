@@ -14,10 +14,14 @@ import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure'
 import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience';
 import { ConfigurationError } from '../src/exceptions';
 import {
+  awaitPropagationInit,
   isFallbackMode,
+  isPropagationInitDone,
   _disablePropagationALSForTest,
   _restorePropagationALSForTest,
+  _setPropagationInitDoneForTest,
 } from '../src/propagation';
+import { getHealthSnapshot, setSetupError } from '../src/health';
 import { resetTelemetryState } from '../src/testing';
 
 afterEach(() => {
@@ -147,6 +151,66 @@ describe('setupTelemetry ALS guard', () => {
       _restorePropagationALSForTest(savedAls);
       resetTelemetryState();
     }
+  });
+
+  it('defers ALS check and clears (no setupError) when init resolves with ALS available', async () => {
+    // Simulate the racing-window where ALS comes online BEFORE the deferred
+    // .then() fires — exercises the false branch of the deferred isFallbackMode check.
+    const savedAls = _disablePropagationALSForTest();
+    const savedDone = _setPropagationInitDoneForTest(false);
+    setSetupError(null);
+    try {
+      expect(isFallbackMode()).toBe(true);
+      expect(() => setupTelemetry()).not.toThrow();
+      // Restore ALS so the deferred callback observes the non-fallback state.
+      _restorePropagationALSForTest(savedAls);
+      await awaitPropagationInit();
+      await Promise.resolve();
+      expect(getHealthSnapshot().setupError).toBeNull();
+    } finally {
+      _setPropagationInitDoneForTest(savedDone);
+      _restorePropagationALSForTest(savedAls);
+      setSetupError(null);
+      resetTelemetryState();
+    }
+  });
+
+  it('defers ALS check (no throw, sets setupError) when init is still racing', async () => {
+    // Simulate the tsx-ESM race: ALS hasn't initialized yet AND init isn't done.
+    const savedAls = _disablePropagationALSForTest();
+    const savedDone = _setPropagationInitDoneForTest(false);
+    setSetupError(null);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(isFallbackMode()).toBe(true);
+      expect(isPropagationInitDone()).toBe(false);
+      // Must NOT throw — deferred check fires after awaitPropagationInit resolves.
+      expect(() => setupTelemetry()).not.toThrow();
+      // Drain the deferred .then() — awaitPropagationInit() resolves immediately
+      // here because the real init has long settled; the fake `done=false` just
+      // gates the sync branch in setupTelemetry.
+      await awaitPropagationInit();
+      // One more microtask for the .then() callback chained off it.
+      await Promise.resolve();
+      expect(getHealthSnapshot().setupError).toMatch(/AsyncLocalStorage unavailable/);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/AsyncLocalStorage unavailable/));
+    } finally {
+      warnSpy.mockRestore();
+      _setPropagationInitDoneForTest(savedDone);
+      _restorePropagationALSForTest(savedAls);
+      setSetupError(null);
+      resetTelemetryState();
+    }
+  });
+});
+
+describe('propagation init helpers', () => {
+  it('isPropagationInitDone returns true after module load', () => {
+    expect(isPropagationInitDone()).toBe(true);
+  });
+
+  it('awaitPropagationInit resolves to undefined', async () => {
+    await expect(awaitPropagationInit()).resolves.toBeUndefined();
   });
 });
 

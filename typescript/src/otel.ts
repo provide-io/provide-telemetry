@@ -71,12 +71,16 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { OTLPTraceExporter } = otlpTrace;
       const { resourceFromAttributes } = res;
 
-      const traceEndpoint = cfg.otlpTracesEndpoint ?? `${endpoint}/v1/traces`;
-      const traceHeaders = cfg.otlpTracesHeaders ?? headers;
-      const traceExporter = new OTLPTraceExporter({
-        url: traceEndpoint,
-        headers: traceHeaders,
-      });
+      if (tracesEndpoint) {
+        validateOtlpEndpoint(tracesEndpoint);
+        const traceHeaders = cfg.otlpTracesHeaders ?? headers;
+        const rawTraceExporter = new OTLPTraceExporter({
+          url: tracesEndpoint,
+          headers: traceHeaders,
+          timeoutMillis: cfg.exporterTracesTimeoutMs,
+        });
+        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
+        const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
       const provider = new BasicTracerProvider({
         resource: resourceFromAttributes({
@@ -105,12 +109,16 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
       const { OTLPMetricExporter } = otlpMetrics;
 
-      const metricsEndpoint = cfg.otlpMetricsEndpoint ?? `${endpoint}/v1/metrics`;
-      const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
-      const metricExporter = new OTLPMetricExporter({
-        url: metricsEndpoint,
-        headers: metricsHeaders,
-      });
+      if (metricsEndpoint) {
+        validateOtlpEndpoint(metricsEndpoint);
+        const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
+        const rawMetricExporter = new OTLPMetricExporter({
+          url: metricsEndpoint,
+          headers: metricsHeaders,
+          timeoutMillis: cfg.exporterMetricsTimeoutMs,
+        });
+        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
+        const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
 
       const meterProvider = new MeterProvider({
         readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
