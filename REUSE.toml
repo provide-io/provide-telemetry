@@ -99,6 +99,7 @@ path = [
   ".pymutant-state/**",
   "typescript/package-lock.json",
   "tests/memray/baselines.json",
+  "baselines/**",
   ".playwright-mcp/**",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"

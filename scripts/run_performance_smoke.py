@@ -7,10 +7,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from statistics import median
 
 from provide.telemetry import event_name
@@ -142,6 +143,11 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=200_000, help="Loop iterations per benchmark.")
     parser.add_argument("--runs", type=int, default=1, help="Number of repeated benchmark runs; median is evaluated.")
     parser.add_argument("--enforce", action="store_true", help="Fail if any configured threshold is exceeded.")
+    parser.add_argument(
+        "--emit-json",
+        action="store_true",
+        help="Emit a single flat JSON object of {op_name: ns_per_op} suitable for piping into scripts/perf_check.py.",
+    )
     parser.add_argument("--max-event-name-ns", type=float, default=2_500.0)
     parser.add_argument("--max-should-sample-ns", type=float, default=4_000.0)
     parser.add_argument("--max-sanitize-ns", type=float, default=6_500.0)
@@ -160,6 +166,10 @@ def main() -> int:
     result = run_benchmarks_stable(args.iterations, args.runs)
     ci_detected = bool(os.getenv("CI"))
     threshold_multiplier = args.ci_threshold_multiplier if ci_detected else 1.0
+    if args.emit_json:
+        # Flat {op_name: ns_per_op} blob — consumed by scripts/perf_check.py.
+        print(json.dumps({k: round(v, 2) for k, v in asdict(result).items()}))
+        return 0
     print(
         {
             "iterations": args.iterations,
