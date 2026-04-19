@@ -4,37 +4,31 @@
 //
 //! Per-export resilience wrappers for OTel SDK exporters.
 //!
-//! ## Why this duplicates the loop in `resilience.rs`
+//! ## Why this still has its own loop body (`run_resilience_loop`)
 //!
-//! The generic [`crate::resilience::run_with_resilience`] requires
-//! `F: Fn() -> Fut` with `Fut: Future<Output = Result<T, TelemetryError>>`.
-//! Two concrete obstacles prevent straight reuse from the exporter traits:
+//! The generic [`crate::resilience::run_with_resilience`] is parameterised
+//! over `Result<T, TelemetryError>`. The OTel SDK exporter traits return
+//! [`OTelSdkResult`] (`Result<(), OTelSdkError>`) and expect specific
+//! variants (`Timeout(Duration)`, `InternalFailure(String)`) for wrapper-
+//! imposed timeouts. Bridging those at every callsite would push more
+//! mapping code into the wrappers than the loop body itself contains.
 //!
-//! 1. `PushMetricExporter::export` receives `&ResourceMetrics` and the type
-//!    does not implement `Clone`, so a `Fn` closure that clones the batch per
-//!    retry cannot be constructed. `SpanData` and `LogRecord` *are* `Clone`,
-//!    so a partial reuse (traces/logs only) would split the policy loop
-//!    across three call sites instead of consolidating it — strictly worse
-//!    for drift risk than the current single inline loop.
-//! 2. The OTel result type is [`OTelSdkResult`] (`Result<(), OTelSdkError>`),
-//!    not [`crate::errors::TelemetryError`], and the variants the SDK expects
-//!    (`Timeout(Duration)`, `InternalFailure(String)`) would need bespoke
-//!    mapping on every call site.
+//! All three OTel exporter wrappers (Span, Metric, Log) now share a single
+//! loop body — `run_resilience_loop` — even though `LogBatch<'_>` borrows
+//! its data: the Log wrapper rebuilds the batch inside an async-block
+//! closure per attempt, so the future state machine owns the `refs` slice
+//! for the duration of each `export()` call.
 //!
-//! Rather than refactor `run_with_resilience` to support `FnOnce` plus a
-//! second generic error type (which would complicate the public API consumed
-//! by non-exporter callers such as scheduled flush helpers), this module
-//! inlines the same loop body and coordinates through the shared
-//! `POLICIES` + `CIRCUITS` static maps in `resilience.rs`. The helper hooks
-//! [`_record_circuit_failure_for_wrappers`] /
-//! [`_record_circuit_success_for_wrappers`] keep the state-update logic in a
-//! single place so the two loops cannot drift on that front.
-//!
-//! Invariant: any change to retry/backoff/timeout/circuit-breaker semantics
-//! MUST be applied in both `run_with_resilience` *and* `run_resilience_loop`.
-//! The existing test suite in this module exercises the same matrix of cases
-//! as `tests/resilience/` (success, fail-open drop, fail-closed surface,
-//! retries, circuit trip, shutdown/flush) to catch any divergence.
+//! State mutations (`_record_circuit_failure_for_wrappers`,
+//! `_record_circuit_success_for_wrappers`,
+//! `_check_and_start_probe_for_wrappers`) live in `resilience.rs` and are
+//! shared between this loop and `run_with_resilience` — the breaker
+//! semantics cannot drift between the two files. Only the loop scaffolding
+//! (timeout enforcement, backoff, retry counting) is duplicated, and any
+//! semantic change to it MUST be mirrored in both files. The test suites
+//! in this module and `tests/resilience/` exercise the same matrix
+//! (success, fail-open drop, fail-closed surface, retries, circuit trip,
+//! shutdown/flush) to catch any divergence.
 //!
 //! The wrapper reads `ExporterPolicy` and circuit state on every `export()`
 //! call, so hot-reloaded policies take effect immediately — the same guarantee
@@ -220,77 +214,6 @@ impl<E: SpanExporter> SpanExporter for ResilientSpanExporter<E> {
     }
 }
 
-// ── LogExporter-specific retry loop ──────────────────────────────────────────
-//
-// `LogBatch<'_>` borrows its data, which prevents building a re-entrant
-// `Fn() -> Fut` closure around it. Instead we reconstruct the LogBatch from
-// the owned Vec on each attempt inside a specialized async function.
-
-async fn run_log_resilience_loop<E: LogExporter>(
-    signal: Signal,
-    policy: &ExporterPolicy,
-    owned: &[(
-        opentelemetry_sdk::logs::SdkLogRecord,
-        opentelemetry::InstrumentationScope,
-    )],
-    exporter: &E,
-) -> ResilienceOutcome {
-    let timeout = Duration::from_secs_f64(policy.timeout_seconds.max(0.0));
-    if !timeout.is_zero() && circuit_gate(signal) {
-        return if policy.fail_open {
-            ResilienceOutcome::FailOpenDrop
-        } else {
-            ResilienceOutcome::FailClosedOpen
-        };
-    }
-
-    let max_attempts = policy.retries + 1;
-    let mut last_err = String::from("no attempts made");
-
-    for attempt in 0..max_attempts {
-        if attempt > 0 {
-            if policy.backoff_seconds > 0.0 {
-                tokio::time::sleep(Duration::from_secs_f64(policy.backoff_seconds)).await;
-            }
-            increment_retries(signal, 1);
-        }
-
-        let refs: Vec<(
-            &opentelemetry_sdk::logs::SdkLogRecord,
-            &opentelemetry::InstrumentationScope,
-        )> = owned.iter().map(|(r, s)| (r, s)).collect();
-        let rebatch = LogBatch::new(&refs);
-
-        let started = Instant::now();
-        let (result, wrapper_timeout) = if timeout.is_zero() {
-            (exporter.export(rebatch).await, false)
-        } else {
-            match tokio::time::timeout(timeout, exporter.export(rebatch)).await {
-                Ok(inner) => (inner, false),
-                Err(_) => (Err(OTelSdkError::Timeout(timeout)), true),
-            }
-        };
-
-        match result {
-            Ok(()) => {
-                on_export_success(signal, started);
-                return ResilienceOutcome::Success;
-            }
-            Err(err) => {
-                let is_timeout = wrapper_timeout || matches!(err, OTelSdkError::Timeout(_));
-                on_export_failure(signal, is_timeout);
-                last_err = format!("{err}");
-            }
-        }
-    }
-
-    if policy.fail_open {
-        ResilienceOutcome::FailOpenExhausted
-    } else {
-        ResilienceOutcome::FailClosedExhausted(last_err)
-    }
-}
-
 // ── LogExporter wrapper ───────────────────────────────────────────────────────
 
 /// Wraps any `LogExporter` so that every `export()` call runs under the
@@ -324,9 +247,18 @@ impl<E: LogExporter> LogExporter for ResilientLogExporter<E> {
         )> = batch.iter().map(|(r, s)| (r.clone(), s.clone())).collect();
 
         let policy = get_exporter_policy(Signal::Logs).unwrap_or_default();
-        // Inline retry loop — run_resilience_loop requires Fn() -> Fut, but
-        // the LogBatch lifetime prevents building a re-borrows in a closure.
-        let outcome = run_log_resilience_loop(Signal::Logs, &policy, &owned, &self.inner).await;
+        // Reconstruct the borrowed LogBatch inside an async block per attempt —
+        // the future state machine owns `refs` for the duration of `export()`,
+        // so the closure satisfies `Fn() -> Fut` despite the borrowed batch.
+        let outcome = run_resilience_loop(Signal::Logs, &policy, || async {
+            let refs: Vec<(
+                &opentelemetry_sdk::logs::SdkLogRecord,
+                &opentelemetry::InstrumentationScope,
+            )> = owned.iter().map(|(r, s)| (r, s)).collect();
+            let rebatch = LogBatch::new(&refs);
+            self.inner.export(rebatch).await
+        })
+        .await;
         outcome_to_sdk_result(outcome)
     }
 
