@@ -135,8 +135,12 @@ export async function runWithResilience<T>(
   // Circuit breaker check.
   const failField = _exportFailuresField(signal);
   const retryField = _retriesField(signal);
+  // Only consult the breaker when timeout enforcement is on. Mirrors Python
+  // (resilience.py:177) and Go (resilience.go:170): when timeout=0 the policy
+  // explicitly opts out of timeout-driven failure accounting, so the breaker
+  // has no signal to act on and must not reject callers.
   // Stryker disable next-line ConditionalExpression
-  if (_consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
+  if (policy.timeoutMs > 0 && _consecutiveTimeouts[signal] >= CIRCUIT_BREAKER_THRESHOLD) {
     // Reject concurrent callers while a half-open probe is already in flight.
     if (_halfOpenProbing[signal]) {
       _incrementHealth(failField);
