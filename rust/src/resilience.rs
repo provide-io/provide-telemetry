@@ -314,3 +314,7 @@ pub fn _reset_resilience_for_tests() {
 #[cfg(test)]
 #[path = "resilience_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resilience_inner_callback_tests.rs"]
+mod inner_callback_tests;
