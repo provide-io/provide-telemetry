@@ -182,14 +182,24 @@ jobs:
           docker rm otelcol || true
 
   performance-smoke:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
       - run: uv sync --group dev --extra otel
-      - run: uv run python scripts/run_performance_smoke.py --iterations 300000
+      # Pipe runner output through perf_check.py — compares each measurement
+      # against baselines/perf-python.json for this runner's OS bucket. When a
+      # bucket is missing (e.g. a fresh Windows runner without a baseline) the
+      # gate exits 0 with a hint so the operator can seed it.
+      - name: Run perf gate
+        shell: bash
+        run: uv run python scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json | uv run python scripts/perf_check.py --lang python
 
   memory-regression:
     runs-on: ubuntu-24.04
