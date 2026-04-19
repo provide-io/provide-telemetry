@@ -123,13 +123,23 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             name="typescript",
             label="TypeScript",
             check_cmd=["node", "--version"],
-            # Run both parity files counted by check_fixture_coverage.py:
-            #   tests/parity.test.ts  — core parity suite
-            #   tests/endpoint.test.ts — endpoint-validation parity
+            # Run all parity files counted by check_fixture_coverage.py:
+            #   tests/parity.test.ts          — core parity suite
+            #   tests/parity.fixtures.test.ts — extra fixture-category cases
+            #                                   (split out of parity.test.ts to
+            #                                    keep both files under 500 LOC)
+            #   tests/endpoint.test.ts        — endpoint-validation parity
             # The whole test directory is NOT used to avoid attributing unrelated
             # failures to the parity gate.
             run_cmds=[
-                ["npx", "vitest", "run", "tests/parity.test.ts", "tests/endpoint.test.ts"],
+                [
+                    "npx",
+                    "vitest",
+                    "run",
+                    "tests/parity.test.ts",
+                    "tests/parity.fixtures.test.ts",
+                    "tests/endpoint.test.ts",
+                ],
             ],
             cwd=repo / "typescript",
         ),
