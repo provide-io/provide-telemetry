@@ -39,6 +39,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     ],
     "typescript": [
         _REPO_ROOT / "typescript" / "tests" / "parity.test.ts",
+        _REPO_ROOT / "typescript" / "tests" / "parity.fixtures.test.ts",
         _REPO_ROOT / "typescript" / "tests" / "endpoint.test.ts",
         _REPO_ROOT / "spec" / "probes" / "emit_log_typescript.ts",
     ],
