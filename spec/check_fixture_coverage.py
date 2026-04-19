@@ -58,6 +58,7 @@ _LANGUAGE_FILES: dict[str, list[Path]] = {
     ],
     "rust": [
         _REPO_ROOT / "rust" / "tests" / "parity_test.rs",
+        _REPO_ROOT / "rust" / "tests" / "parity_extra_test.rs",
         _REPO_ROOT / "rust" / "src" / "otel" / "endpoint.rs",
     ],
 }
@@ -123,11 +124,7 @@ def _category_variants(category: str) -> list[str]:
 
 def _category_search_terms(category: str) -> list[str]:
     """Return all content terms that count as coverage for a category."""
-    return list(
-        dict.fromkeys(
-            [*_category_variants(category), *_CATEGORY_CONTENT_MARKERS.get(category, ())]
-        )
-    )
+    return list(dict.fromkeys([*_category_variants(category), *_CATEGORY_CONTENT_MARKERS.get(category, ())]))
 
 
 def _category_mentioned(category: str, corpus: str) -> bool:
