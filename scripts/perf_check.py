@@ -80,7 +80,12 @@ def evaluate(
             missing.append(op_name)
             continue
         baseline_ns = float(entry["baseline_ns"])
-        tolerance = float(entry.get("tolerance_multiplier", 3.0))
+        # Default tolerance is 5.0 — matches the floor used in baselines/*.json.
+        # Cloud CI runners (especially macOS) have wide variance; tighter
+        # bounds would flake constantly. Per-op overrides can go higher (10x
+        # for noise-floor or single-shot measurements) but should rarely go
+        # lower without strong evidence.
+        tolerance = float(entry.get("tolerance_multiplier", 5.0))
         budget = baseline_ns * tolerance
         if measured_ns > budget:
             failures.append(

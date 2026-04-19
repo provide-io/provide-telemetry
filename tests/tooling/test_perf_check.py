@@ -94,27 +94,27 @@ def test_parse_measurements_picks_last_object_with_trailing_text() -> None:
 # ── evaluate ──────────────────────────────────────────────────────────────────
 
 
-def _bucket(op: str, baseline_ns: float, tolerance: float = 3.0) -> dict[str, dict[str, float]]:
+def _bucket(op: str, baseline_ns: float, tolerance: float = 5.0) -> dict[str, dict[str, float]]:
     return {op: {"baseline_ns": baseline_ns, "tolerance_multiplier": tolerance}}
 
 
 def test_evaluate_passes_within_budget() -> None:
-    failures, missing = perf_check.evaluate({"event_name_ns": 200.0}, _bucket("event_name_ns", 100.0))
+    failures, missing = perf_check.evaluate({"event_name_ns": 400.0}, _bucket("event_name_ns", 100.0))
     assert failures == []
     assert missing == []
 
 
 def test_evaluate_fails_outside_budget() -> None:
-    # 400ns measured > 100 * 3.0 = 300ns budget
-    failures, _ = perf_check.evaluate({"event_name_ns": 400.0}, _bucket("event_name_ns", 100.0))
+    # 600ns measured > 100 * 5.0 = 500ns budget
+    failures, _ = perf_check.evaluate({"event_name_ns": 600.0}, _bucket("event_name_ns", 100.0))
     assert len(failures) == 1
     assert "event_name_ns" in failures[0]
-    assert "300.0" in failures[0]
+    assert "500.0" in failures[0]
 
 
 def test_evaluate_passes_at_exact_budget_boundary() -> None:
     # Boundary check: equal to budget must pass (strict > comparison).
-    failures, _ = perf_check.evaluate({"event_name_ns": 300.0}, _bucket("event_name_ns", 100.0))
+    failures, _ = perf_check.evaluate({"event_name_ns": 500.0}, _bucket("event_name_ns", 100.0))
     assert failures == []
 
 
@@ -124,13 +124,13 @@ def test_evaluate_reports_missing_entries() -> None:
 
 
 def test_evaluate_uses_default_tolerance_when_unset() -> None:
-    # No tolerance_multiplier in entry → comparator defaults to 3.0.
+    # No tolerance_multiplier in entry → comparator defaults to 5.0.
     bucket = {"op": {"baseline_ns": 100.0}}
-    # 250ns measured ≤ 100 x 3.0 = 300ns budget → pass
-    failures, _ = perf_check.evaluate({"op": 250.0}, bucket)
+    # 450ns measured ≤ 100 x 5.0 = 500ns budget → pass
+    failures, _ = perf_check.evaluate({"op": 450.0}, bucket)
     assert failures == []
-    # 350ns measured > 300ns budget → fail
-    failures, _ = perf_check.evaluate({"op": 350.0}, bucket)
+    # 600ns measured > 500ns budget → fail
+    failures, _ = perf_check.evaluate({"op": 600.0}, bucket)
     assert len(failures) == 1
 
 
