@@ -29,11 +29,15 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15]
-        features: ["", "--features otel"]
+        features: ["", "--no-default-features", "--features otel", "--features otel-grpc"]
         exclude:
-          # Full feature matrix on Linux; default-only on Windows/macOS
+          # Full feature matrix on Linux; default-only on Windows/macOS to keep CI cost bounded.
+          - os: windows-2025
+            features: "--no-default-features"
           - os: windows-2025
             features: "--features otel"
+          - os: macos-15
+            features: "--no-default-features"
           - os: macos-15
             features: "--features otel"
     runs-on: ${{ matrix.os }}
@@ -135,3 +139,22 @@ jobs:
         run: |
           docker stop otelcol-rust || true
           docker rm otelcol-rust || true
+
+  performance-smoke:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      # Run criterion benchmarks in --quick mode (single-shot timings, no
+      # statistical analysis). Report-only — no threshold enforcement, mirrors
+      # the Python perf-smoke pattern. Exists to catch a hot-path benchmark
+      # going completely broken (e.g. compile error after a refactor) so a
+      # silent regression cannot hide in the Rust implementation.
+      - name: Cargo bench (smoke, --quick)
+        run: cargo bench --bench hot_path -- --quick
