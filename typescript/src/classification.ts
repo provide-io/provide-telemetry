@@ -93,7 +93,7 @@ export function getClassificationPolicy(): ClassificationPolicy {
 }
 
 /** Return the DataClass label for a key if a rule matches, else null. */
-export function _classifyField(key: string, _value: unknown): string | null {
+export function _classifyField(key: string, _value: unknown): DataClass | null {
   for (const rule of _rules) {
     if (rule.compiled.test(key)) {
       return rule.classification;
@@ -104,7 +104,7 @@ export function _classifyField(key: string, _value: unknown): string | null {
 
 /** Public convenience wrapper for key classification. */
 export function classifyKey(key: string, value?: unknown): DataClass | null {
-  return _classifyField(key, value) as DataClass | null;
+  return _classifyField(key, value);
 }
 
 /** Reset all classification state and remove the hook (test helper). */
