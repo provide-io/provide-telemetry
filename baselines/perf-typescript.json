@@ -1,0 +1,10 @@
+{
+  "_about": "Per-operation perf budgets in nanoseconds for the TypeScript implementation. measured = npx tsx scripts/perf-smoke.ts --emit-json. baseline_ns is the median measurement on the listed runner; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. import() is a single-shot measurement subject to high variance (cold cache, FS), so it gets a generous 5x tolerance.",
+  "macos-arm64": {
+    "import()":      {"baseline_ns": 57500000, "tolerance_multiplier": 5.0},
+    "logger.info()": {"baseline_ns": 7,        "tolerance_multiplier": 5.0},
+    "counter.add(1)":{"baseline_ns": 67,       "tolerance_multiplier": 3.0},
+    "withTrace()":   {"baseline_ns": 5100,     "tolerance_multiplier": 3.0},
+    "sanitize()":    {"baseline_ns": 830,      "tolerance_multiplier": 3.0}
+  }
+}
