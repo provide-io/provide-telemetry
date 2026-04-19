@@ -45,6 +45,11 @@ export type PropagationALS = {
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _als: PropagationALS | null = null;
 let _AlsConstructor: (new () => PropagationALS) | null = null;
+// `_propagationInitDone` flips to true once the init has reached a definitive
+// state (ALS attached, OR known-unavailable). Callers like setupTelemetry
+// distinguish "still racing" (defer the check) from "settled" (act on it).
+let _propagationInitDone = false;
+let _propagationInitPromise: Promise<void> = Promise.resolve();
 // Stryker disable BlockStatement: module-level init block runs once at import time — cannot be tested by unit tests
 //
 // Three load environments must be supported:
@@ -66,13 +71,14 @@ let _AlsConstructor: (new () => PropagationALS) | null = null;
       };
       _AlsConstructor = als.AsyncLocalStorage;
       _als = new _AlsConstructor();
+      _propagationInitDone = true;
       return;
     }
   } catch {
     // CJS path failed (e.g. browserified bundle where require throws) —
     // fall through to async import.
   }
-  void (async () => {
+  _propagationInitPromise = (async () => {
     try {
       const als = (await import('node:async_hooks')) as {
         AsyncLocalStorage: new () => PropagationALS;
@@ -81,10 +87,34 @@ let _AlsConstructor: (new () => PropagationALS) | null = null;
       _als = new _AlsConstructor();
     } catch {
       // node:async_hooks unresolvable — leave _als null and use fallback.
+    } finally {
+      _propagationInitDone = true;
     }
   })();
 })();
 // Stryker restore BlockStatement
+
+/**
+ * Has the AsyncLocalStorage init reached a definitive state?
+ * - In CJS (sync require), this is true synchronously after module load.
+ * - In ESM Node, this flips to true after the async `import('node:async_hooks')`
+ *   resolves (typically the next microtask).
+ * - In browsers/workers, this becomes true after the failed import is caught.
+ *
+ * Used by setupTelemetry to distinguish "ALS unavailable, fail loud" from
+ * "ALS init still racing, defer the check".
+ */
+export function isPropagationInitDone(): boolean {
+  return _propagationInitDone;
+}
+
+/**
+ * Resolves when the AsyncLocalStorage init has reached a definitive state.
+ * Always-resolved in the CJS path; awaits the dynamic import in the ESM path.
+ */
+export function awaitPropagationInit(): Promise<void> {
+  return _propagationInitPromise;
+}
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
 // Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
