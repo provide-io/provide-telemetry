@@ -24,7 +24,8 @@ use crate::config::TelemetryConfig;
 use crate::context::{set_trace_context_internal, ContextGuard};
 use crate::errors::TelemetryError;
 
-use super::endpoint::{resolve_protocol, OtlpProtocol};
+use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
+use super::resilient::ResilientSpanExporter;
 
 static TRACER_PROVIDER: OnceLock<Arc<SdkTracerProvider>> = OnceLock::new();
 
@@ -87,7 +88,7 @@ pub(super) fn install_tracer_provider(
 
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_batch_exporter(exporter)
+        .with_batch_exporter(ResilientSpanExporter::new(exporter))
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
