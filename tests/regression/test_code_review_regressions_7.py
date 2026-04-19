@@ -78,6 +78,12 @@ class TestSchemaRejectDoesNotBumpEmittedLogs:
         set_sampling_policy("logs", SamplingPolicy(default_rate=1.0))
         reset_health_for_tests()
         result = apply_sampling(None, "info", {"event": "ok.test"})
+        # apply_sampling now stashes the backpressure ticket in event_dict for
+        # release_backpressure_ticket to release later. Strip the sentinel key
+        # before comparing payload identity.
+        from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+
+        result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "ok.test"}
         assert get_health_snapshot().emitted_logs == 1
 

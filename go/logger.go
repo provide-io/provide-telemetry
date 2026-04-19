@@ -173,11 +173,27 @@ func (h *_telemetryHandler) applySchema(r slog.Record) error {
 	return nil
 }
 
-// applyPII sanitizes all record attributes through the PII engine.
+// applyPII sanitizes record attributes AND the message string through the PII
+// engine. The message is included under a sentinel key so the engine's
+// value-based secret-pattern detectors run against it; without this, secrets
+// embedded directly in the log message (e.g. log.Info("token AKIA…")) leak
+// verbatim while attribute payloads are redacted.
+const _piiMessageSentinelKey = "__provide_telemetry_message__"
+
 func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 	payload := _attrsToMap(r)
+	payload[_piiMessageSentinelKey] = r.Message
 	sanitized := SanitizePayload(payload, h.cfg.Logging.Sanitize, 0)
-	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	sanitizedMessage, ok := sanitized[_piiMessageSentinelKey].(string)
+	if !ok {
+		// Sanitizer dropped the sentinel (drop action) or replaced the value
+		// with a non-string. Fall back to the raw message rather than emitting
+		// an empty one.
+		sanitizedMessage = r.Message
+	}
+	delete(sanitized, _piiMessageSentinelKey)
+
+	nr := slog.NewRecord(r.Time, r.Level, sanitizedMessage, r.PC)
 	for _, a := range _mapToAttrs(sanitized) {
 		nr.AddAttrs(a)
 	}

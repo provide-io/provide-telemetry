@@ -26,17 +26,19 @@ def _effective_workers(max_workers: int | None, passthrough: list[str]) -> int:
     return 1
 
 
-def _build_pytest_cmd(max_workers: int | None, passthrough: list[str]) -> list[str]:
+def _build_pytest_args(max_workers: int | None, passthrough: list[str]) -> list[str]:
+    """Build the args list passed to pytest.main(). Reflects exactly what runs."""
     workers = _effective_workers(max_workers, passthrough)
-    return ["uv", "run", "pytest", "-n", str(workers), *passthrough]
+    return ["-n", str(workers), *passthrough]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run pytest with worker count capped at half CPU count.")
     parser.add_argument("--max-workers", type=int, default=None, help="Requested worker count before half-CPU cap.")
     args, passthrough = parser.parse_known_args()
-    cmd = _build_pytest_cmd(args.max_workers, passthrough)
-    pytest_args = cmd[3:]
+    pytest_args = _build_pytest_args(args.max_workers, passthrough)
+    # Print what we actually run (in-process via pytest.main), not a misleading
+    # external `uv run pytest` line that was never executed.
     print("+", " ".join(["pytest", *pytest_args]))
     return int(pytest.main(pytest_args))
 
