@@ -170,11 +170,12 @@ jobs:
         run: docker logs otelcol-go || true
       - name: Capture collector logs
         run: docker logs otelcol-go > ../tests/integration/otel-output-go/collector.log 2>&1
+      # Poll the collector log until every required signal name appears, with
+      # a 30s deadline (see ci/verify-collector-signals.sh for rationale).
       - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.collector.span" ../tests/integration/otel-output-go/collector.log
-          grep -q "integration.collector.requests" ../tests/integration/otel-output-go/collector.log
-          grep -q "integration.collector.log" ../tests/integration/otel-output-go/collector.log
+        env:
+          OTELCOL_CONTAINER: otelcol-go
+        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-go/collector.log integration.collector.span integration.collector.requests integration.collector.log
       - name: Stop collector
         if: always()
         run: |

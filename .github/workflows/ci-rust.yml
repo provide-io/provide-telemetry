@@ -104,11 +104,13 @@ jobs:
         run: docker logs otelcol-rust || true
       - name: Capture collector logs
         run: docker logs otelcol-rust > ../tests/integration/otel-output-rust/collector.log 2>&1
+      # Poll the collector log until every required signal name appears, with
+      # a 30s deadline. Avoids a race where the test exits before the collector
+      # has flushed all OTLP requests to its stdout (observed on ubuntu-latest).
       - name: Verify collector exported all signals
-        run: |
-          grep -q "integration.collector.span" ../tests/integration/otel-output-rust/collector.log
-          grep -q "integration.collector.requests" ../tests/integration/otel-output-rust/collector.log
-          grep -q "integration.collector.log" ../tests/integration/otel-output-rust/collector.log
+        env:
+          OTELCOL_CONTAINER: otelcol-rust
+        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-rust/collector.log integration.collector.span integration.collector.requests integration.collector.log
       - name: Stop collector
         if: always()
         run: |
