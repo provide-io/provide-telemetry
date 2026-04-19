@@ -153,3 +153,6 @@ node_modules/
 *.tgz
 *.whl
 # Stray npm/vite artifacts created at repo root by some tooling runs
+
+# Tool output / generated artifacts
+**/collector.log
