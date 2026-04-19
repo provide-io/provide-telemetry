@@ -26,13 +26,35 @@ if TYPE_CHECKING:
 def _shared() -> tuple[type[ProbeRunner], frozenset[str], object, object, object, object, object]:
     """Lazy lookup of shared helpers from parity_probe_support.
 
-    Resolves the support module via ``sys.modules`` first (matching by file
-    path) so that callers who loaded ``parity_probe_support`` under an alias
-    — e.g. via ``importlib.util.spec_from_file_location`` in tooling/tests —
-    get the same module instance, preserving monkeypatches and shared state.
-    Falls back to a canonical import if no aliased copy is loaded yet.
+    Resolution order (deterministic):
+      1. The canonical ``parity_probe_support`` entry in ``sys.modules`` if
+         present — matches Python's default import semantics, so existing
+         callers that loaded the module canonically see no behavior change.
+      2. Any module loaded under an alias (e.g. via
+         ``importlib.util.spec_from_file_location`` in tooling/tests) whose
+         ``__file__`` ends with ``parity_probe_support.py``. This preserves
+         monkeypatches applied to the aliased module instead of triggering
+         a fresh canonical import that would create a duplicate module
+         instance.
+      3. Fallback to a fresh canonical ``from parity_probe_support import …``.
+
+    Preferring (1) over (2) when both are loaded avoids the ambiguity of
+    "which copy wins" — callers that intentionally use an alias should not
+    co-load the canonical name.
     """
     import sys
+
+    canonical = sys.modules.get("parity_probe_support")
+    if canonical is not None:
+        return (
+            canonical.ProbeRunner,
+            canonical._OTEL_REQUIRED_CASE_IDS,
+            canonical._compare_outputs,
+            canonical._extract_json_line,
+            canonical._has_otel_stack,
+            canonical._normalize_log_record,
+            canonical._probe_env,
+        )
 
     target = "parity_probe_support.py"
     for mod in list(sys.modules.values()):

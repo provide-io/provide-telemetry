@@ -366,3 +366,4 @@ fn resilience_test_zero_timeout_bypasses_circuit_gate() {
         "timeout=0 must bypass the gate even when breaker is open"
     );
 }
+
