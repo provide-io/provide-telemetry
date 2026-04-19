@@ -40,12 +40,11 @@ fn otlp_collector_smoke() {
     }
 
     // OTel's HTTP exporter dispatches its background BSP/PMR/LRP work via the
-    // ambient tokio runtime. Without one, force_flush + shutdown queue exports
-    // that are never executed, the test exits in 0.00s, and the collector
-    // receives nothing. Wrap setup → emit → shutdown in a multi-thread tokio
-    // runtime so the exporter task pool can actually run.
-    let runtime = Builder::new_multi_thread()
-        .worker_threads(2)
+    // ambient tokio runtime. Use current_thread to keep all task progress
+    // tied to a single thread the test can yield from — multi_thread caused
+    // the BSP background task to exit immediately (channel closed before
+    // any spans were enqueued).
+    let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
