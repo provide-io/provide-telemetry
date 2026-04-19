@@ -92,12 +92,7 @@ pub fn init_tracer_provider(_service_name: &str) -> Result<SdkTracerProvider, St
     let exporter = SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
-        .with_http_client(
-            reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .map_err(|err| format!("failed to build OTLP http client: {err}"))?,
-        )
+        .with_timeout(Duration::from_secs(10))
         .with_headers(headers)
         .build()
         .map_err(|err| format!("failed to build OTLP exporter: {err}"))?;
