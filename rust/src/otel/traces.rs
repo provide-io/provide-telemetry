@@ -17,7 +17,7 @@ use std::time::Duration;
 use opentelemetry::global;
 use opentelemetry::trace::{Span, Tracer};
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider, SimpleSpanProcessor};
+use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
 
 use crate::config::TelemetryConfig;
@@ -25,9 +25,7 @@ use crate::context::{set_trace_context_internal, ContextGuard};
 use crate::errors::TelemetryError;
 
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
-// ResilientSpanExporter is currently unused in production (we use SimpleSpanProcessor
-// inline export — see comment in install_tracer_provider). Wrapper tests still
-// exercise it; restored to production use once we can move back to BatchSpanProcessor.
+use super::resilient::ResilientSpanExporter;
 
 static TRACER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkTracerProvider>>>> = OnceLock::new();
 
@@ -96,21 +94,9 @@ pub(super) fn install_tracer_provider(
         }
     };
 
-    // SimpleSpanProcessor (sync, inline export per span) instead of
-    // BatchSpanProcessor — until upstream fixes the BSP/reqwest reactor
-    // mismatch in opentelemetry-rust 0.31, BSP panics on its dedicated
-    // non-tokio thread and no exports reach the collector.
-    //
-    // ResilientSpanExporter wrapper deliberately omitted from this path:
-    // SimpleSpanProcessor exports each span exactly once inline on the
-    // producer's tokio context, so the wrapper's batch-retry/circuit-breaker
-    // semantics don't apply (one span = one HTTP call, no batching to retry).
-    // Wrapping it caused indefinite hangs in CI from the wrapper's async
-    // machinery interacting with the sync inline export. Restore the wrapper
-    // when we move back to BSP after upstream fix.
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
-        .with_span_processor(SimpleSpanProcessor::new(exporter))
+        .with_batch_exporter(ResilientSpanExporter::new(exporter))
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
