@@ -274,21 +274,16 @@ Return the current queue policy.
 
 ### Cross-language scope of backpressure
 
-Tickets bound the **expensive in-process emit work** in all four languages
-(consent → sampling → ticket → ... → release). The exact end of the bound
-window differs:
+Tickets bound the **full in-process emit path** in all four languages
+(consent → sampling → ticket → ... → release), including renderer work and
+handler/exporter I/O.
 
 | Language | Ticket released |
 |----------|-----------------|
 | TypeScript | After full `emit()` including handler I/O |
 | Go | Deferred — at end of handler chain |
 | Rust | After `emit_event()` returns |
-| Python | Before the structlog renderer runs (does NOT bound JSON serialisation or handler I/O) |
-
-Python's narrower bound is structural: structlog's processor chain doesn't
-natively support try/finally semantics across the chain. If you have a slow
-handler and need true I/O backpressure on the Python implementation, wrap
-your handler in an external bounded queue.
+| Python | After the stdlib logging handler fanout returns |
 
 ## Exporter Resilience Policies
 
