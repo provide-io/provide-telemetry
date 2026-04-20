@@ -97,6 +97,13 @@ fn is_secret(value: &Value) -> bool {
         Value::String(s) => s,
         _ => return false,
     };
+    detect_secret_in_string(text)
+}
+
+/// Returns true when *text* matches any built-in or custom secret pattern.
+/// Used by the logger pipeline to scrub free-form message strings (which
+/// the map-based [`sanitize_payload`] engine doesn't see).
+pub(crate) fn detect_secret_in_string(text: &str) -> bool {
     if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
         return false;
     }
@@ -109,6 +116,10 @@ fn is_secret(value: &Value) -> bool {
         .iter()
         .any(|(_, p)| p.is_match(text))
 }
+
+/// The redaction sentinel emitted when a value or string matches a
+/// secret pattern (matches Python's `***` and Go's `piicore.Redacted`).
+pub(crate) const REDACTED_SENTINEL: &str = REDACTED;
 
 /// Register a custom secret detection pattern. If *name* already exists, the
 /// pattern is replaced.
