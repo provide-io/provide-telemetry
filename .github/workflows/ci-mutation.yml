@@ -99,7 +99,11 @@ jobs:
 
   rust-mutation:
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    # Advisory nightly/manual sweep only. Rust is not a release-blocking mutation gate.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: ${{ github.event_name == 'schedule' }}
+    # Full mutation sweep can take several hours; cap at 4h to avoid runaway jobs.
+    timeout-minutes: 240
     runs-on: ubuntu-24.04
     defaults:
       run:
