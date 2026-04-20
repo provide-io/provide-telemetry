@@ -227,3 +227,7 @@ mod span_tests;
 #[cfg(test)]
 #[path = "resilient_log_metric_tests.rs"]
 mod log_metric_tests;
+
+#[cfg(test)]
+#[path = "resilient_health_tests.rs"]
+mod health_tests;
