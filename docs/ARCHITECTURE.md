@@ -179,7 +179,7 @@ flowchart TD
 | `sampling.py` | Per-signal probabilistic sampling with overrides |
 | `backpressure.py` | Bounded queue ticket system |
 | `resilience.py` | Retry, timeout, circuit breaker, ThreadPoolExecutor |
-| `pii.py` | PII rule engine with nested traversal |
+| `pii.py` | PII rule engine with secret detection (built-in + custom patterns) and nested traversal |
 | `cardinality.py` | TTL-based attribute cardinality guards |
 | `health.py` | Self-observability counters and snapshot |
 | `propagation.py` | W3C traceparent/tracestate/baggage extraction |
