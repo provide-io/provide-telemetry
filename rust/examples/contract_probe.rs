@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use regex::Regex;
 use serde_json::{json, Value};
 
 /// Holds RAII guards that must stay alive for the duration of the case.
@@ -142,6 +143,17 @@ fn exec_bind_context(step: &Value, guards: &mut Guards) {
     guards._context.push(guard);
 }
 
+fn exec_register_secret_pattern(step: &Value) {
+    let name = as_str(step, "name");
+    let pattern = as_str(step, "pattern");
+    assert!(
+        !name.is_empty() && !pattern.is_empty(),
+        "register_secret_pattern requires name and pattern"
+    );
+    let compiled = Regex::new(pattern).expect("secret pattern must compile");
+    provide_telemetry::register_secret_pattern(name, compiled);
+}
+
 fn exec_emit_log(step: &Value) {
     let message = as_str(step, "message");
     let logger = provide_telemetry::get_logger(Some("contract"));
@@ -249,6 +261,7 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "clear_propagation" => exec_clear_propagation(&mut guards),
             "get_trace_context" => exec_get_trace_context(step, &mut variables),
             "bind_context" => exec_bind_context(step, &mut guards),
+            "register_secret_pattern" => exec_register_secret_pattern(step),
             "emit_log" => exec_emit_log(step),
             "capture_log" => exec_capture_log(step, &mut variables),
             "get_runtime_status" => exec_get_runtime_status(step, &mut variables),

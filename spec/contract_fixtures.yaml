@@ -83,6 +83,21 @@ contract_cases:
       status.active: true
       status.service_name: "restarted-service"
 
+  custom_secret_pattern_redacts_message:
+    description: "Registered custom secret patterns redact matching free-form log messages"
+    steps:
+      - op: setup
+      - op: register_secret_pattern
+        name: "internal_token"
+        pattern: "INTSECRET-[A-Z0-9]{12,}"
+      - op: emit_log
+        message: "token INTSECRET-ABC123XYZ789 leaked"
+      - op: capture_log
+        into: last_log
+      - op: shutdown
+    expect:
+      last_log.message: "***"
+
   baggage_auto_injection:
     description: "Baggage key=value pairs are injected onto log records; W3C properties are stripped"
     steps:

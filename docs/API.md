@@ -338,7 +338,7 @@ Return the current PII rules as an immutable tuple.
 
 ### `register_secret_pattern(name: str, pattern: re.Pattern[str]) -> None`
 
-Register a custom regex used by the value-based secret detector. Built-in patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs; this hook lets callers add organization-specific token shapes (e.g. internal API key prefixes). Re-registering an existing `name` replaces the previous pattern. Mirrored in TypeScript (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), and Rust (`pii::register_secret_pattern`).
+Register a custom regex used by the value-based secret detector. Built-in patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs; this hook lets callers add organization-specific token shapes (e.g. internal API key prefixes). Registered patterns apply to both structured payload values and the free-form log message string when `sanitize=true`. Re-registering an existing `name` replaces the previous pattern. Mirrored in TypeScript (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), and Rust (`pii::register_secret_pattern`).
 
 ### `get_secret_patterns() -> tuple[tuple[str, re.Pattern[str]], ...]`
 
