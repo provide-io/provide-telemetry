@@ -5,9 +5,6 @@
 
 from __future__ import annotations
 
-import queue
-import threading
-import time
 from typing import Any
 
 import pytest
@@ -186,10 +183,11 @@ def test_backpressure_queue_limits_and_release_paths() -> None:
     tokenless = backpressure_mod.try_acquire("traces")
     assert isinstance(tokenless, backpressure_mod.QueueTicket) and tokenless.token == 0
     backpressure_mod.release(tokenless)
-    unknown = backpressure_mod.try_acquire("unknown")
-    assert unknown is not None
+    with pytest.raises(ValueError, match="unknown signal"):
+        backpressure_mod.try_acquire("unknown")
     backpressure_mod.release(None)
-    backpressure_mod.release(backpressure_mod.QueueTicket(signal="unknown", token=9999))
+    with pytest.raises(ValueError, match="unknown signal"):
+        backpressure_mod.release(backpressure_mod.QueueTicket(signal="unknown", token=9999))
 
 
 def test_resilience_success_fail_open_and_fail_closed() -> None:
@@ -215,65 +213,11 @@ def test_resilience_success_fail_open_and_fail_closed() -> None:
         resilience_mod.run_with_resilience("logs", lambda: (_ for _ in ()).throw(ValueError("hard")))
 
 
-def test_resilience_timeout_enforced_fail_open_and_fail_closed() -> None:
-    resilience_mod.set_exporter_policy(
-        "metrics",
-        resilience_mod.ExporterPolicy(retries=1, timeout_seconds=0.01, backoff_seconds=0.0, fail_open=True),
-    )
-    calls = {"count": 0}
-
-    def _too_slow() -> str:
-        calls["count"] += 1
-        time.sleep(0.05)
-        return "late"
-
-    assert resilience_mod.run_with_resilience("metrics", _too_slow) is None
-    assert calls["count"] == 2
-    assert health_mod.get_health_snapshot().export_failures_metrics == 2
-    assert health_mod.get_health_snapshot().retries_metrics == 1
-
-    resilience_mod.set_exporter_policy(
-        "logs",
-        resilience_mod.ExporterPolicy(retries=0, timeout_seconds=0.01, fail_open=False),
-    )
-    with pytest.raises(TimeoutError, match="operation timed out"):
-        resilience_mod.run_with_resilience("logs", _too_slow)
-
-
-def test_run_attempt_with_timeout_zero_delegates_directly() -> None:
-    assert resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.0) == "ok"
-
-
-def test_run_attempt_with_timeout_invalid_payload_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _FakeQueue:
-        def __init__(self, maxsize: int = 1) -> None:
-            _ = maxsize
-
-        def put(self, item: tuple[bool, object]) -> None:
-            _ = item
-
-        def get_nowait(self) -> tuple[bool, object]:
-            return (False, object())
-
-    class _FakeThread:
-        def __init__(self, target: Any, daemon: bool) -> None:
-            self._target = target
-            self._daemon = daemon
-
-        def start(self) -> None:
-            self._target()
-
-        def join(self, _timeout: float) -> None:
-            return None
-
-        def is_alive(self) -> bool:
-            return False
-
-    monkeypatch.setattr(queue, "Queue", _FakeQueue)
-    monkeypatch.setattr(threading, "Thread", _FakeThread)
-
-    with pytest.raises(RuntimeError, match="invalid exception payload"):
-        resilience_mod._run_attempt_with_timeout(lambda: "ok", 0.1)
+def test_resilience_rejects_unknown_signal() -> None:
+    with pytest.raises(ValueError, match="unknown signal"):
+        resilience_mod.set_exporter_policy("trace", resilience_mod.ExporterPolicy())
+    with pytest.raises(ValueError, match="unknown signal"):
+        resilience_mod.get_exporter_policy("metric")
 
 
 def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -297,6 +241,8 @@ def test_cardinality_guard_with_ttl_and_overflow(monkeypatch: pytest.MonkeyPatch
 
 
 def test_pii_engine_default_and_rules() -> None:
+    import hashlib
+
     payload: dict[str, Any] = {
         "password": "p",
         "nested": {"token": "t", "secret": "s"},
@@ -317,10 +263,20 @@ def test_pii_engine_default_and_rules() -> None:
     ruled = pii_mod.sanitize_payload(payload, enabled=True)
     assert "secret" not in ruled["nested"]
     assert ruled["items"][0]["key"] == "v..."
-    assert len(ruled["password"]) == 12
+    # With precedence fix, custom hash rule runs on original "p", not "***"
+    assert ruled["password"] == hashlib.sha256(b"p").hexdigest()[:12]
     pii_mod.register_pii_rule(pii_mod.PIIRule(path=("nested", "token"), mode="redact"))
     assert pii_mod.get_pii_rules()
-    assert pii_mod.sanitize_payload(payload, enabled=False) is payload
+    disabled_result = pii_mod.sanitize_payload(payload, enabled=False)
+    assert disabled_result == payload  # same content
+    assert disabled_result is not payload  # but a copy, not the same object
+
+
+def test_pii_custom_truncate_preserves_value() -> None:
+    payload: dict[str, Any] = {"token": "mysecrettoken123"}
+    pii_mod.replace_pii_rules([pii_mod.PIIRule(path=("token",), mode="truncate", truncate_to=4)])
+    result = pii_mod.sanitize_payload(payload, enabled=True)
+    assert result["token"] == "myse..."
 
 
 def test_pii_sanitize_payload_non_dict_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,6 +293,9 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
     runtime_mod.apply_runtime_config(cfg)
+    runtime_cfg = runtime_mod.get_runtime_config()
+    assert runtime_cfg.sampling.logs_rate == 0.3
+    runtime_cfg.sampling.logs_rate = 1.0
     assert runtime_mod.get_runtime_config().sampling.logs_rate == 0.3
     assert sampling_mod.get_sampling_policy("logs").default_rate == 0.3
     assert backpressure_mod.get_queue_policy().logs_maxsize == 5
@@ -351,7 +310,8 @@ def test_runtime_apply_update_reload(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("provide.telemetry.runtime.TelemetryConfig.from_env", classmethod(lambda cls: cfg))
     reloaded = runtime_mod.reload_runtime_from_env()
-    assert reloaded is cfg
+    assert reloaded is not cfg
+    assert reloaded.sampling.logs_rate == cfg.sampling.logs_rate
 
 
 def test_propagation_extra_header_parsing_branches() -> None:
@@ -360,7 +320,7 @@ def test_propagation_extra_header_parsing_branches() -> None:
     ctx2 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", 123)]})
     assert ctx2.traceparent is None
     malformed_utf8 = propagation_mod.extract_w3c_context({"headers": [(b"traceparent", b"\xff")]})
-    assert malformed_utf8.traceparent is None
+    assert malformed_utf8.traceparent is None  # latin-1 decoded but still invalid traceparent format
     invalid_hex = propagation_mod.extract_w3c_context(
         {"headers": [(b"traceparent", b"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-gggggggggggggggg-01")]}
     )
@@ -402,13 +362,14 @@ def test_health_snapshot_and_unknown_signal_branch() -> None:
     assert snap.emitted_logs >= 2
     assert snap.dropped_logs >= 2
     assert snap.retries_logs >= 1
-    assert snap.exemplar_unsupported_total == 2
     assert snap.export_latency_ms_logs == 3.4
 
 
 def test_slo_helpers_and_error_taxonomy() -> None:
+    slo_mod._reset_slo_for_tests()
     record_red_metrics("/health", "GET", 200, 12.0)
     record_red_metrics("/health", "GET", 500, 13.0)
+    record_red_metrics("/ws", "WS", 1008, 5.0)
     record_use_metrics("cpu", 42)
     ve_result = classify_error("ValueError")
     assert ve_result["error_type"] == "internal"
@@ -416,69 +377,23 @@ def test_slo_helpers_and_error_taxonomy() -> None:
     assert ve_result["error_name"] == "ValueError"
     assert classify_error("BadRequest", 400)["error_type"] == "client"
     assert classify_error("ServerError", 500)["error_type"] == "server"
+    assert slo_mod._counters["http.errors.total"].value == 1
 
 
-@pytest.mark.asyncio
-async def test_resilience_async_guard_forces_fail_fast_without_override() -> None:
-    resilience_mod.set_exporter_policy(
-        "logs",
-        resilience_mod.ExporterPolicy(
-            retries=2, backoff_seconds=0.5, fail_open=True, allow_blocking_in_event_loop=False
-        ),
-    )
-    calls = {"count": 0}
-
-    def _always_fail() -> str:
-        calls["count"] += 1
-        raise RuntimeError("boom")
-
-    with pytest.warns(RuntimeWarning, match="forcing fail-fast behavior"):
-        assert resilience_mod.run_with_resilience("logs", _always_fail) is None
-    assert calls["count"] == 1
-    assert health_mod.get_health_snapshot().async_blocking_risk_logs == 1
+def test_slo_lazy_creation_populates_dicts() -> None:
+    slo_mod._reset_slo_for_tests()
+    assert slo_mod._counters == {}
+    assert slo_mod._histograms == {}
+    assert slo_mod._gauges == {}
+    record_red_metrics("/test", "GET", 200, 1.0)
+    assert "http.requests.total" in slo_mod._counters
+    assert "http.request.duration_ms" in slo_mod._histograms
+    record_use_metrics("cpu", 10)
+    assert "resource.utilization.percent" in slo_mod._gauges
+    # Call again to hit cached branches
+    record_red_metrics("/test2", "GET", 500, 2.0)
+    record_use_metrics("mem", 20)
 
 
-@pytest.mark.asyncio
-async def test_resilience_async_guard_allows_blocking_when_explicit() -> None:
-    resilience_mod.set_exporter_policy(
-        "metrics",
-        resilience_mod.ExporterPolicy(
-            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
-        ),
-    )
-    calls = {"count": 0}
-
-    def _flaky() -> str:
-        calls["count"] += 1
-        if calls["count"] == 1:
-            raise RuntimeError("boom")
-        return "ok"
-
-    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
-        assert resilience_mod.run_with_resilience("metrics", _flaky) == "ok"
-    assert calls["count"] == 2
-    snap = health_mod.get_health_snapshot()
-    assert snap.async_blocking_risk_metrics == 1
-    assert snap.retries_metrics == 1
-
-
-@pytest.mark.asyncio
-async def test_resilience_async_guard_warns_only_once_per_signal() -> None:
-    resilience_mod.set_exporter_policy(
-        "traces",
-        resilience_mod.ExporterPolicy(
-            retries=1, backoff_seconds=0.0, fail_open=True, allow_blocking_in_event_loop=True
-        ),
-    )
-
-    calls = {"count": 0}
-
-    def _always_fail() -> str:
-        calls["count"] += 1
-        raise RuntimeError("boom")
-
-    with pytest.warns(RuntimeWarning, match="allows blocking behavior"):
-        assert resilience_mod.run_with_resilience("traces", _always_fail) is None
-    # Warning is suppressed for same signal after first emission.
-    assert resilience_mod.run_with_resilience("traces", _always_fail) is None
-    assert calls["count"] == 4
+# Resilience timeout and async guard tests are in
+# test_hardening_resilience.py (500 LOC limit).

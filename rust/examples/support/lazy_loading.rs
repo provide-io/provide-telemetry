@@ -22,7 +22,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     let slo_loaded_before_classify = provide_telemetry::slo::slo_initialized_for_tests();
     let metrics_loaded_before_use = provide_telemetry::metrics::metrics_initialized_for_tests();
 
-    let _ = classify_error(503);
+    let _ = classify_error("InternalError", Some(503));
     let request_counter = counter("example.lazy.requests", Some("Lazy init proof"), Some("1"));
     request_counter.add(1.0, None);
 

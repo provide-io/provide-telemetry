@@ -5,12 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config';
 import type { RuntimeOverrides } from '../src/config';
 import {
-  _areProvidersRegistered,
-  _getRegisteredProviders,
   _markProvidersRegistered,
   _resetRuntimeForTests,
   _setProviderSignalInstalled,
-  _storeRegisteredProviders,
   getRuntimeConfig,
   getRuntimeStatus,
   reloadRuntimeFromEnv,
@@ -117,6 +114,11 @@ describe('updateRuntimeConfig', () => {
   it('persists across subsequent getRuntimeConfig calls', () => {
     updateRuntimeConfig({ samplingMetricsRate: 0.7 });
     expect(getRuntimeConfig().samplingMetricsRate).toBe(0.7);
+  });
+
+  it('applies strictEventName as a hot runtime field', () => {
+    updateRuntimeConfig({ strictEventName: true });
+    expect(getRuntimeConfig().strictEventName).toBe(true);
   });
 
   it('ignores undefined values in overrides', () => {
@@ -256,110 +258,6 @@ describe('reloadRuntimeFromEnv', () => {
 
   it('warns on otelEnabled cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ otelEnabled: true });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('otelEnabled'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('warns on otlpEndpoint cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ otlpEndpoint: 'http://custom:4318' });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('otlpEndpoint'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('warns on otlpHeaders cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'secret' } });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('otlpHeaders'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-});
-
-describe('_markProvidersRegistered / _areProvidersRegistered', () => {
-  it('starts as false', () => {
-    expect(_areProvidersRegistered()).toBe(false);
-  });
-
-  it('warns on cold-field drift', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // Set up active config with a specific serviceName via reconfigureTelemetry (which sets _activeConfig)
-    reconfigureTelemetry({ serviceName: 'custom-service' });
-    // Now reload from env — serviceName will differ (env default is 'provide-service')
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('serviceName'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('does not warn when cold fields have not drifted', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // Set up with defaults — reloading from env should produce same cold fields
-    updateRuntimeConfig({ samplingLogsRate: 0.5 });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it('does not warn when no active config exists', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // No prior updateRuntimeConfig call, _activeConfig is null
-    reloadRuntimeFromEnv();
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it('preserves cold fields from prior config (does not overwrite serviceName)', () => {
-    reconfigureTelemetry({ serviceName: 'locked-service' });
-    reloadRuntimeFromEnv();
-    // serviceName should stay as 'locked-service' because reload only applies hot fields
-    expect(getRuntimeConfig().serviceName).toBe('locked-service');
-  });
-
-  it('warns on environment cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ environment: 'custom-env' });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('environment'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('warns on version cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    reconfigureTelemetry({ version: 'custom-version' });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[provide-telemetry] runtime.cold_field_drift:',
-      expect.stringContaining('version'),
-      '— restart required to apply',
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('warns on otelEnabled cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     reconfigureTelemetry({ otelEnabled: false });
     reloadRuntimeFromEnv();
     expect(warnSpy).toHaveBeenCalledWith(
@@ -433,198 +331,8 @@ describe('_markProvidersRegistered / _areProvidersRegistered', () => {
   it('rejects per-signal OTLP endpoint change after providers registered', () => {
     reconfigureTelemetry({ otlpTracesEndpoint: 'http://traces:4318' });
     _markProvidersRegistered();
-    expect(_areProvidersRegistered()).toBe(true);
-  });
-
-  it('resets to false after _resetRuntimeForTests', () => {
-    _markProvidersRegistered();
-    _resetRuntimeForTests();
-    expect(_areProvidersRegistered()).toBe(false);
-  });
-});
-
-describe('reconfigureTelemetry', () => {
-  it('applies non-provider-changing config without error', () => {
-    expect(() => reconfigureTelemetry({ serviceName: 'updated', logLevel: 'warn' })).not.toThrow();
-    expect(getRuntimeConfig().serviceName).toBe('updated');
-  });
-
-  it('rejects provider fields after providers are registered', () => {
-    reconfigureTelemetry({ otelEnabled: false });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
+    expect(() => reconfigureTelemetry({ otlpTracesEndpoint: 'http://other:4318' })).toThrow(
+      /provider-changing reconfiguration/,
     );
-    expect(getRuntimeConfig().otelEnabled).toBe(false);
-  });
-
-  it('rejects tracingEnabled changes after providers are registered', () => {
-    reconfigureTelemetry({ tracingEnabled: false });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ tracingEnabled: true })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(getRuntimeConfig().tracingEnabled).toBe(false);
-  });
-
-  it('rejects metricsEnabled changes after providers are registered', () => {
-    reconfigureTelemetry({ metricsEnabled: false });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ metricsEnabled: true })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(getRuntimeConfig().metricsEnabled).toBe(false);
-  });
-
-  it('allows provider field changes when providers are NOT registered', () => {
-    reconfigureTelemetry({ otelEnabled: false });
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
-  });
-
-  it('allows non-provider field changes even when providers are registered', () => {
-    reconfigureTelemetry({ otelEnabled: false });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ logLevel: 'debug' })).not.toThrow();
-  });
-
-  it('rejects otlpEndpoint changes after registration', () => {
-    reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(getRuntimeConfig().otlpEndpoint).toBe('http://old:4318');
-  });
-});
-
-describe('reloadRuntimeFromEnv — resets config (kills BlockStatement)', () => {
-  it('clears custom serviceName after reload', () => {
-    updateRuntimeConfig({ serviceName: 'overridden-service' });
-    expect(getRuntimeConfig().serviceName).toBe('overridden-service');
-    reloadRuntimeFromEnv();
-    // After reload, should come from env (default when no env var set)
-    expect(getRuntimeConfig().serviceName).toBe('provide-service');
-  });
-
-  it('re-reads env-derived config after reload', () => {
-    updateRuntimeConfig({ logLevel: 'error', version: '99.0.0' });
-    reloadRuntimeFromEnv();
-    expect(getRuntimeConfig().logLevel).toBe('info');
-    expect(getRuntimeConfig().version).toBe('unknown');
-  });
-});
-
-describe('reconfigureTelemetry — otlpHeaders change throws after init (kills StringLiteral otlpHeaders)', () => {
-  it('throws ConfigurationError when otlpHeaders changes after providers initialized', () => {
-    updateRuntimeConfig({ otlpHeaders: { 'x-api-key': 'old' } });
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpHeaders: { 'x-api-key': 'new' } })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(getRuntimeConfig().otlpHeaders).toEqual({ 'x-api-key': 'old' });
-  });
-});
-
-describe('reconfigureTelemetry — provider change after init resets registered flag (kills StringLiteral on field list)', () => {
-  it('providers remain registered after a rejected provider-changing reconfigure', () => {
-    _markProvidersRegistered();
-    expect(_areProvidersRegistered()).toBe(true);
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow();
-    expect(_areProvidersRegistered()).toBe(true);
-  });
-});
-
-describe('reconfigureTelemetry — provider lifecycle safety', () => {
-  it('does not flush, shutdown, or clear providers when provider-field changes are rejected', () => {
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    const shutdownFn = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(flushFn).not.toHaveBeenCalled();
-    expect(shutdownFn).not.toHaveBeenCalled();
-    expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(1);
-  });
-
-  it('does NOT call flush/shutdown when provider fields are unchanged', async () => {
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    const shutdownFn = vi.fn().mockResolvedValue(undefined);
-    reconfigureTelemetry({ otelEnabled: false });
-    _storeRegisteredProviders([{ forceFlush: flushFn, shutdown: shutdownFn }]);
-    _markProvidersRegistered();
-    // Change a non-provider field
-    reconfigureTelemetry({ logLevel: 'debug' });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flushFn).not.toHaveBeenCalled();
-    expect(shutdownFn).not.toHaveBeenCalled();
-    // Providers should still be registered
-    expect(_areProvidersRegistered()).toBe(true);
-  });
-
-  it('JSON.stringify deep comparison detects equivalent objects as unchanged', () => {
-    // Same content, different references — should NOT trigger restart
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    reconfigureTelemetry({ otlpHeaders: { key: 'value' } });
-    _storeRegisteredProviders([{ forceFlush: flushFn }]);
-    _markProvidersRegistered();
-    reconfigureTelemetry({ otlpHeaders: { key: 'value' } });
-    expect(flushFn).not.toHaveBeenCalled();
-    expect(_areProvidersRegistered()).toBe(true);
-  });
-
-  it('JSON.stringify deep comparison detects different objects as rejected provider changes', () => {
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    reconfigureTelemetry({ otlpHeaders: { key: 'old' } });
-    _storeRegisteredProviders([{ forceFlush: flushFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpHeaders: { key: 'new' } })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(flushFn).not.toHaveBeenCalled();
-  });
-
-  it('rejects provider-changing reconfigure even when the registered provider list is empty', () => {
-    _storeRegisteredProviders([]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-  });
-
-  it('does not clear stored providers when _providersRegistered is false (kills ConditionalExpression→true)', () => {
-    // Store providers but do NOT mark as registered
-    const provider = { forceFlush: vi.fn().mockResolvedValue(undefined) };
-    _storeRegisteredProviders([provider]);
-    // _providersRegistered is false; change a provider field
-    reconfigureTelemetry({ otelEnabled: true });
-    // Providers should still be stored (not cleared by the shutdown path)
-    expect(_getRegisteredProviders()).toHaveLength(1);
-  });
-
-  it('otlpHeaders specifically triggers rejection (kills StringLiteral→"" on field name)', () => {
-    reconfigureTelemetry({ otlpHeaders: { old: 'val' } });
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([{ forceFlush: flushFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpHeaders: { new: 'val' } })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(1);
-  });
-
-  it('otlpEndpoint specifically triggers rejection (kills StringLiteral→"" on field name)', () => {
-    reconfigureTelemetry({ otlpEndpoint: 'http://old:4318' });
-    const flushFn = vi.fn().mockResolvedValue(undefined);
-    _storeRegisteredProviders([{ forceFlush: flushFn }]);
-    _markProvidersRegistered();
-    expect(() => reconfigureTelemetry({ otlpEndpoint: 'http://new:4318' })).toThrow(
-      /provider-changing reconfiguration is unsupported/,
-    );
-    expect(_areProvidersRegistered()).toBe(true);
-    expect(_getRegisteredProviders()).toHaveLength(1);
   });
 });

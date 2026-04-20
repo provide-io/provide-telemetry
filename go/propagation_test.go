@@ -70,11 +70,27 @@ func TestExtractW3CContext_WrongVersion(t *testing.T) {
 
 	pc := ExtractW3CContext(headers)
 
+	// Version "01" is not "ff", so it should be accepted.
+	if pc.TraceID != _validTraceID {
+		t.Errorf("TraceID: want %q for version 01, got %q", _validTraceID, pc.TraceID)
+	}
+	if pc.SpanID != _validSpanID {
+		t.Errorf("SpanID: want %q for version 01, got %q", _validSpanID, pc.SpanID)
+	}
+}
+
+func TestExtractW3CContext_ForbiddenVersion_FF(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Traceparent", "ff-"+_validTraceID+"-"+_validSpanID+"-"+_validFlags)
+
+	pc := ExtractW3CContext(headers)
+
+	// Version "ff" is explicitly forbidden.
 	if pc.TraceID != "" {
-		t.Errorf("TraceID: want empty, got %q", pc.TraceID)
+		t.Errorf("TraceID: want empty for version ff, got %q", pc.TraceID)
 	}
 	if pc.SpanID != "" {
-		t.Errorf("SpanID: want empty, got %q", pc.SpanID)
+		t.Errorf("SpanID: want empty for version ff, got %q", pc.SpanID)
 	}
 }
 
@@ -227,27 +243,29 @@ func TestGetPropagationContext_EmptyContext(t *testing.T) {
 
 func TestExtractW3CContext_InvalidTraceID_UppercaseHex(t *testing.T) {
 	headers := http.Header{}
-	// TraceID with uppercase hex chars — should be invalid (spec requires lowercase)
+	// TraceID with uppercase hex chars — should be accepted and normalized to lowercase.
 	upperTrace := "4BF92F3577B34DA6A3CE929D0E0E4736" // pragma: allowlist secret
 	headers.Set("Traceparent", "00-"+upperTrace+"-"+_validSpanID+"-"+_validFlags)
 
 	pc := ExtractW3CContext(headers)
 
-	if pc.TraceID != "" {
-		t.Errorf("TraceID: want empty for uppercase hex, got %q", pc.TraceID)
+	want := strings.ToLower(upperTrace)
+	if pc.TraceID != want {
+		t.Errorf("TraceID: want %q (normalized lowercase), got %q", want, pc.TraceID)
 	}
 }
 
 func TestExtractW3CContext_InvalidSpanID_UppercaseHex(t *testing.T) {
 	headers := http.Header{}
-	// SpanID with uppercase hex chars — should be invalid
+	// SpanID with uppercase hex chars — should be accepted and normalized to lowercase.
 	upperSpan := "00F067AA0BA902B7"
 	headers.Set("Traceparent", "00-"+_validTraceID+"-"+upperSpan+"-"+_validFlags)
 
 	pc := ExtractW3CContext(headers)
 
-	if pc.SpanID != "" {
-		t.Errorf("SpanID: want empty for uppercase hex, got %q", pc.SpanID)
+	want := strings.ToLower(upperSpan)
+	if pc.SpanID != want {
+		t.Errorf("SpanID: want %q (normalized lowercase), got %q", want, pc.SpanID)
 	}
 }
 
@@ -342,9 +360,9 @@ func TestExtractW3CContext_AllFieldsPresent(t *testing.T) {
 
 func TestParseBaggage(t *testing.T) {
 	tests := []struct {
-		name  string
-		raw   string
-		want  map[string]string
+		name string
+		raw  string
+		want map[string]string
 	}{
 		{
 			name: "simple key-value pair",

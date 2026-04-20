@@ -9,6 +9,9 @@ import (
 	"math"
 	"sync"
 	"testing"
+	"time"
+
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 func TestNewCounterNonNil(t *testing.T) {

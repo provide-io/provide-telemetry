@@ -8,6 +8,8 @@ from __future__ import annotations
 import importlib
 import importlib.metadata as metadata
 import re
+import subprocess
+import sys
 
 import pytest
 

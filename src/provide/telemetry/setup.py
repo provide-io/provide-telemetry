@@ -7,6 +7,12 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "setup_telemetry",
+    "shutdown_telemetry",
+]
+
+import logging
 import threading
 import warnings
 
@@ -16,6 +22,7 @@ from provide.telemetry.logger.core import configure_logging, shutdown_logging
 from provide.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
 from provide.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 
+_logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _setup_done = False
 
@@ -82,13 +89,13 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
                 record_red_metrics("startup", "INIT", 200, 0.0)
             if cfg.slo.enable_use_metrics:
                 record_use_metrics("startup", 0)
-            _setup_done = True
     return cfg
 
 
 def _reset_setup_state_for_tests() -> None:
     global _setup_done
-    _setup_done = False
+    with _lock:
+        _setup_done = False
 
 
 def _reset_all_for_tests() -> None:
@@ -103,7 +110,8 @@ def _reset_all_for_tests() -> None:
     from provide.telemetry.slo import _reset_slo_for_tests as _reset_slo
 
     global _setup_done
-    _setup_done = False
+    with _lock:
+        _setup_done = False
     _reset_logging()
     _reset_tracing()
     _reset_metrics(None)

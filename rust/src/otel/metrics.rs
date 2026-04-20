@@ -37,7 +37,8 @@ use opentelemetry_sdk::Resource;
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
-use super::endpoint::{resolve_protocol, OtlpProtocol};
+use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
+use super::resilient::ResilientMetricExporter;
 
 static METER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkMeterProvider>>>> = OnceLock::new();
 static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new();
@@ -69,6 +70,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.metrics.otlp_endpoint {
+        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.metrics.otlp_headers.is_empty() {

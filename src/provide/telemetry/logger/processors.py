@@ -19,7 +19,7 @@ import structlog
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.context import get_context
-from provide.telemetry.schema.events import validate_event_name, validate_required_keys
+from provide.telemetry.schema.events import EventSchemaError, validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
 
@@ -28,7 +28,7 @@ def _get_active_config() -> Any | None:
     runtime = sys.modules.get("provide.telemetry.runtime")
     if runtime is None:
         return None
-    return getattr(runtime, "_active_config", None)  # pragma: no mutate — _active_config always exists as module var; 2-arg vs 3-arg equivalent
+    return getattr(runtime, "_active_config", None)  # pragma: no mutate
 
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -225,8 +225,14 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
         strict_event_name = True if live_strict else live_event_schema.strict_event_name
         required_keys = live_event_schema.required_keys
         event = str(event_dict.get("event", ""))
-        validate_event_name(event, strict_event_name=strict_event_name)
-        validate_required_keys(event_dict, required_keys)
+        try:
+            validate_event_name(event, strict_event_name=strict_event_name)
+            validate_required_keys(event_dict, required_keys)
+        except EventSchemaError as exc:
+            # Annotate instead of dropping — preserves telemetry while flagging
+            # the schema violation.  Consumers can filter on _schema_error.
+            # This is the cross-language standard (Rust/TypeScript/Go match).
+            event_dict["_schema_error"] = str(exc)
         return event_dict
 
     return _processor

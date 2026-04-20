@@ -46,7 +46,7 @@ jobs:
 
   openobserve-e2e:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     env:
       OPENOBSERVE_URL: ${{ vars.OPENOBSERVE_URL }}
       OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
@@ -61,7 +61,10 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       - run: npm ci
         working-directory: typescript
       - run: uv sync --group dev --extra otel
@@ -77,7 +80,7 @@ jobs:
         working-directory: rust
         run: |
           if [ -z "${OPENOBSERVE_URL}" ] || [ -z "${OPENOBSERVE_USER}" ] || [ -z "${OPENOBSERVE_PASSWORD}" ]; then
-            echo "OPENOBSERVE_* not configured; skipping Rust OpenObserve example."
+            echo "::warning::OPENOBSERVE_* secrets not configured — Rust OpenObserve example skipped."
             exit 0
           fi
           cargo run --features otel --example openobserve_02_verify_ingestion

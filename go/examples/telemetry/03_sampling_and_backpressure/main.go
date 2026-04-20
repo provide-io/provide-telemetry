@@ -21,16 +21,16 @@ import (
 )
 
 func tracedWork(ctx context.Context, taskID int) error {
-	name, _ := telemetry.Event("example", "sampling", "concurrent")
-	return telemetry.Trace(ctx, name, func(ctx context.Context) error {
+	concEvt, _ := telemetry.Event("example", "sampling", "concurrent")
+	return telemetry.Trace(ctx, concEvt.Event, func(ctx context.Context) error {
 		requests := telemetry.NewCounter("example.sampling.counter")
-		requests.Add(ctx, 1, )
+		requests.Add(ctx, 1)
 		return nil
 	})
 }
 
 func main() {
-	fmt.Println("Sampling & Backpressure Demo\n")
+	fmt.Println("Sampling & Backpressure Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -109,7 +109,7 @@ func main() {
 
 	// This event itself is sampled out (logs rate=0%).
 	doneEvt, _ := telemetry.Event("example", "sampling", "done")
-	log.InfoContext(ctx, doneEvt)
+	log.InfoContext(ctx, doneEvt.Event, doneEvt.Attrs()...)
 
 	// Health snapshot
 	fmt.Println("\nHealth snapshot after saturation:")

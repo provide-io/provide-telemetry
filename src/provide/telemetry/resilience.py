@@ -17,13 +17,13 @@ __all__ = [
 ]
 
 import asyncio
-import queue
+import concurrent.futures
 import threading
 import time
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from provide.telemetry.health import (
     increment_async_blocking_risk,
@@ -34,6 +34,15 @@ from provide.telemetry.health import (
 
 T = TypeVar("T")
 Signal = str
+
+
+class ExecutorSaturated(RuntimeError):
+    """Raised when the per-signal executor's pending queue is exhausted.
+
+    The retry loop catches this like any other failure: on fail_open=True the
+    caller sees None; on fail_open=False the exception propagates.  Either way,
+    saturation is recorded as a failed attempt — not a silent success.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,13 +111,13 @@ def _validate_signal(signal: Signal) -> Signal:
 
 
 def set_exporter_policy(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     with _lock:
         _policies[sig] = policy
 
 
 def get_exporter_policy(signal: Signal) -> ExporterPolicy:
-    sig = signal if signal in _policies else "logs"
+    sig = _validate_signal(signal)
     with _lock:
         return _policies[sig]
 
@@ -118,6 +127,8 @@ def _check_circuit_breaker(sig: str) -> bool | None:
     with _lock:
         if _consecutive_timeouts[sig] < _CIRCUIT_BREAKER_THRESHOLD:
             return None  # Circuit closed — proceed normally
+        if _half_open_probing[sig]:
+            return True  # Half-open probe already in progress — reject concurrent callers
         cooldown = min(_CIRCUIT_BASE_COOLDOWN * (2 ** _open_count[sig]), _CIRCUIT_MAX_COOLDOWN)
         elapsed = time.monotonic() - _circuit_tripped_at[sig]
         if elapsed < cooldown:
@@ -233,7 +244,7 @@ def _retry_loop(
         return None
     if last_error is not None:
         raise last_error
-    raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover
+    raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover  # pragma: no mutate
 
 
 def _maybe_backoff(sig: Signal, attempt: int, attempts: int, backoff_seconds: float) -> None:
@@ -256,22 +267,28 @@ def _run_attempt_with_timeout(
     Each signal (logs, traces, metrics) gets its own 2-thread pool so that
     a timeout storm in one signal cannot starve workers used by another.
 
-    ``future.cancel()`` only prevents tasks that have not yet started.
-    An already-running operation will continue on a daemon thread after
-    the timeout fires.
+    On timeout, ``future.cancel()`` only prevents queued tasks — an already-
+    running operation continues on a daemon thread.  When the circuit breaker
+    trips (consecutive timeouts >= threshold), the executor is replaced so
+    ghost threads from the old pool are abandoned and the new pool starts
+    clean.  The old pool's daemon threads will be reclaimed when the process
+    exits.
     """
     if timeout_seconds <= 0 or skip_executor:
         return operation()
     sem = _get_executor_semaphore(signal)
-    if not sem.acquire(blocking=False):
-        # Pending queue is full — drop the operation (fail-open).
-        return None  # type: ignore[return-value]
+    if not sem.acquire(blocking=False):  # pragma: no mutate — blocking=None is also non-blocking
+        # Pending queue is full — raise so the retry loop treats this as a
+        # failure and honors policy.fail_open rather than returning a silent
+        # None that masquerades as success.
+        raise ExecutorSaturated(f"{signal} executor saturated")
     executor = _get_timeout_executor(signal)  # pragma: no mutate
     future = executor.submit(operation)
     try:
         return future.result(timeout=timeout_seconds)
     except concurrent.futures.TimeoutError:
         future.cancel()
+        _maybe_replace_executor(signal)
         raise TimeoutError(f"operation timed out after {timeout_seconds}s") from None
     finally:
         sem.release()
@@ -366,40 +383,24 @@ def _warn_event_loop_setup(signal: Signal) -> None:
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
     key = (signal, policy.allow_blocking_in_event_loop)
     with _lock:
-        if signal in _async_setup_warned_signals:
+        if key in _async_warned_signals:
             return
-        _async_setup_warned_signals.add(signal)
-    warnings.warn(
-        f"telemetry {signal} export called from an active event loop with "
-        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "
-        "bypassing timeout executor to prevent event loop stall. "
-        "Call setup_telemetry() before starting the event loop.",
-        RuntimeWarning,
-        stacklevel=4,
-    )
-
-
-def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
-    sig = signal if signal in {"logs", "traces", "metrics"} else "logs"
-    with _lock:
-        if sig in _async_warned_signals:
-            return
-        _async_warned_signals.add(sig)
+        _async_warned_signals.add(key)
     if policy.allow_blocking_in_event_loop:
-        warnings.warn(
+        warnings.warn(  # pragma: no mutate
             (
-                f"resilience policy for {sig} allows blocking behavior in an active event loop "
-                "(retries/backoff configured)"
+                f"resilience policy for {signal} allows blocking behavior in an active event loop "
+                "(retries/backoff configured)"  # pragma: no mutate
             ),
             RuntimeWarning,
-            stacklevel=3,
+            stacklevel=3,  # pragma: no mutate
         )
         return
-    warnings.warn(
+    warnings.warn(  # pragma: no mutate
         (
-            f"resilience policy for {sig} uses retries/backoff in an active event loop; "
-            "forcing fail-fast behavior for this call"
+            f"resilience policy for {signal} uses retries/backoff in an active event loop; "
+            "forcing fail-fast behavior for this call"  # pragma: no mutate
         ),
         RuntimeWarning,
-        stacklevel=3,
+        stacklevel=3,  # pragma: no mutate
     )

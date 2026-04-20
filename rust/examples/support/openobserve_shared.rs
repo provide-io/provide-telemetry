@@ -120,7 +120,7 @@ pub fn build_tracer_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.traces.clone())
-        .with_http_client(http_client()?)
+        .with_timeout(Duration::from_secs(10))
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build trace exporter: {err}"))?;
@@ -140,7 +140,7 @@ pub fn build_logger_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.logs.clone())
-        .with_http_client(http_client()?)
+        .with_timeout(Duration::from_secs(10))
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build log exporter: {err}"))?;
@@ -160,7 +160,7 @@ pub fn build_meter_provider(
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoints.metrics.clone())
-        .with_http_client(http_client()?)
+        .with_timeout(Duration::from_secs(10))
         .with_headers(otlp_headers(auth))
         .build()
         .map_err(|err| format!("failed to build metric exporter: {err}"))?;

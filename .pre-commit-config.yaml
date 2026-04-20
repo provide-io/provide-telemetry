@@ -149,3 +149,86 @@ repos:
         always_run: true
         stages: [manual]
         types: [python]
+
+      # ── TypeScript package (typescript/) ───────────────────────────────────
+      - id: ts-typecheck
+        name: typescript type check
+        entry: bash -c 'cd typescript && npm run typecheck'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/
+
+      - id: ts-lint
+        name: typescript lint (eslint)
+        entry: bash -c 'cd typescript && npm run lint'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/src/|^typescript/tests/
+
+      - id: ts-format-check
+        name: typescript format check (prettier)
+        entry: bash -c 'cd typescript && npm run format:check'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/src/|^typescript/tests/
+
+      - id: ts-test
+        name: typescript tests (vitest)
+        entry: bash -c 'cd typescript && npm run test'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^typescript/
+
+      # ── Rust crate (rust/) ────────────────────────────────────────────────
+      - id: rust-fmt
+        name: rust format check
+        entry: bash -c 'cd rust && cargo fmt --check'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^rust/
+
+      - id: rust-clippy
+        name: rust clippy
+        entry: bash -c 'cd rust && cargo clippy --all-targets -- -D warnings'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^rust/
+
+      - id: rust-test
+        name: rust tests
+        entry: bash -c 'cd rust && cargo test'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^rust/
+
+      # ── Go library and contract probe (go/, spec/probes/contract_probe_go/) ──
+      - id: go-fmt
+        name: go format check
+        entry: bash -c 'test -z "$(gofmt -l go/ spec/probes/contract_probe_go/)"'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^go/|^spec/probes/contract_probe_go/
+
+      - id: go-vet
+        name: go vet
+        entry: bash -c 'cd go && go vet ./...'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^go/|^spec/probes/contract_probe_go/
+
+      - id: go-test
+        name: go tests
+        entry: bash -c 'cd go && go test ./...'
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^go/

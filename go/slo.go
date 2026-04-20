@@ -67,7 +67,7 @@ func ClassifyError(excName string, statusCode int) map[string]string {
 
 // RecordREDMetrics records Rate/Errors/Duration metrics for an HTTP request.
 // It increments the request counter, conditionally increments the error counter
-// for status codes >= 400, and records the duration.
+// for status codes >= 500, and records the duration.
 func RecordREDMetrics(route, method string, statusCode int, durationMs float64) {
 	ctx := context.Background()
 	attrs := []slog.Attr{
@@ -76,7 +76,7 @@ func RecordREDMetrics(route, method string, statusCode int, durationMs float64) 
 		slog.String("status_code", strconv.Itoa(statusCode)),
 	}
 	_redRequestCounter.Add(ctx, 1, attrs...)
-	if statusCode >= 400 {
+	if statusCode >= 500 {
 		_redErrorCounter.Add(ctx, 1, attrs...)
 	}
 	_redDurationHistogram.Record(ctx, durationMs, attrs...)

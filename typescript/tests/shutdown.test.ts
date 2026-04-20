@@ -4,10 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ShutdownableProvider,
+  _areProvidersRegistered,
   _getRegisteredProviders,
+  _markProvidersRegistered,
   _resetRuntimeForTests,
   _storeRegisteredProviders,
+  reconfigureTelemetry,
 } from '../src/runtime';
+import { _resetConfig } from '../src/config';
 import { shutdownTelemetry } from '../src/shutdown';
 
 beforeEach(() => _resetRuntimeForTests());
@@ -130,5 +134,34 @@ describe('shutdownTelemetry', () => {
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();
     expect(shut).toBe(true);
+  });
+});
+
+describe('shutdownTelemetry — clears provider registration state', () => {
+  beforeEach(() => {
+    _resetRuntimeForTests();
+    _resetConfig();
+  });
+  afterEach(() => {
+    _resetRuntimeForTests();
+  });
+
+  it('clears _providersRegistered after shutdown', async () => {
+    _markProvidersRegistered();
+    expect(_areProvidersRegistered()).toBe(true);
+    await shutdownTelemetry();
+    expect(_areProvidersRegistered()).toBe(false);
+  });
+
+  it('clears registered provider list after shutdown', async () => {
+    _storeRegisteredProviders([{ shutdown: vi.fn() }]);
+    await shutdownTelemetry();
+    expect(_getRegisteredProviders()).toHaveLength(0);
+  });
+
+  it('allows provider-changing reconfigureTelemetry after shutdown', async () => {
+    _markProvidersRegistered();
+    await shutdownTelemetry();
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
   });
 });

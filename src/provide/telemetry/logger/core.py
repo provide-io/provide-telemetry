@@ -49,8 +49,8 @@ _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {
 
 
 def _get_level(level: str) -> int:
-    if level == "TRACE":
-        return logging.DEBUG
+    if level == "TRACE":  # pragma: no mutate
+        return TRACE
     mapped = logging.getLevelName(level)
     if isinstance(mapped, int):
         return mapped
@@ -70,7 +70,13 @@ def _make_filtering_bound_logger(level: int) -> type:
     cls = structlog.make_filtering_bound_logger(structlog_level)
 
     # Permissive no-op for filtered methods (accepts any args/kwargs)
-    _standard_levels = {"debug": 10, "info": 20, "warning": 30, "error": 40, "critical": 50}
+    _standard_levels = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "critical": logging.CRITICAL,  # pragma: no mutate
+    }
 
     def _permissive_nop(*_args: Any, **_kw: Any) -> None:
         return None
@@ -101,6 +107,7 @@ _configured = False
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
 _otel_log_provider: object | None = None
+_otel_log_global_set: bool = False  # True once we called set_logger_provider()
 
 
 def _has_otel_logs() -> bool:
@@ -143,7 +150,9 @@ def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: Tele
     return _log_provider_config_key(previous) == _log_provider_config_key(current)
 
 
-def _make_otel_logging_handler(sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig) -> logging.Handler:
+def _make_otel_logging_handler(
+    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
+) -> logging.Handler:
     instrumentation_handler_cls = _load_instrumentation_logging_handler()
     if instrumentation_handler_cls is not None:
         return instrumentation_handler_cls(
@@ -153,11 +162,14 @@ def _make_otel_logging_handler(sdk_logs_mod: Any, provider: object, level: int, 
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        return sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
+        return cast(  # pragma: no mutate — cast() is a no-op at runtime; node starts here
+            logging.Handler,
+            sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider),
+        )
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
-    global _otel_log_provider
+    global _otel_log_provider, _otel_log_global_set
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]  # pragma: no mutate
 
     if not config.logging.otlp_endpoint:
@@ -168,6 +180,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         return handlers
 
     from provide.telemetry.resilience import run_with_resilience
+    from provide.telemetry.resilient_exporter import wrap_exporter
 
     logs_api_mod, sdk_logs_mod, sdk_logs_export_mod, resource_cls, otlp_exporter_cls = components
     if _can_reuse_otel_log_provider(_active_config, config):
@@ -176,7 +189,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
 
     resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
-    exporter = run_with_resilience(
+    raw_exporter = run_with_resilience(
         "logs",
         lambda: otlp_exporter_cls(
             endpoint=validate_otlp_endpoint(config.logging.otlp_endpoint),
@@ -184,8 +197,11 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
             timeout=config.exporter.logs_timeout_seconds,
         ),
     )
-    if exporter is None:
+    if raw_exporter is None:
         return handlers
+    # Wrap so every export() call applies retry/timeout/circuit-breaker policy,
+    # not just the one-shot construction probe above.
+    exporter = wrap_exporter("logs", raw_exporter)
     provider.add_log_record_processor(sdk_logs_export_mod.BatchLogRecordProcessor(exporter))
     logs_api_mod.set_logger_provider(provider)
     handlers.append(_make_otel_logging_handler(sdk_logs_mod, provider, level, config))
@@ -285,7 +301,6 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     processors.extend(
         [
             apply_sampling,
-            enforce_event_schema(config),
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )
@@ -331,10 +346,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
 
 
 def shutdown_logging() -> None:
-    global _otel_log_provider
+    global _configured, _active_config, _otel_log_provider
     with _lock:
         provider = _otel_log_provider
         if provider is None:
+            _configured = False
+            _active_config = None
             return
         try:
             flush = getattr(provider, "force_flush", None)
@@ -364,11 +381,25 @@ def _has_otel_log_provider() -> bool:
         return _otel_log_provider is not None or _otel_log_global_set
 
 
+def _has_real_otel_log_provider() -> bool:
+    """Return True if a live OTel log provider is currently installed."""
+    with _lock:
+        return _otel_log_provider is not None
+
+
 def get_logger(name: str | None = None) -> _TraceWrapper:
     if not _configured:
         from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
-        configure_logging(TelemetryConfig.from_env())
+        cfg = TelemetryConfig.from_env()
+        # Install the logs sampling policy so PROVIDE_SAMPLING_LOGS_RATE takes
+        # effect for lazy-init emission.  Narrow on purpose: leave exporter and
+        # backpressure policies alone — those belong to setup_telemetry()'s
+        # orchestration, and overwriting them here would clobber values set
+        # directly by callers that only want logging without full setup.
+        set_sampling_policy("logs", SamplingPolicy(default_rate=cfg.sampling.logs_rate))
+        configure_logging(cfg)
     return _TraceWrapper(structlog.get_logger(name or "provide"))
 
 

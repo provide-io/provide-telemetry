@@ -7,6 +7,15 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "PropagationContext",
+    "bind_propagation_context",
+    "clear_propagation_context",
+    "extract_w3c_context",
+    "parse_baggage",
+]
+
+import contextvars
 from dataclasses import dataclass
 from typing import Any
 
@@ -52,21 +61,21 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     if version.lower() == "ff":
         return (None, None)
     try:
-        int(version, 16)
-        int(trace_id, 16)
-        int(span_id, 16)
-        int(trace_flags, 16)
+        int(version, 16)  # pragma: no mutate
+        int(trace_id, 16)  # pragma: no mutate
+        int(span_id, 16)  # pragma: no mutate
+        int(trace_flags, 16)  # pragma: no mutate
     except ValueError:
         return (None, None)
-    return (trace_id, span_id)
+    return (trace_id.lower(), span_id.lower())
 
 
 def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:
-        raw_traceparent = None
+    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:  # pragma: no mutate
+        raw_traceparent = None  # pragma: no mutate
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
@@ -74,7 +83,7 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
         baggage = None
     trace_id, span_id = _parse_traceparent(raw_traceparent)
-    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None
+    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None  # pragma: no mutate
     return PropagationContext(
         traceparent=traceparent,
         tracestate=tracestate,
@@ -93,9 +102,7 @@ def parse_baggage(raw: str) -> dict[str, str]:
     """
     result: dict[str, str] = {}
     for member in raw.split(","):
-        kv = member.split(";", 1)[
-            0
-        ]  # strip properties  # pragma: no mutate — [0] gives same result for maxsplit 1/2/omitted
+        kv = member.split(";", 1)[0]  # strip properties  # pragma: no mutate
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")

@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -20,6 +21,7 @@ import {
   OVERFLOW_VALUE,
   clearCardinalityLimits,
   counter,
+  event,
   getCardinalityLimits,
   getLogger,
   getPiiRules,
@@ -48,7 +50,7 @@ async function main(): Promise<void> {
 
   // ── 📝 Log with PII fields ───────────────────────────
   log.warn({
-    event: 'example.policy.pii',
+    ...event('example', 'policy', 'pii'),
     user: { email: 'dev@example.com', full_name: 'Casey Developer' },
     credit_card: '4111111111111111',
     token: tokenValue,

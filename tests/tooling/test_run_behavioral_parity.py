@@ -155,10 +155,28 @@ def test_runtime_probe_case_env_disables_trace_and_metrics_for_signal_enablement
 def test_runtime_probe_case_env_disables_trace_and_metrics_for_non_provider_python_cases() -> None:
     module = _load_support_module()
 
-    for case in ("strict_schema_rejection", "required_keys_rejection", "shutdown_re_setup"):
+    for case in ("strict_schema_rejection", "strict_event_name_only", "required_keys_rejection", "shutdown_re_setup"):
         env = module._runtime_probe_case_env(case)
         assert env["PROVIDE_TRACE_ENABLED"] == "false"
         assert env["PROVIDE_METRICS_ENABLED"] == "false"
+
+
+def test_runtime_probe_case_env_adds_shared_endpoint_for_provider_identity_reconfigure() -> None:
+    module = _load_support_module()
+
+    assert module._runtime_probe_case_env("provider_identity_reconfigure") == {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+    }
+
+
+def test_runtime_probe_case_env_adds_traces_endpoint_for_signal_local_case() -> None:
+    module = _load_support_module()
+
+    assert module._runtime_probe_case_env("per_signal_logs_endpoint") == {
+        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4318/v1/logs",
+        "PROVIDE_TRACE_ENABLED": "false",
+        "PROVIDE_METRICS_ENABLED": "false",
+    }
 
 
 def test_runtime_probe_python_signal_enablement_exits_promptly() -> None:
@@ -240,6 +258,93 @@ def test_runtime_probe_python_strict_schema_rejection_exits_promptly() -> None:
     assert payload["schema_error"] is True
 
 
+def test_runtime_probe_python_strict_event_name_only_exits_promptly() -> None:
+    support = _load_support_module()
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("strict_event_name_only"),
+        "PROVIDE_PARITY_PROBE_CASE": "strict_event_name_only",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "strict_event_name_only"
+    assert payload["schema_error"] is True
+
+
+def test_runtime_probe_python_provider_identity_reconfigure_exits_promptly() -> None:
+    support = _load_support_module()
+    if not support._has_otel_stack():
+        pytest.skip("requires opentelemetry-sdk[otlp] (run: uv sync --extra otel)")
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("provider_identity_reconfigure"),
+        "PROVIDE_PARITY_PROBE_CASE": "provider_identity_reconfigure",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "provider_identity_reconfigure"
+    assert payload["providers_active"] is True
+    assert payload["raised"] is True
+    assert payload["config_preserved"] is True
+
+
+def test_runtime_probe_python_per_signal_logs_endpoint_exits_promptly() -> None:
+    support = _load_support_module()
+    if not support._has_otel_stack():
+        pytest.skip("requires opentelemetry-sdk[otlp] (run: uv sync --extra otel)")
+    probe = _REPO_ROOT / "spec" / "probes" / "runtime_probe_python.py"
+    env = {
+        **os.environ,
+        **support._probe_env({}),
+        **support._runtime_probe_case_env("per_signal_logs_endpoint"),
+        "PROVIDE_PARITY_PROBE_CASE": "per_signal_logs_endpoint",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, str(probe)],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["case"] == "per_signal_logs_endpoint"
+    assert payload["setup_done"] is True
+    assert payload["logs_provider"] is True
+    assert payload["traces_provider"] is False
+    assert payload["metrics_provider"] is False
+
+
 def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() -> None:
     module = _load_support_module()
 
@@ -271,6 +376,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
         "custom_secret_pattern_redacts_message",
         "baggage_auto_injection",
         "propagation_cleanup",
+        "propagation_cleanup_preserves_bound_context",
     ]
     assert cases == expected
 
@@ -294,3 +400,91 @@ def test_resolve_path_missing_returns_none() -> None:
     """Missing key returns None."""
     module = _load_harness_module()
     assert module._resolve_path({"a": {}}, "a.b") is None
+
+
+def test_has_otel_stack_returns_false_when_package_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_has_otel_stack must return False when any required package is absent."""
+    module = _load_support_module()
+    real_find_spec = importlib.util.find_spec
+
+    def patched(name: str) -> object:
+        if name == "opentelemetry.sdk":
+            return None
+        return real_find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", patched)
+    assert not module._has_otel_stack()
+
+
+def test_run_runtime_probe_check_raises_when_otel_stack_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """run_runtime_probe_check must raise RuntimeError with install hint when OTel absent."""
+    module = _load_support_module()
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
+
+    fixtures = tmp_path / "fixtures.yaml"
+    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+
+    with pytest.raises(RuntimeError, match=r"opentelemetry-sdk\[otlp\]"):
+        module.run_runtime_probe_check(
+            repo=_REPO_ROOT,
+            selected={"python"},
+            cargo_bin="cargo",
+            cargo_env={},
+            probe_env={},
+            fixtures_path=fixtures,
+        )
+
+
+def test_run_runtime_probe_check_does_not_raise_when_python_not_selected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Guard must not fire when Python is absent from selected, even if OTel stack is missing."""
+    module = _load_support_module()
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
+
+    fixtures = tmp_path / "fixtures.yaml"
+    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+
+    # Should not raise — Python runner is excluded, so OTel stack is irrelevant.
+    # The call may still fail for other reasons (no runners matched), but not with
+    # the OTel RuntimeError.
+    try:
+        module.run_runtime_probe_check(
+            repo=_REPO_ROOT,
+            selected={"go", "rust", "typescript"},
+            cargo_bin="cargo",
+            cargo_env={},
+            probe_env={},
+            fixtures_path=fixtures,
+        )
+    except RuntimeError as exc:
+        assert "opentelemetry-sdk" not in str(exc), f"OTel guard fired unexpectedly for non-Python selected set: {exc}"
+
+
+def test_cli_main_prints_clean_error_and_fails_when_otel_stack_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CLI main() must print a clean [runtime-probe] ERROR line and return non-zero
+    when run_runtime_probe_check raises RuntimeError (OTel stack absent)."""
+    runner = _load_runner_module()
+
+    # Patch run_runtime_probe_check on the loaded runner module to simulate the
+    # OTel guard firing.
+    monkeypatch.setattr(
+        runner,
+        "run_runtime_probe_check",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "Runtime probe cases ['per_signal_logs_endpoint'] require the opentelemetry-sdk[otlp] extra — run: uv sync --extra otel"
+            )
+        ),
+    )
+
+    exit_code = runner.main(["--check-output", "--lang", "python"])
+
+    captured = capsys.readouterr()
+    assert exit_code != 0, "main() should return non-zero when runtime probe raises"
+    assert "[runtime-probe] ERROR:" in captured.err
+    assert "opentelemetry-sdk[otlp]" in captured.err

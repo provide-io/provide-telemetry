@@ -4,6 +4,15 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
+"""🛡️ Exporter resilience — retries, timeouts, and failure policies.
+
+Demonstrates:
+- ExporterPolicy with fail_open=True vs fail_open=False
+- timeout_seconds for deadline enforcement
+- get_exporter_policy to inspect active policy
+- Health snapshot: retries, export failures, latency, last error
+"""
+
 from __future__ import annotations
 
 import time
@@ -13,17 +22,26 @@ from provide.telemetry.resilience import get_circuit_state, run_with_resilience
 
 
 def main() -> None:
+    print("🛡️  Exporter Resilience Demo\n")
+
+    # ── 🟢 Fail-open: returns None on failure ────────────
+    print("🟢 Fail-open mode (retries=1, backoff=0s)")
     set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.0, fail_open=True))
 
-    attempts = {"count": 0}
+    attempts_open = {"count": 0}
 
     def flaky_fail_open() -> str:
-        attempts["count"] += 1
+        attempts_open["count"] += 1
         raise RuntimeError("simulated exporter failure")
 
     result = run_with_resilience("logs", flaky_fail_open)
-    print({"fail_open_result": result, "attempts": attempts["count"], "policy": get_exporter_policy("logs")})
+    policy = get_exporter_policy("logs")
+    print(f"  📦 Result: {result}")
+    print(f"  🔄 Attempts: {attempts_open['count']}")
+    print(f"  📋 Policy: retries={policy.retries}, fail_open={policy.fail_open}")
 
+    # ── 🔴 Fail-closed: raises on failure ────────────────
+    print("\n🔴 Fail-closed mode (retries=1, backoff=0s)")
     set_exporter_policy("logs", ExporterPolicy(retries=1, backoff_seconds=0.0, fail_open=False))
 
     attempts_closed = {"count": 0}
@@ -35,7 +53,8 @@ def main() -> None:
     try:
         run_with_resilience("logs", flaky_fail_closed)
     except RuntimeError as exc:
-        print({"fail_closed_error": str(exc), "attempts": attempts_closed["count"]})
+        print(f"  💥 Caught: {exc}")
+        print(f"  🔄 Attempts: {attempts_closed['count']}")
 
     # ── ⏱️ Timeout enforcement ────────────────────────────
     print("\n⏱️  Timeout enforcement (timeout=0.05s)")

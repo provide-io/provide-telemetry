@@ -39,9 +39,9 @@ class TestReconfigureTelemetryErrorMessages:
         from provide.telemetry.metrics import provider as metrics_provider
         from provide.telemetry.tracing import provider as tracing_provider
 
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
-        monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: True)
-        monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        monkeypatch.setattr(tracing_provider, "_has_live_tracing_provider", lambda: True)
+        monkeypatch.setattr(metrics_provider, "_has_live_meter_provider", lambda: False)
 
     def test_provider_change_error_contains_opentelemetry(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
@@ -58,10 +58,10 @@ class TestReconfigureTelemetryErrorMessages:
         # mutmut_11: "XX" prefix on "provider-changing..." — content still present as substring
         assert "XXprovider-changing" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
-    def test_provider_change_error_contains_reconfigure_telemetry(
+    def test_provider_change_error_contains_restart_guidance(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
     ) -> None:
-        """Error must contain 'reconfigure_telemetry()'.
+        """Error must contain restart + setup_telemetry guidance (not self-referential).
 
         Kills mutmut_14 (prefix change), mutmut_15 (case change).
         """
@@ -69,10 +69,11 @@ class TestReconfigureTelemetryErrorMessages:
         with pytest.raises(RuntimeError) as exc_info:
             runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="svc-b"))
         msg = str(exc_info.value)
-        assert "reconfigure_telemetry()" in msg
-        assert "Use reconfigure_telemetry()" in msg
-        # mutmut_14: "XX" prefix on "Use reconfigure_telemetry()..." — substring still matches
-        assert "XXUse reconfigure_telemetry" not in msg, f"Must not start segment with 'XX': {msg!r}"
+        assert "Restart the process" in msg
+        # Must NOT self-referentially say "Use reconfigure_telemetry()" from inside reconfigure_telemetry()
+        assert "Use reconfigure_telemetry()" not in msg, f"Must not be self-referential: {msg!r}"
+        # mutmut_14: "XX" prefix on "Restart the process..." — substring still matches
+        assert "XXRestart" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
     def test_provider_change_error_contains_setup_telemetry(
         self, monkeypatch: pytest.MonkeyPatch, _stub_all_providers: None
@@ -89,27 +90,21 @@ class TestReconfigureTelemetryErrorMessages:
         # mutmut_17: "XX" prefix on "setup_telemetry()..." — substring still matches
         assert "XXsetup_telemetry" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
-    def _setup_log_provider_change(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> tuple[TelemetryConfig, TelemetryConfig]:
+    def _setup_log_provider_change(self, monkeypatch: pytest.MonkeyPatch) -> tuple[TelemetryConfig, TelemetryConfig]:
         """Helper: set up configs that trigger the log-provider change error path."""
         from provide.telemetry.logger import core as logger_core
         from provide.telemetry.metrics import provider as metrics_provider
         from provide.telemetry.tracing import provider as tracing_provider
 
-        runtime_mod.apply_runtime_config(
-            TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
-        )
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", lambda: True)
-        monkeypatch.setattr(tracing_provider, "_has_tracing_provider", lambda: False)
-        monkeypatch.setattr(metrics_provider, "_has_meter_provider", lambda: False)
+        runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+        monkeypatch.setattr(tracing_provider, "_has_live_tracing_provider", lambda: False)
+        monkeypatch.setattr(metrics_provider, "_has_live_meter_provider", lambda: False)
         cfg_a = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"})
         cfg_b = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://other-logs"})
         return cfg_a, cfg_b
 
-    def test_logging_provider_error_contains_opentelemetry(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_logging_provider_error_contains_opentelemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Log-provider error must contain 'OpenTelemetry'.
 
         Kills mutmut_25 (prefix "XX...XX"), mutmut_26 (lowercase).
@@ -123,9 +118,7 @@ class TestReconfigureTelemetryErrorMessages:
         # mutmut_25: "XX" prefix on "provider-changing logging..." — OpenTelemetry still present
         assert "XXprovider-changing logging" not in msg, f"Must not start segment with 'XX': {msg!r}"
 
-    def test_logging_provider_error_contains_endpoint_hint(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_logging_provider_error_contains_endpoint_hint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Log-provider error must mention endpoint/headers/timeout change.
 
         Kills mutmut_28 (prefix "XX...XX"), mutmut_29 (case change).
@@ -139,12 +132,10 @@ class TestReconfigureTelemetryErrorMessages:
         assert "ARE INSTALLED" not in msg
         # mutmut_28: "XX" prefix on "are installed..." — "are installed" still a substring
         assert "XXare installed" not in msg, f"Must not start segment with 'XX': {msg!r}"
-        # mutmut_29: lowercase "use" → "use reconfigure_telemetry()" instead of "Use..."
-        assert "Use reconfigure_telemetry()" in msg, f"'Use' must be capitalized: {msg!r}"
+        # Must NOT self-referentially say "Use reconfigure_telemetry()" from inside reconfigure_telemetry()
+        assert "Use reconfigure_telemetry()" not in msg, f"Must not be self-referential: {msg!r}"
 
-    def test_logging_provider_error_contains_setup_telemetry(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_logging_provider_error_contains_setup_telemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Log-provider error must contain 'setup_telemetry()'.
 
         Kills mutmut_30 (suffix "XX...XX" around final sentence),
@@ -155,8 +146,7 @@ class TestReconfigureTelemetryErrorMessages:
             runtime_mod.reconfigure_telemetry(cfg_b)
         msg = str(exc_info.value)
         assert "setup_telemetry()" in msg, f"Expected 'setup_telemetry()' in: {msg!r}"
-        assert "provider replacement" in msg, f"Expected 'provider replacement' in: {msg!r}"
-        assert "PROVIDER REPLACEMENT" not in msg
+        assert "Restart the process" in msg, f"Expected 'Restart the process' in: {msg!r}"
         assert "SETUP_TELEMETRY()" not in msg
         # mutmut_30: wraps final sentence in "XX...XX" — message must end cleanly with period
         assert msg.rstrip().endswith("the new config."), (

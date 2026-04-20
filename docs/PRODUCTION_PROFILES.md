@@ -19,7 +19,7 @@ export PROVIDE_TRACE_ENABLED=true
 
 Behavior:
 
-- Enforces `domain.action.status` event names.
+- Enforces 3-5 segment event names.
 - Enforces required keys on events.
 - Keeps full tracing and metrics signal volume.
 
@@ -74,7 +74,7 @@ export OPENOBSERVE_PASSWORD=Complexpass#123
 
 ## Runtime Updates
 
-If your process supports runtime policy updates, treat profile changes as an atomic policy swap:
+Profile changes involve two mechanisms with different scopes:
 
 **Hot-reconfigurable** (no restart, via `update_runtime_config()`):
 sampling policies, backpressure queue limits, exporter retry/timeout policies,

@@ -56,10 +56,7 @@ fn exec_setup(step: &Value) {
     provide_telemetry::setup_telemetry().ok();
 }
 
-fn exec_setup_invalid(
-    step: &Value,
-    variables: &mut BTreeMap<String, Value>,
-) {
+fn exec_setup_invalid(step: &Value, variables: &mut BTreeMap<String, Value>) {
     let into = as_str(step, "into");
     let overrides = as_object(step, "overrides");
 
@@ -85,7 +82,7 @@ fn exec_setup_invalid(
     let error = result.err().map(|e| e.to_string()).unwrap_or_default();
 
     // Clean up the env vars we set.
-    for (key, _) in &overrides {
+    for key in overrides.keys() {
         let env_key = match key.as_str() {
             "samplingLogsRate" => "PROVIDE_SAMPLING_LOGS_RATE",
             "samplingTracesRate" => "PROVIDE_SAMPLING_TRACES_RATE",
@@ -160,7 +157,23 @@ fn exec_register_secret_pattern(step: &Value) {
 fn exec_emit_log(step: &Value) {
     let message = as_str(step, "message");
     let logger = provide_telemetry::get_logger(Some("contract"));
-    logger.info(message);
+    // Pass any step-local structured fields (excluding "event" which duplicates
+    // the message in the contract DSL, matching Python and Go probe behaviour).
+    let extra: BTreeMap<String, Value> = step
+        .get("fields")
+        .and_then(|f| f.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter(|(k, _)| k.as_str() != "event")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if extra.is_empty() {
+        logger.info(message);
+    } else {
+        logger.info_fields(message, &extra);
+    }
 }
 
 fn exec_capture_log(step: &Value, variables: &mut BTreeMap<String, Value>) {
@@ -252,7 +265,7 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "emit_log" => exec_emit_log(step),
             "capture_log" => exec_capture_log(step, &mut variables),
             "get_runtime_status" => exec_get_runtime_status(step, &mut variables),
-            unknown => eprintln!("warning: unknown op '{unknown}', skipping"),
+            unknown => panic!("unsupported contract operation: '{unknown}'"),
         }
     }
 
@@ -264,12 +277,11 @@ fn main() {
         std::env::var("PROVIDE_CONTRACT_CASE").expect("PROVIDE_CONTRACT_CASE env var required");
 
     let yaml_path = std::path::Path::new("../spec/contract_fixtures.yaml");
-    let yaml_content = std::fs::read_to_string(yaml_path)
-        .unwrap_or_else(|_| {
-            // Also try from the repo root (in case cwd is the repo root).
-            std::fs::read_to_string("spec/contract_fixtures.yaml")
-                .expect("cannot read spec/contract_fixtures.yaml")
-        });
+    let yaml_content = std::fs::read_to_string(yaml_path).unwrap_or_else(|_| {
+        // Also try from the repo root (in case cwd is the repo root).
+        std::fs::read_to_string("spec/contract_fixtures.yaml")
+            .expect("cannot read spec/contract_fixtures.yaml")
+    });
 
     let doc: Value = serde_yaml::from_str(&yaml_content).expect("failed to parse YAML");
     let cases = doc

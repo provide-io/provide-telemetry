@@ -36,13 +36,8 @@ fn main() {}
 fn run() -> Result<(), String> {
     let backend_url =
         env::var("E2E_BACKEND_URL").map_err(|_| "E2E_BACKEND_URL is required".to_string())?;
-
-    // Use provide-telemetry's setup_telemetry() which installs the tracing subscriber,
-    // registers the OTel TracerProvider globally, and sets the W3C propagator.
-    provide_telemetry::setup_telemetry().map_err(|err| format!("setup_telemetry failed: {err}"))?;
-
-    // Global tracer is now available — setup_telemetry() calls set_tracer_provider().
-    let tracer = global::tracer("rust.e2e.client");
+    let provider = e2e_shared::init_tracer_provider("rust-e2e-client")?;
+    let tracer = provider.tracer("rust.e2e.client");
 
     let span = tracer.start("rust.e2e.cross_language_request");
     let trace_id = span.span_context().trace_id().to_string();
@@ -65,25 +60,6 @@ fn run() -> Result<(), String> {
 
     println!("TRACE_ID={trace_id}");
     Ok(())
-}
-
-#[cfg(feature = "otel")]
-struct MapInjector<'a> {
-    headers: &'a mut HashMap<String, String>,
-}
-
-#[cfg(feature = "otel")]
-impl<'a> MapInjector<'a> {
-    fn new(headers: &'a mut HashMap<String, String>) -> Self {
-        Self { headers }
-    }
-}
-
-#[cfg(feature = "otel")]
-impl Injector for MapInjector<'_> {
-    fn set(&mut self, key: &str, value: String) {
-        self.headers.insert(key.to_ascii_lowercase(), value);
-    }
 }
 
 #[cfg(feature = "otel")]

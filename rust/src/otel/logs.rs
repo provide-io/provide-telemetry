@@ -58,6 +58,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.logging.otlp_endpoint {
+        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.logging.otlp_headers.is_empty() {
@@ -288,6 +289,7 @@ mod tests {
             context: BTreeMap::new(),
             trace_id: None,
             span_id: None,
+            event_metadata: None,
         };
         emit_log(&event);
         shutdown_logger_provider();

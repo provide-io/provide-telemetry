@@ -19,13 +19,14 @@ Legend:
 | Invalid config fails fast at setup | core | core | core | core | core guaranteed |
 | Fail-open exporter initialization degrades to fallback without marking providers installed | core | core | core | feature-gated | core guaranteed when OTLP path is enabled |
 | Shutdown followed by setup restores the same runtime-status shape | core | core | core | core | core guaranteed |
-| `get_runtime_config()` returns effective config before or after explicit setup | core | core | core | core | core guaranteed |
+| `get_runtime_config()` returns effective config after setup (Python/TS also return env fallback before setup; Go/Rust return nil/None) | core | core | core | core | core guaranteed after setup; pre-setup behavior varies |
 | `get_runtime_status()` exposes `setup_done`, `signals`, `providers`, `fallback`, and `setup_error` | core | core | core | core | core guaranteed |
 | Real OTLP traces export | core | core | core | feature-gated | feature/dependency gated |
 | Real OTLP metrics export | core | core | core | feature-gated | feature/dependency gated |
 | Real OTLP logs export | core | core | core | feature-gated | feature/dependency gated |
 | Guard-based context restoration | idiomatic | no | no | idiomatic | idiomatic language difference |
 | Browser log capture / React helpers | no | idiomatic | no | no | idiomatic language difference |
+| `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | capability difference — see notes |
 
 Notes:
 
@@ -34,3 +35,11 @@ Notes:
 - Python OTLP export requires the `otel` extras.
 - Go OTLP export is built into the module, but still follows fail-open setup and
   runtime fallback semantics when provider construction fails.
+- Gauge semantics: Python tracks per-attribute-set values and exposes the
+  aggregate in-process `value` as the sum across all attribute sets
+  (`src/provide/telemetry/metrics/fallback.py`). TypeScript, Go, and Rust
+  follow the OTel-native last-reading model — `value` returns the most recent
+  value written, regardless of attribute set. The OTel-exported metric stream
+  is consistent across all four languages (per-series last reading); only the
+  in-process `.value()` accessor differs. Cross-language comparisons of the
+  aggregate accessor are not supported.

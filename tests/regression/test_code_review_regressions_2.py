@@ -86,8 +86,9 @@ class TestFallbackLazyResolve:
         monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: None)
         result = c._resolve_otel()
         assert result is None
-        # Caches "no provider" to avoid re-resolving on every call.
-        assert c._resolved is True
+        # Stays unresolved so a later call retries after setup_telemetry()
+        # installs a real provider (fixes stuck-on-fallback bug).
+        assert c._resolved is False
 
     def test_counter_resolve_handles_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from provide.telemetry.metrics.fallback import Counter
@@ -141,6 +142,7 @@ class TestFallbackLazyResolve:
 # ── Issue #16: double-checked locking race in provider setup ───────────
 
 
+@pytest.mark.otel
 class TestProviderDoubleCheckLocking:
     def test_metrics_setup_discards_when_another_thread_won(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """If _meter_provider is set between the two lock acquisitions, discard the new provider."""

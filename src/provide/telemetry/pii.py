@@ -25,6 +25,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from provide.telemetry._secret_patterns_generated import MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH
+from provide.telemetry._secret_patterns_generated import PATTERNS as _RAW_SECRET_PATTERNS
+
 MaskMode = Literal["drop", "redact", "hash", "truncate"]
 
 
@@ -35,16 +38,9 @@ class PIIRule:
     truncate_to: int = 8
 
 
-_SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = (
-    ("aws_key", _re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}")),
-    ("jwt", _re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
-    ("github_token", _re.compile(r"gh[pos]_[A-Za-z0-9_]{36,}")),
-    ("long_hex", _re.compile(r"[0-9a-fA-F]{40,}")),
-    ("long_base64", _re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")),
+_SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = tuple(
+    (name, _re.compile(pattern)) for name, pattern in _RAW_SECRET_PATTERNS
 )
-
-
-_MIN_SECRET_LENGTH = 20  # shortest pattern (AKIA + 16) is 20 chars
 
 _custom_secret_patterns: list[tuple[str, _re.Pattern[str]]] = []
 
@@ -141,7 +137,7 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
     if mode == "redact":
         return _REDACTED
     if mode == "hash":
-        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]  # pragma: no mutate
     text = str(value)
     limit = max(0, truncate_to)
     if len(text) <= limit:
@@ -152,7 +148,7 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
 def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     if len(path) != len(target):
         return False
-    return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))
+    return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))  # pragma: no mutate
 
 
 def _apply_rule(
@@ -213,15 +209,19 @@ def _apply_default_sensitive_key_redaction(
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
-                        receipt_hook(  # pragma: no mutate — cast() is a type-only no-op at runtime
-                            ".".join(cast(tuple[str, ...], child_path)), "redact", orig_value
+                        receipt_hook(
+                            ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                            "redact",
+                            orig_value,
                         )
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
                     receipt_hook(
-                        ".".join(cast(tuple[str, ...], child_path)), "redact", value
-                    )  # pragma: no mutate — cast() is a type-only no-op at runtime
+                        ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                        "redact",
+                        value,
+                    )
             else:
                 output[key] = _apply_default_sensitive_key_redaction(
                     value,
@@ -286,18 +286,20 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
-        for key, value in list(cast(Any, cleaned).items()):
+        for key, value in list(cast(Any, cleaned).items()):  # pragma: no mutate
             label = classification_hook(key, value)
             if label is not None:
-                action = (  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
-                    policy_fn(label) if policy_fn is not None else "pass"
+                action = (
+                    policy_fn(label)
+                    if policy_fn is not None
+                    else "pass"  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
                 )
                 if action == "drop":
                     del cleaned[key]
                 else:
                     cleaned[f"__{key}__class"] = label
                     if action in ("redact", "hash", "truncate") and value != _REDACTED:
-                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)
+                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)  # pragma: no mutate
     if isinstance(cleaned, dict):
         return cleaned
     return {}

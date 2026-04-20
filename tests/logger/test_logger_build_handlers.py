@@ -137,6 +137,7 @@ def test_build_handlers_with_otel_endpoint_when_components_missing(monkeypatch: 
     assert isinstance(handlers[0], logging.StreamHandler)
 
 
+@pytest.mark.otel
 def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
@@ -210,13 +211,21 @@ def test_build_handlers_with_otel_endpoint(monkeypatch: pytest.MonkeyPatch) -> N
     assert len(provider.processors) == 1
     assert isinstance(provider.processors[0], _BatchProcessor)
     exporter = cast(Any, provider.processors[0]).exporter
-    assert isinstance(exporter, _Exporter)
-    assert exporter.endpoint == "http://logs"
-    assert exporter.headers == {"Authorization": "Basic abc"}
-    assert exporter.timeout == 10.0
+    # Exporter is wrapped in ResilientExporter so every export() call goes
+    # through the retry/timeout/circuit-breaker policy. Unwrap to verify the
+    # underlying OTLP exporter was configured correctly.
+    from provide.telemetry.resilient_exporter import ResilientExporter
+
+    assert isinstance(exporter, ResilientExporter)
+    inner_exporter = exporter._inner
+    assert isinstance(inner_exporter, _Exporter)
+    assert inner_exporter.endpoint == "http://logs"
+    assert inner_exporter.headers == {"Authorization": "Basic abc"}
+    assert inner_exporter.timeout == 10.0
     assert core_mod._otel_log_provider is provider
 
 
+@pytest.mark.otel
 def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {
@@ -294,10 +303,14 @@ def test_build_handlers_prefers_instrumentation_handler(monkeypatch: pytest.Monk
     assert provider.resource["service.name"] == "svc"
     assert provider.resource["service.version"] == "1.0.0"
     exporter = cast(Any, provider.processors[0]).exporter
-    assert isinstance(exporter, _Exporter)
-    assert exporter.timeout == 10.0
+    from provide.telemetry.resilient_exporter import ResilientExporter
+
+    assert isinstance(exporter, ResilientExporter)
+    assert isinstance(exporter._inner, _Exporter)
+    assert exporter._inner.timeout == 10.0
 
 
+@pytest.mark.otel
 def test_build_handlers_filters_deprecation_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = TelemetryConfig.from_env(
         {

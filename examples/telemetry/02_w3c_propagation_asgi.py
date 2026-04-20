@@ -4,6 +4,16 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
+"""🌐 W3C trace-context propagation through ASGI middleware.
+
+Demonstrates:
+- TelemetryMiddleware with auto_slo=True for automatic RED metrics
+- W3C traceparent/tracestate/baggage header extraction
+- bind_propagation_context / clear_propagation_context lifecycle
+- WebSocket context binding via bind_websocket_context
+- get_trace_context for downstream correlation
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +34,7 @@ from provide.telemetry.logger.context import get_context
 from provide.telemetry.propagation import bind_propagation_context, clear_propagation_context
 
 
-async def _app(_scope: dict[str, Any], _receive: Any, _send: Any) -> None:
+async def _app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
     log = get_logger("examples.w3c")
     if scope["type"] == "websocket":
         log.info(event("example", "w3c", "websocket"), context=get_context())
@@ -37,17 +47,23 @@ async def _app(_scope: dict[str, Any], _receive: Any, _send: Any) -> None:
     await send({"type": "http.response.body", "body": b"ok"})
 
 
-async def _run_once() -> None:
-    middleware = TelemetryMiddleware(_app)
+async def _run_http() -> None:
+    """🔗 HTTP request with full W3C header propagation and auto_slo."""
+    print("\n🔗 HTTP request with auto_slo=True")
+    middleware = TelemetryMiddleware(_app, auto_slo=True)
 
     async def _receive() -> dict[str, Any]:
         return {"type": "http.request"}
 
-    async def _send(_: dict[str, Any]) -> None:
-        return None
+    responses: list[dict[str, Any]] = []
 
-    scope = {
+    async def _send(msg: dict[str, Any]) -> None:
+        responses.append(msg)
+
+    scope: dict[str, Any] = {
         "type": "http",
+        "method": "GET",
+        "path": "/api/match",
         "headers": [
             (b"x-request-id", b"req-w3c-1"),
             (b"traceparent", b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
@@ -55,8 +71,12 @@ async def _run_once() -> None:
             (b"baggage", b"user_id=123"),
         ],
     }
+
     extracted = extract_w3c_context(scope)
-    get_logger("examples.w3c").info("example.w3c.extracted", extracted=extracted)
+    print(f"  📥 Extracted trace_id={extracted.trace_id}")
+    print(f"  📥 Extracted span_id={extracted.span_id}")
+    print(f"  📥 Baggage: {extracted.baggage}")
+
     await middleware(scope, _receive, _send)
     print(f"  ✅ Response status: {responses[0].get('status', '?')}")
 
@@ -125,8 +145,15 @@ async def _run_websocket_context() -> None:
 
 
 def main() -> None:
+    print("🌐 W3C Propagation & ASGI Middleware Demo")
     setup_telemetry()
-    asyncio.run(_run_once())
+
+    asyncio.run(_run_http())
+    asyncio.run(_run_websocket())
+    asyncio.run(_run_manual_propagation())
+    asyncio.run(_run_websocket_context())
+
+    print("\n🏁 Done!")
     shutdown_telemetry()
 
 

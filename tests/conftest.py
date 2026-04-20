@@ -15,6 +15,7 @@ from provide.telemetry.backpressure import reset_queues_for_tests
 from provide.telemetry.cardinality import clear_cardinality_limits
 from provide.telemetry.consent import _reset_consent_for_tests
 from provide.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.runtime import reset_runtime_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
 from provide.telemetry.setup import _reset_setup_state_for_tests
 from provide.telemetry.tracing.context import set_trace_context

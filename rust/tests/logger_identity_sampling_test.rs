@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 
 use provide_telemetry::health::_reset_health_for_tests;
 use provide_telemetry::sampling::{
-    SamplingPolicy, Signal, _reset_sampling_for_tests, set_sampling_policy,
+    _reset_sampling_for_tests, set_sampling_policy, SamplingPolicy, Signal,
 };
 use provide_telemetry::{
     bind_context, enable_json_capture_for_tests, get_logger, reconfigure_telemetry,

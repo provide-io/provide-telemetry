@@ -86,6 +86,10 @@ func _checkCircuitBreaker(signal string) bool {
 		return false
 	}
 
+	if _halfOpenProbing[signal] {
+		return true
+	}
+
 	cooldown := min(_cbBaseCooldown*(1<<_openCount[signal]), _cbMaxCooldown)
 
 	elapsed := time.Since(_circuitTrippedAt[signal])
@@ -116,17 +120,18 @@ func _recordAttemptFailure(signal string, isTimeout bool) {
 	_resilienceMu.Lock()
 	defer _resilienceMu.Unlock()
 
-	if _halfOpenProbing[signal] {
+	switch {
+	case _halfOpenProbing[signal]:
 		_halfOpenProbing[signal] = false
 		_openCount[signal]++
 		_circuitTrippedAt[signal] = time.Now()
-	} else if isTimeout {
+	case isTimeout:
 		_consecutiveTimeouts[signal]++
 		if _reachedThreshold(_consecutiveTimeouts[signal], _cbThreshold) {
 			_openCount[signal]++
 			_circuitTrippedAt[signal] = time.Now()
 		}
-	} else {
+	default:
 		_consecutiveTimeouts[signal] = 0
 	}
 }

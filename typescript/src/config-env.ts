@@ -118,17 +118,43 @@ export function configFromEnv(): TelemetryConfig {
     logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
-      // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
-      return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
+      // Stryker disable next-line ConditionalExpression: 'console' is DEFAULTS.logFormat so removing its check returns the same default value
+      if (fmt === 'json' || fmt === 'pretty' || fmt === 'console') return fmt;
+      return DEFAULTS.logFormat;
     })(),
     otelEnabled: DEFAULTS.otelEnabled,
     tracingEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.tracingEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
+    otlpLogsEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpTracesEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpMetricsEndpoint: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT');
+      return v ?? undefined;
+    })(),
+    otlpLogsHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_LOGS_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
+    otlpTracesHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_TRACES_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
+    otlpMetricsHeaders: (() => {
+      const v = nodeEnv('OTEL_EXPORTER_OTLP_METRICS_HEADERS');
+      return v ? parseOtlpHeaders(v) : undefined;
+    })(),
     sanitizeFields: DEFAULTS.sanitizeFields,
     captureToWindow: true,
     consoleOutput: true,
     strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
+    strictEventName: envBool('PROVIDE_TELEMETRY_STRICT_EVENT_NAME', DEFAULTS.strictEventName),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
       return raw

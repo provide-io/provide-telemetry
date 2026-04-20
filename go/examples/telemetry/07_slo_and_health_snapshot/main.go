@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	fmt.Println("SLO Metrics & Health Snapshot Demo\n")
+	fmt.Println("SLO Metrics & Health Snapshot Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -70,12 +70,12 @@ func main() {
 		)
 		if c.code == 503 {
 			errEvt, _ := telemetry.Event("example", "slo", "error")
-			log.ErrorContext(ctx, errEvt,
+			log.ErrorContext(ctx, errEvt.Event, append(errEvt.Attrs(),
 				"exc_name", c.name,
 				"status_code", fmt.Sprint(c.code),
 				"error_category", taxonomy["error.category"],
 				"error_severity", taxonomy["error.severity"],
-			)
+			)...)
 		}
 	}
 

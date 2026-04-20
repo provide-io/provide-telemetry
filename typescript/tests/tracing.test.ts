@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { trace, propagation } from '@opentelemetry/api';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { trace } from '@opentelemetry/api';
+import { describe, expect, it, vi } from 'vitest';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 import {
   _resetTraceContext,
   getActiveTraceIds,
@@ -13,7 +14,7 @@ import {
   traceDecorator,
   withTrace,
 } from '../src/tracing';
-import { _resetPropagationForTests, bindPropagationContext } from '../src/propagation';
+import { _resetConfig, setupTelemetry } from '../src/config';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {
@@ -272,72 +273,7 @@ describe('getTraceContext — partial manual context', () => {
   });
 });
 
-describe('withTrace — span.setStatus called on error', () => {
-  it('calls span.setStatus with ERROR code and message on sync throw', () => {
-    const mockSetStatus = vi.fn();
-    const mockSpan = {
-      end: vi.fn(),
-      recordException: vi.fn(),
-      setStatus: mockSetStatus,
-      spanContext: () => ({
-        traceId: 'aabbccddeeff00112233445566778899',
-        spanId: 'aabbccdd11223344',
-      }),
-    };
-    const mockTracer = {
-      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
-        cb(mockSpan),
-      ),
-    };
-    vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
-
-    expect(() =>
-      withTrace('test.error', () => {
-        throw new Error('oops');
-      }),
-    ).toThrow('oops');
-
-    expect(mockSetStatus).toHaveBeenCalledOnce();
-    const call = mockSetStatus.mock.calls[0][0] as { code: number; message: string };
-    // SpanStatusCode.ERROR = 2
-    expect(call.code).toBe(2);
-    expect(call.message).toBe('Error: oops');
-
-    vi.restoreAllMocks();
-  });
-
-  it('calls span.setStatus with ERROR code and message on async rejection', async () => {
-    const mockSetStatus = vi.fn();
-    const mockSpan = {
-      end: vi.fn(),
-      recordException: vi.fn(),
-      setStatus: mockSetStatus,
-      spanContext: () => ({
-        traceId: 'aabbccddeeff00112233445566778899',
-        spanId: 'aabbccdd11223344',
-      }),
-    };
-    const mockTracer = {
-      startActiveSpan: vi.fn((_name: string, cb: (span: typeof mockSpan) => unknown) =>
-        cb(mockSpan),
-      ),
-    };
-    vi.spyOn(trace, 'getTracer').mockReturnValueOnce(mockTracer as never);
-
-    await expect(
-      withTrace('test.async.error', async () => {
-        throw new Error('async oops');
-      }),
-    ).rejects.toThrow('async oops');
-
-    expect(mockSetStatus).toHaveBeenCalledOnce();
-    const call = mockSetStatus.mock.calls[0][0] as { code: number; message: string };
-    expect(call.code).toBe(2);
-    expect(call.message).toBe('Error: async oops');
-
-    vi.restoreAllMocks();
-  });
-});
+// Advanced withTrace tests (setStatus, propagation, health counters, gates, ALS) live in tracing.manual.test.ts
 
 describe('getActiveTraceIds — span with non-zero IDs', () => {
   it('returns trace_id and span_id when both are present', () => {
@@ -354,54 +290,5 @@ describe('getActiveTraceIds — span with non-zero IDs', () => {
     expect('trace_id' in ids).toBe(true);
     expect('span_id' in ids).toBe(true);
     vi.restoreAllMocks();
-  });
-});
-
-describe('withTrace — OTel propagation context wiring', () => {
-  const VALID_TRACEPARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'; // pragma: allowlist secret
-
-  beforeAll(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { W3CTraceContextPropagator } = require('@opentelemetry/core') as {
-      W3CTraceContextPropagator: new () => import('@opentelemetry/api').TextMapPropagator;
-    };
-    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
-  });
-
-  afterAll(() => {
-    propagation.disable();
-  });
-
-  afterEach(() => {
-    _resetPropagationForTests();
-  });
-
-  it('uses propagated OTel context as parent when available', () => {
-    bindPropagationContext({
-      traceparent: VALID_TRACEPARENT,
-      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
-      spanId: '00f067aa0ba902b7',
-    });
-
-    // withTrace should execute normally and return the result
-    const result = withTrace('test.propagated', () => 42);
-    expect(result).toBe(42);
-  });
-
-  it('works with async fn when propagation context is bound', async () => {
-    bindPropagationContext({
-      traceparent: VALID_TRACEPARENT,
-      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', // pragma: allowlist secret
-      spanId: '00f067aa0ba902b7',
-    });
-
-    const result = await withTrace('test.propagated.async', async () => 'hello');
-    expect(result).toBe('hello');
-  });
-
-  it('falls back to default when no propagation context is bound', () => {
-    // No bindPropagationContext called — getActiveOtelContext() returns undefined
-    const result = withTrace('test.no-propagation', () => 'ok');
-    expect(result).toBe('ok');
   });
 });
