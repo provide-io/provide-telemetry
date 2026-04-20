@@ -24,6 +24,7 @@ import { _resetConfig, setupTelemetry } from '../src/config';
 import { _resetContext } from '../src/context';
 import { _resetRootLogger, makeWriteHook } from '../src/logger';
 import * as otelLogs from '../src/otel-logs';
+import { registerSecretPattern, resetPiiRulesForTests } from '../src/pii';
 
 beforeEach(() => {
   _resetConfig();
@@ -35,6 +36,7 @@ afterEach(() => {
   _resetConfig();
   _resetRootLogger();
   _resetContext();
+  resetPiiRulesForTests();
   vi.restoreAllMocks();
 });
 
@@ -58,6 +60,18 @@ describe('logger message PII — cross-language regression', () => {
     expect(spy).toHaveBeenCalledOnce();
     const record = spy.mock.calls[0][0] as Record<string, unknown>;
     expect(record['message']).toBe('token AKIAIOSFODNN7EXAMPLE leaked'); // pragma: allowlist secret
+    spy.mockRestore();
+  });
+
+  it('redacts a registered custom secret pattern embedded in the message string', () => {
+    registerSecretPattern('internal_token', /INTSECRET-[A-Z0-9]{12,}/);
+    setupTelemetry({ serviceName: 'test-svc', logLevel: 'info', logSanitize: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    hook({ level: 30, message: 'token INTSECRET-ABC123XYZ789 leaked' });
+    expect(spy).toHaveBeenCalledOnce();
+    const record = spy.mock.calls[0][0] as Record<string, unknown>;
+    expect(record['message']).toBe('***');
     spy.mockRestore();
   });
 
