@@ -140,17 +140,19 @@ Each signal degrades independently:
 
 ### PII Engine
 
-The PII engine (`pii.py`) processes log payloads in two passes:
+The PII engine (`pii.py` in Python; mirrored in `pii.ts`, `piicore` package in Go, and `pii.rs` in Rust) processes log payloads in three passes:
 
-1. **Custom rules**: Each `PIIRule` specifies a `path` (tuple of key segments, with `"*"` as wildcard) and a `mode`:
+1. **Custom path rules**: Each `PIIRule` specifies a `path` (tuple of key segments, with `"*"` as wildcard) and a `mode`:
    - `"drop"` — remove the value entirely
    - `"redact"` — replace with `"***"`
    - `"hash"` — replace with first 12 chars of SHA-256 hex digest
    - `"truncate"` — keep first N characters, append `"..."`
 
-2. **Default sensitive key redaction**: Keys matching `{"password", "token", "authorization", "api_key", "secret"}` (case-insensitive) are redacted with `"***"` unless a custom rule already targeted them.
+2. **Default sensitive-key redaction**: Keys whose lowercased name matches any of `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `auth`, `authorization`, `credential`, `private_key`, `ssn`, `credit_card`, `creditcard`, `cvv`, `pin`, `account_number`, `cookie` are redacted with `"***"` unless a custom rule already targeted them.
 
-Both passes traverse nested dicts and lists recursively.
+3. **Value-based secret detection**: Every string value (and the free-form log message itself) is matched against the built-in secret-pattern set (AWS access keys, JWTs, GitHub PATs, long hex / base64 runs above the `MIN_SECRET_LENGTH` threshold) plus any patterns registered via `register_secret_pattern(name, pattern)`. Matches are replaced with `"***"`. The message is checked separately from the attribute map so wildcard path rules (`Path: ["*"]`) cannot bypass the scrub — see `tests/regression/test_message_pii_cross_language.py` for the cross-language contract tests.
+
+Passes 1 and 2 traverse nested dicts and lists recursively up to `pii_max_depth`. Pass 3 is the gate behind `sanitize=true`; when sanitization is disabled, message and value strings flow through verbatim.
 
 ### Cardinality Guards
 
