@@ -15,7 +15,7 @@ logger/core.py mutants:
 logger/processors.py mutants:
   _get_active_config mutmut_10: getattr(runtime, "_active_config", None) → getattr(runtime, "_active_config",)
   apply_sampling mutmut_1/2/3: fallback lambda value
-  apply_sampling mutmut_26: release(ticket) → release(None)
+  render_with_backpressure_extra mutmut_26: ticket dropped or attached incorrectly
 """
 
 from __future__ import annotations
@@ -297,16 +297,16 @@ class TestGetActiveConfig:
 
 
 class TestApplySamplingFallbackAndRelease:
-    """Kill mutmut_1/2/3 (fallback lambda) and mutmut_26 (release(None)).
+    """Kill mutmut_1/2/3 (fallback lambda) and ticket handoff mutants.
 
     mutmut_1: fallback = None (calling None(...) raises TypeError)
     mutmut_2: fallback returns None (not None is True → blocks events)
     mutmut_3: fallback returns False (blocks events)
-    mutmut_26: release(ticket) → release(None)
+    mutmut_26: ticket omitted / replaced with None during renderer handoff
     """
 
     def _setup_sampling_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Set up mocks so apply_sampling proceeds to the release step."""
+        """Set up mocks so apply_sampling proceeds to the renderer handoff step."""
         from provide.telemetry import backpressure as bp_mod
         from provide.telemetry import health as health_mod
         from provide.telemetry import sampling as sampling_mod
@@ -351,14 +351,8 @@ class TestApplySamplingFallbackAndRelease:
             if original is not None:
                 sys.modules["provide.telemetry.consent"] = original
 
-    def test_release_called_with_actual_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """release() must be called with the actual ticket, not None.
-
-        Updated for the deferred-release architecture: apply_sampling stashes
-        the ticket in event_dict; release_backpressure_ticket releases it.
-        Both processors must run for the ticket to flow end-to-end.
-        Kills mutmut_26: release(ticket) → release(None).
-        """
+    def test_renderer_handoff_attaches_actual_ticket_to_logging_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The final renderer processor must preserve the actual ticket on `extra`."""
         from provide.telemetry import backpressure as bp_mod
         from provide.telemetry import health as health_mod
         from provide.telemetry import sampling as sampling_mod
@@ -369,76 +363,22 @@ class TestApplySamplingFallbackAndRelease:
         monkeypatch.setattr(bp_mod, "try_acquire", lambda signal: ticket)
         monkeypatch.setattr(health_mod, "increment_emitted", lambda signal: None)
 
-        # Mock consent to allow all
         with patch("provide.telemetry.consent.should_allow", return_value=True):
-            released: list[Any] = []
-            monkeypatch.setattr(bp_mod, "release", lambda t: released.append(t))
-
             from provide.telemetry.logger import processors as proc_mod
 
             stashed = proc_mod.apply_sampling(None, "info", {"event": "test.event.ok"})
-            proc_mod.release_backpressure_ticket(None, "info", stashed)
+            args, kwargs = proc_mod.render_with_backpressure_extra(lambda _l, _m, event_dict: event_dict["event"])(
+                None, "info", stashed
+            )
 
-        assert len(released) == 1, f"release must be called once, got {len(released)} calls"
-        assert released[0] is ticket, (
-            f"release must be called with the actual ticket (token=99), got {released[0]!r}"
-        )
-        assert released[0] is not None, "release must not be called with None (mutmut_26)"
-
-    def test_release_receives_correct_token_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The token in the released ticket must match what try_acquire returned.
-
-        Provides stronger assertion to kill mutmut_26: release(None) would give a
-        None release, but the actual ticket has a specific identity.
-        """
-        from provide.telemetry import backpressure as bp_mod
-        from provide.telemetry import health as health_mod
-        from provide.telemetry import sampling as sampling_mod
-
-        monkeypatch.setattr(sampling_mod, "should_sample", lambda signal, name: True)
-
-        # Use a unique sentinel as the ticket to detect identity
-        sentinel_ticket = object()
-        monkeypatch.setattr(bp_mod, "try_acquire", lambda signal: sentinel_ticket)
-        monkeypatch.setattr(health_mod, "increment_emitted", lambda signal: None)
-
-        with patch("provide.telemetry.consent.should_allow", return_value=True):
-            released: list[Any] = []
-            monkeypatch.setattr(bp_mod, "release", lambda t: released.append(t))
-
-            from provide.telemetry.logger import processors as proc_mod
-
-            stashed = proc_mod.apply_sampling(None, "info", {"event": "test.event.ok"})
-            proc_mod.release_backpressure_ticket(None, "info", stashed)
-
-        assert released == [sentinel_ticket], (
-            f"release must receive the exact ticket from try_acquire, "
-            f"got {released!r} instead of [{sentinel_ticket!r}]"
-        )
-
-    def test_release_backpressure_ticket_no_op_when_ticket_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """release_backpressure_ticket is a no-op when no ticket was stashed.
-
-        This is the false branch of the `if ticket is not None` guard — kicks in
-        for log paths that bypassed apply_sampling (e.g. external structlog
-        configurations using only a subset of our processors).
-        """
-        from provide.telemetry import backpressure as bp_mod
-        from provide.telemetry.logger import processors as proc_mod
-
-        released: list[Any] = []
-        monkeypatch.setattr(bp_mod, "release", lambda t: released.append(t))
-
-        out = proc_mod.release_backpressure_ticket(None, "info", {"event": "no.ticket.here"})
-
-        assert released == [], "must not call release when no ticket is stashed"
-        assert out == {"event": "no.ticket.here"}
+        assert args == ("test.event.ok",)
+        assert kwargs == {"extra": {proc_mod._BACKPRESSURE_TICKET_KEY: ticket}}
 
     def test_apply_sampling_stashes_ticket_for_deferred_release(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """apply_sampling MUST NOT release immediately — the ticket bounds the
-        actual emit work (sanitization, caller capture, rendering). Instead it
-        stashes the ticket in event_dict for release_backpressure_ticket to
-        release later in the chain.
+        actual emit work (sanitization, caller capture, rendering, handler I/O).
+        Instead it stashes the ticket in event_dict for the final renderer
+        processor to move onto the LogRecord.
 
         Regression for the bug where release happened on the same line as
         try_acquire, defeating the point of backpressure for Python.
@@ -461,13 +401,24 @@ class TestApplySamplingFallbackAndRelease:
             out = proc_mod.apply_sampling(None, "info", {"event": "test.event.ok"})
 
         assert released == [], (
-            f"apply_sampling must NOT release the ticket — release_backpressure_ticket "
+            f"apply_sampling must NOT release the ticket — the handler boundary "
             f"is responsible. Got {len(released)} early release(s)."
         )
         assert out.get(proc_mod._BACKPRESSURE_TICKET_KEY) is ticket, (
             "apply_sampling must stash the ticket under _BACKPRESSURE_TICKET_KEY for "
-            "release_backpressure_ticket to find."
+            "the final renderer processor to move onto the LogRecord."
         )
+
+    def test_render_with_backpressure_extra_omits_extra_when_ticket_absent(self) -> None:
+        """The renderer handoff must not invent logging `extra` when no ticket exists."""
+        from provide.telemetry.logger import processors as proc_mod
+
+        args, kwargs = proc_mod.render_with_backpressure_extra(lambda _l, _m, event_dict: event_dict["event"])(
+            None, "info", {"event": "no.ticket.here"}
+        )
+
+        assert args == ("no.ticket.here",)
+        assert kwargs == {}
 
     def test_apply_sampling_consent_check_uses_logs_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """apply_sampling must call should_allow("logs", method_name).
