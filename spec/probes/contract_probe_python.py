@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ from provide.telemetry import (  # noqa: E402
     bind_context,
     get_logger,
     get_runtime_status,
+    register_secret_pattern,
     get_trace_context,
     setup_telemetry,
     shutdown_telemetry,
@@ -139,6 +141,10 @@ def _op_bind_context(step: dict[str, Any], _variables: dict[str, object]) -> Non
     bind_context(**step["fields"])
 
 
+def _op_register_secret_pattern(step: dict[str, Any], _variables: dict[str, object]) -> None:
+    register_secret_pattern(step["name"], re.compile(step["pattern"]))
+
+
 def _op_emit_log(step: dict[str, Any], _variables: dict[str, object]) -> None:
     # Reset capture buffer before emitting.
     _capture_stream.truncate(0)
@@ -192,6 +198,7 @@ _DISPATCH: dict[str, Any] = {
     "clear_propagation": _op_clear_propagation,
     "get_trace_context": _op_get_trace_context,
     "bind_context": _op_bind_context,
+    "register_secret_pattern": _op_register_secret_pattern,
     "emit_log": _op_emit_log,
     "capture_log": _op_capture_log,
     "get_runtime_status": _op_get_runtime_status,

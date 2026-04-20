@@ -14,7 +14,9 @@
 
 use super::super::LogEvent;
 use super::sanitize_context;
+use crate::{register_secret_pattern, reset_secret_patterns_for_tests};
 use crate::pii::REDACTED_SENTINEL;
+use regex::Regex;
 use std::collections::BTreeMap;
 
 fn make_event(message: &str) -> LogEvent {
@@ -47,4 +49,20 @@ fn sanitize_context_leaves_clean_message_unchanged() {
         event.message, "user login succeeded",
         "messages without secret patterns must pass through unchanged"
     );
+}
+
+#[test]
+fn sanitize_context_redacts_custom_secret_pattern_in_message_string() {
+    reset_secret_patterns_for_tests();
+    register_secret_pattern(
+        "internal_token",
+        Regex::new(r"INTSECRET-[A-Z0-9]{12,}").expect("valid regex"),
+    );
+    let mut event = make_event("token INTSECRET-ABC123XYZ789 leaked");
+    sanitize_context(&mut event, 8);
+    assert_eq!(
+        event.message, REDACTED_SENTINEL,
+        "message containing a registered custom secret must be redacted"
+    );
+    reset_secret_patterns_for_tests();
 }

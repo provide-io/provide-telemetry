@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,21 @@ func TestHandler_PIISanitization_MessageContent_WildcardRule(t *testing.T) {
 	newTestLogger(&buf, cfg, "").Info("token AKIAIOSFODNN7EXAMPLE leaked") // pragma: allowlist secret
 	if strings.Contains(buf.String(), "AKIAIOSFODNN7EXAMPLE") {            // pragma: allowlist secret
 		t.Errorf("wildcard PII rule bypassed message scrubbing: %s", buf.String())
+	}
+}
+
+func TestHandler_PIISanitization_MessageContent_CustomSecretPattern(t *testing.T) {
+	setupFullSampling(t)
+	resetPII(t)
+	RegisterSecretPattern("internal", regexp.MustCompile(`INTSECRET-[A-Z0-9]+`))
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = true
+
+	var buf bytes.Buffer
+	newTestLogger(&buf, cfg, "").Info("token INTSECRET-ABC123 leaked") // pragma: allowlist secret
+	if strings.Contains(buf.String(), "INTSECRET-ABC123") {            // pragma: allowlist secret
+		t.Errorf("custom secret pattern did not scrub message: %s", buf.String())
 	}
 }
 

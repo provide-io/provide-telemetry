@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
@@ -43,6 +44,8 @@ type step struct {
 	Fields      map[string]any `yaml:"fields"`
 	Into        string         `yaml:"into"`
 	Overrides   map[string]any `yaml:"overrides"`
+	Name        string         `yaml:"name"`
+	Pattern     string         `yaml:"pattern"`
 }
 
 // ctx is the shared context threaded through all operations. Go propagation
@@ -164,6 +167,18 @@ func opBindContext(s step, _ map[string]any) {
 	ctx = telemetry.BindContext(ctx, s.Fields)
 }
 
+// opRegisterSecretPattern registers a custom secret regex for this probe run.
+func opRegisterSecretPattern(s step, _ map[string]any) {
+	if s.Name == "" || s.Pattern == "" {
+		panic("register_secret_pattern requires name and pattern")
+	}
+	pattern, err := regexp.Compile(s.Pattern)
+	if err != nil {
+		panic(fmt.Sprintf("invalid secret pattern: %v", err))
+	}
+	telemetry.RegisterSecretPattern(s.Name, pattern)
+}
+
 // opEmitLog emits a log record via GetLogger, capturing stderr output.
 func opEmitLog(s step, _ map[string]any) {
 	r, w, err := os.Pipe()
@@ -263,16 +278,17 @@ func extractJSONRecord(output string) map[string]any {
 
 // dispatch maps operation names to handler functions.
 var dispatch = map[string]func(step, map[string]any){
-	"setup":              opSetup,
-	"setup_invalid":      opSetupInvalid,
-	"shutdown":           opShutdown,
-	"bind_propagation":   opBindPropagation,
-	"clear_propagation":  opClearPropagation,
-	"get_trace_context":  opGetTraceContext,
-	"bind_context":       opBindContext,
-	"emit_log":           opEmitLog,
-	"capture_log":        opCaptureLog,
-	"get_runtime_status": opGetRuntimeStatus,
+	"setup":                   opSetup,
+	"setup_invalid":           opSetupInvalid,
+	"shutdown":                opShutdown,
+	"bind_propagation":        opBindPropagation,
+	"clear_propagation":       opClearPropagation,
+	"get_trace_context":       opGetTraceContext,
+	"bind_context":            opBindContext,
+	"register_secret_pattern": opRegisterSecretPattern,
+	"emit_log":                opEmitLog,
+	"capture_log":             opCaptureLog,
+	"get_runtime_status":      opGetRuntimeStatus,
 }
 
 func main() {

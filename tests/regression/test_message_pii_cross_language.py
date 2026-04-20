@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from collections.abc import Callable, Generator
 
 import pytest
 
-from provide.telemetry import get_logger, setup_telemetry, shutdown_telemetry
+from provide.telemetry import get_logger, register_secret_pattern, setup_telemetry, shutdown_telemetry
 from provide.telemetry.config import LoggingConfig, TelemetryConfig
+from provide.telemetry.pii import reset_pii_rules_for_tests
 
 
 def _capture_log_output(emit_fn: Callable[[], None]) -> str:
@@ -45,8 +47,10 @@ def _capture_log_output(emit_fn: Callable[[], None]) -> str:
 
 @pytest.fixture(autouse=True)
 def _reset_telemetry() -> Generator[None, None, None]:
+    reset_pii_rules_for_tests()
     yield
     shutdown_telemetry()
+    reset_pii_rules_for_tests()
 
 
 def test_python_redacts_secret_in_log_message_with_sanitize_enabled() -> None:
@@ -81,3 +85,15 @@ def test_python_emits_message_unchanged_when_sanitize_disabled() -> None:
     assert "AKIAIOSFODNN7EXAMPLE" in out, (  # pragma: allowlist secret
         f"sanitize=false should not scrub: {out}"
     )
+
+
+def test_python_redacts_custom_secret_pattern_in_log_message() -> None:
+    """Registered custom secret patterns must also apply to free-form messages."""
+    register_secret_pattern("internal_token", re.compile(r"INTSECRET-[A-Z0-9]{12,}"))
+    cfg = TelemetryConfig(logging=LoggingConfig(fmt="json", sanitize=True))
+    setup_telemetry(cfg)
+
+    out = _capture_log_output(lambda: get_logger("test").info("token INTSECRET-ABC123XYZ789 leaked"))
+
+    assert "INTSECRET-ABC123XYZ789" not in out, f"custom secret leaked in message: {out}"
+    assert '"message": "***"' in out, f"expected redacted custom-secret message, got: {out}"

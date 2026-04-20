@@ -28,6 +28,7 @@ import {
   extractW3cContext,
   bindPropagationContext,
   clearPropagationContext,
+  registerSecretPattern,
   getTraceContext,
   getRuntimeStatus,
   getRuntimeConfig,
@@ -43,6 +44,8 @@ interface Step {
   traceparent?: string;
   baggage?: string;
   overrides?: Record<string, unknown>;
+  name?: string;
+  pattern?: string;
 }
 
 interface ContractCase {
@@ -132,6 +135,13 @@ function execBindContext(step: Step): void {
   }
 }
 
+function execRegisterSecretPattern(step: Step): void {
+  if (!step.name || !step.pattern) {
+    throw new Error('register_secret_pattern requires name and pattern');
+  }
+  registerSecretPattern(step.name, new RegExp(step.pattern));
+}
+
 function execEmitLog(step: Step): void {
   const logger = getLogger('contract');
   logger.info(step.fields ?? {}, step.message ?? '');
@@ -204,6 +214,9 @@ async function main(): Promise<void> {
           break;
         case 'bind_context':
           execBindContext(step);
+          break;
+        case 'register_secret_pattern':
+          execRegisterSecretPattern(step);
           break;
         case 'emit_log':
           execEmitLog(step);
