@@ -338,6 +338,8 @@ func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
 			return attribute.String(attr.Key, fmt.Sprint(u))
 		}
 		return attribute.Int64(attr.Key, int64(u))
+	case slog.KindAny, slog.KindGroup, slog.KindLogValuer:
+		return attribute.String(attr.Key, fmt.Sprint(value.Any()))
 	}
 	return attribute.String(attr.Key, fmt.Sprint(value.Any()))
 }
