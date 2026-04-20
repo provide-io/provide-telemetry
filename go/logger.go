@@ -203,10 +203,19 @@ func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 }
 
 // _customPIIPatterns returns the registered custom secret patterns (if any).
-// Currently we only use the built-in patterns — return nil so DetectSecretInValue
-// scans the built-ins. Mirrors the construction inside SanitizePayload.
+// Mirrors the snapshot construction inside SanitizePayload so message-body
+// scrubbing and map-value scrubbing see the same custom registrations.
 func _customPIIPatterns() map[string]*regexp.Regexp {
-	return nil
+	_piiMu.RLock()
+	defer _piiMu.RUnlock()
+	if len(_customSecretPats) == 0 {
+		return nil
+	}
+	patterns := make(map[string]*regexp.Regexp, len(_customSecretPats))
+	for name, re := range _customSecretPats {
+		patterns[name] = re
+	}
+	return patterns
 }
 
 // _attrsToMap converts a slog.Record's attributes into a flat map[string]any.
