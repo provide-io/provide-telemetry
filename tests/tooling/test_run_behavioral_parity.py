@@ -257,7 +257,7 @@ def test_python_probe_runners_use_current_interpreter_instead_of_uv_wrapper() ->
 
 @pytest.mark.tooling
 def test_contract_fixtures_contain_all_expected_cases() -> None:
-    """All 6 contract case IDs must be present."""
+    """Contract case IDs must match the checked-in fixture catalog."""
     import yaml
 
     fixtures_path = _REPO_ROOT / "spec" / "contract_fixtures.yaml"
@@ -268,6 +268,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
         "trace_field_precedence",
         "setup_invalid_overrides",
         "shutdown_re_setup",
+        "custom_secret_pattern_redacts_message",
         "baggage_auto_injection",
         "propagation_cleanup",
     ]

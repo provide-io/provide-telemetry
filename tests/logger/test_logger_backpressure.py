@@ -87,3 +87,56 @@ def test_backpressure_fanout_handler_releases_ticket_after_all_children(
     assert child_info.calls == 1
     assert child_error.calls == 0
     assert released == [ticket]
+
+
+def test_backpressure_fanout_handler_adopts_existing_formatter_and_only_sets_missing_children() -> None:
+    existing_formatter = logging.Formatter("existing:%(message)s")
+    new_formatter = logging.Formatter("new:%(message)s")
+
+    class _Child(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            _ = record
+
+    child_with_formatter = _Child()
+    child_with_formatter.setFormatter(existing_formatter)
+    child_without_formatter = _Child()
+
+    fanout = _BackpressureFanoutHandler([child_with_formatter, child_without_formatter])
+
+    assert fanout.formatter is existing_formatter
+
+    fanout.setFormatter(new_formatter)
+
+    assert fanout.formatter is new_formatter
+    assert child_with_formatter.formatter is existing_formatter
+    assert child_without_formatter.formatter is new_formatter
+
+
+def test_backpressure_fanout_handler_flushes_and_closes_children() -> None:
+    class _Child(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.flush_calls = 0
+            self.close_calls = 0
+
+        def emit(self, record: logging.LogRecord) -> None:
+            _ = record
+
+        def flush(self) -> None:
+            self.flush_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+            super().close()
+
+    child_one = _Child()
+    child_two = _Child()
+    fanout = _BackpressureFanoutHandler([child_one, child_two])
+
+    fanout.flush()
+    fanout.close()
+
+    assert child_one.flush_calls == 1
+    assert child_two.flush_calls == 1
+    assert child_one.close_calls == 1
+    assert child_two.close_calls == 1
