@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
-use crate::pii::sanitize_payload;
+use crate::pii::{detect_secret_in_string, sanitize_payload, REDACTED_SENTINEL};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
 
@@ -199,8 +199,13 @@ fn add_error_fingerprint(event: &mut LogEvent) {
         .insert("error_fingerprint".to_string(), Value::String(fingerprint));
 }
 
-/// Sanitize PII/secrets in the context map using the PII rule engine.
+/// Sanitize PII/secrets in the context map and scrub the free-form message
+/// string. Message is checked directly (not via the map-based engine) so
+/// `Path: ["*"]` rules can't match a sentinel key. Mirrors Python/Go.
 fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
+    if detect_secret_in_string(&event.message) {
+        event.message = REDACTED_SENTINEL.to_string();
+    }
     if event.context.is_empty() {
         return;
     }
@@ -486,3 +491,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "processors_message_pii_tests.rs"]
+mod message_pii_tests;
