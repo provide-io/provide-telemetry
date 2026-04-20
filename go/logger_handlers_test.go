@@ -58,6 +58,21 @@ func TestHandler_PIISanitization_MessageContent(t *testing.T) {
 	}
 }
 
+// Wildcard PII rule (Path: ["*"]) must not bypass message scrubbing — earlier
+// sentinel-key approach was vulnerable, current value-based scan is not.
+func TestHandler_PIISanitization_MessageContent_WildcardRule(t *testing.T) {
+	setupFullSampling(t)
+	SetPIIRules([]PIIRule{{Path: []string{"*"}, Mode: PIIModeDrop}})
+	t.Cleanup(_resetPIIRules)
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = true
+	var buf bytes.Buffer
+	newTestLogger(&buf, cfg, "").Info("token AKIAIOSFODNN7EXAMPLE leaked") // pragma: allowlist secret
+	if strings.Contains(buf.String(), "AKIAIOSFODNN7EXAMPLE") {            // pragma: allowlist secret
+		t.Errorf("wildcard PII rule bypassed message scrubbing: %s", buf.String())
+	}
+}
+
 func TestHandler_PIISanitize_Disabled(t *testing.T) {
 	setupFullSampling(t)
 
