@@ -29,9 +29,10 @@ from provide.telemetry.logger.processors import (
     inject_logger_name,
     make_level_filter,
     merge_runtime_context,
-    release_backpressure_ticket,
     rename_event_to_message,
+    render_with_backpressure_extra,
     sanitize_sensitive_fields,
+    _BACKPRESSURE_TICKET_KEY,
 )
 
 TRACE = 5
@@ -100,6 +101,52 @@ _configured = False
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
 _otel_log_provider: object | None = None
+
+
+class _BackpressureFanoutHandler(logging.Handler):
+    """Fan out a LogRecord to child handlers and release the ticket after all emit."""
+
+    def __init__(self, handlers: list[logging.Handler]) -> None:
+        min_level = min((handler.level for handler in handlers), default=logging.NOTSET)
+        logging.Handler.__init__(self, level=min_level)
+        self._handlers = handlers
+
+        existing_formatter = next((handler.formatter for handler in handlers if handler.formatter is not None), None)
+        if existing_formatter is not None:
+            logging.Handler.setFormatter(self, existing_formatter)
+
+    def setFormatter(self, fmt: logging.Formatter) -> None:
+        super().setFormatter(fmt)
+        for handler in self._handlers:
+            if handler.formatter is None:
+                handler.setFormatter(fmt)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        from provide.telemetry.backpressure import release
+
+        ticket = getattr(record, _BACKPRESSURE_TICKET_KEY, None)
+        try:
+            for handler in self._handlers:
+                if record.levelno >= handler.level:
+                    handler.handle(record)
+        finally:
+            if ticket is not None:
+                release(ticket)
+                try:
+                    delattr(record, _BACKPRESSURE_TICKET_KEY)
+                except AttributeError:
+                    pass
+
+    def flush(self) -> None:
+        for handler in self._handlers:
+            handler.flush()
+
+    def close(self) -> None:
+        try:
+            for handler in self._handlers:
+                handler.close()
+        finally:
+            super().close()
 
 
 def _has_otel_logs() -> bool:
@@ -235,7 +282,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     global _configured, _active_config
 
     level = _get_level(config.logging.level)
-    handlers = _build_handlers(config, level)
+    handlers = [_BackpressureFanoutHandler(_build_handlers(config, level))]
     logging.basicConfig(level=level, handlers=handlers, format="%(message)s", force=True)
 
     # Compute effective level for FilteringBoundLogger: min of default
@@ -277,7 +324,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     # Per-module level filter — runs BEFORE apply_sampling so we don't
     # acquire backpressure tickets for records the filter is going to drop,
     # AND so the DropEvent path doesn't strand a ticket between
-    # apply_sampling (acquire) and release_backpressure_ticket (release).
+    # apply_sampling (acquire) and the final renderer/handler boundary.
     if config.logging.module_levels:
         processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
 
@@ -299,12 +346,6 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             )
         )
 
-    # Release the backpressure ticket immediately before the renderer so the
-    # ticket bounds sanitization + caller-capture (the expensive work) but is
-    # not held across renderer serialization or handler I/O. event_dict is a
-    # plain dict at this point; it stops being a dict once the renderer runs.
-    processors.append(release_backpressure_ticket)
-
     renderer: Any
     if config.logging.fmt == "json":
         # Rename structlog's internal 'event' key to canonical 'message' so that
@@ -323,7 +364,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
 
-    processors.append(renderer)
+    processors.append(render_with_backpressure_extra(renderer))
 
     structlog.configure(
         processors=processors,

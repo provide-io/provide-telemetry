@@ -197,47 +197,24 @@ def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict
     if ticket is None:
         raise structlog.DropEvent()  # backpressure full; dropped counter already incremented
     increment_emitted("logs")
-    # Stash the ticket; release_backpressure_ticket (final processor, after the
-    # renderer) drops it. This bounds queue depth across the actual emit work
-    # — sanitization, caller capture, rendering — instead of releasing
-    # immediately as the original code did.
+    # Stash the ticket. The final renderer processor moves it onto the
+    # LogRecord via logging `extra`, and the stdlib handler boundary releases
+    # it once all configured child handlers return from emit().
     event_dict[_BACKPRESSURE_TICKET_KEY] = ticket
     return event_dict
 
 
-def release_backpressure_ticket(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """Release the backpressure ticket stashed by apply_sampling.
+def render_with_backpressure_extra(renderer: Any) -> Any:
+    """Render the event and attach any stashed ticket to stdlib logging `extra`."""
 
-    Positioned just BEFORE the renderer in the chain — the renderer consumes
-    event_dict and returns a string, after which the ticket would be
-    unreachable. Releasing here bounds the ticket across sanitization,
-    caller-capture, and any per-module level filtering.
+    def _processor(logger: Any, method_name: str, event_dict: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
+        rendered = renderer(logger, method_name, event_dict)
+        if ticket is None:
+            return (rendered,), {}
+        return (rendered,), {"extra": {_BACKPRESSURE_TICKET_KEY: ticket}}
 
-    Cross-language contract — narrower than TS/Go/Rust:
-        TypeScript, Go, and Rust hold the ticket through their entire emit
-        path including handler I/O (try { emit } finally { release }).
-        Python releases BEFORE the renderer because structlog's processor
-        chain doesn't natively support try/finally semantics across the
-        chain — wrapping the renderer or hooking the underlying logger
-        emit would be invasive and structlog-version-coupled.
-
-        Practical impact: Python's backpressure bounds the expensive
-        in-process work (sanitization, caller capture, per-module level
-        filtering) but does NOT bound JSON serialisation or handler I/O
-        (file write, stderr write, OTLP HTTP POST). Slow sinks/handlers
-        do not back-pressure on the producer in Python. If you have a
-        slow handler and need true I/O backpressure, wrap your handler
-        in an external bounded queue.
-
-    The level filter is positioned BEFORE apply_sampling so its DropEvent
-    path doesn't strand a ticket between acquire and this release.
-    """
-    from provide.telemetry.backpressure import release
-
-    ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
-    if ticket is not None:
-        release(ticket)
-    return event_dict
+    return _processor
 
 
 def enforce_event_schema(config: TelemetryConfig) -> Any:
