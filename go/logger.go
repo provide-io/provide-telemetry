@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
@@ -173,31 +175,38 @@ func (h *_telemetryHandler) applySchema(r slog.Record) error {
 	return nil
 }
 
-// applyPII sanitizes record attributes AND the message string through the PII
-// engine. The message is included under a sentinel key so the engine's
-// value-based secret-pattern detectors run against it; without this, secrets
-// embedded directly in the log message (e.g. log.Info("token AKIA…")) leak
-// verbatim while attribute payloads are redacted.
-const _piiMessageSentinelKey = "__provide_telemetry_message__"
-
+// applyPII sanitizes record attributes through the PII engine AND scrubs the
+// message string for secret patterns. The message is checked separately
+// (NOT via the map-based engine) because path-based rules — including the
+// wildcard rule `Path: []string{"*"}` — would match any sentinel key we
+// might use, dropping the message entirely or letting it fall back to raw.
+//
+// For free-form text the only meaningful redaction is value-based: detect
+// known secret patterns (AWS keys, GitHub tokens, etc.) and replace the
+// whole message with the redaction sentinel when one matches. Mirrors
+// Python's behaviour where a message containing a secret is emitted as
+// "message": "***".
 func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 	payload := _attrsToMap(r)
-	payload[_piiMessageSentinelKey] = r.Message
 	sanitized := SanitizePayload(payload, h.cfg.Logging.Sanitize, 0)
-	sanitizedMessage, ok := sanitized[_piiMessageSentinelKey].(string)
-	if !ok {
-		// Sanitizer dropped the sentinel (drop action) or replaced the value
-		// with a non-string. Fall back to the raw message rather than emitting
-		// an empty one.
-		sanitizedMessage = r.Message
-	}
-	delete(sanitized, _piiMessageSentinelKey)
 
-	nr := slog.NewRecord(r.Time, r.Level, sanitizedMessage, r.PC)
+	message := r.Message
+	if h.cfg.Logging.Sanitize && piicore.DetectSecretInValue(message, _customPIIPatterns()) {
+		message = piicore.Redacted
+	}
+
+	nr := slog.NewRecord(r.Time, r.Level, message, r.PC)
 	for _, a := range _mapToAttrs(sanitized) {
 		nr.AddAttrs(a)
 	}
 	return nr
+}
+
+// _customPIIPatterns returns the registered custom secret patterns (if any).
+// Currently we only use the built-in patterns — return nil so DetectSecretInValue
+// scans the built-ins. Mirrors the construction inside SanitizePayload.
+func _customPIIPatterns() map[string]*regexp.Regexp {
+	return nil
 }
 
 // _attrsToMap converts a slog.Record's attributes into a flat map[string]any.

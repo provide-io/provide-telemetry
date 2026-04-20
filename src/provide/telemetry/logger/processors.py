@@ -211,10 +211,23 @@ def release_backpressure_ticket(_: Any, __: str, event_dict: dict[str, Any]) -> 
     Positioned just BEFORE the renderer in the chain — the renderer consumes
     event_dict and returns a string, after which the ticket would be
     unreachable. Releasing here bounds the ticket across sanitization,
-    caller-capture, and any per-module level filtering. The remaining work
-    (renderer serialisation + handler I/O) runs without the ticket; both are
-    cheap compared to sanitization, and parity with TS/Go/Rust holds for
-    bounding the expensive PII path.
+    caller-capture, and any per-module level filtering.
+
+    Cross-language contract — narrower than TS/Go/Rust:
+        TypeScript, Go, and Rust hold the ticket through their entire emit
+        path including handler I/O (try { emit } finally { release }).
+        Python releases BEFORE the renderer because structlog's processor
+        chain doesn't natively support try/finally semantics across the
+        chain — wrapping the renderer or hooking the underlying logger
+        emit would be invasive and structlog-version-coupled.
+
+        Practical impact: Python's backpressure bounds the expensive
+        in-process work (sanitization, caller capture, per-module level
+        filtering) but does NOT bound JSON serialisation or handler I/O
+        (file write, stderr write, OTLP HTTP POST). Slow sinks/handlers
+        do not back-pressure on the producer in Python. If you have a
+        slow handler and need true I/O backpressure, wrap your handler
+        in an external bounded queue.
 
     The level filter is positioned BEFORE apply_sampling so its DropEvent
     path doesn't strand a ticket between acquire and this release.
