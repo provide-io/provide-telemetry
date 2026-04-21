@@ -20,7 +20,7 @@ These pin specific failure modes in CI tooling, not in library code:
 from __future__ import annotations
 
 import importlib.util
-import subprocess
+import subprocess  # nosec
 import sys
 import types
 from pathlib import Path

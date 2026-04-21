@@ -9,8 +9,9 @@ export default {
   // Source files to mutate
   mutate: [
     'src/**/*.ts',
-    '!src/index.ts',    // re-export barrel — no logic to mutate
-    '!src/sanitize.ts', // re-export shim
+    '!src/index.ts',                    // re-export barrel — no logic to mutate
+    '!src/sanitize.ts',                 // re-export shim
+    '!src/secret-patterns-generated.ts', // generated from spec/secret_patterns.yaml — kill via spec/ tests, not unit tests
   ],
 
   // Vitest config for Stryker

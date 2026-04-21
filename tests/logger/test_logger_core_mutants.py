@@ -122,7 +122,6 @@ def _patch_otel_pipeline(monkeypatch: pytest.MonkeyPatch, *, set_calls: list[obj
     return logs_api_mod
 
 
-@pytest.mark.otel
 def test_build_handlers_otel_path_captures_every_argument(monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end exercise of the OTLP setup path with deep argument capture.
 
@@ -248,7 +247,43 @@ def test_build_handlers_otel_path_captures_every_argument(monkeypatch: pytest.Mo
     )
 
 
-@pytest.mark.otel
+def test_build_handlers_passes_real_config_to_make_otel_logging_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kill mutmut_56: `_make_otel_logging_handler(..., None)` replaces config.
+
+    The existing end-to-end test exercises the SDK fallback branch inside
+    `_make_otel_logging_handler`, which doesn't read config — so passing None
+    there is indistinguishable from passing the real config. Patch the spot
+    directly and assert the config argument is the exact object we supplied.
+    """
+    captured: list[tuple[object, object, object, object]] = []
+
+    def _spy(sdk_mod: object, prov: object, lvl: object, cfg: object) -> logging.Handler:
+        captured.append((sdk_mod, prov, lvl, cfg))
+        return logging.NullHandler()
+
+    monkeypatch.setattr(core_mod, "_make_otel_logging_handler", _spy)
+
+    cfg = TelemetryConfig.from_env(
+        {
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs.example:4318",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": "svc",
+            "PROVIDE_TELEMETRY_VERSION": "1.0",
+        }
+    )
+    set_calls: list[object] = []
+    _patch_otel_pipeline(monkeypatch, set_calls=set_calls)
+
+    core_mod._build_handlers(cfg, logging.INFO)
+
+    assert len(captured) == 1
+    _sdk, _prov, _lvl, cfg_arg = captured[0]
+    assert cfg_arg is cfg, (
+        f"_make_otel_logging_handler must receive the real config, got {cfg_arg!r} (kills mutmut_56 config=None)"
+    )
+
+
 def test_build_handlers_returns_early_when_raw_exporter_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -284,7 +319,6 @@ def test_build_handlers_returns_early_when_raw_exporter_is_none(
     # construction" safety net for shutdown_logging().
 
 
-@pytest.mark.otel
 def test_build_handlers_passes_level_to_handler_when_reusing_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

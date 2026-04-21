@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import re
-import subprocess
+import subprocess  # nosec
 from collections.abc import Callable
 from pathlib import Path
 
