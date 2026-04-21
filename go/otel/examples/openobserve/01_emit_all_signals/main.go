@@ -28,6 +28,7 @@ import (
 	"time"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
+	_ "github.com/provide-io/provide-telemetry/go/otel"
 )
 
 func requireEnv(name string) string {

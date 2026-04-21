@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { context, metrics, trace } from '@opentelemetry/api';
+import { logs } from '@opentelemetry/api-logs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ShutdownableProvider,
@@ -13,9 +15,17 @@ import {
 } from '../src/runtime';
 import { _resetConfig } from '../src/config';
 import { shutdownTelemetry } from '../src/shutdown';
+import { _getOtelLogProvider, _resetOtelLogProviderForTests, setupOtelLogProvider } from '../src/otel-logs';
 
 beforeEach(() => _resetRuntimeForTests());
-afterEach(() => _resetRuntimeForTests());
+afterEach(() => {
+  trace.disable();
+  metrics.disable();
+  context.disable();
+  logs.disable();
+  _resetOtelLogProviderForTests();
+  _resetRuntimeForTests();
+});
 
 it('_resetRuntimeForTests clears all registered providers', () => {
   _storeRegisteredProviders([{ shutdown: vi.fn() }]);
@@ -134,6 +144,45 @@ describe('shutdownTelemetry', () => {
     _storeRegisteredProviders([provider]);
     await shutdownTelemetry();
     expect(shut).toBe(true);
+  });
+
+  it('clears the OTEL log bridge singleton after shutdown', async () => {
+    await setupOtelLogProvider({
+      serviceName: 'shutdown-test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    } as never);
+    expect(_getOtelLogProvider()).not.toBeNull();
+    await shutdownTelemetry();
+    expect(_getOtelLogProvider()).toBeNull();
+  });
+
+  it('clears installed OTEL API globals after shutdown', async () => {
+    const contextManager = {
+      active: vi.fn(),
+      with: vi.fn((_ctx, fn, thisArg, ...args) => fn.apply(thisArg, args)),
+      bind: vi.fn((_ctx, target) => target),
+      enable: vi.fn(),
+      disable: vi.fn(),
+    };
+    const tracerProvider = { getTracer: vi.fn() };
+    const meterProvider = { getMeter: vi.fn() };
+    const loggerProvider = { getLogger: vi.fn() };
+
+    expect(context.setGlobalContextManager(contextManager as never)).toBe(true);
+    expect(trace.setGlobalTracerProvider(tracerProvider as never)).toBe(true);
+    expect(metrics.setGlobalMeterProvider(meterProvider as never)).toBe(true);
+    expect(logs.setGlobalLoggerProvider(loggerProvider as never)).toBe(loggerProvider);
+
+    await shutdownTelemetry();
+
+    expect(contextManager.disable).toHaveBeenCalledOnce();
+    expect(trace.setGlobalTracerProvider({ getTracer: vi.fn() } as never)).toBe(true);
+    expect(metrics.setGlobalMeterProvider({ getMeter: vi.fn() } as never)).toBe(true);
+    const replacementLoggerProvider = { getLogger: vi.fn() };
+    expect(logs.setGlobalLoggerProvider(replacementLoggerProvider as never)).toBe(
+      replacementLoggerProvider,
+    );
   });
 });
 
