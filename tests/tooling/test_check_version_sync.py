@@ -10,8 +10,8 @@ from __future__ import annotations
 import importlib.util
 import subprocess  # nosec
 import sys
-from types import ModuleType
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
