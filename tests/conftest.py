@@ -11,6 +11,9 @@ from pathlib import Path
 import pytest
 import structlog
 
+from provide.telemetry.backpressure import reset_queues_for_tests
+from provide.telemetry.cardinality import clear_cardinality_limits
+from provide.telemetry.consent import _reset_consent_for_tests
 from provide.telemetry.logger.core import _reset_logging_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
 from provide.telemetry.setup import _reset_setup_state_for_tests
@@ -46,6 +49,12 @@ def reset_logger_state() -> None:
     otherwise pick up a previous test's TelemetryConfig and ignore the
     constructor-captured values, breaking property tests that specify tight
     bounds like max_attr_value_length=100.
+
+    Cardinality limits are cleared so a prior test that registered a low
+    max_values cap on an attribute key cannot leak into later tests via
+    the guarded metric attribute rewrite to '__overflow__'. Under xdist
+    this rarely surfaces (each worker has its own process), but mutmut
+    runs tests sequentially in one process so state leaks do bite.
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
@@ -54,6 +63,7 @@ def reset_logger_state() -> None:
     reset_runtime_for_tests()
     reset_queues_for_tests()
     _reset_consent_for_tests()
+    clear_cardinality_limits()
 
 
 @pytest.fixture(autouse=True)
