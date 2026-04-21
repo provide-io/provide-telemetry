@@ -32,6 +32,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       - name: Run tests with coverage
         run: go test -race -coverprofile=coverage.out .
       - name: Enforce 100% coverage
@@ -102,6 +110,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       # Build golangci-lint v2 from source — v2 module path supports Go 1.25 and the v2 config format.
       # Pre-built binaries are Go 1.24 and refuse Go 1.25; v1 module path ignores v2 config.
       - name: Install golangci-lint (v2)
@@ -120,6 +136,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       - name: Install security tools
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -142,6 +166,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       - name: Run go vet
         run: go vet ./...
 
@@ -159,6 +191,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       # uv provides a consistent Python invocation across OSes for the
       # perf_check.py + parse_go_bench.py pipeline. Both scripts use stdlib
       # only, so no `uv sync` here.
@@ -183,6 +223,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       # Build and run each standalone telemetry example (no live backend required)
       - name: Run telemetry examples
         run: |
@@ -202,6 +250,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       - name: Prepare collector output directory
         run: |
           mkdir -p ../tests/integration/otel-output-go

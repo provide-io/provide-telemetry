@@ -143,6 +143,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.25"
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          echo "Using workspace: ${WORKFILE}"
+          go env GOWORK
       - name: Install gremlins
         run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
       # Excluded files contain comparisons where gremlins boundary/arithmetic

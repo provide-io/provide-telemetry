@@ -286,7 +286,7 @@ jobs:
     steps:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       # Extract module path and version from the tag (for example go/logger/v0.4.0)
       - name: Parse tag into module and version
         id: tag
@@ -316,7 +316,7 @@ jobs:
     steps:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Parse tag into module and version
         id: tag
         run: |
