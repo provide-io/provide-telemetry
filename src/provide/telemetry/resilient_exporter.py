@@ -89,7 +89,14 @@ class ResilientExporter:
             if (
                 self._failure_result is _UNSET
             ):  # pragma: no cover — reachable only when wrap_exporter is used (real OTel present) and a drop occurs
-                self._failure_result = _load_failure_result(self._signal)
+                # `# pragma: no mutate` on the next line: the assignment and
+                # its argument are reached only when both (a) real OTel is
+                # installed and (b) the fail-open path drops. The mutation
+                # gate runs without the otel extra, so mutants here cannot
+                # be killed by tests — the real-OTel integration test
+                # `test_wrap_exporter_returns_real_failure_enum_on_drop`
+                # pins the observable behaviour end-to-end.
+                self._failure_result = _load_failure_result(self._signal)  # pragma: no mutate
             return self._failure_result
         return result
 
