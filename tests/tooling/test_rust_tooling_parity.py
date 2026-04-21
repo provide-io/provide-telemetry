@@ -38,5 +38,6 @@ def test_ci_mutation_workflow_routes_jobs_by_language_changes() -> None:
     assert "rust-mutation" in workflow
     assert "needs.changes.outputs.python" in workflow
     assert "needs.changes.outputs.typescript" in workflow
-    assert "needs.changes.outputs.rust" in workflow
+    assert "needs.changes.outputs.rust" not in workflow
+    assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in workflow
     assert "!tests/tooling/test_rust_*.py" in workflow
