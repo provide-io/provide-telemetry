@@ -106,12 +106,53 @@ def parse_baggage(raw: str) -> dict[str, str]:
 
 
 def bind_propagation_context(context: PropagationContext) -> None:
+    # NOTE: Total allocations on the bind/clear hot path are dominated by the
+    # upstream `attach_w3c_context` → `TraceState.from_header` call (≈8 allocs
+    # per header pair in OTel 1.41; previously ≈4 in 1.40). The memray
+    # baseline bump in commit 5826e17 tracks that upstream change, not any
+    # regression in this module.
+    logger_ctx = get_context()
+    trace_ctx = get_trace_context()
+    # Attach OTel context before snapshotting so the token is owned by this frame.
+    otel_token: object | None = None
+    if context.traceparent is not None:
+        otel_token = attach_w3c_context(context.traceparent, context.tracestate)
+    snapshot: dict[str, object] = {
+        "traceparent": logger_ctx.get("traceparent", _MISSING),
+        "tracestate": logger_ctx.get("tracestate", _MISSING),
+        "baggage": logger_ctx.get("baggage", _MISSING),
+        "trace_id": trace_ctx["trace_id"],
+        "span_id": trace_ctx["span_id"],
+        "otel_token": otel_token,
+        # Injected baggage.* keys split into two fields so the common
+        # no-overlap case pays no extra allocations vs. the old list-only
+        # snapshot. `_baggage_keys` is the unbind list; `_baggage_prior`
+        # holds only keys that had a pre-existing value to restore (the
+        # nested-same-key case from the clear_propagation_context fix).
+        "_baggage_keys": (),  # pragma: no mutate — line 150 always sets the keys when baggage present
+        "_baggage_prior": {},  # pragma: no mutate — populated only when outer frame already bound the same baggage.* key
+    }
+    stack = _restore_stack.get()
+    _restore_stack.set((*stack, snapshot))
     if context.traceparent is not None:
         bind_context(traceparent=context.traceparent)
     if context.tracestate is not None:
         bind_context(tracestate=context.tracestate)
     if context.baggage is not None:
         bind_context(baggage=context.baggage)
+        # Auto-inject parsed baggage entries as baggage.* context fields
+        keys: list[str] = []
+        prior: dict[str, object] = {}
+        for key, value in parse_baggage(context.baggage).items():
+            ctx_key = f"baggage.{key}"
+            prev = logger_ctx.get(ctx_key, _MISSING)
+            if prev is not _MISSING:
+                prior[ctx_key] = prev
+            keys.append(ctx_key)
+            bind_context(**{ctx_key: value})
+        snapshot["_baggage_keys"] = tuple(keys)
+        if prior:
+            snapshot["_baggage_prior"] = prior
     if context.trace_id is not None or context.span_id is not None:
         set_trace_context(context.trace_id, context.span_id)
 
@@ -138,12 +179,19 @@ def clear_propagation_context() -> None:
             unbind_context(key)
         else:
             bind_context(**{key: value})
-    # Unbind auto-injected baggage.* keys from the cleared frame.
-    raw_keys = previous.get(
-        "_baggage_keys", []
-    )  # pragma: no mutate — default [] or None both safe: isinstance guard on next line handles both
-    for bkey in raw_keys if isinstance(raw_keys, list) else []:
-        unbind_context(str(bkey))
+    # Unbind auto-injected baggage.* keys. When an outer frame already bound
+    # the same baggage.* key, restore its value from `_baggage_prior` instead
+    # of unbinding (fix from 7623d8d). Iterating the key tuple by index avoids
+    # the per-iter tuple allocation that `.items()` pays on the hot path.
+    raw_keys = previous.get("_baggage_keys", ())  # pragma: no mutate
+    keys_seq: tuple[str, ...] = raw_keys if isinstance(raw_keys, tuple) else ()  # ty: ignore[invalid-assignment]
+    raw_prior = previous.get("_baggage_prior", {})  # pragma: no mutate
+    prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}  # ty: ignore[invalid-assignment]
+    for bkey in keys_seq:
+        if bkey in prior_map:
+            bind_context(**{bkey: prior_map[bkey]})
+        else:
+            unbind_context(bkey)
     prev_trace_id = previous["trace_id"]
     prev_span_id = previous["span_id"]
     set_trace_context(
