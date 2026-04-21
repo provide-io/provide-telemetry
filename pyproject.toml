@@ -1,5 +1,5 @@
 #
-# provide-telemetry/pyproject.toml
+# provide-telemetry>=0.4.0/pyproject.toml
 #
 # Unified telemetry library for the provide.io ecosystem
 #
@@ -58,7 +58,7 @@ fastapi = [
   "starlette>=0.40.0",
 ]
 all = [
-  "provide-telemetry[otel,fastapi]",
+  "provide-telemetry[otel,fastapi]>=0.4.0",
 ]
 
 [tool.setuptools.dynamic]
@@ -191,7 +191,7 @@ ignore_missing_imports = true
 disable_error_code = ["import-untyped"]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "0.4.0"
 
 [tool.ty.rules]
 unresolved-import = "ignore"

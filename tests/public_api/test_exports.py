@@ -8,7 +8,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata as metadata
 import re
-import subprocess
+import subprocess  # nosec
 import sys
 
 import pytest

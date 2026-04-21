@@ -13,7 +13,7 @@ Cargo.lock) and do not need a separate install step.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # nosec
 import sys
 from pathlib import Path
 

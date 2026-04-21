@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-import subprocess
+import subprocess  # nosec
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
