@@ -92,8 +92,8 @@ def test_typescript_mutation_threshold_matches_documented_regression_floor() -> 
     stryker = TS_STRYKER.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
 
-    assert "break: 90" in stryker
-    assert "TypeScript runs Stryker with a 93% current score / 90% break threshold" in readme
+    assert "break: 95" in stryker
+    assert "TypeScript runs Stryker with a 96.65% current score / 95% break threshold" in readme
     assert "Rust nightly mutation sweep is advisory" in readme
 
 
