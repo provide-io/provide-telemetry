@@ -15,6 +15,16 @@ cases:
       trace_id: "0af7651916cd43dd8448eb211c80319c"
       span_id: "b7ad6b7169203331"
 
+  - id: lazy_logger_shutdown_re_setup
+    kind: flags
+    expected:
+      first_logger_emitted: true
+      shutdown_cleared_setup: true
+      shutdown_cleared_providers: true
+      shutdown_fallback_all: true
+      re_setup_done: true
+      second_logger_uses_fresh_config: true
+
   - id: strict_schema_rejection
     kind: flags
     expected:
