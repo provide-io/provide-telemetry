@@ -99,7 +99,11 @@ def _classify_field(key: str, _value: Any) -> str | None:
 
 def classify_key(key: str, value: Any | None = None) -> DataClass | None:
     """Return the DataClass member for key if a rule matches, else None."""
-    label = _classify_field(key, value)
+    # `_classify_field` currently ignores the value (the `_value` underscore-
+    # prefixed parameter is reserved for future value-sensitive rules). A
+    # mutation that replaces `value` with `None` here is therefore observably
+    # equivalent — pin the line so mutmut skips the equivalent variants.
+    label = _classify_field(key, value)  # pragma: no mutate
     return DataClass(label) if label is not None else None
 
 
