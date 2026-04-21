@@ -13,6 +13,30 @@ rm -f "${workspace_dir}/go.work" "${workspace_dir}/go.work.sum"
 
 workspace_modules=()
 workspace_go_version=""
+
+go_version_gt() {
+  awk -v candidate="${1}" -v current="${2}" '
+    function part(version, position,    values, count) {
+      count = split(version, values, ".")
+      return position <= count ? values[position] + 0 : 0
+    }
+
+    BEGIN {
+      for (i = 1; i <= 3; i++) {
+        candidate_part = part(candidate, i)
+        current_part = part(current, i)
+        if (candidate_part > current_part) {
+          exit 0
+        }
+        if (candidate_part < current_part) {
+          exit 1
+        }
+      }
+      exit 1
+    }
+  ' </dev/null
+}
+
 for module_dir in \
   "${repo_root}/go" \
   "${repo_root}/go/internal" \
@@ -23,10 +47,11 @@ for module_dir in \
 do
   if [ -f "${module_dir}/go.mod" ]; then
     workspace_modules+=("${module_dir}")
-    if [ -z "${workspace_go_version}" ]; then
-      workspace_go_version="$(
-        awk '/^go[[:space:]]+/ { print $2; exit }' "${module_dir}/go.mod"
-      )"
+    module_go_version="$(
+      awk '/^go[[:space:]]+/ { print $2; exit }' "${module_dir}/go.mod"
+    )"
+    if [ -z "${workspace_go_version}" ] || go_version_gt "${module_go_version}" "${workspace_go_version}"; then
+      workspace_go_version="${module_go_version}"
     fi
   fi
 done
