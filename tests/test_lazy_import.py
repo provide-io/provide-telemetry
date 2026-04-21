@@ -7,31 +7,34 @@
 
 from __future__ import annotations
 
-import importlib
+import json
+import subprocess
 import sys
+import textwrap
 
 
 def _fresh_import_modules() -> set[str]:
-    """Import provide.telemetry in a subprocess-like clean state and return loaded module names."""
-    import provide
+    """Import provide.telemetry in a real clean subprocess and return loaded module names."""
+    script = textwrap.dedent(
+        """
+        import importlib
+        import json
+        import sys
 
-    to_remove = [k for k in sys.modules if k.startswith("provide.telemetry")]
-    saved = {k: sys.modules.pop(k) for k in to_remove}
-    old_telemetry_attr = getattr(provide, "telemetry", None)
-    try:
-        before = set(sys.modules.keys())
+        before = set(sys.modules)
         importlib.import_module("provide.telemetry")
-        after = set(sys.modules.keys())
-        return {m for m in (after - before) if m.startswith("provide.telemetry")}
-    finally:
-        # Remove any modules created during the fresh import
-        for k in list(sys.modules):
-            if k.startswith("provide.telemetry"):
-                del sys.modules[k]
-        # Restore the original modules and package attribute
-        sys.modules.update(saved)
-        if old_telemetry_attr is not None:
-            provide.telemetry = old_telemetry_attr
+        after = set(sys.modules)
+        loaded = sorted(m for m in (after - before) if m.startswith("provide.telemetry"))
+        print(json.dumps(loaded))
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return set(json.loads(proc.stdout))
 
 
 LAZY_MODULES = frozenset(
