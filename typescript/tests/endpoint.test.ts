@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import { validateOtlpEndpoint } from '../src/endpoint';
+import { ConfigurationError } from '../src/exceptions';
 
 describe('validateOtlpEndpoint', () => {
   it('accepts valid http endpoint', () => {
@@ -35,6 +36,40 @@ describe('validateOtlpEndpoint', () => {
     expect(() => validateOtlpEndpoint('http://host:bad')).toThrow(/invalid OTLP endpoint/);
   });
   it('rejects empty port', () => {
+    expect(() => validateOtlpEndpoint('http://host:')).toThrow(/invalid OTLP endpoint/);
+  });
+
+  // Boundary tests — kill EqualityOperator mutants on the port range check.
+  it('accepts port 1 (lowest valid)', () => {
+    expect(validateOtlpEndpoint('http://host:1')).toBe('http://host:1');
+  });
+  it('accepts port 65535 (highest valid)', () => {
+    expect(validateOtlpEndpoint('http://host:65535')).toBe('http://host:65535');
+  });
+  it('rejects port 0 as out of range', () => {
+    // URL constructor accepts :0 (parses to port="0"); our range check catches it.
+    expect(() => validateOtlpEndpoint('http://host:0')).toThrow(/invalid OTLP endpoint port/);
+  });
+  it('rejects port above 65535 (URL constructor already throws)', () => {
+    // URL() rejects :65536 itself → catch block reports generic "invalid OTLP endpoint".
+    expect(() => validateOtlpEndpoint('http://host:65536')).toThrow(/invalid OTLP endpoint/);
+  });
+
+  // Error type + message pins — kill StringLiteral and BlockStatement mutants.
+  it('throws ConfigurationError (not generic Error) with specific message for invalid URL', () => {
+    expect(() => validateOtlpEndpoint('not-a-url')).toThrow(ConfigurationError);
+    expect(() => validateOtlpEndpoint('not-a-url')).toThrow(/invalid OTLP endpoint/);
+  });
+  it('throws ConfigurationError with specific message for wrong scheme', () => {
+    expect(() => validateOtlpEndpoint('ftp://host:4318')).toThrow(ConfigurationError);
+    expect(() => validateOtlpEndpoint('ftp://host:4318')).toThrow(/invalid OTLP endpoint/);
+  });
+  it('throws ConfigurationError with port-specific message for port=0 (URL accepts, range rejects)', () => {
+    expect(() => validateOtlpEndpoint('http://host:0')).toThrow(ConfigurationError);
+    expect(() => validateOtlpEndpoint('http://host:0')).toThrow(/invalid OTLP endpoint port/);
+  });
+  it('throws ConfigurationError with generic message for empty explicit port', () => {
+    expect(() => validateOtlpEndpoint('http://host:')).toThrow(ConfigurationError);
     expect(() => validateOtlpEndpoint('http://host:')).toThrow(/invalid OTLP endpoint/);
   });
 });
@@ -67,10 +102,15 @@ describe('endpoint validation parity (shared fixtures)', () => {
     },
   );
 
+  // Fixture loop pins both the error type (ConfigurationError) and that the
+  // message starts with "invalid OTLP endpoint" — the bare `.toThrow()` form
+  // let block-swap and string-literal mutants survive because any thrown
+  // error passed the check.
   it.each(endpointFixtures.invalid.map((c) => [c.description, c.endpoint] as [string, string]))(
     'rejects invalid: %s',
     (_desc, endpoint) => {
-      expect(() => validateOtlpEndpoint(endpoint)).toThrow();
+      expect(() => validateOtlpEndpoint(endpoint)).toThrow(ConfigurationError);
+      expect(() => validateOtlpEndpoint(endpoint)).toThrow(/invalid OTLP endpoint/);
     },
   );
 });
