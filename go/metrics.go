@@ -316,30 +316,32 @@ func _recordOptions(attrs []slog.Attr) []otelmetric.RecordOption {
 
 func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
 	value := attr.Value.Resolve()
+	var keyValue attribute.KeyValue
 	switch value.Kind() {
 	case slog.KindBool:
-		return attribute.Bool(attr.Key, value.Bool())
+		keyValue = attribute.Bool(attr.Key, value.Bool())
 	case slog.KindDuration:
-		return attribute.String(attr.Key, value.Duration().String())
+		keyValue = attribute.String(attr.Key, value.Duration().String())
 	case slog.KindFloat64:
-		return attribute.Float64(attr.Key, value.Float64())
+		keyValue = attribute.Float64(attr.Key, value.Float64())
 	case slog.KindInt64:
-		return attribute.Int64(attr.Key, value.Int64())
+		keyValue = attribute.Int64(attr.Key, value.Int64())
 	case slog.KindString:
-		return attribute.String(attr.Key, value.String())
+		keyValue = attribute.String(attr.Key, value.String())
 	case slog.KindTime:
-		return attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
+		keyValue = attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	case slog.KindUint64:
 		// Guard the uint64 -> int64 conversion so values > MaxInt64 don't wrap
 		// into negatives (gosec G115). Out-of-range values fall through to a
 		// string attribute so the original numeric magnitude is preserved.
 		u := value.Uint64()
 		if u > uint64(math.MaxInt64) {
-			return attribute.String(attr.Key, fmt.Sprint(u))
+			keyValue = attribute.String(attr.Key, fmt.Sprint(u))
+			break
 		}
-		return attribute.Int64(attr.Key, int64(u))
+		keyValue = attribute.Int64(attr.Key, int64(u))
 	case slog.KindAny, slog.KindGroup, slog.KindLogValuer:
-		return attribute.String(attr.Key, fmt.Sprint(value.Any()))
+		keyValue = attribute.String(attr.Key, fmt.Sprint(value.Any()))
 	}
-	return attribute.String(attr.Key, fmt.Sprint(value.Any()))
+	return keyValue
 }
