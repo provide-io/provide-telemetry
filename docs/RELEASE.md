@@ -3,7 +3,7 @@
 ## Versioning
 
 - Tag format: `vX.Y.Z`
-- Keep `project.version` in `pyproject.toml` aligned with release tag.
+- Keep `VERSION`, language manifests, exported runtime version constants, and Go submodule `VERSION` files aligned with the release tag.
 
 ## Release Notes Checklist
 
@@ -24,17 +24,27 @@ uv run twine check dist/*
 
 ## GitHub Workflows
 
-- `.github/workflows/ci.yml`: quality, mutation gate, compliance, OTel extras validation, release readiness.
-- `.github/workflows/ci.yml` also runs OTLP integration smoke tests on nightly schedule and manual dispatch.
-- `.github/workflows/ci.yml` can run OpenObserve end-to-end tests on manual dispatch when `OPENOBSERVE_*` vars/secrets are configured.
-- `.github/workflows/release.yml`: build on tags and publish to PyPI on GitHub release publish.
+- `.github/workflows/ci-python.yml`, `ci-typescript.yml`, `ci-go.yml`, and `ci-rust.yml`: language-specific test and quality gates.
+- `.github/workflows/ci-spec.yml`, `ci-contracts.yml`, and `ci-surface.yml`: parity, contract, and release-surface gates.
+- `.github/workflows/ci-shared.yml`: docs-quality, release-readiness, and optional OpenObserve end-to-end validation.
+- `.github/workflows/ci-mutation.yml` and `ci-strip-governance.yml`: mutation and stripped-build safety nets.
+- `.github/workflows/release.yml`: build on tags and publish to PyPI on GitHub release publish; also verifies Go consumer resolution after Go tags exist.
+
+Go CI is intentionally split:
+- `ci-go.yml` uses an ephemeral `go.work` for pre-release integration of the local `go`, `go/internal`, `go/logger`, and `go/tracer` modules.
+- `release.yml` runs `GOWORK=off` consumer-mode fetch/build checks after Go tags are pushed, first with `GOPROXY=direct` and then through `proxy.golang.org`.
 
 ## Local Act Validation
 
 ```bash
 act -l
-act workflow_dispatch -W .github/workflows/ci.yml --container-architecture linux/amd64
+act workflow_dispatch -W .github/workflows/ci-shared.yml --container-architecture linux/amd64
+act pull_request -W .github/workflows/ci-go.yml -j workspace-integration --container-architecture linux/amd64
+printf '%s\n' '{"ref":"refs/tags/go/logger/v0.4.0","ref_name":"go/logger/v0.4.0"}' > /tmp/act-release-tag.json
+act push -W .github/workflows/release.yml -j verify-go-consumer-direct -e /tmp/act-release-tag.json --container-architecture linux/amd64
 ```
+
+On Apple Silicon, prefer `--container-architecture linux/arm64` for the Go jobs. The local `go test -race` steps can also require a larger Docker memory allocation than the default `act` container budget.
 
 Prerequisites: run from a git repository checkout and ensure Docker daemon is running.
 
@@ -47,10 +57,10 @@ configure the socket before running `act`:
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 ```
 
-Run the quality job manually with Docker-in-Docker support:
+Run the `release-readiness` job manually with Docker-in-Docker support:
 
 ```bash
-act -W .github/workflows/ci.yml workflow_dispatch -j quality \
+act -W .github/workflows/ci-shared.yml workflow_dispatch -j release-readiness \
   --container-architecture linux/amd64 \
   --container-daemon-socket "${DOCKER_HOST}" \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
@@ -60,7 +70,7 @@ For jobs that do not require Docker inside the container (for example `docs-qual
 daemon socket bind-mount:
 
 ```bash
-act -W .github/workflows/ci.yml pull_request -j docs-quality \
+act -W .github/workflows/ci-shared.yml pull_request -j docs-quality \
   --container-architecture linux/amd64 \
   --container-daemon-socket -
 ```
@@ -102,13 +112,15 @@ Release steps:
 ### Go validation before release
 
 ```bash
+GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/logger/...
+GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/tracer/...
 cd go
-go build ./...
-go test -race -count=1 -coverprofile=coverage.out .
+GOWORK=off go build ./...
+GOWORK=off go test -race -count=1 -coverprofile=coverage.out .
 go tool cover -func=coverage.out | grep total   # must be 100.0%
-go vet ./...
-golangci-lint run
-govulncheck ./...
+GOWORK=off go vet ./...
+GOWORK=off golangci-lint run
+GOWORK=off govulncheck ./...
 ```
 
 ### TypeScript validation before release
