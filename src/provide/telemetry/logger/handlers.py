@@ -25,7 +25,7 @@ class _BackpressureFanoutHandler(logging.Handler):
         if existing_formatter is not None:
             logging.Handler.setFormatter(self, existing_formatter)
 
-    def setFormatter(self, fmt: logging.Formatter) -> None:
+    def setFormatter(self, fmt: logging.Formatter | None) -> None:
         super().setFormatter(fmt)
         for handler in self._handlers:
             if handler.formatter is None:
