@@ -108,7 +108,7 @@ function deepFreeze<T extends object>(obj: T): Readonly<T> {
   return Object.freeze(obj);
 }
 
-/** Return the active runtime config (or env-derived defaults if none set). */
+/** Return the active runtime config (or live setupTelemetry config if none explicitly set via updateRuntimeConfig). */
 export function getRuntimeConfig(): Readonly<TelemetryConfig> {
   const cfg = resolveEffectiveConfig();
   return deepFreeze({ ...cfg });
@@ -184,6 +184,12 @@ const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'metricsEnabled',
   'otlpEndpoint',
   'otlpHeaders',
+  'otlpLogsEndpoint',
+  'otlpLogsHeaders',
+  'otlpTracesEndpoint',
+  'otlpTracesHeaders',
+  'otlpMetricsEndpoint',
+  'otlpMetricsHeaders',
 ];
 
 /** Reload config from env vars and apply only hot-reloadable fields. */
@@ -230,6 +236,7 @@ export function reloadRuntimeFromEnv(): void {
     sloEnableUseMetrics: fresh.sloEnableUseMetrics,
     piiMaxDepth: fresh.piiMaxDepth,
     strictSchema: fresh.strictSchema,
+    strictEventName: fresh.strictEventName,
   };
   updateRuntimeConfig(overrides);
 }

@@ -37,22 +37,35 @@ _baseline_captured: bool = False
 
 
 class _NoopSpan(AbstractContextManager["_NoopSpan"]):
+    NOOP_TRACE_ID = "0" * 32
+    NOOP_SPAN_ID = "0" * 16
+
     def __init__(self, name: str) -> None:
         self.name = name
-        self.trace_id = uuid.uuid4().hex
-        self.span_id = uuid.uuid4().hex[:16]
+        self.trace_id = self.NOOP_TRACE_ID
+        self.span_id = self.NOOP_SPAN_ID
+        self._prev_trace_id: str | None = None
+        self._prev_span_id: str | None = None
 
     def __enter__(self) -> _NoopSpan:
+        prev = get_trace_context()
+        self._prev_trace_id = prev["trace_id"]
+        self._prev_span_id = prev["span_id"]
         set_trace_context(self.trace_id, self.span_id)
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
-        set_trace_context(None, None)
+        set_trace_context(self._prev_trace_id, self._prev_span_id)
 
 
 class _NoopTracer:
     def start_as_current_span(self, name: str, **_: object) -> _NoopSpan:
         return _NoopSpan(name)
+
+
+def _refresh_otel_tracing() -> None:
+    global _HAS_OTEL
+    _HAS_OTEL = _has_otel()
 
 
 def _load_otel_trace_api() -> Any | None:
@@ -65,6 +78,18 @@ def _load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
     if not _HAS_OTEL:
         return None
     return _otel.load_otel_tracing_components()
+
+
+def _has_tracing_provider() -> bool:
+    """Return True if a tracing provider is installed or was ever installed (thread-safe)."""
+    with _provider_lock:
+        return _provider_ref is not None or _otel_global_set
+
+
+def _has_live_tracing_provider() -> bool:
+    """Return True if a live tracing provider is currently installed."""
+    with _provider_lock:
+        return _provider_ref is not None
 
 
 def setup_tracing(config: TelemetryConfig) -> None:
@@ -113,8 +138,9 @@ def setup_tracing(config: TelemetryConfig) -> None:
     provider = provider_cls(resource=resource)
     if config.tracing.otlp_endpoint:
         from provide.telemetry.resilience import run_with_resilience
+        from provide.telemetry.resilient_exporter import wrap_exporter
 
-        exporter = run_with_resilience(
+        raw_exporter = run_with_resilience(
             "traces",
             lambda: exporter_cls(
                 endpoint=validate_otlp_endpoint(config.tracing.otlp_endpoint),
@@ -122,16 +148,17 @@ def setup_tracing(config: TelemetryConfig) -> None:
                 timeout=config.exporter.traces_timeout_seconds,
             ),
         )
-        if exporter is None:
+        if raw_exporter is None:
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 shutdown()
             return
-        provider.add_span_processor(processor_cls(exporter))
+        # Wrap so every export() call applies retry/timeout/circuit-breaker policy.
+        provider.add_span_processor(processor_cls(wrap_exporter("traces", raw_exporter)))
 
     with _provider_lock:
-        if _provider_configured:
-            # Another thread won the race — discard ours.
+        if _provider_configured or _setup_generation != gen:
+            # Another thread won the race OR shutdown happened mid-build — discard ours.
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 shutdown()
@@ -139,18 +166,24 @@ def setup_tracing(config: TelemetryConfig) -> None:
         otel_trace.set_tracer_provider(provider)
         _provider_ref = provider
         _provider_configured = True
+        _otel_global_set = True
 
 
 def shutdown_tracing() -> None:
-    global _provider_ref
+    global _provider_ref, _provider_configured, _setup_generation
     with _provider_lock:
+        _setup_generation += 1
         provider = _provider_ref
         if provider is None:
+            _provider_configured = False
             return
-        shutdown = getattr(provider, "shutdown", None)
-        if callable(shutdown):
-            shutdown()
-        _provider_ref = None
+        try:
+            shutdown = getattr(provider, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+        finally:
+            _provider_ref = None
+            _provider_configured = False
 
 
 def _reset_tracing_for_tests() -> None:
@@ -200,10 +233,10 @@ def get_tracer(name: str | None = None) -> _TracerLike:
 
 def _sync_otel_trace_context() -> None:
     """Sync the active OTel span's trace/span IDs into our contextvars."""
-    if not _provider_configured:
-        return
     otel_trace = _load_otel_trace_api()
     if otel_trace is None:
+        return
+    if not _has_real_tracer_provider(otel_trace):
         return
     span = otel_trace.get_current_span()
     ctx = span.get_span_context()

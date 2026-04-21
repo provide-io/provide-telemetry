@@ -14,10 +14,6 @@ import yaml
 
 from provide.telemetry._endpoint import validate_otlp_endpoint
 
-_FIXTURES_PATH = Path(__file__).resolve().parent.parent / "spec" / "behavioral_fixtures.yaml"
-_FIXTURES = yaml.safe_load(_FIXTURES_PATH.read_text())
-_ENDPOINT_FIXTURES = _FIXTURES["endpoint_validation"]
-
 
 def _find_project_root() -> Path:
     """Walk up from this file until we find VERSION, anchoring to the real project root."""
@@ -65,6 +61,42 @@ class TestValidateOtlpEndpoint:
     def test_none_raises(self) -> None:
         with pytest.raises(ValueError, match="invalid OTLP endpoint"):
             validate_otlp_endpoint(None)
+
+    def test_non_numeric_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:bad")
+
+    def test_negative_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:-1")
+
+    def test_port_out_of_range_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:99999")
+
+    def test_port_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:0")
+
+    def test_valid_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://host:4318") == "http://host:4318"
+
+    def test_empty_port_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:")
+
+    def test_empty_port_with_path_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid OTLP endpoint port"):
+            validate_otlp_endpoint("http://host:/v1/traces")
+
+    def test_no_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://host/v1/traces") == "http://host/v1/traces"
+
+    def test_ipv6_with_valid_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://[::1]:4318") == "http://[::1]:4318"
+
+    def test_ipv6_no_port_passes(self) -> None:
+        assert validate_otlp_endpoint("http://[::1]") == "http://[::1]"
 
 
 class TestEndpointFixtureParity:

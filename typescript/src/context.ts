@@ -113,15 +113,10 @@ export function runWithContext<T>(values: Context, fn: () => T): T {
   }
 }
 
-// ── Session correlation ──────────────────────────────────────────────────────
-
-let _sessionId: string | null = null;
-
 /**
  * Bind a session ID that propagates across all telemetry events.
  */
 export function bindSessionContext(sessionId: string): void {
-  _sessionId = sessionId;
   bindContext({ session_id: sessionId });
 }
 
@@ -129,14 +124,14 @@ export function bindSessionContext(sessionId: string): void {
  * Return the current session ID, or null if not set.
  */
 export function getSessionId(): string | null {
-  return _sessionId;
+  const sessionId = getStore()['session_id'];
+  return typeof sessionId === 'string' ? sessionId : null;
 }
 
 /**
  * Clear the session ID.
  */
 export function clearSessionContext(): void {
-  _sessionId = null;
   unbindContext('session_id');
 }
 

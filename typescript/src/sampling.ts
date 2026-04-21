@@ -16,11 +16,22 @@ export interface SamplingPolicy {
 const DEFAULT_POLICY: SamplingPolicy = { defaultRate: 1.0 };
 let _policies: Record<string, SamplingPolicy> = {};
 
+const VALID_SIGNALS = new Set(['logs', 'traces', 'metrics']);
+
+function _validateSignal(signal: string): void {
+  if (!VALID_SIGNALS.has(signal)) {
+    throw new ConfigurationError(
+      `unknown signal "${signal}", expected one of [logs, metrics, traces]`,
+    );
+  }
+}
+
 function _clamp(rate: number): number {
   return Math.max(0, Math.min(1, rate));
 }
 
 export function setSamplingPolicy(signal: string, policy: SamplingPolicy): void {
+  _validateSignal(signal);
   _policies[signal] = {
     defaultRate: _clamp(policy.defaultRate),
     overrides: policy.overrides
@@ -30,6 +41,7 @@ export function setSamplingPolicy(signal: string, policy: SamplingPolicy): void 
 }
 
 export function getSamplingPolicy(signal: string): SamplingPolicy {
+  _validateSignal(signal);
   const _policy = _policies[signal] ?? DEFAULT_POLICY;
   return {
     defaultRate: _policy.defaultRate,
@@ -38,10 +50,14 @@ export function getSamplingPolicy(signal: string): SamplingPolicy {
 }
 
 export function shouldSample(signal: string, key?: string): boolean {
+  _validateSignal(signal);
   const _policy = _policies[signal] ?? DEFAULT_POLICY;
   const overrides = _policy.overrides;
-  const lookupKey = key ?? signal;
-  const rate = overrides && lookupKey in overrides ? overrides[lookupKey] : _policy.defaultRate;
+  // Only consult the override map when an explicit non-null key is provided.
+  // Using `key ?? signal` would cause any override keyed by signal name (e.g. "logs")
+  // to silently apply to all unkeyed shouldSample("logs") calls — a shadow-override hazard.
+  // Stryker disable next-line ConditionalExpression: equivalent mutant — `true && overrides && key in overrides` short-circuits identically to `key != null && ...` because null/undefined are never valid string keys in overrides
+  const rate = key != null && overrides && key in overrides ? overrides[key] : _policy.defaultRate;
   const clamped = _clamp(rate);
   /* Stryker disable ConditionalExpression,EqualityOperator,BlockStatement: boundary not observable (Math.random [0,1)); health counter updates tested but perTest coverage misattributes */
   if (clamped <= 0) {

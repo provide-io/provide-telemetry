@@ -7,7 +7,7 @@ import (
 	"github.com/provide-io/provide-telemetry/go/internal/fingerprintcore"
 )
 
-// _computeErrorFingerprint generates a stable 12-char hex fingerprint from
+// ComputeErrorFingerprint generates a stable 12-char hex fingerprint from
 // exception type + top 3 stack frames from the given program counters.
 // Matches the Python/TypeScript algorithm exactly.
 func ComputeErrorFingerprint(excType string, pcs []uintptr) string {

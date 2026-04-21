@@ -192,7 +192,10 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// metrics: rate 1.0 -> _incEmitted(signalMetrics)
+	// metrics: rate 1.0 — ShouldSample alone no longer increments
+	// MetricsEmitted. Counter.Add / Gauge.Set / Histogram.Record bump the
+	// counter only after the backpressure gate succeeds, so sampling-only
+	// callers don't over-report.
 	if _, err := SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: 1.0}); err != nil {
 		t.Fatal(err)
 	}
@@ -210,20 +213,25 @@ func TestShouldSample_HealthCounters(t *testing.T) {
 
 	snap := GetHealthSnapshot()
 
-	if snap.LogsEmitted != 2 {
-		t.Errorf("LogsEmitted: want 2, got %d", snap.LogsEmitted)
+	// LogsEmitted and TracesEmitted are no longer incremented by ShouldSample;
+	// they are incremented in the post-backpressure success path of the hot paths
+	// (logger.go and tracing.go), matching the metrics pattern.
+	if snap.LogsEmitted != 0 {
+		t.Errorf("LogsEmitted: want 0 (incremented post-backpressure, not here), got %d", snap.LogsEmitted)
 	}
 	if snap.LogsDropped != 1 {
 		t.Errorf("LogsDropped: want 1, got %d", snap.LogsDropped)
 	}
-	if snap.TracesEmitted != 1 {
-		t.Errorf("TracesEmitted: want 1, got %d", snap.TracesEmitted)
+	if snap.TracesEmitted != 0 {
+		t.Errorf("TracesEmitted: want 0 (incremented post-backpressure, not here), got %d", snap.TracesEmitted)
 	}
 	if snap.TracesDropped != 1 {
 		t.Errorf("TracesDropped: want 1, got %d", snap.TracesDropped)
 	}
-	if snap.MetricsEmitted != 1 {
-		t.Errorf("MetricsEmitted: want 1, got %d", snap.MetricsEmitted)
+	// MetricsEmitted stays 0 here — see comment above: ShouldSample is not
+	// the emission point for metrics; Counter.Add etc. are.
+	if snap.MetricsEmitted != 0 {
+		t.Errorf("MetricsEmitted: want 0 (ShouldSample is not the emission point), got %d", snap.MetricsEmitted)
 	}
 	if snap.MetricsDropped != 1 {
 		t.Errorf("MetricsDropped: want 1, got %d", snap.MetricsDropped)

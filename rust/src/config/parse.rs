@@ -17,6 +17,13 @@ pub(super) fn env_value<'a>(env: &'a HashMap<String, String>, keys: &[&str]) -> 
         .find_map(|key| env.get(*key).map(String::as_str))
 }
 
+pub(super) fn nonempty_env_value<'a>(
+    env: &'a HashMap<String, String>,
+    keys: &[&str],
+) -> Option<&'a str> {
+    env_value(env, keys).filter(|value| !value.trim().is_empty())
+}
+
 pub(super) fn parse_bool(
     raw: Option<&str>,
     default: bool,

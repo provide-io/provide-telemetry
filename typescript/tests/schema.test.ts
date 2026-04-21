@@ -7,8 +7,11 @@ import {
   EventSchemaError,
   event,
   eventName,
+  getStrictSchema,
+  setStrictSchema,
   validateEventName,
   validateRequiredKeys,
+  _resetStrictSchemaForTests,
 } from '../src/schema';
 import { TelemetryError } from '../src/exceptions';
 
@@ -216,6 +219,36 @@ describe('validateEventName — strict mode error message content (kills StringL
   });
 });
 
+describe('eventName — join separator is dot (kills .join mutation at line 29)', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
+  it('segments are joined with dots, not other separators', () => {
+    const name = eventName('app', 'user', 'login');
+    expect(name).toBe('app.user.login');
+    // Verify dot is the separator specifically
+    expect(name).toContain('.');
+    expect(name.split('.').length).toBe(3);
+    expect(name.split('.')[0]).toBe('app');
+    expect(name.split('.')[1]).toBe('user');
+    expect(name.split('.')[2]).toBe('login');
+  });
+
+  it('result contains dots between every pair of segments', () => {
+    const name = eventName('a', 'b', 'c', 'd', 'e');
+    // Verify every adjacent pair is separated by exactly '.'
+    expect(name).toBe('a.b.c.d.e');
+    expect(name.indexOf('.')).toBe(1);
+    expect(name.charAt(1)).toBe('.');
+    expect(name.charAt(3)).toBe('.');
+  });
+});
+
 describe('eventName — strict schema config integration', () => {
   afterEach(() => {
     _resetConfig();
@@ -239,5 +272,75 @@ describe('eventName — strict schema config integration', () => {
   it('0 segments throws even in relaxed mode', () => {
     setupTelemetry({ strictSchema: false });
     expect(() => eventName()).toThrow(EventSchemaError);
+  });
+});
+
+describe('event()', () => {
+  beforeEach(() => {
+    setupTelemetry({ strictSchema: true });
+  });
+
+  afterEach(() => {
+    _resetConfig();
+  });
+
+  it('returns structured EventRecord for 3 segments (DAS)', () => {
+    const rec = event('auth', 'login', 'success');
+    expect(rec).toEqual({
+      event: 'auth.login.success',
+      domain: 'auth',
+      action: 'login',
+      status: 'success',
+    });
+    expect(rec.resource).toBeUndefined();
+  });
+
+  it('returns structured EventRecord for 4 segments (DARS)', () => {
+    const rec = event('db', 'query', 'orders', 'failure');
+    expect(rec).toEqual({
+      event: 'db.query.orders.failure',
+      domain: 'db',
+      action: 'query',
+      resource: 'orders',
+      status: 'failure',
+    });
+  });
+
+  it('throws EventSchemaError with 2 segments', () => {
+    expect(() => event('a', 'b')).toThrow(EventSchemaError);
+    expect(() => event('a', 'b')).toThrow(/requires 3 or 4 segments/);
+  });
+
+  it('throws EventSchemaError with 5 segments', () => {
+    expect(() => event('a', 'b', 'c', 'd', 'e')).toThrow(EventSchemaError);
+    expect(() => event('a', 'b', 'c', 'd', 'e')).toThrow(/requires 3 or 4 segments/);
+  });
+
+  it('throws EventSchemaError with 0 segments', () => {
+    expect(() => event()).toThrow(EventSchemaError);
+  });
+
+  it('throws EventSchemaError with 1 segment', () => {
+    expect(() => event('a')).toThrow(EventSchemaError);
+  });
+
+  it('strict mode validates segment format', () => {
+    expect(() => event('Auth', 'login', 'success')).toThrow(EventSchemaError);
+    expect(() => event('auth', 'LOGIN', 'success')).toThrow(/does not match pattern/);
+    expect(() => event('auth', 'login', '0bad')).toThrow(EventSchemaError);
+  });
+
+  it('relaxed mode skips segment format validation', () => {
+    _resetConfig();
+    setupTelemetry({ strictSchema: false });
+    const rec = event('Auth', 'Login', 'Success');
+    expect(rec.event).toBe('Auth.Login.Success');
+    expect(rec.domain).toBe('Auth');
+  });
+
+  it('eventName() still works as deprecated alias', () => {
+    const name = eventName('auth', 'login', 'success');
+    expect(name).toBe('auth.login.success');
+    expect(typeof name).toBe('string');
   });
 });

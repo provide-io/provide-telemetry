@@ -108,8 +108,43 @@ fn emit_event(mut event: LogEvent) {
     drop(buf);
 }
 
+/// Like `log_event` but merges extra caller-supplied fields into the event context.
+fn log_event_with_fields(
+    level: &str,
+    target: &str,
+    message: &str,
+    extra: &BTreeMap<String, Value>,
+) {
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
+        return;
+    }
+    if !should_allow("logs", Some(level)) {
+        return;
+    }
+    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
+        return;
+    }
+    let Some(ticket) = try_acquire(Signal::Logs) else {
+        return;
+    };
+    let mut event = new_event(target, level, message);
+    for (k, v) in extra {
+        event.context.insert(k.clone(), v.clone());
+    }
+    emit_event(event);
+    increment_emitted(Signal::Logs, 1);
+    release(ticket);
+}
+
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
+    // Level filtering: skip events below the effective threshold
+    // (respects per-module overrides via longest-prefix match).
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
+        return;
+    }
     if !should_allow("logs", Some(level)) {
         return;
     }
@@ -126,6 +161,10 @@ fn log_event(level: &str, target: &str, message: &str) {
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
 fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
+        return;
+    }
     if !should_allow("logs", Some(level)) {
         return;
     }
@@ -246,6 +285,27 @@ impl Logger {
 
     pub fn log(&self, level: &str, message: &str) {
         log_event(level, &self.target, message);
+    }
+
+    /// Emit with extra step-local structured fields merged into the event context.
+    pub fn log_fields(&self, level: &str, message: &str, fields: &BTreeMap<String, Value>) {
+        log_event_with_fields(level, &self.target, message, fields);
+    }
+
+    pub fn debug_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("DEBUG", message, fields);
+    }
+
+    pub fn info_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("INFO", message, fields);
+    }
+
+    pub fn warn_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("WARN", message, fields);
+    }
+
+    pub fn error_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
+        self.log_fields("ERROR", message, fields);
     }
 
     pub fn debug_event(&self, event: &crate::schema::Event) {
@@ -405,82 +465,4 @@ pub fn set_as_global_logger() -> Result<(), log::SetLoggerError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    fn cfg_with_module_level(module: &str, level: &str) -> crate::config::LoggingConfig {
-        let mut module_levels = HashMap::new();
-        module_levels.insert(module.to_string(), level.to_string());
-        crate::config::LoggingConfig {
-            level: "INFO".to_string(),
-            module_levels,
-            ..crate::config::LoggingConfig::default()
-        }
-    }
-
-    // ── Issue #2: dot-hierarchy prefix matching ───────────────────────────────
-
-    #[test]
-    fn effective_level_does_not_match_partial_string() {
-        // "foobar" must NOT match prefix "foo" — no dot separator between them
-        let cfg = cfg_with_module_level("foo", "DEBUG");
-        // INFO = 2, so global threshold applies
-        assert_eq!(
-            effective_level_threshold("foobar", &cfg),
-            2,
-            "foobar must not match prefix foo (no dot separator)"
-        );
-    }
-
-    #[test]
-    fn effective_level_matches_dot_separated_child() {
-        // "foo.bar" starts with "foo." → should pick up DEBUG override
-        let cfg = cfg_with_module_level("foo", "DEBUG");
-        assert_eq!(
-            effective_level_threshold("foo.bar", &cfg),
-            1,
-            "foo.bar must match prefix foo via dot separator"
-        );
-    }
-
-    #[test]
-    fn effective_level_matches_exact_module_name() {
-        // "foo" == "foo" → exact match → DEBUG override applies
-        let cfg = cfg_with_module_level("foo", "DEBUG");
-        assert_eq!(
-            effective_level_threshold("foo", &cfg),
-            1,
-            "exact name must match"
-        );
-    }
-
-    #[test]
-    fn effective_level_empty_prefix_matches_everything() {
-        // empty prefix is a catch-all
-        let cfg = cfg_with_module_level("", "DEBUG");
-        assert_eq!(
-            effective_level_threshold("anything.at.all", &cfg),
-            1,
-            "empty prefix must match any target"
-        );
-    }
-
-    #[test]
-    fn effective_level_longest_prefix_wins() {
-        let mut module_levels = HashMap::new();
-        module_levels.insert("foo".to_string(), "WARN".to_string());
-        module_levels.insert("foo.bar".to_string(), "DEBUG".to_string());
-        let cfg = crate::config::LoggingConfig {
-            level: "INFO".to_string(),
-            module_levels,
-            ..crate::config::LoggingConfig::default()
-        };
-        // "foo.bar.baz" matches both "foo" and "foo.bar"; "foo.bar" is longer → DEBUG wins
-        assert_eq!(
-            effective_level_threshold("foo.bar.baz", &cfg),
-            1,
-            "longer prefix must win over shorter"
-        );
-    }
-}
+mod tests;

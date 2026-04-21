@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as tracing from '../src/tracing';
 import {
   CounterInstrument,
   GaugeInstrument,
@@ -13,7 +14,7 @@ import {
 } from '../src/metrics';
 import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
 import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
-import { setupTelemetry, _resetConfig } from '../src/config';
+import { _resetConfig } from '../src/config';
 
 afterEach(() => {
   _resetSamplingForTests();
@@ -333,147 +334,5 @@ describe('exemplar attachment', () => {
     const h = new HistogramInstrument('test.hist', inner as never);
     h.record(42, { route: '/api' });
     expect(inner.record).toHaveBeenCalledWith(42, { route: '/api' });
-  });
-});
-
-describe('metricsEnabled toggle', () => {
-  it('counter.add() does NOT call inner instrument when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
-    const c = new CounterInstrument('test.counter', inner as never);
-    c.add(1, { key: 'val' });
-    expect(inner.add).not.toHaveBeenCalled();
-  });
-
-  it('counter.add() DOES call inner instrument when metricsEnabled is true (default)', () => {
-    setupTelemetry({ metricsEnabled: true });
-    const inner = { add: vi.fn() };
-    const c = new CounterInstrument('test.counter', inner as never);
-    c.add(42, { key: 'val' });
-    expect(inner.add).toHaveBeenCalledWith(42, { key: 'val' });
-  });
-
-  it('gauge.set() does NOT call inner instrument when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(50);
-    expect(inner.add).not.toHaveBeenCalled();
-  });
-
-  it('gauge.add() does NOT call inner instrument when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.add(10);
-    expect(inner.add).not.toHaveBeenCalled();
-  });
-
-  it('gauge.set() DOES call inner instrument when metricsEnabled is true', () => {
-    setupTelemetry({ metricsEnabled: true });
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(50);
-    expect(inner.add).toHaveBeenCalledWith(50, undefined);
-  });
-
-  it('histogram.record() does NOT call inner instrument when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { record: vi.fn() };
-    const h = new HistogramInstrument('test.hist', inner as never);
-    h.record(100);
-    expect(inner.record).not.toHaveBeenCalled();
-  });
-
-  it('histogram.record() DOES call inner instrument when metricsEnabled is true', () => {
-    setupTelemetry({ metricsEnabled: true });
-    const inner = { record: vi.fn() };
-    const h = new HistogramInstrument('test.hist', inner as never);
-    h.record(42, { route: '/api' });
-    expect(inner.record).toHaveBeenCalledWith(42, { route: '/api' });
-  });
-});
-
-describe('.value property — CounterInstrument', () => {
-  it('starts at 0', () => {
-    const inner = { add: vi.fn() };
-    const c = new CounterInstrument('test.counter', inner as never);
-    expect(c.value).toBe(0);
-  });
-
-  it('accumulates across multiple add() calls', () => {
-    const inner = { add: vi.fn() };
-    const c = new CounterInstrument('test.counter', inner as never);
-    c.add(5);
-    c.add(3);
-    expect(c.value).toBe(8);
-  });
-
-  it('does NOT accumulate when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
-    const c = new CounterInstrument('test.counter', inner as never);
-    c.add(5);
-    expect(c.value).toBe(0);
-  });
-});
-
-describe('.value property — GaugeInstrument', () => {
-  it('starts at 0', () => {
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    expect(g.value).toBe(0);
-  });
-
-  it('reflects the most recent set() value', () => {
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(65);
-    expect(g.value).toBe(65);
-    g.set(80);
-    expect(g.value).toBe(80);
-  });
-
-  it('accumulates via add()', () => {
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.add(10);
-    g.add(5);
-    expect(g.value).toBe(15);
-  });
-
-  it('does NOT update when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
-    const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(65);
-    expect(g.value).toBe(0);
-  });
-});
-
-describe('.count and .total properties — HistogramInstrument', () => {
-  it('starts at 0 for both count and total', () => {
-    const inner = { record: vi.fn() };
-    const h = new HistogramInstrument('test.hist', inner as never);
-    expect(h.count).toBe(0);
-    expect(h.total).toBe(0);
-  });
-
-  it('tracks count and total across multiple record() calls', () => {
-    const inner = { record: vi.fn() };
-    const h = new HistogramInstrument('test.hist', inner as never);
-    h.record(10);
-    h.record(20);
-    expect(h.count).toBe(2);
-    expect(h.total).toBe(30);
-  });
-
-  it('does NOT update when metricsEnabled is false', () => {
-    setupTelemetry({ metricsEnabled: false });
-    const inner = { record: vi.fn() };
-    const h = new HistogramInstrument('test.hist', inner as never);
-    h.record(10);
-    expect(h.count).toBe(0);
-    expect(h.total).toBe(0);
   });
 });

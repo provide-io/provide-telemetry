@@ -21,7 +21,7 @@ Examples:
 - `matchmaking.queue.joined` (DAS)
 - `inventory.item.removed` (DAS)
 
-Use `provide.telemetry.event_name(*segments)` when event names are composed dynamically.
+Use `provide.telemetry.event(*segments)` when event names are composed dynamically.
 
 ### `event()` Cookbook
 
@@ -40,7 +40,7 @@ Recommended:
 
 Avoid:
 
-- 5+ segment names:
+- Names with more than 4 segments (5 is the enforced maximum; prefer 3–4):
   - `auth.login.password.reset.attempt.failed`
 - Free-form strings as segments:
   - `event("auth", user_input, "success")`

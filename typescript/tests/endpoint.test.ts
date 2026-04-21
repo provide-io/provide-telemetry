@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import YAML from 'yaml';
 import { validateOtlpEndpoint } from '../src/endpoint';
 import { ConfigurationError } from '../src/exceptions';
@@ -93,6 +93,26 @@ const allFixtures = YAML.parse(readFileSync(fixturesPath, 'utf-8')) as {
   endpoint_validation: EndpointFixtures;
 };
 const endpointFixtures = allFixtures.endpoint_validation;
+
+describe('validateOtlpEndpoint — empty hostname via mocked URL', () => {
+  it('rejects endpoint where URL parses but hostname is empty', () => {
+    // The WHATWG URL spec prevents http/https URLs with empty hostnames, so we mock
+    // the URL constructor to simulate a URL that parses successfully but has no hostname.
+    const OrigURL = globalThis.URL;
+    vi.stubGlobal('URL', function (input: string) {
+      const u = new OrigURL(input);
+      if (input === 'http://fakematch/') {
+        Object.defineProperty(u, 'hostname', { get: () => '' });
+      }
+      return u;
+    });
+    try {
+      expect(() => validateOtlpEndpoint('http://fakematch/')).toThrow(/invalid OTLP endpoint/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe('endpoint validation parity (shared fixtures)', () => {
   it.each(endpointFixtures.valid.map((c) => [c.description, c.endpoint] as [string, string]))(

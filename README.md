@@ -1,10 +1,11 @@
 # Provide Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full export when OTel SDK is present.
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`).
 
-[![1. 🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
-[![2. 🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
-[![5. 🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
+[![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
+[![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
+[![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml)
+[![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
 
@@ -33,7 +34,7 @@ cargo add provide-telemetry --features otel
 **Python:**
 
 ```python
-from provide.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event_name
+from provide.telemetry import setup_telemetry, shutdown_telemetry, get_logger, event
 
 setup_telemetry()
 log = get_logger(__name__)
@@ -101,7 +102,7 @@ See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs
 
 ## API Surface
 
-All implementations export equivalent APIs:
+All implementations export equivalent APIs (signatures vary per language idiom):
 
 | Category | Functions |
 |----------|-----------|
@@ -143,7 +144,8 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 ## Documentation
 
 - [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — Python function signatures and examples
+- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — shared semantic contract and Python-centered examples
+- [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) — core guarantees vs feature-gated or idiomatic differences
 - [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
 - [Developer Experience Rubric](https://github.com/provide-io/provide-telemetry/blob/main/docs/DX_RUBRIC.md) — criteria for cross-language consistency and usability
 - [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details

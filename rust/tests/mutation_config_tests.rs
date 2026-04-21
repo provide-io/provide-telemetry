@@ -1,10 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
-// Mutation tests for config.rs
-
+// SPDX-Comment: Part of provide-telemetry.
+//
 use std::collections::HashMap;
 
-use provide_telemetry::{setup_telemetry, TelemetryConfig};
+use provide_telemetry::{redact_config, setup_telemetry, ConfigurationError, TelemetryConfig};
+
+fn config_from(entries: &[(&str, &str)]) -> Result<TelemetryConfig, ConfigurationError> {
+    let env: HashMap<String, String> = entries
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    TelemetryConfig::from_map(&env)
+}
 
 #[test]
 fn test_telemetry_config_default() {
@@ -268,6 +276,32 @@ fn otlp_endpoint_signal_specific_overrides_shared_verbatim() {
 }
 
 #[test]
+fn otlp_endpoint_blank_signal_specific_vars_do_not_mask_shared_fallback() {
+    let cfg = config_from(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://shared:4318"),
+        ("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", ""),
+        ("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", ""),
+        ("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", ""),
+    ])
+    .unwrap();
+    assert_eq!(
+        cfg.logging.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/logs"),
+        "blank logs endpoint should behave as unset and fall back to shared"
+    );
+    assert_eq!(
+        cfg.tracing.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/traces"),
+        "blank traces endpoint should behave as unset and fall back to shared"
+    );
+    assert_eq!(
+        cfg.metrics.otlp_endpoint.as_deref(),
+        Some("https://shared:4318/v1/metrics"),
+        "blank metrics endpoint should behave as unset and fall back to shared"
+    );
+}
+
+#[test]
 fn otlp_endpoint_is_none_when_neither_shared_nor_signal_env_set() {
     let cfg = config_from(&[]).unwrap();
     assert!(cfg.logging.otlp_endpoint.is_none());
@@ -304,4 +338,79 @@ fn otlp_protocol_defaults_to_empty_string_when_unset() {
     assert_eq!(cfg.logging.otlp_protocol, "");
     assert_eq!(cfg.tracing.otlp_protocol, "");
     assert_eq!(cfg.metrics.otlp_protocol, "");
+}
+
+#[test]
+fn otel_metric_export_interval_defaults_to_sixty_seconds() {
+    let cfg = config_from(&[]).unwrap();
+    assert_eq!(
+        cfg.metrics.metric_export_interval_ms, 60_000,
+        "default export interval must be 60 000 ms"
+    );
+}
+
+#[test]
+fn otel_metric_export_interval_parsed_from_env() {
+    let cfg = config_from(&[("OTEL_METRIC_EXPORT_INTERVAL", "5000")]).unwrap();
+    assert_eq!(
+        cfg.metrics.metric_export_interval_ms, 5_000,
+        "custom interval must be taken from env var"
+    );
+}
+
+#[test]
+fn otel_metric_export_interval_rejects_non_integer() {
+    let result = config_from(&[("OTEL_METRIC_EXPORT_INTERVAL", "1.5")]);
+    assert!(
+        result.is_err(),
+        "non-integer interval must be rejected as ConfigurationError"
+    );
+}
+
+// --- serde #[serde(default)] coverage ---
+// Every public config struct now carries #[serde(default)] so that
+// deserializing a partial/empty JSON object succeeds and missing fields
+// fall back to the struct's Default impl.
+
+#[test]
+fn config_structs_serde_default_empty_object() {
+    // All sub-config structs must deserialize from {} without error.
+    serde_json::from_str::<provide_telemetry::MetricsConfig>("{}")
+        .expect("MetricsConfig must deserialize from {}");
+    serde_json::from_str::<provide_telemetry::TracingConfig>("{}")
+        .expect("TracingConfig must deserialize from {}");
+    serde_json::from_str::<provide_telemetry::SecurityConfig>("{}")
+        .expect("SecurityConfig must deserialize from {}");
+}
+
+#[test]
+fn security_config_serde_default_values() {
+    let cfg: provide_telemetry::SecurityConfig =
+        serde_json::from_str("{}").expect("SecurityConfig empty object must use defaults");
+    assert_eq!(cfg.max_attr_value_length, 1024);
+    assert_eq!(cfg.max_attr_count, 64);
+    assert_eq!(cfg.max_nesting_depth, 8);
+}
+
+#[test]
+fn metrics_config_serde_missing_interval_uses_default() {
+    // Partial JSON (no metric_export_interval_ms) must still deserialize.
+    let cfg: provide_telemetry::MetricsConfig =
+        serde_json::from_str(r#"{"enabled": true, "otlp_headers": {}, "otlp_protocol": ""}"#)
+            .expect("MetricsConfig missing interval field must deserialize");
+    assert_eq!(cfg.metric_export_interval_ms, 60_000);
+}
+
+#[test]
+fn telemetry_config_serde_round_trip_with_defaults() {
+    // A TelemetryConfig serialized to JSON and back must survive even if
+    // the JSON is then trimmed to just the service_name field.
+    let partial = r#"{"service_name": "round-trip-test"}"#;
+    let cfg: provide_telemetry::TelemetryConfig = serde_json::from_str(partial)
+        .expect("TelemetryConfig with only service_name must deserialize");
+    assert_eq!(cfg.service_name, "round-trip-test");
+    assert_eq!(cfg.environment, "dev");
+    assert_eq!(cfg.security.max_attr_value_length, 1024);
+    assert_eq!(cfg.metrics.metric_export_interval_ms, 60_000);
+    assert!((cfg.sampling.logs_rate - 1.0).abs() < f64::EPSILON);
 }

@@ -14,7 +14,8 @@ from provide.telemetry.config import _parse_bool, _parse_otlp_headers
 from provide.telemetry.logger.processors import sanitize_sensitive_fields
 from provide.telemetry.schema.events import EventSchemaError, validate_event_name
 
-_EVENT_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+_SEG = r"[a-z][a-z0-9_]*"
+_EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG}){{2,4}}$")
 
 
 @given(value=st.one_of(st.none(), st.text()), default=st.booleans())

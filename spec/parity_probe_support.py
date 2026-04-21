@@ -19,6 +19,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Allow `spec/` siblings (e.g. _runtime_probe.py) to be imported whether
+# this module is invoked as a script or loaded via importlib in tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 _harness_spec = _ilu.spec_from_file_location(
     "contract_probe_harness", Path(__file__).parent / "contract_probe_harness.py"
 )
@@ -46,6 +50,24 @@ _PROBE_ENV_DEFAULTS: dict[str, str] = {
     "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "",
     "OTEL_EXPORTER_OTLP_METRICS_HEADERS": "",
 }
+
+# Case IDs whose Python probe subprocess requires the OTel extras to be installed.
+_OTEL_REQUIRED_CASE_IDS: frozenset[str] = frozenset({"per_signal_logs_endpoint", "provider_identity_reconfigure"})
+
+
+def _has_otel_stack() -> bool:
+    """Return True when the full OpenTelemetry SDK + OTLP exporter stack is importable."""
+    import importlib.util as ilu
+
+    return all(
+        ilu.find_spec(pkg) is not None
+        for pkg in (
+            "opentelemetry",
+            "opentelemetry.sdk",
+            "opentelemetry.exporter.otlp.proto.http",
+        )
+    )
+
 
 # Canonical field renames: {raw_field: canonical_field}.
 # Applied before comparison so all languages share the same key names.
@@ -113,38 +135,6 @@ def _probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> lis
     ]
 
 
-def _runtime_probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> list[ProbeRunner]:
-    probes = repo / "spec" / "probes"
-    return [
-        ProbeRunner(
-            name="python",
-            label="Python",
-            cmd=[sys.executable, str(probes / "runtime_probe_python.py")],
-            cwd=repo,
-        ),
-        ProbeRunner(
-            name="go",
-            label="Go",
-            cmd=["go", "run", str(probes / "runtime_probe_go" / "main.go")],
-            cwd=repo / "go",
-        ),
-        ProbeRunner(
-            name="typescript",
-            label="TypeScript",
-            cmd=["npx", "tsx", str(probes / "runtime_probe_typescript.ts")],
-            cwd=repo / "typescript",
-            env_extra={"NODE_PATH": str(repo / "typescript" / "node_modules")},
-        ),
-        ProbeRunner(
-            name="rust",
-            label="Rust",
-            cmd=[cargo_bin, "--locked", "run", "--features", "otel", "--example", "runtime_probe", "--quiet"],
-            cwd=repo / "rust",
-            env_extra={**cargo_env},
-        ),
-    ]
-
-
 def _normalize_log_record(raw: dict[str, object]) -> dict[str, object]:
     """Apply canonical renames, strip noise, normalise level to uppercase string."""
     result: dict[str, object] = {}
@@ -185,40 +175,6 @@ def _run_probe(runner: ProbeRunner, probe_env: dict[str, str], *, timeout: int =
         return "", str(exc)
 
 
-def _run_runtime_probe(
-    runner: ProbeRunner,
-    case_id: str,
-    probe_env: dict[str, str],
-    *,
-    timeout: int = 60,
-) -> tuple[str, str]:
-    env = {
-        **os.environ,
-        **_probe_env(probe_env),
-        **_runtime_probe_case_env(case_id),
-        "PROVIDE_PARITY_PROBE_CASE": case_id,
-        **runner.env_extra,
-    }
-    try:
-        proc = subprocess.run(  # noqa: S603
-            runner.cmd,
-            capture_output=True,
-            text=True,
-            cwd=runner.cwd,
-            env=env,
-            timeout=timeout,
-            check=False,
-        )
-        combined = (proc.stdout + proc.stderr).strip()
-        if proc.returncode != 0 and not combined:
-            return "", f"exit code {proc.returncode}: {proc.stderr.strip()[:200]}"
-        if proc.returncode != 0:
-            return "", combined[:500]
-        return combined, ""
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        return "", str(exc)
-
-
 def _extract_json_line(output: str) -> dict[str, object] | None:
     """Find and parse the first line in output that looks like a JSON object."""
     for line in output.splitlines():
@@ -229,40 +185,6 @@ def _extract_json_line(output: str) -> dict[str, object] | None:
             except json.JSONDecodeError:
                 continue
     return None
-
-
-def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
-    if case_id == "strict_schema_rejection":
-        return {
-            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "true",
-            "PROVIDE_TRACE_ENABLED": "false",
-            "PROVIDE_METRICS_ENABLED": "false",
-        }
-    if case_id == "required_keys_rejection":
-        return {
-            "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
-            "PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id",
-            "PROVIDE_TRACE_ENABLED": "false",
-            "PROVIDE_METRICS_ENABLED": "false",
-        }
-    if case_id == "invalid_config":
-        return {"PROVIDE_LOG_INCLUDE_TIMESTAMP": "definitely-not-a-bool"}
-    if case_id == "fail_open_exporter_init":
-        return {
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://[",
-            "OTEL_EXPORTER_OTLP_PROTOCOL": "definitely-invalid",
-        }
-    if case_id == "signal_enablement":
-        return {
-            "PROVIDE_TRACE_ENABLED": "false",
-            "PROVIDE_METRICS_ENABLED": "false",
-        }
-    if case_id == "shutdown_re_setup":
-        return {
-            "PROVIDE_TRACE_ENABLED": "false",
-            "PROVIDE_METRICS_ENABLED": "false",
-        }
-    return {}
 
 
 def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
@@ -307,12 +229,6 @@ def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
         if sid is not None and not _SPAN_ID_RE.match(str(sid)):
             mismatches.append(f"  {lang}: 'span_id' invalid format: {sid!r}")
     return mismatches
-
-
-def _load_runtime_probe_fixtures(fixtures_path: Path) -> dict[str, object]:
-    import yaml  # lazy: allow importing parity_probe_support without PyYAML installed
-
-    return yaml.safe_load(fixtures_path.read_text(encoding="utf-8"))
 
 
 def run_output_check(
@@ -367,89 +283,21 @@ def run_output_check(
     return all_ok
 
 
-def run_runtime_probe_check(
-    repo: Path,
-    selected: set[str],
-    cargo_bin: str,
-    cargo_env: dict[str, str],
-    probe_env: dict[str, str],
-    fixtures_path: Path,
-    *,
-    timeout: int = 60,
-) -> bool:
-    runners = [r for r in _runtime_probe_runners(repo, cargo_bin, cargo_env) if r.name in selected]
-    fixtures = _load_runtime_probe_fixtures(fixtures_path)
-    cases = fixtures.get("cases", [])
-    all_ok = True
+# Runtime probe runner + comparator live in spec/_runtime_probe.py to keep
+# this file under the 500-LOC ceiling. Re-export both the public entrypoint
+# and the private helpers that existing tests reach into directly so callers
+# (spec/run_behavioral_parity.py and tests/tooling) keep working unchanged.
+from _runtime_probe import (  # noqa: E402, F401
+    _load_runtime_probe_fixtures,
+    _run_runtime_probe,
+    _runtime_probe_case_env,
+    _runtime_probe_runners,
+    run_runtime_probe_check,
+)
 
-    print()
-    print("── Runtime parity probes ───────────────────────────")
-    for case in cases:
-        case_id = str(case["id"])
-        kind = str(case["kind"])
-        expected = dict(case["expected"])
-        print(f"  case={case_id}")
-        records: dict[str, dict[str, object]] = {}
-        summaries: dict[str, dict[str, object]] = {}
-        case_ok = True
-        for runner in runners:
-            output, err = _run_runtime_probe(runner, case_id, probe_env, timeout=timeout)
-            if err:
-                print(f"    [{runner.label:12s}] PROBE ERROR: {err}")
-                case_ok = False
-                continue
-            raw = _extract_json_line(output)
-            if raw is None:
-                print(f"    [{runner.label:12s}] NO JSON LINE in output")
-                case_ok = False
-                continue
-            summaries[runner.name] = raw
-            if kind == "record":
-                record = raw.get("record")
-                if not isinstance(record, dict):
-                    print(f"    [{runner.label:12s}] missing record payload")
-                    case_ok = False
-                    continue
-                records[runner.name] = _normalize_log_record(record)
-                print(f"    [{runner.label:12s}] {json.dumps(records[runner.name], sort_keys=True)}")
-            else:
-                print(f"    [{runner.label:12s}] {json.dumps(raw, sort_keys=True)}")
-
-        if not case_ok:
-            all_ok = False
-            continue
-
-        if kind == "record":
-            mismatches = _compare_outputs(records)
-            for field_name, value in expected.items():
-                field_values = {lang: rec.get(field_name) for lang, rec in records.items()}
-                if any(field_value != value for field_value in field_values.values()):
-                    mismatches.append(
-                        f"  field '{field_name}' does not match expected {value!r}: "
-                        + ", ".join(f"{lang}={field_value!r}" for lang, field_value in sorted(field_values.items()))
-                    )
-            if mismatches:
-                print("    MISMATCH:")
-                for mismatch in mismatches:
-                    print(mismatch)
-                all_ok = False
-            else:
-                print("    MATCH")
-            continue
-
-        mismatches: list[str] = []
-        for lang, summary in summaries.items():
-            for field_name, value in expected.items():
-                if summary.get(field_name) != value:
-                    mismatches.append(
-                        f"  {lang}: field '{field_name}' expected {value!r}, got {summary.get(field_name)!r}"
-                    )
-        if mismatches:
-            print("    MISMATCH:")
-            for mismatch in mismatches:
-                print(mismatch)
-            all_ok = False
-        else:
-            print("    MATCH")
-
-    return all_ok
+__all__ = [
+    "ProbeRunner",
+    "run_contract_cases",
+    "run_output_check",
+    "run_runtime_probe_check",
+]

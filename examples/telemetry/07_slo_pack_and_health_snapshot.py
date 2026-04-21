@@ -4,6 +4,16 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
+"""📊 SLO metrics pack and full health snapshot inspection.
+
+Demonstrates:
+- record_red_metrics for HTTP request/error/duration (RED)
+- record_use_metrics for resource utilization (USE)
+- classify_error for error taxonomy
+- HealthSnapshot with all 24 fields
+- SLO config via TelemetryConfig environment overrides
+"""
+
 from __future__ import annotations
 
 from provide.telemetry import (
@@ -20,6 +30,8 @@ from provide.telemetry.config import TelemetryConfig
 
 
 def main() -> None:
+    print("📊 SLO Metrics & Health Snapshot Demo\n")
+
     cfg = TelemetryConfig.from_env(
         {
             "PROVIDE_SLO_ENABLE_RED_METRICS": "true",
@@ -28,11 +40,27 @@ def main() -> None:
         }
     )
     setup_telemetry(cfg)
-
     log = get_logger("examples.slo")
+
+    # ── 🟢 Successful requests ──────────────────────────────
+    print("🟢 Recording successful HTTP requests...")
     record_red_metrics(route="/matchmaking", method="POST", status_code=200, duration_ms=18.2)
+    record_red_metrics(route="/matchmaking", method="GET", status_code=200, duration_ms=5.1)
+    record_red_metrics(route="/leaderboard", method="GET", status_code=200, duration_ms=12.7)
+    print("  ✅ 3 requests recorded (POST + 2x GET)")
+
+    # ── 🔴 Server errors ────────────────────────────────────
+    print("\n🔴 Recording server errors...")
     record_red_metrics(route="/matchmaking", method="POST", status_code=503, duration_ms=210.5)
+    record_red_metrics(route="/inventory", method="PUT", status_code=500, duration_ms=45.0)
+    print("  💥 2 errors recorded (503 + 500)")
+
+    # ── 📈 Resource utilization (USE) ────────────────────────
+    print("\n📈 Recording resource utilization...")
     record_use_metrics(resource="cpu", utilization_percent=61)
+    record_use_metrics(resource="memory", utilization_percent=78)
+    record_use_metrics(resource="disk_io", utilization_percent=23)
+    print("  🖥️  cpu=61%  |  🧠 memory=78%  |  💾 disk_io=23%")
 
     # ── 🏷️ Error taxonomy ────────────────────────────────────
     print("\n🏷️  Error taxonomy classification:")
@@ -67,6 +95,7 @@ def main() -> None:
     )
     print(f"  🛑 Setup error:        {s.setup_error}")
 
+    print("\n🏁 Done!")
     shutdown_telemetry()
 
 

@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -20,6 +21,7 @@
 
 import {
   counter,
+  event,
   getHealthSnapshot,
   getLogger,
   getRuntimeConfig,
@@ -48,7 +50,7 @@ async function main(): Promise<void> {
   registerPiiRule({ path: 'user.email', mode: 'hash' });
   registerPiiRule({ path: 'credit_card', mode: 'drop' });
   log.info({
-    event: 'example.hardening.user_event',
+    ...event('example', 'hardening', 'user_event'),
     user: { email: 'player@game.io', name: 'Hero' },
     credit_card: '4111111111111111',
   });
@@ -67,9 +69,9 @@ async function main(): Promise<void> {
 
   // ── 🎲 Sampling policies ───────────────────────────────
   console.log('\n🎲 Sampling: 50% default, critical overrides=100%');
-  setSamplingPolicy({ defaultRate: 0.5, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('logs', { defaultRate: 0.5, overrides: { 'example.critical': 1.0 } });
   // Reset to 100% so rest of example emits all events
-  setSamplingPolicy({ defaultRate: 1.0 });
+  setSamplingPolicy('logs', { defaultRate: 1.0 });
 
   // ── 🚧 Backpressure ────────────────────────────────────
   console.log('\n🚧 Backpressure: traces queue max=2');
@@ -102,10 +104,9 @@ async function main(): Promise<void> {
   console.log('\n🩺 Health snapshot summary:');
   const s = getHealthSnapshot();
   console.log(`  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
-  console.log(`  🔄 exportRetries:  ${s.exportRetries}`);
-  console.log(`  ❌ exportFailures: ${s.exportFailures}`);
-  console.log(`  ⚠️  asyncRisk:     ${s.asyncBlockingRisk}`);
-  console.log(`  💬 lastError:      ${s.lastExportError}`);
+  console.log(`  🔄 retriesLogs:            ${s.retriesLogs}`);
+  console.log(`  ❌ exportFailuresLogs:     ${s.exportFailuresLogs}`);
+  console.log(`  ⚠️  asyncRiskLogs:         ${s.asyncBlockingRiskLogs}`);
 
   console.log('\n🏁 All guardrails active — production-ready!');
   await shutdownTelemetry();

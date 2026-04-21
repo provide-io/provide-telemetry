@@ -74,6 +74,20 @@ func _lruForKey(key string, limit CardinalityLimit) *expirable.LRU[string, struc
 
 // _guardValue checks a single attribute value against its limit cache.
 // Returns the value to use in the output map.
+// _countLive returns the number of non-expired entries in the cache.
+// The expirable LRU's Len() counts expired-but-not-yet-purged entries,
+// which causes false overflow rejections after TTL expiry. This function
+// probes each key via Get (which checks ExpiresAt) to get an accurate count.
+func _countLive[K comparable, V any](cache *expirable.LRU[K, V]) int {
+	count := 0
+	for _, k := range cache.Keys() {
+		if _, ok := cache.Get(k); ok {
+			count++
+		}
+	}
+	return count
+}
+
 func _guardValue(key, value string, limit CardinalityLimit) string {
 	_cardinalityMu.Lock()
 	cache := _lruForKey(key, limit)
@@ -82,7 +96,7 @@ func _guardValue(key, value string, limit CardinalityLimit) string {
 		_cardinalityMu.Unlock()
 		return value
 	}
-	if cache.Len() >= limit.MaxValues {
+	if _countLive(cache) >= limit.MaxValues {
 		_cardinalityMu.Unlock()
 		return _overflowValue
 	}

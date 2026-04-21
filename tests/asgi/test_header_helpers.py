@@ -23,9 +23,11 @@ def test_get_header_decodes_bytes_and_accepts_string_values() -> None:
     assert get_header(scope, b"x-session-id") == "sid"
 
 
-def test_get_header_ignores_malformed_utf8() -> None:
+def test_get_header_decodes_non_utf8_via_latin1() -> None:
     scope = {"headers": [(b"x-request-id", b"\xff")]}
-    assert get_header(scope, b"x-request-id") is None
+    assert get_header(scope, b"x-request-id") == "\xff"
+    scope2 = {"headers": [(b"x-request-id", b"caf\xe9")]}
+    assert get_header(scope2, b"x-request-id") == "café"
 
 
 def test_get_header_uses_exact_normalized_key_match() -> None:
@@ -51,5 +53,6 @@ def test_normalize_header_name_utf8_string_path() -> None:
 def test_decode_header_value_type_handling() -> None:
     assert _decode_header_value("abc") == "abc"
     assert _decode_header_value(b"abc") == "abc"
-    assert _decode_header_value(b"\xff") is None
+    assert _decode_header_value(b"\xff") == "\xff"
+    assert _decode_header_value(b"caf\xe9") == "café"
     assert _decode_header_value(42) is None

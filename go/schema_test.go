@@ -5,9 +5,51 @@ package telemetry
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 )
+
+func TestSetStrictSchema_GetStrictSchema(t *testing.T) {
+	// Reset to known state before and after the test.
+	_strictSchema = false
+	t.Cleanup(func() { _strictSchema = false })
+
+	// Default value is false.
+	if GetStrictSchema() {
+		t.Error("expected GetStrictSchema() == false initially")
+	}
+
+	// Enable strict mode and read it back.
+	SetStrictSchema(true)
+	if !GetStrictSchema() {
+		t.Error("expected GetStrictSchema() == true after SetStrictSchema(true)")
+	}
+
+	// Disable and read back.
+	SetStrictSchema(false)
+	if GetStrictSchema() {
+		t.Error("expected GetStrictSchema() == false after SetStrictSchema(false)")
+	}
+}
+
+func TestSetStrictSchema_AffectsEventValidation(t *testing.T) {
+	t.Cleanup(func() { SetStrictSchema(false) })
+
+	// In non-strict mode, non-conforming segments are allowed.
+	SetStrictSchema(false)
+	_, err := Event("Auth", "Login", "Success")
+	if err != nil {
+		t.Errorf("non-strict mode: unexpected error: %v", err)
+	}
+
+	// In strict mode, non-conforming segments are rejected.
+	SetStrictSchema(true)
+	_, err = Event("Auth", "Login", "Success")
+	if err == nil {
+		t.Error("strict mode: expected error for uppercase segments, got nil")
+	}
+}
 
 func TestEventName_Valid(t *testing.T) {
 	cases := []struct {

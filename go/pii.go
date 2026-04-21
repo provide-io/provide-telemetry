@@ -32,6 +32,7 @@ var (
 	_piiMu              sync.RWMutex
 	_piiRules           []PIIRule
 	_classificationHook func(key string, value any) string
+	_policyHook         func(label string) string
 	_receiptHook        func(fieldPath string, action string, originalValue any)
 	_customSecretPats   map[string]*regexp.Regexp
 )
@@ -78,6 +79,15 @@ func SetClassificationHook(fn func(string, any) string) {
 	_classificationHook = fn
 }
 
+// SetPolicyHook registers a policy lookup callback on the PII engine.
+// The callback returns the action ("drop"|"redact"|"hash"|"truncate"|"pass") for a label.
+// Pass nil to deregister.
+func SetPolicyHook(fn func(label string) string) {
+	_piiMu.Lock()
+	defer _piiMu.Unlock()
+	_policyHook = fn
+}
+
 // SetReceiptHook registers a redaction receipt callback on the PII engine.
 // Pass nil to deregister.
 func SetReceiptHook(fn func(string, string, any)) {
@@ -110,6 +120,7 @@ func _resetPIIRules() {
 	defer _piiMu.Unlock()
 	_piiRules = nil
 	_classificationHook = nil
+	_policyHook = nil
 	_receiptHook = nil
 }
 
@@ -183,16 +194,13 @@ func SanitizePayload(payload map[string]any, enabled bool, maxDepth int) map[str
 
 	result := piicore.SanitizeMap(payload, []string{}, rules, maxDepth, receiptHook, customs)
 
-	// Apply classification tags for top-level keys if hook is registered.
+	// Apply classification tags and policy actions for top-level keys if hook is registered.
 	_piiMu.RLock()
 	classHook := _classificationHook
+	policyHook := _policyHook
 	_piiMu.RUnlock()
 	if classHook != nil {
-		for k, v := range result {
-			if label := classHook(k, v); label != "" {
-				result["__"+k+"__class"] = label
-			}
-		}
+		_applyClassificationPolicy(result, classHook, policyHook)
 	}
 	return result
 }

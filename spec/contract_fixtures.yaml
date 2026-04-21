@@ -133,6 +133,30 @@ contract_cases:
         into: last_log
       - op: shutdown
     expect:
-      last_log.trace_id: ""
-      last_log.span_id: ""
-      'last_log["baggage.userId"]': ""
+      last_log.trace_id: null
+      last_log.span_id: null
+      'last_log["baggage.userId"]': null
+
+  propagation_cleanup_preserves_bound_context:
+    description: "clear_propagation removes trace/baggage but leaves bind_context fields intact"
+    steps:
+      - op: setup
+      - op: bind_context
+        fields:
+          request_id: "req-abc-123"
+      - op: bind_propagation
+        traceparent: "00-aabbccdd11223344aabbccdd11223344-aabb001122334455-01"
+        baggage: "userId=alice"
+      - op: clear_propagation
+      - op: emit_log
+        message: "test.cleanup.bound.ok"
+        fields:
+          event: "test.cleanup.bound.ok"
+      - op: capture_log
+        into: last_log
+      - op: shutdown
+    expect:
+      last_log.trace_id: null
+      last_log.span_id: null
+      'last_log["baggage.userId"]': null
+      last_log.request_id: "req-abc-123"

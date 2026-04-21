@@ -182,6 +182,8 @@ def run_contract_cases(
     selected: set[str],
     cargo_bin: str,
     cargo_env: dict[str, str],
+    *,
+    timeout: int = 90,
 ) -> bool:
     """Run contract DSL cases across all languages. Returns True if all pass."""
     import yaml  # lazy: allow importing without PyYAML installed
@@ -211,7 +213,7 @@ def run_contract_cases(
         results: dict[str, dict[str, object]] = {}
         case_ok = True
         for runner in runners:
-            parsed, err = _run_contract_probe(runner, case_id)
+            parsed, err = _run_contract_probe(runner, case_id, timeout=timeout)
             if err:
                 print(f"    [{runner.label:12s}] PROBE ERROR: {err}")
                 case_ok = False
@@ -247,21 +249,21 @@ def run_contract_cases(
                 if actual != expected_value:
                     mismatches.append(f"    {lang}: {path} expected {expected_value!r}, got {actual!r}")
 
-        # Cross-compare: collect all variable paths present in 2+ languages
+        # Cross-compare: only compare expect paths across languages (not all leaves,
+        # which include language-specific noise like level/service/env formatting).
         if len(results) >= 2:
-            all_lang_paths: dict[str, dict[str, object]] = {}
-            for lang, variables in results.items():
-                for p in _collect_all_paths(variables):
-                    all_lang_paths.setdefault(p, {})[lang] = _resolve_path(variables, p)
-            for p, lang_values in all_lang_paths.items():
+            for path in expect:
+                lang_values: dict[str, object] = {}
+                for lang, variables in results.items():
+                    val = _resolve_path(variables, path)
+                    if val is not None:
+                        lang_values[lang] = val
                 if len(lang_values) < 2:
                     continue
-                unique_vals = set()
-                for v in lang_values.values():
-                    unique_vals.add(json.dumps(v, sort_keys=True) if isinstance(v, (dict, list)) else repr(v))
+                unique_vals = {repr(v) for v in lang_values.values()}
                 if len(unique_vals) > 1:
                     detail = ", ".join(f"{lang}={v!r}" for lang, v in sorted(lang_values.items()))
-                    mismatches.append(f"    cross-compare divergence on '{p}': {detail}")
+                    mismatches.append(f"    cross-compare divergence on '{path}': {detail}")
 
         if mismatches:
             print("    FAIL:")

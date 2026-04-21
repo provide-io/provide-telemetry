@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	fmt.Println("W3C Propagation Demo\n")
+	fmt.Println("W3C Propagation Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -45,11 +45,11 @@ func main() {
 
 	ctx = telemetry.BindPropagationContext(ctx, pc)
 	receivedEvt, _ := telemetry.Event("example", "w3c", "received")
-	log.InfoContext(ctx, receivedEvt)
+	log.InfoContext(ctx, receivedEvt.Event, receivedEvt.Attrs()...)
 
 	traceID, spanID := telemetry.GetTraceContext(ctx)
 	traceEvt, _ := telemetry.Event("example", "w3c", "trace")
-	log.InfoContext(ctx, traceEvt, "trace_id", traceID, "span_id", spanID)
+	log.InfoContext(ctx, traceEvt.Event, append(traceEvt.Attrs(), "trace_id", traceID, "span_id", spanID)...)
 	fmt.Printf("  Bound trace_id=%s\n", traceID)
 	fmt.Printf("  Bound span_id=%s\n", spanID)
 

@@ -23,10 +23,15 @@ memray-output/
 .openobserve-data/
 .lgtm-data/
 go/coverage.out
+go/logger/coverage.out
 go/coverage_new.out
 go/cover.out
 go/coverage_prop.out
+coverage.out
 rust/target/
 go/coverage.html
 .claude/settings.local.json
+.claude/worktrees/
 rust/mutants.out/
+# Stray npm/vite artifacts created at repo root by some tooling runs
+node_modules/

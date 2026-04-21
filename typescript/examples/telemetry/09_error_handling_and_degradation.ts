@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -21,12 +22,13 @@ import {
   EventSchemaError,
   TelemetryError,
   counter,
-  eventName,
+  event,
   getHealthSnapshot,
   getLogger,
   setSamplingPolicy,
   setupTelemetry,
   shutdownTelemetry,
+  validateEventName,
   withTrace,
 } from '../../src/index.js';
 
@@ -57,7 +59,7 @@ async function main(): Promise<void> {
   // EventSchemaError — bad event names
   console.log('\n  2️⃣  EventSchemaError (invalid event name):');
   try {
-    eventName('only_one_segment');
+    event('only_one');
   } catch (err) {
     if (err instanceof EventSchemaError) {
       console.log(`     Caught EventSchemaError: ${err.message}`);
@@ -66,7 +68,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    eventName('BAD', 'UPPER', 'case');
+    event('BAD', 'UPPER', 'case');
   } catch (err) {
     if (err instanceof EventSchemaError) {
       console.log(`     Caught EventSchemaError: ${err.message}`);
@@ -83,7 +85,7 @@ async function main(): Promise<void> {
   ];
   for (const segs of badInputs) {
     try {
-      eventName(...segs);
+      event(...segs);
     } catch (err) {
       if (err instanceof TelemetryError) errorsCaught++;
     }
@@ -92,12 +94,10 @@ async function main(): Promise<void> {
 
   // Valid names still work
   console.log('\n  4️⃣  Valid event names:');
-  const name3 = eventName('auth', 'login', 'success');
-  const name4 = eventName('payment', 'subscription', 'renewal', 'success');
-  const name5 = eventName('game', 'match', 'round', 'score', 'submitted');
-  console.log(`     3-seg: ${name3}`);
-  console.log(`     4-seg: ${name4}`);
-  console.log(`     5-seg: ${name5}`);
+  const name3 = event('auth', 'login', 'success');
+  const name4 = event('payment', 'subscription', 'renewal', 'success');
+  console.log(`     3-seg (DAS):  ${name3.event}`);
+  console.log(`     4-seg (DARS): ${name4.event}`);
 
   // ── 🔇 Graceful degradation ─────────────────────────────
   console.log('\n🔇 Graceful Degradation Demo\n');
@@ -112,23 +112,34 @@ async function main(): Promise<void> {
   console.log(`  ✅ withTrace works without OTEL SDK: result=${JSON.stringify(result)}`);
 
   // Logging always works
-  log.info({ event: 'example.errors.degradation_test', status: 'ok' });
+  log.info({ ...event('example', 'errors', 'degradation_test'), status: 'ok' });
   console.log('  ✅ Structured logging always works');
 
   // Health snapshot shows the state
   const health = getHealthSnapshot();
-  console.log(`  📊 Health: exportFailures=${health.exportFailures}, logsDropped=${health.logsDropped}`);
+  console.log(`  📊 Health: exportFailuresLogs=${health.exportFailuresLogs}, logsDropped=${health.logsDropped}`);
 
   // ── ⚠️  Sampling rate clamping diagnostic ────────────────
   console.log('\n⚠️  Sampling rate clamping (rate clamped to [0,1]):\n');
 
-  setSamplingPolicy({ defaultRate: 1.5 });
+  setSamplingPolicy('logs', { defaultRate: 1.5 });
   console.log('  1️⃣  Set rate=1.5 → clamped to 1.0');
 
-  setSamplingPolicy({ defaultRate: -0.5 });
+  setSamplingPolicy('logs', { defaultRate: -0.5 });
   console.log('  2️⃣  Set rate=-0.5 → clamped to 0.0');
 
-  setSamplingPolicy({ defaultRate: 1.0 }); // restore
+  setSamplingPolicy('logs', { defaultRate: 1.0 }); // restore
+
+  // ── 🔍 validateEventName helper ─────────────────────────
+  console.log('\n🔍 validateEventName helper:\n');
+  for (const name of ['valid.event.name', 'too_short', 'INVALID.uppercase.name']) {
+    try {
+      validateEventName(name);
+      console.log(`  ${JSON.stringify(name)} → valid`);
+    } catch (err) {
+      console.log(`  ${JSON.stringify(name)} → invalid: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

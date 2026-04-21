@@ -51,11 +51,13 @@ def test_metric_wrappers_without_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     h.record(2.5)
     assert c.value == 3
     assert g.value == 2
-    assert h.records == [1.5, 2.5]
+    assert h.count == 2
+    assert h.total == 4.0
+    assert h.min == 1.5
+    assert h.max == 2.5
 
 
-def test_metric_wrappers_with_meter() -> None:
-    provider_mod._HAS_OTEL_METRICS = True
+def test_metric_wrappers_with_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_meter = Mock()
     mock_counter = Mock()
     mock_gauge = Mock()
@@ -64,7 +66,9 @@ def test_metric_wrappers_with_meter() -> None:
     mock_meter.create_up_down_counter.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
-    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
+    # Ensure get_meter() doesn't early-exit regardless of whether OTel is installed.
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
 
     c = counter("c", "d", "u")
     g = gauge("g", "d", "u")
@@ -83,7 +87,8 @@ def test_metric_wrappers_with_meter() -> None:
     assert mock_hist.record.call_count == 2
     assert c.value == 2
     assert g.value == -2
-    assert h.records == [1.0, 2.0]
+    assert h.count == 2
+    assert h.total == 3.0
     mock_counter.add.assert_any_call(1, {"k": "v"})
     mock_counter.add.assert_any_call(1, {})
     mock_gauge.add.assert_any_call(-1, {"k": "v"})
@@ -125,12 +130,14 @@ def test_metric_wrapper_exceptions_fallback(monkeypatch: pytest.MonkeyPatch) -> 
     mock_meter.create_up_down_counter.side_effect = RuntimeError("boom")
     mock_meter.create_histogram.side_effect = RuntimeError("boom")
     _set_meter_for_test(mock_meter)
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() uses cache with mock meter
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
     assert counter("c")._otel_counter is None
     assert gauge("g")._otel_gauge is None
     assert histogram("h")._otel_histogram is None
 
 
-def test_metric_factory_calls_expected_meter_methods() -> None:
+def test_metric_factory_calls_expected_meter_methods(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_meter = Mock()
     mock_counter = Mock()
     mock_gauge = Mock()
@@ -139,7 +146,8 @@ def test_metric_factory_calls_expected_meter_methods() -> None:
     mock_meter.create_up_down_counter.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
-    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
 
     counter("ctr", "desc", "ms")
     gauge("gg", "desc2", "1")
@@ -201,6 +209,11 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         provider_mod, "_load_otel_metrics_components", lambda: (provider_cls, resource_cls, reader_cls, exporter_cls)
     )
+    # Bypass resilience layer to avoid mutmut trampoline interference during clean test
+    monkeypatch.setattr(provider_mod, "run_with_resilience", lambda _sig, op: op())
+    # Bypass the resilient-export wrapper so reader_cls sees the raw exporter —
+    # the wrapping behavior is covered by tests/resilience/test_resilient_exporter.py.
+    monkeypatch.setattr(provider_mod, "wrap_exporter", lambda _sig, inner: inner)
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://metrics"})
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
@@ -217,8 +230,11 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_meter_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test("existing")
     monkeypatch.setattr(provider_mod, "_meter_provider", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
     assert get_meter() == "existing"
 
+    # Reset API patch so subsequent sub-tests exercise the no-API paths.
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: None)
     _set_meter_for_test(None)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", False)
     assert get_meter() is None
@@ -309,7 +325,7 @@ def test_shutdown_metrics_calls_provider_shutdown() -> None:
 
 def test_shutdown_metrics_provider_absent_and_noncallable() -> None:
     provider_mod._meter_provider = None
-    provider_mod._meter = None
+    provider_mod._meters.clear()
     shutdown_metrics()
     assert provider_mod._meters.get("provide.telemetry") is None
     assert provider_mod._meter_provider is None
@@ -344,7 +360,7 @@ def test_set_meter_for_test_resets_provider_exactly_to_none() -> None:
 
 def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_meter_for_test(None)
-    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
     mock_otel = Mock()
     mock_otel.get_meter.side_effect = lambda name: f"meter-{name}"
     monkeypatch.setattr(provider_mod, "_HAS_OTEL_METRICS", True)
@@ -358,13 +374,14 @@ def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
     assert m1 != m2
 
 
-def test_metric_factories_default_description_and_unit() -> None:
+def test_metric_factories_default_description_and_unit(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_meter = Mock()
     mock_meter.create_counter.return_value = Mock()
     mock_meter.create_up_down_counter.return_value = Mock()
     mock_meter.create_histogram.return_value = Mock()
     _set_meter_for_test(mock_meter)
-    provider_mod._meter_provider = True  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
+    monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
 
     c = counter("ctr")
     g = gauge("gg")

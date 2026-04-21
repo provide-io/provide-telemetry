@@ -275,3 +275,47 @@ class TestGaugeSet:
             g.set(i, attributes={"k": str(i)})
         # After eviction, only ~half of the entries should remain.
         assert len(g._attr_values) <= limit // 2 + 1
+
+
+class TestGaugeAttrValuesBoundedGrowth:
+    """Verify Fix 4: _attr_values does not grow unboundedly."""
+
+    def test_attr_values_bounded_at_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """After inserting > _ATTR_VALUES_MAX entries, size stays <= _ATTR_VALUES_MAX."""
+        from provide.telemetry.metrics.fallback import _ATTR_VALUES_MAX
+
+        g = Gauge("g")
+        g._resolved = True
+        g._otel_gauge = None
+
+        for i in range(_ATTR_VALUES_MAX + 500):
+            g.set(i, {f"k{i}": f"v{i}"})
+
+        assert len(g._attr_values) <= _ATTR_VALUES_MAX
+
+    def test_most_recent_attrs_preserved_after_eviction(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """After eviction, the most recent attribute set is still present."""
+        from provide.telemetry.metrics.fallback import _ATTR_VALUES_MAX
+
+        g = Gauge("g")
+        g._resolved = True
+        g._otel_gauge = None
+
+        for i in range(_ATTR_VALUES_MAX + 2):
+            g.set(i, {f"k{i}": f"v{i}"})
+
+        last_key = tuple(sorted({f"k{_ATTR_VALUES_MAX + 1}": f"v{_ATTR_VALUES_MAX + 1}"}.items()))
+        assert last_key in g._attr_values
+
+    def test_no_eviction_below_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inserting exactly _ATTR_VALUES_MAX entries does not trigger eviction."""
+        from provide.telemetry.metrics.fallback import _ATTR_VALUES_MAX
+
+        g = Gauge("g")
+        g._resolved = True
+        g._otel_gauge = None
+
+        for i in range(_ATTR_VALUES_MAX):
+            g.set(i, {f"k{i}": f"v{i}"})
+
+        assert len(g._attr_values) == _ATTR_VALUES_MAX

@@ -4,6 +4,16 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
+"""🚀 Basic telemetry — logging, tracing, and all three metric types.
+
+Demonstrates:
+- setup_telemetry / shutdown_telemetry lifecycle
+- get_logger for structured logging
+- @trace decorator for automatic span creation
+- counter, gauge, histogram instrument creation and recording
+- bind_context / unbind_context / clear_context for structured fields
+"""
+
 from __future__ import annotations
 
 import time
@@ -35,6 +45,8 @@ def do_work(iteration: int) -> None:
 
 
 def main() -> None:
+    print("🚀 Basic Telemetry Demo\n")
+
     cfg = setup_telemetry()
     log = get_logger("examples.basic")
 

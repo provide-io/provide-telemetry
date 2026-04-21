@@ -99,7 +99,15 @@ fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: u
         for value in event.context.values_mut() {
             if let Value::String(s) = value {
                 if s.len() > max_value_length {
-                    s.truncate(max_value_length);
+                    // Find the last char boundary at or before max_value_length
+                    // to avoid panicking on multi-byte UTF-8 codepoints.
+                    let safe_end = s
+                        .char_indices()
+                        .map(|(i, _)| i)
+                        .take_while(|&i| i <= max_value_length)
+                        .last()
+                        .unwrap_or(0);
+                    s.truncate(safe_end);
                     s.push_str("...");
                 }
             }
@@ -168,12 +176,18 @@ fn add_error_fingerprint(event: &mut LogEvent) {
     if !matches!(event.level.as_str(), "ERROR" | "CRITICAL" | "FATAL") {
         return;
     }
+    // Only add fingerprint when error/exception attributes exist in the
+    // context — matching Python/TypeScript/Go semantics. Plain error-level
+    // messages without error metadata do not get fingerprinted.
     let error_name = event
         .context
         .get("error")
         .or_else(|| event.context.get("error_type"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(&event.message);
+        .or_else(|| event.context.get("exception"))
+        .and_then(|v| v.as_str());
+    let Some(error_name) = error_name else {
+        return;
+    };
     let stack = event
         .context
         .get("stack")
@@ -270,6 +284,20 @@ mod tests {
     }
 
     #[test]
+    fn harden_input_truncates_safely_on_multibyte_utf8() {
+        let mut event = make_event("INFO", "test");
+        // "é" is 2 bytes in UTF-8; a 5-byte limit could land mid-codepoint
+        event
+            .context
+            .insert("multi".to_string(), Value::String("ééééé".to_string()));
+        // Must not panic — truncates at a char boundary before max
+        harden_input(&mut event, 5, 64);
+        let val = event.context["multi"].as_str().unwrap();
+        assert!(val.is_char_boundary(val.len()), "must end at char boundary");
+        assert!(val.ends_with("..."));
+    }
+
+    #[test]
     fn harden_input_strips_control_chars() {
         let mut event = make_event("INFO", "test");
         event.context.insert(
@@ -342,8 +370,22 @@ mod tests {
     }
 
     #[test]
+    fn error_fingerprint_not_added_without_error_attr() {
+        let mut event = make_event("ERROR", "plain error message");
+        // No "error" or "error_type" in context — fingerprint should NOT be added
+        add_error_fingerprint(&mut event);
+        assert!(
+            !event.context.contains_key("error_fingerprint"),
+            "fingerprint requires error attrs in context"
+        );
+    }
+
+    #[test]
     fn error_fingerprint_not_added_for_info_events() {
         let mut event = make_event("INFO", "normal log");
+        event
+            .context
+            .insert("error".to_string(), Value::String("SomeError".to_string()));
         add_error_fingerprint(&mut event);
         assert!(!event.context.contains_key("error_fingerprint"));
     }

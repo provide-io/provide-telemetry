@@ -16,13 +16,11 @@ import {
 } from './metrics';
 import { getConfig } from './config';
 
-const _counters = new Map<string, Counter>();
-const _histograms = new Map<string, Histogram>();
-const _gauges = new Map<string, UpDownCounter>();
-/** Track previous gauge values per (name, resource) for set-semantics (delta computation). */
-const _gaugeValues = new Map<string, number>();
+const _counters = new Map<string, CounterInstrument>();
+const _histograms = new Map<string, HistogramInstrument>();
+const _gauges = new Map<string, GaugeInstrument>();
 
-function _lazyCounter(name: string, description: string): Counter {
+function _lazyCounter(name: string, description: string): CounterInstrument {
   let c = _counters.get(name);
   if (!c) {
     c = counter(name, { description });
@@ -31,7 +29,7 @@ function _lazyCounter(name: string, description: string): Counter {
   return c;
 }
 
-function _lazyHistogram(name: string, description: string, unit: string): Histogram {
+function _lazyHistogram(name: string, description: string, unit: string): HistogramInstrument {
   let h = _histograms.get(name);
   if (!h) {
     h = histogram(name, { description, unit });
@@ -40,7 +38,7 @@ function _lazyHistogram(name: string, description: string, unit: string): Histog
   return h;
 }
 
-function _lazyGauge(name: string, description: string, unit: string): UpDownCounter {
+function _lazyGauge(name: string, description: string, unit: string): GaugeInstrument {
   let g = _gauges.get(name);
   if (!g) {
     g = gauge(name, { description, unit });
@@ -77,12 +75,9 @@ export function recordUseMetrics(opts: {
   utilization: number;
   unit?: string;
 }): void {
+  if (!getConfig().sloEnableUseMetrics) return;
   const g = _lazyGauge('resource.utilization', 'Resource utilization', opts.unit ?? '%');
-  const key = `resource.utilization:${opts.resource}`;
-  const prev = _gaugeValues.get(key) ?? 0;
-  const delta = opts.utilization - prev;
-  _gaugeValues.set(key, opts.utilization);
-  g.add(delta, { resource: opts.resource });
+  g.set(opts.utilization, { resource: opts.resource });
 }
 
 export interface ErrorClassification {
@@ -158,5 +153,4 @@ export function _resetSloForTests(): void {
   _counters.clear();
   _histograms.clear();
   _gauges.clear();
-  _gaugeValues.clear();
 }

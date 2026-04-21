@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"strings"
 )
@@ -16,7 +17,10 @@ import (
 func GetRuntimeConfig() *TelemetryConfig {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
-	return _runtimeCfg
+	if _runtimeCfg == nil {
+		return nil
+	}
+	return cloneTelemetryConfig(_runtimeCfg)
 }
 
 // UpdateRuntimeConfig applies the given hot-reloadable overrides atomically.
@@ -40,10 +44,11 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 	return nil
 }
 
-// ReloadRuntimeFromEnv re-parses all environment variables and replaces the in-memory
-// config snapshot. No subsystems are restarted; use ReconfigureTelemetry for a full
-// restart. Cold fields (ServiceName, Environment, Version, Tracing.Enabled,
-// Metrics.Enabled) that have drifted from the current config are logged as warnings.
+// ReloadRuntimeFromEnv re-parses all environment variables, applies only hot-reloadable
+// fields, and preserves the live cold/provider config. No subsystems are restarted; use
+// ReconfigureTelemetry for a full restart. Cold fields (ServiceName, Environment, Version,
+// Tracing.Enabled, Metrics.Enabled) that have drifted from the current config are logged
+// as warnings.
 func ReloadRuntimeFromEnv() error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
@@ -75,6 +80,7 @@ func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
 		Exporter:     &cfg.Exporter,
 		Security:     &cfg.Security,
 		SLO:          &cfg.SLO,
+		EventSchema:  &cfg.EventSchema,
 		PIIMaxDepth:  &cfg.Logging.PIIMaxDepth,
 		StrictSchema: &cfg.StrictSchema,
 	}
@@ -95,6 +101,9 @@ func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 	}
 	if overrides.SLO != nil {
 		cfg.SLO = *overrides.SLO
+	}
+	if overrides.EventSchema != nil {
+		cfg.EventSchema = *overrides.EventSchema
 	}
 	if overrides.PIIMaxDepth != nil {
 		cfg.Logging.PIIMaxDepth = *overrides.PIIMaxDepth
@@ -248,14 +257,18 @@ func _checkColdDrift(next *TelemetryConfig) {
 	}
 }
 
-// ReconfigureTelemetry performs a full shutdown followed by a fresh setup using current
-// environment variables. It is equivalent to calling ShutdownTelemetry then SetupTelemetry.
-// If ShutdownTelemetry returns an error (e.g. OTel exporter flush failed on context
-// deadline), ReconfigureTelemetry propagates it without proceeding to re-setup, so callers
-// can distinguish a clean reconfigure from one that may have lost in-flight telemetry data.
+// ReconfigureTelemetry applies hot-reloadable config changes from the current environment.
+// If provider-changing fields (service identity, endpoints, enable flags) differ AND real
+// OTel providers are installed, it returns a ConfigurationError instead of silently
+// restarting — matching the Python/TypeScript/Rust contract.
+// Callers who truly need a provider restart should call ShutdownTelemetry then SetupTelemetry.
 func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryConfig, error) {
-	if err := ShutdownTelemetry(ctx); err != nil {
-		return nil, fmt.Errorf("shutdown: %w", err)
+	_ = ctx // reserved for future use (e.g. shutdown context propagation)
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+
+	if !_setupDone || _runtimeCfg == nil {
+		return nil, NewConfigurationError("telemetry not set up: call SetupTelemetry first")
 	}
 
 	target, err := ConfigFromEnv()

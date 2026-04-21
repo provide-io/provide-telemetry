@@ -33,6 +33,7 @@ _module = _load_script_module()
 PerfResult = _module.PerfResult
 evaluate_thresholds = _module.evaluate_thresholds
 _bench_ns_per_op = _module._bench_ns_per_op
+run_benchmarks_stable = _module.run_benchmarks_stable
 
 _ALL_FIELDS = {
     "event_name_ns": 100.0,

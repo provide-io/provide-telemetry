@@ -65,10 +65,10 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all four language parity suites, then run each language's emit probe
-      # and cross-compare canonical JSON fields (msg, level) to catch output regressions.
+      # Run all four language parity suites with strict defaults: output-format probes
+      # are on by default.  --skip-output disables if needed for ad-hoc debugging.
       - name: Behavioral parity check (output format)
-        run: uv run python spec/run_behavioral_parity.py --check-output
+        run: uv run python spec/run_behavioral_parity.py --skip-contracts
 
   # Contract probe DSL — step-based cross-language semantic tests that exercise real
   # public APIs (setup, bind_propagation, emit_log, clear_propagation, etc.) and
@@ -106,5 +106,7 @@ jobs:
       # Run all 6 contract cases across all 4 languages and cross-compare results.
       # Cases exercise: propagation→logger correlation, trace field precedence,
       # config validation, lifecycle, baggage injection, propagation cleanup.
+      # Contract checks are on by default; --skip-output skips the output probes
+      # so this job only runs contract cases.
       - name: Contract probe check (cross-language semantics)
-        run: uv run python spec/run_behavioral_parity.py --check-contracts
+        run: uv run python spec/run_behavioral_parity.py --skip-output

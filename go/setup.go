@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"maps"
 	"sync"
 )
 
@@ -61,7 +62,8 @@ func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
 
 func _applyRuntimePolicies(cfg *TelemetryConfig) {
 	_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
-	_, _ = SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: cfg.Sampling.TracesRate})
+	effectiveTracesRate := min(cfg.Sampling.TracesRate, cfg.Tracing.SampleRate)
+	_, _ = SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: effectiveTracesRate})
 	_, _ = SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: cfg.Sampling.MetricsRate})
 
 	SetQueuePolicy(QueuePolicy{
@@ -93,7 +95,7 @@ func _applyRuntimePolicies(cfg *TelemetryConfig) {
 	})
 
 	_configureLogger(cfg)
-	_strictSchema = cfg.StrictSchema
+	SetStrictSchema(cfg.StrictSchema || cfg.EventSchema.StrictEventName)
 }
 
 // SetupTelemetry initialises all telemetry subsystems from environment variables.
@@ -119,19 +121,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	}
 
 	// Wire per-signal sampling from config.
-	SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
-	SetSamplingPolicy(signalTraces, SamplingPolicy{DefaultRate: cfg.Sampling.TracesRate})
-	SetSamplingPolicy(signalMetrics, SamplingPolicy{DefaultRate: cfg.Sampling.MetricsRate})
-
-	// Wire backpressure queue sizes from config.
-	SetQueuePolicy(QueuePolicy{
-		LogsMaxSize:    cfg.Backpressure.LogsMaxSize,
-		TracesMaxSize:  cfg.Backpressure.TracesMaxSize,
-		MetricsMaxSize: cfg.Backpressure.MetricsMaxSize,
-	})
-
-	// Configure the package-level logger.
-	_configureLogger(cfg)
+	_applyRuntimePolicies(cfg)
 
 	// Wire OTel providers if any were supplied.
 	_applyOTelProviders(state, cfg)
@@ -139,7 +129,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	_runtimeCfg = cfg
 	_setupDone = true
 
-	return cfg, nil
+	return cloneTelemetryConfig(cfg), nil
 }
 
 // ShutdownTelemetry tears down all telemetry subsystems and resets the setup sentinel.

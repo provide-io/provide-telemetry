@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 provide.io llc. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 name: 🛡️ CI — Strip Governance
 
 # Verify that governance modules (classification, consent, receipts) can be

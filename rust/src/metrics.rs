@@ -8,8 +8,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
+#[cfg(feature = "governance")]
+use crate::consent::should_allow;
+use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
+
+// When the governance feature is disabled, consent is unconditionally granted.
+#[cfg(not(feature = "governance"))]
+#[inline(always)]
+fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
+    true
+}
 
 static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -37,13 +47,14 @@ pub struct Counter {
     #[allow(dead_code)]
     unit: Option<String>,
     state: Arc<Mutex<CounterState>>,
-    #[cfg(feature = "otel")]
-    otel: Option<opentelemetry::metrics::Counter<u64>>,
 }
 
 impl Counter {
     pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -52,24 +63,17 @@ impl Counter {
         let Some(ticket) = try_acquire(Signal::Metrics) else {
             return;
         };
-        // Always update in-process state for value() readback
         self.state
             .lock()
             .expect("counter state lock poisoned")
             .value += value;
-        // Also record to OTel global meter when wired
         #[cfg(feature = "otel")]
-        if let Some(ref c) = self.otel {
-            use opentelemetry::KeyValue;
-            let kvs: Vec<KeyValue> = attributes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(k, v)| KeyValue::new(k, v))
-                .collect();
-            c.add(value as u64, &kvs);
+        if crate::otel::metrics::meter_provider_installed() {
+            crate::otel::metrics::record_counter_add(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
-        let _ = attributes;
+        let _ = &attributes;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -94,13 +98,14 @@ pub struct Gauge {
     #[allow(dead_code)]
     unit: Option<String>,
     state: Arc<Mutex<GaugeState>>,
-    #[cfg(feature = "otel")]
-    otel: Option<opentelemetry::metrics::Gauge<f64>>,
 }
 
 impl Gauge {
     pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -109,28 +114,27 @@ impl Gauge {
         let Some(ticket) = try_acquire(Signal::Metrics) else {
             return;
         };
-        let new_value = {
+        #[cfg_attr(not(feature = "otel"), allow(unused_variables))]
+        let new_absolute = {
             let mut state = self.state.lock().expect("gauge state lock poisoned");
             state.last_value += value;
             state.last_value
         };
         #[cfg(feature = "otel")]
-        if let Some(ref g) = self.otel {
-            use opentelemetry::KeyValue;
-            let kvs: Vec<KeyValue> = attributes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(k, v)| KeyValue::new(k, v))
-                .collect();
-            g.record(new_value, &kvs);
+        if crate::otel::metrics::meter_provider_installed() {
+            crate::otel::metrics::record_gauge_set(&self.name, new_absolute, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
-        let _ = (new_value, attributes);
+        let _ = &attributes;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
     pub fn set(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -144,17 +148,12 @@ impl Gauge {
             .expect("gauge state lock poisoned")
             .last_value = value;
         #[cfg(feature = "otel")]
-        if let Some(ref g) = self.otel {
-            use opentelemetry::KeyValue;
-            let kvs: Vec<KeyValue> = attributes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(k, v)| KeyValue::new(k, v))
-                .collect();
-            g.record(value, &kvs);
+        if crate::otel::metrics::meter_provider_installed() {
+            crate::otel::metrics::record_gauge_set(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
-        let _ = (value, attributes);
+        let _ = &attributes;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -180,13 +179,14 @@ pub struct Histogram {
     #[allow(dead_code)]
     unit: Option<String>,
     state: Arc<Mutex<HistogramState>>,
-    #[cfg(feature = "otel")]
-    otel: Option<opentelemetry::metrics::Histogram<f64>>,
 }
 
 impl Histogram {
     pub fn record(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
+            return;
+        }
+        if !should_allow("metrics", None) {
             return;
         }
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
@@ -195,23 +195,17 @@ impl Histogram {
         let Some(ticket) = try_acquire(Signal::Metrics) else {
             return;
         };
-        {
-            let mut state = self.state.lock().expect("histogram state lock poisoned");
-            state.count += 1;
-            state.total += value;
-        }
+        let mut state = self.state.lock().expect("histogram state lock poisoned");
+        state.count += 1;
+        state.total += value;
+        drop(state);
         #[cfg(feature = "otel")]
-        if let Some(ref h) = self.otel {
-            use opentelemetry::KeyValue;
-            let kvs: Vec<KeyValue> = attributes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(k, v)| KeyValue::new(k, v))
-                .collect();
-            h.record(value, &kvs);
+        if crate::otel::metrics::meter_provider_installed() {
+            crate::otel::metrics::record_histogram(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
-        let _ = attributes;
+        let _ = &attributes;
+        increment_emitted(Signal::Metrics, 1);
         release(ticket);
     }
 
@@ -244,79 +238,31 @@ pub fn get_meter(name: Option<&str>) -> Meter {
 
 pub fn counter(name: &str, description: Option<&str>, unit: Option<&str>) -> Counter {
     METRICS_INITIALIZED.store(true, Ordering::SeqCst);
-    #[cfg(feature = "otel")]
-    let otel = if crate::otel::otel_installed() {
-        let meter = opentelemetry::global::meter("provide-telemetry");
-        let mut builder = meter.u64_counter(name.to_string());
-        if let Some(desc) = description {
-            builder = builder.with_description(desc.to_string());
-        }
-        if let Some(u) = unit {
-            builder = builder.with_unit(u.to_string());
-        }
-        Some(builder.build())
-    } else {
-        None
-    };
     Counter {
         name: name.to_string(),
         description: description.map(str::to_string),
         unit: unit.map(str::to_string),
         state: Arc::new(Mutex::new(CounterState::default())),
-        #[cfg(feature = "otel")]
-        otel,
     }
 }
 
 pub fn gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge {
     METRICS_INITIALIZED.store(true, Ordering::SeqCst);
-    #[cfg(feature = "otel")]
-    let otel = if crate::otel::otel_installed() {
-        let meter = opentelemetry::global::meter("provide-telemetry");
-        let mut builder = meter.f64_gauge(name.to_string());
-        if let Some(desc) = description {
-            builder = builder.with_description(desc.to_string());
-        }
-        if let Some(u) = unit {
-            builder = builder.with_unit(u.to_string());
-        }
-        Some(builder.build())
-    } else {
-        None
-    };
     Gauge {
         name: name.to_string(),
         description: description.map(str::to_string),
         unit: unit.map(str::to_string),
         state: Arc::new(Mutex::new(GaugeState::default())),
-        #[cfg(feature = "otel")]
-        otel,
     }
 }
 
 pub fn histogram(name: &str, description: Option<&str>, unit: Option<&str>) -> Histogram {
     METRICS_INITIALIZED.store(true, Ordering::SeqCst);
-    #[cfg(feature = "otel")]
-    let otel = if crate::otel::otel_installed() {
-        let meter = opentelemetry::global::meter("provide-telemetry");
-        let mut builder = meter.f64_histogram(name.to_string());
-        if let Some(desc) = description {
-            builder = builder.with_description(desc.to_string());
-        }
-        if let Some(u) = unit {
-            builder = builder.with_unit(u.to_string());
-        }
-        Some(builder.build())
-    } else {
-        None
-    };
     Histogram {
         name: name.to_string(),
         description: description.map(str::to_string),
         unit: unit.map(str::to_string),
         state: Arc::new(Mutex::new(HistogramState::default())),
-        #[cfg(feature = "otel")]
-        otel,
     }
 }
 

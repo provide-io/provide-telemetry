@@ -1,8 +1,0 @@
-# Test fixtures with fake credentials — intentionally flagged strings
-tests/config/test_config_edge_cases\.py$
-tests/governance/test_config_masking\.py$
-go/config_masking_test\.go$
-go/logger/coverage2_test\.go$
-typescript/tests/pii\.test\.ts$
-typescript/tests/pii\.secrets\.test\.ts$
-typescript/tests/config-masking\.test\.ts$

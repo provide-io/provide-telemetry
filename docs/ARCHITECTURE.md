@@ -157,7 +157,7 @@ flowchart TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `__init__.py` | Public API facade, 95 exports |
+| `__init__.py` | Public API facade, 76 exports |
 | `setup.py` | Lock-protected init/shutdown coordinator with rollback |
 | `config.py` | Pydantic-free dataclass config, env var parsing |
 | `runtime.py` | Hot-reload API, provider-change detection |
@@ -188,9 +188,25 @@ flowchart TD
 | `asgi/middleware.py` | ASGI middleware for request context |
 | `asgi/websocket.py` | WebSocket context helpers |
 
+## Strippable Governance Modules
+
+The three governance modules — `classification`, `consent`, and `receipts` — are **optional** across all four language implementations. Core telemetry (logging, tracing, metrics, PII redaction, schema validation, health) works correctly when they are excluded.
+
+The integration contract is **hook injection**: the PII engine in each language holds nullable hook variables (`_classificationHook`, `_receiptHook`). Governance modules register themselves into these hooks when present; when absent the hooks stay nil/null and the PII engine runs unchanged.
+
+| Language | How to exclude | CI verification |
+|----------|---------------|-----------------|
+| Rust | `cargo build --no-default-features` (removes `governance` Cargo feature) | `ci-strip-governance.yml` |
+| Go | `go build -tags nogovernance ./...` | `ci-strip-governance.yml` |
+| Python | Files are independently importable; core never imports them | `tests/test_strip_governance.py` |
+| TypeScript | Governance lives in isolated modules; consumers tree-shake unused exports | `tests/strip-governance.test.ts` |
+
+Governance symbols are marked `required: false` in `spec/telemetry-api.yaml`.
+
 ## Testing Strategy
 
 - Unit tests with branch coverage for all local logic and fallback paths.
 - Optional-extras tests to validate real OTel imports.
 - Integration smoke test with local OTLP collector (manual/nightly CI).
 - Python, TypeScript, Go, and Rust each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`.
+- Strip-governance CI job verifies all four languages compile and pass core tests without governance modules.

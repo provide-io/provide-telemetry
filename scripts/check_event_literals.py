@@ -22,7 +22,8 @@ _DEFAULT_EXCLUDE_PARTS = {
     "build",
     "dist",
 }
-_EVENT_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+_SEG = r"[a-z][a-z0-9_]*"
+_EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG})*$")
 _LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "trace"}
 
 
@@ -69,7 +70,7 @@ def find_event_literal_violations(roots: Iterable[Path], exclude_parts: set[str]
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate telemetry event-name string literals in log calls use domain.action.status format."
+        description="Validate telemetry event-name string literals in log calls use valid segment format."
     )
     parser.add_argument(
         "--roots",
@@ -90,7 +91,7 @@ def main() -> int:
     exclude_parts.update(args.exclude_part)
     violations = find_event_literal_violations(roots, exclude_parts)
     if not violations:
-        print("Event literal check passed: all scanned log event literals match domain.action.status.")
+        print("Event literal check passed: all scanned log event literals use valid segment format.")
         return 0
 
     print(f"Event literal check failed: {len(violations)} invalid literal(s).")

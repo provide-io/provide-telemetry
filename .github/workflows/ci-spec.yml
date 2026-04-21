@@ -5,8 +5,9 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/provide/telemetry/__init__.py"
-      - "typescript/src/index.ts"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
       - "go/**"
       - "rust/**"
       - "csharp/**"
@@ -18,8 +19,9 @@ on:
     branches: [main]
     paths:
       - "spec/**"
-      - "src/provide/telemetry/__init__.py"
-      - "typescript/src/index.ts"
+      - "ci/**"
+      - "src/provide/telemetry/**"
+      - "typescript/src/**"
       - "go/**"
       - "rust/**"
       - "csharp/**"
@@ -40,8 +42,22 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: "3.11"
+      # Checks all four languages match the API surface in spec/telemetry-api.yaml,
+      # including governance-capability-gated symbols for languages that advertise governance.
       - name: API conformance check
         run: python spec/validate_conformance.py
+
+  fixture-coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+        with:
+          python-version: "3.11"
+      # Fails if any fixture category is missing from a language's parity tests
+      # without a corresponding entry in spec/fixture_coverage_allowlist.yaml.
+      - name: Fixture coverage gate
+        run: uv run python spec/check_fixture_coverage.py
 
   version-sync:
     runs-on: ubuntu-24.04
@@ -82,6 +98,12 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all four language parity suites and report results
+      # Run all four language parity suites with strict defaults: output-format probes
+      # and contract DSL cases are both on by default (no flags required).
+      # Each language runner covers every parity file counted by check_fixture_coverage.py:
+      #   Python    — tests/parity/ (whole directory)
+      #   TypeScript — tests/parity.test.ts + tests/endpoint.test.ts
+      #   Go        — TestParity* + TestEndpointValidationParity (all parity_*_test.go files)
+      #   Rust      — parity_test + parity_extra_test + parity_pii_fixes_test (three binaries)
       - name: Behavioral parity check
-        run: uv run python spec/run_behavioral_parity.py --check-output
+        run: uv run python spec/run_behavioral_parity.py

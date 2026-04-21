@@ -141,7 +141,7 @@ func TestRedactConfig_MasksHeadersAndEndpoint(t *testing.T) {
 	cfg := telemetry.DefaultTelemetryConfig()
 	cfg.ServiceName = "my-service"
 	cfg.Logging.OTLPHeaders = map[string]string{"Authorization": "Bearer supersecrettoken"} // pragma: allowlist secret
-	cfg.Tracing.OTLPEndpoint = "https://user:s3cr3t@otel.example.com/traces"               // pragma: allowlist secret
+	cfg.Tracing.OTLPEndpoint = "https://user:s3cr3t@otel.example.com/traces"                // pragma: allowlist secret
 
 	result := telemetry.RedactConfig(cfg)
 

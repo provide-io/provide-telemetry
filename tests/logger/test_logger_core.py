@@ -37,7 +37,7 @@ def _reset_pii_rules() -> None:
 
 
 def test_get_level() -> None:
-    assert _get_level("TRACE") == logging.DEBUG
+    assert _get_level("TRACE") == 5
     assert _get_level("INFO") == logging.INFO
     assert _get_level("WARNING") == logging.WARNING
     assert _get_level("NOT_REAL") == 20
@@ -71,9 +71,10 @@ def test_processors() -> None:
 def test_enforce_schema_processor() -> None:
     cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_EVENT_NAME": "true"})
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c"})
-    with pytest.raises(EventSchemaError):
-        processor(None, "info", {"event": "invalid"})
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" not in result
+    result = processor(None, "info", {"event": "invalid"})
+    assert "_schema_error" in result
 
 
 def test_enforce_required_keys_processor() -> None:
@@ -84,15 +85,18 @@ def test_enforce_required_keys_processor() -> None:
         }
     )
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c", "request_id": "x"})
-    with pytest.raises(EventSchemaError):
-        processor(None, "info", {"event": "a.b.c"})
+    result = processor(None, "info", {"event": "a.b.c", "request_id": "x"})
+    assert "_schema_error" not in result
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" in result
 
 
 def test_enforce_required_keys_enforced_in_compat_mode() -> None:
     cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id"})
     processor = enforce_event_schema(cfg)
-    processor(None, "info", {"event": "a.b.c"})
+    result = processor(None, "info", {"event": "a.b.c"})
+    assert "_schema_error" in result
+    assert "request_id" in result["_schema_error"]
 
 
 def test_configure_and_get_logger() -> None:
@@ -176,7 +180,7 @@ def test_get_logger_does_not_reconfigure_when_already_configured(monkeypatch: py
     assert configured_calls["count"] == 0
 
 
-def test_trace_wrapper_trace_calls_debug_only_for_trace_level() -> None:
+def test_trace_wrapper_trace_calls_log_only_for_trace_level() -> None:
     mock_logger = Mock()
     wrapper = core_mod._TraceWrapper(mock_logger)
 
@@ -262,7 +266,7 @@ def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.M
     processors = configure_calls[0]["processors"]
     assert isinstance(processors, list)
     assert len(processors) >= 6
-    assert configure_calls[0]["cache_logger_on_first_use"] is True
+    assert configure_calls[0]["cache_logger_on_first_use"] is False
 
 
 def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest.MonkeyPatch) -> None:

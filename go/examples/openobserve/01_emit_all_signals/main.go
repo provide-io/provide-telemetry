@@ -81,7 +81,7 @@ func sendJSONLog(baseURL, auth, runID string) error {
 	if err != nil {
 		return fmt.Errorf("http post: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("OpenObserve API returned status %d", resp.StatusCode)
@@ -94,7 +94,7 @@ func doWork(ctx context.Context, runID string, iteration int) error {
 	return telemetry.Trace(ctx, traceName, func(ctx context.Context) error {
 		log := telemetry.GetLogger(ctx, "examples.openobserve")
 		evtName, _ := telemetry.Event("example", "openobserve", "log")
-		log.InfoContext(ctx, evtName, "iteration", strconv.Itoa(iteration))
+		log.InfoContext(ctx, evtName.Event, append(evtName.Attrs(), "iteration", strconv.Itoa(iteration))...)
 
 		metricName := "example.openobserve.requests." + runID
 		c := telemetry.NewCounter(metricName)
@@ -119,20 +119,20 @@ func main() {
 	}
 
 	// Configure OTel export intervals for faster flushing in examples.
-	os.Setenv("OTEL_BSP_SCHEDULE_DELAY", "200")
-	os.Setenv("OTEL_BLRP_SCHEDULE_DELAY", "200")
-	os.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "1000")
+	_ = os.Setenv("OTEL_BSP_SCHEDULE_DELAY", "200")
+	_ = os.Setenv("OTEL_BLRP_SCHEDULE_DELAY", "200")
+	_ = os.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "1000")
 
 	// Wire OTel endpoints from OpenObserve URL.
 	encodedAuth := url.QueryEscape(auth)
-	os.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", baseURL+"/v1/traces")
-	os.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", baseURL+"/v1/metrics")
-	os.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", baseURL+"/v1/logs")
-	os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+encodedAuth)
-	os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-telemetry-examples")
-	os.Setenv("PROVIDE_TELEMETRY_VERSION", "examples")
-	os.Setenv("PROVIDE_TRACE_ENABLED", "true")
-	os.Setenv("PROVIDE_METRICS_ENABLED", "true")
+	_ = os.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", baseURL+"/v1/traces")
+	_ = os.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", baseURL+"/v1/metrics")
+	_ = os.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", baseURL+"/v1/logs")
+	_ = os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+encodedAuth)
+	_ = os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-telemetry-examples")
+	_ = os.Setenv("PROVIDE_TELEMETRY_VERSION", "examples")
+	_ = os.Setenv("PROVIDE_TRACE_ENABLED", "true")
+	_ = os.Setenv("PROVIDE_METRICS_ENABLED", "true")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {

@@ -27,10 +27,9 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     )]));
     let configuration_error_seen = matches!(bad_bool, Err(ConfigurationError { .. }));
 
-    // Segment format errors are only raised in strict mode.
+    // Strict schema mode is required to surface segment-format errors from event().
     set_strict_schema(true);
     let bad_event = event(&["BAD", "UPPER", "case"]);
-    set_strict_schema(false);
     let event_schema_error_seen = matches!(bad_event, Err(EventSchemaError { .. }));
 
     let mut telemetry_error_catchall_count = 0;
@@ -43,6 +42,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             telemetry_error_catchall_count += 1;
         }
     }
+    set_strict_schema(false);
 
     shutdown_telemetry()?;
     Ok(DemoSummary {

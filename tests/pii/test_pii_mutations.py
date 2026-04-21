@@ -423,9 +423,9 @@ class TestApplyDefaultSensitiveKeyRedactionMutants:
         When node is a dict but original is a non-dict (e.g., a string),
         the `or` mutant would enter the dict branch and crash on original.get().
         """
-        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)
+        result = _apply_default_sensitive_key_redaction({"password": "secret"}, 42)  # pragma: allowlist secret
         # Should return the node unchanged since original is not a dict
-        assert result == {"password": "secret"}
+        assert result == {"password": "secret"}  # pragma: allowlist secret
 
     def test_and_vs_or_dict_isinstance_with_non_dict_node(self) -> None:
         """Complementary: node is NOT a dict but original IS a dict.
@@ -450,9 +450,9 @@ class TestSanitizePayloadEnabledFlag:
         When enabled=False, sensitive keys must NOT be redacted.
         The mutant would invert the check, redacting when disabled.
         """
-        payload: dict[str, Any] = {"password": "secret", "data": "public"}
+        payload: dict[str, Any] = {"password": "secret", "data": "public"}  # pragma: allowlist secret
         result = sanitize_payload(payload, enabled=False)
-        assert result["password"] == "secret"  # NOT redacted
+        assert result["password"] == "secret"  # NOT redacted  # pragma: allowlist secret
         assert result["data"] == "public"
 
     def test_enabled_redacts_sensitive_keys(self) -> None:

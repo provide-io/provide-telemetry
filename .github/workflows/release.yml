@@ -25,8 +25,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
           python-version: "3.11"
       - run: uv sync --group dev
@@ -50,6 +50,10 @@ jobs:
         with:
           name: sbom-python
           path: sbom-python.cdx.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: sbom-typescript
+          path: sbom-typescript.cdx.json
 
   publish-testpypi:
     needs: build
@@ -119,35 +123,37 @@ jobs:
           # Safe to retrigger — skip if version already published
           skip-existing: true
 
-  build-typescript:
-    runs-on: ubuntu-latest
+  build-npm:
+    # Run on GitHub Release creation or manual dispatch only
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     defaults:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: typescript/package-lock.json
-      - run: npm ci
-      - run: npm run test:coverage
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: typescript-dist
-          path: typescript/dist/
-      - name: Generate TypeScript SBOM
-        run: npx @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format json --output-file sbom-typescript.cdx.json
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      # Install deps and run tests before packing
+      - name: Install dependencies
+        run: npm ci
+      - name: Run TypeScript tests
+        run: npx vitest run
+      # Build and pack the distributable tarball
+      - name: Build and pack
+        run: npm run build && npm pack
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
         with:
           name: npm-pack
           path: typescript/*.tgz
 
   build-rust:
+    # Run on GitHub Release creation or manual dispatch only
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -156,7 +162,10 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
       - name: Run Rust tests
         run: cargo test --locked --all-targets --all-features
       - name: Package Rust crate
@@ -201,10 +210,12 @@ jobs:
 
   publish-rust:
     needs: build-rust
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      # Required for crates.io trusted publishing (OIDC — no CARGO_REGISTRY_TOKEN needed)
+      id-token: write
     environment:
       name: crates-io
       url: https://crates.io/crates/provide-telemetry
@@ -213,17 +224,17 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Publish to crates.io
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      - name: Publish to crates.io via trusted publishing (OIDC)
         run: cargo publish --locked
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   sign-and-upload:
     needs: [build, build-rust]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    if: github.event_name == 'release'
     permissions:
       contents: write
       id-token: write
@@ -248,42 +259,61 @@ jobs:
         with:
           inputs: dist/*.whl dist/*.tar.gz
       - name: Upload artifacts and signatures to release
+        # Priority: workflow_dispatch input > release event tag > ref_name
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${RELEASE_TAG}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
             rust-dist/*.crate \
             sbom/sbom-python.cdx.json \
             sbom/sbom-typescript.cdx.json \
+            --repo "$GITHUB_REPOSITORY" \
             --clobber
 
-  publish-npm:
-    needs: build-typescript
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    permissions:
-      id-token: write
-      contents: read
-    environment:
-      name: npm
-      url: https://www.npmjs.com/package/@undef-games/telemetry
-    defaults:
-      run:
-        working-directory: typescript
+  verify-go-proxy:
+    # Triggered only when a go sub-module tag is pushed (go/logger/v* or go/tracer/v*)
+    if: startsWith(github.ref, 'refs/tags/go/')
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: typescript/package-lock.json
-          registry-url: "https://registry.npmjs.org"
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: typescript-dist
-          path: typescript/dist
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          go-version: "1.25"
+      # Extract module path and version from the tag (e.g. go/logger/v0.2.5)
+      - name: Parse tag into module and version
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # TAG format: go/logger/v0.2.5 or go/tracer/v0.2.5
+          SUB="${TAG%/v*}"           # go/logger or go/tracer
+          VER="${TAG##*/}"           # v0.2.5
+          MODULE="github.com/provide-io/provide-telemetry/${SUB}"
+          echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Module: ${MODULE}  Version: ${VER}"
+      # Poll proxy.golang.org until the new version is available (up to 5 min)
+      - name: Wait for Go proxy to index new tag
+        run: |
+          MODULE="${{ steps.tag.outputs.module }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+          PROXY_URL="https://proxy.golang.org/${MODULE}/@v/${VERSION}.info"
+          echo "Polling: ${PROXY_URL}"
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PROXY_URL}")
+            echo "Attempt ${i}: HTTP ${STATUS}"
+            if [ "${STATUS}" = "200" ]; then
+              echo "OK: proxy has indexed ${MODULE}@${VERSION}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "FAIL: proxy did not index ${MODULE}@${VERSION} within 5 minutes"
+          exit 1
+      # Verify the module can be fetched cleanly
+      - name: Verify module fetchable via go get
+        run: |
+          cd $(mktemp -d)
+          go mod init probe
+          go get "${{ steps.tag.outputs.module }}@${{ steps.tag.outputs.version }}"
+          echo "OK: go get succeeded"

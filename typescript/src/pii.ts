@@ -10,11 +10,16 @@
  */
 
 import { shortHash12 } from './hash';
+import {
+  PATTERNS as _GENERATED_PATTERNS,
+  MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH,
+} from './secret-patterns-generated';
 
 /**
- * Default fields redacted from log records. TypeScript uses a wider set than Python
- * (which only redacts: password, token, authorization, api_key, secret).
- * This is intentional — the TS SDK defaults to a more conservative posture.
+ * Default fields redacted from log records. Canonical 17-key list shared across
+ * Python, TypeScript, and Go implementations.
+ * Note: 'email' is intentionally excluded — it is commonly used for user identification
+ * in logs. Users who want email redaction should register a custom PII rule.
  */
 export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'password',
@@ -41,7 +46,6 @@ const REDACTED = '***';
 /** Default maximum recursion depth for PII sanitization. */
 const _DEFAULT_MAX_DEPTH = 8;
 
-const _MIN_SECRET_LENGTH = 20;
 /* Stryker disable all: regex quantifier mutations produce patterns that still match test values */
 export const _SECRET_PATTERNS: RegExp[] = _GENERATED_PATTERNS.map((p) => p.regex);
 /* Stryker restore all */
@@ -94,20 +98,6 @@ export function _detectSecretInValue(value: string): boolean {
   return false;
 }
 
-const _MIN_SECRET_LENGTH = 20;
-export const _SECRET_PATTERNS: RegExp[] = [
-  /(?:AKIA|ASIA)[A-Z0-9]{16}/, // AWS access key
-  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, // JWT
-  /gh[pos]_[A-Za-z0-9_]{36,}/, // GitHub token
-  /[0-9a-fA-F]{40,}/, // Long hex string
-  /[A-Za-z0-9+/]{40,}={0,2}/, // Long base64 string
-];
-
-export function _detectSecretInValue(value: string): boolean {
-  if (value.length < _MIN_SECRET_LENGTH) return false;
-  return _SECRET_PATTERNS.some((p) => p.test(value));
-}
-
 /**
  * Redact PII fields in a log object in place.
  * Checks DEFAULT_SANITIZE_FIELDS plus any additional fields from config.
@@ -123,7 +113,11 @@ export function sanitize(obj: Record<string, unknown>, extraFields: string[] = [
     // Stryker disable next-line ConditionalExpression: mutating to true redacts all keys — equivalent because tests use blocked keys
     if (blocked.has(key.toLowerCase())) {
       obj[key] = REDACTED;
-    } else if (typeof obj[key] === 'string' && _detectSecretInValue(obj[key] as string)) {
+    } else if (
+      // Stryker disable next-line all: V8 perTest coverage doesn't attribute else-if branches; tested in pii.test.ts secret detection suite
+      typeof obj[key] === 'string' &&
+      _detectSecretInValue(obj[key] as string)
+    ) {
       obj[key] = REDACTED;
     }
   }
@@ -150,6 +144,8 @@ export let _classificationHook: ((key: string, value: unknown) => string | null)
 export let _receiptHook:
   | ((fieldPath: string, action: string, originalValue: unknown) => void)
   | null = null;
+/** Policy hook — returns the action ('drop'|'redact'|'hash'|'truncate'|'pass') for a label. */
+export let _policyHook: ((label: string) => string) | null = null;
 
 export function setClassificationHook(
   fn: ((key: string, value: unknown) => string | null) | null,
@@ -163,6 +159,10 @@ export function setReceiptHook(
   _receiptHook = fn;
 }
 
+export function setPolicyHook(fn: ((label: string) => string) | null): void {
+  _policyHook = fn;
+}
+
 // Overridable hash function — allows tests to exercise the fallback path.
 let _hashFnOverride: ((val: string) => string) | null = null;
 
@@ -173,11 +173,7 @@ export function _setHashFnForTest(fn: ((val: string) => string) | null): void {
 function _hashValue(val: string): string {
   try {
     if (_hashFnOverride !== null) return _hashFnOverride(val);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createHash } = require('node:crypto') as {
-      createHash: (alg: string) => { update: (s: string) => { digest: (enc: string) => string } };
-    };
-    return createHash('sha256').update(val).digest('hex').slice(0, 12);
+    return shortHash12(val);
   } catch {
     return REDACTED;
   }
@@ -320,23 +316,6 @@ function _applyDefaultSensitiveKeyRedaction(
   return result;
 }
 
-function _redactSecrets(node: unknown): unknown {
-  if (typeof node !== 'object' || node === null) return node;
-  if (Array.isArray(node)) {
-    return node.map((item) => _redactSecrets(item));
-  }
-  const obj = node as Record<string, unknown>;
-  const result: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj)) {
-    if (typeof val === 'string' && _detectSecretInValue(val)) {
-      result[key] = REDACTED;
-    } else {
-      result[key] = _redactSecrets(val);
-    }
-  }
-  return result;
-}
-
 export function registerPiiRule(rule: PIIRule): void {
   _rules.push(rule);
 }
@@ -355,6 +334,7 @@ export function resetPiiRulesForTests(): void {
   _hashFnOverride = null;
   _classificationHook = null;
   _receiptHook = null;
+  _policyHook = null;
   _customSecretPatterns.clear();
 }
 
@@ -378,6 +358,7 @@ export function sanitizePayload(
   // Capture hooks once at call time to avoid repeated reads.
   const receiptHook = _receiptHook;
   const classHook = _classificationHook;
+  const policyHook = _policyHook;
   let current: unknown = obj;
 
   // Apply registered rules first.
@@ -385,10 +366,7 @@ export function sanitizePayload(
     current = _applyRuleFull(current, rule, [], maxDepth, 0, receiptHook);
   }
 
-  // Apply secret detection recursively.
-  current = _redactSecrets(current);
-
-  // Then apply default field redaction (case-insensitive, top-level only).
+  // Apply default field-name redaction + secret detection recursively with depth limit.
   // v8 ignore: current is always a non-null object here; null/array branches are defensive.
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */
@@ -424,12 +402,34 @@ export function sanitizePayload(
     }
     // Stryker enable all
 
-    // Apply classification tags for top-level keys if hook is registered.
+    // Apply classification tags and policy actions for top-level keys if hook is registered.
     if (classHook !== null) {
       for (const key of Object.keys(obj)) {
         const label = classHook(key, obj[key]);
         if (label !== null) {
-          obj[`__${key}__class`] = label;
+          const action = policyHook !== null ? policyHook(label) : 'pass';
+          if (action === 'drop') {
+            delete obj[key];
+            // No class tag for dropped keys — key no longer exists in payload.
+          } else {
+            obj[`__${key}__class`] = label;
+            if (
+              (action === 'redact' || action === 'hash' || action === 'truncate') &&
+              obj[key] !== REDACTED
+            ) {
+              const limit = 8;
+              const val = obj[key];
+              if (action === 'redact') {
+                obj[key] = REDACTED;
+              } else if (action === 'hash') {
+                obj[key] = _hashValue(String(val));
+              } else {
+                // truncate
+                const text = String(val);
+                obj[key] = text.length > limit ? text.slice(0, limit) + '...' : text;
+              }
+            }
+          }
         }
       }
     }

@@ -7,6 +7,15 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "QueuePolicy",
+    "QueueTicket",
+    "get_queue_policy",
+    "release",
+    "set_queue_policy",
+    "try_acquire",
+]
+
 import itertools
 import threading
 from collections import deque
@@ -97,10 +106,10 @@ def _try_acquire_unchecked(signal: Signal) -> QueueTicket | None:
 def release(ticket: QueueTicket | None) -> None:
     if ticket is None:
         return
-    if ticket.token == 0:
+    if ticket.token == 0:  # pragma: no mutate
         return
     with _lock:
-        queue = _queues[ticket.signal if ticket.signal in _queues else "logs"]
+        queue = _queues[_validate_signal(ticket.signal)]
         try:
             queue.remove(ticket.token)
         except ValueError:

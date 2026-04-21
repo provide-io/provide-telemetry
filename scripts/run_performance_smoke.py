@@ -141,6 +141,7 @@ def evaluate_thresholds(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a telemetry performance smoke benchmark.")
     parser.add_argument("--iterations", type=int, default=200_000, help="Loop iterations per benchmark.")
+    parser.add_argument("--runs", type=int, default=1, help="Number of repeated benchmark runs; median is evaluated.")
     parser.add_argument("--enforce", action="store_true", help="Fail if any configured threshold is exceeded.")
     parser.add_argument(
         "--emit-json",
@@ -172,6 +173,7 @@ def main() -> int:
     print(
         {
             "iterations": args.iterations,
+            "runs": args.runs,
             "event_name_ns": round(result.event_name_ns, 2),
             "should_sample_ns": round(result.should_sample_ns, 2),
             "sanitize_ns": round(result.sanitize_ns, 2),
@@ -180,6 +182,8 @@ def main() -> int:
             "histogram_record_ns": round(result.histogram_record_ns, 2),
             "health_snapshot_ns": round(result.health_snapshot_ns, 2),
             "enforced": args.enforce,
+            "ci_detected": ci_detected,
+            "threshold_multiplier": threshold_multiplier,
         }
     )
 

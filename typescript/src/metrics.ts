@@ -19,15 +19,29 @@ import {
   type UpDownCounter,
   metrics,
 } from '@opentelemetry/api';
+import { _emittedField, _incrementHealth } from './health';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
 import { getActiveTraceIds } from './tracing';
 import { getConfig } from './config';
+import { shouldAllow } from './consent';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
 const METER_NAME = '@provide-io/telemetry';
+
+/**
+ * Return a stable, order-independent key for an attribute map.
+ * Sorts attribute keys before serialising so {a:1,b:2} and {b:2,a:1}
+ * produce the same string. Mirrors Python tuple(sorted(attrs.items())).
+ */
+function _canonicalAttrsKey(attrs?: Attributes): string {
+  // Stryker disable next-line StringLiteral: any constant sentinel is equivalent for the no-attrs map key — functionally interchangeable with ''
+  if (!attrs) return '';
+  const keys = Object.keys(attrs).sort();
+  return JSON.stringify(keys.map((k) => [k, attrs[k]]));
+}
 
 export interface MetricOptions {
   description?: string;
@@ -54,10 +68,13 @@ export class CounterInstrument {
 
   add(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    // Stryker disable next-line StringLiteral: 'metrics' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       const ids = getActiveTraceIds();
       const enriched =
         ids.trace_id && ids.span_id
@@ -93,10 +110,13 @@ export class GaugeInstrument {
 
   add(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    // Stryker disable next-line StringLiteral: 'metrics' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       this._inner.add(value, attributes);
       this._lastValue += value;
     } finally {
@@ -106,11 +126,14 @@ export class GaugeInstrument {
 
   set(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    // Stryker disable next-line StringLiteral: 'metrics' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
-      const key = attributes ? JSON.stringify(attributes) : '';
+      _incrementHealth(_emittedField('metrics'));
+      const key = _canonicalAttrsKey(attributes);
       const prev = this._values.get(key) ?? 0;
       const delta = value - prev;
       this._values.set(key, value);
@@ -148,10 +171,13 @@ export class HistogramInstrument {
 
   record(value: number, attributes?: Attributes): void {
     if (!getConfig().metricsEnabled) return;
+    // Stryker disable next-line StringLiteral: 'metrics' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
+    if (!shouldAllow('metrics')) return;
     if (!shouldSample('metrics', this.name)) return;
     const ticket = tryAcquire('metrics');
     if (!ticket) return;
     try {
+      _incrementHealth(_emittedField('metrics'));
       const ids = getActiveTraceIds();
       const enriched =
         ids.trace_id && ids.span_id

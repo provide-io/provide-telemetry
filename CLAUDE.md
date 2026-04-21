@@ -49,9 +49,9 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 
 ## Quality Constraints
 
-- **100% branch coverage** is enforced — every new code path needs test coverage.
-- **100% mutation kill score** is required in CI — tests must detect behavioural changes.
-- **500 LOC max per file** — split files before they exceed this limit.
+- **100% branch coverage** is enforced for Python, TypeScript, and Go. Rust runs `cargo test` without a coverage gate.
+- **100% mutation kill score** is the target in CI. Python and Go are fully gated. TypeScript uses Stryker with file-scoped exemptions for OTel wiring modules (see `typescript/stryker.config.mjs`). Rust is not mutation-gated.
+- **500 LOC max per file** — enforced across Python, TypeScript, Go, and Rust via `scripts/check_max_loc.py`. Pre-existing violators are tracked in `.max_loc_allowlist.yaml` with split plans; new files MUST stay under 500 lines.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
 - Pytest markers: `otel`, `integration`, `e2e`, `tooling`, `memray`, `slow` — tag tests appropriately.
@@ -134,5 +134,5 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
 - `VERSION` contains major.minor only (e.g. `0.3`); each language tracks patch independently.
 - `e2e/` — cross-language E2E tests.
-- Language directories: `typescript/` (implemented), `go/`, `rust/`, `csharp/` (planned) — each self-contained with own build config.
+- Language directories: `typescript/`, `go/`, `rust/` — each self-contained with own build config.
 - Python stays at repo root (`src/`, `pyproject.toml`, `tests/`).

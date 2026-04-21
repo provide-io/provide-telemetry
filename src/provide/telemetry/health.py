@@ -70,10 +70,13 @@ _export_latency_ms: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics"
 _setup_error: str | None = None
 
 
+_VALID_SIGNALS_HEALTH = frozenset({"logs", "traces", "metrics"})
+
+
 def _known_signal(signal: Signal) -> Signal:
-    if signal in {"logs", "traces", "metrics"}:
+    if signal in _VALID_SIGNALS_HEALTH:  # pragma: no mutate
         return signal
-    return "logs"
+    raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS_HEALTH)}")
 
 
 def increment_emitted(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
@@ -82,19 +85,19 @@ def increment_emitted(signal: Signal, amount: int = 1) -> None:  # pragma: no mu
         _emitted[sig] += max(0, amount)
 
 
-def increment_dropped(signal: Signal, amount: int = 1) -> None:
+def increment_dropped(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _dropped[sig] += max(0, amount)
 
 
-def increment_retries(signal: Signal, amount: int = 1) -> None:
+def increment_retries(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _retries[sig] += max(0, amount)
 
 
-def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:
+def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
     sig = _known_signal(signal)
     with _lock:
         _async_blocking_risk[sig] += max(0, amount)

@@ -44,19 +44,57 @@ def test_event_literal_check_accepts_valid_literal(tmp_path: Path) -> None:
     assert violations == []
 
 
-def test_event_literal_check_flags_invalid_literal(tmp_path: Path) -> None:
+def test_event_literal_check_accepts_four_segment_literal(tmp_path: Path) -> None:
     root = tmp_path / "src"
     root.mkdir()
-    file_path = root / "bad.py"
+    file_path = root / "ok4.py"
     file_path.write_text(
         "def run(log):\n    log.info('auth.login.password.failed')\n",
         encoding="utf-8",
     )
 
     violations = find_event_literal_violations([root], set())
+    assert violations == []
+
+
+def test_event_literal_check_accepts_six_segment_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "ok6.py"
+    file_path.write_text(
+        "def run(log):\n    log.info('a.b.c.d.e.f')\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert violations == []
+
+
+def test_event_literal_check_accepts_single_segment_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "ok1.py"
+    file_path.write_text(
+        "def run(log):\n    log.info('sysop_cors_disabled')\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert violations == []
+
+
+def test_event_literal_check_flags_invalid_characters(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "bad.py"
+    file_path.write_text(
+        "def run(log):\n    log.info('Bad Event Name!')\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
     assert len(violations) == 1
     assert "invalid event literal" in violations[0]
-    assert "auth.login.password.failed" in violations[0]
 
 
 def test_event_literal_check_ignores_non_literal_dynamic_event(tmp_path: Path) -> None:

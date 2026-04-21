@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Exporter Resilience Demo\n")
+	fmt.Println("Exporter Resilience Demo")
 
 	// No SetupTelemetry needed — resilience API is standalone.
 	// We call it anyway to match the pattern of other examples.

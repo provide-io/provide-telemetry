@@ -5,6 +5,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import patch
+
 import pytest
 
 from provide.telemetry.schema.events import (
@@ -23,6 +27,24 @@ def test_validate_event_name_strict() -> None:
         validate_event_name("bad event", strict_event_name=True)
 
 
+def test_validate_event_name_strict_accepts_four_segments() -> None:
+    validate_event_name("auth.login.password.success", strict_event_name=True)
+
+
+def test_validate_event_name_strict_accepts_five_segments() -> None:
+    validate_event_name("payment.sub.renewal.attempt.success", strict_event_name=True)
+
+
+def test_validate_event_name_strict_rejects_six_segments() -> None:
+    with pytest.raises(EventSchemaError, match=r"invalid event name"):
+        validate_event_name("a.b.c.d.e.f", strict_event_name=True)
+
+
+def test_validate_event_name_strict_rejects_two_segments() -> None:
+    with pytest.raises(EventSchemaError, match=r"invalid event name"):
+        validate_event_name("a.b", strict_event_name=True)
+
+
 def test_validate_event_name_relaxed() -> None:
     validate_event_name("bad event", strict_event_name=False)
 
@@ -38,8 +60,7 @@ def test_validate_required_keys_error_message_uses_comma_separator() -> None:
         validate_required_keys({}, ("b", "a"))
 
 
-def test_event_name_helper_returns_three_segment_name() -> None:
-    assert event_name("auth", "login", "success") == "auth.login.success"
+# ── event_name() strict mode ────────────────────────────────────────
 
 
 @contextmanager
@@ -87,10 +108,11 @@ def test_event_name_strict_rejects_invalid_segment() -> None:
 
 
 @pytest.mark.parametrize(
-    ("domain", "action", "status", "expected"),
+    ("segments", "expected"),
     [
-        ("too-many", "login", "success", r"invalid event segment: domain=too-many"),
-        ("auth", "too-many", "success", r"invalid event segment: action=too-many"),
+        (("too-many", "login", "success"), r"invalid event segment: segment\[0\]=too-many"),
+        (("auth", "too-many", "success"), r"invalid event segment: segment\[1\]=too-many"),
+        (("auth", "login", "ok", "BAD"), r"invalid event segment: segment\[3\]=BAD"),
     ],
 )
 def test_event_name_strict_reports_invalid_segment_label(segments: tuple[str, ...], expected: str) -> None:

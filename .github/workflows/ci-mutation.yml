@@ -15,6 +15,7 @@ on:
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "go/**"
       - ".github/workflows/ci-mutation.yml"
   pull_request:
     branches: [main]
@@ -30,6 +31,7 @@ on:
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "go/**"
       - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
   # Nightly full mutation run — avoids blocking PRs on the multi-hour Rust sweep
@@ -46,6 +48,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       typescript: ${{ steps.filter.outputs.typescript }}
       rust: ${{ steps.filter.outputs.rust }}
+      go: ${{ steps.filter.outputs.go }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: dorny/paths-filter@v3
@@ -67,6 +70,8 @@ jobs:
               - "rust/tests/**"
               - "rust/Cargo.toml"
               - "rust/Cargo.lock"
+            go:
+              - "go/**"
 
   python-mutation:
     needs: changes
@@ -110,8 +115,39 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+        with:
+          workspaces: rust
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
-      - name: Run cargo-mutants
-        run: cargo mutants --in-place --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+      # -j 4 runs four mutant test processes in parallel (matches 4-core GitHub runner).
+      # --in-place is incompatible with -j in cargo-mutants v27+; use copy-per-mutant mode.
+      # cargo-mutants exits 3 if any mutants are missed — this step fails the job.
+      # All mutants must be caught (100% kill rate enforced).
+      - name: Run cargo-mutants (100% kill rate required)
+        run: cargo mutants -j 4 --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+
+  go-mutation:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version: "1.25"
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+      # Excluded files contain comparisons where gremlins boundary/arithmetic
+      # mutations are mathematically equivalent (float64 exact equality P=0,
+      # nanosecond time boundary P≈0). See file header comments.
+      # All surviving mutants fail the job (--threshold-efficacy=100).
+      - name: Run gremlins mutation tests (100% kill rate required)
+        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" .

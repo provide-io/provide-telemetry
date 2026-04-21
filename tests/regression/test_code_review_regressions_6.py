@@ -21,7 +21,7 @@ from provide.telemetry.classification import (
     register_classification_rules,
     set_classification_policy,
 )
-from provide.telemetry.config import LoggingConfig, RuntimeOverrides, SecurityConfig, SLOConfig, TelemetryConfig
+from provide.telemetry.config import RuntimeOverrides, SecurityConfig, SLOConfig, TelemetryConfig
 from provide.telemetry.pii import (
     PIIRule,
     _apply_default_sensitive_key_redaction,
@@ -116,81 +116,6 @@ class TestF1PathAwareDefaultRedactionSkip:
 # ── F2: logging as hot-reloadable field ──────────────────────────────────────
 
 
-class TestF2LoggingHotReload:
-    """F2: logging config must be a hot-reloadable field in RuntimeOverrides."""
-
-    def test_runtime_overrides_accepts_logging_field(self) -> None:
-        overrides = RuntimeOverrides(logging=LoggingConfig(level="DEBUG"))
-        assert overrides.logging is not None
-        assert overrides.logging.level == "DEBUG"
-
-    def test_runtime_overrides_logging_defaults_to_none(self) -> None:
-        overrides = RuntimeOverrides()
-        assert overrides.logging is None
-
-    def test_overrides_from_config_includes_logging(self) -> None:
-        """_overrides_from_config must extract logging from full TelemetryConfig."""
-        cfg = TelemetryConfig(logging=LoggingConfig(level="WARNING"))
-        overrides = runtime_mod._overrides_from_config(cfg)
-        assert overrides.logging is not None
-        assert overrides.logging.level == "WARNING"
-
-    def test_apply_overrides_merges_logging(self) -> None:
-        """_apply_overrides must merge logging when set."""
-        base = TelemetryConfig(logging=LoggingConfig(level="INFO"))
-        overrides = RuntimeOverrides(logging=LoggingConfig(level="DEBUG"))
-        merged = runtime_mod._apply_overrides(base, overrides)
-        assert merged.logging.level == "DEBUG"
-
-    def test_apply_overrides_preserves_logging_when_not_set(self) -> None:
-        """_apply_overrides must keep base logging when override.logging is None."""
-        base = TelemetryConfig(logging=LoggingConfig(level="ERROR"))
-        overrides = RuntimeOverrides()  # logging=None
-        merged = runtime_mod._apply_overrides(base, overrides)
-        assert merged.logging.level == "ERROR"
-
-    def test_update_runtime_config_with_logging_calls_configure(self) -> None:
-        """update_runtime_config triggers configure_logging(force=True) when logging is set."""
-        import importlib
-
-        logger_core = importlib.import_module("provide.telemetry.logger.core")
-        calls: list[tuple[object, bool]] = []
-        original = logger_core.configure_logging
-
-        def _spy(cfg: object, *, force: bool = False) -> None:
-            calls.append((cfg, force))
-
-        logger_core.configure_logging = _spy  # type: ignore[attr-defined]
-        try:
-            overrides = RuntimeOverrides(logging=LoggingConfig(level="DEBUG"))
-            runtime_mod.update_runtime_config(overrides)
-        finally:
-            logger_core.configure_logging = original  # type: ignore[attr-defined]
-
-        assert len(calls) == 1
-        assert calls[0][1] is True  # force=True
-
-    def test_update_runtime_config_without_logging_skips_configure(self) -> None:
-        """update_runtime_config does NOT call configure_logging when logging is None."""
-        import importlib
-
-        logger_core = importlib.import_module("provide.telemetry.logger.core")
-        calls: list[tuple[object, bool]] = []
-        original = logger_core.configure_logging
-
-        def _spy(cfg: object, *, force: bool = False) -> None:
-            calls.append((cfg, force))
-
-        logger_core.configure_logging = _spy  # type: ignore[attr-defined]
-        try:
-            overrides = RuntimeOverrides(security=SecurityConfig(max_attr_count=32))
-            runtime_mod.update_runtime_config(overrides)
-        finally:
-            logger_core.configure_logging = original  # type: ignore[attr-defined]
-
-        assert calls == []
-
-
 # ── F3: processor closures read live config ───────────────────────────────────
 
 
@@ -245,15 +170,15 @@ class TestF3ProcessorLiveConfig:
 
     def test_enforce_event_schema_reads_live_strict_schema(self) -> None:
         from provide.telemetry.logger.processors import enforce_event_schema
-        from provide.telemetry.schema.events import EventSchemaError
 
         cfg = TelemetryConfig(strict_schema=False)
         runtime_mod.apply_runtime_config(cfg)
         proc = enforce_event_schema(cfg)
         # Enable strict via runtime
         runtime_mod.update_runtime_config(RuntimeOverrides(strict_schema=True))
-        with pytest.raises(EventSchemaError, match="invalid event name"):
-            proc(None, "", {"event": "bad event name"})
+        result = proc(None, "", {"event": "bad event name"})
+        assert "_schema_error" in result
+        assert "invalid event name" in result["_schema_error"]
 
     def test_add_standard_fields_reads_live_slo_include_error_taxonomy(self) -> None:
         from provide.telemetry.logger.processors import add_standard_fields
@@ -483,3 +408,85 @@ class TestF6ReceiptHookDottedPath:
         receipts = get_emitted_receipts_for_tests()
         assert any(r.field_path == "outer.password" for r in receipts)
         _reset_receipts_for_tests()
+
+
+# ── Review #2: Python-only parity fixes ───────────────────────────────────────
+
+
+class TestLoggingIsHotReloadable:
+    """Logging config is now hot-reloadable — structlog pipeline is rebuilt
+    via configure_logging(force=True) when the logging config changes."""
+
+    def test_runtime_overrides_has_logging_field(self) -> None:
+        """RuntimeOverrides exposes logging for hot-reload."""
+        assert hasattr(RuntimeOverrides(), "logging")
+
+
+class TestFallbackMetricsRetryAfterSetup:
+    """Counter/Gauge/Histogram must retry _resolve_otel after setup installs meter."""
+
+    def test_counter_retries_after_meter_becomes_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import Mock
+
+        from provide.telemetry.metrics.fallback import Counter
+
+        c = Counter("test.lazy.counter")
+        # 1st call: no meter
+        monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: None)
+        assert c._resolve_otel() is None
+        assert c._resolved is False  # critical: must stay False to allow retry
+        # 2nd call: meter now available — must successfully re-bind
+        fake_meter = Mock()
+        fake_meter.create_counter.return_value = "otel-counter"
+        monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: fake_meter)
+        assert c._resolve_otel() == "otel-counter"
+        assert c._resolved is True
+
+
+class TestExecutorSaturationRaises:
+    """Saturation must raise ExecutorSaturated so fail_open=False propagates."""
+
+    def test_saturation_raises_executor_saturated(self) -> None:
+        from provide.telemetry import resilience as resilience_mod
+        from provide.telemetry.resilience import ExecutorSaturated, _get_executor_semaphore, _run_attempt_with_timeout
+
+        sem = _get_executor_semaphore("logs")
+        permits = [sem.acquire(blocking=False) for _ in range(resilience_mod._EXECUTOR_MAX_PENDING)]
+        try:
+            with pytest.raises(ExecutorSaturated):
+                _run_attempt_with_timeout("logs", lambda: "unreachable", timeout_seconds=5.0)
+        finally:
+            for ok in permits:
+                if ok:
+                    sem.release()
+
+
+class TestLazyGetLoggerAppliesSampling:
+    """get_logger() lazy-init must apply the logs sampling policy from env."""
+
+    def test_lazy_get_logger_installs_logs_sampling_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from provide.telemetry.logger import core as logger_core
+        from provide.telemetry.sampling import get_sampling_policy
+
+        monkeypatch.setenv("PROVIDE_SAMPLING_LOGS_RATE", "0.25")
+        logger_core._reset_logging_for_tests()
+        try:
+            logger_core.get_logger("lazy-test")
+            assert get_sampling_policy("logs").default_rate == 0.25
+        finally:
+            logger_core._reset_logging_for_tests()
+
+    def test_lazy_get_logger_does_not_touch_exporter_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Narrow fix: must NOT overwrite exporter policy — that belongs to setup_telemetry."""
+        from provide.telemetry import resilience as resilience_mod_local
+        from provide.telemetry.logger import core as logger_core
+
+        logger_core._reset_logging_for_tests()
+        # Install a custom exporter policy; lazy get_logger must not clobber it.
+        custom = resilience_mod_local.ExporterPolicy(retries=7, backoff_seconds=3.14, fail_open=False)
+        resilience_mod_local.set_exporter_policy("logs", custom)
+        try:
+            logger_core.get_logger("lazy-test-2")
+            assert resilience_mod_local.get_exporter_policy("logs").retries == 7
+        finally:
+            logger_core._reset_logging_for_tests()

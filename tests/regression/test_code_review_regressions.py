@@ -25,7 +25,6 @@ from provide.telemetry.resilience import (
     set_exporter_policy,
 )
 from provide.telemetry.sampling import reset_sampling_for_tests, should_sample
-from provide.telemetry.schema.events import EventSchemaError
 from provide.telemetry.setup import _reset_all_for_tests
 from provide.telemetry.slo import _reset_slo_for_tests, record_use_metrics
 from provide.telemetry.tracing import provider as provider_mod

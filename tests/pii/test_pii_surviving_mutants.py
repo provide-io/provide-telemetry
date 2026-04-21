@@ -30,12 +30,7 @@ import pytest
 
 from provide.telemetry import pii as pii_mod
 from provide.telemetry.classification import (
-    ClassificationPolicy,
-    ClassificationRule,
-    DataClass,
     _reset_classification_for_tests,
-    register_classification_rules,
-    set_classification_policy,
 )
 from provide.telemetry.pii import (
     _REDACTED,
@@ -76,12 +71,8 @@ class TestApplyDefaultRedactionReceiptHookPath:
         assert len(calls) >= 1
         # The path must be "credentials.password", not "credentials" or broken
         path_values = [c[0] for c in calls]
-        assert any("." in p for p in path_values), (
-            f"Expected dot-separated path, got: {path_values}"
-        )
-        assert "credentials.password" in path_values, (
-            f"Expected 'credentials.password' in paths, got: {path_values}"
-        )
+        assert any("." in p for p in path_values), f"Expected dot-separated path, got: {path_values}"
+        assert "credentials.password" in path_values, f"Expected 'credentials.password' in paths, got: {path_values}"
 
     def test_receipt_hook_called_with_dot_separator_not_custom(self) -> None:
         """Path separator must be "." not "XX.XX".
@@ -104,9 +95,7 @@ class TestApplyDefaultRedactionReceiptHookPath:
         assert len(calls) >= 1, "Expected receipt_hook to be called for secret detection"
         paths = [c[0] for c in calls]
         assert "outer.inner" in paths, f"Expected 'outer.inner' in paths, got {paths!r}"
-        assert all("XX.XX" not in p for p in paths), (
-            f"Path separator must be '.', got 'XX.XX' in: {paths!r}"
-        )
+        assert all("XX.XX" not in p for p in paths), f"Path separator must be '.', got 'XX.XX' in: {paths!r}"
 
     def test_sensitive_key_path_uses_dot_separator(self) -> None:
         """Sensitive key at top level produces single-segment path (no separator needed)."""
@@ -135,9 +124,7 @@ class TestApplyDefaultRedactionReceiptHookPath:
         original: dict[str, Any] = {"user": {"token": "abc123"}}
         _apply_default_sensitive_key_redaction(node, original, receipt_hook=hook)
 
-        assert any(p == "user.token" for p, _, _ in calls), (
-            f"Expected path 'user.token', got: {[c[0] for c in calls]}"
-        )
+        assert any(p == "user.token" for p, _, _ in calls), f"Expected path 'user.token', got: {[c[0] for c in calls]}"
 
     def test_secret_value_receipt_hook_path_dot_joined(self) -> None:
         """Secret value detected via pattern: path must also use '.' separator.
@@ -151,7 +138,7 @@ class TestApplyDefaultRedactionReceiptHookPath:
 
         # Use a clearly secret-looking value that triggers _detect_secret_in_value
         # Deeply nested to ensure multi-segment path
-        secret_val = "ghp_abcdefghijklmnopqrstuvwxyz012345"  # GitHub token pattern
+        secret_val = "ghp_abcdefghijklmnopqrstuvwxyz012345"  # pragma: allowlist secret
         node: dict[str, Any] = {"auth": {"github": secret_val}}
         original: dict[str, Any] = {"auth": {"github": secret_val}}
         _apply_default_sensitive_key_redaction(node, original, receipt_hook=hook)
@@ -217,6 +204,7 @@ class TestSanitizePayloadPolicyFnFallback:
         We test this via policy_fn being None: the function must internally use "pass"
         so that the condition `if action == "drop"` evaluates False and the field is kept.
         """
+
         def classify(key: str, value: Any) -> str | None:
             return "UNKNOWN_LABEL" if key == "test_key" else None
 
@@ -249,6 +237,7 @@ class TestSanitizePayloadActionCondition:
         This would call _mask("***", "redact", 8) → "***" (idempotent for redact),
         but for "hash" or "truncate" modes it would hash/truncate "***".
         """
+
         # Set up a label whose value has ALREADY been redacted by a rule
         # Use "hash" action so that re-masking "***" would produce a different result
         def classify(key: str, value: Any) -> str | None:
@@ -279,6 +268,7 @@ class TestSanitizePayloadActionCondition:
         field would be preserved as-is instead of truncated.
         Kills mutmut_57: "truncate" → "TRUNCATE" (case-sensitive, truncate skipped).
         """
+
         def classify(key: str, value: Any) -> str | None:
             return "PII" if key == "description" else None
 
@@ -292,9 +282,7 @@ class TestSanitizePayloadActionCondition:
         result = sanitize_payload({"description": long_value}, enabled=True)
 
         # truncate mode with default truncate_to=8: "AAAAAAAA..."
-        assert result.get("description") != long_value, (
-            "'truncate' action must modify the value"
-        )
+        assert result.get("description") != long_value, "'truncate' action must modify the value"
         # The class tag should still be there
         assert result.get("__description__class") == "PII"
 
@@ -303,6 +291,7 @@ class TestSanitizePayloadActionCondition:
 
         Confirms the 'redact' branch is not broken by any mutant.
         """
+
         def classify(key: str, value: Any) -> str | None:
             return "PII" if key == "email" else None
 
@@ -321,6 +310,7 @@ class TestSanitizePayloadActionCondition:
 
         Ensures 'hash' is also in the action tuple (not accidentally removed).
         """
+
         def classify(key: str, value: Any) -> str | None:
             return "PCI" if key == "card" else None
 
@@ -347,6 +337,7 @@ class TestSanitizePayloadMaskArgs:
 
     def _setup_redact_classification(self) -> None:
         """Helper: classify 'myfield' as PII with redact action."""
+
         def classify(key: str, value: Any) -> str | None:
             return "PII" if key == "myfield" else None
 
@@ -358,6 +349,7 @@ class TestSanitizePayloadMaskArgs:
 
     def _setup_truncate_classification(self) -> None:
         """Helper: classify 'myfield' as PII with truncate action."""
+
         def classify(key: str, value: Any) -> str | None:
             return "PII" if key == "myfield" else None
 
@@ -386,6 +378,7 @@ class TestSanitizePayloadMaskArgs:
 
         Kills mutmut_60: with None, the hash would be sha256("None") = known value.
         """
+
         def classify(key: str, value: Any) -> str | None:
             return "PCI" if key == "card" else None
 
@@ -404,12 +397,8 @@ class TestSanitizePayloadMaskArgs:
         expected = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
         none_hash = hashlib.sha256(b"None").hexdigest()[:12]
 
-        assert result.get("card") == expected, (
-            f"Expected hash of actual value {expected!r}, got {result.get('card')!r}"
-        )
-        assert result.get("card") != none_hash, (
-            "Must not be the hash of None (mutmut_60)"
-        )
+        assert result.get("card") == expected, f"Expected hash of actual value {expected!r}, got {result.get('card')!r}"
+        assert result.get("card") != none_hash, "Must not be the hash of None (mutmut_60)"
 
     def test_mask_truncate_to_is_8_not_9(self) -> None:
         """truncate_to must be exactly 8, not 9.
@@ -431,9 +420,7 @@ class TestSanitizePayloadMaskArgs:
         assert masked != value_9chars, (
             f"9-char value must be truncated with truncate_to=8, but got unchanged: {masked!r}"
         )
-        assert masked == "ABCDEFGH...", (
-            f"Expected 'ABCDEFGH...' (truncate_to=8), got {masked!r}"
-        )
+        assert masked == "ABCDEFGH...", f"Expected 'ABCDEFGH...' (truncate_to=8), got {masked!r}"
 
     def test_mask_truncate_to_not_none(self) -> None:
         """truncate_to must not be None.

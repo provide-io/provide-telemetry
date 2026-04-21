@@ -4,7 +4,7 @@
 #
 [package]
 name = "provide-telemetry"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.81"
 description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
@@ -20,7 +20,8 @@ name = "provide_telemetry"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["governance"]
+governance = []
 otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -28,6 +29,7 @@ otel = [
     "dep:opentelemetry-semantic-conventions",
     "dep:reqwest",
     "dep:tracing-opentelemetry",
+    "dep:url",
 ]
 # OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
 otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic"]
@@ -38,13 +40,10 @@ hmac = "0.12"
 log = "0.4"
 mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
-opentelemetry-otlp = { version = "0.31", optional = true, default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace", "metrics", "logs"] }
+opentelemetry-otlp = { version = "0.31", optional = true, default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs"] }
 opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace"] }
 opentelemetry-semantic-conventions = { version = "0.31", optional = true }
 percent-encoding = "2.3.1"
-rand = "0.8"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
 regex = "1.11.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -53,6 +52,7 @@ sha2 = "0.10"
 thiserror = "1.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
 tracing-opentelemetry = { version = "0.32", optional = true }
+url = { version = "2", optional = true }
 uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]

@@ -70,8 +70,12 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[project.entry-points.pytest11]
-provide_telemetry = "provide.telemetry.testing"
+# NOTE: intentionally NOT registered as a pytest11 entry point.
+# Auto-loading a pytest plugin on install would globally reconfigure
+# structlog and reset telemetry state in every downstream test suite,
+# which is surprising and dangerous for a library dependency.
+# Consumers opt in explicitly via `-p provide.telemetry.testing`
+# or by adding it to `pytest_plugins` in their own conftest.py.
 
 [tool.setuptools.package-data]
 "provide.telemetry" = ["py.typed"]
@@ -177,6 +181,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = [
+  "tests.parity.test_behavioral_fixtures",
+  "tests.parity.test_behavioral_fixtures_ext",
+  "tests.tooling.test_check_fixture_coverage",
+]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
+
 [tool.ty.environment]
 python-version = "3.11"
 
@@ -210,26 +223,9 @@ max_average = "A"
 [tool.mutmut]
 paths_to_mutate = ["src/provide/telemetry/"]
 tests_dir = ["tests/"]
-do_not_mutate = [
-  "src/undef/telemetry/backpressure.py",
-  "src/undef/telemetry/cardinality.py",
-  "src/undef/telemetry/asgi/middleware.py",
-  "src/undef/telemetry/health.py",
-  "src/undef/telemetry/logger/core.py",
-  "src/undef/telemetry/logger/processors.py",
-  "src/undef/telemetry/metrics/fallback.py",
-  "src/undef/telemetry/metrics/provider.py",
-  "src/undef/telemetry/pii.py",
-  "src/undef/telemetry/propagation.py",
-  "src/undef/telemetry/resilience.py",
-  "src/undef/telemetry/runtime.py",
-  "src/undef/telemetry/sampling.py",
-  "src/undef/telemetry/setup.py",
-  "src/undef/telemetry/slo.py",
-  "src/undef/telemetry/tracing/provider.py",
-]
-pytest_add_cli_args = ["--no-cov"]
+do_not_mutate = []
+pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
-  "not integration and not e2e and not otel and not tooling",
+  "not integration and not e2e and not otel and not tooling and not memray",
 ]

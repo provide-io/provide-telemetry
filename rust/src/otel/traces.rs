@@ -7,11 +7,11 @@
 //! Only compiled under the `otel` cargo feature. Implements the
 //! "OTel SDK behind our policy gates" architecture: callers continue
 //! to go through `tracer::trace()` (which gates on consent / sampling /
-//! backpressure first); when an `OTEL_INSTALLED` provider is present
+//! backpressure first); when a tracer provider is present
 //! `tracer::trace()` invokes [`start_span`] from this module instead
 //! of producing a noop span.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use opentelemetry::global;
@@ -27,7 +27,11 @@ use crate::errors::TelemetryError;
 use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
 use super::resilient::ResilientSpanExporter;
 
-static TRACER_PROVIDER: OnceLock<Arc<SdkTracerProvider>> = OnceLock::new();
+static TRACER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkTracerProvider>>>> = OnceLock::new();
+
+fn tracer_provider_slot() -> &'static Mutex<Option<Arc<SdkTracerProvider>>> {
+    TRACER_PROVIDER.get_or_init(|| Mutex::new(None))
+}
 
 fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
     match p {
@@ -49,6 +53,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
         .with_protocol(otlp_protocol)
         .with_timeout(timeout);
     if let Some(endpoint) = &cfg.tracing.otlp_endpoint {
+        validate_endpoint(endpoint)?;
         builder = builder.with_endpoint(endpoint.clone());
     }
     if !cfg.tracing.otlp_headers.is_empty() {
@@ -70,9 +75,12 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
 pub(super) fn install_tracer_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
-) -> Result<(), TelemetryError> {
+) -> Result<bool, TelemetryError> {
     if !cfg.tracing.enabled {
-        return Ok(());
+        return Ok(false);
+    }
+    if cfg.tracing.otlp_endpoint.is_none() {
+        return Ok(false);
     }
 
     let exporter = match build_exporter(cfg) {
@@ -80,7 +88,7 @@ pub(super) fn install_tracer_provider(
         Err(err) => {
             if cfg.exporter.traces_fail_open {
                 eprintln!("provide_telemetry: traces exporter init failed (fail_open=true): {err}");
-                return Ok(());
+                return Ok(false);
             }
             return Err(err);
         }
@@ -94,17 +102,35 @@ pub(super) fn install_tracer_provider(
 
     let arc = Arc::new(provider);
     global::set_tracer_provider(arc.as_ref().clone());
-    let _ = TRACER_PROVIDER.set(arc);
-    Ok(())
+    *tracer_provider_slot()
+        .lock()
+        .expect("tracer provider lock poisoned") = Some(arc);
+    Ok(true)
 }
 
 /// Force-flush and shut down the installed `TracerProvider`. Safe to
 /// call when no provider has been installed (no-op).
 pub(super) fn shutdown_tracer_provider() {
-    if let Some(p) = TRACER_PROVIDER.get() {
-        let _ = p.force_flush();
-        let _ = p.shutdown();
+    let mut guard = tracer_provider_slot()
+        .lock()
+        .expect("tracer provider lock poisoned");
+    if let Some(p) = guard.take() {
+        // shutdown() internally drains queued spans before returning, so
+        // an explicit force_flush() beforehand is redundant — and in OTel
+        // SDK 0.31 with rt-tokio, a force_flush followed by shutdown
+        // surfaced "channel is empty and sending half is closed" because
+        // shutdown was already initiated by the flush path. Just shutdown.
+        if let Err(err) = p.shutdown() {
+            eprintln!("provide_telemetry: traces shutdown failed: {err:?}");
+        }
     }
+}
+
+pub(crate) fn tracer_provider_installed() -> bool {
+    tracer_provider_slot()
+        .lock()
+        .expect("tracer provider lock poisoned")
+        .is_some()
 }
 
 /// Wraps an OTel boxed span + the trace-context guard so that on drop
@@ -137,8 +163,7 @@ pub(crate) fn start_span(name: &str) -> OtelSpanGuard {
     let span_context = span.span_context();
     let trace_id = format!("{}", span_context.trace_id());
     let span_id = format!("{}", span_context.span_id());
-    let context_guard =
-        set_trace_context_internal(Some(trace_id.clone()), Some(span_id.clone()));
+    let context_guard = set_trace_context_internal(Some(trace_id.clone()), Some(span_id.clone()));
     OtelSpanGuard {
         span: Some(span),
         _context_guard: context_guard,
@@ -173,6 +198,48 @@ mod tests {
         // Calling shutdown when nothing was ever installed must not
         // panic; the OnceLock is empty.
         shutdown_tracer_provider();
+    }
+
+    #[test]
+    fn build_exporter_rejects_invalid_endpoint_scheme() {
+        let mut cfg = test_config();
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
+        assert!(
+            err.message.contains("scheme"),
+            "error must mention bad scheme: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_fails_closed_by_default() {
+        let mut cfg = test_config();
+        cfg.tracing.enabled = true;
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.traces_fail_open = false;
+        let resource = super::super::resource::build_resource(&cfg);
+        let result = install_tracer_provider(&cfg, resource);
+        assert!(
+            result.is_err(),
+            "bad endpoint must return Err when fail_open=false"
+        );
+        let msg = result.unwrap_err().message;
+        assert!(
+            msg.contains("scheme"),
+            "error must mention bad scheme: {msg}"
+        );
+    }
+
+    #[test]
+    fn install_with_bad_endpoint_succeeds_when_fail_open() {
+        let mut cfg = test_config();
+        cfg.tracing.enabled = true;
+        cfg.tracing.otlp_endpoint = Some("ftp://host:4318".to_string());
+        cfg.exporter.traces_fail_open = true;
+        let resource = super::super::resource::build_resource(&cfg);
+        // fail_open means validation failure degrades gracefully
+        install_tracer_provider(&cfg, resource).expect("fail_open must absorb validation error");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

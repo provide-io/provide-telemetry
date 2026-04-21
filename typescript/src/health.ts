@@ -3,6 +3,7 @@
 
 /**
  * Internal self-observability counters — mirrors Python provide.telemetry.health.
+ * Canonical 25-field layout: 8 per signal (logs, traces, metrics) + 1 global.
  */
 
 export interface HealthSnapshot {
@@ -103,12 +104,29 @@ export function getHealthSnapshot(): HealthSnapshot {
   const csTraces = _circuitStateFn('traces');
   const csMetrics = _circuitStateFn('metrics');
   return {
-    ..._state,
+    logsEmitted: _state.logsEmitted,
+    logsDropped: _state.logsDropped,
+    exportFailuresLogs: _state.exportFailuresLogs,
+    retriesLogs: _state.retriesLogs,
+    exportLatencyMsLogs: _state.exportLatencyMsLogs,
+    asyncBlockingRiskLogs: _state.asyncBlockingRiskLogs,
     circuitStateLogs: csLogs.state,
-    circuitStateTraces: csTraces.state,
-    circuitStateMetrics: csMetrics.state,
     circuitOpenCountLogs: csLogs.openCount,
+    tracesEmitted: _state.tracesEmitted,
+    tracesDropped: _state.tracesDropped,
+    exportFailuresTraces: _state.exportFailuresTraces,
+    retriesTraces: _state.retriesTraces,
+    exportLatencyMsTraces: _state.exportLatencyMsTraces,
+    asyncBlockingRiskTraces: _state.asyncBlockingRiskTraces,
+    circuitStateTraces: csTraces.state,
     circuitOpenCountTraces: csTraces.openCount,
+    metricsEmitted: _state.metricsEmitted,
+    metricsDropped: _state.metricsDropped,
+    exportFailuresMetrics: _state.exportFailuresMetrics,
+    retriesMetrics: _state.retriesMetrics,
+    exportLatencyMsMetrics: _state.exportLatencyMsMetrics,
+    asyncBlockingRiskMetrics: _state.asyncBlockingRiskMetrics,
+    circuitStateMetrics: csMetrics.state,
     circuitOpenCountMetrics: csMetrics.openCount,
     setupError: _setupError,
   };

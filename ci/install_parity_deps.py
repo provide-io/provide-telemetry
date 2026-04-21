@@ -27,7 +27,7 @@ def _run(cmd: list[str], cwd: Path) -> None:
 
 def main() -> int:
     # Python: install dev dependencies
-    _run(["uv", "sync", "--group", "dev"], _REPO_ROOT)
+    _run(["uv", "sync", "--group", "dev", "--extra", "otel"], _REPO_ROOT)
     # TypeScript: install npm dependencies
     _run(["npm", "ci"], _REPO_ROOT / "typescript")
     return 0

@@ -6,7 +6,7 @@
 // Demonstrates:
 //   - GetRuntimeConfig to inspect current configuration
 //   - UpdateRuntimeConfig for hot-swap of individual fields
-//   - ReconfigureTelemetry for full provider restart
+//   - ReconfigureTelemetry to apply hot changes (rejects provider-changing fields)
 //   - ReloadRuntimeFromEnv to re-read environment variables
 package main
 
@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Runtime Reconfiguration Demo\n")
+	fmt.Println("Runtime Reconfiguration Demo")
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	beforeEvt, _ := telemetry.Event("example", "runtime", "before")
-	log.InfoContext(ctx, beforeEvt)
+	log.InfoContext(ctx, beforeEvt.Event, beforeEvt.Attrs()...)
 
 	// Hot-swap sampling rate to 0%
 	fmt.Println("\nHot-swapping sampling rate to 0%...")
@@ -55,25 +55,28 @@ func main() {
 
 	// Log an event that will be sampled out at 0%
 	droppedEvt, _ := telemetry.Event("example", "runtime", "dropped")
-	log.InfoContext(ctx, droppedEvt)
+	log.InfoContext(ctx, droppedEvt.Event, droppedEvt.Attrs()...)
 
 	snapshot := telemetry.GetHealthSnapshot()
 	fmt.Printf("  Dropped logs: %d\n", snapshot.LogsDropped)
 
-	// Full provider restart via ReconfigureTelemetry
-	fmt.Println("\nReconfigureTelemetry() — full shutdown+setup cycle...")
+	// ReconfigureTelemetry applies hot-reloadable changes from env.
+	// If provider-changing fields differ and OTel providers are live,
+	// it returns an error instead of silently restarting.
+	fmt.Println("\nReconfigureTelemetry() — apply hot changes from env...")
 	restarted, err := telemetry.ReconfigureTelemetry(ctx)
 	if err != nil {
-		log.ErrorContext(ctx, "reconfigure failed", "err", err)
+		log.ErrorContext(ctx, "reconfigure failed (expected if provider fields changed)", "err", err)
 	} else if restarted != nil {
-		fmt.Printf("  Restarted: logs_rate=%.1f\n", restarted.Sampling.LogsRate)
+		fmt.Printf("  Applied: logs_rate=%.1f\n", restarted.Sampling.LogsRate)
 	}
 
-	restartedEvt, _ := telemetry.Event("example", "runtime", "restarted")
-	log.InfoContext(ctx, restartedEvt)
+	restartedEvt, _ := telemetry.Event("example", "runtime", "reconfigured")
+	log.InfoContext(ctx, restartedEvt.Event, restartedEvt.Attrs()...)
 
-	// Reload from environment
-	fmt.Println("\nReloadRuntimeFromEnv() — re-reads os.Environ...")
+	// Reload hot policy fields from environment. Cold/provider fields are preserved and
+	// only reported via warning if they drift from the live config.
+	fmt.Println("\nReloadRuntimeFromEnv() — re-reads os.Environ() for hot fields...")
 	if reloadErr := telemetry.ReloadRuntimeFromEnv(); reloadErr != nil {
 		log.ErrorContext(ctx, "reload failed", "err", reloadErr)
 	} else {

@@ -73,7 +73,21 @@ func GetTracer(name string) Tracer {
 // Trace wraps fn in a span using DefaultTracer.
 // fn receives the context enriched with trace/span IDs.
 // If fn returns an error, the error is recorded on the span before it ends.
+// Consent, sampling, and backpressure are applied before starting the span;
+// fn is still invoked (without a span) when any gate rejects.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
+	if !ShouldAllow(signalTraces, "") {
+		return fn(ctx)
+	}
+	if sampled, _ := ShouldSample(signalTraces, name); !sampled {
+		return fn(ctx)
+	}
+	if !TryAcquire(signalTraces) {
+		return fn(ctx)
+	}
+	defer Release(signalTraces)
+	_incSpansStarted()
+
 	spanCtx, span := DefaultTracer.Start(ctx, name)
 	defer span.End()
 	err := fn(spanCtx)

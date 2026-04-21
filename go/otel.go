@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -35,6 +36,22 @@ var _otelMeterProvider *sdkmetric.MeterProvider //nolint:gochecknoglobals
 // _otelLoggerProvider is the package-level real OTel logger provider, set by _applyOTelProviders.
 var _otelLoggerProvider *sdklog.LoggerProvider //nolint:gochecknoglobals
 
+func _defaultOTLPTraceExporterFactory(ctx context.Context, opts ...otlptracehttp.Option) (sdktrace.SpanExporter, error) {
+	return otlptracehttp.New(ctx, opts...)
+}
+
+func _defaultOTLPMetricsExporterFactory(ctx context.Context, opts ...otlpmetrichttp.Option) (sdkmetric.Exporter, error) {
+	return otlpmetrichttp.New(ctx, opts...)
+}
+
+func _defaultOTLPLogExporterFactory(ctx context.Context, opts ...otlploghttp.Option) (sdklog.Exporter, error) {
+	return otlploghttp.New(ctx, opts...)
+}
+
+var _newOTLPTraceExporter = _defaultOTLPTraceExporterFactory     //nolint:gochecknoglobals
+var _newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory //nolint:gochecknoglobals
+var _newOTLPLogExporter = _defaultOTLPLogExporterFactory         //nolint:gochecknoglobals
+
 // _otelTracerAdapter implements Tracer using a real OTel tracer.
 type _otelTracerAdapter struct {
 	inner oteltrace.Tracer
@@ -56,10 +73,26 @@ type _otelSpanAdapter struct {
 // End finishes the span.
 func (s *_otelSpanAdapter) End() { s.inner.End() }
 
-// SetAttribute adds a key/value attribute to the span.
+// SetAttribute adds a typed key/value attribute to the span.
+// bool, int, int64, float64, and string values are forwarded with their native OTel
+// attribute type; all other values fall back to a string representation.
 func (s *_otelSpanAdapter) SetAttribute(key string, value any) {
-	_ = key
-	_ = value
+	var kv attribute.KeyValue
+	switch v := value.(type) {
+	case bool:
+		kv = attribute.Bool(key, v)
+	case int:
+		kv = attribute.Int64(key, int64(v))
+	case int64:
+		kv = attribute.Int64(key, v)
+	case float64:
+		kv = attribute.Float64(key, v)
+	case string:
+		kv = attribute.String(key, v)
+	default:
+		kv = attribute.String(key, fmt.Sprintf("%v", value))
+	}
+	s.inner.SetAttributes(kv)
 }
 
 // RecordError records an error on the span.
@@ -163,14 +196,31 @@ func _signalEndpointURL(endpoint, signalPath string) string {
 	return strings.TrimRight(trimmed, "/") + signalPath
 }
 
+// _validateURLPort checks that the parsed port is in range and that no trailing
+// colon was left when the port field is absent (e.g. "http://host:").
+func _validateURLPort(portStr string, parsed *url.URL, signalURL string) error {
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
+		}
+	}
+	// Strip IPv6 bracket prefix to avoid false positives from [::1] colons.
+	hostAfterBracket := parsed.Host
+	if idx := strings.LastIndex(parsed.Host, "]"); idx >= 0 {
+		hostAfterBracket = parsed.Host[idx+1:]
+	}
+	if portStr == "" && strings.Contains(hostAfterBracket, ":") {
+		return fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
+	}
+	return nil
+}
+
 func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 	if strings.TrimSpace(endpoint) == "" {
 		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
 	}
 	signalURL := _signalEndpointURL(endpoint, signalPath)
-	if signalURL == "" {
-		return "", fmt.Errorf("invalid OTLP endpoint URL %q", endpoint)
-	}
 	parsed, err := url.Parse(signalURL)
 	if err != nil {
 		return "", err
@@ -181,21 +231,8 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("invalid OTLP endpoint scheme %q in %q", parsed.Scheme, signalURL)
 	}
-	portStr := parsed.Port()
-	if portStr != "" {
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port < 1 || port > 65535 {
-			return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
-		}
-	}
-	// Detect empty port — "http://host:" has Host="host:" but Port()="".
-	// Strip IPv6 bracket prefix to avoid false positives from [::1] colons.
-	hostAfterBracket := parsed.Host
-	if idx := strings.LastIndex(parsed.Host, "]"); idx >= 0 {
-		hostAfterBracket = parsed.Host[idx+1:]
-	}
-	if portStr == "" && strings.Contains(hostAfterBracket, ":") {
-		return "", fmt.Errorf("invalid OTLP endpoint port in %q", signalURL)
+	if err := _validateURLPort(parsed.Port(), parsed, signalURL); err != nil {
+		return "", err
 	}
 	return signalURL, nil
 }
@@ -214,15 +251,16 @@ func _buildDefaultTracerProvider(cfg *TelemetryConfig) (*sdktrace.TracerProvider
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlptracehttp.New(context.Background(),
+	exporter, err := _newOTLPTraceExporter(context.Background(),
 		otlptracehttp.WithEndpointURL(traceURL),
 		otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders),
 	)
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every ExportSpans() applies retry/timeout/circuit-breaker policy.
 	return sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithBatcher(_wrapSpanExporter(exporter)),
 		sdktrace.WithResource(_buildResource(cfg)),
 	), nil
 }
@@ -232,15 +270,16 @@ func _buildDefaultMeterProvider(cfg *TelemetryConfig) (*sdkmetric.MeterProvider,
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlpmetrichttp.New(context.Background(),
+	exporter, err := _newOTLPMetricsExporter(context.Background(),
 		otlpmetrichttp.WithEndpointURL(metricsURL),
 		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
 	)
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every Export() applies retry/timeout/circuit-breaker policy.
 	return sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter))),
 		sdkmetric.WithResource(_buildResource(cfg)),
 	), nil
 }
@@ -250,22 +289,21 @@ func _buildDefaultLoggerProvider(cfg *TelemetryConfig) (*sdklog.LoggerProvider, 
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := otlploghttp.New(context.Background(),
+	exporter, err := _newOTLPLogExporter(context.Background(),
 		otlploghttp.WithEndpointURL(logsURL),
 		otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders),
 	)
 	if err != nil {
 		return nil, err
 	}
+	// Wrap so every Export() applies retry/timeout/circuit-breaker policy.
 	return sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(_wrapLogExporter(exporter))),
 		sdklog.WithResource(_buildResource(cfg)),
 	), nil
 }
 
-// _applyOTelProviders wires real OTel providers from state into the package-level singletons.
-// It is called by SetupTelemetry unconditionally to handle both explicit and auto-created providers.
-func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
+func _setupTracerProvider(state *_setupState, cfg *TelemetryConfig) {
 	if state.tracerProvider == nil && cfg.Tracing.OTLPEndpoint != "" {
 		tp, err := _buildDefaultTracerProvider(cfg)
 		if err != nil {
@@ -276,18 +314,15 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 			state.tracerProvider = tp
 		}
 	}
-
-	if state.tracerProvider != nil {
-		if tp, ok := state.tracerProvider.(*sdktrace.TracerProvider); ok {
-			_warnIfTracerProviderConflict()
-			_otelTracerProvider = tp
-			otel.SetTracerProvider(tp)
-			tracer := tp.Tracer(cfg.ServiceName)
-			_setDefaultTracer(_otelTracerAdapter{inner: tracer})
-		}
+	if tp, ok := state.tracerProvider.(*sdktrace.TracerProvider); ok {
+		_warnIfTracerProviderConflict()
+		_otelTracerProvider = tp
+		otel.SetTracerProvider(tp)
+		_setDefaultTracer(_otelTracerAdapter{inner: tp.Tracer(cfg.ServiceName)})
 	}
+}
 
-	// Auto-create a MeterProvider from config when none was explicitly supplied.
+func _setupMeterProvider(state *_setupState, cfg *TelemetryConfig) {
 	if state.meterProvider == nil && cfg.Metrics.OTLPEndpoint != "" {
 		mp, err := _buildDefaultMeterProvider(cfg)
 		if err != nil {
@@ -298,15 +333,14 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 			state.meterProvider = mp
 		}
 	}
-
-	if state.meterProvider != nil {
-		if mp, ok := state.meterProvider.(*sdkmetric.MeterProvider); ok {
-			_warnIfMeterProviderConflict()
-			_otelMeterProvider = mp
-			otel.SetMeterProvider(mp)
-		}
+	if mp, ok := state.meterProvider.(*sdkmetric.MeterProvider); ok {
+		_warnIfMeterProviderConflict()
+		_otelMeterProvider = mp
+		otel.SetMeterProvider(mp)
 	}
+}
 
+func _setupLoggerProvider(state *_setupState, cfg *TelemetryConfig) {
 	if state.loggerProvider == nil && cfg.Logging.OTLPEndpoint != "" {
 		lp, err := _buildDefaultLoggerProvider(cfg)
 		if err != nil {
@@ -317,26 +351,33 @@ func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
 			state.loggerProvider = lp
 		}
 	}
-
-	if state.loggerProvider != nil {
-		if lp, ok := state.loggerProvider.(*sdklog.LoggerProvider); ok {
-			_warnIfLoggerProviderConflict()
-			_otelLoggerProvider = lp
-			logglobal.SetLoggerProvider(lp)
-		}
+	if lp, ok := state.loggerProvider.(*sdklog.LoggerProvider); ok {
+		_warnIfLoggerProviderConflict()
+		_otelLoggerProvider = lp
+		logglobal.SetLoggerProvider(lp)
 	}
+}
 
-	// Wire slog → OTel log bridge: adds OTel log bridge as an additional slog handler.
-	if Logger != nil {
-		bridgeOpts := []otelslog.Option{}
-		if _otelLoggerProvider != nil {
-			bridgeOpts = append(bridgeOpts, otelslog.WithLoggerProvider(_otelLoggerProvider))
-		}
-		bridge := otelslog.NewHandler(cfg.ServiceName, bridgeOpts...)
-		combined := slog.New(newMultiHandler(Logger.Handler(), bridge))
-		Logger = combined
-		slog.SetDefault(Logger)
+func _wireOTelSlogBridge(cfg *TelemetryConfig) {
+	if Logger == nil {
+		return
 	}
+	bridgeOpts := []otelslog.Option{}
+	if _otelLoggerProvider != nil {
+		bridgeOpts = append(bridgeOpts, otelslog.WithLoggerProvider(_otelLoggerProvider))
+	}
+	bridge := otelslog.NewHandler(cfg.ServiceName, bridgeOpts...)
+	Logger = slog.New(newMultiHandler(Logger.Handler(), bridge))
+	slog.SetDefault(Logger)
+}
+
+// _applyOTelProviders wires real OTel providers from state into the package-level singletons.
+// It is called by SetupTelemetry unconditionally to handle both explicit and auto-created providers.
+func _applyOTelProviders(state *_setupState, cfg *TelemetryConfig) {
+	_setupTracerProvider(state, cfg)
+	_setupMeterProvider(state, cfg)
+	_setupLoggerProvider(state, cfg)
+	_wireOTelSlogBridge(cfg)
 }
 
 // _shutdownOTelProviders gracefully shuts down real OTel providers.
@@ -376,6 +417,9 @@ func _resetOTelProviders() {
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
+	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
+	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
+	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
 	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 

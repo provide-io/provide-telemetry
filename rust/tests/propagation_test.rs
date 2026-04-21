@@ -4,7 +4,7 @@
 //
 use provide_telemetry::testing::acquire_test_state_lock;
 use provide_telemetry::{
-    bind_context, bind_propagation_context, extract_w3c_context, get_trace_context,
+    bind_context, bind_propagation_context, extract_w3c_context, get_trace_context, parse_baggage,
 };
 use rstest::rstest;
 use serde_json::json;
@@ -132,6 +132,72 @@ fn propagation_test_bind_restores_previous_context_on_drop() {
     assert!(!restored_context.contains_key("tracestate"));
     assert!(!restored_context.contains_key("baggage"));
     drop(outer_trace);
+}
+
+#[test]
+fn propagation_test_parse_baggage_simple() {
+    let result = parse_baggage("key1=value1,key2=value2");
+    assert_eq!(result.get("key1").map(String::as_str), Some("value1"));
+    assert_eq!(result.get("key2").map(String::as_str), Some("value2"));
+    assert_eq!(result.len(), 2);
+}
+
+#[test]
+fn propagation_test_parse_baggage_strips_properties_after_semicolon() {
+    let result = parse_baggage("key1=value1;prop=x,key2=value2;ttl=100");
+    assert_eq!(result.get("key1").map(String::as_str), Some("value1"));
+    assert_eq!(result.get("key2").map(String::as_str), Some("value2"));
+    assert_eq!(result.len(), 2);
+}
+
+#[test]
+fn propagation_test_parse_baggage_skips_member_with_no_equals() {
+    let result = parse_baggage("noequals,key=value");
+    assert!(!result.contains_key("noequals"));
+    assert_eq!(result.get("key").map(String::as_str), Some("value"));
+    assert_eq!(result.len(), 1);
+}
+
+#[test]
+fn propagation_test_parse_baggage_skips_empty_key() {
+    let result = parse_baggage("=value,key=val");
+    assert!(!result.contains_key(""));
+    assert_eq!(result.get("key").map(String::as_str), Some("val"));
+    assert_eq!(result.len(), 1);
+}
+
+#[test]
+fn propagation_test_parse_baggage_empty_string() {
+    let result = parse_baggage("");
+    assert!(result.is_empty());
+}
+
+#[test]
+fn propagation_test_bind_injects_parsed_baggage_entries() {
+    let _guard = acquire_test_state_lock();
+    let context = extract_w3c_context(None, None, Some("user=alice,env=prod"));
+
+    {
+        let _guard = bind_propagation_context(context);
+        let active_context = provide_telemetry::context::get_context();
+        assert_eq!(
+            active_context.get("baggage.user"),
+            Some(&serde_json::json!("alice"))
+        );
+        assert_eq!(
+            active_context.get("baggage.env"),
+            Some(&serde_json::json!("prod"))
+        );
+        assert_eq!(
+            active_context.get("baggage"),
+            Some(&serde_json::json!("user=alice,env=prod"))
+        );
+    }
+
+    let restored = provide_telemetry::context::get_context();
+    assert!(!restored.contains_key("baggage"));
+    assert!(!restored.contains_key("baggage.user"));
+    assert!(!restored.contains_key("baggage.env"));
 }
 
 #[test]
