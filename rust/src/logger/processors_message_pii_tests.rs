@@ -14,8 +14,8 @@
 
 use super::super::LogEvent;
 use super::sanitize_context;
-use crate::{register_secret_pattern, reset_secret_patterns_for_tests};
 use crate::pii::REDACTED_SENTINEL;
+use crate::{register_secret_pattern, reset_secret_patterns_for_tests};
 use regex::Regex;
 use std::collections::BTreeMap;
 

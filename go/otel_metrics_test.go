@@ -71,6 +71,25 @@ func TestOTel_LogsEndpointAutoWiresLoggerProvider(t *testing.T) {
 	}
 }
 
+func TestOTel_WireOTelSlogBridge_NoLoggerIsNoOp(t *testing.T) {
+	prevLogger := Logger
+	prevDefault := slog.Default()
+	Logger = nil
+	t.Cleanup(func() {
+		Logger = prevLogger
+		slog.SetDefault(prevDefault)
+	})
+
+	_wireOTelSlogBridge(DefaultTelemetryConfig())
+
+	if Logger != nil {
+		t.Fatal("expected nil logger to remain nil")
+	}
+	if slog.Default() != prevDefault {
+		t.Fatal("expected default slog logger to remain unchanged when Logger is nil")
+	}
+}
+
 func TestOTel_InvalidSharedEndpointDegradesWithoutInstallingProviders(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

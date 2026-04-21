@@ -18,6 +18,7 @@ import structlog
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
     add_error_fingerprint,
@@ -101,52 +102,6 @@ _configured = False
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
 _otel_log_provider: object | None = None
-
-
-class _BackpressureFanoutHandler(logging.Handler):
-    """Fan out a LogRecord to child handlers and release the ticket after all emit."""
-
-    def __init__(self, handlers: list[logging.Handler]) -> None:
-        min_level = min((handler.level for handler in handlers), default=logging.NOTSET)
-        logging.Handler.__init__(self, level=min_level)
-        self._handlers = handlers
-
-        existing_formatter = next((handler.formatter for handler in handlers if handler.formatter is not None), None)
-        if existing_formatter is not None:
-            logging.Handler.setFormatter(self, existing_formatter)
-
-    def setFormatter(self, fmt: logging.Formatter) -> None:
-        super().setFormatter(fmt)
-        for handler in self._handlers:
-            if handler.formatter is None:
-                handler.setFormatter(fmt)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        from provide.telemetry.backpressure import release
-
-        ticket = getattr(record, _BACKPRESSURE_TICKET_KEY, None)
-        try:
-            for handler in self._handlers:
-                if record.levelno >= handler.level:
-                    handler.handle(record)
-        finally:
-            if ticket is not None:
-                release(ticket)
-                try:
-                    delattr(record, _BACKPRESSURE_TICKET_KEY)
-                except AttributeError:
-                    pass
-
-    def flush(self) -> None:
-        for handler in self._handlers:
-            handler.flush()
-
-    def close(self) -> None:
-        try:
-            for handler in self._handlers:
-                handler.close()
-        finally:
-            super().close()
 
 
 def _has_otel_logs() -> bool:
