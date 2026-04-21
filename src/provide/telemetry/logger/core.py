@@ -33,7 +33,6 @@ from provide.telemetry.logger.processors import (
     rename_event_to_message,
     render_with_backpressure_extra,
     sanitize_sensitive_fields,
-    _BACKPRESSURE_TICKET_KEY,
 )
 
 TRACE = 5

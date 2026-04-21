@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
 
@@ -41,10 +42,8 @@ class _BackpressureFanoutHandler(logging.Handler):
         finally:
             if ticket is not None:
                 release(ticket)
-                try:
+                with suppress(AttributeError):
                     delattr(record, _BACKPRESSURE_TICKET_KEY)
-                except AttributeError:
-                    pass
 
     def flush(self) -> None:
         for handler in self._handlers:
