@@ -57,6 +57,33 @@ function caseLazyInitLogger(): Record<string, unknown> {
   return { case: 'lazy_init_logger', record: captureRecord('log.output.parity') };
 }
 
+async function caseLazyLoggerShutdownReSetup(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  const first = captureRecord('log.output.parity');
+  await shutdownTelemetry();
+  const second = getRuntimeStatus();
+  process.env['PROVIDE_TELEMETRY_SERVICE_NAME'] = 'probe-restarted';
+  process.env['PROVIDE_TELEMETRY_ENV'] = 'parity-restarted';
+  process.env['PROVIDE_TELEMETRY_VERSION'] = '9.9.9';
+  setupTelemetry({ consoleOutput: false, captureToWindow: true });
+  const third = getRuntimeStatus();
+  const restarted = captureRecord('log.output.restart');
+  await shutdownTelemetry();
+  return {
+    case: 'lazy_logger_shutdown_re_setup',
+    first_logger_emitted: first['message'] === 'log.output.parity',
+    shutdown_cleared_setup: !second.setupDone,
+    shutdown_cleared_providers:
+      !second.providers.logs && !second.providers.traces && !second.providers.metrics,
+    shutdown_fallback_all: second.fallback.logs && second.fallback.traces && second.fallback.metrics,
+    re_setup_done: third.setupDone,
+    second_logger_uses_fresh_config:
+      restarted['service'] === 'probe-restarted' &&
+      restarted['env'] === 'parity-restarted' &&
+      restarted['version'] === '9.9.9',
+  };
+}
+
 async function caseStrictSchemaRejection(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry({ consoleOutput: false, captureToWindow: true });
@@ -194,6 +221,7 @@ async function main(): Promise<void> {
   const caseId = process.env['PROVIDE_PARITY_PROBE_CASE'];
   const cases: Record<string, () => Promise<object> | object> = {
     lazy_init_logger: caseLazyInitLogger,
+    lazy_logger_shutdown_re_setup: caseLazyLoggerShutdownReSetup,
     strict_schema_rejection: caseStrictSchemaRejection,
     strict_event_name_only: caseStrictEventNameOnly,
     required_keys_rejection: caseRequiredKeysRejection,
