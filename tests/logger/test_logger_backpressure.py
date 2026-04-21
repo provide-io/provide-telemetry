@@ -12,10 +12,11 @@ import pytest
 
 from provide.telemetry.backpressure import QueuePolicy, release, set_queue_policy, try_acquire
 from provide.telemetry.config import TelemetryConfig
-from provide.telemetry.logger import get_logger
 from provide.telemetry.logger import core as core_mod
+from provide.telemetry.logger import get_logger
 from provide.telemetry.logger.core import _reset_logging_for_tests, configure_logging
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
+from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
 from provide.telemetry.pii import reset_pii_rules_for_tests
 from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
@@ -79,7 +80,7 @@ def test_backpressure_fanout_handler_releases_ticket_after_all_children(
     monkeypatch.setattr("provide.telemetry.backpressure.release", lambda t: released.append(t))
 
     record = logging.LogRecord("test", logging.INFO, __file__, 1, "msg", (), None)
-    setattr(record, core_mod._BACKPRESSURE_TICKET_KEY, ticket)
+    setattr(record, _BACKPRESSURE_TICKET_KEY, ticket)
 
     fanout.handle(record)
 

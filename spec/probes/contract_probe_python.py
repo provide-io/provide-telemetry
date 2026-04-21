@@ -34,8 +34,8 @@ from provide.telemetry import (  # noqa: E402
     bind_context,
     get_logger,
     get_runtime_status,
-    register_secret_pattern,
     get_trace_context,
+    register_secret_pattern,
     setup_telemetry,
     shutdown_telemetry,
 )
