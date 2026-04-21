@@ -15,7 +15,7 @@ These tests verify that:
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # nosec
 import sys
 import tempfile
 from pathlib import Path

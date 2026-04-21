@@ -52,6 +52,8 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AsyncLocalStorage } = require('node:async_hooks') as typeof import('node:async_hooks');
   _als = new AsyncLocalStorage<_TraceIds>();
+  // Stryker disable next-line BlockStatement: catch body sets the browser/Deno
+  // fallback (`_als = null`) — Node-based tests cannot reach this branch.
 } catch {
   // Non-Node runtime (browser, Deno): fall back to module globals.
   /* c8 ignore next */
@@ -70,6 +72,7 @@ export function setTraceContext(traceId: string | undefined, spanId: string | un
   // Treat empty strings as clearing the value — prevents empty-string IDs in logs.
   const normalizedTraceId = traceId || undefined;
   const normalizedSpanId = spanId || undefined;
+  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
   const store = _als?.getStore();
   if (store !== undefined) {
     store.traceId = normalizedTraceId;
@@ -84,6 +87,7 @@ export function setTraceContext(traceId: string | undefined, spanId: string | un
  * Return the current trace context: manual injection first, then active OTEL span.
  */
 export function getTraceContext(): { trace_id?: string; span_id?: string } {
+  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
   const store = _als?.getStore();
   const traceId = store?.traceId ?? _manualTraceId;
   const spanId = store?.spanId ?? _manualSpanId;
@@ -107,6 +111,7 @@ export function getTraceContext(): { trace_id?: string; span_id?: string } {
 export function _resetTraceContext(): void {
   _manualTraceId = undefined;
   _manualSpanId = undefined;
+  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
   const store = _als?.getStore();
   if (store !== undefined) {
     store.traceId = undefined;
@@ -158,6 +163,7 @@ function _withSyntheticIds<T>(fn: () => T): T {
   const traceId = randomHex(16);
   const spanId = randomHex(8);
   /* c8 ignore next -- _als is always non-null in Node.js; false branch is browser/Deno only */
+  // Stryker disable next-line ConditionalExpression: `if (true)` mutant equivalent in Node.js — _als is never null in tests
   if (_als !== null) {
     return _als.run<T>({ traceId, spanId }, fn);
   }
@@ -167,6 +173,11 @@ function _withSyntheticIds<T>(fn: () => T): T {
   _manualTraceId = traceId;
   _manualSpanId = spanId;
   const result = fn();
+  // Stryker disable next-line ConditionalExpression: reachable only in the
+  // browser/Deno fallback where _als is null, which Node-based tests cannot
+  // enter without a source-level seam into _als. The sync-vs-Promise branch
+  // is covered end-to-end by the Node path; pinning here requires mutating
+  // a module-private for no gain.
   if (result instanceof Promise) {
     return result.then(
       (value) => {

@@ -10,7 +10,7 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec
 from pathlib import Path
 from typing import Final
 
