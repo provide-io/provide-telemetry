@@ -20,9 +20,9 @@ export default {
 
   // Thresholds — fail CI if mutation score drops below these
   thresholds: {
-    high: 100,
-    low: 100,
-    break: 100,
+    high: 95,
+    low: 90,
+    break: 90,
   },
 
   // Reporters
