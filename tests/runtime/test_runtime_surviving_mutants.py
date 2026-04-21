@@ -354,10 +354,15 @@ class TestUpdateRuntimeConfigErrorMessages:
         # mutmut_20: prefix "XX" prepended to "provider-changing..."
         assert "XXprovider-changing" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
-    def test_error_message_contains_reconfigure_telemetry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Error must contain 'reconfigure_telemetry()' (exact case).
+    def test_error_message_mentions_installed_log_providers_without_self_reference(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Error must describe the installed log-provider state and avoid self-reference.
 
-        Kills mutmut_23/24/25 (case/prefix changes).
+        Kills message mutants by pinning the current ``update_runtime_config()``
+        contract: the error states that OpenTelemetry log providers are already
+        installed and does not tell callers to invoke
+        ``reconfigure_telemetry()`` from inside ``update_runtime_config()``.
         """
         from provide.telemetry.logger import core as logger_core
 
@@ -377,8 +382,9 @@ class TestUpdateRuntimeConfigErrorMessages:
                 )
             )
         msg = str(exc_info.value)
-        assert "reconfigure_telemetry()" in msg, f"Expected 'reconfigure_telemetry()' in: {msg!r}"
-        assert "Use reconfigure_telemetry()" in msg, f"Expected 'Use reconfigure_telemetry()' in: {msg!r}"
+        assert "log providers are installed" in msg, f"Expected installed-provider state in: {msg!r}"
+        assert "LOG PROVIDERS ARE INSTALLED" not in msg
+        assert "reconfigure_telemetry()" not in msg, f"Must not be self-referential: {msg!r}"
         # mutmut_23: prefix "XX" prepended to "are installed..."
         assert "XXare installed" not in msg, f"Message must not start segment with 'XX': {msg!r}"
 
