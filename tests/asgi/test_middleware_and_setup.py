@@ -48,6 +48,10 @@ async def test_middleware_http_context() -> None:
     async def receive() -> dict[str, Any]:
         return {"type": "noop"}
 
+    # Reset context to empty before test to ensure clean slate
+    restore_context({})
+    pre_ctx = get_context()
+
     middleware = TelemetryMiddleware(_dummy_app)
     scope = {
         "type": "http",
@@ -55,7 +59,8 @@ async def test_middleware_http_context() -> None:
     }
     await middleware(scope, receive, send)
     assert events[0]["scope_type"] == "http"
-    assert get_context() == {}
+    # After middleware, context should be restored to pre-request state
+    assert get_context() == pre_ctx
 
 
 @pytest.mark.asyncio
@@ -75,7 +80,7 @@ async def test_middleware_generates_request_id() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, dict[str, str | None]]] = []
+    calls: list[tuple[str, Any]] = []
 
     def _bind_context(**kwargs: str | None) -> None:
         calls.append(("bind", kwargs))
@@ -122,7 +127,7 @@ async def test_middleware_binds_expected_context_and_clears(monkeypatch: pytest.
 @pytest.mark.asyncio
 async def test_middleware_passes_through_lifespan_without_context_binding(monkeypatch: pytest.MonkeyPatch) -> None:
     bind = pytest.MonkeyPatch()
-    clear = pytest.MonkeyPatch()
+    restore = pytest.MonkeyPatch()
     try:
         bind_spy = {"count": 0}
         reset_spy = {"count": 0}
@@ -154,7 +159,7 @@ async def test_middleware_passes_through_lifespan_without_context_binding(monkey
         assert reset_spy["count"] == 0
     finally:
         bind.undo()
-        clear.undo()
+        restore.undo()
 
 
 def test_extract_header_none() -> None:
@@ -170,10 +175,10 @@ def test_extract_header_positive_and_case_insensitive_name() -> None:
     assert _extract_header(scope, b"x-missing") is None
 
 
-def test_extract_header_ignores_malformed_utf8_bytes() -> None:
+def test_extract_header_decodes_non_utf8_via_latin1() -> None:
     scope = {"headers": [(b"x-request-id", b"\xff")]}
-    assert _extract_header(scope, b"x-request-id") is None
-    assert ws_extract_header(scope, b"x-request-id") is None
+    assert _extract_header(scope, b"x-request-id") == "\xff"
+    assert ws_extract_header(scope, b"x-request-id") == "\xff"
 
 
 @pytest.mark.asyncio
@@ -359,9 +364,12 @@ async def test_middleware_auto_slo_records_red_metrics(monkeypatch: pytest.Monke
         await send_fn({"type": "http.response.body", "body": b""})
 
     middleware = TelemetryMiddleware(app, auto_slo=True)
-    await middleware({"type": "http", "path": "/ok", "method": "GET", "headers": []}, receive, send)
+    route_obj = type("Route", (), {"path": "/ok"})()
+    await middleware(
+        {"type": "http", "path": "/ok/123", "method": "GET", "headers": [], "route": route_obj}, receive, send
+    )
     assert len(calls) == 1
-    assert calls[0]["route"] == "/ok"
+    assert calls[0]["route"] == "/ok"  # resolved from route.path, not raw path
     assert calls[0]["method"] == "GET"
     assert calls[0]["status_code"] == 204
     assert isinstance(calls[0]["duration_ms"], float)

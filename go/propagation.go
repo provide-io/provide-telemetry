@@ -50,6 +50,12 @@ func ExtractW3CContext(headers http.Header) PropagationContext {
 // each parsed key-value pair is added as "baggage.<key>" in the context fields.
 func BindPropagationContext(ctx context.Context, pc PropagationContext) context.Context {
 	ctx = context.WithValue(ctx, _propagationKey, pc)
+	// Bridge propagated trace/span IDs into the trace context so logs
+	// emitted before a child span is created still carry upstream IDs.
+	// Matches Python (propagation.py:147) and Rust (propagation.rs:147).
+	if pc.TraceID != "" || pc.SpanID != "" {
+		ctx = SetTraceContext(ctx, pc.TraceID, pc.SpanID)
+	}
 	if pc.Baggage != "" {
 		fields := map[string]any{"baggage": pc.Baggage}
 		for k, v := range ParseBaggage(pc.Baggage) {
@@ -111,7 +117,7 @@ func _guardTracestateSize(s string) string {
 
 // _parseTraceparent parses a traceparent header value and returns traceID and spanID.
 // Returns empty strings if the header is invalid.
-// Format: "00-{32-hex-traceID}-{16-hex-spanID}-{2-hex-flags}"
+// Accepts any version except "ff"; normalizes traceID and spanID to lowercase.
 func _parseTraceparent(tp string) (traceID, spanID string) {
 	if tp == "" {
 		return "", ""
@@ -120,10 +126,12 @@ func _parseTraceparent(tp string) (traceID, spanID string) {
 	if len(parts) != 4 {
 		return "", ""
 	}
-	version, tid, sid := parts[0], parts[1], parts[2]
-	if version != "00" {
+	version := parts[0]
+	if len(version) != 2 || strings.ToLower(version) == "ff" {
 		return "", ""
 	}
+	tid := strings.ToLower(parts[1])
+	sid := strings.ToLower(parts[2])
 	if !_isValidTraceID(tid) {
 		return "", ""
 	}
@@ -133,24 +141,25 @@ func _parseTraceparent(tp string) (traceID, spanID string) {
 	return tid, sid
 }
 
-// _isValidTraceID returns true if s is exactly 32 lowercase hex chars and not all zeros.
+// _isValidTraceID returns true if s is exactly 32 hex chars and not all zeros.
 func _isValidTraceID(s string) bool {
 	if len(s) != 32 {
 		return false
 	}
-	return _isLowercaseHex(s) && s != "00000000000000000000000000000000"
+	return _isHex(s) && s != "00000000000000000000000000000000"
 }
 
-// _isValidSpanID returns true if s is exactly 16 lowercase hex chars and not all zeros.
+// _isValidSpanID returns true if s is exactly 16 hex chars and not all zeros.
 func _isValidSpanID(s string) bool {
 	if len(s) != 16 {
 		return false
 	}
-	return _isLowercaseHex(s) && s != "0000000000000000"
+	return _isHex(s) && s != "0000000000000000"
 }
 
-// _isLowercaseHex returns true if every character in s is a lowercase hex digit.
-func _isLowercaseHex(s string) bool {
+// _isHex returns true if every character in s is a lowercase hex digit.
+// Callers must normalize to lowercase before calling (e.g. strings.ToLower).
+func _isHex(s string) bool {
 	for _, c := range s {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false

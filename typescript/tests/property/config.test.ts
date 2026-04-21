@@ -62,12 +62,17 @@ describe('property: configFromEnv()', () => {
 
   it('logFormat is always json, pretty, or console', () => {
     fc.assert(
-      fc.property(fc.boolean(), (useJson) => {
-        process.env['PROVIDE_LOG_FORMAT'] = useJson ? 'json' : 'pretty';
-        const cfg = configFromEnv();
-        delete process.env['PROVIDE_LOG_FORMAT'];
-        return cfg.logFormat === 'json' || cfg.logFormat === 'pretty';
-      }),
+      fc.property(
+        fc.oneof(fc.constant('json'), fc.constant('pretty'), fc.constant('console')),
+        (fmt) => {
+          process.env['PROVIDE_LOG_FORMAT'] = fmt;
+          const cfg = configFromEnv();
+          delete process.env['PROVIDE_LOG_FORMAT'];
+          return (
+            cfg.logFormat === 'json' || cfg.logFormat === 'pretty' || cfg.logFormat === 'console'
+          );
+        },
+      ),
     );
   });
 
@@ -77,7 +82,7 @@ describe('property: configFromEnv()', () => {
         process.env['PROVIDE_TRACE_ENABLED'] = val;
         const cfg = configFromEnv();
         delete process.env['PROVIDE_TRACE_ENABLED'];
-        return typeof cfg.otelEnabled === 'boolean';
+        return typeof cfg.tracingEnabled === 'boolean';
       }),
     );
   });

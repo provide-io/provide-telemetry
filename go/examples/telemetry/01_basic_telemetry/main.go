@@ -21,11 +21,11 @@ import (
 )
 
 func doWork(ctx context.Context, iteration int) error {
-	name, _ := telemetry.Event("example", "basic", "work")
-	return telemetry.Trace(ctx, name, func(ctx context.Context) error {
+	workEvt, _ := telemetry.Event("example", "basic", "work")
+	return telemetry.Trace(ctx, workEvt.Event, func(ctx context.Context) error {
 		log := telemetry.GetLogger(ctx, "examples.basic")
-		evtName, _ := telemetry.Event("example", "basic", "iteration")
-		log.InfoContext(ctx, evtName, "iteration", fmt.Sprint(iteration))
+		iterEvt, _ := telemetry.Event("example", "basic", "iteration")
+		log.InfoContext(ctx, iterEvt.Event, append(iterEvt.Attrs(), "iteration", fmt.Sprint(iteration))...)
 
 		requests := telemetry.NewCounter("example.basic.requests",
 			telemetry.WithDescription("Total request count"))
@@ -46,7 +46,7 @@ func doWork(ctx context.Context, iteration int) error {
 }
 
 func main() {
-	fmt.Println("Basic Telemetry Demo\n")
+	fmt.Println("Basic Telemetry Demo")
 
 	cfg, err := telemetry.SetupTelemetry()
 	if err != nil {
@@ -58,7 +58,7 @@ func main() {
 	ctx := context.Background()
 	log := telemetry.GetLogger(ctx, "examples.basic")
 
-	fmt.Printf("Service: %s  |  Env: %s  |  Version: %s\n",
+	fmt.Printf("Service: %s  |  Env: %s  |  SampleRate: %.2f\n",
 		cfg.ServiceName, cfg.Logging.Level, cfg.Tracing.SampleRate)
 
 	// Structured context binding

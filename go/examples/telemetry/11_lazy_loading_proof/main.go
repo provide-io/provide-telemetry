@@ -39,10 +39,10 @@ func measureSetup(label string, opts ...telemetry.SetupOption) time.Duration {
 }
 
 func main() {
-	fmt.Println("Optional OTel Wiring — Lazy Loading Proof (Go adaptation)\n")
+	fmt.Println("Optional OTel Wiring — Lazy Loading Proof (Go adaptation)")
 
 	// Scenario 1: No providers injected — pure no-op path.
-	fmt.Println("Scenario 1: No OTel providers (no-op path)\n")
+	fmt.Println("Scenario 1: No OTel providers (no-op path)")
 
 	var noopTimes []time.Duration
 	for range _probeIter {
@@ -58,7 +58,7 @@ func main() {
 	fmt.Println("  no OTel dependency loaded (providers are nil, all signals use no-op)")
 
 	// Scenario 2: Nil providers explicitly passed (same as no-op — shows the API).
-	fmt.Println("\nScenario 2: Nil providers passed explicitly\n")
+	fmt.Println("\nScenario 2: Nil providers passed explicitly")
 	_, err := telemetry.SetupTelemetry(
 		telemetry.WithTracerProvider(nil),
 		telemetry.WithMeterProvider(nil),
@@ -71,7 +71,7 @@ func main() {
 	_ = telemetry.ShutdownTelemetry(context.Background())
 
 	// Scenario 3: Verify that all instruments work on the no-op path.
-	fmt.Println("\nScenario 3: All instruments work on no-op path\n")
+	fmt.Println("\nScenario 3: All instruments work on no-op path")
 	_, err = telemetry.SetupTelemetry()
 	if err != nil {
 		fmt.Printf("  setup error: %v\n", err)
@@ -94,7 +94,7 @@ func main() {
 	fmt.Println("  histogram.Record: OK")
 
 	traceEvt, _ := telemetry.Event("lazy", "proof", "span")
-	_ = telemetry.Trace(ctx, traceEvt, func(_ context.Context) error { return nil })
+	_ = telemetry.Trace(ctx, traceEvt.Event, func(_ context.Context) error { return nil })
 	fmt.Println("  Trace (no-op span): OK")
 
 	log := telemetry.GetLogger(ctx, "lazy.proof")

@@ -23,6 +23,7 @@ def test_readme_quickstart_snippet_executes() -> None:
 def test_readme_event_name_snippet_executes() -> None:
     assert event_name("auth", "login", "success") == "auth.login.success"
     assert event_name("auth", "login", "failed") == "auth.login.failed"
+    assert event_name("auth", "login", "password", "failed") == "auth.login.password.failed"
 
     with patch("provide.telemetry.runtime._is_strict_event_name", return_value=True):
         try:

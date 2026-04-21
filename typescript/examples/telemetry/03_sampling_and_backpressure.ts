@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -17,6 +18,7 @@
 
 import {
   counter,
+  event,
   getHealthSnapshot,
   getLogger,
   getQueuePolicy,
@@ -32,7 +34,7 @@ import {
 } from '../../src/index.js';
 
 async function tracedWork(taskId: number): Promise<void> {
-  await withTrace('example.sampling.concurrent', async () => {
+  await withTrace(event('example', 'sampling', 'concurrent').event, async () => {
     await new Promise((r) => setTimeout(r, 15));
     counter('example.sampling.counter').add(1, { task_id: String(taskId) });
   });
@@ -43,21 +45,23 @@ async function run(): Promise<void> {
 
   // ── 🎲 Sampling policies with overrides ─────────────────
   console.log('🎲 Setting sampling policies...');
-  setSamplingPolicy({ defaultRate: 0.0, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('logs', { defaultRate: 0.0, overrides: { 'example.critical': 1.0 } });
+  setSamplingPolicy('traces', { defaultRate: 1.0 });
+  setSamplingPolicy('metrics', { defaultRate: 1.0 });
 
-  const logsPolicy = getSamplingPolicy();
+  const logsPolicy = getSamplingPolicy('logs');
   console.log(`  📋 defaultRate=${logsPolicy.defaultRate}, overrides=${JSON.stringify(logsPolicy.overrides)}`);
 
   // ── 🎯 shouldSample with overrides ─────────────────────
   console.log('\n🎯 shouldSample() decisions:');
   for (const key of ['example.routine', 'example.critical']) {
-    const sampled = shouldSample(key);
+    const sampled = shouldSample('logs', key);
     const icon = sampled ? '✅' : '❌';
-    console.log(`  ${icon} ${key}: sampled=${sampled}`);
+    console.log(`  ${icon} logs/${key}: sampled=${sampled}`);
   }
 
   // Reset to full sampling for the work below
-  setSamplingPolicy({ defaultRate: 1.0 });
+  setSamplingPolicy('logs', { defaultRate: 1.0 });
 
   // ── 🚧 Backpressure queue limits ────────────────────────
   console.log('\n🚧 Setting queue policy (maxTraces=1)...');
@@ -84,7 +88,7 @@ async function run(): Promise<void> {
   console.log('  ✅ All tasks completed');
 
   // This event is sampled out (rate=0 override was reset, logs rate=1 now).
-  log.info({ event: 'example.sampling.done' });
+  log.info({ ...event('example', 'sampling', 'done') });
 
   // ── 📊 Health snapshot ──────────────────────────────────
   console.log('\n📊 Health snapshot:');

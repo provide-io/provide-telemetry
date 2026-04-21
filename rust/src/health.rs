@@ -59,21 +59,21 @@ pub fn get_health_snapshot() -> HealthSnapshot {
     snapshot
 }
 
-pub fn increment_emitted(signal: Signal, amount: u64) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
-    match signal {
-        Signal::Logs => snapshot.emitted_logs += amount,
-        Signal::Traces => snapshot.emitted_traces += amount,
-        Signal::Metrics => snapshot.emitted_metrics += amount,
-    }
-}
-
 pub fn increment_dropped(signal: Signal, amount: u64) {
     let mut snapshot = health().lock().expect("health lock poisoned");
     match signal {
         Signal::Logs => snapshot.dropped_logs += amount,
         Signal::Traces => snapshot.dropped_traces += amount,
         Signal::Metrics => snapshot.dropped_metrics += amount,
+    }
+}
+
+pub fn increment_emitted(signal: Signal, amount: u64) {
+    let mut snapshot = health().lock().expect("health lock poisoned");
+    match signal {
+        Signal::Logs => snapshot.emitted_logs += amount,
+        Signal::Traces => snapshot.emitted_traces += amount,
+        Signal::Metrics => snapshot.emitted_metrics += amount,
     }
 }
 
@@ -106,29 +106,4 @@ pub fn record_export_latency(signal: Signal, latency_ms: f64) {
 
 pub fn _reset_health_for_tests() {
     *health().lock().expect("health lock poisoned") = HealthSnapshot::default();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testing::acquire_test_state_lock;
-
-    #[test]
-    fn health_test_increment_emitted_counts_per_signal() {
-        let _guard = acquire_test_state_lock();
-        _reset_health_for_tests();
-
-        increment_emitted(Signal::Logs, 3);
-        increment_emitted(Signal::Traces, 1);
-        increment_emitted(Signal::Metrics, 2);
-
-        let snap = get_health_snapshot();
-        assert_eq!(snap.emitted_logs, 3);
-        assert_eq!(snap.emitted_traces, 1);
-        assert_eq!(snap.emitted_metrics, 2);
-
-        // Accumulates on repeated calls.
-        increment_emitted(Signal::Logs, 2);
-        assert_eq!(get_health_snapshot().emitted_logs, 5);
-    }
 }

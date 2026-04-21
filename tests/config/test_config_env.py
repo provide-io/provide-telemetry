@@ -14,6 +14,7 @@ from provide.telemetry.config import (
     TelemetryConfig,
     TracingConfig,
     _parse_bool,
+    _parse_env_bool,
     _parse_otlp_headers,
 )
 

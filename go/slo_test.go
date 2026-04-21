@@ -164,14 +164,14 @@ func TestRecordREDMetrics400(t *testing.T) {
 	_redErrorCounter = errC
 	_redDurationHistogram = durH
 
-	// statusCode == 400 is the boundary: must count as error (>= 400, not > 400)
+	// statusCode == 400 is NOT an error (only >= 500 counts as error)
 	RecordREDMetrics("/api/boundary", "GET", 400, 5.0)
 
 	if got := reqC.(*_atomicCounter).Value(); got != 1 {
 		t.Fatalf("expected request counter 1, got %d", got)
 	}
-	if got := errC.(*_atomicCounter).Value(); got != 1 {
-		t.Fatalf("expected error counter 1 for status 400, got %d", got)
+	if got := errC.(*_atomicCounter).Value(); got != 0 {
+		t.Fatalf("expected error counter 0 for status 400, got %d", got)
 	}
 }
 

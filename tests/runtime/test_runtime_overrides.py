@@ -410,3 +410,51 @@ def test_reconfigure_lock_exists() -> None:
     assert hasattr(lock, "acquire")
     assert hasattr(lock, "release")
     assert isinstance(lock, type(threading.Lock()))
+
+
+def test_get_strict_schema_returns_false_by_default() -> None:
+    """get_strict_schema() returns False when config has strict_schema=False."""
+    runtime_mod.apply_runtime_config(TelemetryConfig(strict_schema=False))
+    assert runtime_mod.get_strict_schema() is False
+
+
+def test_set_strict_schema_enables_flag() -> None:
+    """set_strict_schema(True) updates strict_schema in the active runtime config."""
+    runtime_mod.apply_runtime_config(TelemetryConfig(strict_schema=False))
+    runtime_mod.set_strict_schema(True)
+    assert runtime_mod.get_strict_schema() is True
+
+
+def test_set_strict_schema_disables_flag() -> None:
+    """set_strict_schema(False) clears strict_schema in the active runtime config."""
+    runtime_mod.apply_runtime_config(TelemetryConfig(strict_schema=True))
+    runtime_mod.set_strict_schema(False)
+    assert runtime_mod.get_strict_schema() is False
+
+
+def test_get_strict_schema_reads_from_env_when_no_config() -> None:
+    """get_strict_schema() falls back to env-derived config when no active config is set."""
+    runtime_mod.reset_runtime_for_tests()
+    # With no active config, get_runtime_config() returns TelemetryConfig.from_env().
+    # The default is False.
+    result = runtime_mod.get_strict_schema()
+    assert isinstance(result, bool)
+
+
+def test_update_runtime_config_rebuilds_logging_on_change() -> None:
+    """When logging config changes via RuntimeOverrides, the structlog
+    pipeline is rebuilt via configure_logging(force=True)."""
+    from provide.telemetry.config import LoggingConfig, RuntimeOverrides
+
+    runtime_mod.reset_runtime_for_tests()
+    runtime_mod.apply_runtime_config(TelemetryConfig.from_env())
+    before = runtime_mod.get_runtime_config()
+    assert before.logging.level == "INFO"
+
+    new_logging = LoggingConfig(
+        level="DEBUG",
+        fmt=before.logging.fmt,
+        include_timestamp=before.logging.include_timestamp,
+    )
+    updated = runtime_mod.update_runtime_config(RuntimeOverrides(logging=new_logging))
+    assert updated.logging.level == "DEBUG"

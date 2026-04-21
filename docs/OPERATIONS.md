@@ -26,7 +26,7 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Invalid event names with strict event mode enabled: log processors annotate `_schema_error`; direct schema helpers like `event()`, `event_name()`, and `validate_event_name()` raise `EventSchemaError`.
 - Missing required keys: log processors annotate `_schema_error` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode); `validate_required_keys()` raises directly.
 - Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`.
-- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced for OTLP exporter setup and for each resilience attempt; timed-out attempts count as failures and follow retry/fail-open policy.
+- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced at exporter construction and per-batch export across all four runtimes (Python, TypeScript, Go, Rust). See `docs/INTERNALS.md` Resilience table for the per-language module references. Timed-out attempts count as failures and follow the retry/fail-open policy.
 - Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
 
 ## Lifecycle
@@ -35,7 +35,7 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
 - `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
 - After `shutdown_telemetry()`, package-local setup state is cleared. If real OTel providers had been installed, provider-changing lifecycle transitions still require a full process restart before `setup_telemetry()`.
-- `update_runtime_config()` and `reload_runtime_from_env()` return the applied runtime snapshot, not a caller-owned mutable config reference.
+- Runtime reconfiguration APIs mutate internal process state only. Read back the active snapshot via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than assuming the caller still owns a live config object.
 
 ## Local Health Check
 

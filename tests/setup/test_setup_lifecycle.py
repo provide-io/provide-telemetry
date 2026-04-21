@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from provide.telemetry import setup as setup_mod
@@ -20,8 +23,10 @@ from provide.telemetry.setup import (
 def test_reconfigure_telemetry_calls_shutdown_then_setup_for_provider_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     from provide.telemetry import runtime as runtime_mod
 
-    _reset_setup_state_for_tests()
+    _reset_all_for_tests()
     calls: list[str] = []
+    runtime_mod.reset_runtime_for_tests()
+    runtime_mod.apply_runtime_config(TelemetryConfig(service_name="before"))
 
     def _fake_shutdown() -> None:
         calls.append("shutdown")
@@ -40,7 +45,9 @@ def test_reconfigure_telemetry_calls_shutdown_then_setup_for_provider_changes(mo
 def test_reconfigure_telemetry_with_config(monkeypatch: pytest.MonkeyPatch) -> None:
     from provide.telemetry import runtime as runtime_mod
 
-    _reset_setup_state_for_tests()
+    _reset_all_for_tests()
+    runtime_mod.reset_runtime_for_tests()
+    runtime_mod.apply_runtime_config(TelemetryConfig(service_name="before"))
     seen_configs: list[object] = []
 
     def _fake_setup(config: TelemetryConfig | None = None) -> TelemetryConfig:
@@ -229,6 +236,56 @@ def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) 
     assert setup_mod._setup_done is False
 
 
+def test_reconfigure_telemetry_allows_provider_replacement_after_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry import runtime as runtime_mod
+    from provide.telemetry.logger import core as logger_core
+    from provide.telemetry.metrics import provider as metrics_provider
+    from provide.telemetry.tracing import provider as tracing_provider
+
+    class _FakeLogProvider:
+        def force_flush(self) -> None:
+            pass
+
+        def shutdown(self) -> None:
+            pass
+
+    class _FakeTraceProvider:
+        def shutdown(self) -> None:
+            pass
+
+    class _FakeMeterProvider:
+        def shutdown(self) -> None:
+            pass
+
+    runtime_mod.reset_runtime_for_tests()
+    runtime_mod.apply_runtime_config(TelemetryConfig(service_name="before"))
+    monkeypatch.setattr(logger_core, "_otel_log_provider", _FakeLogProvider())
+    monkeypatch.setattr(logger_core, "_otel_log_global_set", True)
+    monkeypatch.setattr(tracing_provider, "_provider_ref", _FakeTraceProvider())
+    monkeypatch.setattr(tracing_provider, "_otel_global_set", True)
+    monkeypatch.setattr(metrics_provider, "_meter_provider", _FakeMeterProvider())
+    monkeypatch.setattr(metrics_provider, "_meter_global_set", True)
+
+    shutdown_telemetry()
+
+    called: list[str] = []
+
+    def _fake_shutdown() -> None:
+        called.append("shutdown")
+
+    def _fake_setup(config: TelemetryConfig | None = None) -> TelemetryConfig:
+        called.append("setup")
+        return config or TelemetryConfig()
+
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", _fake_shutdown)
+    monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", _fake_setup)
+
+    result = runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="after"))
+
+    assert called == ["shutdown", "setup"]
+    assert result.service_name == "after"
+
+
 def test_reset_all_for_tests_sets_setup_done_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_mod, "_setup_done", True)
     _reset_all_for_tests()
@@ -274,7 +331,7 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 0
     assert called["metrics_shutdown"] == 0
-    # Setup failed in degraded mode — _setup_done must stay False so a retry can succeed.
+    # Setup is NOT marked done after failure — allows retry
     assert setup_mod._setup_done is False
 
 

@@ -125,18 +125,12 @@ func ShouldSample(signal, key string) (bool, error) {
 	return sampled, nil
 }
 
-// _recordSampleDecision increments the appropriate counter based on the signal and sampling outcome.
+// _recordSampleDecision increments drop counters when a signal is sampled out.
+// Emitted counters for logs and traces are NOT incremented here — they are
+// incremented after the backpressure gate succeeds in the respective hot paths
+// (logger.go and tracing.go), matching the metrics pattern.
 func _recordSampleDecision(signal string, sampled bool) {
-	if sampled {
-		switch signal {
-		case signalLogs:
-			_incLogsEmitted()
-		case signalTraces:
-			_incSpansStarted()
-		case signalMetrics:
-			_incMetricsRecorded()
-		}
-	} else {
+	if !sampled {
 		switch signal {
 		case signalLogs:
 			_incLogsDropped()

@@ -52,6 +52,11 @@ type step struct {
 // works by returning new contexts, so we update this package-level var.
 var ctx = context.Background()
 
+// baseCtx tracks the context without any propagation overlay. bind_context
+// updates both ctx and baseCtx; bind_propagation overlays propagation on top
+// of baseCtx so clear_propagation can restore without losing bound fields.
+var baseCtx = context.Background()
+
 // logBuffer captures stderr output between emit_log and capture_log steps.
 var logBuffer *os.File
 
@@ -107,8 +112,9 @@ func opSetup(s step, variables map[string]any) {
 	if _, err := telemetry.SetupTelemetry(); err != nil {
 		panic(fmt.Sprintf("setup failed: %v", err))
 	}
-	// Reset context for fresh setup.
+	// Reset both contexts for fresh setup.
 	ctx = context.Background()
+	baseCtx = ctx
 }
 
 // opSetupInvalid tries SetupTelemetry and captures the error.
@@ -145,12 +151,15 @@ func opBindPropagation(s step, _ map[string]any) {
 		headers.Set("Baggage", s.Baggage)
 	}
 	pc := telemetry.ExtractW3CContext(headers)
-	ctx = telemetry.BindPropagationContext(ctx, pc)
+	// Overlay propagation on baseCtx so clear_propagation can restore
+	// without losing bound context fields set via bind_context.
+	ctx = telemetry.BindPropagationContext(baseCtx, pc)
 }
 
-// opClearPropagation creates a fresh context without propagation data.
+// opClearPropagation removes propagation-derived trace and baggage data
+// while preserving any bound context fields set via bind_context.
 func opClearPropagation(_ step, _ map[string]any) {
-	ctx = context.Background()
+	ctx = baseCtx
 }
 
 // opGetTraceContext reads trace/span IDs from the current context.
@@ -163,7 +172,9 @@ func opGetTraceContext(s step, variables map[string]any) {
 }
 
 // opBindContext binds key-value fields into the current context.
+// Updates both ctx and baseCtx so bound fields survive clear_propagation.
 func opBindContext(s step, _ map[string]any) {
+	baseCtx = telemetry.BindContext(baseCtx, s.Fields)
 	ctx = telemetry.BindContext(ctx, s.Fields)
 }
 
@@ -223,14 +234,10 @@ func opCaptureLog(s step, variables map[string]any) {
 	if v, ok := record["trace.id"]; ok {
 		record["trace_id"] = v
 		delete(record, "trace.id")
-	} else {
-		record["trace_id"] = ""
 	}
 	if v, ok := record["span.id"]; ok {
 		record["span_id"] = v
 		delete(record, "span.id")
-	} else {
-		record["span_id"] = ""
 	}
 	// Ensure message key exists.
 	if _, ok := record["message"]; !ok {

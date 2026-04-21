@@ -3,7 +3,12 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Runtime config/policy update API."""
+"""Runtime config/policy update API.
+
+Hot-reconfigurable: sampling policies, backpressure queue limits, exporter retry/timeout policies.
+NOT hot-reconfigurable: log handlers, tracer providers, meter providers (require full restart).
+Use ``reconfigure_telemetry()`` for a full shutdown+setup cycle when providers must change.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ __all__ = [
     "get_strict_schema",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
+    "set_strict_schema",
     "update_runtime_config",
 ]
 
@@ -39,7 +45,10 @@ _reconfigure_lock = threading.Lock()
 def _apply_policies(snapshot: TelemetryConfig) -> None:
     """Push hot policy values from a config snapshot to signal subsystems. Lock-free."""
     set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))  # pragma: no mutate
-    set_sampling_policy("traces", SamplingPolicy(default_rate=snapshot.sampling.traces_rate))
+    set_sampling_policy(
+        "traces",
+        SamplingPolicy(default_rate=min(snapshot.sampling.traces_rate, snapshot.tracing.sample_rate)),
+    )
     set_sampling_policy("metrics", SamplingPolicy(default_rate=snapshot.sampling.metrics_rate))
     set_queue_policy(
         QueuePolicy(
@@ -81,6 +90,7 @@ def _apply_policies(snapshot: TelemetryConfig) -> None:
 
 
 def apply_runtime_config(config: TelemetryConfig) -> None:
+    """Apply a config snapshot to runtime signal policies."""
     global _active_config
     with _lock:
         snapshot = copy.deepcopy(config)
@@ -99,6 +109,7 @@ def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
         pii_max_depth=cfg.pii_max_depth,
         strict_schema=cfg.strict_schema,
         logging=cfg.logging,
+        event_schema=cfg.event_schema,
     )
 
 
@@ -121,6 +132,8 @@ def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> Tele
         merged.strict_schema = overrides.strict_schema
     if overrides.logging is not None:
         merged.logging = overrides.logging
+    if overrides.event_schema is not None:
+        merged.event_schema = overrides.event_schema
     return merged
 
 
@@ -142,21 +155,24 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     logging_changed = False  # pragma: no mutate — None is also falsy; equivalent mutation
     with _lock:
         base = _active_config if _active_config is not None else TelemetryConfig.from_env()
+        if overrides.logging is not None and overrides.logging != base.logging:
+            logging_changed = True
         merged = _apply_overrides(base, overrides)
         if _logging_provider_config_changed(base, merged):
-            from provide.telemetry.logger.core import _has_otel_log_provider
+            from provide.telemetry.logger.core import _has_real_otel_log_provider
 
-            if _has_otel_log_provider():
+            if _has_real_otel_log_provider():
                 raise RuntimeError(
                     "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
-                    "are installed; restart the process and call setup_telemetry() with the new config"
+                    "are installed. Use reconfigure_telemetry() for full provider replacement, or restart the "
+                    "process and call setup_telemetry() with the new config."
                 )
         _active_config = merged
     _apply_policies(merged)
-    if overrides.logging is not None:
-        from provide.telemetry.logger import core as logger_core
+    if logging_changed:
+        from provide.telemetry.logger.core import configure_logging  # pragma: no mutate
 
-        logger_core.configure_logging(merged, force=True)
+        configure_logging(merged, force=True)
     return get_runtime_config()
 
 
@@ -172,15 +188,7 @@ def reload_runtime_from_env() -> TelemetryConfig:
                 "runtime.cold_field_drift",
                 extra={"fields": changed_cold, "action": "restart required to apply"},
             )
-    overrides = RuntimeOverrides(
-        sampling=fresh.sampling,
-        backpressure=fresh.backpressure,
-        exporter=fresh.exporter,
-        security=fresh.security,
-        slo=fresh.slo,
-        pii_max_depth=fresh.pii_max_depth,
-    )
-    return update_runtime_config(overrides)
+    return update_runtime_config(_overrides_from_config(fresh))
 
 
 def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
@@ -195,23 +203,22 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
         current = get_runtime_config()
         if _provider_config_changed(current, target):
             if (
-                logger_core._has_otel_log_provider()
-                or tracing_provider._has_tracing_provider()
-                or metrics_provider._has_meter_provider()
+                logger_core._has_real_otel_log_provider()
+                or tracing_provider._has_live_tracing_provider()
+                or metrics_provider._has_live_meter_provider()
             ):
                 raise RuntimeError(
                     "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed. "
-                    "Use reconfigure_telemetry() for full provider replacement, or restart the process and call "
-                    "setup_telemetry() with the new config."
+                    "Restart the process and call setup_telemetry() with the new config."
                 )
             shutdown_telemetry()
             return setup_telemetry(target)
-        if _logging_provider_config_changed(current, target):
-            if logger_core._has_otel_log_provider():
-                raise RuntimeError(
-                    "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers are "
-                    "installed; restart the process and call setup_telemetry() with the new config"
-                )
+        if _logging_provider_config_changed(current, target) and logger_core._has_real_otel_log_provider():
+            raise RuntimeError(
+                "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
+                "are installed (endpoint/headers/timeout change). Restart the process and call "
+                "setup_telemetry() with the new config."
+            )
         return update_runtime_config(_overrides_from_config(target))
 
 
@@ -231,6 +238,7 @@ def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) 
 
 
 def get_runtime_config() -> TelemetryConfig:
+    """Return a defensive copy of the active runtime config snapshot."""
     with _lock:
         if _active_config is None:
             return TelemetryConfig.from_env()
@@ -239,19 +247,19 @@ def get_runtime_config() -> TelemetryConfig:
 
 def get_runtime_status() -> dict[str, object]:
     """Return runtime/provider status using the shared cross-language shape."""
+    from provide.telemetry import setup as setup_mod
     from provide.telemetry.health import get_health_snapshot
     from provide.telemetry.logger import core as logger_core
     from provide.telemetry.metrics import provider as metrics_provider
-    from provide.telemetry import setup as setup_mod
     from provide.telemetry.tracing import provider as tracing_provider
 
     cfg = get_runtime_config()
     with setup_mod._lock:
         setup_done = setup_mod._setup_done
     providers = {
-        "logs": bool(logger_core._has_otel_log_provider()),
-        "traces": bool(tracing_provider._has_tracing_provider()),
-        "metrics": bool(metrics_provider._has_meter_provider()),
+        "logs": bool(logger_core._has_real_otel_log_provider()),
+        "traces": bool(tracing_provider._has_live_tracing_provider()),
+        "metrics": bool(metrics_provider._has_live_meter_provider()),
     }
     return {
         "setup_done": setup_done,
@@ -277,6 +285,20 @@ def _is_strict_event_name() -> bool:
     if cfg is None:
         return False
     return cfg.strict_schema or cfg.event_schema.strict_event_name
+
+
+def set_strict_schema(enabled: bool) -> None:
+    """Convenience wrapper: enable or disable strict event-schema validation.
+
+    Equivalent to ``update_runtime_config(RuntimeOverrides(strict_schema=enabled))``.
+    Thread-safe via the runtime config lock.
+    """
+    update_runtime_config(RuntimeOverrides(strict_schema=enabled))
+
+
+def get_strict_schema() -> bool:
+    """Return the current strict-schema flag from the active runtime config."""
+    return get_runtime_config().strict_schema
 
 
 def reset_runtime_for_tests() -> None:

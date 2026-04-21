@@ -62,13 +62,29 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyStandardFields(r)
 	r = h.applyTraceFields(ctx, r)
 
+	// Consent gate: block before any processing when consent level forbids logs.
+	if !ShouldAllow(signalLogs, r.Level.String()) {
+		return nil
+	}
+
+	// Schema validation runs BEFORE sampling so records flagged by
+	// validateRequiredKeys / validateEventName don't inflate LogsEmitted.
+	// Annotate with _schema_error instead of dropping — preserves telemetry.
+	// Cross-language standard (Python/TypeScript/Rust match).
+	if err := h.applySchema(r); err != nil {
+		r.AddAttrs(slog.String("_schema_error", err.Error()))
+	}
+
 	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil
 		return nil
 	}
 
-	if err := h.applySchema(r); err != nil {
-		return nil //nolint:nilerr // schema violation drops the record
+	// Backpressure gate: drop when the log queue is full.
+	if !TryAcquire(signalLogs) {
+		return nil
 	}
+	defer Release(signalLogs)
+	_incLogsEmitted()
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
@@ -301,8 +317,8 @@ func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) 
 	}
 }
 
-// _configureLogger builds the Logger package var from cfg and sets it as slog's default.
-func _configureLogger(cfg *TelemetryConfig) {
+// _baseLogHandler builds the base slog.Handler (JSON or text) for the given config.
+func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 	opts := &slog.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -315,14 +331,31 @@ func _configureLogger(cfg *TelemetryConfig) {
 			return a
 		},
 	}
-	var base slog.Handler
 	if cfg.Logging.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
-	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
+		return slog.NewJSONHandler(os.Stderr, opts)
 	}
-	h := _newTelemetryHandler(base, cfg, "")
-	Logger = slog.New(h)
+	return slog.NewTextHandler(os.Stderr, opts)
+}
+
+// _attachTraceContext adds trace.id / span.id from ctx to logger when present.
+func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger {
+	traceID, spanID := _getTraceSpanFromContext(ctx)
+	if traceID == "" && spanID == "" {
+		return logger
+	}
+	var attrs []any
+	if traceID != "" {
+		attrs = append(attrs, slog.String("trace.id", traceID))
+	}
+	if spanID != "" {
+		attrs = append(attrs, slog.String("span.id", spanID))
+	}
+	return logger.With(attrs...)
+}
+
+// _configureLogger builds the Logger package var from cfg and sets it as slog's default.
+func _configureLogger(cfg *TelemetryConfig) {
+	Logger = slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, ""))
 	slog.SetDefault(Logger)
 }
 
@@ -332,7 +365,10 @@ func _configureLogger(cfg *TelemetryConfig) {
 // returned logger pre-attaches trace.id and span.id so they appear on every log line
 // even when callers use the context-free Logger.Info(...) form.
 func GetLogger(ctx context.Context, name string) *slog.Logger {
-	cfg := DefaultTelemetryConfig()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		cfg = DefaultTelemetryConfig()
+	}
 	if Logger != nil {
 		if liveCfg, ok := _telemetryConfigFromHandler(Logger.Handler()); ok {
 			cfg = liveCfg
@@ -341,49 +377,15 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	_setupMu.Lock()
 	loggerProvider := _otelLoggerProvider
 	_setupMu.Unlock()
-	opts := &slog.HandlerOptions{
-		Level: LevelTrace,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if !cfg.Logging.IncludeTimestamp && a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
-			if a.Key == slog.MessageKey {
-				a.Key = "message"
-			}
-			return a
-		},
-	}
-	var base slog.Handler
-	if cfg.Logging.Format == LogFormatJSON {
-		base = slog.NewJSONHandler(os.Stderr, opts)
-	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
-	}
-	h := _newTelemetryHandler(base, cfg, name)
-	var handler slog.Handler = h
+	handler := _newTelemetryHandler(_baseLogHandler(cfg), cfg, name)
 	if loggerProvider != nil {
-		bridgeName := cfg.ServiceName
-		if name != "" {
-			bridgeName = name
-		}
+		bridgeName := cmp.Or(name, cfg.ServiceName)
 		handler = newMultiHandler(
-			h,
+			handler,
 			otelslog.NewHandler(bridgeName, otelslog.WithLoggerProvider(loggerProvider)),
 		)
 	}
-	logger := slog.New(handler)
-	traceID, spanID := _getTraceSpanFromContext(ctx)
-	if traceID != "" || spanID != "" {
-		var attrs []any
-		if traceID != "" {
-			attrs = append(attrs, slog.String("trace.id", traceID))
-		}
-		if spanID != "" {
-			attrs = append(attrs, slog.String("span.id", spanID))
-		}
-		return logger.With(attrs...)
-	}
-	return logger
+	return _attachTraceContext(slog.New(handler), ctx)
 }
 
 func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) {
@@ -430,7 +432,7 @@ func (h *_telemetryHandler) applyErrorFingerprint(r slog.Record) slog.Record {
 	if excName == "" {
 		return r
 	}
-	fp := _computeErrorFingerprintFromParts(excName, nil)
+	fp := ComputeErrorFingerprintFromParts(excName, nil)
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
 		nr.AddAttrs(a)

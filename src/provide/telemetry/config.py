@@ -22,6 +22,7 @@ __all__ = [
     "redact_config",
 ]
 
+import dataclasses
 import logging
 import os
 from collections.abc import Mapping
@@ -81,6 +82,9 @@ class LoggingConfig:
         _validate_color(self.pretty_key_color, "pretty_key_color")
         _validate_color(self.pretty_value_color, "pretty_value_color")
 
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
+
 
 @dataclass(slots=True)
 class TracingConfig:
@@ -92,12 +96,18 @@ class TracingConfig:
     def __post_init__(self) -> None:
         _validate_rate(self.sample_rate, "sample_rate must be between 0 and 1")
 
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
+
 
 @dataclass(slots=True)
 class MetricsConfig:
     enabled: bool = True
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        return _masked_dataclass_repr(self)
 
 
 @dataclass(slots=True)
@@ -184,6 +194,7 @@ class RuntimeOverrides:
     pii_max_depth: int | None = None
     strict_schema: bool | None = None
     logging: LoggingConfig | None = None
+    event_schema: SchemaConfig | None = None
 
     def __post_init__(self) -> None:
         if self.pii_max_depth is not None:
@@ -210,6 +221,17 @@ class TelemetryConfig:
     def __post_init__(self) -> None:
         _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
 
+    def redacted_repr(self) -> str:
+        """Return a string representation with secrets masked."""
+        return repr(self)  # sub-configs mask themselves
+
+    def __repr__(self) -> str:
+        fields_repr = []
+        for f in dataclasses.fields(self):
+            val = getattr(self, f.name)
+            fields_repr.append(f"{f.name}={val!r}")
+        return f"{self.__class__.__name__}({', '.join(fields_repr)})"
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
         data = env if env is not None else os.environ
@@ -224,10 +246,16 @@ class TelemetryConfig:
             logging=LoggingConfig(
                 level=data.get("PROVIDE_LOG_LEVEL", "INFO"),
                 fmt=data.get("PROVIDE_LOG_FORMAT", "console"),
-                include_timestamp=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True),
-                include_caller=_parse_bool(data.get("PROVIDE_LOG_INCLUDE_CALLER"), True),
-                sanitize=_parse_bool(data.get("PROVIDE_LOG_SANITIZE"), True),
-                log_code_attributes=_parse_bool(data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False),
+                include_timestamp=_parse_env_bool(
+                    data.get("PROVIDE_LOG_INCLUDE_TIMESTAMP"), True, "PROVIDE_LOG_INCLUDE_TIMESTAMP"
+                ),
+                include_caller=_parse_env_bool(
+                    data.get("PROVIDE_LOG_INCLUDE_CALLER"), True, "PROVIDE_LOG_INCLUDE_CALLER"
+                ),
+                sanitize=_parse_env_bool(data.get("PROVIDE_LOG_SANITIZE"), True, "PROVIDE_LOG_SANITIZE"),
+                log_code_attributes=_parse_env_bool(
+                    data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False, "PROVIDE_LOG_CODE_ATTRIBUTES"
+                ),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
@@ -240,7 +268,7 @@ class TelemetryConfig:
                 module_levels=_parse_module_levels(data.get("PROVIDE_LOG_MODULE_LEVELS", "")),
             ),
             tracing=TracingConfig(
-                enabled=_parse_bool(data.get("PROVIDE_TRACE_ENABLED"), True),
+                enabled=_parse_env_bool(data.get("PROVIDE_TRACE_ENABLED"), True, "PROVIDE_TRACE_ENABLED"),
                 sample_rate=_parse_env_float(data.get("PROVIDE_TRACE_SAMPLE_RATE", "1.0"), "PROVIDE_TRACE_SAMPLE_RATE"),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -248,7 +276,7 @@ class TelemetryConfig:
                 ),
             ),
             metrics=MetricsConfig(
-                enabled=_parse_bool(data.get("PROVIDE_METRICS_ENABLED"), True),
+                enabled=_parse_env_bool(data.get("PROVIDE_METRICS_ENABLED"), True, "PROVIDE_METRICS_ENABLED"),
                 otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
                 or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                 otlp_headers=_parse_otlp_headers(
@@ -256,7 +284,9 @@ class TelemetryConfig:
                 ),
             ),
             event_schema=SchemaConfig(
-                strict_event_name=_parse_bool(data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False),
+                strict_event_name=_parse_env_bool(
+                    data.get("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"), False, "PROVIDE_TELEMETRY_STRICT_EVENT_NAME"
+                ),
                 required_keys=tuple(
                     k.strip() for k in data.get("PROVIDE_TELEMETRY_REQUIRED_KEYS", "").split(",") if k.strip()
                 ),
@@ -313,23 +343,41 @@ class TelemetryConfig:
                     data.get("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
                 ),
-                logs_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True),
-                traces_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True),
-                metrics_fail_open=_parse_bool(data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True),
-                logs_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                logs_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_LOGS_FAIL_OPEN"
                 ),
-                traces_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"), False
+                traces_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_TRACES_FAIL_OPEN"), True, "PROVIDE_EXPORTER_TRACES_FAIL_OPEN"
                 ),
-                metrics_allow_blocking_in_event_loop=_parse_bool(
-                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"), False
+                metrics_fail_open=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_METRICS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_METRICS_FAIL_OPEN"
+                ),
+                logs_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_LOGS_ALLOW_BLOCKING_EVENT_LOOP",
+                ),
+                traces_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_TRACES_ALLOW_BLOCKING_EVENT_LOOP",
+                ),
+                metrics_allow_blocking_in_event_loop=_parse_env_bool(
+                    data.get("PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP"),
+                    False,
+                    "PROVIDE_EXPORTER_METRICS_ALLOW_BLOCKING_EVENT_LOOP",
                 ),
             ),
             slo=SLOConfig(
-                enable_red_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False),
-                enable_use_metrics=_parse_bool(data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False),
-                include_error_taxonomy=_parse_bool(data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True),
+                enable_red_metrics=_parse_env_bool(
+                    data.get("PROVIDE_SLO_ENABLE_RED_METRICS"), False, "PROVIDE_SLO_ENABLE_RED_METRICS"
+                ),
+                enable_use_metrics=_parse_env_bool(
+                    data.get("PROVIDE_SLO_ENABLE_USE_METRICS"), False, "PROVIDE_SLO_ENABLE_USE_METRICS"
+                ),
+                include_error_taxonomy=_parse_env_bool(
+                    data.get("PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"), True, "PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY"
+                ),
             ),
             security=SecurityConfig(
                 max_attr_value_length=_parse_env_int(
@@ -356,7 +404,7 @@ def _normalize_level(value: str) -> str:
     allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     normalized = value.upper()
     if normalized not in allowed:
-        raise ValueError(f"invalid log level: {value}")
+        raise ConfigurationError(f"invalid log level: {value}")
     return normalized
 
 
@@ -367,12 +415,12 @@ def _validate_fmt(value: str) -> None:
 
 def _validate_rate(value: float, message: str) -> None:
     if not 0.0 <= value <= 1.0:
-        raise ValueError(message)
+        raise ConfigurationError(message)
 
 
 def _validate_non_negative(value: int, message: str) -> None:
     if value < 0:
-        raise ValueError(message)
+        raise ConfigurationError(message)
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -381,12 +429,23 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_env_bool(value: str | None, default: bool, field: str) -> bool:
+    if value is None or not value.strip():
+        return default
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigurationError(f"invalid boolean for {field}: {value!r} (expected one of: 1,true,yes,on,0,false,no,off)")
+
+
 def _parse_module_levels(raw: str) -> dict[str, str]:
     """Parse ``module=LEVEL,module2=LEVEL2`` into a dict.
 
     Example: ``PROVIDE_LOG_MODULE_LEVELS="provide.server=DEBUG,asyncio=WARNING"``
     """
-    if not raw or not raw.strip():
+    if not raw or not raw.strip():  # pragma: no mutate
         return {}
     result: dict[str, str] = {}
     for pair in raw.split(","):

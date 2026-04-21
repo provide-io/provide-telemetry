@@ -287,3 +287,110 @@ class TestTwoPhaseProune:
         assert "old_val" not in cardinality_mod._seen.get("hot", {})
         # fresh_val must still be present in cold (TTL=300, not expired)
         assert "fresh_val" in cardinality_mod._seen.get("cold", {})
+
+
+# ── _collect_expired: threshold arithmetic and boundary ──────────────────────
+
+
+class TestCollectExpiredBoundaries:
+    def test_fresh_value_not_in_expired_list(self) -> None:
+        """Kills: `now - ttl_seconds` → `now + ttl_seconds` (mutmut_9).
+
+        With `now + ttl` the threshold overshoots into the future, marking fresh
+        entries as expired. A value at now-50s (within a 100s TTL) must be absent
+        from the expired list.
+        """
+        register_cardinality_limit("k", max_values=10, ttl_seconds=100.0)
+        now = 1000.0
+        cardinality_mod._seen["k"]["fresh"] = 950.0  # 50 s ago, within TTL
+        result = _collect_expired("k", now)
+        assert "fresh" not in result, "value within TTL must not appear in expired list"
+
+    def test_stale_value_in_expired_list(self) -> None:
+        """Companion: a value beyond TTL must appear in the expired list."""
+        register_cardinality_limit("k", max_values=10, ttl_seconds=100.0)
+        now = 1000.0
+        cardinality_mod._seen["k"]["stale"] = 800.0  # 200 s ago, beyond 100 s TTL
+        result = _collect_expired("k", now)
+        assert "stale" in result, "value beyond TTL must appear in expired list"
+
+    def test_exact_threshold_not_expired(self) -> None:
+        """Kills: `t < threshold` → `t <= threshold` (mutmut_10).
+
+        An entry stamped exactly at (now - ttl) sits on the boundary.  The strict
+        `<` comparison must leave it alive; only `<=` would (incorrectly) expire it.
+        """
+        register_cardinality_limit("k", max_values=10, ttl_seconds=100.0)
+        now = 1000.0
+        cardinality_mod._seen["k"]["exact"] = 900.0  # exactly at threshold (1000-100)
+        result = _collect_expired("k", now)
+        assert "exact" not in result, "entry exactly at threshold must not be expired"
+
+
+# ── _delete_expired: re-verification boundary ────────────────────────────────
+
+
+class TestDeleteExpiredBoundary:
+    def test_exact_threshold_not_deleted(self) -> None:
+        """Kills: `entry_time < threshold` → `entry_time <= threshold` (mutmut_14).
+
+        An entry whose timestamp equals (now - ttl) sits exactly on the boundary.
+        The strict `<` means it should survive deletion; `<=` would (incorrectly)
+        delete it.
+        """
+        register_cardinality_limit("k", max_values=10, ttl_seconds=1.0)
+        now = 1000.0  # threshold = 999.0
+        cardinality_mod._seen["k"]["exact"] = 999.0
+        _delete_expired("k", ["exact"], now=now)
+        assert "exact" in cardinality_mod._seen["k"], "entry at exact threshold must not be deleted"
+
+
+# ── guard_attributes Phase 3: continue vs break ──────────────────────────────
+
+
+class TestPhaseThreeContinueVsBreak:
+    def test_phase3_continue_processes_subsequent_keys_when_limit_cleared(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kills: Phase 3 `continue` → `break` (mutmut_29).
+
+        Simulate a race where the first key's limit is cleared between Phase 1
+        and Phase 3.  With `continue` the loop moves on to the second key and
+        records it; with `break` it exits early and the second key is never seen.
+        """
+        register_cardinality_limit("first", max_values=5)
+        register_cardinality_limit("second", max_values=5)
+        monkeypatch.setitem(cardinality_mod._last_prune, "first", time.monotonic() + 1000.0)
+        monkeypatch.setitem(cardinality_mod._last_prune, "second", time.monotonic() + 1000.0)
+
+        release_count = [0]
+        original_lock = cardinality_mod._lock
+
+        class _InterceptLock:
+            def acquire(self, *args: object, **kwargs: object) -> bool:
+                return original_lock.acquire()
+
+            def release(self) -> None:
+                original_lock.release()
+                release_count[0] += 1
+                # Phase 0 = release 1, Phase 1 for "first" = release 2.
+                # Clear "first" right after Phase 1 so Phase 3 sees None.
+                if release_count[0] == 2:
+                    cardinality_mod._limits.pop("first", None)
+
+            def __enter__(self) -> _InterceptLock:
+                self.acquire()
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                self.release()
+
+        with unittest.mock.patch.object(cardinality_mod, "_lock", _InterceptLock()):
+            result = guard_attributes({"first": "val1", "second": "val2"})
+
+        # Both values must pass through (first has no limit, second has one).
+        assert result == {"first": "val1", "second": "val2"}
+        # "second" must have been recorded in _seen — proves the loop continued.
+        assert "val2" in cardinality_mod._seen.get("second", {}), (
+            "Phase 3 must use `continue` not `break` so subsequent keys are processed"
+        )

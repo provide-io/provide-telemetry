@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -26,7 +27,12 @@ Send = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class TelemetryMiddleware:
-    def __init__(self, app: Callable[[Scope, Receive, Send], Awaitable[None]], *, auto_slo: bool = False) -> None:
+    def __init__(
+        self,
+        app: Callable[[Scope, Receive, Send], Awaitable[None]],
+        *,
+        auto_slo: bool = False,  # pragma: no mutate
+    ) -> None:
         self.app = app
         self.auto_slo = auto_slo
         self._logger = get_logger("provide.asgi") if auto_slo else None
@@ -69,7 +75,7 @@ class TelemetryMiddleware:
             await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
         except Exception as exc:
             if self.auto_slo and self._logger is not None:
-                scope_type = str(scope.get("type", "http"))
+                scope_type = str(scope.get("type", "http"))  # pragma: no mutate
                 self._logger.error(
                     event_name(scope_type, "request", "unhandled_exception"),
                     exc_info=True,
@@ -79,8 +85,8 @@ class TelemetryMiddleware:
             raise
         finally:
             if self.auto_slo:
-                duration_ms = (time.perf_counter() - started) * 1000.0
-                route = str(scope.get("path", "unknown"))
+                duration_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+                route = _resolve_route(scope)
                 method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
                 record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)
             clear_propagation_context()

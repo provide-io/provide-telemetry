@@ -8,6 +8,7 @@ import {
   clearSessionContext,
   getContext,
   getSessionId,
+  runWithContext,
 } from '../src/context';
 
 describe('Session Correlation', () => {
@@ -36,5 +37,21 @@ describe('Session Correlation', () => {
 
   it('default session ID is null', () => {
     expect(getSessionId()).toBeNull();
+  });
+
+  it('isolates session ID between concurrent async contexts', async () => {
+    const first = runWithContext({}, async () => {
+      bindSessionContext('sess-first');
+      await Promise.resolve();
+      return getSessionId();
+    });
+    const second = runWithContext({}, async () => {
+      bindSessionContext('sess-second');
+      await Promise.resolve();
+      return getSessionId();
+    });
+
+    await expect(first).resolves.toBe('sess-first');
+    await expect(second).resolves.toBe('sess-second');
   });
 });

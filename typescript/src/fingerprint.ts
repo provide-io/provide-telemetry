@@ -16,11 +16,14 @@ import { shortHash12 } from './hash';
  * Returns at most 3 frames (most recent).
  */
 function extractFrames(stack: string | undefined): string[] {
+  // Stryker disable next-line ConditionalExpression -- equivalent: falsy stack always yields no frames
   if (!stack) return [];
   const frames: string[] = [];
   // V8: "at functionName (filename:line:col)" or "at filename:line:col"
+  // Stryker disable next-line Regex -- \s+ vs \s and trailing \d+ vs \d are equivalent for real stacks
   const v8Re = /at\s+(?:(.+?)\s+\()?(.*?):\d+:\d+\)?/g;
   // SpiderMonkey/JSC: "functionName@filename:line:col"
+  // Stryker disable next-line Regex -- trailing \d+ vs \d is equivalent for file extraction
   const smRe = /(.+?)@(.*?):\d+:\d+/g;
   for (const re of [v8Re, smRe]) {
     let match: RegExpExecArray | null;

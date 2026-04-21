@@ -15,6 +15,7 @@
 import { setSamplingPolicy } from './sampling';
 import { setQueuePolicy } from './backpressure';
 import { setExporterPolicy } from './resilience';
+import { ConfigurationError } from './exceptions';
 import { setSetupError } from './health';
 import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation';
 import { _setActiveConfig } from './runtime';
@@ -57,24 +58,181 @@ export interface TelemetryConfig {
    * Set true during local development for live devtools inspection.
    */
   consoleOutput: boolean;
-  /** Enforce strict event name validation (3-5 dot-separated segments). */
+  /** Master schema strictness switch. */
   strictSchema: boolean;
-  /** Keys required on every log record when strictSchema is enabled. */
+  /** Enforce strict event-name validation even when strictSchema is false. */
+  strictEventName: boolean;
+  /** Keys required on every log record. */
   requiredLogKeys: string[];
+
+  // — Logging extras —
+  /** Include timestamp in log output. */
+  logIncludeTimestamp: boolean;
+  /** Include caller info in log output. */
+  logIncludeCaller: boolean;
+  /** Enable PII/secret sanitization in logs. */
+  logSanitize: boolean;
+  /** Attach code.filepath / code.lineno attributes to log records. */
+  logCodeAttributes: boolean;
+  /** Per-module log level overrides (e.g. {"provide.server": "DEBUG"}). */
+  logModuleLevels: Record<string, string>;
+
+  // — Tracing —
+  /** Trace sampling rate (0.0–1.0). */
+  traceSampleRate: number;
+
+  // — Metrics —
+  /** Enable metrics collection. */
+  metricsEnabled: boolean;
+
+  // — Per-signal sampling —
+  /** Probabilistic sampling rate for logs (0.0–1.0). */
+  samplingLogsRate: number;
+  /** Probabilistic sampling rate for traces (0.0–1.0). */
+  samplingTracesRate: number;
+  /** Probabilistic sampling rate for metrics (0.0–1.0). */
+  samplingMetricsRate: number;
+
+  // — Per-signal backpressure —
+  /** Max queue size for log export (0 = unbounded). */
+  backpressureLogsMaxsize: number;
+  /** Max queue size for trace export (0 = unbounded). */
+  backpressureTracesMaxsize: number;
+  /** Max queue size for metric export (0 = unbounded). */
+  backpressureMetricsMaxsize: number;
+
+  // — Per-signal exporter resilience —
+  /** Max retries for log export. */
+  exporterLogsRetries: number;
+  /** Backoff between log export retries (ms). */
+  exporterLogsBackoffMs: number;
+  /** Timeout for log export (ms). */
+  exporterLogsTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterLogsFailOpen: boolean;
+  /** Max retries for trace export. */
+  exporterTracesRetries: number;
+  /** Backoff between trace export retries (ms). */
+  exporterTracesBackoffMs: number;
+  /** Timeout for trace export (ms). */
+  exporterTracesTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterTracesFailOpen: boolean;
+  /** Max retries for metric export. */
+  exporterMetricsRetries: number;
+  /** Backoff between metric export retries (ms). */
+  exporterMetricsBackoffMs: number;
+  /** Timeout for metric export (ms). */
+  exporterMetricsTimeoutMs: number;
+  /** If true, drop telemetry on export failure instead of crashing. */
+  exporterMetricsFailOpen: boolean;
+
+  // — SLO —
+  /** Enable RED (Rate/Error/Duration) metrics. */
+  sloEnableRedMetrics: boolean;
+  /** Enable USE (Utilization/Saturation/Errors) metrics. */
+  sloEnableUseMetrics: boolean;
+
+  // — PII —
+  /** Maximum recursion depth for PII sanitization of nested objects. */
+  piiMaxDepth: number;
+
+  // — Security —
+  /** Max length for any single attribute value. */
+  securityMaxAttrValueLength: number;
+  /** Max number of attributes on a single span/log/metric point. */
+  securityMaxAttrCount: number;
 }
 
-const DEFAULTS: TelemetryConfig = {
+/**
+ * Hot-reloadable config subset. Only fields that can be changed at runtime
+ * without restarting providers. All fields are optional.
+ */
+export interface RuntimeOverrides {
+  // Sampling
+  samplingLogsRate?: number;
+  samplingTracesRate?: number;
+  samplingMetricsRate?: number;
+
+  // Backpressure
+  backpressureLogsMaxsize?: number;
+  backpressureTracesMaxsize?: number;
+  backpressureMetricsMaxsize?: number;
+
+  // Exporter resilience
+  exporterLogsRetries?: number;
+  exporterLogsBackoffMs?: number;
+  exporterLogsTimeoutMs?: number;
+  exporterLogsFailOpen?: boolean;
+  exporterTracesRetries?: number;
+  exporterTracesBackoffMs?: number;
+  exporterTracesTimeoutMs?: number;
+  exporterTracesFailOpen?: boolean;
+  exporterMetricsRetries?: number;
+  exporterMetricsBackoffMs?: number;
+  exporterMetricsTimeoutMs?: number;
+  exporterMetricsFailOpen?: boolean;
+
+  // Security
+  securityMaxAttrValueLength?: number;
+  securityMaxAttrCount?: number;
+
+  // SLO
+  sloEnableRedMetrics?: boolean;
+  sloEnableUseMetrics?: boolean;
+
+  // PII
+  piiMaxDepth?: number;
+
+  // Schema
+  strictSchema?: boolean;
+  strictEventName?: boolean;
+}
+
+export const DEFAULTS: TelemetryConfig = {
   serviceName: 'provide-service',
-  environment: 'development',
-  version: 'unknown',
+  environment: 'dev',
+  version: '0.0.0',
   logLevel: 'info',
   logFormat: 'console',
   otelEnabled: true,
   sanitizeFields: [],
   captureToWindow: true,
-  consoleOutput: false,
+  consoleOutput: true,
   strictSchema: false,
+  strictEventName: false,
   requiredLogKeys: [],
+  logIncludeTimestamp: true,
+  logIncludeCaller: true,
+  logSanitize: true,
+  logCodeAttributes: false,
+  logModuleLevels: {},
+  traceSampleRate: 1.0,
+  tracingEnabled: true,
+  metricsEnabled: true,
+  samplingLogsRate: 1.0,
+  samplingTracesRate: 1.0,
+  samplingMetricsRate: 1.0,
+  backpressureLogsMaxsize: 0,
+  backpressureTracesMaxsize: 0,
+  backpressureMetricsMaxsize: 0,
+  exporterLogsRetries: 0,
+  exporterLogsBackoffMs: 0,
+  exporterLogsTimeoutMs: 10000,
+  exporterLogsFailOpen: true,
+  exporterTracesRetries: 0,
+  exporterTracesBackoffMs: 0,
+  exporterTracesTimeoutMs: 10000,
+  exporterTracesFailOpen: true,
+  exporterMetricsRetries: 0,
+  exporterMetricsBackoffMs: 0,
+  exporterMetricsTimeoutMs: 10000,
+  exporterMetricsFailOpen: true,
+  sloEnableRedMetrics: false,
+  sloEnableUseMetrics: false,
+  piiMaxDepth: 8,
+  securityMaxAttrValueLength: 1024,
+  securityMaxAttrCount: 64,
 };
 
 let _config: TelemetryConfig = { ...DEFAULTS };
@@ -82,48 +240,9 @@ let _config: TelemetryConfig = { ...DEFAULTS };
 /** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
 let _configVersion = 0;
 
-/**
- * Build a TelemetryConfig from environment variables.
- * Uses the same env var names as the Python package.
- * Explicit values passed to setupTelemetry() override env vars.
- */
-export function configFromEnv(): TelemetryConfig {
-  const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
-  const parsedHeaders: Record<string, string> | undefined = otelHeader
-    ? Object.fromEntries(
-        otelHeader
-          .split(',')
-          .map((pair) => pair.split('=').map((s) => s.trim()) as [string, string]),
-      )
-    : undefined;
-
-  return {
-    serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
-    environment: nodeEnv('PROVIDE_TELEMETRY_ENV') ?? nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
-    version: nodeEnv('PROVIDE_TELEMETRY_VERSION') ?? nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
-    logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
-    logFormat: (() => {
-      const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
-      // Stryker disable next-line ConditionalExpression: 'json' is DEFAULTS.logFormat so removing its check returns the same default value
-      return fmt === 'json' || fmt === 'pretty' ? fmt : DEFAULTS.logFormat;
-    })(),
-    otelEnabled: nodeEnv('PROVIDE_TRACE_ENABLED') === 'true',
-    otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
-    otlpHeaders: parsedHeaders,
-    sanitizeFields: DEFAULTS.sanitizeFields,
-    captureToWindow: true,
-    consoleOutput: false,
-    strictSchema: nodeEnv('PROVIDE_TELEMETRY_STRICT_SCHEMA') === 'true',
-    requiredLogKeys: (() => {
-      const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
-      return raw
-        ? raw
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
-    })(),
-  };
+/** Return the current config version (used by logger to detect stale root). */
+export function _getConfigVersion(): number {
+  return _configVersion;
 }
 
 /** Return the active TelemetryConfig. */
@@ -209,28 +328,35 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     setSetupError(message);
-    // eslint-disable-next-line no-console
     console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
   }
 }
 
-/** Clamp rates to [0,1] and floor non-negative integers so getConfig() matches effective policy. */
-function _normalizeConfig(cfg: TelemetryConfig): void {
-  const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-  const floorNonNeg = (v: number): number => Math.max(0, Math.floor(v));
-  cfg.samplingLogsRate = clamp01(cfg.samplingLogsRate);
-  cfg.samplingTracesRate = clamp01(cfg.samplingTracesRate);
-  cfg.samplingMetricsRate = clamp01(cfg.samplingMetricsRate);
-  cfg.traceSampleRate = clamp01(cfg.traceSampleRate);
-  cfg.backpressureLogsMaxsize = floorNonNeg(cfg.backpressureLogsMaxsize);
-  cfg.backpressureTracesMaxsize = floorNonNeg(cfg.backpressureTracesMaxsize);
-  cfg.backpressureMetricsMaxsize = floorNonNeg(cfg.backpressureMetricsMaxsize);
-  cfg.exporterLogsRetries = floorNonNeg(cfg.exporterLogsRetries);
-  cfg.exporterTracesRetries = floorNonNeg(cfg.exporterTracesRetries);
-  cfg.exporterMetricsRetries = floorNonNeg(cfg.exporterMetricsRetries);
-  cfg.securityMaxAttrValueLength = floorNonNeg(cfg.securityMaxAttrValueLength);
-  cfg.securityMaxAttrCount = floorNonNeg(cfg.securityMaxAttrCount);
-  cfg.piiMaxDepth = floorNonNeg(cfg.piiMaxDepth);
+/** Validate config values — reject out-of-range instead of silently clamping (fail-fast contract). */
+function _validateConfig(cfg: TelemetryConfig): void {
+  const requireRate = (name: string, v: number): void => {
+    if (!Number.isFinite(v) || v < 0 || v > 1) {
+      throw new ConfigurationError(`${name} must be in [0, 1], got ${String(v)}`);
+    }
+  };
+  const requireNonNegInt = (name: string, v: number): void => {
+    if (!Number.isInteger(v) || v < 0) {
+      throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(v)}`);
+    }
+  };
+  requireRate('samplingLogsRate', cfg.samplingLogsRate);
+  requireRate('samplingTracesRate', cfg.samplingTracesRate);
+  requireRate('samplingMetricsRate', cfg.samplingMetricsRate);
+  requireRate('traceSampleRate', cfg.traceSampleRate);
+  requireNonNegInt('backpressureLogsMaxsize', cfg.backpressureLogsMaxsize);
+  requireNonNegInt('backpressureTracesMaxsize', cfg.backpressureTracesMaxsize);
+  requireNonNegInt('backpressureMetricsMaxsize', cfg.backpressureMetricsMaxsize);
+  requireNonNegInt('exporterLogsRetries', cfg.exporterLogsRetries);
+  requireNonNegInt('exporterTracesRetries', cfg.exporterTracesRetries);
+  requireNonNegInt('exporterMetricsRetries', cfg.exporterMetricsRetries);
+  requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
+  requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
+  requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
 }
 
 /** Reset to defaults (used in tests). */
@@ -299,6 +425,15 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
       Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
     );
   }
+  // Mask per-signal headers
+  for (const field of ['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const) {
+    const hdrs = config[field];
+    if (hdrs && Object.keys(hdrs).length > 0) {
+      result[field] = Object.fromEntries(
+        Object.entries(hdrs).map(([k, v]) => [k, maskHeaderValue(v)]),
+      );
+    }
+  }
   // Stryker disable next-line ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
   if (config.otlpEndpoint) {
     result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
@@ -312,35 +447,6 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
   return result;
 }
 
-/**
- * Parse OTLP-style header string "key=value,key2=value2" into a Record.
- * Keys and values are URL-decoded. Malformed pairs (no '=') and empty keys are skipped.
- * Values may contain '=' characters (only the first '=' splits key from value).
- */
-export function parseOtlpHeaders(raw: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  // Stryker disable next-line ConditionalExpression: early return is an optimization — empty string splits to [""], idx<1 skips the only pair, returns {} identically
-  if (!raw) return result;
-  for (const pair of raw.split(',')) {
-    const idx = pair.indexOf('=');
-    if (idx < 1) continue; // no '=' or empty key
-    const rawKey = pair.slice(0, idx).trim();
-    const rawVal = pair.slice(idx + 1).trim();
-    try {
-      const key = decodeURIComponent(rawKey);
-      /* v8 ignore next -- defensive: idx<1 and trim() already exclude observable empty keys */
-      // Stryker disable next-line ConditionalExpression: defensive guard — unreachable because idx<1 check and trim() already exclude empty keys
-      if (!key) continue;
-      const val = decodeURIComponent(rawVal);
-      result[key] = val;
-    } catch {
-      // Skip pairs with invalid URL encoding
-      continue;
-    }
-  }
-  return result;
-}
-
 /** Package version — mirrors Python __version__. */
-export const version = '0.2.0';
+export const version = '0.3.0';
 export const __version__ = version;

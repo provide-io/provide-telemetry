@@ -1,9 +1,9 @@
 {
   "name": "@provide-io/telemetry",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
   "license": "Apache-2.0",
-  "author": "MindTenet LLC",
+  "author": "provide.io llc",
   "homepage": "https://github.com/provide-io/provide-telemetry#readme",
   "repository": {
     "type": "git",
@@ -60,6 +60,10 @@
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "test:memory": "npx tsx scripts/memory-audit.ts",
+    "bench": "tsx scripts/perf-smoke.ts",
+    "test:bench": "vitest run tests/performance/ --no-coverage",
+    "stress": "tsx scripts/stress-logging.ts && tsx scripts/stress-backpressure.ts && tsx scripts/stress-metrics.ts && tsx scripts/stress-sampling.ts && tsx scripts/stress-pii.ts && tsx scripts/stress-tracing.ts",
+    "bundle-size": "tsx scripts/bundle-size.ts",
     "prepublishOnly": "npm run build && npm run test:coverage"
   },
   "dependencies": {
@@ -67,6 +71,8 @@
     "pino": "^10.3.1"
   },
   "peerDependencies": {
+    "@opentelemetry/api-logs": "^0.214.0",
+    "@opentelemetry/context-async-hooks": "^2.6.1",
     "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.214.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
@@ -77,6 +83,12 @@
     "react": ">=18"
   },
   "peerDependenciesMeta": {
+    "@opentelemetry/api-logs": {
+      "optional": true
+    },
+    "@opentelemetry/context-async-hooks": {
+      "optional": true
+    },
     "@opentelemetry/exporter-logs-otlp-http": {
       "optional": true
     },

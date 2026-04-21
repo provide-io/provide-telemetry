@@ -6,13 +6,47 @@ package telemetry
 import (
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/provide-io/provide-telemetry/go/internal/schemacore"
 )
 
-// _strictSchema controls whether EventName enforces validation.
+// _strictSchema controls whether Event enforces segment format validation.
 // Set to true by SetupTelemetry when StrictSchema is enabled.
-var _strictSchema bool //nolint:unused
+// Protected by _strictSchemaMu for concurrent access via SetStrictSchema/GetStrictSchema.
+var (
+	_strictSchema   bool
+	_strictSchemaMu sync.RWMutex
+)
+
+// SetStrictSchema enables or disables strict segment-format validation for Event and EventName.
+//
+// When enabled, every segment must match ^[a-z][a-z0-9_]*$. When disabled (the default),
+// segment format is not validated. Segment count validation (3–4 for Event, 3–5 for EventName)
+// is always enforced regardless of this flag.
+//
+// This function is safe for concurrent use and can be called at any time — before or after
+// SetupTelemetry. SetupTelemetry will overwrite this flag with the config value on startup.
+func SetStrictSchema(enabled bool) {
+	_strictSchemaMu.Lock()
+	_strictSchema = enabled
+	_strictSchemaMu.Unlock()
+}
+
+// GetStrictSchema returns the current strict-schema flag value.
+// Safe for concurrent use.
+func GetStrictSchema() bool {
+	_strictSchemaMu.RLock()
+	defer _strictSchemaMu.RUnlock()
+	return _strictSchema
+}
+
+// _readStrictSchema reads _strictSchema under a read lock for use by Event/EventName.
+func _readStrictSchema() bool {
+	_strictSchemaMu.RLock()
+	defer _strictSchemaMu.RUnlock()
+	return _strictSchema
+}
 
 // EventRecord holds the structured DA(R)S fields for an event.
 // The Event field is the dot-joined name (e.g. "auth.login.success").
@@ -53,7 +87,7 @@ func (e EventRecord) Attrs() []any {
 //
 // Returns an *EventSchemaError if validation fails.
 func Event(segments ...string) (EventRecord, error) {
-	if err := schemacore.ValidateEventCall(_strictSchema, segments); err != nil {
+	if err := schemacore.ValidateEventCall(_readStrictSchema(), segments); err != nil {
 		return EventRecord{}, NewEventSchemaError(err.Error())
 	}
 	name := schemacore.JoinSegments(segments)
@@ -78,7 +112,7 @@ func Event(segments ...string) (EventRecord, error) {
 // EventName validates and returns a dotted event name from segments.
 // Accepts 3–5 segments. Format validation is only applied when _strictSchema is true.
 func EventName(segments ...string) (string, error) {
-	if err := schemacore.ValidateEventSegments(_strictSchema, segments); err != nil {
+	if err := schemacore.ValidateEventSegments(_readStrictSchema(), segments); err != nil {
 		return "", NewEventSchemaError(err.Error())
 	}
 	return strings.Join(segments, "."), nil
@@ -89,7 +123,7 @@ func EventName(segments ...string) (string, error) {
 // Segment count is always enforced; format validation only applies when _strictSchema is true.
 func ValidateEventName(name string) error {
 	segments := strings.Split(name, ".")
-	if err := schemacore.ValidateEventSegments(_strictSchema, segments); err != nil {
+	if err := schemacore.ValidateEventSegments(_readStrictSchema(), segments); err != nil {
 		return NewEventSchemaError(err.Error())
 	}
 	return nil

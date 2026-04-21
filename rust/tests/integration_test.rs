@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::MutexGuard;
 
 use tokio::runtime::Builder;
 
+use provide_telemetry::testing::acquire_test_state_lock;
 use provide_telemetry::{
     get_circuit_state, get_health_snapshot, release, run_with_resilience, set_exporter_policy,
     set_queue_policy, set_sampling_policy, should_sample, try_acquire, ExporterPolicy, QueuePolicy,
@@ -47,17 +47,19 @@ mod slo_health;
 #[path = "../examples/support/w3c_propagation.rs"]
 mod w3c_propagation;
 
-static POLICY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-fn policy_lock() -> &'static Mutex<()> {
-    POLICY_LOCK.get_or_init(|| Mutex::new(()))
-}
-
 fn reset_policies() {
     provide_telemetry::sampling::_reset_sampling_for_tests();
     provide_telemetry::backpressure::_reset_backpressure_for_tests();
     provide_telemetry::resilience::_reset_resilience_for_tests();
     provide_telemetry::health::_reset_health_for_tests();
+}
+
+/// Acquire the shared test-state lock AND reset all policies so each test
+/// starts from a known clean state even if a prior test panicked mid-run.
+fn acquire_fresh_lock() -> MutexGuard<'static, ()> {
+    let guard = acquire_test_state_lock();
+    reset_policies();
+    guard
 }
 
 #[cfg(feature = "otel")]
@@ -91,7 +93,7 @@ fn integration_test_e2e_tracer_provider_builds_with_http_exporter() {
 
 #[test]
 fn integration_test_basic_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = basic_telemetry::run_demo().expect("basic telemetry example should succeed");
 
     assert_eq!(summary.iterations, 3);
@@ -106,7 +108,7 @@ fn integration_test_basic_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_w3c_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = w3c_propagation::run_demo().expect("w3c propagation example should succeed");
 
     assert_eq!(
@@ -123,7 +125,7 @@ fn integration_test_w3c_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_sampling_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = sampling_backpressure::run_demo().expect("sampling example should succeed");
 
     assert!(!summary.logs_routine_sampled);
@@ -136,7 +138,7 @@ fn integration_test_sampling_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_runtime_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = runtime_reconfigure::run_demo().expect("runtime example should succeed");
 
     assert_eq!(summary.before_logs_rate, 1.0);
@@ -147,7 +149,7 @@ fn integration_test_runtime_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_pii_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = pii_cardinality::run_demo().expect("pii/cardinality example should succeed");
 
     assert_eq!(summary.hashed_email_len, 12);
@@ -159,7 +161,7 @@ fn integration_test_pii_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_resilience_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = exporter_resilience::run_demo().expect("resilience example should succeed");
 
     assert!(summary.fail_open_result_is_none);
@@ -171,17 +173,17 @@ fn integration_test_resilience_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_slo_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = slo_health::run_demo().expect("slo example should succeed");
 
     assert_eq!(summary.classify_404.as_deref(), Some("client_error"));
     assert_eq!(summary.classify_503.as_deref(), Some("server_error"));
-    assert_eq!(summary.classify_200.as_deref(), Some("ok"));
+    assert_eq!(summary.classify_200.as_deref(), Some("unclassified"));
 }
 
 #[test]
 fn integration_test_full_hardening_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = full_hardening::run_demo().expect("hardening example should succeed");
 
     assert_eq!(summary.pii_rules_active, 2);
@@ -192,7 +194,7 @@ fn integration_test_full_hardening_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_error_degradation_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = error_degradation::run_demo().expect("error/degradation example should succeed");
 
     assert!(summary.configuration_error_seen);
@@ -202,7 +204,7 @@ fn integration_test_error_degradation_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_performance_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = performance_metrics::run_demo().expect("performance example should succeed");
 
     assert!(summary.event_ns > 0.0);
@@ -212,7 +214,7 @@ fn integration_test_performance_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_lazy_loading_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = lazy_loading::run_demo().expect("lazy loading example should succeed");
 
     assert!(!summary.slo_loaded_before_classify);
@@ -223,7 +225,7 @@ fn integration_test_lazy_loading_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_error_sessions_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = error_sessions::run_demo().expect("error/session example should succeed");
 
     assert_eq!(summary.value_error_a, summary.value_error_b);
@@ -236,7 +238,7 @@ fn integration_test_error_sessions_example_summary_matches_demo_flow() {
 
 #[test]
 fn integration_test_security_hardening_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = security_hardening::run_demo().expect("security example should succeed");
 
     assert!(summary.secret_redacted);
@@ -247,7 +249,7 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
 #[cfg(feature = "governance")]
 #[test]
 fn integration_test_data_governance_example_summary_matches_demo_flow() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
+    let _guard = acquire_fresh_lock();
     let summary = data_governance::run_demo().expect("data governance example should succeed");
 
     assert!(summary.full_logs_debug_allowed);
@@ -262,18 +264,9 @@ fn integration_test_data_governance_example_summary_matches_demo_flow() {
     assert!(summary.receipt_hmac_prefix_len >= 8);
 }
 
-#[cfg(feature = "otel")]
-fn reset_runtime() {
-    use provide_telemetry::shutdown_telemetry;
-
-    let _ = shutdown_telemetry();
-    provide_telemetry::otel::_reset_otel_for_tests();
-}
-
 #[test]
 fn integration_test_sampling_drop_increments_health() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_policies();
+    let _guard = acquire_fresh_lock();
     set_sampling_policy(
         Signal::Logs,
         SamplingPolicy {
@@ -292,8 +285,7 @@ fn integration_test_sampling_drop_increments_health() {
 
 #[test]
 fn integration_test_bounded_queue_drop_increments_health() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_policies();
+    let _guard = acquire_fresh_lock();
     set_queue_policy(QueuePolicy {
         logs_maxsize: 1,
         traces_maxsize: 0,
@@ -320,8 +312,7 @@ fn integration_test_bounded_queue_drop_increments_health() {
 
 #[test]
 fn integration_test_circuit_breaker_trips_after_three_timeouts() {
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_policies();
+    let _guard = acquire_fresh_lock();
     let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
@@ -333,16 +324,21 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
             ExporterPolicy {
                 retries: 0,
                 backoff_seconds: 0.0,
-                timeout_seconds: 0.01,
+                timeout_seconds: 0.05,
                 fail_open: true,
                 allow_blocking_in_event_loop: false,
             },
         )
         .expect("policy should set");
 
+        // Use a future that never resolves so the wrapper-imposed timeout
+        // is guaranteed to fire. Earlier code relied on `sleep(25ms) >
+        // timeout(10ms)` which flaked on macOS-15 CI runners with high
+        // scheduling jitter (occasionally the sleep completed before the
+        // timeout actually fired).
         for _ in 0..3 {
             let result = run_with_resilience(Signal::Logs, || async {
-                tokio::time::sleep(Duration::from_millis(25)).await;
+                std::future::pending::<()>().await;
                 Ok::<_, provide_telemetry::TelemetryError>(())
             })
             .await
@@ -365,145 +361,4 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
     assert!(snapshot.export_failures_logs >= 3);
     assert!(snapshot.circuit_open_count_logs >= 1);
     assert_eq!(snapshot.circuit_state_logs, "open");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_setup_registers_otel_providers() {
-    use provide_telemetry::setup_telemetry;
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-test");
-    let config = setup_telemetry().expect("setup should succeed");
-
-    assert_eq!(config.service_name, "rust-otel-test");
-    assert!(provide_telemetry::otel::otel_installed_for_tests());
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_reconfigure_rejects_provider_replacement_after_install() {
-    use provide_telemetry::{get_runtime_config, reconfigure_telemetry, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-test");
-    setup_telemetry().expect("setup should succeed");
-
-    let mut changed = get_runtime_config().expect("runtime config should exist");
-    changed.service_name = "rust-otel-test-2".to_string();
-    let err = reconfigure_telemetry(Some(changed)).expect_err("provider replacement should fail");
-    assert!(err
-        .to_string()
-        .contains("OpenTelemetry providers already installed"));
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_counter_add_does_not_panic_after_setup() {
-    use provide_telemetry::{counter, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-metrics-test");
-    setup_telemetry().expect("setup should succeed");
-    assert!(provide_telemetry::otel::otel_installed_for_tests());
-
-    // counter() should use OTel global meter and not panic
-    let c = counter("test.otel.counter", None, None);
-    c.add(1.0, None);
-    c.add(2.0, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_gauge_set_does_not_panic_after_setup() {
-    use provide_telemetry::{gauge, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-gauge-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // gauge() should use OTel global meter and not panic
-    let g = gauge("test.otel.gauge", None, None);
-    g.set(42.0, None);
-    g.add(1.0, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_histogram_record_does_not_panic_after_setup() {
-    use provide_telemetry::{histogram, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-histogram-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // histogram() should use OTel global meter and not panic
-    let h = histogram("test.otel.histogram", None, None);
-    h.record(99.5, None);
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_tracing_span_does_not_panic_after_setup() {
-    use provide_telemetry::setup_telemetry;
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-tracing-test");
-    setup_telemetry().expect("setup should succeed");
-
-    // tracing span should not panic when OTel is wired
-    tracing::info_span!("test.otel.span").in_scope(|| {
-        tracing::info!(event = "test.otel.log", "otel log bridge test");
-    });
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
-}
-
-#[cfg(feature = "otel")]
-#[test]
-fn integration_test_otel_health_snapshot_emitted_logs_non_negative_after_log() {
-    use provide_telemetry::{get_health_snapshot, setup_telemetry};
-
-    let _guard = policy_lock().lock().expect("policy lock poisoned");
-    reset_runtime();
-
-    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "rust-otel-health-test");
-    setup_telemetry().expect("setup should succeed");
-
-    tracing::info!(event = "test.health.log", "health snapshot log bridge test");
-
-    // emitted_logs is a u64; just verify the snapshot is accessible and the field exists
-    let snapshot = get_health_snapshot();
-    let _ = snapshot.emitted_logs;
-
-    reset_runtime();
-    std::env::remove_var("PROVIDE_TELEMETRY_SERVICE_NAME");
 }

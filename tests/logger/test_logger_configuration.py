@@ -56,7 +56,7 @@ def test_configure_logging_tracks_active_config_and_level_arguments(monkeypatch:
     assert core_mod._configured is True
 
 
-def test_configure_logging_console_renderer_uses_colors_false(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_configure_logging_console_renderer_respects_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_logging_for_tests()
     captured: list[bool | None] = []
 

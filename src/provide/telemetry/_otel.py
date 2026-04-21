@@ -7,9 +7,22 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "attach_w3c_context",
+    "detach_w3c_context",
+    "has_otel",
+    "load_otel_logs_components",
+    "load_otel_metrics_api",
+    "load_otel_metrics_components",
+    "load_otel_trace_api",
+    "load_otel_tracing_components",
+]
+
 import importlib
 import logging
 from typing import Any, Protocol, cast
+
+_logger = logging.getLogger(__name__)
 
 
 class InstrumentationLoggingHandlerFactory(Protocol):

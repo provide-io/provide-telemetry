@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
@@ -50,6 +51,25 @@ class TestParseModuleLevels:
     def test_mixed_valid_and_invalid_pairs(self) -> None:
         result = _parse_module_levels("asyncio=WARNING,bad_pair,provide=DEBUG")
         assert result == {"asyncio": "WARNING", "provide": "DEBUG"}
+
+    def test_extra_equals_in_value_raises_config_error_not_value_error(self) -> None:
+        """Kills: split('=', 1) maxsplit removal AND rsplit mutation.
+
+        Input 'module=name=DEBUG' (last segment is a valid level name):
+        - Correct split('=', 1): ('module', 'name=DEBUG') → _normalize_level('name=DEBUG') → ConfigurationError.
+        - rsplit('=', 1) mutant: ('module=name', 'DEBUG') → no error, returns {'module=name': 'DEBUG'}.
+        - split('=') mutant (no maxsplit): ['module', 'name', 'DEBUG'] → ValueError (too many to unpack).
+        Only the correct code raises ConfigurationError.
+        """
+        with pytest.raises(ConfigurationError):
+            _parse_module_levels("module=name=DEBUG")
+
+    def test_module_is_key_not_value(self) -> None:
+        """Kills: module/level_str unpacking swap — module must be the key, level the value."""
+        result = _parse_module_levels("asyncio=DEBUG")
+        assert "asyncio" in result
+        assert result["asyncio"] == "DEBUG"
+        assert "DEBUG" not in result
 
 
 # ── _LevelFilter / make_level_filter ─────────────────────────────────────────

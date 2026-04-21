@@ -273,8 +273,8 @@ class TestLockedProviderAccessors:
 
 
 class TestReconfigureGuardAfterShutdown:
-    def test_reconfigure_raises_when_tracing_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """reconfigure_telemetry() must raise even after shutdown when _otel_global_set is True."""
+    def test_reconfigure_restarts_when_only_tracing_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """reconfigure_telemetry() should restart when only a stale tracing global remains."""
         from provide.telemetry import runtime as runtime_mod
         from provide.telemetry.logger import core as logger_core
         from provide.telemetry.metrics import provider as metrics_provider
@@ -296,8 +296,8 @@ class TestReconfigureGuardAfterShutdown:
         result = runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="svc-b"))
         assert result.service_name == "svc-b"
 
-    def test_reconfigure_raises_when_metrics_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """reconfigure_telemetry() must raise even after metrics shutdown when _meter_global_set is True."""
+    def test_reconfigure_restarts_when_only_metrics_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """reconfigure_telemetry() should restart when only a stale metrics global remains."""
         from provide.telemetry import runtime as runtime_mod
         from provide.telemetry.logger import core as logger_core
         from provide.telemetry.metrics import provider as metrics_provider
@@ -318,8 +318,8 @@ class TestReconfigureGuardAfterShutdown:
         result = runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="svc-b"))
         assert result.service_name == "svc-b"
 
-    def test_reconfigure_raises_when_log_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """reconfigure_telemetry() must raise even after logging shutdown when _otel_log_global_set is True."""
+    def test_reconfigure_restarts_when_only_log_global_was_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """reconfigure_telemetry() should restart when only a stale log global remains."""
         from provide.telemetry import runtime as runtime_mod
         from provide.telemetry.logger import core as logger_core
         from provide.telemetry.metrics import provider as metrics_provider
@@ -346,7 +346,7 @@ class TestReconfigureGuardAfterShutdown:
 
 class TestReconfigureUsesLockedAccessors:
     def test_reconfigure_calls_locked_accessors(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Kills mutant that reads _otel_log_provider directly instead of _has_otel_log_provider."""
+        """Kills mutant that bypasses the locked live-provider accessors."""
         from provide.telemetry import runtime as runtime_mod
         from provide.telemetry.logger import core as logger_core
         from provide.telemetry.metrics import provider as metrics_provider
@@ -369,11 +369,11 @@ class TestReconfigureUsesLockedAccessors:
             called["meter"] = True
             return False
 
-        monkeypatch.setattr(logger_core, "_has_otel_log_provider", _fake_log_check)
-        monkeypatch.setattr(tracing_provider, "_has_tracing_provider", _fake_trace_check)
-        monkeypatch.setattr(metrics_provider, "_has_meter_provider", _fake_meter_check)
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", _fake_log_check)
+        monkeypatch.setattr(tracing_provider, "_has_live_tracing_provider", _fake_trace_check)
+        monkeypatch.setattr(metrics_provider, "_has_live_meter_provider", _fake_meter_check)
         monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", lambda: None)
-        monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", lambda cfg: TelemetryConfig())
+        monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", lambda cfg: cfg)
 
         runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="renamed"))
         assert called.get("log") is True

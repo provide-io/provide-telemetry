@@ -7,10 +7,12 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from provide.telemetry.backpressure import _try_acquire_unchecked, release
 from provide.telemetry.cardinality import guard_attributes
+from provide.telemetry.health import increment_emitted
 from provide.telemetry.sampling import _should_sample_unchecked
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
@@ -47,7 +49,9 @@ class Counter:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -77,6 +81,7 @@ class Counter:
         try:
             with self._lock:
                 self.value += amount
+            increment_emitted("metrics")
             otel_counter = self._resolve_otel()
             if otel_counter is not None:
                 attrs = guard_attributes(attributes or {})
@@ -111,7 +116,9 @@ class Gauge:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -143,10 +150,9 @@ class Gauge:
             attrs = guard_attributes(attributes or {})
             with self._lock:
                 self.value += amount
-            otel_gauge = self._resolve_otel()
-            if otel_gauge is not None:
-                attrs = guard_attributes(attributes or {})
-                otel_gauge.add(amount, attrs)
+                if otel_gauge is not None:
+                    otel_gauge.add(amount, attrs)
+            increment_emitted("metrics")
         finally:
             release(ticket)
 
@@ -180,6 +186,7 @@ class Gauge:
                 self.value += delta
                 if otel_gauge is not None:
                     otel_gauge.add(delta, attrs)
+            increment_emitted("metrics")
         finally:
             release(ticket)
 
@@ -202,7 +209,9 @@ class Histogram:
 
         meter = get_meter()
         if meter is None:
-            self._resolved = True  # pragma: no mutate — caching optimization
+            # Leave _resolved False so a later call retries after setup_telemetry()
+            # installs a real provider.  Otherwise instruments used pre-setup get
+            # permanently stuck on the fallback path.
             return None
         with _RESOLVE_LOCK:
             if self._resolved:
@@ -237,6 +246,7 @@ class Histogram:
                     self.min = value
                 if value > self.max:  # pragma: no mutate
                     self.max = value
+            increment_emitted("metrics")
             otel_histogram = self._resolve_otel()
             if otel_histogram is not None:
                 attrs = guard_attributes(attributes or {})

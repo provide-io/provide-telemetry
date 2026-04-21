@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -20,6 +21,7 @@
 import {
   bindPropagationContext,
   clearPropagationContext,
+  event,
   extractW3cContext,
   getActivePropagationContext,
   getLogger,
@@ -46,10 +48,10 @@ function runHttpRequest(): void {
 
   const log = getLogger('examples.w3c');
   const active = getActivePropagationContext();
-  log.info({ event: 'example.w3c.received', traceId: active.traceId });
+  log.info({ ...event('example', 'w3c', 'received'), traceId: active.traceId });
 
   const traceCtx = getTraceContext();
-  log.info({ event: 'example.w3c.trace', traceCtx });
+  log.info({ ...event('example', 'w3c', 'trace'), traceCtx });
 
   clearPropagationContext();
   console.log('  ✅ Response dispatched, context cleared');

@@ -8,6 +8,10 @@ from provide.telemetry import setup_telemetry, get_logger, trace
 
 Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
 
+This document is the shared semantic contract for Python, TypeScript, Go, and
+Rust. Names and signatures vary by language, but the behavioral guarantees
+described here are the parity target.
+
 ## Setup and Lifecycle
 
 ### `setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
@@ -36,14 +40,14 @@ process.
 
 ## Runtime Configuration
 
-### `update_runtime_config(config: TelemetryConfig) -> TelemetryConfig`
+### `update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig`
 
 Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded from `RuntimeOverrides`. Returns the applied runtime snapshot.
 Safe logging pipeline settings are rebuilt in-process; provider-changing OTLP log settings are rejected once a global OTel log provider is installed.
 
 ### `reload_runtime_from_env() -> TelemetryConfig`
 
-Reload config from environment variables, apply it, and return the active snapshot.
+Reload config from environment variables, apply only hot-reloadable fields, warn on cold-field drift, and return the active snapshot.
 
 ### `get_runtime_config() -> TelemetryConfig`
 
@@ -51,6 +55,11 @@ Return a defensive copy of the effective runtime config. If explicit setup or
 runtime reconfiguration has already run, this is the active in-process
 snapshot. Otherwise it is the environment-derived config that lazy-init would
 use.
+
+> **Per-language behavior before setup:** Python and TypeScript return a config
+> snapshot derived from environment variables even before `setup_telemetry()` is
+> called. Go returns `nil` and Rust returns `None` until explicit setup — callers
+> must check for nil/None before accessing config fields.
 
 ### `get_runtime_status() -> RuntimeStatus`
 
@@ -172,7 +181,9 @@ Error events automatically receive an `error_fingerprint` field — a 12-charact
 
 ### `event(*segments: str) -> Event`
 
-Build a dot-separated event name from segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), validates 3-5 lowercase segments; in non-strict mode (the default), accepts 1+ segments with no format validation.
+Build a structured event from 3 or 4 segments following the DA(R)S pattern (Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that behaves as a dot-joined string and exposes typed fields.
+
+Requires exactly 3 or 4 segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase, alphanumeric + hyphens); in non-strict mode (the default), only the segment count is checked.
 
 ```python
 # 3-segment DAS (domain.action.status)

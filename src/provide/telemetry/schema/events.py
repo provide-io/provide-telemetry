@@ -18,7 +18,6 @@ __all__ = [
 
 import re
 import types
-from typing import cast
 
 from provide.telemetry.exceptions import TelemetryError
 
@@ -41,10 +40,10 @@ def _get_strict_check() -> bool:
         from provide.telemetry import runtime
 
         _runtime_mod = runtime  # pragma: no mutate
-    return cast(bool, _runtime_mod._is_strict_event_name())
+    return bool(_runtime_mod._is_strict_event_name())
 
 
-class EventSchemaError(ValueError):
+class EventSchemaError(TelemetryError, ValueError):
     """Raised when an event violates schema policy."""
 
 

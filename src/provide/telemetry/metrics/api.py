@@ -12,6 +12,10 @@ import logging
 from provide.telemetry.metrics.fallback import Counter, Gauge, Histogram
 from provide.telemetry.metrics.provider import get_meter
 
+__all__ = ["counter", "gauge", "histogram"]
+
+_logger = logging.getLogger(__name__)
+
 
 def counter(name: str, description: str | None = None, unit: str | None = None) -> Counter:
     desc = "" if description is None else description

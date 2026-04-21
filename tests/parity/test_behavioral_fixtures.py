@@ -12,6 +12,7 @@ Go and TypeScript have equivalent test suites validating the same fixtures.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -322,9 +323,9 @@ def test_parity_classify_error_429() -> None:
 
 
 def test_parity_classify_error_0_timeout() -> None:
-    # status_code=0 is no longer a timeout trigger; use timeout HTTP code instead.
-    result = classify_error("ConnectionError", status_code=408)
-    assert result["error.category"] == "timeout"
+    # status_code=0 with no timeout in name is now "unclassified" (Fix 2)
+    result = classify_error("ConnectionError", status_code=0)
+    assert result["error.category"] == "unclassified"
 
 
 # ── PII Default Sensitive Keys (canonical 17) ────────────────────────────────
@@ -383,117 +384,66 @@ def test_parity_error_fingerprint_no_frames() -> None:
     assert len(fp) == 12
 
 
-# ── Cardinality Clamping ────────────────────────────────────────────────────
+# Cardinality clamping and schema strict mode tests moved to
+# test_behavioral_fixtures_ext.py to stay within the 500-line file size limit.
 
 
-def test_parity_cardinality_zero_max_values_clamped() -> None:
-    from provide.telemetry.cardinality import (
-        clear_cardinality_limits,
-        register_cardinality_limit,
+# ── YAML Coverage Meta-Test ──────────────────────────────────────────────────
+
+# Categories tested only via the output-probe suite (not unit tests in this file).
+_PROBE_ONLY_CATEGORIES: frozenset[str] = frozenset({"log_output_format"})
+
+# Categories that are structural spec snapshots, not behavioral invariants —
+# no unit test function is expected in this file.
+_STRUCTURAL_CATEGORIES: frozenset[str] = frozenset({"health_snapshot"})
+
+_ALLOWLISTED_CATEGORIES: frozenset[str] = _PROBE_ONLY_CATEGORIES | _STRUCTURAL_CATEGORIES
+
+
+def _find_repo_root_from(start: Path) -> Path:
+    """Walk up from start until we find the repo root (marked by a VERSION file)."""
+    for parent in start.resolve().parents:
+        if (parent / "VERSION").exists():
+            return parent
+    raise FileNotFoundError(f"Could not locate repo root from {start}")  # pragma: no cover
+
+
+def test_parity_fixture_yaml_coverage() -> None:
+    """Every top-level category in behavioral_fixtures.yaml must have ≥1 test_parity_{category}* test."""
+    import importlib
+    import sys
+
+    import yaml as _yaml
+
+    # Anchor to the real repo root via VERSION so this test survives mutmut's
+    # test-file relocation into mutants/ (where __file__ resolves to mutants/tests/…).
+    repo_root = _find_repo_root_from(Path(__file__))
+    fixtures_path = repo_root / "spec" / "behavioral_fixtures.yaml"
+    all_categories: list[str] = list(_yaml.safe_load(fixtures_path.read_text()).keys())
+
+    # Collect test_parity_* names from all Python modules inside tests/parity/.
+    parity_dir = repo_root / "tests" / "parity"
+    module_fns: set[str] = set()
+    for py_file in sorted(parity_dir.glob("test_*.py")):
+        mod_name = f"tests.parity.{py_file.stem}"
+        if mod_name in sys.modules:
+            module_fns.update(name for name in sys.modules[mod_name].__dict__ if name.startswith("test_parity_"))
+        else:
+            spec = importlib.util.spec_from_file_location(mod_name, py_file)
+            if spec is None or spec.loader is None:  # pragma: no cover
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            module_fns.update(name for name in mod.__dict__ if name.startswith("test_parity_"))
+
+    missing = []
+    for cat in all_categories:
+        if cat in _ALLOWLISTED_CATEGORIES:
+            continue
+        prefix = f"test_parity_{cat}"
+        if not any(fn.startswith(prefix) for fn in module_fns):
+            missing.append(cat)
+    assert not missing, (
+        f"behavioral_fixtures.yaml has categories with no parity tests: {missing}\n"
+        "Add test_parity_<category>* test(s) for each, or add to _ALLOWLISTED_CATEGORIES."
     )
-
-    clear_cardinality_limits()
-    register_cardinality_limit("k", max_values=0, ttl_seconds=10.0)
-    # Internal state check: 0 should be clamped to 1
-    from provide.telemetry.cardinality import _limits
-
-    assert _limits["k"].max_values == 1
-    assert _limits["k"].ttl_seconds == 10.0
-    clear_cardinality_limits()
-
-
-def test_parity_cardinality_negative_max_values_clamped() -> None:
-    from provide.telemetry.cardinality import (
-        clear_cardinality_limits,
-        register_cardinality_limit,
-    )
-
-    clear_cardinality_limits()
-    register_cardinality_limit("k", max_values=-5, ttl_seconds=10.0)
-    from provide.telemetry.cardinality import _limits
-
-    assert _limits["k"].max_values == 1
-    clear_cardinality_limits()
-
-
-def test_parity_cardinality_zero_ttl_clamped() -> None:
-    from provide.telemetry.cardinality import (
-        clear_cardinality_limits,
-        register_cardinality_limit,
-    )
-
-    clear_cardinality_limits()
-    register_cardinality_limit("k", max_values=10, ttl_seconds=0.0)
-    from provide.telemetry.cardinality import _limits
-
-    assert _limits["k"].ttl_seconds == 1.0
-    clear_cardinality_limits()
-
-
-def test_parity_cardinality_valid_values_unchanged() -> None:
-    from provide.telemetry.cardinality import (
-        clear_cardinality_limits,
-        register_cardinality_limit,
-    )
-
-    clear_cardinality_limits()
-    register_cardinality_limit("k", max_values=50, ttl_seconds=300.0)
-    from provide.telemetry.cardinality import _limits
-
-    assert _limits["k"].max_values == 50
-    assert _limits["k"].ttl_seconds == 300.0
-    clear_cardinality_limits()
-
-
-# ── Schema Strict Mode ──────────────────────────────────────────────────────
-
-
-def test_parity_event_name_lenient_accepts_uppercase(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry.schema import events as _events_mod
-
-    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: False)
-    result = _events_mod.event_name("A", "B", "C")
-    assert result == "A.B.C"
-
-
-def test_parity_event_name_lenient_accepts_mixed_case(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry.schema import events as _events_mod
-
-    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: False)
-    result = _events_mod.event_name("User", "Login", "Ok")
-    assert result == "User.Login.Ok"
-
-
-def test_parity_event_name_strict_rejects_uppercase(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry.schema import events as _events_mod
-
-    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: True)
-    with pytest.raises(_events_mod.EventSchemaError):
-        _events_mod.event_name("User", "login", "ok")
-
-
-def test_parity_event_name_strict_accepts_valid(monkeypatch: pytest.MonkeyPatch) -> None:
-    from provide.telemetry.schema import events as _events_mod
-
-    monkeypatch.setattr("provide.telemetry.runtime._is_strict_event_name", lambda: True)
-    result = _events_mod.event_name("user", "login", "ok")
-    assert result == "user.login.ok"
-
-
-def test_parity_required_keys_missing_key_error() -> None:
-    from provide.telemetry.schema.events import EventSchemaError, validate_required_keys
-
-    with pytest.raises(EventSchemaError):
-        validate_required_keys({"domain": "auth"}, ("domain", "action"))
-
-
-def test_parity_required_keys_all_present_ok() -> None:
-    from provide.telemetry.schema.events import validate_required_keys
-
-    validate_required_keys({"domain": "auth", "action": "login"}, ("domain", "action"))
-
-
-def test_parity_required_keys_empty_required_ok() -> None:
-    from provide.telemetry.schema.events import validate_required_keys
-
-    validate_required_keys({"domain": "auth"}, ())

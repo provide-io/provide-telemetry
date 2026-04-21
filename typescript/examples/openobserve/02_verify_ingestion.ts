@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 MindTenet LLC
+#!/usr/bin/env npx tsx
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of Provide Telemetry.
 
@@ -11,7 +12,7 @@
  * Required env vars:
  *   OPENOBSERVE_URL      e.g. http://localhost:5080/api/default
  *   OPENOBSERVE_USER     e.g. admin@provide.test
- *   OPENOBSERVE_PASSWORD e.g. password
+ *   OPENOBSERVE_PASSWORD e.g. Complexpass#123
  *
  * Optional:
  *   OPENOBSERVE_REQUIRED_SIGNALS  comma-separated: logs,metrics,traces (default: logs)
@@ -73,21 +74,21 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
   });
 }
 
-async function searchTotal(
-  baseUrl: string, streamType: string, auth: string, sql: string,
+async function searchHits(
+  baseUrl: string, streamType: string, auth: string,
   startUs: number, endUs: number,
-): Promise<number> {
+): Promise<Record<string, unknown>[]> {
+  const sql = 'select * from "default" order by _timestamp desc limit 500';
   try {
     const res = await requestJson(
       `${baseUrl}/_search?type=${streamType}`, auth, 'POST',
       { query: { sql, start_time: startUs, end_time: endUs } },
     ) as Record<string, unknown>;
-    const total = res['total'];
-    if (typeof total === 'number') return total;
-    if (typeof total === 'string') return parseInt(total, 10);
-    return 0;
+    const hits = res['hits'];
+    if (!Array.isArray(hits)) return [];
+    return hits.filter((h): h is Record<string, unknown> => typeof h === 'object' && h !== null);
   } catch (err) {
-    if (String(err).includes('Search stream not found')) return 0;
+    if (String(err).includes('Search stream not found')) return [];
     throw err;
   }
 }
@@ -129,16 +130,8 @@ async function main(): Promise<void> {
 
   // ── Baseline before emit ──────────────────────────────────────────────────
   const endUsBefore = Date.now() * 1000;
-  const beforeLogs = await searchTotal(
-    baseUrl, 'logs', auth,
-    `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`,
-    startUs, endUsBefore,
-  );
-  const beforeTraces = await searchTotal(
-    baseUrl, 'traces', auth,
-    `select count(*) from "default" where operation_name = '${traceName}'`,
-    startUs, endUsBefore,
-  );
+  const beforeLogHits = await searchHits(baseUrl, 'logs', auth, startUs, endUsBefore);
+  const beforeTraceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUsBefore);
   const beforeMetricStreams = await streamNames(baseUrl, 'metrics', auth);
   const beforeLogs = beforeLogHits.filter(
     (h) => (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
@@ -158,10 +151,8 @@ async function main(): Promise<void> {
   let after = { ...before };
   while (Date.now() < deadline) {
     const endUs = Date.now() * 1000;
-    const logs = await searchTotal(baseUrl, 'logs', auth,
-      `select count(*) from "default" where event = '${logEvent}' and run_id = '${runId}'`, startUs, endUs);
-    const traces = await searchTotal(baseUrl, 'traces', auth,
-      `select count(*) from "default" where operation_name = '${traceName}'`, startUs, endUs);
+    const logHits = await searchHits(baseUrl, 'logs', auth, startUs, endUs);
+    const traceHits = await searchHits(baseUrl, 'traces', auth, startUs, endUs);
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
     after = {
       logs: logHits.filter(

@@ -4,8 +4,21 @@
 //
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::backpressure::{release, try_acquire};
+#[cfg(feature = "governance")]
+use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
+use crate::health::increment_emitted;
+use crate::sampling::{should_sample, Signal};
+
+// When the governance feature is disabled, consent is unconditionally granted.
+#[cfg(not(feature = "governance"))]
+#[inline(always)]
+fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
+    true
+}
 
 pub struct NoopSpan {
     trace_id: String,
@@ -56,7 +69,11 @@ fn next_hex(len: usize) -> String {
 }
 
 pub fn get_tracer(name: Option<&str>) -> Tracer {
-    crate::tracer::get_tracer(name)
+    Tracer::new(name)
+}
+
+pub fn set_trace_context(trace_id: Option<String>, span_id: Option<String>) -> ContextGuard {
+    set_trace_context_internal(trace_id, span_id)
 }
 
 pub fn get_trace_context() -> BTreeMap<String, Option<String>> {
@@ -87,7 +104,7 @@ where
     // populates the trace_id / span_id contextvars from synthetic ids).
     #[cfg(feature = "otel")]
     {
-        if crate::otel::otel_installed() {
+        if crate::otel::traces::tracer_provider_installed() {
             let _otel_span = crate::otel::traces::start_span(name);
             increment_emitted(Signal::Traces, 1);
             let result = callback();
@@ -97,7 +114,10 @@ where
     }
 
     let _span = tracer.start_span(name);
-    callback()
+    increment_emitted(Signal::Traces, 1);
+    let result = callback();
+    release(ticket);
+    result
 }
 
 impl NoopSpan {

@@ -36,7 +36,8 @@ func computeErrorFingerprint(errType, callSite string) string {
 }
 
 func demoErrorFingerprint(ctx context.Context) {
-	fmt.Println("--- Error Fingerprinting ---\n")
+	fmt.Println("--- Error Fingerprinting ---")
+	fmt.Println()
 
 	// Same error type without callsite produces the same fingerprint.
 	fpA := computeErrorFingerprint("ValueError", "")
@@ -59,11 +60,11 @@ func demoErrorFingerprint(ctx context.Context) {
 	// Log the simulated error with the fingerprint as a structured field.
 	log := telemetry.GetLogger(ctx, "examples.fingerprint")
 	errEvt, _ := telemetry.Event("app", "error", "simulated")
-	log.ErrorContext(ctx, errEvt,
+	log.ErrorContext(ctx, errEvt.Event, append(errEvt.Attrs(),
 		"error_fingerprint", fpRuntime,
 		"exc_name", "RuntimeError",
 		"message", "simulated failure",
-	)
+	)...)
 
 	// Normal events get no fingerprint (must be added explicitly).
 	normalFp := computeErrorFingerprint("", "")
@@ -72,7 +73,8 @@ func demoErrorFingerprint(ctx context.Context) {
 }
 
 func demoSessionCorrelation(ctx context.Context) {
-	fmt.Println("--- Session Correlation ---\n")
+	fmt.Println("--- Session Correlation ---")
+	fmt.Println()
 
 	log := telemetry.GetLogger(ctx, "examples.session")
 
@@ -87,7 +89,7 @@ func demoSessionCorrelation(ctx context.Context) {
 	log.InfoContext(ctx, boundEvt.Event, append(boundEvt.Attrs(), "detail", "session is active")...)
 
 	actionEvt, _ := telemetry.Event("app", "session", "action")
-	log.InfoContext(ctx, actionEvt, "action", "page_view", "path", "/dashboard")
+	log.InfoContext(ctx, actionEvt.Event, append(actionEvt.Attrs(), "action", "page_view", "path", "/dashboard")...)
 
 	ctx = telemetry.ClearSessionContext(ctx)
 	sessionAfterClear, _ := telemetry.GetSessionID(ctx)
@@ -95,7 +97,8 @@ func demoSessionCorrelation(ctx context.Context) {
 }
 
 func main() {
-	fmt.Println("Error Fingerprinting and Session Correlation Demo\n")
+	fmt.Println("Error Fingerprinting and Session Correlation Demo")
+	fmt.Println()
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {

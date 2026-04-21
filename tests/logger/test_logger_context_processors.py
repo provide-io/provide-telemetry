@@ -6,13 +6,13 @@
 from __future__ import annotations
 
 import pytest
+import structlog
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger import context as context_mod
 from provide.telemetry.logger import processors as processors_mod
 from provide.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
 from provide.telemetry.logger.processors import add_standard_fields, apply_sampling, enforce_event_schema
-from provide.telemetry.schema.events import EventSchemaError
 from provide.telemetry.tracing.context import set_trace_context
 
 
@@ -77,6 +77,15 @@ def test_apply_sampling_keep_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out is payload
 
 
+def test_merge_runtime_context_includes_trace_context() -> None:
+    clear_context()
+    set_trace_context("trace-1", "span-1")
+    out = processors_mod.merge_runtime_context(None, "info", {"event": "auth.login.success"})
+    assert out["trace_id"] == "trace-1"
+    assert out["span_id"] == "span-1"
+    set_trace_context(None, None)
+
+
 def test_enforce_event_schema_uses_empty_string_for_missing_event(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[tuple[str, bool]] = []
     required_calls: list[tuple[dict[str, object], tuple[str, ...]]] = []
@@ -106,15 +115,17 @@ def test_enforce_event_schema_required_keys_error_message() -> None:
         }
     )
     processor = enforce_event_schema(cfg)
-    with pytest.raises(EventSchemaError, match=r"missing required keys: request_id, session_id"):
-        processor(None, "info", {"event": "auth.login.success"})
+    result = processor(None, "info", {"event": "auth.login.success"})
+    assert "_schema_error" in result
+    assert "missing required keys: request_id, session_id" in result["_schema_error"]
 
 
 def test_enforce_event_schema_enforces_required_keys_in_compat_mode() -> None:
     cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_REQUIRED_KEYS": "request_id,session_id"})
     processor = enforce_event_schema(cfg)
-    out = processor(None, "info", {"event": "auth.login.success"})
-    assert out["event"] == "auth.login.success"
+    result = processor(None, "info", {"event": "auth.login.success"})
+    assert "_schema_error" in result
+    assert "missing required keys" in result["_schema_error"]
 
 
 def test_enforce_event_schema_policy_matrix() -> None:
@@ -129,8 +140,9 @@ def test_enforce_event_schema_policy_matrix() -> None:
     # Default is now relaxed (strict_event_name=False)
     relaxed_default(None, "info", {"event": "bad event"})
     relaxed_explicit(None, "info", {"event": "bad event"})
-    with pytest.raises(EventSchemaError, match="invalid event name"):
-        strict_name_strict_schema(None, "info", {"event": "bad event"})
+    result = strict_name_strict_schema(None, "info", {"event": "bad event"})
+    assert "_schema_error" in result
+    assert "invalid event name" in result["_schema_error"]
 
 
 def test_save_context_preserves_current_values() -> None:

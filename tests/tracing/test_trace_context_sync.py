@@ -38,6 +38,7 @@ def test_sync_otel_trace_context_skips_invalid_span(monkeypatch: pytest.MonkeyPa
     mock_span = SimpleNamespace(get_span_context=lambda: mock_ctx)
     mock_api = SimpleNamespace(get_current_span=lambda: mock_span)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
 
     set_trace_context("prev_trace", "prev_span")
@@ -54,6 +55,7 @@ def test_sync_otel_trace_context_zero_trace_id_only(monkeypatch: pytest.MonkeyPa
     mock_span = SimpleNamespace(get_span_context=lambda: mock_ctx)
     mock_api = SimpleNamespace(get_current_span=lambda: mock_span)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
 
     set_trace_context("prev", "prev")
@@ -70,6 +72,7 @@ def test_sync_otel_trace_context_zero_span_id_only(monkeypatch: pytest.MonkeyPat
     mock_span = SimpleNamespace(get_span_context=lambda: mock_ctx)
     mock_api = SimpleNamespace(get_current_span=lambda: mock_span)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
 
     set_trace_context("prev", "prev")
@@ -92,11 +95,45 @@ def test_sync_otel_trace_context_no_otel(monkeypatch: pytest.MonkeyPatch) -> Non
     set_trace_context(None, None)
 
 
+def test_sync_otel_trace_context_unconfigured_provider_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Simulates: we installed a provider (otel_global_set=True) but it was shut down.
+    monkeypatch.setattr(provider_mod, "_provider_configured", False)
+    monkeypatch.setattr(provider_mod, "_otel_global_set", True)
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: SimpleNamespace())
+
+    set_trace_context("existing", "ids")
+    provider_mod._sync_otel_trace_context()
+    assert get_trace_context() == {"trace_id": "existing", "span_id": "ids"}
+    set_trace_context(None, None)
+
+
+def test_sync_otel_trace_context_configured_but_api_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: None)
+
+    set_trace_context("existing", "ids")
+    provider_mod._sync_otel_trace_context()
+    assert get_trace_context() == {"trace_id": "existing", "span_id": "ids"}
+    set_trace_context(None, None)
+
+
+def test_get_tracer_configured_but_api_missing_returns_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
+    monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: None)
+
+    tracer = provider_mod.get_tracer("x")
+    assert isinstance(tracer, provider_mod._NoopTracer)
+
+
 def test_sync_otel_trace_context_null_span_context(monkeypatch: pytest.MonkeyPatch) -> None:
     """When get_span_context() returns None, context should not be updated."""
     mock_span = SimpleNamespace(get_span_context=lambda: None)
     mock_api = SimpleNamespace(get_current_span=lambda: mock_span)
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(provider_mod, "_provider_configured", True)
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
 
     set_trace_context("old_t", "old_s")
