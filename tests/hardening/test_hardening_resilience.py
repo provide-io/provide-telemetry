@@ -185,7 +185,7 @@ async def test_resilience_async_guard_warns_only_once_per_signal() -> None:
     assert calls["count"] == 4
 
 
-def test_executor_replaced_after_circuit_breaker_trips() -> None:
+def test_executor_replaced_after_circuit_breaker_trips(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ghost thread defense: executor is replaced when circuit breaker trips.
 
     After consecutive timeouts hit the threshold, the old executor (with
@@ -193,6 +193,7 @@ def test_executor_replaced_after_circuit_breaker_trips() -> None:
     the next probe attempt.
     """
     resilience_mod.reset_resilience_for_tests()
+    monkeypatch.setattr(resilience_mod, "_is_running_in_event_loop", lambda: False)
     resilience_mod.set_exporter_policy(
         "logs",
         resilience_mod.ExporterPolicy(timeout_seconds=0.01, retries=0, fail_open=True),
