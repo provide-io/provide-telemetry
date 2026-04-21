@@ -35,7 +35,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -61,16 +61,54 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
           go env GOWORK
       - name: Run go/logger tests with coverage
-        working-directory: go/logger
-        run: go test -race -coverprofile=coverage.out ./...
+        working-directory: go
+        run: go test -race -coverprofile=logger.coverage.out ./logger/...
       - name: Enforce go/logger 100% coverage
-        working-directory: go/logger
+        working-directory: go
+        run: |
+          TOTAL=$(go tool cover -func=logger.coverage.out | grep total | awk '{print $3}')
+          echo "Total coverage: $TOTAL"
+          if [ "$TOTAL" != "100.0%" ]; then
+            echo "FAIL: coverage is $TOTAL, expected 100.0%"
+            exit 1
+          fi
+      - name: Run go/tracer tests with coverage
+        working-directory: go
+        run: go test -race -coverprofile=tracer.coverage.out ./tracer/...
+      - name: Enforce go/tracer 100% coverage
+        working-directory: go
+        run: |
+          TOTAL=$(go tool cover -func=tracer.coverage.out | grep total | awk '{print $3}')
+          echo "Total coverage: $TOTAL"
+          if [ "$TOTAL" != "100.0%" ]; then
+            echo "FAIL: coverage is $TOTAL, expected 100.0%"
+            exit 1
+          fi
+      - name: Confirm root module stays free of OTel SDK and exporter deps
+        working-directory: go
+        run: |
+          pattern='go\.opentelemetry\.io/(contrib/bridges/otelslog|otel/exporters/|otel/sdk|otel/log|otel/metric)'
+          if command -v rg >/dev/null 2>&1; then
+            matcher=(rg -n "$pattern" go.mod)
+          else
+            matcher=(grep -nE "$pattern" go.mod)
+          fi
+          if "${matcher[@]}"; then
+            echo "FAIL: root go module should not depend on OTel SDK, exporters, bridge, logs, or metric modules"
+            exit 1
+          fi
+          echo "OK: root go module stays on core/API-only dependencies"
+      - name: Run go/otel tests with coverage
+        working-directory: go/otel
+        run: go test -race -coverprofile=coverage.out .
+      - name: Enforce go/otel 100% coverage
+        working-directory: go/otel
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
           echo "Total coverage: $TOTAL"
@@ -78,27 +116,6 @@ jobs:
             echo "FAIL: coverage is $TOTAL, expected 100.0%"
             exit 1
           fi
-      - name: Confirm zero OTel dependencies
-        working-directory: go/logger
-        run: |
-          if grep -q "opentelemetry" go.sum 2>/dev/null; then
-            echo "FAIL: go/logger has unexpected OTel dependency"
-            grep "opentelemetry" go.sum
-            exit 1
-          fi
-          echo "OK: no OTel deps in go/logger"
-      - name: Run go/tracer tests
-        working-directory: go/tracer
-        run: go test -race ./...
-      - name: Confirm no OTel SDK dependencies
-        working-directory: go/tracer
-        run: |
-          if grep -q "opentelemetry.io/otel/sdk" go.sum 2>/dev/null; then
-            echo "FAIL: go/tracer has OTel SDK dependency (API-only expected)"
-            grep "opentelemetry.io/otel/sdk" go.sum
-            exit 1
-          fi
-          echo "OK: go/tracer has OTel API only, no SDK"
 
   lint:
     runs-on: ubuntu-latest
@@ -113,7 +130,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -139,7 +156,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -169,7 +186,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -194,7 +211,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -226,7 +243,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -239,6 +256,8 @@ jobs:
             echo "running $d"
             go run ./"$d"
           done
+      - name: Build go/otel OpenObserve examples
+        run: go build ./otel/examples/openobserve/...
 
   otlp-integration:
     runs-on: ubuntu-latest
@@ -253,7 +272,7 @@ jobs:
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
