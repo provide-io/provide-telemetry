@@ -16,7 +16,19 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from a file path until the real repo root is found via VERSION."""
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+    for parent in (current, *current.parents):
+        if (parent / "VERSION").exists():
+            return parent
+    raise FileNotFoundError("Could not locate project root (no VERSION file found)")
+
+
+REPO_ROOT = _find_repo_root(Path(__file__))
 SCRIPT_PATH = REPO_ROOT / "scripts" / "perf_check.py"
 
 
@@ -153,6 +165,17 @@ def test_load_baseline_rejects_non_object(tmp_path: Path) -> None:
     p.write_text("[]")
     with pytest.raises(ValueError, match="must contain a JSON object"):
         perf_check.load_baseline(p)
+
+
+def test_find_repo_root_anchors_to_version_above_mutants(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "VERSION").write_text("0.0.0\n")
+    start = repo_root / "mutants" / "tests" / "tooling" / "test_perf_check.py"
+    start.parent.mkdir(parents=True)
+    start.write_text("# sandbox copy\n")
+
+    assert _find_repo_root(start) == repo_root
 
 
 # ── main (end-to-end via subprocess) ──────────────────────────────────────────
