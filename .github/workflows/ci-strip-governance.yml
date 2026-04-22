@@ -95,7 +95,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: bash ci/run_uv_sync_with_retry.sh --group dev
 
       # Run the strip-governance regression tests — verifies core works
       # without calling governance APIs.
