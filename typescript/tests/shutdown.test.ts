@@ -15,7 +15,11 @@ import {
 } from '../src/runtime';
 import { _resetConfig } from '../src/config';
 import { shutdownTelemetry } from '../src/shutdown';
-import { _getOtelLogProvider, _resetOtelLogProviderForTests, setupOtelLogProvider } from '../src/otel-logs';
+import {
+  _getOtelLogProvider,
+  _resetOtelLogProviderForTests,
+  setupOtelLogProvider,
+} from '../src/otel-logs';
 
 beforeEach(() => _resetRuntimeForTests());
 afterEach(() => {
