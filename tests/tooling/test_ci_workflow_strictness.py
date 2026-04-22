@@ -52,6 +52,22 @@ def test_python_ci_runs_real_otlp_collector_gate() -> None:
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
 
 
+def test_python_facing_workflows_retry_uv_sync() -> None:
+    helper = "bash ci/run_uv_sync_with_retry.sh"
+
+    for workflow_path in (CI_PYTHON, CI_MUTATION, REPO_ROOT / ".github" / "workflows" / "ci-shared.yml"):
+        workflow = workflow_path.read_text(encoding="utf-8")
+        assert helper in workflow
+        assert "- run: uv sync" not in workflow
+
+    for workflow_path in (
+        REPO_ROOT / ".github" / "workflows" / "release.yml",
+        REPO_ROOT / ".github" / "workflows" / "ci-strip-governance.yml",
+    ):
+        workflow = workflow_path.read_text(encoding="utf-8")
+        assert helper in workflow
+
+
 def test_strict_parity_bootstrap_installs_runtime_probe_dependencies() -> None:
     bootstrap = (REPO_ROOT / "ci" / "install_parity_deps.py").read_text(encoding="utf-8")
 

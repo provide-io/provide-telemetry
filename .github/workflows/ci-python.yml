@@ -61,7 +61,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --group dev
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run python scripts/check_max_loc.py --max-lines 500
       - run: uv run python scripts/check_spdx_headers.py
       - run: uv run python scripts/check_event_literals.py
@@ -92,7 +92,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uvx reuse lint
-      - run: uv sync --group dev
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run codespell
 
   otel-extras-validation:
@@ -106,7 +106,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --group dev --extra otel
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m otel --no-cov -q
 
   examples-smoke:
@@ -116,7 +116,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
-      - run: uv sync --group dev --extra otel
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev --extra otel
       - name: Run telemetry examples
         run: |
           set -euo pipefail
@@ -160,7 +160,7 @@ jobs:
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
         run: ci/wait-for-collector.sh
-      - run: uv sync --group dev --extra otel
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev --extra otel
       - run: uv run python scripts/run_pytest_gate.py -m integration --no-cov -q
         env:
           PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
@@ -193,7 +193,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
-      - run: uv sync --group dev --extra otel
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev --extra otel
       # Pipe runner output through perf_check.py — compares each measurement
       # against baselines/perf-python.json for this runner's OS bucket. When a
       # bucket is missing (e.g. a fresh Windows runner without a baseline) the
@@ -211,7 +211,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
-      - run: uv sync --group dev
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - name: Run memray stress tests
         run: uv run pytest tests/memray/ -m memray -v --tb=short --no-cov -p no:provide_telemetry
       - name: Upload memray artifacts
