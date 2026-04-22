@@ -59,9 +59,10 @@ def _iter_source_files(roots: Iterable[Path], extensions: tuple[str, ...]) -> It
             continue
         for ext in extensions:
             for path in root.rglob(f"*{ext}"):
-                if _is_excluded(path):
-                    continue
                 if path.is_file():
+                    rel_path = path.relative_to(root)
+                    if _is_excluded(rel_path):
+                        continue
                     yield path
 
 
