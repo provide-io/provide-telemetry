@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+
 set -euo pipefail
 
 tag="${1:?Go module tag required (for example go/v0.4.0)}"
@@ -9,30 +13,6 @@ trap 'rm -rf "${probe_dir}"' EXIT
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 probe_module="github.com/provide-io/provide-telemetry/go/releaseprobe"
-
-required_version() {
-  local go_mod_path="${1:?go.mod path required}"
-  local module_path="${2:?module path required}"
-
-  awk -v module_path="${module_path}" '
-    $1 == "require" && $2 == module_path {
-      print $3
-      exit
-    }
-    $1 == "require" && $2 == "(" {
-      in_require = 1
-      next
-    }
-    in_require && $1 == ")" {
-      in_require = 0
-      next
-    }
-    in_require && $1 == module_path {
-      print $2
-      exit
-    }
-  ' "${go_mod_path}"
-}
 
 assert_module_version() {
   local module_path="${1:?module path required}"
@@ -54,9 +34,12 @@ case "${tag}" in
 package probe
 
 import (
+	"context"
 	"testing"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
+	logger "github.com/provide-io/provide-telemetry/go/logger"
+	tracer "github.com/provide-io/provide-telemetry/go/tracer"
 )
 
 func TestTaggedModuleConsumerProbe(t *testing.T) {
@@ -64,79 +47,48 @@ func TestTaggedModuleConsumerProbe(t *testing.T) {
 	if cfg == nil || cfg.ServiceName == "" {
 		t.Fatal("expected default telemetry config")
 	}
-}
-EOF
-    ;;
-  go/internal/v*)
-    module="github.com/provide-io/provide-telemetry/go/internal"
-    version="${tag##*/}"
-    cat >"${probe_dir}/probe_test.go" <<'EOF'
-package probe
-
-import (
-	"testing"
-
-	fingerprintcore "github.com/provide-io/provide-telemetry/go/internal/fingerprintcore"
-	piicore "github.com/provide-io/provide-telemetry/go/internal/piicore"
-	schemacore "github.com/provide-io/provide-telemetry/go/internal/schemacore"
-)
-
-func TestTaggedModuleConsumerProbe(t *testing.T) {
-	if len(fingerprintcore.ShortHash12("release-probe")) != 12 {
-		t.Fatal("expected 12-character fingerprint")
+	if logger.GetLogger(context.Background(), "release.probe") == nil {
+		t.Fatal("expected logger package to be importable from the root module")
 	}
-	if !schemacore.ValidateSegmentFormat("release_probe") {
-		t.Fatal("expected valid schema segment")
-	}
-	if !piicore.IsDefaultSensitiveKey("password") {
-		t.Fatal("expected default sensitive key match")
-	}
-}
-EOF
-    ;;
-  go/logger/v*)
-    module="github.com/provide-io/provide-telemetry/go/logger"
-    version="${tag##*/}"
-    cat >"${probe_dir}/probe_test.go" <<'EOF'
-package probe
-
-import (
-	"context"
-	"testing"
-
-	logger "github.com/provide-io/provide-telemetry/go/logger"
-)
-
-func TestTaggedModuleConsumerProbe(t *testing.T) {
-	l := logger.GetLogger(context.Background(), "release.probe")
-	if l == nil {
-		t.Fatal("expected logger instance")
-	}
-}
-EOF
-    ;;
-  go/tracer/v*)
-    module="github.com/provide-io/provide-telemetry/go/tracer"
-    version="${tag##*/}"
-    cat >"${probe_dir}/probe_test.go" <<'EOF'
-package probe
-
-import (
-	"context"
-	"testing"
-
-	tracer "github.com/provide-io/provide-telemetry/go/tracer"
-)
-
-func TestTaggedModuleConsumerProbe(t *testing.T) {
 	ctx, span := tracer.GetTracer("release.probe").Start(context.Background(), "release.probe")
-	if ctx == nil {
-		t.Fatal("expected span context")
-	}
-	if span == nil || span.TraceID() == "" {
-		t.Fatal("expected span with trace ID")
+	if ctx == nil || span == nil || span.TraceID() == "" {
+		t.Fatal("expected tracer package to be importable from the root module")
 	}
 	span.End()
+}
+EOF
+    ;;
+  go/otel/v*)
+    module="github.com/provide-io/provide-telemetry/go/otel"
+    version="${tag##*/}"
+    cat >"${probe_dir}/probe_test.go" <<'EOF'
+package probe
+
+import (
+	"context"
+	"testing"
+
+	telemetry "github.com/provide-io/provide-telemetry/go"
+	_ "github.com/provide-io/provide-telemetry/go/otel"
+)
+
+func TestTaggedModuleConsumerProbe(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+	cfg, err := telemetry.SetupTelemetry()
+	if err != nil {
+		t.Fatalf("expected setup to succeed with optional backend registered: %v", err)
+	}
+	if !cfg.Tracing.Enabled || !cfg.Metrics.Enabled {
+		t.Fatal("expected telemetry config to remain enabled")
+	}
+	status := telemetry.GetRuntimeStatus()
+	if !status.SetupDone || (!status.Providers.Logs && !status.Providers.Traces && !status.Providers.Metrics) {
+		t.Fatalf("expected at least one provider to be active, got %+v", status.Providers)
+	}
+	if err := telemetry.ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("expected shutdown to succeed: %v", err)
+	}
 }
 EOF
     ;;
@@ -156,20 +108,10 @@ esac
     exit 1
   fi
   case "${tag}" in
-    go/v*)
+    go/otel/v*)
       assert_module_version \
-        "github.com/provide-io/provide-telemetry/go/internal" \
-        "$(required_version "${repo_root}/go/go.mod" "github.com/provide-io/provide-telemetry/go/internal")"
-      ;;
-    go/logger/v*)
-      assert_module_version \
-        "github.com/provide-io/provide-telemetry/go/internal" \
-        "$(required_version "${repo_root}/go/logger/go.mod" "github.com/provide-io/provide-telemetry/go/internal")"
-      ;;
-    go/tracer/v*)
-      assert_module_version \
-        "github.com/provide-io/provide-telemetry/go/logger" \
-        "$(required_version "${repo_root}/go/tracer/go.mod" "github.com/provide-io/provide-telemetry/go/logger")"
+        "github.com/provide-io/provide-telemetry/go" \
+        "v$(cat "${repo_root}/go/VERSION")"
       ;;
   esac
   go test .

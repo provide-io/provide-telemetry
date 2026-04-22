@@ -78,32 +78,16 @@ def _typescript_lockfile_version() -> str | None:
 
 
 def _go_version() -> str | None:
-    """Read version from go/VERSION (future)."""
+    """Read version from go/VERSION."""
     go_version = _REPO_ROOT / "go" / "VERSION"
     if go_version.exists():
         return go_version.read_text(encoding="utf-8").strip()
     return None
 
 
-def _go_internal_version() -> str | None:
-    """Read version from go/internal/VERSION, falling back to go/VERSION."""
-    v = _REPO_ROOT / "go" / "internal" / "VERSION"
-    if v.exists():
-        return v.read_text(encoding="utf-8").strip()
-    return _go_version()
-
-
-def _go_logger_version() -> str | None:
-    """Read version from go/logger/VERSION."""
-    v = _REPO_ROOT / "go" / "logger" / "VERSION"
-    if v.exists():
-        return v.read_text(encoding="utf-8").strip()
-    return None
-
-
-def _go_tracer_version() -> str | None:
-    """Read version from go/tracer/VERSION."""
-    v = _REPO_ROOT / "go" / "tracer" / "VERSION"
+def _go_otel_version() -> str | None:
+    """Read version from go/otel/VERSION."""
+    v = _REPO_ROOT / "go" / "otel" / "VERSION"
     if v.exists():
         return v.read_text(encoding="utf-8").strip()
     return None
@@ -160,9 +144,7 @@ _LANG_READERS = {
     "typescript/runtime": _typescript_runtime_version,
     "typescript/lockfile": _typescript_lockfile_version,
     "go": _go_version,
-    "go/internal": _go_internal_version,
-    "go/logger": _go_logger_version,
-    "go/tracer": _go_tracer_version,
+    "go/otel": _go_otel_version,
     "rust": _rust_version,
 }
 
@@ -199,49 +181,23 @@ def main() -> int:
         )
     if ts_package and ts_lockfile and ts_package != ts_lockfile:
         print(f"  typescript exact sync: lockfile {ts_lockfile} != package {ts_package}")
-        errors.append(
-            f"typescript package-lock version {ts_lockfile} does not exactly match package.json {ts_package}"
-        )
+        errors.append(f"typescript package-lock version {ts_lockfile} does not exactly match package.json {ts_package}")
 
-    go_internal = _go_internal_version()
-    go_requires_internal = _go_required_version(
-        _REPO_ROOT / "go" / "go.mod",
-        "github.com/provide-io/provide-telemetry/go/internal",
-    )
-    if go_internal and go_requires_internal and go_requires_internal != _normalize_go_version(go_internal):
-        print("  go dependency:" f" internal {go_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}")
-        errors.append(
-            "go go.mod dependency "
-            f"{go_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
-        )
+    go_version = _go_version()
+    go_otel = _go_otel_version()
+    if go_version and go_otel and go_version != go_otel:
+        print(f"  go exact sync: go/otel {go_otel} != go {go_version}")
+        errors.append(f"go/otel VERSION {go_otel} does not exactly match go VERSION {go_version}")
 
-    logger_requires_internal = _go_required_version(
-        _REPO_ROOT / "go" / "logger" / "go.mod",
-        "github.com/provide-io/provide-telemetry/go/internal",
+    otel_requires_go = _go_required_version(
+        _REPO_ROOT / "go" / "otel" / "go.mod",
+        "github.com/provide-io/provide-telemetry/go",
     )
-    if go_internal and logger_requires_internal and logger_requires_internal != _normalize_go_version(go_internal):
-        print(
-            "  go/logger dependency:"
-            f" internal {logger_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}"
-        )
+    if go_version and otel_requires_go and otel_requires_go != _normalize_go_version(go_version):
+        print(f"  go/otel dependency: core {otel_requires_go} != go VERSION {_normalize_go_version(go_version)}")
         errors.append(
-            "go/logger go.mod dependency "
-            f"{logger_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
-        )
-
-    go_logger = _go_logger_version()
-    tracer_requires_logger = _go_required_version(
-        _REPO_ROOT / "go" / "tracer" / "go.mod",
-        "github.com/provide-io/provide-telemetry/go/logger",
-    )
-    if go_logger and tracer_requires_logger and tracer_requires_logger != _normalize_go_version(go_logger):
-        print(
-            "  go/tracer dependency:"
-            f" logger {tracer_requires_logger} != go/logger VERSION {_normalize_go_version(go_logger)}"
-        )
-        errors.append(
-            "go/tracer go.mod dependency "
-            f"{tracer_requires_logger} does not exactly match go/logger VERSION {_normalize_go_version(go_logger)}"
+            "go/otel go.mod dependency "
+            f"{otel_requires_go} does not exactly match go VERSION {_normalize_go_version(go_version)}"
         )
 
     if errors:

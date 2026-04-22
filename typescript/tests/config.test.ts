@@ -6,6 +6,7 @@ import { _resetConfig, getConfig, setupTelemetry, version } from '../src/config'
 import { _resetSamplingForTests } from '../src/sampling';
 import { _resetBackpressureForTests } from '../src/backpressure';
 import { _resetResilienceForTests } from '../src/resilience';
+import pkg from '../package.json';
 
 afterEach(() => {
   _resetConfig();
@@ -69,8 +70,8 @@ describe('_resetConfig', () => {
 });
 
 describe('version constant', () => {
-  it('exports version as 0.3.0', () => {
-    expect(version).toBe('0.3.0');
+  it('matches package.json', () => {
+    expect(version).toBe(pkg.version);
   });
 });
 
