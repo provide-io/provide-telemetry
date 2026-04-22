@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import ntpath
 import os
+import shutil
 import subprocess  # nosec
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -38,6 +40,39 @@ def _bash_path(path: Path) -> str:
     return f"/{drive.rstrip(':').lower()}{normalized_tail}"
 
 
+def _bash_executable(
+    *,
+    os_name: str | None = None,
+    env: Mapping[str, str] | None = None,
+    discovered: str | None = None,
+) -> str:
+    effective_os_name = os.name if os_name is None else os_name
+    if effective_os_name != "nt":
+        return "bash"
+
+    env_map = os.environ if env is None else env
+    candidates: list[Path] = []
+    for env_var in ("ProgramW6432", "PROGRAMFILES", "PROGRAMFILES(X86)"):
+        root = env_map.get(env_var)
+        if not root:
+            continue
+        candidates.extend(
+            [
+                Path(root) / "Git" / "bin" / "bash.exe",
+                Path(root) / "Git" / "usr" / "bin" / "bash.exe",
+            ]
+        )
+
+    resolved_bash = shutil.which("bash") if discovered is None else discovered
+    if resolved_bash:
+        candidates.append(Path(resolved_bash))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return resolved_bash or "bash"
+
+
 def _run_workspace_script(
     repo_root: Path,
     tmp_path: Path,
@@ -56,7 +91,7 @@ def _run_workspace_script(
     env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
     workspace_dir = tmp_path / "workspace"
     result = subprocess.run(
-        ["bash", _bash_path(SCRIPT), _bash_path(repo_root), _bash_path(workspace_dir)],
+        [_bash_executable(), _bash_path(SCRIPT), _bash_path(repo_root), _bash_path(workspace_dir)],
         capture_output=True,
         text=True,
         check=False,
@@ -146,3 +181,14 @@ printf 'C:/%s\\n' "${path}"
 
 def test_bash_path_converts_windows_paths() -> None:
     assert _bash_path(Path("C:/Users/runneradmin/work/repo")) == "/c/Users/runneradmin/work/repo"
+
+
+def test_bash_executable_prefers_git_for_windows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    git_bash = tmp_path / "Program Files" / "Git" / "bin" / "bash.exe"
+    git_bash.parent.mkdir(parents=True)
+    git_bash.write_text("", encoding="utf-8")
+
+    env = {"PROGRAMFILES": str(tmp_path / "Program Files")}
+    discovered = "C:/Windows/System32/bash.exe"
+
+    assert _bash_executable(os_name="nt", env=env, discovered=discovered) == str(git_bash)
