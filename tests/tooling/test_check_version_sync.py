@@ -38,6 +38,7 @@ def _write(path: Path, content: str) -> None:
 def _make_minimal_repo(
     tmp_path: Path,
     *,
+    root_internal_version: str = "0.4.0",
     logger_internal_version: str = "0.4.0",
     tracer_logger_version: str = "0.4.0",
 ) -> Path:
@@ -46,6 +47,22 @@ def _make_minimal_repo(
     _write(tmp_path / "go" / "internal" / "VERSION", "0.4.0\n")
     _write(tmp_path / "go" / "logger" / "VERSION", "0.4.0\n")
     _write(tmp_path / "go" / "tracer" / "VERSION", "0.4.0\n")
+    _write(
+        tmp_path / "go" / "go.mod",
+        "\n".join(
+            [
+                "module github.com/provide-io/provide-telemetry/go",
+                "",
+                "go 1.26.0",
+                "",
+                "require (",
+                "\tgithub.com/google/uuid v1.6.0",
+                f"\t{_GO_INTERNAL_MODULE} v{root_internal_version}",
+                ")",
+                "",
+            ]
+        ),
+    )
     _write(
         tmp_path / "go" / "logger" / "go.mod",
         "\n".join(
@@ -102,6 +119,23 @@ def test_version_sync_fails_when_go_logger_dep_mismatches_internal_version(
 
     output = capsys.readouterr().out
     assert "go/logger dependency" in output
+    assert "v0.3.0" in output
+    assert "v0.4.0" in output
+
+
+def test_version_sync_fails_when_go_root_dep_mismatches_internal_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = _make_minimal_repo(tmp_path, root_internal_version="0.3.0")
+    module = _load_script_module()
+    monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
+
+    assert module.main() == 1
+
+    output = capsys.readouterr().out
+    assert "go dependency" in output
     assert "v0.3.0" in output
     assert "v0.4.0" in output
 

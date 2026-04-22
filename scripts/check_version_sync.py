@@ -204,6 +204,17 @@ def main() -> int:
         )
 
     go_internal = _go_internal_version()
+    go_requires_internal = _go_required_version(
+        _REPO_ROOT / "go" / "go.mod",
+        "github.com/provide-io/provide-telemetry/go/internal",
+    )
+    if go_internal and go_requires_internal and go_requires_internal != _normalize_go_version(go_internal):
+        print("  go dependency:" f" internal {go_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}")
+        errors.append(
+            "go go.mod dependency "
+            f"{go_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
+        )
+
     logger_requires_internal = _go_required_version(
         _REPO_ROOT / "go" / "logger" / "go.mod",
         "github.com/provide-io/provide-telemetry/go/internal",
