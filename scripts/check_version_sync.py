@@ -233,7 +233,9 @@ def main() -> int:
         "github.com/provide-io/provide-telemetry/go/internal",
     )
     if go_internal and go_requires_internal and go_requires_internal != _normalize_go_version(go_internal):
-        print(f"  go dependency: internal {go_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}")
+        print(
+            f"  go dependency: internal {go_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}"
+        )
         errors.append(
             "go go.mod dependency "
             f"{go_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
@@ -244,7 +246,9 @@ def main() -> int:
         "github.com/provide-io/provide-telemetry/go/internal",
     )
     if go_internal and logger_requires_internal and logger_requires_internal != _normalize_go_version(go_internal):
-        print(f"  go/logger dependency: internal {logger_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}")
+        print(
+            f"  go/logger dependency: internal {logger_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}"
+        )
         errors.append(
             "go/logger go.mod dependency "
             f"{logger_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
@@ -255,7 +259,9 @@ def main() -> int:
         "github.com/provide-io/provide-telemetry/go/logger",
     )
     if go_logger and tracer_requires_logger and tracer_requires_logger != _normalize_go_version(go_logger):
-        print(f"  go/tracer dependency: logger {tracer_requires_logger} != go/logger VERSION {_normalize_go_version(go_logger)}")
+        print(
+            f"  go/tracer dependency: logger {tracer_requires_logger} != go/logger VERSION {_normalize_go_version(go_logger)}"
+        )
         errors.append(
             "go/tracer go.mod dependency "
             f"{tracer_requires_logger} does not exactly match go/logger VERSION {_normalize_go_version(go_logger)}"
