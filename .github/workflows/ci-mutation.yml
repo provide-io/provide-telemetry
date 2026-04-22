@@ -142,11 +142,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Generate temporary go.work
         shell: bash
         run: |
-          WORKFILE="$(./ci/init-go-workspace.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
           echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
@@ -156,6 +156,53 @@ jobs:
       # Excluded files contain comparisons where gremlins boundary/arithmetic
       # mutations are mathematically equivalent (float64 exact equality P=0,
       # nanosecond time boundary P≈0). See file header comments.
+      # Run each Go package surface explicitly:
+      # - root package only (exclude sibling packages/modules and helper binaries)
+      # - logger package
+      # - tracer package
+      # - optional go/otel module
       # All surviving mutants fail the job (--threshold-efficacy=100).
-      - name: Run gremlins mutation tests (100% kill rate required)
-        run: gremlins unleash --timeout-coefficient=10 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" .
+      - name: Run gremlins mutation tests for root package (100% kill rate required)
+        run: |
+          gremlins unleash \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=30 \
+            --threshold-efficacy=100 \
+            --coverpkg="github.com/provide-io/provide-telemetry/go" \
+            --exclude-files="sampling_cmp.go" \
+            --exclude-files="resilience_cmp.go" \
+            --exclude-files="cmd/e2e_cross_language_client/" \
+            --exclude-files="examples/" \
+            --exclude-files="internal/" \
+            --exclude-files="logger/" \
+            --exclude-files="otel/" \
+            --exclude-files="scripts/stress/" \
+            --exclude-files="tracer/" \
+            .
+      - name: Run gremlins mutation tests for go/logger (100% kill rate required)
+        run: |
+          gremlins unleash \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=30 \
+            --threshold-efficacy=100 \
+            ./logger
+      - name: Run gremlins mutation tests for go/tracer (100% kill rate required)
+        run: |
+          gremlins unleash \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=30 \
+            --threshold-efficacy=100 \
+            ./tracer
+      - name: Run gremlins mutation tests for go/otel (100% kill rate required)
+        working-directory: go/otel
+        run: |
+          gremlins unleash \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=30 \
+            --threshold-efficacy=100 \
+            --exclude-files="examples/" \
+            .
