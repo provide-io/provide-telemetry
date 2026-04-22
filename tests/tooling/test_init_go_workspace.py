@@ -31,10 +31,9 @@ def _write_go_module(path: Path, module_path: str, go_version: str = "1.26.0") -
 
 def _bash_path(path: Path) -> str:
     raw = str(path)
-    if os.name != "nt":
-        return raw
     drive, tail = ntpath.splitdrive(raw)
-    assert drive, f"expected a drive-qualified Windows path, got {raw!r}"
+    if not drive:
+        return raw
     normalized_tail = tail.replace("\\", "/")
     return f"/{drive.rstrip(':').lower()}{normalized_tail}"
 
@@ -145,7 +144,5 @@ printf 'C:/%s\\n' "${path}"
     assert f"\t{expected_root}/go/otel" in workfile
 
 
-def test_bash_path_converts_windows_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "name", "nt")
-
+def test_bash_path_converts_windows_paths() -> None:
     assert _bash_path(Path("C:/Users/runneradmin/work/repo")) == "/c/Users/runneradmin/work/repo"
