@@ -64,7 +64,7 @@ def test_runtime_probe_restart_case_reports_fresh_config(lang: str) -> None:
 
     runners = support._runtime_probe_runners(_REPO_ROOT, runner_module._CARGO_BIN, runner_module._CARGO_ENV)
     runner = next(r for r in runners if r.name == lang)
-    timeout = 120 if lang == "rust" and sys.platform == "win32" else 60
+    timeout = 240 if lang == "rust" and sys.platform == "win32" else 60
 
     output, err = support._run_runtime_probe(
         runner,

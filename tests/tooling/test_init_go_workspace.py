@@ -40,6 +40,18 @@ def _bash_path(path: Path) -> str:
     return f"/{drive.rstrip(':').lower()}{normalized_tail}"
 
 
+def _workspace_path(path: Path) -> str:
+    return path.as_posix()
+
+
+def _cygpath_output(path: Path) -> str:
+    posix = path.as_posix()
+    drive, tail = ntpath.splitdrive(posix)
+    if drive:
+        return f"{drive}/{tail.lstrip('/')}"
+    return f"C:/{posix.lstrip('/')}"
+
+
 def _bash_executable(
     *,
     os_name: str | None = None,
@@ -116,12 +128,12 @@ def test_workspace_script_supports_legacy_multi_module_layout(tmp_path: Path) ->
 
     _, workfile = _run_workspace_script(repo_root, tmp_path)
 
-    assert str(repo_root / "go") in workfile
-    assert str(repo_root / "go" / "internal") in workfile
-    assert str(repo_root / "go" / "logger") in workfile
-    assert str(repo_root / "go" / "tracer") in workfile
-    assert str(repo_root / "go" / "cmd" / "e2e_cross_language_client") in workfile
-    assert str(repo_root / "go" / "otel") not in workfile
+    assert _workspace_path(repo_root / "go") in workfile
+    assert _workspace_path(repo_root / "go" / "internal") in workfile
+    assert _workspace_path(repo_root / "go" / "logger") in workfile
+    assert _workspace_path(repo_root / "go" / "tracer") in workfile
+    assert _workspace_path(repo_root / "go" / "cmd" / "e2e_cross_language_client") in workfile
+    assert _workspace_path(repo_root / "go" / "otel") not in workfile
 
 
 def test_workspace_script_supports_optional_otel_layout(tmp_path: Path) -> None:
@@ -131,11 +143,11 @@ def test_workspace_script_supports_optional_otel_layout(tmp_path: Path) -> None:
 
     _, workfile = _run_workspace_script(repo_root, tmp_path)
 
-    assert str(repo_root / "go") in workfile
-    assert str(repo_root / "go" / "otel") in workfile
-    assert str(repo_root / "go" / "internal") not in workfile
-    assert str(repo_root / "go" / "logger") not in workfile
-    assert str(repo_root / "go" / "tracer") not in workfile
+    assert _workspace_path(repo_root / "go") in workfile
+    assert _workspace_path(repo_root / "go" / "otel") in workfile
+    assert _workspace_path(repo_root / "go" / "internal") not in workfile
+    assert _workspace_path(repo_root / "go" / "logger") not in workfile
+    assert _workspace_path(repo_root / "go" / "tracer") not in workfile
 
 
 def test_workspace_script_uses_highest_module_go_version(tmp_path: Path) -> None:
@@ -173,8 +185,8 @@ printf 'C:/%s\\n' "${path}"
         extra_shims={"cygpath": cygpath_shim},
     )
 
-    expected_root = f"C:/{repo_root.as_posix().lstrip('/')}"
-    assert stdout_path == f"C:/{(tmp_path / 'workspace').as_posix().lstrip('/')}/go.work"
+    expected_root = _cygpath_output(repo_root)
+    assert stdout_path == f"{_cygpath_output(tmp_path / 'workspace')}/go.work"
     assert f"\t{expected_root}/go" in workfile
     assert f"\t{expected_root}/go/otel" in workfile
 
