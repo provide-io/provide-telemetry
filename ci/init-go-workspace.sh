@@ -8,17 +8,26 @@ set -euo pipefail
 repo_root="${1:?repository root required}"
 workspace_dir="${2:?workspace output directory required}"
 
-canonicalize_dir() {
+canonicalize_shell_dir() {
   (
     cd "${1}"
     pwd -P
   )
 }
 
-repo_root="$(canonicalize_dir "${repo_root}")"
+to_go_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -am "${1}"
+    return
+  fi
+  printf '%s\n' "${1}"
+}
+
+repo_root_shell="$(canonicalize_shell_dir "${repo_root}")"
 mkdir -p "${workspace_dir}"
-workspace_dir="$(canonicalize_dir "${workspace_dir}")"
-rm -f "${workspace_dir}/go.work" "${workspace_dir}/go.work.sum"
+workspace_dir_shell="$(canonicalize_shell_dir "${workspace_dir}")"
+workspace_dir_go="$(to_go_path "${workspace_dir_shell}")"
+rm -f "${workspace_dir_shell}/go.work" "${workspace_dir_shell}/go.work.sum"
 
 workspace_modules=()
 workspace_go_version=""
@@ -47,18 +56,18 @@ go_version_gt() {
 }
 
 for module_dir in \
-  "${repo_root}/go" \
-  "${repo_root}/go/internal" \
-  "${repo_root}/go/logger" \
-  "${repo_root}/go/tracer" \
-  "${repo_root}/go/otel" \
-  "${repo_root}/go/cmd/e2e_cross_language_client"
+  "${repo_root_shell}/go" \
+  "${repo_root_shell}/go/internal" \
+  "${repo_root_shell}/go/logger" \
+  "${repo_root_shell}/go/tracer" \
+  "${repo_root_shell}/go/otel" \
+  "${repo_root_shell}/go/cmd/e2e_cross_language_client"
 do
   if [ -f "${module_dir}/go.mod" ]; then
-    module_dir="$(canonicalize_dir "${module_dir}")"
-    workspace_modules+=("${module_dir}")
+    module_dir_shell="$(canonicalize_shell_dir "${module_dir}")"
+    workspace_modules+=("$(to_go_path "${module_dir_shell}")")
     module_go_version="$(
-      awk '/^go[[:space:]]+/ { print $2; exit }' "${module_dir}/go.mod"
+      awk '/^go[[:space:]]+/ { print $2; exit }' "${module_dir_shell}/go.mod"
     )"
     if [ -z "${workspace_go_version}" ] || go_version_gt "${module_go_version}" "${workspace_go_version}"; then
       workspace_go_version="${module_go_version}"
@@ -67,12 +76,12 @@ do
 done
 
 if [ "${#workspace_modules[@]}" -eq 0 ]; then
-  echo "no Go modules found under ${repo_root}" >&2
+  echo "no Go modules found under ${repo_root_shell}" >&2
   exit 1
 fi
 
 if [ -z "${workspace_go_version}" ]; then
-  echo "unable to determine Go version from workspace modules under ${repo_root}" >&2
+  echo "unable to determine Go version from workspace modules under ${repo_root_shell}" >&2
   exit 1
 fi
 
@@ -87,6 +96,6 @@ fi
     done
     printf ')\n'
   fi
-} > "${workspace_dir}/go.work"
+} > "${workspace_dir_shell}/go.work"
 
-printf '%s\n' "${workspace_dir}/go.work"
+printf '%s\n' "${workspace_dir_go}/go.work"
