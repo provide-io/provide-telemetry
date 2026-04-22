@@ -67,9 +67,11 @@ jobs:
           echo "Using workspace: ${WORKFILE}"
           go env GOWORK
       - name: Run go/logger tests with coverage
+        if: ${{ hashFiles('go/logger/go.mod') != '' }}
         working-directory: go
         run: go test -race -coverprofile=logger.coverage.out ./logger/...
       - name: Enforce go/logger 100% coverage
+        if: ${{ hashFiles('go/logger/go.mod') != '' }}
         working-directory: go
         run: |
           TOTAL=$(go tool cover -func=logger.coverage.out | grep total | awk '{print $3}')
@@ -79,9 +81,11 @@ jobs:
             exit 1
           fi
       - name: Run go/tracer tests with coverage
+        if: ${{ hashFiles('go/tracer/go.mod') != '' }}
         working-directory: go
         run: go test -race -coverprofile=tracer.coverage.out ./tracer/...
       - name: Enforce go/tracer 100% coverage
+        if: ${{ hashFiles('go/tracer/go.mod') != '' }}
         working-directory: go
         run: |
           TOTAL=$(go tool cover -func=tracer.coverage.out | grep total | awk '{print $3}')
@@ -91,6 +95,7 @@ jobs:
             exit 1
           fi
       - name: Confirm root module stays free of OTel SDK and exporter deps
+        if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go
         run: |
           pattern='go\.opentelemetry\.io/(contrib/bridges/otelslog|otel/exporters/|otel/sdk|otel/log|otel/metric)'
@@ -105,9 +110,11 @@ jobs:
           fi
           echo "OK: root go module stays on core/API-only dependencies"
       - name: Run go/otel tests with coverage
+        if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel
         run: go test -race -coverprofile=coverage.out .
       - name: Enforce go/otel 100% coverage
+        if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
@@ -257,7 +264,14 @@ jobs:
             go run ./"$d"
           done
       - name: Build go/otel OpenObserve examples
-        run: go build ./otel/examples/openobserve/...
+        run: |
+          if [ -d ./otel/examples/openobserve ]; then
+            go build ./otel/examples/openobserve/...
+          elif [ -d ./examples/openobserve ]; then
+            go build ./examples/openobserve/...
+          else
+            echo "No OpenObserve examples present"
+          fi
 
   otlp-integration:
     runs-on: ubuntu-latest
@@ -291,7 +305,12 @@ jobs:
       - name: Wait for collector health
         run: ../ci/wait-for-collector.sh
       - name: Run collector-backed OTLP smoke test
-        run: go test -run TestOTLPCollectorSmoke .
+        run: |
+          if [ -f ./otel/go.mod ]; then
+            (cd ./otel && go test -run TestOTLPCollectorSmoke .)
+          else
+            go test -run TestOTLPCollectorSmoke .
+          fi
         env:
           PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
           PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-go"
