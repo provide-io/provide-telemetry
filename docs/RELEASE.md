@@ -33,6 +33,8 @@ uv run twine check dist/*
 Go CI is intentionally split:
 - `ci-go.yml` uses an ephemeral `go.work` for pre-release integration of the local `go`, `go/internal`, `go/logger`, and `go/tracer` modules.
 - `release.yml` runs `GOWORK=off` consumer-mode fetch/build checks after Go tags are pushed, first with `GOPROXY=direct` and then through `proxy.golang.org`.
+- Those release checks use generated probe modules that import the tagged Go module like a downstream consumer, instead of trying to run the tagged dependency module's own test suite.
+- Go module versions are effectively immutable once `proxy.golang.org` indexes them. If a pushed `go/.../vX.Y.Z` tag points at the wrong commit, force-moving the tag does not repair the proxy view; cut a new Go module version instead.
 
 ## Local Act Validation
 
