@@ -44,8 +44,40 @@ def _capture_record(message: str) -> dict[str, object]:
     return _extract_json_line(buf.getvalue())
 
 
+def _setup_and_capture_record(message: str) -> tuple[dict[str, object], dict[str, object]]:
+    buf = io.StringIO()
+    with redirect_stderr(buf):
+        setup_telemetry()
+        status = get_runtime_status()
+        set_trace_context(TRACE_ID, SPAN_ID)
+        get_logger("probe").info(message)
+    return status, _extract_json_line(buf.getvalue())
+
+
 def _case_lazy_init_logger() -> dict[str, object]:
     return {"case": "lazy_init_logger", "record": _capture_record("log.output.parity")}
+
+
+def _case_lazy_logger_shutdown_re_setup() -> dict[str, object]:
+    first = _capture_record("log.output.parity")
+    shutdown_telemetry()
+    second = get_runtime_status()
+    os.environ["PROVIDE_TELEMETRY_SERVICE_NAME"] = "probe-restarted"
+    os.environ["PROVIDE_TELEMETRY_ENV"] = "parity-restarted"
+    os.environ["PROVIDE_TELEMETRY_VERSION"] = "9.9.9"
+    third, restarted = _setup_and_capture_record("log.output.restart")
+    shutdown_telemetry()
+    return {
+        "case": "lazy_logger_shutdown_re_setup",
+        "first_logger_emitted": first.get("message") == "log.output.parity",
+        "shutdown_cleared_setup": not bool(second["setup_done"]),
+        "shutdown_cleared_providers": not any(second["providers"].values()),
+        "shutdown_fallback_all": all(second["fallback"].values()),
+        "re_setup_done": bool(third["setup_done"]),
+        "second_logger_uses_fresh_config": restarted.get("service") == "probe-restarted"
+        and restarted.get("env") == "parity-restarted"
+        and restarted.get("version") == "9.9.9",
+    }
 
 
 def _case_strict_schema_rejection() -> dict[str, object]:
@@ -171,6 +203,7 @@ def main() -> int:
     case = os.environ["PROVIDE_PARITY_PROBE_CASE"]
     result = {
         "lazy_init_logger": _case_lazy_init_logger,
+        "lazy_logger_shutdown_re_setup": _case_lazy_logger_shutdown_re_setup,
         "strict_schema_rejection": _case_strict_schema_rejection,
         "strict_event_name_only": _case_strict_event_name_only,
         "required_keys_rejection": _case_required_keys_rejection,
