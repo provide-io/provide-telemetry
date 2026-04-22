@@ -7,7 +7,8 @@
 
 Hot-reconfigurable: sampling policies, backpressure queue limits, exporter retry/timeout policies.
 NOT hot-reconfigurable: log handlers, tracer providers, meter providers (require full restart).
-Use ``reconfigure_telemetry()`` for a full shutdown+setup cycle when providers must change.
+Use ``reconfigure_telemetry()`` only for hot policy updates. Provider changes after real
+OpenTelemetry providers are installed require a full process restart.
 """
 
 from __future__ import annotations
@@ -164,8 +165,7 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
             if _has_real_otel_log_provider():
                 raise RuntimeError(
                     "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
-                    "are installed. Use reconfigure_telemetry() for full provider replacement, or restart the "
-                    "process and call setup_telemetry() with the new config."
+                    "are installed. Restart the process and call setup_telemetry() with the new config."
                 )
         _active_config = merged
     _apply_policies(merged)
