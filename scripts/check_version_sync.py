@@ -39,7 +39,7 @@ def _python_version() -> str | None:
     return match.group(1) if match else None
 
 
-def _typescript_version() -> str | None:
+def _typescript_package_version() -> str | None:
     """Read version from typescript/package.json."""
     pkg = _REPO_ROOT / "typescript" / "package.json"
     if not pkg.exists():
@@ -48,12 +48,49 @@ def _typescript_version() -> str | None:
     return data.get("version")
 
 
+def _typescript_runtime_version() -> str | None:
+    """Read the exported runtime version from typescript/src/config.ts."""
+    config = _REPO_ROOT / "typescript" / "src" / "config.ts"
+    if not config.exists():
+        return None
+    text = config.read_text(encoding="utf-8")
+    match = re.search(r"export const version = ['\"]([^'\"]+)['\"]", text)
+    return match.group(1) if match else None
+
+
+def _typescript_lockfile_version() -> str | None:
+    """Read the package version stored in typescript/package-lock.json."""
+    lockfile = _REPO_ROOT / "typescript" / "package-lock.json"
+    if not lockfile.exists():
+        return None
+    data = json.loads(lockfile.read_text(encoding="utf-8"))
+    top_level = data.get("version")
+    if isinstance(top_level, str):
+        return top_level
+    packages = data.get("packages", {})
+    if isinstance(packages, dict):
+        root_package = packages.get("", {})
+        if isinstance(root_package, dict):
+            version = root_package.get("version")
+            if isinstance(version, str):
+                return version
+    return None
+
+
 def _go_version() -> str | None:
     """Read version from go/VERSION (future)."""
     go_version = _REPO_ROOT / "go" / "VERSION"
     if go_version.exists():
         return go_version.read_text(encoding="utf-8").strip()
     return None
+
+
+def _go_internal_version() -> str | None:
+    """Read version from go/internal/VERSION, falling back to go/VERSION."""
+    v = _REPO_ROOT / "go" / "internal" / "VERSION"
+    if v.exists():
+        return v.read_text(encoding="utf-8").strip()
+    return _go_version()
 
 
 def _go_logger_version() -> str | None:
@@ -72,6 +109,41 @@ def _go_tracer_version() -> str | None:
     return None
 
 
+def _go_required_version(go_mod_path: Path, module_path: str) -> str | None:
+    """Read a required module version from a go.mod file."""
+    if not go_mod_path.exists():
+        return None
+
+    in_require_block = False
+    for raw_line in go_mod_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("//", 1)[0].strip()
+        if not line:
+            continue
+
+        if line == "require (":
+            in_require_block = True
+            continue
+        if in_require_block and line == ")":
+            in_require_block = False
+            continue
+
+        parts = line.split()
+        if in_require_block:
+            if len(parts) >= 2 and parts[0] == module_path:
+                return parts[1]
+            continue
+
+        if len(parts) >= 3 and parts[0] == "require" and parts[1] == module_path:
+            return parts[2]
+
+    return None
+
+
+def _normalize_go_version(version: str) -> str:
+    """Return a Go module version with a leading v-prefix."""
+    return version if version.startswith("v") else f"v{version}"
+
+
 def _rust_version() -> str | None:
     """Read version from rust/Cargo.toml."""
     cargo = _REPO_ROOT / "rust" / "Cargo.toml"
@@ -84,8 +156,11 @@ def _rust_version() -> str | None:
 
 _LANG_READERS = {
     "python": _python_version,
-    "typescript": _typescript_version,
+    "typescript/package": _typescript_package_version,
+    "typescript/runtime": _typescript_runtime_version,
+    "typescript/lockfile": _typescript_lockfile_version,
     "go": _go_version,
+    "go/internal": _go_internal_version,
     "go/logger": _go_logger_version,
     "go/tracer": _go_tracer_version,
     "rust": _rust_version,
@@ -113,6 +188,50 @@ def main() -> int:
         else:
             print(f"  {lang}: {version} — MISMATCH (expected {canonical}.*)")
             errors.append(f"{lang} version {version} does not match {canonical}")
+
+    ts_package = _typescript_package_version()
+    ts_runtime = _typescript_runtime_version()
+    ts_lockfile = _typescript_lockfile_version()
+    if ts_package and ts_runtime and ts_package != ts_runtime:
+        print(f"  typescript exact sync: runtime {ts_runtime} != package {ts_package}")
+        errors.append(
+            f"typescript runtime export version {ts_runtime} does not exactly match package.json {ts_package}"
+        )
+    if ts_package and ts_lockfile and ts_package != ts_lockfile:
+        print(f"  typescript exact sync: lockfile {ts_lockfile} != package {ts_package}")
+        errors.append(
+            f"typescript package-lock version {ts_lockfile} does not exactly match package.json {ts_package}"
+        )
+
+    go_internal = _go_internal_version()
+    logger_requires_internal = _go_required_version(
+        _REPO_ROOT / "go" / "logger" / "go.mod",
+        "github.com/provide-io/provide-telemetry/go/internal",
+    )
+    if go_internal and logger_requires_internal and logger_requires_internal != _normalize_go_version(go_internal):
+        print(
+            "  go/logger dependency:"
+            f" internal {logger_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}"
+        )
+        errors.append(
+            "go/logger go.mod dependency "
+            f"{logger_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
+        )
+
+    go_logger = _go_logger_version()
+    tracer_requires_logger = _go_required_version(
+        _REPO_ROOT / "go" / "tracer" / "go.mod",
+        "github.com/provide-io/provide-telemetry/go/logger",
+    )
+    if go_logger and tracer_requires_logger and tracer_requires_logger != _normalize_go_version(go_logger):
+        print(
+            "  go/tracer dependency:"
+            f" logger {tracer_requires_logger} != go/logger VERSION {_normalize_go_version(go_logger)}"
+        )
+        errors.append(
+            "go/tracer go.mod dependency "
+            f"{tracer_requires_logger} does not exactly match go/logger VERSION {_normalize_go_version(go_logger)}"
+        )
 
     if errors:
         print(f"\nFAILED — {len(errors)} version mismatches.")

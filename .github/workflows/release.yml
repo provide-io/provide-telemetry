@@ -2,9 +2,11 @@ name: 🚀 Release
 
 on:
   push:
-    # Only go sub-module tags trigger this workflow on push (for verify-go-proxy).
+    # Go module tags trigger consumer-resolution verification on push.
     # Main release builds/publishes are gated on GitHub Release creation below.
     tags:
+      - 'go/v*'
+      - 'go/internal/v*'
       - 'go/logger/v*'
       - 'go/tracer/v*'
   release:
@@ -272,22 +274,55 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 
-  verify-go-proxy:
-    # Triggered only when a go sub-module tag is pushed (go/logger/v* or go/tracer/v*)
+  verify-go-consumer-direct:
+    # Triggered only when a Go module tag is pushed (for example go/v0.4.0 or go/logger/v0.4.0)
     if: startsWith(github.ref, 'refs/tags/go/')
     runs-on: ubuntu-24.04
+    env:
+      GOWORK: off
+      GOPROXY: direct
+      GOSUMDB: off
+      GONOSUMDB: github.com/provide-io/provide-telemetry
     steps:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.25"
-      # Extract module path and version from the tag (e.g. go/logger/v0.2.5)
+      # Extract module path and version from the tag (for example go/logger/v0.4.0)
       - name: Parse tag into module and version
         id: tag
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # TAG format: go/logger/v0.2.5 or go/tracer/v0.2.5
+          # TAG format: go/v0.4.0, go/internal/v0.4.0, go/logger/v0.4.0, or go/tracer/v0.4.0
           SUB="${TAG%/v*}"           # go/logger or go/tracer
           VER="${TAG##*/}"           # v0.2.5
+          MODULE="github.com/provide-io/provide-telemetry/${SUB}"
+          echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Module: ${MODULE}  Version: ${VER}"
+      - name: Verify module fetchable directly as a consumer
+        run: |
+          cd "$(mktemp -d)"
+          go mod init probe
+          go get "${{ steps.tag.outputs.module }}@${{ steps.tag.outputs.version }}"
+          go test "${{ steps.tag.outputs.module }}/..."
+          echo "OK: direct consumer fetch and build succeeded"
+
+  verify-go-proxy:
+    needs: verify-go-consumer-direct
+    if: startsWith(github.ref, 'refs/tags/go/')
+    runs-on: ubuntu-24.04
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version: "1.25"
+      - name: Parse tag into module and version
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SUB="${TAG%/v*}"
+          VER="${TAG##*/}"
           MODULE="github.com/provide-io/provide-telemetry/${SUB}"
           echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
@@ -313,7 +348,8 @@ jobs:
       # Verify the module can be fetched cleanly
       - name: Verify module fetchable via go get
         run: |
-          cd $(mktemp -d)
+          cd "$(mktemp -d)"
           go mod init probe
           go get "${{ steps.tag.outputs.module }}@${{ steps.tag.outputs.version }}"
-          echo "OK: go get succeeded"
+          go test "${{ steps.tag.outputs.module }}/..."
+          echo "OK: proxy consumer fetch and build succeeded"
