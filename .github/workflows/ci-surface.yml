@@ -8,11 +8,21 @@ on:
     paths:
       - "spec/telemetry-api.yaml"
       - "spec/validate_conformance.py"
+      - "spec/_conformance_extractors.py"
       - "scripts/check_version_sync.py"
       - "VERSION"
+      - "pyproject.toml"
       - "src/provide/telemetry/__init__.py"
+      - "typescript/src/config.ts"
       - "typescript/src/index.ts"
+      - "typescript/package.json"
+      - "typescript/package-lock.json"
+      - "go/VERSION"
+      - "go/internal/VERSION"
+      - "go/logger/VERSION"
+      - "go/tracer/VERSION"
       - "go/telemetry.go"
+      - "rust/Cargo.toml"
       - "rust/src/lib.rs"
       - ".github/workflows/ci-surface.yml"
   pull_request:
@@ -20,11 +30,21 @@ on:
     paths:
       - "spec/telemetry-api.yaml"
       - "spec/validate_conformance.py"
+      - "spec/_conformance_extractors.py"
       - "scripts/check_version_sync.py"
       - "VERSION"
+      - "pyproject.toml"
       - "src/provide/telemetry/__init__.py"
+      - "typescript/src/config.ts"
       - "typescript/src/index.ts"
+      - "typescript/package.json"
+      - "typescript/package-lock.json"
+      - "go/VERSION"
+      - "go/internal/VERSION"
+      - "go/logger/VERSION"
+      - "go/tracer/VERSION"
       - "go/telemetry.go"
+      - "rust/Cargo.toml"
       - "rust/src/lib.rs"
       - ".github/workflows/ci-surface.yml"
   workflow_dispatch:
@@ -53,6 +73,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: "3.11"
-      # Verifies VERSION file matches pyproject.toml, package.json, go.mod, Cargo.toml
+      # Verifies VERSION file matches manifests plus shipped TypeScript runtime exports/lockfile.
       - name: Version sync check
         run: python scripts/check_version_sync.py

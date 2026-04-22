@@ -3,7 +3,7 @@ module github.com/provide-io/provide-telemetry/go/tracer
 go 1.25.0
 
 require (
-	github.com/provide-io/provide-telemetry/go/logger v0.2.6
+	github.com/provide-io/provide-telemetry/go/logger v0.4.0
 	go.opentelemetry.io/otel/trace v1.43.0
 )
 
