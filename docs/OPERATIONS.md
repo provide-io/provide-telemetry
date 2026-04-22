@@ -87,7 +87,7 @@ When acting as a local runner on macOS with `colima`, prefer `${HOME}`-based soc
 
 ```bash
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-act -W .github/workflows/ci.yml workflow_dispatch -j quality \
+act -W .github/workflows/ci-shared.yml workflow_dispatch -j release-readiness \
   --container-architecture linux/amd64 \
   --container-daemon-socket "${DOCKER_HOST}" \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
@@ -98,7 +98,7 @@ daemon socket bind-mount to avoid macOS/Colima mount issues:
 
 ```bash
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-act -W .github/workflows/ci.yml pull_request -j docs-quality \
+act -W .github/workflows/ci-shared.yml pull_request -j docs-quality \
   --container-architecture linux/amd64 \
   --container-daemon-socket -
 ```

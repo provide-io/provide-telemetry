@@ -13,7 +13,9 @@ on:
       - "csharp/**"
       - "VERSION"
       - "typescript/package.json"
+      - "typescript/package-lock.json"
       - "pyproject.toml"
+      - "scripts/check_version_sync.py"
       - ".github/workflows/ci-spec.yml"
   pull_request:
     branches: [main]
@@ -27,7 +29,9 @@ on:
       - "csharp/**"
       - "VERSION"
       - "typescript/package.json"
+      - "typescript/package-lock.json"
       - "pyproject.toml"
+      - "scripts/check_version_sync.py"
       - ".github/workflows/ci-spec.yml"
   workflow_dispatch:
 

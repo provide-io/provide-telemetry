@@ -9,6 +9,16 @@ Run any example from the repo root:
 cd go && go run ./examples/telemetry/01_basic_telemetry
 ```
 
+Examples that export to OTLP or OpenObserve import the optional
+`github.com/provide-io/provide-telemetry/go/otel` module for side-effect
+backend registration.
+
+Run those examples from the optional backend module path:
+
+```bash
+cd go && go run ./otel/examples/openobserve/01_emit_all_signals
+```
+
 ## Telemetry
 
 - **`01_basic_telemetry`** — logging, tracing, and all three metric types (counter, gauge, histogram).
@@ -37,6 +47,6 @@ export OPENOBSERVE_PASSWORD=password
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5080/api/default
 ```
 
-- **`openobserve/01_emit_all_signals`** — emit logs, traces, and metrics to OpenObserve via OTLP.
-- **`openobserve/02_verify_ingestion`** — runs `01_emit_all_signals` and polls OpenObserve to confirm all signals appeared.
-- **`openobserve/03_hardening_profile`** — full hardening profile with OTLP export to OpenObserve.
+- **`otel/examples/openobserve/01_emit_all_signals`** — emit logs, traces, and metrics to OpenObserve via OTLP.
+- **`otel/examples/openobserve/02_verify_ingestion`** — runs `01_emit_all_signals` and polls OpenObserve to confirm all signals appeared.
+- **`otel/examples/openobserve/03_hardening_profile`** — full hardening profile with OTLP export to OpenObserve.

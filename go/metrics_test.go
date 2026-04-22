@@ -5,13 +5,9 @@ package telemetry
 
 import (
 	"context"
-	"log/slog"
-	"math"
 	"sync"
 	"testing"
-	"time"
-
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"log/slog"
 )
 
 func TestNewCounterNonNil(t *testing.T) {
@@ -183,21 +179,6 @@ func TestGetMeterReturnsNil(t *testing.T) {
 	}
 }
 
-func TestGetMeterAutoWiredFromEndpoint(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-	defer _resetSetup()
-	defer _resetOTelProviders()
-
-	if _, err := SetupTelemetry(); err != nil {
-		t.Fatalf("SetupTelemetry: %v", err)
-	}
-
-	m := GetMeter("test.auto.meter")
-	if m == nil {
-		t.Fatal("expected non-nil Meter when OTEL_EXPORTER_OTLP_ENDPOINT is set")
-	}
-}
-
 func TestOptionsAccepted(t *testing.T) {
 	c := NewCounter("test.opts", WithDescription("a counter"), WithUnit("requests"))
 	if c == nil {
@@ -213,7 +194,7 @@ func TestOptionsAccepted(t *testing.T) {
 	}
 }
 
-func TestProviderBackedMetricsAndOptionHelpers(t *testing.T) {
+func TestBackendBackedMeterAndInstrumentWrappers(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 	_resetSamplingPolicies()
@@ -221,47 +202,39 @@ func TestProviderBackedMetricsAndOptionHelpers(t *testing.T) {
 	t.Cleanup(_resetSamplingPolicies)
 	t.Cleanup(_resetQueuePolicy)
 
-	mp := sdkmetric.NewMeterProvider()
-	if _, err := SetupTelemetry(WithMeterProvider(mp)); err != nil {
+	backend := &_fakeBackend{}
+	RegisterBackend("fake", backend)
+	t.Cleanup(func() { UnregisterBackend("fake") })
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
-	counter := NewCounter("otel.counter.attrs", WithDescription("provider counter"), WithUnit("1"))
-	if _, ok := counter.(*_otelCounter); !ok {
-		t.Fatalf("expected provider-backed counter, got %T", counter)
+	if got := GetMeter("backend.metrics"); got != "meter:backend.metrics" {
+		t.Fatalf("expected backend meter, got %v", got)
+	}
+
+	counter := NewCounter("backend.counter", WithDescription("provider counter"), WithUnit("1"))
+	if _, ok := counter.(*_backendCounter); !ok {
+		t.Fatalf("expected backend counter wrapper, got %T", counter)
 	}
 	counter.Add(context.Background(), 2, slog.Bool("ok", true))
 
-	gauge := NewGauge("otel.gauge.attrs", WithDescription("provider gauge"), WithUnit("bytes"))
-	if _, ok := gauge.(*_otelGauge); !ok {
-		t.Fatalf("expected provider-backed gauge, got %T", gauge)
+	gauge := NewGauge("backend.gauge", WithDescription("provider gauge"), WithUnit("bytes"))
+	if _, ok := gauge.(*_backendGauge); !ok {
+		t.Fatalf("expected backend gauge wrapper, got %T", gauge)
 	}
 	gauge.Set(context.Background(), 12.5, slog.String("kind", "gauge"))
 
-	histogram := NewHistogram("otel.hist.attrs", WithDescription("provider histogram"), WithUnit("ms"))
-	if _, ok := histogram.(*_otelHistogram); !ok {
-		t.Fatalf("expected provider-backed histogram, got %T", histogram)
+	histogram := NewHistogram("backend.histogram", WithDescription("provider histogram"), WithUnit("ms"))
+	if _, ok := histogram.(*_backendHistogram); !ok {
+		t.Fatalf("expected backend histogram wrapper, got %T", histogram)
 	}
 	histogram.Record(context.Background(), 4.2, slog.Int("status", 200))
 
-	opts := _applyOptions([]Option{WithDescription("desc"), WithUnit("ms")})
-	if got := _gaugeOptions(opts); len(got) != 2 {
-		t.Fatalf("expected gauge options to include description and unit, got %d", len(got))
-	}
-	if got := _histogramOptions(opts); len(got) != 2 {
-		t.Fatalf("expected histogram options to include description and unit, got %d", len(got))
-	}
-	if got := _addOptions(nil); got != nil {
-		t.Fatalf("expected nil add options for empty attrs, got %v", got)
-	}
-	if got := _recordOptions(nil); got != nil {
-		t.Fatalf("expected nil record options for empty attrs, got %v", got)
-	}
-	if got := _addOptions([]slog.Attr{slog.String("env", "test")}); len(got) != 1 {
-		t.Fatalf("expected one add option for attrs, got %d", len(got))
-	}
-	if got := _recordOptions([]slog.Attr{slog.String("env", "test")}); len(got) != 1 {
-		t.Fatalf("expected one record option for attrs, got %d", len(got))
+	if len(backend.counterAdds) != 1 || backend.counterAdds[0] != 2 {
+		t.Fatalf("expected backend counter add to be recorded, got %v", backend.counterAdds)
 	}
 }
 
@@ -276,22 +249,26 @@ func setupProviderBackedMetricsForGate(t *testing.T) (Counter, Gauge, Histogram)
 	t.Cleanup(_resetQueuePolicy)
 	t.Cleanup(_resetHealth)
 
-	mp := sdkmetric.NewMeterProvider()
-	if _, err := SetupTelemetry(WithMeterProvider(mp)); err != nil {
+	backend := &_fakeBackend{}
+	RegisterBackend("fake", backend)
+	t.Cleanup(func() { UnregisterBackend("fake") })
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
-	counter := NewCounter("otel.counter.gate")
-	gauge := NewGauge("otel.gauge.gate")
-	histogram := NewHistogram("otel.hist.gate")
-	if _, ok := counter.(*_otelCounter); !ok {
-		t.Fatalf("expected provider-backed counter, got %T", counter)
+	counter := NewCounter("backend.counter.gate")
+	gauge := NewGauge("backend.gauge.gate")
+	histogram := NewHistogram("backend.hist.gate")
+	if _, ok := counter.(*_backendCounter); !ok {
+		t.Fatalf("expected backend-backed counter, got %T", counter)
 	}
-	if _, ok := gauge.(*_otelGauge); !ok {
-		t.Fatalf("expected provider-backed gauge, got %T", gauge)
+	if _, ok := gauge.(*_backendGauge); !ok {
+		t.Fatalf("expected backend-backed gauge, got %T", gauge)
 	}
-	if _, ok := histogram.(*_otelHistogram); !ok {
-		t.Fatalf("expected provider-backed histogram, got %T", histogram)
+	if _, ok := histogram.(*_backendHistogram); !ok {
+		t.Fatalf("expected backend-backed histogram, got %T", histogram)
 	}
 	return counter, gauge, histogram
 }
@@ -309,7 +286,7 @@ func TestProviderBackedMetricsRespectSampling(t *testing.T) {
 	after := GetHealthSnapshot()
 
 	if after.MetricsEmitted != before.MetricsEmitted {
-		t.Fatalf("expected provider-backed metrics to respect sampling gate: before=%d after=%d", before.MetricsEmitted, after.MetricsEmitted)
+		t.Fatalf("expected backend-backed metrics to respect sampling gate: before=%d after=%d", before.MetricsEmitted, after.MetricsEmitted)
 	}
 }
 
@@ -327,100 +304,7 @@ func TestProviderBackedMetricsRespectBackpressure(t *testing.T) {
 	after := GetHealthSnapshot()
 
 	if after.MetricsEmitted != before.MetricsEmitted {
-		t.Fatalf("expected provider-backed metrics to respect backpressure gate: before=%d after=%d", before.MetricsEmitted, after.MetricsEmitted)
-	}
-}
-
-func TestAttributeFromSlogAttr_ConvertsSupportedKinds(t *testing.T) {
-	now := time.Date(2026, time.April, 17, 12, 0, 0, 0, time.UTC)
-
-	cases := []struct {
-		assertion func(t *testing.T)
-	}{
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Bool("ok", true))
-				if kv.Key != "ok" || !kv.Value.AsBool() {
-					t.Fatalf("unexpected bool conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Duration("latency", 3*time.Second))
-				if kv.Key != "latency" || kv.Value.AsString() != "3s" {
-					t.Fatalf("unexpected duration conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Float64("ratio", 1.5))
-				if kv.Key != "ratio" || kv.Value.AsFloat64() != 1.5 {
-					t.Fatalf("unexpected float conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Int64("count", 7))
-				if kv.Key != "count" || kv.Value.AsInt64() != 7 {
-					t.Fatalf("unexpected int conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.String("service", "api"))
-				if kv.Key != "service" || kv.Value.AsString() != "api" {
-					t.Fatalf("unexpected string conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Time("at", now))
-				if kv.Key != "at" || kv.Value.AsString() != now.Format("2006-01-02T15:04:05.999999999Z07:00") {
-					t.Fatalf("unexpected time conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Uint64("bytes", 9))
-				if kv.Key != "bytes" || kv.Value.AsInt64() != 9 {
-					t.Fatalf("unexpected uint64 conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Uint64("bytes", uint64(math.MaxInt64)+1))
-				if kv.Key != "bytes" || kv.Value.AsString() != "9223372036854775808" {
-					t.Fatalf("unexpected uint64 overflow conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Group("ctx", slog.String("env", "test")))
-				if kv.Key != "ctx" || kv.Value.AsString() != "[env=test]" {
-					t.Fatalf("unexpected group conversion: %+v", kv)
-				}
-			},
-		},
-		{
-			assertion: func(t *testing.T) {
-				kv := _attributeFromSlogAttr(slog.Any("meta", map[string]int{"a": 1}))
-				if kv.Key != "meta" || kv.Value.AsString() != "map[a:1]" {
-					t.Fatalf("unexpected fallback conversion: %+v", kv)
-				}
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		tc.assertion(t)
+		t.Fatalf("expected backend-backed metrics to respect backpressure gate: before=%d after=%d", before.MetricsEmitted, after.MetricsEmitted)
 	}
 }
 

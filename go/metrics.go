@@ -5,13 +5,9 @@ package telemetry
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math"
 	"sync/atomic"
-
-	"go.opentelemetry.io/otel/attribute"
-	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 // Option configures optional instrument metadata.
@@ -20,6 +16,16 @@ type Option func(*_instrumentOptions)
 type _instrumentOptions struct {
 	description string
 	unit        string
+}
+
+func (o *_instrumentOptions) snapshot() InstrumentOptions {
+	if o == nil {
+		return InstrumentOptions{}
+	}
+	return InstrumentOptions{
+		Description: o.description,
+		Unit:        o.unit,
+	}
 }
 
 // WithDescription sets a human-readable description on the instrument.
@@ -56,19 +62,19 @@ type Histogram interface {
 	Record(ctx context.Context, value float64, attrs ...slog.Attr)
 }
 
-type _otelCounter struct {
+type _backendCounter struct {
 	name  string
-	inner otelmetric.Int64Counter
+	inner Counter
 }
 
-type _otelGauge struct {
+type _backendGauge struct {
 	name  string
-	inner otelmetric.Float64Gauge
+	inner Gauge
 }
 
-type _otelHistogram struct {
+type _backendHistogram struct {
 	name  string
-	inner otelmetric.Float64Histogram
+	inner Histogram
 }
 
 // _atomicCounter is the in-process fallback Counter backed by atomic.Int64.
@@ -166,14 +172,9 @@ func (h *_atomicHistogram) Sum() float64 { return math.Float64frombits(h.sum.Loa
 // NewCounter creates a named Counter with in-process atomic fallback.
 func NewCounter(name string, opts ...Option) Counter {
 	applied := _applyOptions(opts)
-	_setupMu.Lock()
-	meterProvider := _otelMeterProvider
-	_setupMu.Unlock()
-	if meterProvider != nil {
-		meter := meterProvider.Meter("provide.telemetry")
-		counter, err := meter.Int64Counter(name, _counterOptions(applied)...)
-		if err == nil {
-			return &_otelCounter{name: name, inner: counter}
+	if backend := _activeBackend(); backend != nil {
+		if counter, ok := backend.NewCounter(name, applied.snapshot()); ok && counter != nil {
+			return &_backendCounter{name: name, inner: counter}
 		}
 	}
 	return &_atomicCounter{name: name}
@@ -182,14 +183,9 @@ func NewCounter(name string, opts ...Option) Counter {
 // NewGauge creates a named Gauge with in-process atomic fallback.
 func NewGauge(name string, opts ...Option) Gauge {
 	applied := _applyOptions(opts)
-	_setupMu.Lock()
-	meterProvider := _otelMeterProvider
-	_setupMu.Unlock()
-	if meterProvider != nil {
-		meter := meterProvider.Meter("provide.telemetry")
-		gauge, err := meter.Float64Gauge(name, _gaugeOptions(applied)...)
-		if err == nil {
-			return &_otelGauge{name: name, inner: gauge}
+	if backend := _activeBackend(); backend != nil {
+		if gauge, ok := backend.NewGauge(name, applied.snapshot()); ok && gauge != nil {
+			return &_backendGauge{name: name, inner: gauge}
 		}
 	}
 	return &_atomicGauge{name: name}
@@ -198,34 +194,27 @@ func NewGauge(name string, opts ...Option) Gauge {
 // NewHistogram creates a named Histogram with in-process atomic fallback.
 func NewHistogram(name string, opts ...Option) Histogram {
 	applied := _applyOptions(opts)
-	_setupMu.Lock()
-	meterProvider := _otelMeterProvider
-	_setupMu.Unlock()
-	if meterProvider != nil {
-		meter := meterProvider.Meter("provide.telemetry")
-		histogram, err := meter.Float64Histogram(name, _histogramOptions(applied)...)
-		if err == nil {
-			return &_otelHistogram{name: name, inner: histogram}
+	if backend := _activeBackend(); backend != nil {
+		if histogram, ok := backend.NewHistogram(name, applied.snapshot()); ok && histogram != nil {
+			return &_backendHistogram{name: name, inner: histogram}
 		}
 	}
 	return &_atomicHistogram{name: name}
 }
 
-// GetMeter returns a named OTel metric.Meter when an OTel MeterProvider has been
-// installed — either automatically when OTEL_EXPORTER_OTLP_ENDPOINT is set and
-// SetupTelemetry is called, or explicitly via SetupTelemetry(WithMeterProvider(mp)).
-// Returns nil if no provider has been wired.
+// GetMeter returns a named backend meter when an optional provider backend has
+// been installed. For the built-in OTel backend, import
+// github.com/provide-io/provide-telemetry/go/otel and either rely on OTLP
+// environment variables or call SetupTelemetry(WithMeterProvider(mp)).
+// Returns nil if no provider backend has been wired.
 func GetMeter(name string) any {
-	_setupMu.Lock()
-	meterProvider := _otelMeterProvider
-	_setupMu.Unlock()
-	if meterProvider == nil {
-		return nil
+	if backend := _activeBackend(); backend != nil {
+		return backend.Meter(name)
 	}
-	return meterProvider.Meter(name)
+	return nil
 }
 
-func (c *_otelCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
+func (c *_backendCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
@@ -236,11 +225,11 @@ func (c *_otelCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr)
 		return
 	}
 	defer Release(signalMetrics)
-	c.inner.Add(ctx, value, _addOptions(attrs)...)
+	c.inner.Add(ctx, value, attrs...)
 	_incMetricsRecorded()
 }
 
-func (g *_otelGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
+func (g *_backendGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
@@ -251,12 +240,11 @@ func (g *_otelGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr)
 		return
 	}
 	defer Release(signalMetrics)
-	// OTel Float64Gauge uses Record (not Set) per the OTel Go API convention.
-	g.inner.Record(ctx, value, _recordOptions(attrs)...)
+	g.inner.Set(ctx, value, attrs...)
 	_incMetricsRecorded()
 }
 
-func (h *_otelHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
+func (h *_backendHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
@@ -267,93 +255,6 @@ func (h *_otelHistogram) Record(ctx context.Context, value float64, attrs ...slo
 		return
 	}
 	defer Release(signalMetrics)
-	h.inner.Record(ctx, value, _recordOptions(attrs)...)
+	h.inner.Record(ctx, value, attrs...)
 	_incMetricsRecorded()
-}
-
-func _counterOptions(opts *_instrumentOptions) []otelmetric.Int64CounterOption {
-	options := make([]otelmetric.Int64CounterOption, 0, 2)
-	if opts.description != "" {
-		options = append(options, otelmetric.WithDescription(opts.description))
-	}
-	if opts.unit != "" {
-		options = append(options, otelmetric.WithUnit(opts.unit))
-	}
-	return options
-}
-
-func _gaugeOptions(opts *_instrumentOptions) []otelmetric.Float64GaugeOption {
-	options := make([]otelmetric.Float64GaugeOption, 0, 2)
-	if opts.description != "" {
-		options = append(options, otelmetric.WithDescription(opts.description))
-	}
-	if opts.unit != "" {
-		options = append(options, otelmetric.WithUnit(opts.unit))
-	}
-	return options
-}
-
-func _histogramOptions(opts *_instrumentOptions) []otelmetric.Float64HistogramOption {
-	options := make([]otelmetric.Float64HistogramOption, 0, 2)
-	if opts.description != "" {
-		options = append(options, otelmetric.WithDescription(opts.description))
-	}
-	if opts.unit != "" {
-		options = append(options, otelmetric.WithUnit(opts.unit))
-	}
-	return options
-}
-
-func _addOptions(attrs []slog.Attr) []otelmetric.AddOption {
-	if len(attrs) == 0 {
-		return nil
-	}
-	keyValues := make([]attribute.KeyValue, 0, len(attrs))
-	for _, attr := range attrs {
-		keyValues = append(keyValues, _attributeFromSlogAttr(attr))
-	}
-	return []otelmetric.AddOption{otelmetric.WithAttributes(keyValues...)}
-}
-
-func _recordOptions(attrs []slog.Attr) []otelmetric.RecordOption {
-	if len(attrs) == 0 {
-		return nil
-	}
-	keyValues := make([]attribute.KeyValue, 0, len(attrs))
-	for _, attr := range attrs {
-		keyValues = append(keyValues, _attributeFromSlogAttr(attr))
-	}
-	return []otelmetric.RecordOption{otelmetric.WithAttributes(keyValues...)}
-}
-
-func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
-	value := attr.Value.Resolve()
-	var keyValue attribute.KeyValue
-	switch value.Kind() {
-	case slog.KindBool:
-		keyValue = attribute.Bool(attr.Key, value.Bool())
-	case slog.KindDuration:
-		keyValue = attribute.String(attr.Key, value.Duration().String())
-	case slog.KindFloat64:
-		keyValue = attribute.Float64(attr.Key, value.Float64())
-	case slog.KindInt64:
-		keyValue = attribute.Int64(attr.Key, value.Int64())
-	case slog.KindString:
-		keyValue = attribute.String(attr.Key, value.String())
-	case slog.KindTime:
-		keyValue = attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
-	case slog.KindUint64:
-		// Guard the uint64 -> int64 conversion so values > MaxInt64 don't wrap
-		// into negatives (gosec G115). Out-of-range values fall through to a
-		// string attribute so the original numeric magnitude is preserved.
-		u := value.Uint64()
-		if u > uint64(math.MaxInt64) {
-			keyValue = attribute.String(attr.Key, fmt.Sprint(u))
-			break
-		}
-		keyValue = attribute.Int64(attr.Key, int64(u))
-	case slog.KindAny, slog.KindGroup, slog.KindLogValuer:
-		keyValue = attribute.String(attr.Key, fmt.Sprint(value.Any()))
-	}
-	return keyValue
 }

@@ -123,8 +123,10 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	// Wire per-signal sampling from config.
 	_applyRuntimePolicies(cfg)
 
-	// Wire OTel providers if any were supplied.
-	_applyOTelProviders(state, cfg)
+	// Wire any registered optional backend (for example go/otel).
+	if err := _setupBackendLocked(state, cfg); err != nil {
+		return nil, err
+	}
 
 	_runtimeCfg = cfg
 	_setupDone = true
@@ -145,8 +147,9 @@ func ShutdownTelemetry(ctx context.Context) error {
 	_setupDone = false
 	_runtimeCfg = nil
 
-	err := _shutdownOTelProviders(ctx)
+	err := _shutdownBackendLocked(ctx)
 	DefaultTracer = &_noopTracer{}
+	_resetLogger()
 	return err
 }
 
@@ -156,6 +159,7 @@ func _resetSetup() {
 	defer _setupMu.Unlock()
 	_setupDone = false
 	_runtimeCfg = nil
-	_resetOTelProviders()
+	_resetBackendsLocked()
 	DefaultTracer = &_noopTracer{}
+	_resetLogger()
 }
