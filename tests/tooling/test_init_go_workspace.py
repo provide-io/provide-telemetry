@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import subprocess  # nosec
 from pathlib import Path
@@ -28,6 +29,16 @@ def _write_go_module(path: Path, module_path: str, go_version: str = "1.26.0") -
     _write(path / "go.mod", f"module {module_path}\n\ngo {go_version}\n")
 
 
+def _bash_path(path: Path) -> str:
+    raw = str(path)
+    if os.name != "nt":
+        return raw
+    drive, tail = ntpath.splitdrive(raw)
+    assert drive, f"expected a drive-qualified Windows path, got {raw!r}"
+    normalized_tail = tail.replace("\\", "/")
+    return f"/{drive.rstrip(':').lower()}{normalized_tail}"
+
+
 def _run_workspace_script(
     repo_root: Path,
     tmp_path: Path,
@@ -46,7 +57,7 @@ def _run_workspace_script(
     env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
     workspace_dir = tmp_path / "workspace"
     result = subprocess.run(
-        ["bash", str(SCRIPT), str(repo_root), str(workspace_dir)],
+        ["bash", _bash_path(SCRIPT), _bash_path(repo_root), _bash_path(workspace_dir)],
         capture_output=True,
         text=True,
         check=False,
@@ -132,3 +143,9 @@ printf 'C:/%s\\n' "${path}"
     assert stdout_path == f"C:/{(tmp_path / 'workspace').as_posix().lstrip('/')}/go.work"
     assert f"\t{expected_root}/go" in workfile
     assert f"\t{expected_root}/go/otel" in workfile
+
+
+def test_bash_path_converts_windows_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "name", "nt")
+
+    assert _bash_path(Path("C:/Users/runneradmin/work/repo")) == "/c/Users/runneradmin/work/repo"
