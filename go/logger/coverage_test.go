@@ -59,7 +59,6 @@ func TestNewEventSchemaErrorWithCause(t *testing.T) {
 // ---- GetBoundFields: non-map value in context ----
 
 func TestGetBoundFieldsBadType(t *testing.T) {
-	type badKey struct{}
 	// We can't inject a bad type into the fields key directly, but we can verify
 	// that an empty context returns an empty map (covers the nil branch).
 	ctx := context.Background()

@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Add an Ephemeral Go Workspace Helper
+## Task 1: Add an Ephemeral Go Workspace Helper
 
 **Files:**
 - Create: `ci/init-go-workspace.sh`
@@ -52,7 +52,7 @@ Expected: exit code `0`
 Run: `WORKFILE=$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work) && test -f "$WORKFILE"`
 Expected: exit code `0`
 
-### Task 2: Split Go CI Into Standalone and Workspace Paths
+## Task 2: Split Go CI Into Standalone and Workspace Paths
 
 **Files:**
 - Modify: `.github/workflows/ci-go.yml`
@@ -106,7 +106,7 @@ Delete `test-logger` and `test-tracer` from `ci-go.yml` after their checks move 
 Run: `act -W .github/workflows/ci-go.yml pull_request -j workspace-integration --container-architecture linux/amd64`
 Expected: the job completes successfully with local source resolution.
 
-### Task 3: Move Consumer-Mode Resolution Checks Into Release
+## Task 3: Move Consumer-Mode Resolution Checks Into Release
 
 **Files:**
 - Modify: `.github/workflows/release.yml`

@@ -6,7 +6,6 @@ package logger_test
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"runtime"
 	"testing"
@@ -18,26 +17,18 @@ import (
 
 func TestConfigurationErrorAsNonMatch(t *testing.T) {
 	ce := logger.NewConfigurationError("cfg problem")
-	var other *logger.ConfigurationError // not *TelemetryError
-	// errors.As uses the As() method; passing a *ConfigurationError target
-	// won't match **TelemetryError so As returns false.
-	if errors.As(ce, &other) {
-		// This succeeds via standard errors.As type match, not our custom As.
-		// Test the custom As explicitly:
+	var other *logger.ConfigurationError
+	if ce.As(&other) {
+		t.Fatal("ConfigurationError.As should reject non-TelemetryError targets")
 	}
-	// Call As directly with a non-matching target type to cover the false branch.
-	type differentType struct{ msg string }
-	var dt *differentType
-	// errors.As will not call our As for this — use interface check.
-	_ = dt
-	_ = ce
 }
 
 func TestEventSchemaErrorAsNonMatch(t *testing.T) {
 	ese := logger.NewEventSchemaError("schema problem")
 	var other *logger.EventSchemaError
-	_ = errors.As(ese, &other) // covers standard path
-	_ = ese
+	if ese.As(&other) {
+		t.Fatal("EventSchemaError.As should reject non-TelemetryError targets")
+	}
 }
 
 // ---- fingerprint: with real PCs ----

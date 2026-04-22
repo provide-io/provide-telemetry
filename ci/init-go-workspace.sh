@@ -8,7 +8,16 @@ set -euo pipefail
 repo_root="${1:?repository root required}"
 workspace_dir="${2:?workspace output directory required}"
 
+canonicalize_dir() {
+  (
+    cd "${1}"
+    pwd -P
+  )
+}
+
+repo_root="$(canonicalize_dir "${repo_root}")"
 mkdir -p "${workspace_dir}"
+workspace_dir="$(canonicalize_dir "${workspace_dir}")"
 rm -f "${workspace_dir}/go.work" "${workspace_dir}/go.work.sum"
 
 workspace_modules=()
@@ -46,6 +55,7 @@ for module_dir in \
   "${repo_root}/go/cmd/e2e_cross_language_client"
 do
   if [ -f "${module_dir}/go.mod" ]; then
+    module_dir="$(canonicalize_dir "${module_dir}")"
     workspace_modules+=("${module_dir}")
     module_go_version="$(
       awk '/^go[[:space:]]+/ { print $2; exit }' "${module_dir}/go.mod"

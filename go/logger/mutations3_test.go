@@ -105,7 +105,7 @@ func TestGetLoggerORConditionTraceOnly(t *testing.T) {
 	base2 := slog.NewJSONHandler(buf2, &slog.HandlerOptions{Level: LevelTrace})
 	// Manually replicate what GetLogger does to verify the OR condition.
 	traceID, spanID := GetTraceContext(ctx)
-	if !(traceID != "" || spanID != "") {
+	if traceID == "" && spanID == "" {
 		t.Fatal("OR condition should be true when only traceID is set")
 	}
 	if traceID == "" {
@@ -118,7 +118,7 @@ func TestGetLoggerORConditionTraceOnly(t *testing.T) {
 func TestGetLoggerORConditionSpanOnly(t *testing.T) {
 	ctx := SetTraceContext(context.Background(), "", "span-only-xyz")
 	traceID, spanID := GetTraceContext(ctx)
-	if !(traceID != "" || spanID != "") {
+	if traceID == "" && spanID == "" {
 		t.Fatal("OR condition should be true when only spanID is set")
 	}
 	if spanID == "" {

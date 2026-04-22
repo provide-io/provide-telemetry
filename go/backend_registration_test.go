@@ -5,7 +5,6 @@ package telemetry
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 )
@@ -270,6 +269,8 @@ func TestGetLoggerWithoutRegisteredBackendDoesNotRequireBridge(t *testing.T) {
 	t.Cleanup(func() { resetSetupState(t) })
 
 	logger := GetLogger(context.Background(), "core.only")
-	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	if logger == nil {
+		t.Fatal("expected a logger without a registered backend")
+	}
 	logger.Info("core-only")
 }

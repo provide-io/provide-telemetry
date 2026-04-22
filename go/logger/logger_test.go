@@ -4,7 +4,6 @@
 package logger_test
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"regexp"
@@ -13,41 +12,6 @@ import (
 
 	"github.com/provide-io/provide-telemetry/go/logger"
 )
-
-// ---- helpers ----
-
-type _bufHandler struct {
-	buf   *bytes.Buffer
-	level slog.Level
-	attrs []slog.Attr
-}
-
-func (h *_bufHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
-func (h *_bufHandler) Handle(_ context.Context, r slog.Record) error {
-	h.buf.WriteString(r.Message)
-	r.Attrs(func(a slog.Attr) bool { h.attrs = append(h.attrs, a); return true })
-	return nil
-}
-func (h *_bufHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	cp := *h
-	cp.attrs = append(cp.attrs, attrs...)
-	return &cp
-}
-func (h *_bufHandler) WithGroup(name string) slog.Handler { return h }
-
-func newBufHandler() (*_bufHandler, *bytes.Buffer) {
-	buf := &bytes.Buffer{}
-	return &_bufHandler{buf: buf, level: slog.LevelDebug - 10}, buf
-}
-
-func attrVal(attrs []slog.Attr, key string) (string, bool) {
-	for _, a := range attrs {
-		if a.Key == key {
-			return a.Value.String(), true
-		}
-	}
-	return "", false
-}
 
 // ---- errors ----
 
