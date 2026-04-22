@@ -415,3 +415,29 @@ class TestUpdateRuntimeConfigErrorMessages:
         assert "process and call setup_telemetry()" in msg
         # mutmut_26: prefix "XX" prepended to "process and call..."
         assert "XXprocess" not in msg, f"Message must not start segment with 'XX': {msg!r}"
+
+    def test_error_message_matches_restart_contract_exactly(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Provider-changing log reconfiguration must emit the canonical restart guidance."""
+        from provide.telemetry.logger import core as logger_core
+
+        runtime_mod.apply_runtime_config(TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs"}))
+        monkeypatch.setattr(logger_core, "_has_real_otel_log_provider", lambda: True)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            runtime_mod.update_runtime_config(
+                RuntimeOverrides(
+                    logging=LoggingConfig(
+                        level="INFO",
+                        fmt="json",
+                        include_timestamp=True,
+                        include_caller=False,
+                        sanitize=True,
+                        otlp_endpoint="http://other",
+                    )
+                )
+            )
+
+        assert str(exc_info.value) == (
+            "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
+            "are installed. Restart the process and call setup_telemetry() with the new config."
+        )
