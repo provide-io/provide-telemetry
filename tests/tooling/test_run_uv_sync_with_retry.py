@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.tooling.test_init_go_workspace import _bash_executable, _bash_path
+
 pytestmark = pytest.mark.tooling
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -49,7 +51,7 @@ def test_retry_script_retries_then_succeeds(tmp_path: Path) -> None:
     env["UV_SYNC_RETRY_DELAY_SECONDS"] = "0"
 
     result = subprocess.run(
-        ["bash", str(SCRIPT), "--group", "dev"],
+        [_bash_executable(), _bash_path(SCRIPT), "--group", "dev"],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -69,7 +71,7 @@ def test_retry_script_exits_after_max_attempts(tmp_path: Path) -> None:
     env["UV_SYNC_RETRY_DELAY_SECONDS"] = "0"
 
     result = subprocess.run(
-        ["bash", str(SCRIPT), "--group", "dev"],
+        [_bash_executable(), _bash_path(SCRIPT), "--group", "dev"],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
