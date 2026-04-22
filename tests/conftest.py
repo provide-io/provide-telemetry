@@ -15,6 +15,7 @@ from provide.telemetry.backpressure import reset_queues_for_tests
 from provide.telemetry.cardinality import clear_cardinality_limits
 from provide.telemetry.consent import _reset_consent_for_tests
 from provide.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.resilience import reset_resilience_for_tests
 from provide.telemetry.runtime import reset_runtime_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
 from provide.telemetry.setup import _reset_setup_state_for_tests
@@ -36,9 +37,10 @@ def reset_logger_state() -> None:
     *attribute* it was patched on, the already-configured processor list
     retains a reference to the local object.
 
-    Sampling policies are also reset here: a test that sets a signal's rate to
-    0.0 (e.g. test_rate_zero_never_samples) would cause apply_sampling to drop
-    all events in the next test on the same worker, producing empty log output.
+    Sampling and resilience policies are also reset here. Without that, a test
+    that sets a signal's sampling rate to 0.0 would cause apply_sampling to
+    drop all events in the next test, and a test that trips the logs circuit
+    breaker would cause later logger tests to fail-open and skip OTLP setup.
 
     setup_telemetry()'s _setup_done latch is also cleared here. Without that,
     a previous test can leave setup marked complete even after conftest resets
@@ -61,6 +63,7 @@ def reset_logger_state() -> None:
     _reset_logging_for_tests()
     _reset_setup_state_for_tests()
     reset_sampling_for_tests()
+    reset_resilience_for_tests()
     reset_runtime_for_tests()
     reset_queues_for_tests()
     _reset_consent_for_tests()
