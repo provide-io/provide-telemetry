@@ -35,8 +35,8 @@ Flush and tear down all providers and clear local runtime state. A later
 the initial setup for the common path, including after lazy logger use.
 
 Provider-changing `reconfigure_telemetry()` remains intentionally rejected once
-real OpenTelemetry providers are live; use shutdown+setup or restart the
-process.
+real OpenTelemetry providers are live; restart the process before applying
+provider-changing config.
 
 ## Runtime Configuration
 

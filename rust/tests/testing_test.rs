@@ -5,10 +5,12 @@
 
 use provide_telemetry::context::{bind_context, get_context};
 use provide_telemetry::health::{get_health_snapshot, record_export_failure};
+use provide_telemetry::{get_secret_patterns, register_secret_pattern};
 use provide_telemetry::sampling::Signal;
 use provide_telemetry::schema::{get_strict_schema, set_strict_schema};
 use provide_telemetry::testing::{reset_telemetry_state, reset_trace_context};
 use provide_telemetry::tracer::{get_trace_context, set_trace_context};
+use regex::Regex;
 use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 
@@ -65,6 +67,28 @@ fn testing_test_reset_telemetry_state_clears_strict_schema() {
     assert!(
         !get_strict_schema(),
         "reset_telemetry_state must clear STRICT_SCHEMA to false"
+    );
+}
+
+#[test]
+fn testing_test_reset_telemetry_state_clears_custom_secret_patterns() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let baseline = get_secret_patterns().len();
+    register_secret_pattern(
+        "testing.reset.secret",
+        Regex::new(r"RESET-[A-Z0-9]{10,}").expect("pattern must compile"),
+    );
+    assert!(
+        get_secret_patterns().len() > baseline,
+        "custom secret pattern registration must increase the visible pattern set"
+    );
+
+    reset_telemetry_state();
+
+    assert_eq!(
+        get_secret_patterns().len(),
+        baseline,
+        "reset_telemetry_state must clear custom secret patterns"
     );
 }
 

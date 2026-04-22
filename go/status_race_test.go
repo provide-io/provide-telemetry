@@ -6,18 +6,14 @@ package telemetry
 import (
 	"sync"
 	"testing"
-
-	sdklog "go.opentelemetry.io/otel/sdk/log"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 func TestGetRuntimeStatus_NoRaceWithProviderMutation(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	tp, _ := newInMemoryTP()
-	mp := sdkmetric.NewMeterProvider()
-	lp := sdklog.NewLoggerProvider()
+	RegisterBackend("fake", &_fakeBackend{})
+	t.Cleanup(func() { UnregisterBackend("fake") })
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -28,17 +24,15 @@ func TestGetRuntimeStatus_NoRaceWithProviderMutation(t *testing.T) {
 			_setupMu.Lock()
 			_setupDone = true
 			_runtimeCfg = DefaultTelemetryConfig()
-			_otelTracerProvider = tp
-			_otelMeterProvider = mp
-			_otelLoggerProvider = lp
+			backend := _activeBackendLocked().(*_fakeBackend)
+			backend.providers = SignalStatus{Logs: true, Traces: true, Metrics: true}
 			_setupMu.Unlock()
 
 			_setupMu.Lock()
 			_setupDone = false
 			_runtimeCfg = nil
-			_otelTracerProvider = nil
-			_otelMeterProvider = nil
-			_otelLoggerProvider = nil
+			backend = _activeBackendLocked().(*_fakeBackend)
+			backend.providers = SignalStatus{}
 			_setupMu.Unlock()
 		}
 	}()

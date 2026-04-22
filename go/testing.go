@@ -13,6 +13,7 @@ func ResetForTests() {
 	_resetQueuePolicy()
 	_resetResiliencePolicies()
 	_resetPIIRules()
+	_resetSecretPatterns()
 	_resetCardinalityLimits()
 	_resetSetup()
 }

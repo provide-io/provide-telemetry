@@ -3,7 +3,7 @@
 ## Versioning
 
 - Tag format: `vX.Y.Z`
-- Keep `VERSION`, language manifests, exported runtime version constants, and Go submodule `VERSION` files aligned with the release tag.
+- Keep `VERSION`, language manifests, exported runtime version constants, and the Go module `VERSION` files (`go/VERSION`, `go/otel/VERSION`) aligned with the release tag.
 
 ## Release Notes Checklist
 
@@ -31,7 +31,7 @@ uv run twine check dist/*
 - `.github/workflows/release.yml`: build on tags and publish to PyPI on GitHub release publish; also verifies Go consumer resolution after Go tags exist.
 
 Go CI is intentionally split:
-- `ci-go.yml` uses an ephemeral `go.work` for pre-release integration of the local `go`, `go/internal`, `go/logger`, and `go/tracer` modules.
+- `ci-go.yml` uses an ephemeral `go.work` for pre-release integration of the local `go` and `go/otel` modules.
 - `release.yml` runs `GOWORK=off` consumer-mode fetch/build checks after Go tags are pushed, first with `GOPROXY=direct` and then through `proxy.golang.org`.
 - Those release checks use generated probe modules that import the tagged Go module like a downstream consumer, instead of trying to run the tagged dependency module's own test suite.
 - Go module versions are effectively immutable once `proxy.golang.org` indexes them. If a pushed `go/.../vX.Y.Z` tag points at the wrong commit, force-moving the tag does not repair the proxy view; cut a new Go module version instead.
@@ -42,7 +42,7 @@ Go CI is intentionally split:
 act -l
 act workflow_dispatch -W .github/workflows/ci-shared.yml --container-architecture linux/amd64
 act pull_request -W .github/workflows/ci-go.yml -j workspace-integration --container-architecture linux/amd64
-printf '%s\n' '{"ref":"refs/tags/go/logger/v0.4.0","ref_name":"go/logger/v0.4.0"}' > /tmp/act-release-tag.json
+printf '%s\n' '{"ref":"refs/tags/go/otel/v0.4.0","ref_name":"go/otel/v0.4.0"}' > /tmp/act-release-tag.json
 act push -W .github/workflows/release.yml -j verify-go-consumer-direct -e /tmp/act-release-tag.json --container-architecture linux/amd64
 ```
 
@@ -104,18 +104,20 @@ Release steps:
 Go modules publish automatically when a git tag is pushed — no explicit upload step.
 
 Prerequisites (one-time setup):
-- Ensure `go/VERSION` and `go/CHANGELOG.md` are updated.
+- Ensure `go/VERSION`, `go/otel/VERSION`, and `go/CHANGELOG.md` are updated.
 - The `go/LICENSE` file must be present at the module root (already committed).
 
 Release steps:
-1. Same tag `vX.Y.Z` as Python/TypeScript — `go get github.com/provide-io/provide-telemetry/go@vX.Y.Z` will resolve once the tag is pushed.
-2. pkg.go.dev picks up the new version automatically within a few minutes of the tag being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
+1. Create the Go module tags `go/vX.Y.Z` and `go/otel/vX.Y.Z` from the final release commit.
+2. `go get github.com/provide-io/provide-telemetry/go@vX.Y.Z` and `go get github.com/provide-io/provide-telemetry/go/otel@vX.Y.Z` will resolve once the tags are pushed.
+3. pkg.go.dev picks up the new versions automatically within a few minutes of the tags being pushed; force a refresh at `https://pkg.go.dev/github.com/provide-io/provide-telemetry/go@vX.Y.Z` if needed.
 
 ### Go validation before release
 
 ```bash
-GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/logger/...
-GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/tracer/...
+GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/logger/... ./go/tracer/...
+GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/otel
+GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go build ./go/otel/examples/openobserve/...
 cd go
 GOWORK=off go build ./...
 GOWORK=off go test -race -count=1 -coverprofile=coverage.out .
@@ -123,6 +125,13 @@ go tool cover -func=coverage.out | grep total   # must be 100.0%
 GOWORK=off go vet ./...
 GOWORK=off golangci-lint run
 GOWORK=off govulncheck ./...
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" --exclude-files="tracer/" .
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 ./logger
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 ./tracer
+cd otel
+GOWORK=off go test -race -coverprofile=coverage.out .
+go tool cover -func=coverage.out | grep total   # must be 100.0%
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --exclude-files="examples/" .
 ```
 
 ### TypeScript validation before release
