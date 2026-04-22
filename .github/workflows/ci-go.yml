@@ -216,17 +216,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version: "1.26"
-      - name: Generate temporary go.work
-        shell: bash
-        run: |
-          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
-          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
-          export GOWORK="${WORKFILE}"
-          echo "Using workspace: ${WORKFILE}"
-          go env GOWORK
       # uv provides a consistent Python invocation across OSes for the
-      # perf_check.py + parse_go_bench.py pipeline. Both scripts use stdlib
-      # only, so no `uv sync` here.
+      # perf_check.py + parse_go_bench.py pipeline. This job only benchmarks
+      # the root module, so it stays in the workflow default `GOWORK=off`
+      # mode instead of entering workspace mode.
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
         with:
           python-version: "3.11"
