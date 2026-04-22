@@ -162,11 +162,12 @@ function _withSyntheticIds<T>(fn: () => T): T {
   // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
   const traceId = randomHex(16);
   const spanId = randomHex(8);
-  /* c8 ignore next -- _als is always non-null in Node.js; false branch is browser/Deno only */
+  /* v8 ignore start */
   // Stryker disable next-line ConditionalExpression: `if (true)` mutant equivalent in Node.js — _als is never null in tests
   if (_als !== null) {
     return _als.run<T>({ traceId, spanId }, fn);
   }
+  /* v8 ignore stop */
   /* c8 ignore start -- browser/Deno fallback: _als is always non-null in Node.js tests */
   const prevTraceId = _manualTraceId;
   const prevSpanId = _manualSpanId;
