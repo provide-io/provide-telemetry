@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess  # nosec
 from pathlib import Path
 
@@ -28,11 +29,19 @@ def _write_go_module(path: Path, module_path: str) -> None:
 
 
 def _run_workspace_script(repo_root: Path, tmp_path: Path) -> str:
+    shim_dir = tmp_path / "shim-bin"
+    shim_dir.mkdir()
+    blocked_go = shim_dir / "go"
+    blocked_go.write_text("#!/usr/bin/env bash\nexit 97\n", encoding="utf-8")
+    blocked_go.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
     result = subprocess.run(
         ["bash", str(SCRIPT), str(repo_root), str(tmp_path / "workspace")],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     workfile = Path(result.stdout.strip())
