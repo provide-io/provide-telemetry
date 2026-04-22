@@ -24,8 +24,8 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _write_go_module(path: Path, module_path: str) -> None:
-    _write(path / "go.mod", f"module {module_path}\n\ngo 1.26.0\n")
+def _write_go_module(path: Path, module_path: str, go_version: str = "1.26.0") -> None:
+    _write(path / "go.mod", f"module {module_path}\n\ngo {go_version}\n")
 
 
 def _run_workspace_script(repo_root: Path, tmp_path: Path) -> str:
@@ -82,3 +82,17 @@ def test_workspace_script_supports_optional_otel_layout(tmp_path: Path) -> None:
     assert str(repo_root / "go" / "internal") not in workfile
     assert str(repo_root / "go" / "logger") not in workfile
     assert str(repo_root / "go" / "tracer") not in workfile
+
+
+def test_workspace_script_uses_highest_module_go_version(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    _write_go_module(repo_root / "go", "github.com/provide-io/provide-telemetry/go", go_version="1.26.0")
+    _write_go_module(
+        repo_root / "go" / "cmd" / "e2e_cross_language_client",
+        "github.com/provide-io/provide-telemetry/go/cmd/e2e_cross_language_client",
+        go_version="1.26.1",
+    )
+
+    workfile = _run_workspace_script(repo_root, tmp_path)
+
+    assert "go 1.26.1" in workfile
