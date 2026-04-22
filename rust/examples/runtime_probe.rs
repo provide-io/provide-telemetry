@@ -27,6 +27,33 @@ fn main() {
             "case": case,
             "record": capture_record("log.output.parity"),
         }),
+        "lazy_logger_shutdown_re_setup" => {
+            let first = capture_record("log.output.parity");
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            let second = provide_telemetry::get_runtime_status();
+            std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "probe-restarted");
+            std::env::set_var("PROVIDE_TELEMETRY_ENV", "parity-restarted");
+            std::env::set_var("PROVIDE_TELEMETRY_VERSION", "9.9.9");
+            provide_telemetry::setup_telemetry().expect("second setup");
+            let third = provide_telemetry::get_runtime_status();
+            let restarted = capture_record("log.output.restart");
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            json!({
+                "case": case,
+                "first_logger_emitted": first.get("message") == Some(&Value::String("log.output.parity".to_string())),
+                "shutdown_cleared_setup": !second.setup_done,
+                "shutdown_cleared_providers": !second.providers.logs
+                    && !second.providers.traces
+                    && !second.providers.metrics,
+                "shutdown_fallback_all": second.fallback.logs
+                    && second.fallback.traces
+                    && second.fallback.metrics,
+                "re_setup_done": third.setup_done,
+                "second_logger_uses_fresh_config": restarted.get("service") == Some(&Value::String("probe-restarted".to_string()))
+                    && restarted.get("env") == Some(&Value::String("parity-restarted".to_string()))
+                    && restarted.get("version") == Some(&Value::String("9.9.9".to_string())),
+            })
+        }
         "strict_schema_rejection" => {
             provide_telemetry::setup_telemetry().expect("setup");
             let record = capture_record("Bad.Event.Ok");

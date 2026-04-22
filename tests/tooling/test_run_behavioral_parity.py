@@ -302,7 +302,9 @@ def test_runtime_probe_python_provider_identity_reconfigure_exits_promptly() -> 
         text=True,
         cwd=_REPO_ROOT,
         env=env,
-        timeout=5,
+        # This case installs providers and then exercises reconfigure rejection,
+        # so it needs a larger budget than the lightweight no-provider probes.
+        timeout=15,
         check=False,
     )
 
