@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
+	_ "github.com/provide-io/provide-telemetry/go/otel"
 )
 
 const (
@@ -54,6 +55,35 @@ func captureRecord(message string) map[string]any {
 func caseLazyInitLogger() map[string]any {
 	telemetry.ResetForTests()
 	return map[string]any{"case": "lazy_init_logger", "record": captureRecord("log.output.parity")}
+}
+
+func caseLazyLoggerShutdownReSetup() map[string]any {
+	telemetry.ResetForTests()
+	first := captureRecord("log.output.parity")
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	second := telemetry.GetRuntimeStatus()
+	_ = os.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "probe-restarted")
+	_ = os.Setenv("PROVIDE_TELEMETRY_ENV", "parity-restarted")
+	_ = os.Setenv("PROVIDE_TELEMETRY_VERSION", "9.9.9")
+	_, _ = telemetry.SetupTelemetry()
+	third := telemetry.GetRuntimeStatus()
+	restarted := captureRecord("log.output.restart")
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":                   "lazy_logger_shutdown_re_setup",
+		"first_logger_emitted":   first["message"] == "log.output.parity",
+		"shutdown_cleared_setup": !second.SetupDone,
+		"shutdown_cleared_providers": !second.Providers.Logs &&
+			!second.Providers.Traces &&
+			!second.Providers.Metrics,
+		"shutdown_fallback_all": second.Fallback.Logs &&
+			second.Fallback.Traces &&
+			second.Fallback.Metrics,
+		"re_setup_done": third.SetupDone,
+		"second_logger_uses_fresh_config": restarted["service.name"] == "probe-restarted" &&
+			restarted["service.env"] == "parity-restarted" &&
+			restarted["service.version"] == "9.9.9",
+	}
 }
 
 func caseStrictSchemaRejection() map[string]any {
@@ -187,6 +217,8 @@ func main() {
 	switch caseID {
 	case "lazy_init_logger":
 		result = caseLazyInitLogger()
+	case "lazy_logger_shutdown_re_setup":
+		result = caseLazyLoggerShutdownReSetup()
 	case "strict_schema_rejection":
 		result = caseStrictSchemaRejection()
 	case "strict_event_name_only":

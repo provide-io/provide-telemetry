@@ -45,7 +45,7 @@ def _runtime_available(lang: str, runner_module: ModuleType) -> bool:
     if lang == "python":
         return True
     if lang == "typescript":
-        return shutil.which("node") is not None
+        return shutil.which("node") is not None and (_REPO_ROOT / "typescript" / "node_modules").exists()
     if lang == "go":
         return shutil.which("go") is not None
     if lang == "rust":

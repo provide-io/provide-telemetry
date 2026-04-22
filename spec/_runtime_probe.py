@@ -132,6 +132,11 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
         }
+    if case_id == "lazy_logger_shutdown_re_setup":
+        return {
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     if case_id == "strict_event_name_only":
         return {
             "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
