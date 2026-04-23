@@ -22,9 +22,21 @@ enum QueueLimiter {
     Bounded(Arc<Semaphore>),
 }
 
+impl Default for QueueLimiter {
+    fn default() -> Self {
+        Self::Unlimited
+    }
+}
+
 pub enum QueueTicket {
     Unlimited,
     Bounded(OwnedSemaphorePermit),
+}
+
+impl Default for QueueTicket {
+    fn default() -> Self {
+        Self::Unlimited
+    }
 }
 
 struct QueueState {
@@ -61,8 +73,13 @@ fn limiter(size: usize) -> QueueLimiter {
 
 static QUEUES: OnceLock<Mutex<QueueState>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn default_queue_state_mutex() -> Mutex<QueueState> {
+    Mutex::new(QueueState::default())
+}
+
 fn queues() -> &'static Mutex<QueueState> {
-    QUEUES.get_or_init(|| Mutex::new(QueueState::default()))
+    QUEUES.get_or_init(default_queue_state_mutex)
 }
 
 pub fn set_queue_policy(policy: QueuePolicy) {
@@ -141,5 +158,30 @@ mod tests {
         let second = queues() as *const Mutex<QueueState>;
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn backpressure_test_acquire_obeys_policy_limits() {
+        let _guard = acquire_test_state_lock();
+        _reset_backpressure_for_tests();
+
+        set_queue_policy(QueuePolicy {
+            logs_maxsize: 1,
+            traces_maxsize: 0,
+            metrics_maxsize: 0,
+        });
+
+        let first = try_acquire(Signal::Logs).expect("bounded acquire should succeed once");
+        let second = try_acquire(Signal::Logs);
+
+        assert!(matches!(first, QueueTicket::Bounded(_)));
+        assert!(second.is_none());
+        assert_eq!(get_queue_policy().logs_maxsize, 1);
+        release(first);
+
+        _reset_backpressure_for_tests();
+        set_queue_policy(QueuePolicy::default());
+        let unlimited = try_acquire(Signal::Logs).expect("unlimited acquire should succeed");
+        assert!(matches!(unlimited, QueueTicket::Unlimited));
     }
 }

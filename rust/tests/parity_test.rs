@@ -300,6 +300,7 @@ fn parity_test_get_secret_patterns_includes_builtins() {
 fn parity_test_register_secret_pattern_deduplication() {
     let _guard = parity_lock().lock().expect("parity lock");
     reset_secret_patterns_for_tests();
+    register_secret_pattern("othertoken", regex::Regex::new(r"OTHER").expect("valid"));
     register_secret_pattern("mytoken", regex::Regex::new(r"TOK1").expect("valid"));
     register_secret_pattern("mytoken", regex::Regex::new(r"TOK2").expect("valid")); // replaces
     let patterns = get_secret_patterns();

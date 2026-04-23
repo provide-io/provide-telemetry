@@ -26,6 +26,9 @@ def test_ci_mutation_workflow_includes_rust_job() -> None:
 
     assert "rust-mutation:" in workflow
     assert "cargo-mutants" in workflow
+    assert "cargo-nextest" in workflow
+    assert "--all-features" in workflow
+    assert "--test-tool nextest" in workflow
     assert "working-directory: rust" in workflow
 
 

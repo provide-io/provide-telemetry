@@ -38,8 +38,13 @@ pub struct HealthSnapshot {
 
 static HEALTH: OnceLock<Mutex<HealthSnapshot>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn default_health_mutex() -> Mutex<HealthSnapshot> {
+    Mutex::new(HealthSnapshot::default())
+}
+
 fn health() -> &'static Mutex<HealthSnapshot> {
-    HEALTH.get_or_init(|| Mutex::new(HealthSnapshot::default()))
+    HEALTH.get_or_init(default_health_mutex)
 }
 
 pub fn get_health_snapshot() -> HealthSnapshot {
@@ -107,3 +112,7 @@ pub fn record_export_latency(signal: Signal, latency_ms: f64) {
 pub fn _reset_health_for_tests() {
     *health().lock().expect("health lock poisoned") = HealthSnapshot::default();
 }
+
+#[cfg(test)]
+#[path = "health_tests.rs"]
+mod tests;

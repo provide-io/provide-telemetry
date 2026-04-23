@@ -30,6 +30,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::{acquire_test_state_lock, reset_trace_context};
+    use crate::tracer::set_trace_context;
 
     #[test]
     fn tracing_test_tracer_names_match_contract() {
@@ -41,5 +43,17 @@ mod tests {
     fn tracing_test_trace_invokes_callback() {
         let result = trace("test.span", || 42_i32);
         assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn tracing_test_get_trace_context_reflects_bound_snapshot() {
+        let _guard = acquire_test_state_lock();
+        reset_trace_context();
+
+        let _ctx = set_trace_context(Some("a".repeat(32)), Some("b".repeat(16)));
+        let snapshot = get_trace_context();
+
+        assert_eq!(snapshot.get("trace_id"), Some(&Some("a".repeat(32))));
+        assert_eq!(snapshot.get("span_id"), Some(&Some("b".repeat(16))));
     }
 }

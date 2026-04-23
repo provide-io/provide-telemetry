@@ -122,6 +122,28 @@ fn integration_test_shutdown_then_setup_reinstalls_otel_providers() {
 
 #[cfg(feature = "otel")]
 #[test]
+fn integration_test_installed_meter_provider_exercises_gauge_add_otel_path() {
+    use provide_telemetry::{gauge, setup_telemetry};
+
+    let _guard = acquire_fresh_lock();
+    reset_runtime();
+
+    let endpoint_key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    let previous_endpoint = std::env::var(endpoint_key).ok();
+    std::env::set_var(endpoint_key, "http://127.0.0.1:1/never");
+
+    setup_telemetry().expect("setup should succeed");
+    let metric = gauge("integration.gauge", None, None);
+    metric.add(2.0, None);
+
+    assert_eq!(metric.value(), 2.0);
+
+    reset_runtime();
+    restore_var(endpoint_key, previous_endpoint);
+}
+
+#[cfg(feature = "otel")]
+#[test]
 fn integration_test_fail_open_setup_does_not_mark_otel_installed_without_providers() {
     use provide_telemetry::{otel::otel_installed_for_tests, setup_telemetry};
 

@@ -13,10 +13,21 @@ pub enum ConsentLevel {
     None,
 }
 
+impl Default for ConsentLevel {
+    fn default() -> Self {
+        Self::Full
+    }
+}
+
 static CONSENT_LEVEL: OnceLock<Mutex<ConsentLevel>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite ConsentLevel::Full as Default::default().
+fn default_consent_level_mutex() -> Mutex<ConsentLevel> {
+    Mutex::new(ConsentLevel::Full)
+}
+
 fn consent_level() -> &'static Mutex<ConsentLevel> {
-    CONSENT_LEVEL.get_or_init(|| Mutex::new(ConsentLevel::Full))
+    CONSENT_LEVEL.get_or_init(default_consent_level_mutex)
 }
 
 pub fn set_consent_level(level: ConsentLevel) {
@@ -58,3 +69,7 @@ pub fn should_allow(signal: &str, log_level: Option<&str>) -> bool {
 pub fn reset_consent_for_tests() {
     set_consent_level(ConsentLevel::Full);
 }
+
+#[cfg(test)]
+#[path = "consent_tests.rs"]
+mod tests;

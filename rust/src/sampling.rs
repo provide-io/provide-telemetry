@@ -184,4 +184,21 @@ mod tests {
         let after = get_health_snapshot().dropped_logs;
         assert_eq!(after - before, 2);
     }
+
+    #[test]
+    fn sampling_test_unknown_policy_errors_when_internal_state_is_missing() {
+        let _guard = acquire_test_state_lock();
+        policies()
+            .lock()
+            .expect("sampling policy lock poisoned")
+            .clear();
+
+        let err = get_sampling_policy(Signal::Logs).expect_err("missing policy must error");
+        assert!(err.message.contains("unknown signal"));
+
+        let err = should_sample(Signal::Logs, None).expect_err("missing policy must bubble up");
+        assert!(err.message.contains("unknown signal"));
+
+        _reset_sampling_for_tests();
+    }
 }
