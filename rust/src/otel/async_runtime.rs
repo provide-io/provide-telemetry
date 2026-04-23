@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn async_runtime_test_delay_completes_on_background_runtime() {
         let runtime = ProvideTokioRuntime::test();
-        let task_runtime = runtime.clone();
+        let task_runtime = runtime;
         let (sender, receiver) = mpsc::channel();
 
         runtime.spawn(async move {

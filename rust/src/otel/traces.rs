@@ -126,7 +126,7 @@ pub(super) fn install_tracer_provider(
 
     let runtime = ProvideTokioRuntime::traces();
     let processor =
-        BatchSpanProcessor::builder(ResilientSpanExporter::new(exporter), runtime.clone()).build();
+        BatchSpanProcessor::builder(ResilientSpanExporter::new(exporter), runtime).build();
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
         .with_span_processor(processor)
