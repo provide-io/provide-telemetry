@@ -66,10 +66,7 @@ fn first_context_string<'a>(event: &'a LogEvent, keys: &[&str]) -> Option<&'a st
 }
 
 fn runtime_schema_error(event: &LogEvent) -> Option<String> {
-    let cfg = match get_runtime_config() {
-        Some(cfg) => cfg,
-        None => return None,
-    };
+    let cfg = get_runtime_config()?;
     match validate_required_keys(&event.context, &cfg.event_schema.required_keys) {
         Ok(()) => None,
         Err(err) => Some(err.message),
@@ -78,18 +75,16 @@ fn runtime_schema_error(event: &LogEvent) -> Option<String> {
 
 fn truncate_context_values(event: &mut LogEvent, max_value_length: usize) {
     for value in event.context.values_mut() {
-        match value {
-            Value::String(text) => truncate_string_value(text, max_value_length),
-            _ => {}
+        if let Value::String(text) = value {
+            truncate_string_value(text, max_value_length);
         }
     }
 }
 
 fn strip_context_values(event: &mut LogEvent) {
     for value in event.context.values_mut() {
-        match value {
-            Value::String(text) => strip_control_chars(text),
-            _ => {}
+        if let Value::String(text) = value {
+            strip_control_chars(text);
         }
     }
 }
@@ -276,14 +271,11 @@ fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
 /// is never lost. Cross-language standard: all four languages annotate
 /// and emit rather than drop.
 fn enforce_schema(event: &mut LogEvent) {
-    match runtime_schema_error(event) {
-        Some(message) => {
-            event
-                .context
-                .insert("_schema_error".to_string(), Value::String(message));
-            return;
-        }
-        None => {}
+    if let Some(message) = runtime_schema_error(event) {
+        event
+            .context
+            .insert("_schema_error".to_string(), Value::String(message));
+        return;
     }
     if !get_strict_schema() {
         return;

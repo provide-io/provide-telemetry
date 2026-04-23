@@ -78,13 +78,11 @@ fn active_logging_config() -> crate::config::LoggingConfig {
         .lock()
         .expect("logging config override lock poisoned")
         .clone();
-    match override_cfg {
-        Some(cfg) => return cfg,
-        None => {}
+    if let Some(cfg) = override_cfg {
+        return cfg;
     }
-    match get_runtime_config() {
-        Some(cfg) => return cfg.logging.clone(),
-        None => {}
+    if let Some(cfg) = get_runtime_config() {
+        return cfg.logging.clone();
     }
     match TelemetryConfig::from_env() {
         Ok(cfg) => cfg.logging,
