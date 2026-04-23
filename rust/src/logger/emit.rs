@@ -8,9 +8,9 @@
 
 use std::sync::{LazyLock, Mutex};
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use super::{LogEvent, active_logging_config};
+use super::{active_logging_config, LogEvent};
 
 // ---------------------------------------------------------------------------
 // Test capture buffers

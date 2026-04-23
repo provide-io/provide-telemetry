@@ -77,12 +77,10 @@ fn emit_test_emit_if_json_respects_format_and_timestamp_flag() {
     let raw = String::from_utf8(take_json_capture()).expect("json capture should be utf8");
     let parsed: Value =
         serde_json::from_str(raw.trim()).expect("captured line should parse as json");
-    assert!(
-        parsed
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .is_some_and(|value| value.ends_with('Z'))
-    );
+    assert!(parsed
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .is_some_and(|value| value.ends_with('Z')));
 
     reset_emit_state();
     enable_json_capture_for_tests();
