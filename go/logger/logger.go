@@ -96,8 +96,12 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 	}
 
+	// Schema violations annotate the record with _schema_error rather than
+	// dropping it. Matches the root telemetry package's contract and the
+	// cross-language standard documented in docs/CAPABILITY_MATRIX.md
+	// ("Strict-schema rejection emits _schema_error instead of dropping").
 	if err := h.applySchema(r); err != nil {
-		return nil //nolint:nilerr // schema violation drops the record
+		r.AddAttrs(slog.String("_schema_error", err.Error()))
 	}
 
 	r = h.applyErrorFingerprint(r)

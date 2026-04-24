@@ -164,7 +164,8 @@ func TestHandlerSchemaRejectsShortEventName(t *testing.T) {
 	cfg.StrictSchema = true
 	logger.Configure(cfg)
 	defer func() { logger.Configure(logger.DefaultLogConfig()) }()
-	// Only 2 segments → ValidateEventName returns error → record dropped.
+	// Only 2 segments → ValidateEventName returns error → record is
+	// annotated with _schema_error and still emitted.
 	logger.Logger.Info("too.short")
 }
 

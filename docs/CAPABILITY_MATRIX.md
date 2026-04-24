@@ -28,7 +28,7 @@ Legend:
 | Browser log capture / React helpers | no | idiomatic | no | no | idiomatic language difference |
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | capability difference — see notes |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | core | core | missing | known gap |
-| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | missing | known gap |
+| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | same-as-console | missing | known gap |
 | Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | capability difference — see notes |
 
 Notes:
@@ -52,10 +52,13 @@ Notes:
   axum/hyper middleware; users must call `bind_context()` / `clear_context()`
   manually inside handlers and extract W3C traceparent/tracestate via
   `extract_w3c_context()`.
-- Pretty log rendering: Python, TypeScript, and Go honour
-  `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Rust's logger emitter
-  (`rust/src/logger/emit.rs`) only implements `console` and `json`; setting
-  `pretty` falls back to the console formatter.
+- Pretty log rendering: Python and TypeScript honour
+  `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Go accepts `pretty`
+  as a valid format value but currently renders it identically to
+  `console` using slog's text handler (`go/logger.go:_baseLogHandler`);
+  a dedicated colorized renderer is a future enhancement. Rust's logger
+  emitter (`rust/src/logger/emit.rs`) only implements `console` and
+  `json`; setting `pretty` falls back to the console formatter.
 - Metrics fallback export: without the `otel` feature, Rust's metrics
   accumulate in-process (`rust/src/metrics.rs`) but are never exported.
   Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a

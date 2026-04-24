@@ -83,10 +83,16 @@ func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
 		EventSchema:  &cfg.EventSchema,
 		PIIMaxDepth:  &cfg.Logging.PIIMaxDepth,
 		StrictSchema: &cfg.StrictSchema,
+		Logging:      &cfg.Logging,
 	}
 }
 
 func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
+	// Logging is applied first so per-field scalar overrides below
+	// (PIIMaxDepth) take precedence when both are supplied.
+	if overrides.Logging != nil {
+		cfg.Logging = *overrides.Logging
+	}
 	if overrides.Sampling != nil {
 		cfg.Sampling = *overrides.Sampling
 	}
@@ -145,6 +151,12 @@ func validateRuntimeOverrides(overrides RuntimeOverrides) error {
 			}
 			return nil
 		},
+		func() error {
+			if overrides.Logging != nil {
+				return _validateLoggingOverride(*overrides.Logging)
+			}
+			return nil
+		},
 	}
 	for _, v := range validators {
 		if err := v(); err != nil {
@@ -172,6 +184,30 @@ func _validateBackpressureOverride(b BackpressureConfig) error {
 		return err
 	}
 	return validateNonNegative(b.MetricsMaxSize, "RuntimeOverrides.Backpressure.MetricsMaxSize")
+}
+
+// _validateLoggingOverride validates level, format, module-level levels, and
+// PIIMaxDepth on a runtime logging override. Mirrors the env-parse validation
+// in config_env.go so runtime overrides cannot introduce invalid values.
+func _validateLoggingOverride(l LoggingConfig) error {
+	if l.Level != "" {
+		if _, err := normalizeLevel(l.Level); err != nil {
+			return err
+		}
+	}
+	if l.Format != "" {
+		if err := validateFormat(l.Format); err != nil {
+			return err
+		}
+	}
+	for module, levelStr := range l.ModuleLevels {
+		if _, err := normalizeLevel(levelStr); err != nil {
+			return NewConfigurationError(
+				fmt.Sprintf("RuntimeOverrides.Logging.ModuleLevels[%q]: %s", module, err.Error()),
+			)
+		}
+	}
+	return validateNonNegative(l.PIIMaxDepth, "RuntimeOverrides.Logging.PIIMaxDepth")
 }
 
 func _validateSecurityOverride(s SecurityConfig) error {
