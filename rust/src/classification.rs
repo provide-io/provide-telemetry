@@ -5,20 +5,15 @@
 
 use std::sync::{Mutex, OnceLock};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum DataClass {
+    #[default]
     Public,
     Internal,
     Pii,
     Phi,
     Pci,
     Secret,
-}
-
-impl Default for DataClass {
-    fn default() -> Self {
-        Self::Public
-    }
 }
 
 impl DataClass {
@@ -34,19 +29,10 @@ impl DataClass {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ClassificationRule {
     pub pattern: String,
     pub classification: DataClass,
-}
-
-impl Default for ClassificationRule {
-    fn default() -> Self {
-        Self {
-            pattern: String::new(),
-            classification: DataClass::default(),
-        }
-    }
 }
 
 impl ClassificationRule {

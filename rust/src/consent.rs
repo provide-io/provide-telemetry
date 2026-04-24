@@ -5,18 +5,13 @@
 
 use std::sync::{Mutex, OnceLock};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ConsentLevel {
+    #[default]
     Full,
     Functional,
     Minimal,
     None,
-}
-
-impl Default for ConsentLevel {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 static CONSENT_LEVEL: OnceLock<Mutex<ConsentLevel>> = OnceLock::new();

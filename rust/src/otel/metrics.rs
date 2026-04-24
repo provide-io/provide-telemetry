@@ -153,7 +153,7 @@ pub(super) fn install_meter_provider(
     };
 
     let runtime = ProvideTokioRuntime::metrics();
-    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter), runtime.clone())
+    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter), runtime)
         .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
         .build();
 

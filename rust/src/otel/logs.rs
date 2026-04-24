@@ -121,7 +121,7 @@ pub(super) fn install_logger_provider(
 
     let runtime = ProvideTokioRuntime::logs();
     let processor =
-        BatchLogProcessor::builder(ResilientLogExporter::new(exporter), runtime.clone()).build();
+        BatchLogProcessor::builder(ResilientLogExporter::new(exporter), runtime).build();
     let provider = SdkLoggerProvider::builder()
         .with_resource(resource)
         .with_log_processor(processor)
