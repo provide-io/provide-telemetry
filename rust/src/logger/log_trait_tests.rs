@@ -60,3 +60,7 @@ fn log_trait_unit_test_skips_disabled_records() {
 
     assert!(Logger::drain_events_for_tests().is_empty());
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

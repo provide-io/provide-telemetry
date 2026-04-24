@@ -43,3 +43,7 @@ fn consent_test_should_allow_covers_functional_and_minimal_policies() {
 
     reset_consent_for_tests();
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
