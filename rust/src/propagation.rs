@@ -155,3 +155,66 @@ pub fn bind_propagation_context(context: PropagationContext) -> PropagationGuard
         context_guard,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use serde_json::json;
+
+    use crate::context::get_context;
+    use crate::testing::acquire_test_state_lock;
+    use crate::tracer::get_trace_context;
+
+    #[test]
+    fn propagation_test_a_parse_baggage_keeps_pairs_and_strips_parameters() {
+        let baggage = parse_baggage("user=alice;prop=x,env=prod;ttl=100,invalid,=skip");
+
+        assert_eq!(baggage.get("user").map(String::as_str), Some("alice"));
+        assert_eq!(baggage.get("env").map(String::as_str), Some("prod"));
+        assert_eq!(baggage.len(), 2);
+    }
+
+    #[test]
+    fn propagation_test_a_bind_propagation_context_roundtrip_restores_state() {
+        let _guard = acquire_test_state_lock();
+        let context = PropagationContext {
+            traceparent: Some(
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_string(),
+            ),
+            tracestate: Some("k=v".to_string()),
+            baggage: Some("user=alice,env=prod".to_string()),
+            trace_id: Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string()),
+            span_id: Some("00f067aa0ba902b7".to_string()),
+        };
+
+        {
+            let _propagation = bind_propagation_context(context);
+            let trace = get_trace_context();
+            let fields = get_context();
+            assert_eq!(
+                trace.get("trace_id").and_then(std::clone::Clone::clone),
+                Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string())
+            );
+            assert_eq!(
+                trace.get("span_id").and_then(std::clone::Clone::clone),
+                Some("00f067aa0ba902b7".to_string())
+            );
+            assert_eq!(
+                fields.get("traceparent"),
+                Some(&json!(
+                    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                ))
+            );
+            assert_eq!(fields.get("tracestate"), Some(&json!("k=v")));
+            assert_eq!(fields.get("baggage"), Some(&json!("user=alice,env=prod")));
+            assert_eq!(fields.get("baggage.user"), Some(&json!("alice")));
+            assert_eq!(fields.get("baggage.env"), Some(&json!("prod")));
+        }
+
+        assert!(get_context().is_empty());
+        let trace = get_trace_context();
+        assert_eq!(trace.get("trace_id"), Some(&None));
+        assert_eq!(trace.get("span_id"), Some(&None));
+    }
+}

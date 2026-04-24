@@ -387,3 +387,108 @@ fn runtime_test_reconfigure_telemetry_reapplies_runtime_policies() {
         );
     });
 }
+
+#[test]
+fn runtime_test_update_runtime_config_requires_setup() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[], || {
+        reset_runtime();
+
+        let err = update_runtime_config(RuntimeOverrides::default())
+            .expect_err("update before setup must fail");
+        assert!(err.message.contains("setup_telemetry"));
+    });
+}
+
+#[test]
+fn runtime_test_reload_runtime_from_env_requires_setup_and_surfaces_parse_errors() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[], || {
+        reset_runtime();
+
+        let err = reload_runtime_from_env().expect_err("reload before setup must fail");
+        assert!(err.message.contains("setup_telemetry"));
+    });
+
+    with_env(&[], || {
+        reset_runtime();
+        setup_telemetry().expect("setup should succeed");
+        std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool");
+
+        let err = reload_runtime_from_env().expect_err("invalid env must fail reload");
+        assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
+        std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+    });
+}
+
+#[test]
+fn runtime_test_reload_runtime_from_env_warns_for_all_cold_field_drift() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(
+        &[
+            ("PROVIDE_TELEMETRY_SERVICE_NAME", "initial-service"),
+            ("PROVIDE_TELEMETRY_ENV", "dev"),
+            ("PROVIDE_TELEMETRY_VERSION", "1.0.0"),
+            ("PROVIDE_TRACE_ENABLED", "true"),
+            ("PROVIDE_METRICS_ENABLED", "true"),
+        ],
+        || {
+            reset_runtime();
+            setup_telemetry().expect("setup should succeed");
+
+            std::env::set_var("PROVIDE_TELEMETRY_ENV", "prod");
+            std::env::set_var("PROVIDE_TELEMETRY_VERSION", "2.0.0");
+            std::env::set_var("PROVIDE_TRACE_ENABLED", "false");
+            std::env::set_var("PROVIDE_METRICS_ENABLED", "false");
+
+            let reloaded = reload_runtime_from_env().expect("reload should succeed");
+            assert_eq!(reloaded.environment, "dev");
+            assert_eq!(reloaded.version, "1.0.0");
+            assert!(reloaded.tracing.enabled);
+            assert!(reloaded.metrics.enabled);
+        },
+    );
+}
+
+#[test]
+fn runtime_test_reconfigure_telemetry_none_reads_environment() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(
+        &[
+            ("PROVIDE_TELEMETRY_SERVICE_NAME", "from-env"),
+            ("PROVIDE_TELEMETRY_ENV", "stage"),
+        ],
+        || {
+            reset_runtime();
+            #[cfg(not(feature = "otel"))]
+            setup_telemetry().expect("setup should succeed");
+
+            let cfg = reconfigure_telemetry(None).expect("reconfigure should read env");
+            assert_eq!(cfg.service_name, "from-env");
+            assert_eq!(cfg.environment, "stage");
+        },
+    );
+}
+
+#[cfg(feature = "otel")]
+#[test]
+fn runtime_test_reconfigure_telemetry_rejects_identity_change_when_otel_provider_is_live() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(
+        &[
+            ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318"),
+            ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
+        ],
+        || {
+            reset_runtime();
+            let current = setup_telemetry().expect("setup should succeed");
+
+            let mut changed = current.clone();
+            changed.service_name = "other-service".to_string();
+
+            let err = reconfigure_telemetry(Some(changed))
+                .expect_err("provider-changing identity drift must be rejected");
+            assert!(err.message.contains("restart the process"));
+        },
+    );
+}

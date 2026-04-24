@@ -13,15 +13,26 @@ use percent_encoding::percent_decode_str;
 use crate::errors::ConfigurationError;
 
 pub(super) fn env_value<'a>(env: &'a HashMap<String, String>, keys: &[&str]) -> Option<&'a str> {
-    keys.iter()
-        .find_map(|key| env.get(*key).map(String::as_str))
+    for key in keys {
+        if let Some(value) = env.get(*key) {
+            return Some(value.as_str());
+        }
+    }
+    None
 }
 
 pub(super) fn nonempty_env_value<'a>(
     env: &'a HashMap<String, String>,
     keys: &[&str],
 ) -> Option<&'a str> {
-    env_value(env, keys).filter(|value| !value.trim().is_empty())
+    let value = match env_value(env, keys) {
+        Some(value) => value,
+        None => return None,
+    };
+    if value.trim().is_empty() {
+        return None;
+    }
+    Some(value)
 }
 
 pub(super) fn parse_bool(
@@ -31,25 +42,16 @@ pub(super) fn parse_bool(
 ) -> Result<bool, ConfigurationError> {
     match raw.map(str::trim) {
         None | Some("") => Ok(default),
-        Some(value)
-            if matches!(
-                value.to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            ) =>
-        {
-            Ok(true)
+        Some(value) => {
+            let normalized = value.to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" | "on" => Ok(true),
+                "0" | "false" | "no" | "off" => Ok(false),
+                _ => Err(ConfigurationError::new(format!(
+                    "invalid boolean for {field}: {value:?} (expected one of: 1,true,yes,on,0,false,no,off)"
+                ))),
+            }
         }
-        Some(value)
-            if matches!(
-                value.to_ascii_lowercase().as_str(),
-                "0" | "false" | "no" | "off"
-            ) =>
-        {
-            Ok(false)
-        }
-        Some(value) => Err(ConfigurationError::new(format!(
-            "invalid boolean for {field}: {value:?} (expected one of: 1,true,yes,on,0,false,no,off)"
-        ))),
     }
 }
 
@@ -60,9 +62,12 @@ pub(super) fn parse_usize(
 ) -> Result<usize, ConfigurationError> {
     match raw.map(str::trim) {
         None | Some("") => Ok(default),
-        Some(value) => value.parse::<usize>().map_err(|_| {
-            ConfigurationError::new(format!("invalid integer for {field}: {value:?}"))
-        }),
+        Some(value) => match value.parse::<usize>() {
+            Ok(parsed) => Ok(parsed),
+            Err(_) => Err(ConfigurationError::new(format!(
+                "invalid integer for {field}: {value:?}"
+            ))),
+        },
     }
 }
 
@@ -93,7 +98,7 @@ pub(super) fn parse_rate(
     field: &str,
 ) -> Result<f64, ConfigurationError> {
     let parsed = parse_non_negative_float(raw, default, field)?;
-    if !(0.0..=1.0).contains(&parsed) {
+    if parsed > 1.0 {
         return Err(ConfigurationError::new(format!(
             "{field} must be in [0, 1], got {parsed}"
         )));
@@ -101,42 +106,45 @@ pub(super) fn parse_rate(
     Ok(parsed)
 }
 
-pub(super) fn parse_otlp_headers(
-    raw: Option<&str>,
-) -> Result<Option<HashMap<String, String>>, ConfigurationError> {
-    let Some(raw) = raw else {
-        return Ok(None);
+pub(super) fn parse_otlp_headers(raw: Option<&str>) -> Option<HashMap<String, String>> {
+    let raw = match raw {
+        Some(raw) => raw,
+        None => return None,
     };
     if raw.trim().is_empty() {
-        return Ok(Some(HashMap::new()));
+        return Some(HashMap::new());
     }
 
     let mut headers = HashMap::new();
     for pair in raw.split(',') {
-        let Some((key, value)) = pair.split_once('=') else {
-            continue;
+        let (key, value) = match pair.split_once('=') {
+            Some(key_value) => key_value,
+            None => continue,
         };
-        let Ok(key) = decode_header_component(key.trim()) else {
-            continue;
+
+        let key = match decode_header_component(key.trim()) {
+            Some(key) => key,
+            None => continue,
         };
         if key.is_empty() {
             continue;
         }
-        let Ok(value) = decode_header_component(value.trim()) else {
-            continue;
+
+        let value = match decode_header_component(value.trim()) {
+            Some(value) => value,
+            None => continue,
         };
         headers.insert(key, value);
     }
-    Ok(Some(headers))
+    Some(headers)
 }
 
-fn decode_header_component(raw: &str) -> Result<String, ConfigurationError> {
+fn decode_header_component(raw: &str) -> Option<String> {
     if has_invalid_percent_encoding(raw) {
-        return Err(ConfigurationError::new(format!(
-            "invalid OTLP header encoding: {raw:?}"
-        )));
+        return None;
     }
-    Ok(percent_decode_str(raw).decode_utf8_lossy().into_owned())
+    let decoded = percent_decode_str(raw).decode_utf8_lossy();
+    Some(decoded.into_owned())
 }
 
 /// Parse `PROVIDE_LOG_MODULE_LEVELS` — comma-separated `module=LEVEL` pairs.
@@ -152,19 +160,23 @@ pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
         if pair.is_empty() {
             continue;
         }
-        if let Some((module, level)) = pair.split_once('=') {
-            let module = module.trim().to_string();
-            let level = level.trim().to_uppercase();
-            if !module.is_empty() && !level.is_empty() {
-                if !VALID_LEVELS.contains(&level.as_str()) {
-                    eprintln!(
-                        "provide_telemetry: unknown log level {level:?} for module {module:?} \
-                         in PROVIDE_LOG_MODULE_LEVELS; will default to INFO at runtime"
-                    );
-                }
-                map.insert(module, level);
-            }
+
+        let (module, level) = match pair.split_once('=') {
+            Some(module_level) => module_level,
+            None => continue,
+        };
+        let module = module.trim().to_string();
+        let level = level.trim().to_uppercase();
+        if module.is_empty() || level.is_empty() {
+            continue;
         }
+        if !VALID_LEVELS.contains(&level.as_str()) {
+            eprintln!(
+                "provide_telemetry: unknown log level {level:?} for module {module:?} \
+                 in PROVIDE_LOG_MODULE_LEVELS; will default to INFO at runtime"
+            );
+        }
+        map.insert(module, level);
     }
     map
 }
@@ -189,59 +201,5 @@ fn has_invalid_percent_encoding(raw: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_module_levels_inserts_unknown_level_and_warns() {
-        // Unknown level strings are still inserted (runtime defaults to INFO),
-        // but a warning must be emitted to stderr. We verify the map entry is
-        // present to ensure the warning path doesn't accidentally drop the entry.
-        let map = parse_module_levels("foo=VERBOSE,bar=DEBUG");
-        assert_eq!(
-            map.get("foo").map(String::as_str),
-            Some("VERBOSE"),
-            "unknown level must still be inserted into the map"
-        );
-        assert_eq!(
-            map.get("bar").map(String::as_str),
-            Some("DEBUG"),
-            "valid entry must not be affected by adjacent unknown entry"
-        );
-    }
-
-    #[test]
-    fn parse_module_levels_valid_levels_no_warning() {
-        let map = parse_module_levels(
-            "a=TRACE,b=DEBUG,c=INFO,d=WARN,e=WARNING,f=ERROR,g=CRITICAL,h=FATAL",
-        );
-        assert_eq!(map.len(), 8, "all valid levels must parse");
-    }
-
-    #[test]
-    fn parse_module_levels_empty_input() {
-        let map = parse_module_levels("");
-        assert!(map.is_empty());
-    }
-
-    #[test]
-    fn parse_module_levels_skips_empty_module_name() {
-        let map = parse_module_levels("=DEBUG,pkg=INFO");
-        assert!(!map.contains_key(""), "empty module name must be skipped");
-        assert_eq!(map.get("pkg").map(String::as_str), Some("INFO"));
-    }
-
-    #[test]
-    fn parse_module_levels_skips_empty_level() {
-        let map = parse_module_levels("pkg=,other=DEBUG");
-        assert!(!map.contains_key("pkg"), "empty level must be skipped");
-        assert_eq!(map.get("other").map(String::as_str), Some("DEBUG"));
-    }
-
-    #[test]
-    fn parse_module_levels_trims_whitespace() {
-        let map = parse_module_levels("  pkg = DEBUG , other = INFO ");
-        assert_eq!(map.get("pkg").map(String::as_str), Some("DEBUG"));
-        assert_eq!(map.get("other").map(String::as_str), Some("INFO"));
-    }
-}
+#[path = "parse_tests.rs"]
+mod tests;

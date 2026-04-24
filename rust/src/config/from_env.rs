@@ -26,8 +26,8 @@ impl TelemetryConfig {
     }
 
     pub fn from_map(env: &HashMap<String, String>) -> Result<Self, ConfigurationError> {
-        let shared_headers = parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"]))?
-            .unwrap_or_default();
+        let shared_headers =
+            parse_otlp_headers(env_value(env, &["OTEL_EXPORTER_OTLP_HEADERS"])).unwrap_or_default();
         let shared_endpoint = nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_ENDPOINT"]);
         let shared_protocol = env_value(env, &["OTEL_EXPORTER_OTLP_PROTOCOL"]).unwrap_or("");
         // Per the OTLP/HTTP spec, when falling back to the shared endpoint
@@ -72,7 +72,7 @@ impl TelemetryConfig {
                 otlp_headers: parse_otlp_headers(env_value(
                     env,
                     &["OTEL_EXPORTER_OTLP_LOGS_HEADERS"],
-                ))?
+                ))
                 .unwrap_or_else(|| shared_headers.clone()),
                 otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
                     .map(str::to_string)
@@ -98,7 +98,7 @@ impl TelemetryConfig {
                 otlp_headers: parse_otlp_headers(env_value(
                     env,
                     &["OTEL_EXPORTER_OTLP_TRACES_HEADERS"],
-                ))?
+                ))
                 .unwrap_or_else(|| shared_headers.clone()),
                 otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
                     .map(str::to_string)
@@ -116,7 +116,7 @@ impl TelemetryConfig {
                 otlp_headers: parse_otlp_headers(env_value(
                     env,
                     &["OTEL_EXPORTER_OTLP_METRICS_HEADERS"],
-                ))?
+                ))
                 .unwrap_or(shared_headers),
                 otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
                     .map(str::to_string)
@@ -272,3 +272,7 @@ impl TelemetryConfig {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "from_env_tests.rs"]
+mod tests;

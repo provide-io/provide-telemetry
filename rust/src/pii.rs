@@ -70,25 +70,35 @@ pub struct SecretPattern {
 static RULES: OnceLock<Mutex<Vec<PIIRule>>> = OnceLock::new();
 static CUSTOM_SECRET_PATTERNS: OnceLock<Mutex<Vec<(String, Regex)>>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite Vec::new() syntax.
+fn empty_pii_rules_mutex() -> Mutex<Vec<PIIRule>> {
+    Mutex::new(Vec::new())
+}
+
 fn rules() -> &'static Mutex<Vec<PIIRule>> {
-    RULES.get_or_init(|| Mutex::new(Vec::new()))
+    RULES.get_or_init(empty_pii_rules_mutex)
+}
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite Vec::new() syntax.
+fn empty_custom_patterns_mutex() -> Mutex<Vec<(String, Regex)>> {
+    Mutex::new(Vec::new())
 }
 
 fn custom_secret_patterns() -> &'static Mutex<Vec<(String, Regex)>> {
-    CUSTOM_SECRET_PATTERNS.get_or_init(|| Mutex::new(Vec::new()))
+    CUSTOM_SECRET_PATTERNS.get_or_init(empty_custom_patterns_mutex)
+}
+
+fn compiled_builtin_secret_patterns() -> Vec<Regex> {
+    crate::secret_patterns_generated::PATTERNS
+        .iter()
+        .map(|(_name, pattern)| Regex::new(pattern).expect("generated pattern must be valid"))
+        .collect()
 }
 
 fn builtin_secret_patterns() -> &'static [Regex] {
     static COMPILED: OnceLock<Vec<Regex>> = OnceLock::new();
     COMPILED
-        .get_or_init(|| {
-            crate::secret_patterns_generated::PATTERNS
-                .iter()
-                .map(|(_name, pattern)| {
-                    Regex::new(pattern).expect("generated pattern must be valid")
-                })
-                .collect()
-        })
+        .get_or_init(compiled_builtin_secret_patterns)
         .as_slice()
 }
 
@@ -107,14 +117,20 @@ pub(crate) fn detect_secret_in_string(text: &str) -> bool {
     if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
         return false;
     }
-    if builtin_secret_patterns().iter().any(|p| p.is_match(text)) {
-        return true;
+    for pattern in builtin_secret_patterns() {
+        if pattern.is_match(text) {
+            return true;
+        }
     }
-    custom_secret_patterns()
+    let patterns = custom_secret_patterns()
         .lock()
-        .expect("custom patterns lock poisoned")
-        .iter()
-        .any(|(_, p)| p.is_match(text))
+        .expect("custom patterns lock poisoned");
+    for (_, pattern) in patterns.iter() {
+        if pattern.is_match(text) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The redaction sentinel emitted when a value or string matches a
@@ -127,11 +143,15 @@ pub fn register_secret_pattern(name: &str, pattern: Regex) {
     let mut patterns = custom_secret_patterns()
         .lock()
         .expect("custom patterns lock poisoned");
-    if let Some(entry) = patterns.iter_mut().find(|(n, _)| n == name) {
-        entry.1 = pattern;
-    } else {
-        patterns.push((name.to_string(), pattern));
+    let mut index = 0;
+    while index < patterns.len() {
+        if patterns[index].0 == name {
+            patterns[index].1 = pattern;
+            return;
+        }
+        index += 1;
     }
+    patterns.push((name.to_string(), pattern));
 }
 
 /// Return all secret patterns (built-in and custom).
@@ -144,11 +164,10 @@ pub fn get_secret_patterns() -> Vec<SecretPattern> {
             pattern: p.clone(),
         })
         .collect();
-    for (name, pattern) in custom_secret_patterns()
+    let patterns = custom_secret_patterns()
         .lock()
-        .expect("custom patterns lock poisoned")
-        .iter()
-    {
+        .expect("custom patterns lock poisoned");
+    for (name, pattern) in patterns.iter() {
         out.push(SecretPattern {
             name: name.clone(),
             pattern: pattern.clone(),
@@ -281,6 +300,42 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
     }
 }
 
+#[cfg(feature = "governance")]
+fn annotate_governance_classes(cleaned: &mut Value) {
+    let Value::Object(map) = cleaned else {
+        return;
+    };
+    let policy = get_classification_policy();
+    let keys: Vec<String> = map.keys().cloned().collect();
+    for key in keys {
+        if let Some(label) = classify_key(&key) {
+            let action = policy.lookup_action(&label);
+            if action == "drop" {
+                map.remove(&key);
+                continue;
+            }
+            if matches!(action, "redact" | "hash" | "truncate") {
+                let current = map
+                    .get(&key)
+                    .cloned()
+                    .expect("classification key snapshot must still exist");
+                let already_redacted = current.as_str().map(|s| s == REDACTED).unwrap_or(false);
+                if !already_redacted {
+                    let mode = match action {
+                        "redact" => PIIMode::Redact,
+                        "hash" => PIIMode::Hash,
+                        _ => PIIMode::Truncate,
+                    };
+                    let masked = mask_value(&current, &mode, 8)
+                        .expect("classification governance modes never drop values");
+                    map.insert(key.clone(), masked);
+                }
+            }
+            map.insert(format!("__{key}__class"), Value::String(label));
+        }
+    }
+}
+
 pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Value {
     if !enabled {
         return payload.clone();
@@ -291,38 +346,10 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
     #[cfg_attr(not(feature = "governance"), allow(unused_mut))]
     let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
     #[cfg(feature = "governance")]
-    if let Value::Object(map) = &mut cleaned {
-        let policy = get_classification_policy();
-        // Collect keys first to avoid borrow issues during mutation.
-        let keys: Vec<String> = map.keys().cloned().collect();
-        for key in keys {
-            if let Some(label) = classify_key(&key) {
-                let action = policy.lookup_action(&label);
-                if action == "drop" {
-                    map.remove(&key);
-                } else {
-                    // For redact/hash/truncate: replace value unless already sentinel.
-                    if matches!(action, "redact" | "hash" | "truncate") {
-                        if let Some(current) = map.get(&key) {
-                            let already_redacted =
-                                current.as_str().map(|s| s == REDACTED).unwrap_or(false);
-                            if !already_redacted {
-                                // Truncation width matches Python's hardcoded 8.
-                                let mode = match action {
-                                    "redact" => PIIMode::Redact,
-                                    "hash" => PIIMode::Hash,
-                                    _ => PIIMode::Truncate,
-                                };
-                                if let Some(masked) = mask_value(current, &mode, 8) {
-                                    map.insert(key.clone(), masked);
-                                }
-                            }
-                        }
-                    }
-                    map.insert(format!("__{key}__class"), Value::String(label));
-                }
-            }
-        }
-    }
+    annotate_governance_classes(&mut cleaned);
     cleaned
 }
+
+#[cfg(test)]
+#[path = "pii_tests.rs"]
+mod tests;

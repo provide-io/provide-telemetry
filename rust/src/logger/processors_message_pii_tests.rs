@@ -15,6 +15,7 @@
 use super::super::LogEvent;
 use super::sanitize_context;
 use crate::pii::REDACTED_SENTINEL;
+use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
 use crate::{register_secret_pattern, reset_secret_patterns_for_tests};
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -53,7 +54,8 @@ fn sanitize_context_leaves_clean_message_unchanged() {
 
 #[test]
 fn sanitize_context_redacts_custom_secret_pattern_in_message_string() {
-    reset_secret_patterns_for_tests();
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     register_secret_pattern(
         "internal_token",
         Regex::new(r"INTSECRET-[A-Z0-9]{12,}").expect("valid regex"),

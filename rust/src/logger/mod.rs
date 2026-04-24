@@ -8,21 +8,21 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use serde_json::Value;
 
-use crate::backpressure::{release, try_acquire};
+use crate::backpressure::{QueueTicket, release, try_acquire};
 use crate::config::TelemetryConfig;
 #[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
-use crate::sampling::{should_sample, Signal};
+use crate::sampling::{Signal, should_sample};
 use crate::tracer::get_trace_context;
 
 mod emit;
 mod levels;
 mod processors;
 
-use emit::{emit_if_console, emit_if_json};
+use emit::{emit_if_console, emit_if_json, emit_if_otel};
 pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
     take_json_capture,
@@ -30,21 +30,28 @@ pub use emit::{
 use levels::{effective_level_threshold, level_order};
 use processors::process_event;
 
-// When the governance feature is disabled, consent is unconditionally granted.
+#[cfg(feature = "governance")]
+#[inline(always)]
+fn consent_allows_logs(level: &str) -> bool {
+    should_allow("logs", Some(level))
+}
+
 #[cfg(not(feature = "governance"))]
 #[inline(always)]
-fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
+#[cfg_attr(test, mutants::skip)] // Dead under the default governance feature set, so false-return mutants are not meaningfully testable here.
+fn consent_allows_logs(_level: &str) -> bool {
     true
 }
 
 const MAX_FALLBACK_EVENTS: usize = 1000;
 
-// ---------------------------------------------------------------------------
-// Programmatic config override — highest-priority, overrides env vars
-// ---------------------------------------------------------------------------
-
 static LOGGING_CONFIG_OVERRIDE: LazyLock<Mutex<Option<crate::config::LoggingConfig>>> =
     LazyLock::new(|| Mutex::new(None));
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite Vec::new() syntax.
+fn empty_events_mutex() -> Mutex<Vec<LogEvent>> {
+    Mutex::new(Vec::new())
+}
 
 /// Override the active logging configuration programmatically.
 ///
@@ -65,47 +72,81 @@ pub fn reset_logging_config_for_tests() {
 }
 
 /// Read the active logging config.
-///
-/// Priority order:
-/// 1. Programmatic override via `configure_logging()` — highest priority.
-/// 2. Runtime config installed by `setup_telemetry()`.
-/// 3. Fresh parse of environment variables — lowest priority / fallback.
+/// Priority order: programmatic override, runtime config, then env/defaults.
 fn active_logging_config() -> crate::config::LoggingConfig {
-    if let Some(cfg) = LOGGING_CONFIG_OVERRIDE
+    let override_cfg = LOGGING_CONFIG_OVERRIDE
         .lock()
         .expect("logging config override lock poisoned")
-        .clone()
-    {
-        return cfg;
+        .clone();
+    match override_cfg {
+        Some(cfg) => return cfg,
+        None => {}
     }
-    get_runtime_config()
-        .map(|c| c.logging.clone())
-        .unwrap_or_else(|| {
-            TelemetryConfig::from_env()
-                .map(|c| c.logging)
-                .unwrap_or_else(|err| {
-                    eprintln!(
-                        "provide_telemetry: logging config parse failed, using defaults: {err}"
-                    );
-                    crate::config::LoggingConfig::default()
-                })
-        })
+    match get_runtime_config() {
+        Some(cfg) => return cfg.logging.clone(),
+        None => {}
+    }
+    match TelemetryConfig::from_env() {
+        Ok(cfg) => cfg.logging,
+        Err(err) => {
+            eprintln!("provide_telemetry: logging config parse failed, using defaults: {err}");
+            crate::config::LoggingConfig::default()
+        }
+    }
 }
 
-/// Shared emit path: run processors, emit (JSON + console + OTel), buffer.
+fn runtime_identity_config() -> Option<TelemetryConfig> {
+    match get_runtime_config() {
+        Some(cfg) => Some(cfg),
+        None => TelemetryConfig::from_env().ok(),
+    }
+}
+
+fn inject_identity_fields(context: &mut BTreeMap<String, Value>, cfg: TelemetryConfig) {
+    context
+        .entry("service".to_string())
+        .or_insert(Value::String(cfg.service_name));
+    context
+        .entry("env".to_string())
+        .or_insert(Value::String(cfg.environment));
+    context
+        .entry("version".to_string())
+        .or_insert(Value::String(cfg.version));
+}
+
+fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) {
+    let cfg = match runtime_identity_config() {
+        Some(cfg) => cfg,
+        None => return,
+    };
+    inject_identity_fields(context, cfg);
+}
+
+/// Shared emit path: run processors, emit, buffer.
 fn emit_event(mut event: LogEvent) {
     process_event(&mut event);
     emit_if_json(&event);
     emit_if_console(&event);
-    #[cfg(feature = "otel")]
-    if crate::otel::logs::logger_provider_installed() {
-        crate::otel::logs::emit_log(&event);
-    }
+    emit_if_otel(&event);
     let mut buf = events().lock().expect("logger event lock poisoned");
-    if buf.len() < MAX_FALLBACK_EVENTS {
-        buf.push(event);
+    if buf.len() >= MAX_FALLBACK_EVENTS {
+        return;
     }
-    drop(buf);
+    buf.push(event);
+}
+
+fn acquire_log_ticket(level: &str, target: &str, sample_key: Option<&str>) -> Option<QueueTicket> {
+    let config = active_logging_config();
+    if level_order(level) < effective_level_threshold(target, &config) {
+        return None;
+    }
+    if !consent_allows_logs(level) {
+        return None;
+    }
+    if !should_sample(Signal::Logs, sample_key).unwrap_or(true) {
+        return None;
+    }
+    try_acquire(Signal::Logs)
 }
 
 /// Like `log_event` but merges extra caller-supplied fields into the event context.
@@ -115,23 +156,11 @@ fn log_event_with_fields(
     message: &str,
     extra: &BTreeMap<String, Value>,
 ) {
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
+    let Some(ticket) = acquire_log_ticket(level, target, Some(message)) else {
         return;
     };
     let mut event = new_event(target, level, message);
-    for (k, v) in extra {
-        event.context.insert(k.clone(), v.clone());
-    }
+    event.context.extend(extra.clone());
     emit_event(event);
     increment_emitted(Signal::Logs, 1);
     release(ticket);
@@ -139,19 +168,7 @@ fn log_event_with_fields(
 
 /// Shared core: gate, build, process, emit, count.
 fn log_event(level: &str, target: &str, message: &str) {
-    // Level filtering: skip events below the effective threshold
-    // (respects per-module overrides via longest-prefix match).
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(message)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
+    let Some(ticket) = acquire_log_ticket(level, target, Some(message)) else {
         return;
     };
     emit_event(new_event(target, level, message));
@@ -161,17 +178,7 @@ fn log_event(level: &str, target: &str, message: &str) {
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
 fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
-    let config = active_logging_config();
-    if level_order(level) < effective_level_threshold(target, &config) {
-        return;
-    }
-    if !should_allow("logs", Some(level)) {
-        return;
-    }
-    if !should_sample(Signal::Logs, Some(&ev.event)).unwrap_or(true) {
-        return;
-    }
-    let Some(ticket) = try_acquire(Signal::Logs) else {
+    let Some(ticket) = acquire_log_ticket(level, target, Some(&ev.event)) else {
         return;
     };
     let mut event = new_event(target, level, &ev.event);
@@ -196,7 +203,7 @@ pub struct EventMetadata {
     pub status: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct LogEvent {
     pub level: String,
     pub target: String,
@@ -207,17 +214,17 @@ pub struct LogEvent {
     pub event_metadata: Option<EventMetadata>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Logger {
     target: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NullLogger {
     target: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BufferLogger {
     target: String,
     events: Arc<Mutex<Vec<LogEvent>>>,
@@ -226,25 +233,26 @@ pub struct BufferLogger {
 static EVENTS: OnceLock<Mutex<Vec<LogEvent>>> = OnceLock::new();
 
 fn events() -> &'static Mutex<Vec<LogEvent>> {
-    EVENTS.get_or_init(|| Mutex::new(Vec::new()))
+    EVENTS.get_or_init(empty_events_mutex)
 }
 
-pub static logger: LazyLock<Logger> = LazyLock::new(|| Logger::new(None));
+fn default_logger() -> Logger {
+    Logger::new(None)
+}
+
+pub static logger: LazyLock<Logger> = LazyLock::new(default_logger);
+
+fn logger_target(target: Option<&str>) -> String {
+    match target {
+        Some(target) => target.to_string(),
+        None => "provide.telemetry".to_string(),
+    }
+}
 
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
     let trace = get_trace_context();
     let mut context = get_context();
-    if let Some(cfg) = get_runtime_config().or_else(|| TelemetryConfig::from_env().ok()) {
-        context
-            .entry("service".to_string())
-            .or_insert_with(|| Value::String(cfg.service_name));
-        context
-            .entry("env".to_string())
-            .or_insert_with(|| Value::String(cfg.environment));
-        context
-            .entry("version".to_string())
-            .or_insert_with(|| Value::String(cfg.version));
-    }
+    inject_runtime_identity_fields(&mut context);
     LogEvent {
         level: level.to_string(),
         target: target.to_string(),
@@ -259,7 +267,7 @@ fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
 impl Logger {
     pub fn new(target: Option<&str>) -> Self {
         Self {
-            target: target.unwrap_or("provide.telemetry").to_string(),
+            target: logger_target(target),
         }
     }
 
@@ -336,7 +344,7 @@ impl Logger {
 impl NullLogger {
     pub fn new(target: Option<&str>) -> Self {
         Self {
-            target: target.unwrap_or("provide.telemetry").to_string(),
+            target: logger_target(target),
         }
     }
 
@@ -356,7 +364,7 @@ impl NullLogger {
 impl BufferLogger {
     pub fn new(target: Option<&str>) -> Self {
         Self {
-            target: target.unwrap_or("provide.telemetry").to_string(),
+            target: logger_target(target),
             events: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -416,16 +424,9 @@ pub fn buffer_logger(name: Option<&str>) -> BufferLogger {
     BufferLogger::new(name)
 }
 
-// ---------------------------------------------------------------------------
-// log::Log trait — routes log::info!() / log::debug!() etc. through here
-// ---------------------------------------------------------------------------
-
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
         let config = active_logging_config();
-        // Map log::Level to our severity order (TRACE=0 … ERROR=4) and compare
-        // against the effective threshold for this target, which respects
-        // per-module overrides via longest-dot-hierarchy-prefix match.
         let record_order: u8 = match metadata.level() {
             log::Level::Error => 4,
             log::Level::Warn => 3,
@@ -454,15 +455,19 @@ impl log::Log for Logger {
 }
 
 /// Register the package-level logger as the global `log` crate backend.
-///
-/// After this call all `log::info!()`, `log::debug!()` etc. macros in any
-/// crate that depends on `log` will be routed through provide-telemetry.
-/// Returns `Err` if a global logger has already been installed.
 pub fn set_as_global_logger() -> Result<(), log::SetLoggerError> {
-    log::set_logger(&*logger)?;
-    log::set_max_level(log::LevelFilter::Trace);
-    Ok(())
+    match log::set_logger(&*logger) {
+        Ok(()) => {
+            log::set_max_level(log::LevelFilter::Trace);
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "log_trait_tests.rs"]
+mod log_trait_tests;

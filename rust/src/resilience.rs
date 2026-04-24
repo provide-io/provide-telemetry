@@ -48,24 +48,51 @@ struct CircuitState {
 static POLICIES: OnceLock<Mutex<BTreeMap<Signal, ExporterPolicy>>> = OnceLock::new();
 static CIRCUITS: OnceLock<Mutex<BTreeMap<Signal, CircuitState>>> = OnceLock::new();
 
+fn default_policies_mutex() -> Mutex<BTreeMap<Signal, ExporterPolicy>> {
+    Mutex::new(BTreeMap::from([
+        (Signal::Logs, ExporterPolicy::default()),
+        (Signal::Traces, ExporterPolicy::default()),
+        (Signal::Metrics, ExporterPolicy::default()),
+    ]))
+}
+
 fn policies() -> &'static Mutex<BTreeMap<Signal, ExporterPolicy>> {
-    POLICIES.get_or_init(|| {
-        Mutex::new(BTreeMap::from([
-            (Signal::Logs, ExporterPolicy::default()),
-            (Signal::Traces, ExporterPolicy::default()),
-            (Signal::Metrics, ExporterPolicy::default()),
-        ]))
-    })
+    POLICIES.get_or_init(default_policies_mutex)
+}
+
+fn default_circuits_mutex() -> Mutex<BTreeMap<Signal, CircuitState>> {
+    Mutex::new(BTreeMap::from([
+        (Signal::Logs, CircuitState::default()),
+        (Signal::Traces, CircuitState::default()),
+        (Signal::Metrics, CircuitState::default()),
+    ]))
 }
 
 fn circuits() -> &'static Mutex<BTreeMap<Signal, CircuitState>> {
-    CIRCUITS.get_or_init(|| {
-        Mutex::new(BTreeMap::from([
-            (Signal::Logs, CircuitState::default()),
-            (Signal::Traces, CircuitState::default()),
-            (Signal::Metrics, CircuitState::default()),
-        ]))
-    })
+    CIRCUITS.get_or_init(default_circuits_mutex)
+}
+
+fn backoff_duration(backoff_seconds: f64, has_tokio_reactor: bool) -> Option<Duration> {
+    if backoff_seconds <= 0.0 || !has_tokio_reactor {
+        None
+    } else {
+        Some(Duration::from_secs_f64(backoff_seconds))
+    }
+}
+
+async fn wait_before_retry(
+    signal: Signal,
+    attempt: u32,
+    backoff_seconds: f64,
+    has_tokio_reactor: bool,
+) {
+    if attempt == 0 {
+        return;
+    }
+    if let Some(backoff) = backoff_duration(backoff_seconds, has_tokio_reactor) {
+        tokio::time::sleep(backoff).await;
+    }
+    increment_retries(signal, 1);
 }
 
 pub fn set_exporter_policy(
@@ -80,41 +107,20 @@ pub fn set_exporter_policy(
 }
 
 pub fn get_exporter_policy(signal: Signal) -> Result<ExporterPolicy, TelemetryError> {
-    policies()
-        .lock()
-        .expect("policy lock poisoned")
-        .get(&signal)
-        .cloned()
-        .ok_or_else(|| TelemetryError::new("unknown signal"))
+    let policy_lock = policies().lock().expect("policy lock poisoned");
+    match policy_lock.get(&signal).cloned() {
+        Some(policy) => Ok(policy),
+        None => Err(TelemetryError::new("unknown signal")),
+    }
 }
 
 pub fn get_circuit_state(signal: Signal) -> Result<(String, u32, f64), TelemetryError> {
-    let state = circuits()
-        .lock()
-        .expect("circuit lock poisoned")
-        .get(&signal)
-        .cloned()
-        .ok_or_else(|| TelemetryError::new("unknown signal"))?;
-    // A probe is in flight — report half-open regardless of cooldown.
-    if state.half_open_probing {
-        return Ok(("half-open".to_string(), state.open_count, 0.0));
-    }
-    if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-        let remaining = state
-            .tripped_at
-            .map(|instant| {
-                CIRCUIT_COOLDOWN
-                    .saturating_sub(instant.elapsed())
-                    .as_secs_f64()
-            })
-            .unwrap_or(0.0);
-        if remaining > 0.0 {
-            return Ok(("open".to_string(), state.open_count, remaining));
-        }
-        // Cooldown elapsed but no probe started yet — half-open.
-        return Ok(("half-open".to_string(), state.open_count, 0.0));
-    }
-    Ok(("closed".to_string(), state.open_count, 0.0))
+    let circuits = circuits().lock().expect("circuit lock poisoned");
+    let state = match circuits.get(&signal).cloned() {
+        Some(state) => state,
+        None => return Err(TelemetryError::new("unknown signal")),
+    };
+    Ok(describe_circuit_state(&state))
 }
 
 /// Generic resilience primitive: wraps `operation` in the per-signal
@@ -152,12 +158,21 @@ where
     // the underlying HTTP exporter still has its own timeout from
     // SpanExporter::with_timeout, so the operation cannot hang forever.
     let has_tokio_reactor = tokio::runtime::Handle::try_current().is_ok();
-    let timeout_active = !timeout.is_zero() && has_tokio_reactor;
+    let timeout_active = if timeout.is_zero() {
+        false
+    } else {
+        has_tokio_reactor
+    };
     // Circuit-breaker gate is only consulted when timeout enforcement is on,
     // matching Python (resilience.py:177) and Go (resilience.go:170). When
     // timeout=0 the policy explicitly opts out of timeout-driven failure
     // accounting, so the breaker has no signal to act on.
-    if timeout_active && _check_and_start_probe_for_wrappers(signal) {
+    let should_probe = if timeout_active {
+        _check_and_start_probe_for_wrappers(signal)
+    } else {
+        false
+    };
+    if should_probe {
         return if policy.fail_open {
             Ok(None)
         } else {
@@ -167,14 +182,9 @@ where
 
     let max_attempts = policy.retries + 1;
     let mut last_err: Option<E> = None;
-
-    for attempt in 0..max_attempts {
-        if attempt > 0 {
-            if policy.backoff_seconds > 0.0 && has_tokio_reactor {
-                tokio::time::sleep(Duration::from_secs_f64(policy.backoff_seconds)).await;
-            }
-            increment_retries(signal, 1);
-        }
+    let mut attempt = 0;
+    while attempt < max_attempts {
+        wait_before_retry(signal, attempt, policy.backoff_seconds, has_tokio_reactor).await;
 
         let started = Instant::now();
         let (result, wrapper_timeout) = if !timeout_active {
@@ -197,11 +207,16 @@ where
                 // Only timeouts contribute to the breaker counter; other
                 // failures reset it. Mirrors Python (resilience.py:154),
                 // Go (resilience.go:118), and TS (resilience.ts:180).
-                let is_timeout = wrapper_timeout || is_sdk_timeout(&err);
+                let is_timeout = if wrapper_timeout {
+                    true
+                } else {
+                    is_sdk_timeout(&err)
+                };
                 _record_circuit_failure_for_wrappers(signal, is_timeout);
                 last_err = Some(err);
             }
         }
+        attempt += 1;
     }
 
     if policy.fail_open {
@@ -211,6 +226,29 @@ where
         // populated last_err on any error path that escapes the loop.
         Err(last_err.expect("retry loop ran at least once"))
     }
+}
+
+fn cooldown_remaining(tripped_at: Option<Instant>) -> f64 {
+    match tripped_at {
+        Some(instant) => CIRCUIT_COOLDOWN
+            .saturating_sub(instant.elapsed())
+            .as_secs_f64(),
+        None => 0.0,
+    }
+}
+
+fn describe_circuit_state(state: &CircuitState) -> (String, u32, f64) {
+    if state.half_open_probing {
+        return ("half-open".to_string(), state.open_count, 0.0);
+    }
+    if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+        let remaining = cooldown_remaining(state.tripped_at);
+        if remaining > 0.0 {
+            return ("open".to_string(), state.open_count, remaining);
+        }
+        return ("half-open".to_string(), state.open_count, 0.0);
+    }
+    ("closed".to_string(), state.open_count, 0.0)
 }
 
 pub async fn run_with_resilience<F, Fut, T>(
@@ -243,21 +281,23 @@ where
 /// Python (resilience.py:154), Go (resilience.go:118), and TS (resilience.ts:180).
 pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: bool) {
     let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
-    if let Some(state) = circuit_lock.get_mut(&signal) {
-        if state.half_open_probing {
-            // Failed probe — clear probe flag and re-open the breaker.
-            state.half_open_probing = false;
-            state.open_count += 1;
-            state.tripped_at = Some(Instant::now());
-        } else if is_timeout {
-            state.consecutive_timeouts += 1;
-            if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-                state.open_count += 1;
-                state.tripped_at = Some(Instant::now());
-            }
-        } else {
-            state.consecutive_timeouts = 0;
-        }
+    let Some(state) = circuit_lock.get_mut(&signal) else {
+        return;
+    };
+    if state.half_open_probing {
+        state.half_open_probing = false;
+        state.open_count += 1;
+        state.tripped_at = Some(Instant::now());
+        return;
+    }
+    if !is_timeout {
+        state.consecutive_timeouts = 0;
+        return;
+    }
+    state.consecutive_timeouts += 1;
+    if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+        state.open_count += 1;
+        state.tripped_at = Some(Instant::now());
     }
 }
 
@@ -265,19 +305,14 @@ pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: b
 /// circuit can close again. Handles half-open probe close. Called by resilient
 /// exporter wrappers.
 pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
-    if let Some(state) = circuits()
-        .lock()
-        .expect("circuit lock poisoned")
-        .get_mut(&signal)
-    {
-        if state.half_open_probing {
-            // Successful probe — close the breaker.
-            state.half_open_probing = false;
-            state.consecutive_timeouts = 0;
-        } else {
-            state.consecutive_timeouts = 0;
-        }
+    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+    let Some(state) = circuit_lock.get_mut(&signal) else {
+        return;
+    };
+    if state.half_open_probing {
+        state.half_open_probing = false;
     }
+    state.consecutive_timeouts = 0;
 }
 
 /// Check whether the circuit for `signal` should be entered for a probe attempt,
@@ -287,21 +322,24 @@ pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
 /// (either circuit closed, or cooldown elapsed and this call starts the probe).
 pub(crate) fn _check_and_start_probe_for_wrappers(signal: Signal) -> bool {
     let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
-    if let Some(state) = circuit_lock.get_mut(&signal) {
-        if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-            let cooldown_active = state
-                .tripped_at
-                .map(|instant| instant.elapsed() < CIRCUIT_COOLDOWN)
-                .unwrap_or(false);
-            if cooldown_active {
-                return true; // Still open — reject.
+    match circuit_lock.get_mut(&signal) {
+        Some(state) => {
+            if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+                let cooldown_active = state
+                    .tripped_at
+                    .map(|instant| instant.elapsed() < CIRCUIT_COOLDOWN)
+                    .unwrap_or(false);
+                if cooldown_active {
+                    return true; // Still open — reject.
+                }
+                if state.half_open_probing {
+                    return true; // Probe already in flight — reject concurrent caller.
+                }
+                // Cooldown elapsed, no probe running — start one.
+                state.half_open_probing = true;
             }
-            if state.half_open_probing {
-                return true; // Probe already in flight — reject concurrent caller.
-            }
-            // Cooldown elapsed, no probe running — start one.
-            state.half_open_probing = true;
         }
+        None => {}
     }
     false
 }
@@ -319,6 +357,11 @@ pub fn _reset_resilience_for_tests() {
     ]);
 }
 
+pub fn _clear_resilience_state_for_tests() {
+    policies().lock().expect("policy lock poisoned").clear();
+    circuits().lock().expect("circuit lock poisoned").clear();
+}
+
 #[cfg(test)]
 #[path = "resilience_tests.rs"]
 mod tests;
@@ -326,3 +369,7 @@ mod tests;
 #[cfg(test)]
 #[path = "resilience_inner_callback_tests.rs"]
 mod inner_callback_tests;
+
+#[cfg(test)]
+#[path = "resilience_state_tests.rs"]
+mod state_tests;

@@ -215,3 +215,185 @@ fn inner_invokes_circuit_open_err_when_breaker_open_and_fail_closed() {
         "operation must not run when the breaker is open"
     );
 }
+
+#[test]
+fn inner_returns_none_when_breaker_open_and_fail_open() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    {
+        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let state = lock
+            .get_mut(&Signal::Logs)
+            .expect("logs state should exist");
+        state.consecutive_timeouts = CIRCUIT_BREAKER_THRESHOLD;
+        state.tripped_at = Some(Instant::now());
+    }
+
+    let result = runtime.block_on(async {
+        run_with_resilience_inner::<_, _, (), TestErr>(
+            Signal::Logs,
+            &ExporterPolicy {
+                retries: 0,
+                backoff_seconds: 0.0,
+                timeout_seconds: 1.0,
+                fail_open: true,
+                allow_blocking_in_event_loop: false,
+            },
+            || async { Ok(()) },
+            |_dur| TestErr::Timeout,
+            |_err| false,
+            || TestErr::CircuitOpen,
+        )
+        .await
+    });
+
+    assert_eq!(result, Ok(None));
+}
+
+#[test]
+fn inner_success_path_covers_timeout_bypass_and_success_callbacks() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    let result = runtime.block_on(async {
+        run_with_resilience_inner::<_, _, u32, TestErr>(
+            Signal::Logs,
+            &ExporterPolicy {
+                retries: 0,
+                backoff_seconds: 0.0,
+                timeout_seconds: 0.0,
+                fail_open: false,
+                allow_blocking_in_event_loop: false,
+            },
+            || async { Ok(7_u32) },
+            |_dur| TestErr::Timeout,
+            |_err| false,
+            || TestErr::CircuitOpen,
+        )
+        .await
+    });
+
+    assert_eq!(result, Ok(Some(7_u32)));
+    let state = circuits().lock().expect("circuit lock poisoned");
+    assert_eq!(
+        state
+            .get(&Signal::Logs)
+            .expect("logs state should exist")
+            .consecutive_timeouts,
+        0
+    );
+}
+
+#[test]
+fn inner_retries_then_succeeds_after_non_timeout_error() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let attempts = Arc::new(AtomicU32::new(0));
+    let timeout_calls = Arc::new(AtomicU32::new(0));
+    let is_timeout_calls = Arc::new(AtomicU32::new(0));
+
+    let result = runtime.block_on(async {
+        run_with_resilience_inner::<_, _, &'static str, TestErr>(
+            Signal::Logs,
+            &ExporterPolicy {
+                retries: 1,
+                backoff_seconds: 0.001,
+                timeout_seconds: 1.0,
+                fail_open: false,
+                allow_blocking_in_event_loop: false,
+            },
+            {
+                let attempts = Arc::clone(&attempts);
+                move || {
+                    let attempts = Arc::clone(&attempts);
+                    async move {
+                        if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                            Err(TestErr::Other)
+                        } else {
+                            Ok("ok")
+                        }
+                    }
+                }
+            },
+            {
+                let timeout_calls = Arc::clone(&timeout_calls);
+                move |_dur| {
+                    timeout_calls.fetch_add(1, Ordering::SeqCst);
+                    TestErr::Timeout
+                }
+            },
+            {
+                let is_timeout_calls = Arc::clone(&is_timeout_calls);
+                move |_err| {
+                    is_timeout_calls.fetch_add(1, Ordering::SeqCst);
+                    false
+                }
+            },
+            || TestErr::CircuitOpen,
+        )
+        .await
+    });
+
+    assert_eq!(result, Ok(Some("ok")));
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(timeout_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(is_timeout_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn inner_half_open_probe_failure_reopens_circuit() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    {
+        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let state = lock
+            .get_mut(&Signal::Logs)
+            .expect("logs state should exist");
+        state.consecutive_timeouts = CIRCUIT_BREAKER_THRESHOLD;
+        state.open_count = 1;
+        state.tripped_at = Some(Instant::now() - CIRCUIT_COOLDOWN - Duration::from_secs(1));
+    }
+
+    let result = runtime.block_on(async {
+        run_with_resilience_inner::<_, _, (), TestErr>(
+            Signal::Logs,
+            &ExporterPolicy {
+                retries: 0,
+                backoff_seconds: 0.0,
+                timeout_seconds: 1.0,
+                fail_open: true,
+                allow_blocking_in_event_loop: false,
+            },
+            || async { Err(TestErr::Other) },
+            |_dur| TestErr::Timeout,
+            |_err| true,
+            || TestErr::CircuitOpen,
+        )
+        .await
+    });
+
+    assert_eq!(result, Ok(None));
+    let state = circuits().lock().expect("circuit lock poisoned");
+    let logs = state.get(&Signal::Logs).expect("logs state should exist");
+    assert!(!logs.half_open_probing);
+    assert!(logs.open_count >= 2);
+    assert!(logs.tripped_at.is_some());
+}

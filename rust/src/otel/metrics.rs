@@ -30,55 +30,97 @@ use std::time::Duration;
 use opentelemetry::global;
 use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry::KeyValue;
+#[cfg(feature = "otel-grpc")]
+use opentelemetry_otlp::WithTonicConfig;
 use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::metrics::periodic_reader_with_async_runtime::PeriodicReader;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::Resource;
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
-use super::endpoint::{resolve_protocol, validate_endpoint, OtlpProtocol};
+use super::async_runtime::ProvideTokioRuntime;
+use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol};
+#[cfg(feature = "otel-grpc")]
+use super::grpc::metadata_from_headers;
+use super::map_exporter_build;
 use super::resilient::ResilientMetricExporter;
 
-static METER_PROVIDER: OnceLock<Mutex<Option<Arc<SdkMeterProvider>>>> = OnceLock::new();
+#[derive(Clone)]
+struct InstalledMeterProvider {
+    provider: Arc<SdkMeterProvider>,
+    runtime: ProvideTokioRuntime,
+}
+
+static METER_PROVIDER: OnceLock<Mutex<Option<InstalledMeterProvider>>> = OnceLock::new();
 static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new();
 static GAUGES: OnceLock<Mutex<HashMap<String, Gauge<f64>>>> = OnceLock::new();
 static HISTOGRAMS: OnceLock<Mutex<HashMap<String, Histogram<f64>>>> = OnceLock::new();
 
 const METER_NAME: &str = "provide.telemetry";
 
-fn meter_provider_slot() -> &'static Mutex<Option<Arc<SdkMeterProvider>>> {
-    METER_PROVIDER.get_or_init(|| Mutex::new(None))
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn empty_meter_provider_mutex() -> Mutex<Option<InstalledMeterProvider>> {
+    Mutex::new(None)
 }
 
-fn to_otlp_protocol(p: OtlpProtocol) -> Protocol {
-    match p {
-        OtlpProtocol::HttpProtobuf => Protocol::HttpBinary,
-        OtlpProtocol::HttpJson => Protocol::HttpJson,
-        #[cfg(feature = "otel-grpc")]
-        OtlpProtocol::Grpc => Protocol::Grpc,
-    }
+fn meter_provider_slot() -> &'static Mutex<Option<InstalledMeterProvider>> {
+    METER_PROVIDER.get_or_init(empty_meter_provider_mutex)
+}
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn empty_counter_cache_mutex() -> Mutex<HashMap<String, Counter<f64>>> {
+    Mutex::new(HashMap::new())
+}
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn empty_gauge_cache_mutex() -> Mutex<HashMap<String, Gauge<f64>>> {
+    Mutex::new(HashMap::new())
+}
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn empty_histogram_cache_mutex() -> Mutex<HashMap<String, Histogram<f64>>> {
+    Mutex::new(HashMap::new())
 }
 
 fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryError> {
     let protocol = resolve_protocol(&cfg.metrics.otlp_protocol)?;
-    let otlp_protocol = to_otlp_protocol(protocol);
     let timeout = Duration::from_secs_f64(cfg.exporter.metrics_timeout_seconds);
 
-    let mut builder = MetricExporter::builder()
-        .with_http()
-        .with_protocol(otlp_protocol)
-        .with_timeout(timeout);
-    if let Some(endpoint) = &cfg.metrics.otlp_endpoint {
-        validate_endpoint(endpoint)?;
-        builder = builder.with_endpoint(endpoint.clone());
+    match protocol {
+        OtlpProtocol::HttpProtobuf | OtlpProtocol::HttpJson => {
+            let http_protocol = if protocol == OtlpProtocol::HttpJson {
+                Protocol::HttpJson
+            } else {
+                Protocol::HttpBinary
+            };
+            let mut builder = MetricExporter::builder()
+                .with_http()
+                .with_protocol(http_protocol)
+                .with_timeout(timeout);
+            let endpoint = validate_optional_endpoint(cfg.metrics.otlp_endpoint.as_ref())?;
+            if let Some(endpoint) = endpoint {
+                builder = builder.with_endpoint(endpoint);
+            }
+            if !cfg.metrics.otlp_headers.is_empty() {
+                builder = builder.with_headers(cfg.metrics.otlp_headers.clone());
+            }
+            map_exporter_build(builder.build(), "metrics")
+        }
+        #[cfg(feature = "otel-grpc")]
+        OtlpProtocol::Grpc => {
+            let mut builder = MetricExporter::builder().with_tonic().with_timeout(timeout);
+            let endpoint = validate_optional_endpoint(cfg.metrics.otlp_endpoint.as_ref())?;
+            if let Some(endpoint) = endpoint {
+                builder = builder.with_endpoint(endpoint);
+            }
+            if !cfg.metrics.otlp_headers.is_empty() {
+                builder = builder.with_metadata(metadata_from_headers(&cfg.metrics.otlp_headers)?);
+            }
+            map_exporter_build(builder.build(), "metrics")
+        }
     }
-    if !cfg.metrics.otlp_headers.is_empty() {
-        builder = builder.with_headers(cfg.metrics.otlp_headers.clone());
-    }
-    builder
-        .build()
-        .map_err(|e| TelemetryError::new(format!("OTLP metrics exporter build failed: {e}")))
 }
 
 /// Build and register the SDK `MeterProvider`. Honours
@@ -88,13 +130,16 @@ pub(super) fn install_meter_provider(
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
     if !cfg.metrics.enabled {
+        shutdown_meter_provider();
         return Ok(false);
     }
     if cfg.metrics.otlp_endpoint.is_none() {
+        shutdown_meter_provider();
         return Ok(false);
     }
 
-    let exporter = match build_exporter(cfg) {
+    let exporter_result = build_exporter(cfg);
+    let exporter = match exporter_result {
         Ok(e) => e,
         Err(err) => {
             if cfg.exporter.metrics_fail_open {
@@ -107,7 +152,8 @@ pub(super) fn install_meter_provider(
         }
     };
 
-    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter))
+    let runtime = ProvideTokioRuntime::metrics();
+    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter), runtime.clone())
         .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
         .build();
 
@@ -120,7 +166,10 @@ pub(super) fn install_meter_provider(
     global::set_meter_provider(arc.as_ref().clone());
     *meter_provider_slot()
         .lock()
-        .expect("meter provider lock poisoned") = Some(arc);
+        .expect("meter provider lock poisoned") = Some(InstalledMeterProvider {
+        provider: arc,
+        runtime,
+    });
     Ok(true)
 }
 
@@ -129,12 +178,15 @@ pub(super) fn shutdown_meter_provider() {
     let mut guard = meter_provider_slot()
         .lock()
         .expect("meter provider lock poisoned");
-    if let Some(p) = guard.take() {
-        // shutdown() drains internally; explicit force_flush before shutdown
-        // confused the SDK channel state (see traces.rs comment).
-        if let Err(err) = p.shutdown() {
+    let provider = guard.take();
+    drop(guard);
+    if let Some(installed) = provider {
+        installed.runtime.quiesce();
+        let _ = installed.provider.force_flush();
+        if let Err(err) = installed.provider.shutdown() {
             eprintln!("provide_telemetry: metrics shutdown failed: {err:?}");
         }
+        installed.runtime.quiesce();
     }
     // Drop cached instruments so a subsequent install gets fresh ones.
     if let Some(m) = COUNTERS.get() {
@@ -156,20 +208,20 @@ pub(crate) fn meter_provider_installed() -> bool {
 }
 
 fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
-    attrs
-        .map(|m| {
-            m.iter()
-                .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
-                .collect()
-        })
-        .unwrap_or_default()
+    match attrs {
+        None => Vec::new(),
+        Some(attrs) => attrs
+            .iter()
+            .map(|(key, value)| KeyValue::new(key.clone(), value.clone()))
+            .collect(),
+    }
 }
 
 /// Get-or-create an OTel Counter<f64> by name (cached).
 fn get_or_create_counter(name: &str) -> Counter<f64> {
-    let map = COUNTERS.get_or_init(|| Mutex::new(HashMap::new()));
+    let map = COUNTERS.get_or_init(empty_counter_cache_mutex);
     let mut guard = map.lock().expect("counter cache lock poisoned");
-    if let Some(c) = guard.get(name) {
+    if let Some(c) = guard.get(name).cloned() {
         return c.clone();
     }
     let meter = global::meter(METER_NAME);
@@ -179,9 +231,9 @@ fn get_or_create_counter(name: &str) -> Counter<f64> {
 }
 
 fn get_or_create_gauge(name: &str) -> Gauge<f64> {
-    let map = GAUGES.get_or_init(|| Mutex::new(HashMap::new()));
+    let map = GAUGES.get_or_init(empty_gauge_cache_mutex);
     let mut guard = map.lock().expect("gauge cache lock poisoned");
-    if let Some(g) = guard.get(name) {
+    if let Some(g) = guard.get(name).cloned() {
         return g.clone();
     }
     let meter = global::meter(METER_NAME);
@@ -191,9 +243,9 @@ fn get_or_create_gauge(name: &str) -> Gauge<f64> {
 }
 
 fn get_or_create_histogram(name: &str) -> Histogram<f64> {
-    let map = HISTOGRAMS.get_or_init(|| Mutex::new(HashMap::new()));
+    let map = HISTOGRAMS.get_or_init(empty_histogram_cache_mutex);
     let mut guard = map.lock().expect("histogram cache lock poisoned");
-    if let Some(h) = guard.get(name) {
+    if let Some(h) = guard.get(name).cloned() {
         return h.clone();
     }
     let meter = global::meter(METER_NAME);
@@ -222,84 +274,5 @@ pub(crate) fn record_histogram(name: &str, value: f64, attrs: Option<&BTreeMap<S
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_config() -> TelemetryConfig {
-        TelemetryConfig {
-            service_name: "test".to_string(),
-            ..TelemetryConfig::default()
-        }
-    }
-
-    #[test]
-    fn install_with_disabled_metrics_is_a_noop() {
-        let mut cfg = test_config();
-        cfg.metrics.enabled = false;
-        let resource = super::super::resource::build_resource(&cfg);
-        install_meter_provider(&cfg, resource).expect("disabled metrics must short-circuit");
-    }
-
-    #[test]
-    fn shutdown_without_install_is_a_noop() {
-        shutdown_meter_provider();
-    }
-
-    #[test]
-    fn build_exporter_rejects_invalid_endpoint_scheme() {
-        let mut cfg = test_config();
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        let err = build_exporter(&cfg).expect_err("ftp scheme must be rejected");
-        assert!(
-            err.message.contains("scheme"),
-            "error must mention bad scheme: {}",
-            err.message
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_fails_closed_by_default() {
-        let mut cfg = test_config();
-        cfg.metrics.enabled = true;
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.metrics_fail_open = false;
-        let resource = super::super::resource::build_resource(&cfg);
-        let result = install_meter_provider(&cfg, resource);
-        assert!(
-            result.is_err(),
-            "bad endpoint must return Err when fail_open=false"
-        );
-        let msg = result.unwrap_err().message;
-        assert!(
-            msg.contains("scheme"),
-            "error must mention bad scheme: {msg}"
-        );
-    }
-
-    #[test]
-    fn install_with_bad_endpoint_succeeds_when_fail_open() {
-        let mut cfg = test_config();
-        cfg.metrics.enabled = true;
-        cfg.metrics.otlp_endpoint = Some("ftp://host:4318".to_string());
-        cfg.exporter.metrics_fail_open = true;
-        let resource = super::super::resource::build_resource(&cfg);
-        install_meter_provider(&cfg, resource).expect("fail_open must absorb validation error");
-    }
-
-    #[test]
-    fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
-        let mut cfg = test_config();
-        cfg.metrics.otlp_endpoint = Some("http://127.0.0.1:1/never/v1/metrics".to_string());
-        cfg.exporter.metrics_fail_open = true;
-        let resource = super::super::resource::build_resource(&cfg);
-        install_meter_provider(&cfg, resource).expect("install must succeed under fail_open");
-
-        // Smoke-test the hot-path helpers — they must not panic when no
-        // real provider is reachable.
-        record_counter_add("test.counter", 1.0, None);
-        record_gauge_set("test.gauge", 42.0, None);
-        record_histogram("test.histogram", 0.123, None);
-
-        shutdown_meter_provider();
-    }
-}
+#[path = "metrics_tests.rs"]
+mod tests;

@@ -16,12 +16,37 @@ use crate::sampling::{should_sample, Signal};
 
 // When the governance feature is disabled, consent is unconditionally granted.
 #[cfg(not(feature = "governance"))]
+#[cfg_attr(test, mutants::skip)] // Dead under the default/governance build used in mutation CI.
 #[inline(always)]
 fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
     true
 }
 
 static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "otel")]
+fn maybe_record_counter_add(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+    if !crate::otel::metrics::meter_provider_installed() {
+        return;
+    }
+    crate::otel::metrics::record_counter_add(name, value, attributes);
+}
+
+#[cfg(feature = "otel")]
+fn maybe_record_gauge_set(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+    if !crate::otel::metrics::meter_provider_installed() {
+        return;
+    }
+    crate::otel::metrics::record_gauge_set(name, value, attributes);
+}
+
+#[cfg(feature = "otel")]
+fn maybe_record_histogram(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+    if !crate::otel::metrics::meter_provider_installed() {
+        return;
+    }
+    crate::otel::metrics::record_histogram(name, value, attributes);
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Meter {
@@ -60,16 +85,18 @@ impl Counter {
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
             return;
         }
-        let Some(ticket) = try_acquire(Signal::Metrics) else {
+        let acquired = try_acquire(Signal::Metrics);
+        if acquired.is_none() {
             return;
-        };
+        }
+        let ticket = acquired.expect("metrics ticket must exist after none guard");
         self.state
             .lock()
             .expect("counter state lock poisoned")
             .value += value;
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_counter_add(&self.name, value, attributes.as_ref());
+        {
+            maybe_record_counter_add(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -111,9 +138,11 @@ impl Gauge {
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
             return;
         }
-        let Some(ticket) = try_acquire(Signal::Metrics) else {
+        let acquired = try_acquire(Signal::Metrics);
+        if acquired.is_none() {
             return;
-        };
+        }
+        let ticket = acquired.expect("metrics ticket must exist after none guard");
         #[cfg_attr(not(feature = "otel"), allow(unused_variables))]
         let new_absolute = {
             let mut state = self.state.lock().expect("gauge state lock poisoned");
@@ -121,8 +150,8 @@ impl Gauge {
             state.last_value
         };
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_gauge_set(&self.name, new_absolute, attributes.as_ref());
+        {
+            maybe_record_gauge_set(&self.name, new_absolute, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -140,16 +169,18 @@ impl Gauge {
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
             return;
         }
-        let Some(ticket) = try_acquire(Signal::Metrics) else {
+        let acquired = try_acquire(Signal::Metrics);
+        if acquired.is_none() {
             return;
-        };
+        }
+        let ticket = acquired.expect("metrics ticket must exist after none guard");
         self.state
             .lock()
             .expect("gauge state lock poisoned")
             .last_value = value;
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_gauge_set(&self.name, value, attributes.as_ref());
+        {
+            maybe_record_gauge_set(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -192,16 +223,18 @@ impl Histogram {
         if !should_sample(Signal::Metrics, Some(&self.name)).unwrap_or(true) {
             return;
         }
-        let Some(ticket) = try_acquire(Signal::Metrics) else {
+        let acquired = try_acquire(Signal::Metrics);
+        if acquired.is_none() {
             return;
-        };
+        }
+        let ticket = acquired.expect("metrics ticket must exist after none guard");
         let mut state = self.state.lock().expect("histogram state lock poisoned");
         state.count += 1;
         state.total += value;
         drop(state);
         #[cfg(feature = "otel")]
-        if crate::otel::metrics::meter_provider_installed() {
-            crate::otel::metrics::record_histogram(&self.name, value, attributes.as_ref());
+        {
+            maybe_record_histogram(&self.name, value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -273,3 +306,7 @@ pub fn metrics_initialized_for_tests() -> bool {
 pub fn reset_metrics_for_tests() {
     METRICS_INITIALIZED.store(false, Ordering::SeqCst);
 }
+
+#[cfg(test)]
+#[path = "metrics_tests.rs"]
+mod tests;

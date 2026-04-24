@@ -14,22 +14,110 @@
 //!
 //! Called from `log_event()` after the event is built and before emission.
 
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
-use crate::pii::{detect_secret_in_string, sanitize_payload, REDACTED_SENTINEL};
+use crate::pii::{REDACTED_SENTINEL, detect_secret_in_string, sanitize_payload};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
 
 use super::LogEvent;
+
+fn runtime_config_or_env() -> Option<TelemetryConfig> {
+    match get_runtime_config() {
+        Some(cfg) => Some(cfg),
+        None => TelemetryConfig::from_env().ok(),
+    }
+}
+
+fn truncate_string_value(value: &mut String, max_value_length: usize) {
+    if max_value_length == 0 || value.len() <= max_value_length {
+        return;
+    }
+    let mut cutoff = max_value_length.min(value.len());
+    while !value.is_char_boundary(cutoff) {
+        cutoff -= 1;
+    }
+    value.truncate(cutoff);
+    value.push_str("...");
+}
+
+fn should_keep_char(ch: char) -> bool {
+    match ch {
+        '\n' | '\t' => true,
+        _ => !ch.is_control(),
+    }
+}
+
+fn strip_control_chars(value: &mut String) {
+    value.retain(should_keep_char);
+}
+
+fn first_context_string<'a>(event: &'a LogEvent, keys: &[&str]) -> Option<&'a str> {
+    for key in keys {
+        if let Some(Value::String(value)) = event.context.get(*key) {
+            return Some(value.as_str());
+        }
+    }
+    None
+}
+
+fn runtime_schema_error(event: &LogEvent) -> Option<String> {
+    let cfg = match get_runtime_config() {
+        Some(cfg) => cfg,
+        None => return None,
+    };
+    match validate_required_keys(&event.context, &cfg.event_schema.required_keys) {
+        Ok(()) => None,
+        Err(err) => Some(err.message),
+    }
+}
+
+fn truncate_context_values(event: &mut LogEvent, max_value_length: usize) {
+    for value in event.context.values_mut() {
+        match value {
+            Value::String(text) => truncate_string_value(text, max_value_length),
+            _ => {}
+        }
+    }
+}
+
+fn strip_context_values(event: &mut LogEvent) {
+    for value in event.context.values_mut() {
+        match value {
+            Value::String(text) => strip_control_chars(text),
+            _ => {}
+        }
+    }
+}
+
+fn is_priority_key(key: &str) -> bool {
+    matches!(
+        key,
+        "service"
+            | "env"
+            | "version"
+            | "trace_id"
+            | "span_id"
+            | "session_id"
+            | "logger_name"
+            | "domain"
+            | "action"
+            | "resource"
+            | "status"
+            | "error_fingerprint"
+    )
+}
 
 /// Run the full processor chain on a LogEvent in place.
 ///
 /// The order matches the Python processor chain (except sampling/consent
 /// which run before this point in `log_event()`).
 pub(super) fn process_event(event: &mut LogEvent) {
-    let cfg = get_runtime_config().or_else(|| TelemetryConfig::from_env().ok());
+    let cfg = runtime_config_or_env();
     let pii_max_depth = cfg.as_ref().map_or(8, |c| c.pii_max_depth);
     let max_attr_value_length = cfg
         .as_ref()
@@ -62,137 +150,100 @@ pub(super) fn process_event(event: &mut LogEvent) {
 /// populated (i.e., the caller used `Logger::info_event(&event)` rather
 /// than `Logger::info("message")`).
 fn extract_dars_fields(event: &mut LogEvent) {
-    if let Some(ref meta) = event.event_metadata {
+    let meta = match event.event_metadata.as_ref() {
+        Some(meta) => meta,
+        None => return,
+    };
+    event
+        .context
+        .insert("domain".to_string(), Value::String(meta.domain.clone()));
+    event
+        .context
+        .insert("action".to_string(), Value::String(meta.action.clone()));
+    if let Some(resource) = meta.resource.as_ref() {
         event
             .context
-            .insert("domain".to_string(), Value::String(meta.domain.clone()));
-        event
-            .context
-            .insert("action".to_string(), Value::String(meta.action.clone()));
-        if let Some(ref resource) = meta.resource {
-            event
-                .context
-                .insert("resource".to_string(), Value::String(resource.clone()));
-        }
-        event
-            .context
-            .insert("status".to_string(), Value::String(meta.status.clone()));
+            .insert("resource".to_string(), Value::String(resource.clone()));
     }
+    event
+        .context
+        .insert("status".to_string(), Value::String(meta.status.clone()));
 }
 
 /// Inject the logger's target name as `logger_name` into the context.
 /// Only sets the field when it is absent — caller-provided values are
 /// preserved. Matches Python's `inject_logger_name` processor.
 fn inject_logger_name(event: &mut LogEvent) {
-    if !event.target.is_empty() {
-        event
-            .context
-            .entry("logger_name".to_string())
-            .or_insert_with(|| Value::String(event.target.clone()));
+    if event.target.is_empty() {
+        return;
     }
+    if event.context.contains_key("logger_name") {
+        return;
+    }
+    event.context.insert(
+        "logger_name".to_string(),
+        Value::String(event.target.clone()),
+    );
 }
 
 /// Truncate long string values, strip control characters, and cap the
 /// number of context attributes.
 fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: usize) {
-    if max_value_length > 0 {
-        for value in event.context.values_mut() {
-            if let Value::String(s) = value {
-                if s.len() > max_value_length {
-                    // Find the last char boundary at or before max_value_length
-                    // to avoid panicking on multi-byte UTF-8 codepoints.
-                    let safe_end = s
-                        .char_indices()
-                        .map(|(i, _)| i)
-                        .take_while(|&i| i <= max_value_length)
-                        .last()
-                        .unwrap_or(0);
-                    s.truncate(safe_end);
-                    s.push_str("...");
-                }
-            }
+    truncate_context_values(event, max_value_length);
+    strip_context_values(event);
+    if max_attr_count == 0 {
+        return;
+    }
+    if event.context.len() <= max_attr_count {
+        return;
+    }
+
+    use std::collections::BTreeSet;
+    let mut keep = BTreeSet::new();
+    let priority_keys: Vec<String> = event.context.keys().cloned().collect();
+    for key in &priority_keys {
+        if is_priority_key(key) {
+            keep.insert(key.clone());
         }
     }
-    // Strip control characters (except newline/tab) from string values.
-    for value in event.context.values_mut() {
-        if let Value::String(s) = value {
-            let cleaned: String = s
-                .chars()
-                .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
-                .collect();
-            if cleaned.len() != s.len() {
-                *s = cleaned;
-            }
+
+    let candidate_keys: Vec<String> = event.context.keys().cloned().collect();
+    for key in &candidate_keys {
+        if keep.len() >= max_attr_count {
+            break;
+        }
+        if is_priority_key(key) {
+            continue;
+        }
+        keep.insert(key.clone());
+    }
+    let original_context = std::mem::take(&mut event.context);
+    let mut retained = BTreeMap::new();
+    for (key, value) in original_context {
+        if keep.contains(&key) {
+            retained.insert(key, value);
         }
     }
-    // Cap attribute count. Priority keys (service identity, trace context,
-    // DARS fields) are preserved; excess is trimmed from the remainder
-    // in BTreeMap alphabetical order (deterministic).
-    if max_attr_count > 0 && event.context.len() > max_attr_count {
-        use std::collections::HashSet;
-        const PRIORITY_KEYS: &[&str] = &[
-            "service",
-            "env",
-            "version",
-            "trace_id",
-            "span_id",
-            "session_id",
-            "logger_name",
-            "domain",
-            "action",
-            "resource",
-            "status",
-            "error_fingerprint",
-        ];
-        let priority_set: HashSet<&str> = PRIORITY_KEYS.iter().copied().collect();
-
-        // Collect priority keys that are actually present — O(n) with HashSet.
-        let mut keep: HashSet<String> = event
-            .context
-            .keys()
-            .filter(|k| priority_set.contains(k.as_str()))
-            .cloned()
-            .collect();
-
-        // Fill remaining slots from non-priority keys (alphabetical — BTreeMap order).
-        for key in event.context.keys() {
-            if keep.len() >= max_attr_count {
-                break;
-            }
-            if !priority_set.contains(key.as_str()) {
-                keep.insert(key.clone());
-            }
-        }
-
-        // Drop everything not in `keep` — O(n) with HashSet lookup.
-        event.context.retain(|k, _| keep.contains(k));
-    }
+    event.context = retained;
 }
 
 /// Compute a stable error fingerprint for ERROR/CRITICAL-level events
 /// that carry an `error` or `error_type` key in context. The fingerprint
 /// is a 12-char hex SHA256 prefix, stable across minor stack variations.
 fn add_error_fingerprint(event: &mut LogEvent) {
-    if !matches!(event.level.as_str(), "ERROR" | "CRITICAL" | "FATAL") {
+    const ERROR_LEVELS: &[&str] = &["ERROR", "CRITICAL", "FATAL"];
+    if !ERROR_LEVELS.contains(&event.level.as_str()) {
         return;
     }
+    let error_name = first_context_string(event, &["error", "error_type", "exception"]);
     // Only add fingerprint when error/exception attributes exist in the
     // context — matching Python/TypeScript/Go semantics. Plain error-level
     // messages without error metadata do not get fingerprinted.
-    let error_name = event
-        .context
-        .get("error")
-        .or_else(|| event.context.get("error_type"))
-        .or_else(|| event.context.get("exception"))
-        .and_then(|v| v.as_str());
-    let Some(error_name) = error_name else {
-        return;
+    let error_name = match error_name {
+        Some(error_name) => error_name,
+        None => return,
     };
-    let stack = event
-        .context
-        .get("stack")
-        .or_else(|| event.context.get("stacktrace"))
-        .and_then(|v| v.as_str());
+    let stack = first_context_string(event, &["stack", "stacktrace"]);
     let fingerprint = compute_error_fingerprint(error_name, stack);
     event
         .context
@@ -203,26 +254,20 @@ fn add_error_fingerprint(event: &mut LogEvent) {
 /// string. Message is checked directly (not via the map-based engine) so
 /// `Path: ["*"]` rules can't match a sentinel key. Mirrors Python/Go.
 fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
-    if detect_secret_in_string(&event.message) {
+    let message_has_secret = detect_secret_in_string(&event.message);
+    if message_has_secret {
         event.message = REDACTED_SENTINEL.to_string();
     }
     if event.context.is_empty() {
         return;
     }
-    let payload = Value::Object(
-        event
-            .context
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-    );
+    let payload = Value::Object(event.context.clone().into_iter().collect());
     let cleaned = sanitize_payload(&payload, true, max_depth);
-    if let Value::Object(map) = cleaned {
-        event.context.clear();
-        for (k, v) in map {
-            event.context.insert(k, v);
-        }
-    }
+    let object = cleaned
+        .as_object()
+        .expect("sanitize_payload preserves object shape")
+        .clone();
+    event.context = object.into_iter().collect();
 }
 
 /// When strict schema mode is on, validate the event message as a
@@ -231,267 +276,41 @@ fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
 /// is never lost. Cross-language standard: all four languages annotate
 /// and emit rather than drop.
 fn enforce_schema(event: &mut LogEvent) {
-    if let Some(cfg) = get_runtime_config() {
-        if let Err(err) = validate_required_keys(&event.context, &cfg.event_schema.required_keys) {
+    match runtime_schema_error(event) {
+        Some(message) => {
             event
                 .context
-                .insert("_schema_error".to_string(), Value::String(err.message));
+                .insert("_schema_error".to_string(), Value::String(message));
             return;
         }
+        None => {}
     }
     if !get_strict_schema() {
         return;
     }
     let segments: Vec<&str> = event.message.split('.').collect();
-    if event_name(&segments).is_err() {
-        event.context.insert(
-            "_schema_error".to_string(),
-            Value::String(format!(
-                "event name {:?} does not match strict schema",
-                event.message
-            )),
-        );
+    match event_name(&segments) {
+        Ok(_) => {}
+        Err(_) => {
+            event.context.insert(
+                "_schema_error".to_string(),
+                Value::String(format!(
+                    "event name {:?} does not match strict schema",
+                    event.message
+                )),
+            );
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    fn make_event(level: &str, message: &str) -> LogEvent {
-        LogEvent {
-            level: level.to_string(),
-            target: "test".to_string(),
-            message: message.to_string(),
-            context: BTreeMap::new(),
-            trace_id: None,
-            span_id: None,
-            event_metadata: None,
-        }
-    }
-
-    #[test]
-    fn harden_input_truncates_long_values() {
-        let mut event = make_event("INFO", "test");
-        event
-            .context
-            .insert("long".to_string(), Value::String("x".repeat(2000)));
-        harden_input(&mut event, 100, 64);
-        let val = event.context["long"].as_str().unwrap();
-        assert!(val.len() <= 103, "value should be truncated + '...'");
-        assert!(val.ends_with("..."));
-    }
-
-    #[test]
-    fn harden_input_truncates_safely_on_multibyte_utf8() {
-        let mut event = make_event("INFO", "test");
-        // "é" is 2 bytes in UTF-8; a 5-byte limit could land mid-codepoint
-        event
-            .context
-            .insert("multi".to_string(), Value::String("ééééé".to_string()));
-        // Must not panic — truncates at a char boundary before max
-        harden_input(&mut event, 5, 64);
-        let val = event.context["multi"].as_str().unwrap();
-        assert!(val.is_char_boundary(val.len()), "must end at char boundary");
-        assert!(val.ends_with("..."));
-    }
-
-    #[test]
-    fn harden_input_strips_control_chars() {
-        let mut event = make_event("INFO", "test");
-        event.context.insert(
-            "dirty".to_string(),
-            Value::String("hello\x00world\ttab\n".to_string()),
-        );
-        harden_input(&mut event, 1024, 64);
-        assert_eq!(
-            event.context["dirty"].as_str().unwrap(),
-            "helloworld\ttab\n"
-        );
-    }
-
-    #[test]
-    fn harden_input_caps_attr_count() {
-        let mut event = make_event("INFO", "test");
-        for i in 0..20 {
-            event
-                .context
-                .insert(format!("key_{i:02}"), Value::String(format!("val_{i}")));
-        }
-        harden_input(&mut event, 1024, 5);
-        assert_eq!(event.context.len(), 5, "should cap at 5 attributes");
-    }
-
-    #[test]
-    fn harden_input_preserves_priority_keys_when_over_cap() {
-        let mut event = make_event("INFO", "test");
-        // Add 10 generic keys over a cap of 4
-        for i in 0..10 {
-            event
-                .context
-                .insert(format!("extra_{i:02}"), Value::String("x".to_string()));
-        }
-        // Add priority keys — must survive even when over cap
-        event
-            .context
-            .insert("trace_id".to_string(), Value::String("tid-abc".to_string()));
-        event
-            .context
-            .insert("service".to_string(), Value::String("svc".to_string()));
-        // Cap at 4: 2 priority keys + 2 generic
-        harden_input(&mut event, 1024, 4);
-        assert_eq!(event.context.len(), 4, "must cap at 4");
-        assert!(
-            event.context.contains_key("trace_id"),
-            "trace_id (priority) must survive capping"
-        );
-        assert!(
-            event.context.contains_key("service"),
-            "service (priority) must survive capping"
-        );
-    }
-
-    #[test]
-    fn error_fingerprint_added_when_error_attr_present() {
-        let mut event = make_event("ERROR", "something failed");
-        event
-            .context
-            .insert("error".to_string(), Value::String("ValueError".to_string()));
-        add_error_fingerprint(&mut event);
-        let fp = event
-            .context
-            .get("error_fingerprint")
-            .unwrap()
-            .as_str()
-            .unwrap();
-        assert_eq!(fp.len(), 12, "fingerprint should be 12 hex chars");
-        assert!(fp.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn error_fingerprint_not_added_without_error_attr() {
-        let mut event = make_event("ERROR", "plain error message");
-        // No "error" or "error_type" in context — fingerprint should NOT be added
-        add_error_fingerprint(&mut event);
-        assert!(
-            !event.context.contains_key("error_fingerprint"),
-            "fingerprint requires error attrs in context"
-        );
-    }
-
-    #[test]
-    fn error_fingerprint_not_added_for_info_events() {
-        let mut event = make_event("INFO", "normal log");
-        event
-            .context
-            .insert("error".to_string(), Value::String("SomeError".to_string()));
-        add_error_fingerprint(&mut event);
-        assert!(!event.context.contains_key("error_fingerprint"));
-    }
-
-    #[test]
-    fn sanitize_context_redacts_sensitive_keys() {
-        let mut event = make_event("INFO", "test");
-        event
-            .context
-            .insert("password".to_string(), Value::String("s3cret".to_string()));
-        event
-            .context
-            .insert("safe_key".to_string(), Value::String("visible".to_string()));
-        sanitize_context(&mut event, 8);
-        assert_ne!(
-            event.context["password"].as_str().unwrap(),
-            "s3cret",
-            "password should be redacted"
-        );
-        assert_eq!(event.context["safe_key"].as_str().unwrap(), "visible");
-    }
-
-    #[test]
-    fn enforce_schema_adds_error_field_for_invalid_name_in_strict_mode() {
-        crate::schema::set_strict_schema(true);
-        let mut event = make_event("INFO", "NOT-VALID.name");
-        enforce_schema(&mut event);
-        assert!(
-            event.context.contains_key("_schema_error"),
-            "strict mode should flag invalid name"
-        );
-        crate::schema::set_strict_schema(false);
-    }
-
-    #[test]
-    fn enforce_schema_passes_valid_name_in_strict_mode() {
-        crate::schema::set_strict_schema(true);
-        let mut event = make_event("INFO", "auth.login.ok");
-        enforce_schema(&mut event);
-        assert!(
-            !event.context.contains_key("_schema_error"),
-            "valid name should not be flagged"
-        );
-        crate::schema::set_strict_schema(false);
-    }
-
-    #[test]
-    fn inject_logger_name_sets_target_as_logger_name() {
-        let mut event = make_event("INFO", "auth.login.ok");
-        event.target = "myapp.auth".to_string();
-        inject_logger_name(&mut event);
-        assert_eq!(
-            event.context.get("logger_name").and_then(|v| v.as_str()),
-            Some("myapp.auth"),
-            "target should be injected as logger_name"
-        );
-    }
-
-    #[test]
-    fn inject_logger_name_does_not_overwrite_caller_provided_value() {
-        let mut event = make_event("INFO", "auth.login.ok");
-        event.target = "myapp.auth".to_string();
-        event.context.insert(
-            "logger_name".to_string(),
-            Value::String("explicit".to_string()),
-        );
-        inject_logger_name(&mut event);
-        assert_eq!(
-            event.context.get("logger_name").and_then(|v| v.as_str()),
-            Some("explicit"),
-            "caller-set logger_name must not be overwritten"
-        );
-    }
-
-    #[test]
-    fn inject_logger_name_skips_empty_target() {
-        let mut event = make_event("INFO", "auth.login.ok");
-        event.target = String::new();
-        inject_logger_name(&mut event);
-        assert!(
-            !event.context.contains_key("logger_name"),
-            "empty target must not inject logger_name"
-        );
-    }
-
-    #[test]
-    fn harden_input_preserves_logger_name_as_priority_key() {
-        let mut event = make_event("INFO", "test");
-        for i in 0..10 {
-            event
-                .context
-                .insert(format!("extra_{i:02}"), Value::String("x".to_string()));
-        }
-        event.context.insert(
-            "logger_name".to_string(),
-            Value::String("my.logger".to_string()),
-        );
-        // Cap at 3 — logger_name must survive as a priority key
-        harden_input(&mut event, 1024, 3);
-        assert!(
-            event.context.contains_key("logger_name"),
-            "logger_name must survive attribute capping as a priority key"
-        );
-    }
-}
+#[path = "processors_tests.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "processors_message_pii_tests.rs"]
 mod message_pii_tests;
+
+#[cfg(test)]
+#[path = "processors_edge_tests.rs"]
+mod edge_tests;

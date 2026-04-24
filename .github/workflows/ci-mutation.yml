@@ -122,14 +122,16 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
         with:
           workspaces: rust
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
-      # -j 4 runs four mutant test processes in parallel (matches 4-core GitHub runner).
-      # --in-place is incompatible with -j in cargo-mutants v27+; use copy-per-mutant mode.
-      # cargo-mutants exits 3 if any mutants are missed — this step fails the job.
-      # All mutants must be caught (100% kill rate enforced).
+      # Use nextest for the inner test runner and include all cargo features so
+      # the mutation sweep exercises the OTEL-gated Rust surface as well as the
+      # default governance build. A 300s floor avoids spurious timeouts on slow
+      # CI hosts while still failing real surviving mutants.
       - name: Run cargo-mutants (100% kill rate required)
-        run: cargo mutants -j 4 --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+        run: cargo mutants --all-features --test-tool nextest -j 4 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
 
   go-mutation:
     needs: changes

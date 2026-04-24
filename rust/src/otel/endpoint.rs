@@ -84,11 +84,6 @@ pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
             )));
         }
     }
-    if parsed.host().is_none() {
-        return Err(TelemetryError::new(format!(
-            "invalid OTLP endpoint (no host): {endpoint:?}",
-        )));
-    }
     // Port 0 is reserved and not a valid OTLP endpoint port.
     if parsed.port() == Some(0) {
         return Err(TelemetryError::new(format!(
@@ -110,6 +105,18 @@ pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
         }
     }
     Ok(())
+}
+
+pub(super) fn validate_optional_endpoint(
+    endpoint: Option<&String>,
+) -> Result<Option<String>, TelemetryError> {
+    match endpoint {
+        Some(endpoint) => {
+            validate_endpoint(endpoint)?;
+            Ok(Some(endpoint.clone()))
+        }
+        None => Ok(None),
+    }
 }
 
 #[cfg(test)]

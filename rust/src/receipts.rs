@@ -5,6 +5,7 @@
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
@@ -43,16 +44,30 @@ impl Default for ReceiptConfig {
 static CONFIG: OnceLock<Mutex<ReceiptConfig>> = OnceLock::new();
 static RECEIPTS: OnceLock<Mutex<Vec<RedactionReceipt>>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn default_receipt_config_mutex() -> Mutex<ReceiptConfig> {
+    Mutex::new(ReceiptConfig::default())
+}
+
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite Vec::new() syntax.
+fn empty_receipts_mutex() -> Mutex<Vec<RedactionReceipt>> {
+    Mutex::new(Vec::new())
+}
+
 fn config() -> &'static Mutex<ReceiptConfig> {
-    CONFIG.get_or_init(|| Mutex::new(ReceiptConfig::default()))
+    CONFIG.get_or_init(default_receipt_config_mutex)
 }
 
 fn receipts() -> &'static Mutex<Vec<RedactionReceipt>> {
-    RECEIPTS.get_or_init(|| Mutex::new(Vec::new()))
+    RECEIPTS.get_or_init(empty_receipts_mutex)
 }
 
 fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut hex, "{byte:02x}").expect("writing to string cannot fail");
+    }
+    hex
 }
 
 pub fn enable_receipts(enabled: bool, signing_key: Option<&str>, service_name: Option<&str>) {
@@ -129,3 +144,7 @@ pub fn reset_receipts_for_tests() {
         .expect("receipt log lock poisoned")
         .clear();
 }
+
+#[cfg(test)]
+#[path = "receipts_tests.rs"]
+mod tests;

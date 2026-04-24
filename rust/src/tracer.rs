@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::backpressure::{release, try_acquire};
+use crate::backpressure::{release, try_acquire, QueueTicket};
 #[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
@@ -24,6 +24,13 @@ pub struct NoopSpan {
     trace_id: String,
     span_id: String,
     guard: Option<ContextGuard>,
+}
+
+struct ActiveTrace {
+    ticket: Option<QueueTicket>,
+    noop_span: Option<NoopSpan>,
+    #[cfg(feature = "otel")]
+    otel_span: Option<crate::otel::traces::OtelSpanGuard>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,19 +91,18 @@ pub fn get_trace_context() -> BTreeMap<String, Option<String>> {
     ])
 }
 
-pub fn trace<T, F>(name: &str, callback: F) -> T
-where
-    F: FnOnce() -> T,
-{
+fn begin_trace(name: &str) -> Option<ActiveTrace> {
     if !should_allow("traces", None) {
-        return callback();
+        return None;
     }
     if !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
-        return callback();
+        return None;
     }
-    let Some(ticket) = try_acquire(Signal::Traces) else {
-        return callback();
-    };
+    let acquired = try_acquire(Signal::Traces);
+    if acquired.is_none() {
+        return None;
+    }
+    let ticket = acquired.expect("trace ticket must exist after none guard");
 
     // When OTel is compiled in and a TracerProvider has been installed,
     // route through the OTel SDK so the span lands at the configured
@@ -105,19 +111,30 @@ where
     #[cfg(feature = "otel")]
     {
         if crate::otel::traces::tracer_provider_installed() {
-            let _otel_span = crate::otel::traces::start_span(name);
             increment_emitted(Signal::Traces, 1);
-            let result = callback();
-            release(ticket);
-            return result;
+            return Some(ActiveTrace {
+                ticket: Some(ticket),
+                noop_span: None,
+                otel_span: Some(crate::otel::traces::start_span(name)),
+            });
         }
     }
 
-    let _span = tracer.start_span(name);
     increment_emitted(Signal::Traces, 1);
-    let result = callback();
-    release(ticket);
-    result
+    Some(ActiveTrace {
+        ticket: Some(ticket),
+        noop_span: Some(tracer.start_span(name)),
+        #[cfg(feature = "otel")]
+        otel_span: None,
+    })
+}
+
+pub fn trace<T, F>(name: &str, callback: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    let _active = begin_trace(name);
+    callback()
 }
 
 impl NoopSpan {
@@ -140,27 +157,17 @@ impl Drop for NoopSpan {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tracer_test_tracer_names_match_contract() {
-        assert_eq!(tracer.name(), "provide.telemetry");
-        assert_eq!(get_tracer(Some("custom.tracer")).name(), "custom.tracer");
-    }
-
-    #[test]
-    fn tracer_test_next_hex_respects_requested_length_and_advances() {
-        let first = next_hex(16);
-        let second = next_hex(16);
-        let long = next_hex(32);
-
-        assert_eq!(first.len(), 16);
-        assert_eq!(second.len(), 16);
-        assert_eq!(long.len(), 32);
-        assert_ne!(first, second);
-        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
-        assert!(long.chars().all(|ch| ch.is_ascii_hexdigit()));
+impl Drop for ActiveTrace {
+    fn drop(&mut self) {
+        #[cfg(feature = "otel")]
+        drop(self.otel_span.take());
+        drop(self.noop_span.take());
+        if let Some(ticket) = self.ticket.take() {
+            release(ticket);
+        }
     }
 }
+
+#[cfg(test)]
+#[path = "tracer_tests.rs"]
+mod tests;

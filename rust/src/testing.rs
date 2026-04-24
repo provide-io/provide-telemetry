@@ -26,8 +26,13 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn default_test_state_lock_mutex() -> Mutex<()> {
+    Mutex::new(())
+}
+
 fn test_state_lock() -> &'static Mutex<()> {
-    TEST_STATE_LOCK.get_or_init(|| Mutex::new(()))
+    TEST_STATE_LOCK.get_or_init(default_test_state_lock_mutex)
 }
 
 /// Serialize tests that mutate process-global telemetry state.
@@ -62,4 +67,22 @@ pub fn reset_telemetry_state() {
 pub fn reset_trace_context() {
     reset_trace_context_for_tests();
     drop(set_trace_context(None, None));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn testing_test_acquire_lock_recovers_after_poison() {
+        let handle = std::thread::spawn(|| {
+            let _guard = test_state_lock()
+                .lock()
+                .expect("test state lock should acquire before poison");
+            panic!("poison test state lock");
+        });
+        assert!(handle.join().is_err(), "worker must panic to poison lock");
+
+        let _guard = acquire_test_state_lock();
+    }
 }

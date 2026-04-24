@@ -18,23 +18,29 @@ pub(crate) fn level_order(level: &str) -> u8 {
     }
 }
 
+fn match_len(target: &str, prefix: &str) -> Option<usize> {
+    if prefix.is_empty() || target == prefix {
+        return Some(prefix.len());
+    }
+    target
+        .strip_prefix(prefix)
+        .filter(|suffix| suffix.starts_with('.'))
+        .map(|_| prefix.len())
+}
+
 /// Resolve the effective level threshold for a given target (logger name).
 /// Per-module overrides win via longest-prefix match; falls back to the
 /// global default level.
 pub(crate) fn effective_level_threshold(target: &str, config: &LoggingConfig) -> u8 {
-    let mut best_match: Option<usize> = None;
-    let mut threshold = level_order(&config.level);
-    for (prefix, lvl) in &config.module_levels {
-        let matches = prefix.is_empty()
-            || target == prefix.as_str()
-            || target.starts_with(&format!("{prefix}."));
-        if matches {
-            let plen = prefix.len();
-            if best_match.map_or(true, |best| plen > best) {
-                best_match = Some(plen);
-                threshold = level_order(lvl);
-            }
-        }
-    }
-    threshold
+    let default_threshold = level_order(&config.level);
+    config
+        .module_levels
+        .iter()
+        .filter_map(|(prefix, level)| match_len(target, prefix).map(|len| (len, level)))
+        .max_by_key(|(len, _)| *len)
+        .map_or(default_threshold, |(_, level)| level_order(level))
 }
+
+#[cfg(test)]
+#[path = "levels_tests.rs"]
+mod tests;
