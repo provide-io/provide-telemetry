@@ -98,11 +98,7 @@ fn begin_trace(name: &str) -> Option<ActiveTrace> {
     if !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
         return None;
     }
-    let acquired = try_acquire(Signal::Traces);
-    if acquired.is_none() {
-        return None;
-    }
-    let ticket = acquired.expect("trace ticket must exist after none guard");
+    let ticket = try_acquire(Signal::Traces)?;
 
     // When OTel is compiled in and a TracerProvider has been installed,
     // route through the OTel SDK so the span lands at the configured

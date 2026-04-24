@@ -322,25 +322,24 @@ pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
 /// (either circuit closed, or cooldown elapsed and this call starts the probe).
 pub(crate) fn _check_and_start_probe_for_wrappers(signal: Signal) -> bool {
     let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
-    match circuit_lock.get_mut(&signal) {
-        Some(state) => {
-            if state.consecutive_timeouts >= CIRCUIT_BREAKER_THRESHOLD {
-                let cooldown_active = state
-                    .tripped_at
-                    .map(|instant| instant.elapsed() < CIRCUIT_COOLDOWN)
-                    .unwrap_or(false);
-                if cooldown_active {
-                    return true; // Still open — reject.
-                }
-                if state.half_open_probing {
-                    return true; // Probe already in flight — reject concurrent caller.
-                }
-                // Cooldown elapsed, no probe running — start one.
-                state.half_open_probing = true;
-            }
-        }
-        None => {}
+    let Some(state) = circuit_lock.get_mut(&signal) else {
+        return false;
+    };
+    if state.consecutive_timeouts < CIRCUIT_BREAKER_THRESHOLD {
+        return false;
     }
+    let cooldown_active = state
+        .tripped_at
+        .map(|instant| instant.elapsed() < CIRCUIT_COOLDOWN)
+        .unwrap_or(false);
+    if cooldown_active {
+        return true; // Still open — reject.
+    }
+    if state.half_open_probing {
+        return true; // Probe already in flight — reject concurrent caller.
+    }
+    // Cooldown elapsed, no probe running — start one.
+    state.half_open_probing = true;
     false
 }
 
