@@ -39,7 +39,7 @@ def _get_strict_check() -> bool:
     if _runtime_mod is None:  # pragma: no mutate — caching optimization, not behavioral
         from provide.telemetry import runtime
 
-        _runtime_mod = runtime  # pragma: no mutate
+        _runtime_mod = runtime  # pragma: no mutate — cache module reference; identity asserted by the next call
     return bool(_runtime_mod._is_strict_event_name())
 
 

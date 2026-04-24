@@ -24,14 +24,14 @@ func TestGetRuntimeStatus_NoRaceWithProviderMutation(t *testing.T) {
 			_setupMu.Lock()
 			_setupDone = true
 			_runtimeCfg = DefaultTelemetryConfig()
-			backend := _activeBackendLocked().(*_fakeBackend)
+			backend := _activeBackend().(*_fakeBackend)
 			backend.providers = SignalStatus{Logs: true, Traces: true, Metrics: true}
 			_setupMu.Unlock()
 
 			_setupMu.Lock()
 			_setupDone = false
 			_runtimeCfg = nil
-			backend = _activeBackendLocked().(*_fakeBackend)
+			backend = _activeBackend().(*_fakeBackend)
 			backend.providers = SignalStatus{}
 			_setupMu.Unlock()
 		}

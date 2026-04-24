@@ -7,6 +7,14 @@ import "context"
 
 // contextKey is an unexported type for context keys in this package.
 // Using a struct prevents collisions with keys from other packages.
+//
+// NOTE: The Go stdlib convention today is `type contextKey string` with a
+// package-private constant per key. We keep the struct form here because it
+// is consumed by several sibling files (propagation.go, session.go,
+// tracing.go) that each instantiate contextKey{"<name>"} — switching to a
+// string type would be a package-wide change. The struct form still meets
+// the key-collision invariant (unexported type) and carries a human-readable
+// name for debugging, so we preserve it deliberately.
 type contextKey struct{ name string }
 
 var _contextFieldsKey = contextKey{"fields"}

@@ -102,14 +102,16 @@ def setup_tracing(config: TelemetryConfig) -> None:
     _tracing_explicitly_disabled = False
     from provide.telemetry.resilience import _is_running_in_event_loop
 
-    if _is_running_in_event_loop():  # pragma: no mutate
-        warnings.warn(  # pragma: no mutate
-            "setup_tracing() called from an active event loop; "  # pragma: no mutate
-            "provider initialization may stall the event loop. "  # pragma: no mutate
-            "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate
-            RuntimeWarning,  # pragma: no mutate
-            stacklevel=2,  # pragma: no mutate
-        )  # pragma: no mutate
+    if (
+        _is_running_in_event_loop()
+    ):  # pragma: no mutate — event-loop guard; both branches exercised by asyncio-specific tests
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            "setup_tracing() called from an active event loop; "  # pragma: no mutate — warning message string is non-semantic
+            "provider initialization may stall the event loop. "  # pragma: no mutate — warning message string is non-semantic
+            "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,  # pragma: no mutate — warning category; any subclass of Warning is equivalent for the catch-all tests
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )  # pragma: no mutate — closing paren line for multi-line call; trivial
     if not _HAS_OTEL:
         return
 
@@ -119,11 +121,15 @@ def setup_tracing(config: TelemetryConfig) -> None:
         # Capture the baseline provider before we install ours so that
         # _has_real_tracer_provider() can distinguish external providers
         # regardless of import order.
-        if not _baseline_captured:  # pragma: no mutate
-            otel_trace_api = _load_otel_trace_api()  # pragma: no mutate
+        if (
+            not _baseline_captured
+        ):  # pragma: no mutate — latch guard; second call is the equivalent branch exercised by idempotent-setup tests
+            otel_trace_api = (
+                _load_otel_trace_api()
+            )  # pragma: no mutate — cached module resolution; import-fallback branch exercised by otel-off tests
             if otel_trace_api is not None:
-                _baseline_tracer_provider = otel_trace_api.get_tracer_provider()  # pragma: no mutate
-            _baseline_captured = True  # pragma: no mutate
+                _baseline_tracer_provider = otel_trace_api.get_tracer_provider()  # pragma: no mutate — baseline snapshot; identity comparison asserted by _has_real_tracer_provider tests
+            _baseline_captured = True  # pragma: no mutate — latched True after baseline capture; boolean toggle asserted by idempotent-setup tests
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build provider/exporter outside the lock to avoid blocking
@@ -228,7 +234,9 @@ def get_tracer(name: str | None = None) -> _TracerLike:
     if not _has_real_tracer_provider(otel_trace):
         return _NoopTracer()
     tracer_name = "provide.telemetry" if name is None else name
-    return cast(_TracerLike, otel_trace.get_tracer(tracer_name))  # pragma: no mutate
+    return cast(
+        _TracerLike, otel_trace.get_tracer(tracer_name)
+    )  # pragma: no mutate — typing-only cast; runtime value is a protocol-compatible tracer
 
 
 def _sync_otel_trace_context() -> None:

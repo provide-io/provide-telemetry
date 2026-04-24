@@ -34,6 +34,11 @@ def test_public_api_exports() -> None:
 
 
 def test_public_api_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # TODO(telemetry): __version__ is computed once at module import time via a
+    # top-level try/except block, so there is no `_reset_version_for_tests()`
+    # helper we could call here — the only way to re-exercise the fallback
+    # branch is to reload the module.  The second reload restores the real
+    # __version__ so subsequent tests see the correct value.
     def _raise(_: str) -> str:
         raise metadata.PackageNotFoundError
 
@@ -44,6 +49,9 @@ def test_public_api_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_public_api_version_type_error_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # TODO(telemetry): see note in test_public_api_version_fallback — __version__
+    # can only be re-evaluated via importlib.reload because it is computed at
+    # module import time.
     def _raise(_: str) -> str:
         raise TypeError("bad metadata payload")
 

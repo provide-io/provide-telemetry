@@ -108,7 +108,9 @@ def classify_key(key: str, value: Any | None = None) -> DataClass | None:
     # prefixed parameter is reserved for future value-sensitive rules). A
     # mutation that replaces `value` with `None` here is therefore observably
     # equivalent — pin the line so mutmut skips the equivalent variants.
-    label = _classify_field(key, value)  # pragma: no mutate
+    label = _classify_field(
+        key, value
+    )  # pragma: no mutate — value argument is currently reserved; mutation to None is observably equivalent
     return DataClass(label) if label is not None else None
 
 

@@ -56,7 +56,9 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                         set_trace_context(prev_trace, prev_span)
                         release(ticket)
 
-            return cast(Callable[P, R], async_wrapper)  # pragma: no mutate
+            return cast(
+                Callable[P, R], async_wrapper
+            )  # pragma: no mutate — typing-only cast; runtime value is the wrapper itself
 
         @functools.wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -89,6 +91,8 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                     set_trace_context(prev_trace, prev_span)
                     release(ticket)
 
-        return cast(Callable[P, R], sync_wrapper)  # pragma: no mutate
+        return cast(
+            Callable[P, R], sync_wrapper
+        )  # pragma: no mutate — typing-only cast; runtime value is the wrapper itself
 
     return decorator

@@ -45,7 +45,7 @@ func TestReconfigureTelemetryRejectsProviderChangeWithProviders(t *testing.T) {
 	RegisterBackend("fake", &_fakeBackend{})
 	t.Cleanup(func() { UnregisterBackend("fake") })
 	_setupMu.Lock()
-	_activeBackendLocked().(*_fakeBackend).providers = SignalStatus{Traces: true}
+	_activeBackend().(*_fakeBackend).providers = SignalStatus{Traces: true}
 	_setupMu.Unlock()
 
 	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "changed-service")

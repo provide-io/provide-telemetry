@@ -4,7 +4,7 @@
 #
 
 """Tests that run_behavioral_parity.py executes every file counted by
-check_fixture_coverage.py._LANGUAGE_FILES for each language."""
+the glob-discovered language files in check_fixture_coverage.py for each language."""
 
 from __future__ import annotations
 
@@ -39,6 +39,14 @@ def _load_runner_module() -> ModuleType:
 
 def _load_coverage_module() -> ModuleType:
     return _load_module(_COVERAGE_SCRIPT, "check_fixture_coverage_cov_test_module")
+
+
+def _language_files(cov_mod: ModuleType) -> dict[str, list[Path]]:
+    """Return the per-language parity-test corpus, using the glob-based discovery API."""
+    discovered: dict[str, list[Path]] = cov_mod._discover_language_files(
+        cov_mod._REPO_ROOT, cov_mod._LANGUAGE_GLOBS, cov_mod._LANGUAGE_EXTRAS
+    )
+    return discovered
 
 
 def _flatten_run_cmds(runner: Any) -> list[str]:
@@ -76,7 +84,7 @@ class TestTypeScriptRunnerCoverage:
         runners = runner_mod._runners(_REPO_ROOT)
         ts_runner = next(r for r in runners if r.name == "typescript")
         tokens = _flatten_run_cmds(ts_runner)
-        ts_files = cov_mod._LANGUAGE_FILES.get("typescript", [])
+        ts_files = _language_files(cov_mod).get("typescript", [])
         # Only check .ts test files (probes live under spec/ and are not run by vitest)
         test_files = [p for p in ts_files if str(p).endswith(".test.ts")]
         for path in test_files:
@@ -196,11 +204,13 @@ class TestRunnerCompleteness:
         cov_mod = _load_coverage_module()
         runners = runner_mod._runners(_REPO_ROOT)
         runner_names = {r.name for r in runners}
-        for lang in cov_mod._LANGUAGE_FILES:
-            assert lang in runner_names, f"Language '{lang}' is in _LANGUAGE_FILES but has no runner in _runners()"
+        for lang in _language_files(cov_mod):
+            assert lang in runner_names, (
+                f"Language '{lang}' is in the discovered corpus but has no runner in _runners()"
+            )
 
     def test_rust_parity_source_files_exist(self) -> None:
-        """Confirm all Rust parity test files referenced by _LANGUAGE_FILES exist."""
+        """Confirm all Rust parity test files discovered for the corpus exist."""
         cov_mod = _load_coverage_module()
-        for path in cov_mod._LANGUAGE_FILES.get("rust", []):
-            assert path.exists(), f"Rust parity file {path} listed in _LANGUAGE_FILES does not exist"
+        for path in _language_files(cov_mod).get("rust", []):
+            assert path.exists(), f"Rust parity file {path} discovered for corpus does not exist"

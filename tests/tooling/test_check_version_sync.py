@@ -156,7 +156,7 @@ def test_version_sync_fails_when_go_internal_version_mismatches_root(
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
 
-    assert module.main() == 1
+    assert module.main([]) == 1
 
     output = capsys.readouterr().out
     assert "go exact sync" in output
@@ -173,7 +173,7 @@ def test_version_sync_fails_when_go_logger_dep_mismatches_internal_version(
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
 
-    assert module.main() == 1
+    assert module.main([]) == 1
 
     output = capsys.readouterr().out
     assert "go/logger dependency" in output
@@ -190,7 +190,7 @@ def test_version_sync_fails_when_go_tracer_dep_mismatches_logger_version(
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
 
-    assert module.main() == 1
+    assert module.main([]) == 1
 
     output = capsys.readouterr().out
     assert "go/tracer dependency" in output
@@ -207,7 +207,7 @@ def test_version_sync_fails_when_go_otel_dep_mismatches_root_version(
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
 
-    assert module.main() == 1
+    assert module.main([]) == 1
 
     output = capsys.readouterr().out
     assert "go/otel dependency" in output
@@ -224,7 +224,7 @@ def test_version_sync_fails_when_go_otel_version_mismatches_root(
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
 
-    assert module.main() == 1
+    assert module.main([]) == 1
 
     output = capsys.readouterr().out
     assert "go exact sync" in output

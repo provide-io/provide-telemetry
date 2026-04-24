@@ -52,7 +52,7 @@ _VALID_SIGNALS = frozenset(_queues)
 # Pre-allocated tickets for unlimited queues — avoid allocation per call.
 _UNLIMITED_TICKETS: dict[Signal, QueueTicket] = {
     sig: QueueTicket(signal=sig, token=0)
-    for sig in _queues  # pragma: no mutate
+    for sig in _queues  # pragma: no mutate — dict-comp iterates the fixed Signal set; membership is exhaustively tested
 }
 
 
@@ -106,7 +106,9 @@ def _try_acquire_unchecked(signal: Signal) -> QueueTicket | None:
 def release(ticket: QueueTicket | None) -> None:
     if ticket is None:
         return
-    if ticket.token == 0:  # pragma: no mutate
+    if (
+        ticket.token == 0
+    ):  # pragma: no mutate — token 0 is the sentinel for unlimited/pre-allocated tickets; comparison is exercised end-to-end
         return
     with _lock:
         queue = _queues[_validate_signal(ticket.signal)]

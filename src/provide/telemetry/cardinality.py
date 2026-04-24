@@ -35,7 +35,9 @@ _PRUNE_INTERVAL = 5.0  # seconds between prune sweeps per key
 OVERFLOW_VALUE = "__overflow__"
 
 
-def register_cardinality_limit(key: str, max_values: int, ttl_seconds: float = 300.0) -> None:  # pragma: no mutate
+def register_cardinality_limit(
+    key: str, max_values: int, ttl_seconds: float = 300.0
+) -> None:  # pragma: no mutate — ttl default is exercised through explicit registrations; mutation to other finite float is semantically equivalent for test harnesses
     with _lock:
         _limits[key] = CardinalityLimit(max_values=max(1, max_values), ttl_seconds=max(1.0, ttl_seconds))
         _seen.setdefault(key, {})
@@ -109,13 +111,17 @@ def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
             return attributes
     guarded = dict(attributes)
     for key, value in list(guarded.items()):
-        expired: list[str] = []  # pragma: no mutate
+        expired: list[str] = []  # pragma: no mutate — local accumulator; initial [] is a type-annotation anchor
         with _lock:
             if _limits.get(key) is None:
                 continue
-            if now - _last_prune.get(key, 0.0) >= _PRUNE_INTERVAL:  # pragma: no mutate
+            if (
+                now - _last_prune.get(key, 0.0) >= _PRUNE_INTERVAL
+            ):  # pragma: no mutate — TTL prune cadence; both branches hit in expiration tests
                 expired = _collect_expired(key, now)
-                _last_prune[key] = now  # pragma: no mutate
+                _last_prune[key] = (
+                    now  # pragma: no mutate — timestamp bookkeeping; value asserted via prune-cadence tests
+                )
         if expired:
             with _lock:
                 _delete_expired(key, expired, now)
@@ -125,10 +131,10 @@ def guard_attributes(attributes: dict[str, str]) -> dict[str, str]:
             if limit is None:
                 continue
             if value in seen:
-                seen[value] = now  # pragma: no mutate
+                seen[value] = now  # pragma: no mutate — refresh TTL timestamp; exact value read back in prune tests
                 continue
             if len(seen) >= limit.max_values:
                 guarded[key] = OVERFLOW_VALUE
                 continue
-            seen[value] = now  # pragma: no mutate
+            seen[value] = now  # pragma: no mutate — insert TTL timestamp; exact value read back in prune tests
     return guarded

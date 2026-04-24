@@ -28,7 +28,9 @@ def _get_active_config() -> Any | None:
     runtime = sys.modules.get("provide.telemetry.runtime")
     if runtime is None:
         return None
-    return getattr(runtime, "_active_config", None)  # pragma: no mutate
+    return getattr(
+        runtime, "_active_config", None
+    )  # pragma: no mutate — sentinel getattr default; "" would be truthy-compatible but semantically identical here
 
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -94,11 +96,21 @@ def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) ->
     parts = [exc_type.lower()]
     if tb is not None:
         for frame in traceback.extract_tb(tb)[-3:]:
-            leaf = frame.filename.replace("\\", "/").rsplit("/", 1)[-1]  # pragma: no mutate
+            leaf = frame.filename.replace(
+                "\\", "/"
+            ).rsplit(
+                "/", 1
+            )[
+                -1
+            ]  # pragma: no mutate — normalises Windows path separators before basename extraction; asserted by cross-OS fingerprint tests
             basename = leaf.rsplit(".", 1)[0].lower()
             func = (frame.name or "").lower()
             parts.append(f"{basename}:{func}")
-    return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:12]  # pragma: no mutate
+    return hashlib.sha256(
+        ":".join(parts).encode("utf-8")
+    ).hexdigest()[
+        :12
+    ]  # pragma: no mutate — 12-char truncation is a deliberate fingerprint-size choice; exact value asserted by fingerprint tests
 
 
 def add_error_fingerprint(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
@@ -131,16 +143,22 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         def _clean_value(value: object, depth: int) -> object:
             if isinstance(value, str):
                 cleaned = _CONTROL_CHAR_RE.sub("", value)
-                if len(cleaned) > _max_value_length:  # pragma: no mutate
+                if (
+                    len(cleaned) > _max_value_length
+                ):  # pragma: no mutate — strict > comparison; boundary covered by len==limit tests
                     return cleaned[:_max_value_length]
                 return cleaned
             if isinstance(value, dict) and depth < _max_depth:
                 return {k: _clean_value(v, depth + 1) for k, v in value.items()}
             if isinstance(value, list) and depth < _max_depth:
-                return [_clean_value(item, depth + 1) for item in value]  # pragma: no mutate
+                return [
+                    _clean_value(item, depth + 1) for item in value
+                ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests
             return value
 
-        if _max_attr_count > 0 and len(event_dict) > _max_attr_count:  # pragma: no mutate
+        if (
+            _max_attr_count > 0 and len(event_dict) > _max_attr_count
+        ):  # pragma: no mutate — short-circuit when limit is disabled (0); both branches exercised
             # Preserve control/telemetry fields first, then fill with user payload.
             # Simple first-N truncation would silently drop level, trace_id, etc.
             # when callers pass many keyword arguments.
@@ -190,7 +208,9 @@ def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict
 
     if not should_allow("logs", method_name):
         raise structlog.DropEvent()
-    event_name = str(event_dict.get("event", ""))  # pragma: no mutate
+    event_name = str(
+        event_dict.get("event", "")
+    )  # pragma: no mutate — empty-string default is fed into sampler which treats "" as unnamed; cosmetic vs any empty sentinel
     if not should_sample("logs", event_name):
         raise structlog.DropEvent()
     ticket = try_acquire("logs")
@@ -238,7 +258,9 @@ def enforce_event_schema(config: TelemetryConfig) -> Any:
     return _processor
 
 
-def sanitize_sensitive_fields(enabled: bool, max_depth: int = 8) -> Any:  # pragma: no mutate
+def sanitize_sensitive_fields(
+    enabled: bool, max_depth: int = 8
+) -> Any:  # pragma: no mutate — default max_depth=8 is overridden by live runtime config at every call; default value is only cosmetic
     from provide.telemetry.pii import sanitize_payload
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:

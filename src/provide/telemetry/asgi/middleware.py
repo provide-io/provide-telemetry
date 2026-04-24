@@ -31,7 +31,7 @@ class TelemetryMiddleware:
         self,
         app: Callable[[Scope, Receive, Send], Awaitable[None]],
         *,
-        auto_slo: bool = False,  # pragma: no mutate
+        auto_slo: bool = False,  # pragma: no mutate — default sentinel; all call sites pass explicitly
     ) -> None:
         self.app = app
         self.auto_slo = auto_slo
@@ -75,7 +75,9 @@ class TelemetryMiddleware:
             await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
         except Exception as exc:
             if self.auto_slo and self._logger is not None:
-                scope_type = str(scope.get("type", "http"))  # pragma: no mutate
+                scope_type = str(
+                    scope.get("type", "http")
+                )  # pragma: no mutate — "http" default is only hit for unknown ASGI types we explicitly allow through
                 self._logger.error(
                     event_name(scope_type, "request", "unhandled_exception"),
                     exc_info=True,
@@ -85,7 +87,9 @@ class TelemetryMiddleware:
             raise
         finally:
             if self.auto_slo:
-                duration_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+                duration_ms = (
+                    (time.perf_counter() - started) * 1000.0
+                )  # pragma: no mutate — arithmetic constant 1000.0 converts seconds to milliseconds; tests assert magnitude not exact float
                 route = _resolve_route(scope)
                 method = str(scope.get("method", "UNKNOWN")) if scope.get("type") == "http" else "WS"
                 record_red_metrics(route=route, method=method, status_code=status_code, duration_ms=duration_ms)

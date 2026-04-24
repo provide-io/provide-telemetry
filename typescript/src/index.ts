@@ -148,6 +148,9 @@ export {
   bindPropagationContext,
   clearPropagationContext,
   getActivePropagationContext,
+  awaitPropagationInit,
+  isPropagationInitDone,
+  isFallbackMode,
 } from './propagation';
 export type { PropagationContext } from './propagation';
 
