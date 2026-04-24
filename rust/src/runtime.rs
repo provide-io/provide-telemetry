@@ -142,6 +142,7 @@ pub fn get_runtime_status() -> RuntimeStatus {
 pub fn update_runtime_config(
     overrides: RuntimeOverrides,
 ) -> Result<TelemetryConfig, TelemetryError> {
+    let logging_override = overrides.logging.clone();
     let next = {
         let mut guard = crate::_lock::rwlock_write(active_config());
         let current = match guard.as_ref().cloned() {
@@ -157,6 +158,14 @@ pub fn update_runtime_config(
         next
     }; // write lock released here before calling apply_policies
     apply_policies(&next);
+    // When the caller supplies a logging override, mirror Python's behavior:
+    // reconfigure the logger so level/format/module-level changes take effect
+    // on the next log event.  The logger's `active_logging_config()` already
+    // prefers the programmatic override over runtime config, so this makes
+    // the override win consistently across both read paths.
+    if let Some(cfg) = logging_override {
+        crate::logger::configure_logging(cfg);
+    }
     Ok(next)
 }
 
@@ -218,6 +227,22 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
         }
     }
 
+    // Logging: level / fmt / include_timestamp / module_levels are hot.
+    // `otlp_endpoint`, `otlp_headers`, and `otlp_protocol` are baked into the
+    // OTLP log exporter at construction — freeze them from `current` when the
+    // log provider is live so env drift on those fields can't silently
+    // diverge from the installed exporter.
+    #[allow(unused_mut)] // `mut` is only exercised when the `otel` feature is enabled
+    let mut hot_logging = fresh.logging.clone();
+    #[cfg(feature = "otel")]
+    {
+        if crate::otel::logs::logger_provider_installed() {
+            hot_logging.otlp_endpoint = current.logging.otlp_endpoint.clone();
+            hot_logging.otlp_headers = current.logging.otlp_headers.clone();
+            hot_logging.otlp_protocol = current.logging.otlp_protocol.clone();
+        }
+    }
+
     let overrides = RuntimeOverrides {
         sampling: Some(fresh.sampling),
         backpressure: Some(fresh.backpressure),
@@ -227,17 +252,18 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
         pii_max_depth: Some(fresh.pii_max_depth),
         strict_schema: Some(fresh.strict_schema),
         event_schema: Some(fresh.event_schema),
+        logging: Some(hot_logging),
     };
 
     let mut next = apply_runtime_overrides(current.clone(), overrides);
     set_active_config(Some(next.clone()));
     apply_policies(&next);
+    // Reconfigure the logger so env-driven level / fmt / module-level drift
+    // takes effect on the next log event (mirrors Python parity).
+    crate::logger::configure_logging(next.logging.clone());
     next.service_name = current.service_name;
     next.environment = current.environment;
     next.version = current.version;
-    next.logging.level = current.logging.level;
-    next.logging.fmt = current.logging.fmt;
-    next.logging.otlp_headers = current.logging.otlp_headers;
     next.tracing.enabled = current.tracing.enabled;
     next.tracing.otlp_headers = current.tracing.otlp_headers;
     next.metrics.enabled = current.metrics.enabled;
@@ -260,6 +286,7 @@ fn apply_runtime_overrides(
     next.pii_max_depth = overrides.pii_max_depth.unwrap_or(next.pii_max_depth);
     next.strict_schema = overrides.strict_schema.unwrap_or(next.strict_schema);
     next.event_schema = overrides.event_schema.unwrap_or(next.event_schema);
+    next.logging = overrides.logging.unwrap_or(next.logging);
     next
 }
 
@@ -309,3 +336,7 @@ pub fn reconfigure_telemetry(
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "runtime_logging_tests.rs"]
+mod logging_tests;
