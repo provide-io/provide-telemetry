@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use provide_telemetry::cardinality::OVERFLOW_VALUE;
 use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
-use provide_telemetry::{CardinalityLimit, guard_attributes, register_cardinality_limit};
+use provide_telemetry::{guard_attributes, register_cardinality_limit, CardinalityLimit};
 
 #[test]
 fn cardinality_test_overflows_after_max_distinct_values_seen_for_key() {

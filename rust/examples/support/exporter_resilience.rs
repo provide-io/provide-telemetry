@@ -126,7 +126,8 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
             // timeout fires; only real timeouts count toward the circuit breaker.
             let _ = run_with_resilience::<_, _, ()>(Signal::Metrics, demo_operation).await?;
         }
-        let short_circuit = run_with_resilience::<_, _, ()>(Signal::Metrics, demo_operation).await?;
+        let short_circuit =
+            run_with_resilience::<_, _, ()>(Signal::Metrics, demo_operation).await?;
         if short_circuit.is_some() {
             return Err(TelemetryError::new(
                 "metrics resilience demo expected fail-open short circuit after breaker trip",

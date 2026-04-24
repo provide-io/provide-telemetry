@@ -1,8 +1,8 @@
 use super::*;
-use crate::TelemetryConfig;
 use crate::runtime::set_active_config;
 use crate::setup::{setup_telemetry, shutdown_telemetry};
 use crate::testing::acquire_test_state_lock;
+use crate::TelemetryConfig;
 use std::collections::BTreeMap;
 
 fn make_event(level: &str, message: &str) -> LogEvent {

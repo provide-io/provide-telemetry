@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
-use crate::pii::{REDACTED_SENTINEL, detect_secret_in_string, sanitize_payload};
+use crate::pii::{detect_secret_in_string, sanitize_payload, REDACTED_SENTINEL};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
 

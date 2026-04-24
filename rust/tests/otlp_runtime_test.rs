@@ -75,7 +75,6 @@ impl MockOtlpCollector {
             worker: Some(worker),
         }
     }
-
 }
 
 impl Drop for MockOtlpCollector {
@@ -283,17 +282,19 @@ fn export_health_observed(
     expect_traces: bool,
     expect_metrics: bool,
 ) -> bool {
-    signal_observed(expect_logs, health.export_latency_ms_logs, health.export_failures_logs)
-        && signal_observed(
-            expect_traces,
-            health.export_latency_ms_traces,
-            health.export_failures_traces,
-        )
-        && signal_observed(
-            expect_metrics,
-            health.export_latency_ms_metrics,
-            health.export_failures_metrics,
-        )
+    signal_observed(
+        expect_logs,
+        health.export_latency_ms_logs,
+        health.export_failures_logs,
+    ) && signal_observed(
+        expect_traces,
+        health.export_latency_ms_traces,
+        health.export_failures_traces,
+    ) && signal_observed(
+        expect_metrics,
+        health.export_latency_ms_metrics,
+        health.export_failures_metrics,
+    )
 }
 
 fn signal_observed(expected: bool, latency_ms: f64, failures: u64) -> bool {

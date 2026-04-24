@@ -8,14 +8,14 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use serde_json::Value;
 
-use crate::backpressure::{QueueTicket, release, try_acquire};
+use crate::backpressure::{release, try_acquire, QueueTicket};
 use crate::config::TelemetryConfig;
 #[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
-use crate::sampling::{Signal, should_sample};
+use crate::sampling::{should_sample, Signal};
 use crate::tracer::get_trace_context;
 
 mod emit;

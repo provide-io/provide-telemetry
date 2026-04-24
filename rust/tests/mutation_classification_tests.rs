@@ -8,10 +8,10 @@
 #[cfg(feature = "governance")]
 mod classification_mutation {
     use provide_telemetry::{
-        ClassificationPolicy, ClassificationRule, DataClass, classify_key,
-        clear_classification_rules, register_classification_rule,
+        classify_key, clear_classification_rules, register_classification_rule,
+        ClassificationPolicy, ClassificationRule, DataClass,
     };
-    use std::sync::{Mutex, OnceLock, mpsc};
+    use std::sync::{mpsc, Mutex, OnceLock};
     use std::time::Duration;
 
     static CLS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
