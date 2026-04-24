@@ -27,11 +27,7 @@ func GetRuntimeStatus() RuntimeStatus {
 	_setupMu.Lock()
 	setupDone := _setupDone
 	cfg := cloneTelemetryConfig(_runtimeCfg)
-	providers := SignalStatus{
-		Logs:    _otelLoggerProvider != nil,
-		Traces:  _otelTracerProvider != nil,
-		Metrics: _otelMeterProvider != nil,
-	}
+	providers := _providerStatusLocked()
 	_setupMu.Unlock()
 
 	if cfg == nil {

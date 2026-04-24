@@ -184,7 +184,7 @@ func runEmitBinary(runID string) error {
 	} else {
 		// go run the emit example relative to this file's location.
 		cmd = exec.Command("go", "run",
-			"./examples/openobserve/01_emit_all_signals")
+			"./otel/examples/openobserve/01_emit_all_signals")
 	}
 	cmd.Env = append(os.Environ(), "PROVIDE_EXAMPLE_RUN_ID="+runID)
 	cmd.Stdout = os.Stdout

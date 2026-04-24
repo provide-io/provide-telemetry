@@ -321,3 +321,35 @@ func TestRunWithResilience_BackoffApplied(t *testing.T) {
 		t.Errorf("expected backoff to add >= 80ms, but total elapsed was %v", elapsed)
 	}
 }
+
+func TestRunWithResilience_RecordsSuccessfulAttemptLatencyOnly(t *testing.T) {
+	_resetResiliencePolicies()
+	_resetHealth()
+	t.Cleanup(_resetResiliencePolicies)
+	t.Cleanup(_resetHealth)
+
+	SetExporterPolicy(signalLogs, ExporterPolicy{
+		Retries:        1,
+		BackoffSeconds: 0.08,
+		TimeoutSeconds: 5.0,
+		FailOpen:       false,
+	})
+
+	attempt := 0
+	err := RunWithResilience(context.Background(), signalLogs, func(_ context.Context) error {
+		attempt++
+		if attempt == 1 {
+			return errors.New("transient")
+		}
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected nil error after retry, got %v", err)
+	}
+
+	latency := GetHealthSnapshot().LogsExportLatencyMs
+	if latency >= 50 {
+		t.Fatalf("expected successful-attempt latency without retry backoff inflation, got %.2fms", latency)
+	}
+}

@@ -163,7 +163,6 @@ func GetCircuitState(signal string) CircuitState {
 // RunWithResilience executes fn wrapped in a circuit breaker, retry loop, and timeout.
 func RunWithResilience(ctx context.Context, signal string, fn func(context.Context) error) error {
 	policy := GetExporterPolicy(signal)
-	startTime := time.Now()
 
 	attempts := max(1, policy.Retries+1)
 
@@ -193,13 +192,14 @@ func RunWithResilience(ctx context.Context, signal string, fn func(context.Conte
 			cancel = func() {}
 		}
 
+		attemptStart := time.Now()
 		err := fn(tctx)
 		cancel()
 
 		if err == nil {
 			_incExportSuccess(signal)
 			_recordAttemptSuccess(signal)
-			_recordExportLatencyForSignal(signal, float64(time.Since(startTime).Milliseconds()))
+			_recordExportLatencyForSignal(signal, float64(time.Since(attemptStart).Milliseconds()))
 			return nil
 		}
 

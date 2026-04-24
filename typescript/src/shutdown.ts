@@ -9,13 +9,29 @@
  * does not prevent the others from draining.
  */
 
+import { context, metrics, trace } from '@opentelemetry/api';
 import { _clearProviderState, _getRegisteredProviders } from './runtime';
 import { _resetRootLogger } from './logger';
+import { _resetOtelLogProviderForTests } from './otel-logs';
+
+async function disableInstalledOtelGlobals(): Promise<void> {
+  trace.disable();
+  metrics.disable();
+  context.disable();
+  try {
+    const { logs } = await import('@opentelemetry/api-logs' as string);
+    logs.disable();
+  } catch {
+    // Optional peer dep not installed.
+  }
+}
 
 export async function shutdownTelemetry(): Promise<void> {
   const providers = _getRegisteredProviders();
   await Promise.allSettled(providers.map((p) => p.forceFlush?.() ?? Promise.resolve()));
   await Promise.allSettled(providers.map((p) => p.shutdown?.() ?? Promise.resolve()));
+  await disableInstalledOtelGlobals();
+  _resetOtelLogProviderForTests();
   _clearProviderState();
   _resetRootLogger();
 }

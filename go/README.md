@@ -20,20 +20,27 @@ Requires Go 1.22+.
 ### Optional OTel peer dependencies
 
 To export traces and metrics to an OTLP endpoint (e.g. OpenObserve, Jaeger,
-Tempo), wire real SDK providers at setup time:
+Tempo), add the optional backend module and wire real SDK providers at setup
+time:
+
+```bash
+go get github.com/provide-io/provide-telemetry/go/otel
+```
 
 ```go
 import (
-    sdktrace "go.opentelemetry.io/otel/sdk/trace"
     telemetry "github.com/provide-io/provide-telemetry/go"
+    _ "github.com/provide-io/provide-telemetry/go/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 tp := sdktrace.NewTracerProvider(/* exporters */)
 cfg, err := telemetry.SetupTelemetry(telemetry.WithTracerProvider(tp))
 ```
 
-When no providers are supplied the library degrades gracefully to no-op
-tracers and meters — it never panics or errors on missing OTel.
+Importing `github.com/provide-io/provide-telemetry/go/otel` also activates
+OTLP environment-variable wiring for `SetupTelemetry()`. Without that optional
+module, the core package degrades gracefully to no-op tracers and meters.
 
 ## Quick start
 

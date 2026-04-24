@@ -282,11 +282,9 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		fn(state)
 	}
 
-	if _providerConfigChanged(_runtimeCfg, target, _otelTracerProvider != nil, _otelMeterProvider != nil, _otelLoggerProvider != nil) {
-		return nil, NewConfigurationError(
-			"provider-changing reconfiguration is unsupported after OpenTelemetry providers " +
-				"are installed; restart the process and call SetupTelemetry() with the new config",
-		)
+	providers := _providerStatusLocked()
+	if _providerConfigChanged(_runtimeCfg, target, providers.Traces, providers.Metrics, providers.Logs) {
+		return nil, _providerConfigError()
 	}
 
 	// Apply only hot-reloadable fields, preserving cold/provider config.

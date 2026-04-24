@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/provide-io/provide-telemetry/go/internal/piicore"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
@@ -353,10 +352,26 @@ func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger 
 	return logger.With(attrs...)
 }
 
+var _preTelemetryDefaultLogger *slog.Logger
+
 // _configureLogger builds the Logger package var from cfg and sets it as slog's default.
 func _configureLogger(cfg *TelemetryConfig) {
+	if Logger == nil {
+		_preTelemetryDefaultLogger = slog.Default()
+	}
 	Logger = slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, ""))
 	slog.SetDefault(Logger)
+}
+
+// _resetLogger clears the package logger and restores the prior slog default.
+func _resetLogger() {
+	Logger = nil
+	if _preTelemetryDefaultLogger != nil {
+		slog.SetDefault(_preTelemetryDefaultLogger)
+		_preTelemetryDefaultLogger = nil
+		return
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})))
 }
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
@@ -374,16 +389,12 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 			cfg = liveCfg
 		}
 	}
-	_setupMu.Lock()
-	loggerProvider := _otelLoggerProvider
-	_setupMu.Unlock()
 	handler := _newTelemetryHandler(_baseLogHandler(cfg), cfg, name)
-	if loggerProvider != nil {
+	if backend := _activeBackend(); backend != nil {
 		bridgeName := cmp.Or(name, cfg.ServiceName)
-		handler = newMultiHandler(
-			handler,
-			otelslog.NewHandler(bridgeName, otelslog.WithLoggerProvider(loggerProvider)),
-		)
+		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
+			handler = newMultiHandler(handler, bridge)
+		}
 	}
 	return _attachTraceContext(slog.New(handler), ctx)
 }

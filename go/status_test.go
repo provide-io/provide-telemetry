@@ -5,9 +5,6 @@ package telemetry
 
 import (
 	"testing"
-
-	sdklog "go.opentelemetry.io/otel/sdk/log"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 func TestGetRuntimeStatus_BeforeSetup_UsesFallback(t *testing.T) {
@@ -51,16 +48,23 @@ func TestGetRuntimeStatus_ReportsProviderState(t *testing.T) {
 	_setupMu.Lock()
 	_setupDone = true
 	_runtimeCfg = DefaultTelemetryConfig()
+	backend := &_fakeBackend{
+		providers: SignalStatus{
+			Logs:    true,
+			Traces:  false,
+			Metrics: true,
+		},
+	}
+	_registeredBackends["fake"] = backend
+	_activeBackendName = "fake"
 	_setupMu.Unlock()
-	_otelLoggerProvider = &noopLoggerProvider
-	_otelMeterProvider = &noopMeterProvider
 	t.Cleanup(func() {
 		_setupMu.Lock()
 		_setupDone = false
 		_runtimeCfg = nil
+		delete(_registeredBackends, "fake")
+		_activeBackendName = ""
 		_setupMu.Unlock()
-		_otelLoggerProvider = nil
-		_otelMeterProvider = nil
 	})
 
 	status := GetRuntimeStatus()
@@ -78,6 +82,3 @@ func TestGetRuntimeStatus_ReportsProviderState(t *testing.T) {
 		t.Fatalf("unexpected fallback %+v", status.Fallback)
 	}
 }
-
-var noopLoggerProvider = sdklog.LoggerProvider{}
-var noopMeterProvider = sdkmetric.MeterProvider{}

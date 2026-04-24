@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 
-package telemetry
+package otel
 
 import (
 	"context"
@@ -9,13 +9,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	telemetry "github.com/provide-io/provide-telemetry/go"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
-
-// ── fakes ─────────────────────────────────────────────────────────────────────
 
 type _fakeSpanExporter struct {
 	exports     atomic.Int32
@@ -94,11 +93,10 @@ func (f *_fakeMetricsExporter) Shutdown(_ context.Context) error {
 	return f.shutdownErr
 }
 
-// ── spans ─────────────────────────────────────────────────────────────────────
-
 func TestResilientSpanExporter_ExportsSuccessfullyForwardCalls(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
 	inner := &_fakeSpanExporter{}
 	wrapped := _wrapSpanExporter(inner)
 	if err := wrapped.ExportSpans(context.Background(), nil); err != nil {
@@ -110,9 +108,16 @@ func TestResilientSpanExporter_ExportsSuccessfullyForwardCalls(t *testing.T) {
 }
 
 func TestResilientSpanExporter_FailOpenSwallowsInnerError(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
-	SetExporterPolicy("traces", ExporterPolicy{Retries: 0, BackoffSeconds: 0, TimeoutSeconds: 0, FailOpen: true})
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	telemetry.SetExporterPolicy("traces", telemetry.ExporterPolicy{
+		Retries:        0,
+		BackoffSeconds: 0,
+		TimeoutSeconds: 0,
+		FailOpen:       true,
+	})
+
 	inner := &_fakeSpanExporter{exportErr: errors.New("boom")}
 	wrapped := _wrapSpanExporter(inner)
 	if err := wrapped.ExportSpans(context.Background(), nil); err != nil {
@@ -124,19 +129,24 @@ func TestResilientSpanExporter_FailOpenSwallowsInnerError(t *testing.T) {
 }
 
 func TestResilientSpanExporter_FailClosedSurfaceError(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
-	SetExporterPolicy("traces", ExporterPolicy{Retries: 0, BackoffSeconds: 0, TimeoutSeconds: 0, FailOpen: false})
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	telemetry.SetExporterPolicy("traces", telemetry.ExporterPolicy{
+		Retries:        0,
+		BackoffSeconds: 0,
+		TimeoutSeconds: 0,
+		FailOpen:       false,
+	})
+
 	inner := &_fakeSpanExporter{exportErr: errors.New("boom")}
 	wrapped := _wrapSpanExporter(inner)
 	if err := wrapped.ExportSpans(context.Background(), nil); err == nil {
-		t.Fatalf("fail_closed should propagate error")
+		t.Fatal("fail_closed should propagate error")
 	}
 }
 
 func TestResilientSpanExporter_ShutdownForwards(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
 	inner := &_fakeSpanExporter{}
 	wrapped := _wrapSpanExporter(inner)
 	if err := wrapped.Shutdown(context.Background()); err != nil {
@@ -147,11 +157,10 @@ func TestResilientSpanExporter_ShutdownForwards(t *testing.T) {
 	}
 }
 
-// ── logs ──────────────────────────────────────────────────────────────────────
-
 func TestResilientLogExporter_ExportsSuccessfullyForwardCalls(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
 	inner := &_fakeLogExporter{}
 	wrapped := _wrapLogExporter(inner)
 	if err := wrapped.Export(context.Background(), nil); err != nil {
@@ -163,23 +172,27 @@ func TestResilientLogExporter_ExportsSuccessfullyForwardCalls(t *testing.T) {
 }
 
 func TestResilientLogExporter_RetriesOnInnerFailure(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
-	SetExporterPolicy("logs", ExporterPolicy{Retries: 2, BackoffSeconds: 0, TimeoutSeconds: 0, FailOpen: true})
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	telemetry.SetExporterPolicy("logs", telemetry.ExporterPolicy{
+		Retries:        2,
+		BackoffSeconds: 0,
+		TimeoutSeconds: 0,
+		FailOpen:       true,
+	})
+
 	inner := &_fakeLogExporter{exportErr: errors.New("boom")}
 	wrapped := _wrapLogExporter(inner)
 	if err := wrapped.Export(context.Background(), nil); err != nil {
 		t.Fatalf("fail_open should swallow error, got %v", err)
 	}
-	// retries=2 ⇒ 1 initial + 2 retries = 3 inner calls
 	if got := inner.exports.Load(); got != 3 {
 		t.Fatalf("expected 3 inner calls, got %d", got)
 	}
 }
 
 func TestResilientLogExporter_ForceFlushAndShutdownForward(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
 	inner := &_fakeLogExporter{}
 	wrapped := _wrapLogExporter(inner)
 	if err := wrapped.ForceFlush(context.Background()); err != nil {
@@ -193,11 +206,10 @@ func TestResilientLogExporter_ForceFlushAndShutdownForward(t *testing.T) {
 	}
 }
 
-// ── metrics ───────────────────────────────────────────────────────────────────
-
 func TestResilientMetricsExporter_ExportsSuccessfullyForwardCalls(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
 	inner := &_fakeMetricsExporter{}
 	wrapped := _wrapMetricsExporter(inner)
 	if err := wrapped.Export(context.Background(), nil); err != nil {
@@ -209,15 +221,13 @@ func TestResilientMetricsExporter_ExportsSuccessfullyForwardCalls(t *testing.T) 
 }
 
 func TestResilientMetricsExporter_TemporalityAndAggregationForward(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
 	inner := &_fakeMetricsExporter{}
 	wrapped := _wrapMetricsExporter(inner)
 	if got := wrapped.Temporality(sdkmetric.InstrumentKindCounter); got != metricdata.CumulativeTemporality {
 		t.Fatalf("unexpected temporality: %v", got)
 	}
 	if got := wrapped.Aggregation(sdkmetric.InstrumentKindCounter); got == nil {
-		t.Fatalf("Aggregation returned nil")
+		t.Fatal("Aggregation returned nil")
 	}
 	if inner.tempCalls.Load() != 1 || inner.aggCalls.Load() != 1 {
 		t.Fatalf("expected forwarded calls, got temp=%d agg=%d", inner.tempCalls.Load(), inner.aggCalls.Load())
@@ -225,19 +235,24 @@ func TestResilientMetricsExporter_TemporalityAndAggregationForward(t *testing.T)
 }
 
 func TestResilientMetricsExporter_FailClosedSurfaceError(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
-	SetExporterPolicy("metrics", ExporterPolicy{Retries: 0, BackoffSeconds: 0, TimeoutSeconds: 0, FailOpen: false})
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	telemetry.SetExporterPolicy("metrics", telemetry.ExporterPolicy{
+		Retries:        0,
+		BackoffSeconds: 0,
+		TimeoutSeconds: 0,
+		FailOpen:       false,
+	})
+
 	inner := &_fakeMetricsExporter{exportErr: errors.New("boom")}
 	wrapped := _wrapMetricsExporter(inner)
 	if err := wrapped.Export(context.Background(), nil); err == nil {
-		t.Fatalf("fail_closed should propagate error")
+		t.Fatal("fail_closed should propagate error")
 	}
 }
 
 func TestResilientMetricsExporter_ForceFlushAndShutdownForward(t *testing.T) {
-	_resetResiliencePolicies()
-	defer _resetResiliencePolicies()
 	inner := &_fakeMetricsExporter{}
 	wrapped := _wrapMetricsExporter(inner)
 	if err := wrapped.ForceFlush(context.Background()); err != nil {
