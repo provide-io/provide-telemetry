@@ -8,8 +8,6 @@ import (
 	"errors"
 	"math"
 	"testing"
-
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestReconfigureTelemetryAppliesHotFieldsWithoutProviders(t *testing.T) {
@@ -44,8 +42,11 @@ func TestReconfigureTelemetryRejectsProviderChangeWithProviders(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	// Simulate installed OTel providers.
-	_otelTracerProvider = &sdktrace.TracerProvider{}
+	RegisterBackend("fake", &_fakeBackend{})
+	t.Cleanup(func() { UnregisterBackend("fake") })
+	_setupMu.Lock()
+	_activeBackendLocked().(*_fakeBackend).providers = SignalStatus{Traces: true}
+	_setupMu.Unlock()
 
 	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "changed-service")
 	_, err = ReconfigureTelemetry(context.Background())
@@ -56,9 +57,6 @@ func TestReconfigureTelemetryRejectsProviderChangeWithProviders(t *testing.T) {
 	if !errors.As(err, &cfgErr) {
 		t.Errorf("expected ConfigurationError, got: %T: %v", err, err)
 	}
-
-	// Clean up provider pointer.
-	_otelTracerProvider = nil
 }
 
 func TestReconfigureTelemetry_ReturnsConfigFromEnvError(t *testing.T) {

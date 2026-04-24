@@ -13,7 +13,7 @@ use crate::context::{reset_context_for_tests, reset_trace_context_for_tests};
 use crate::health::_reset_health_for_tests;
 use crate::metrics::reset_metrics_for_tests;
 use crate::otel::_reset_otel_for_tests;
-use crate::pii::replace_pii_rules;
+use crate::pii::{replace_pii_rules, reset_secret_patterns_for_tests};
 #[cfg(feature = "governance")]
 use crate::receipts::reset_receipts_for_tests;
 use crate::resilience::_reset_resilience_for_tests;
@@ -53,6 +53,7 @@ pub fn reset_telemetry_state() {
     #[cfg(feature = "governance")]
     clear_classification_rules();
     replace_pii_rules(Vec::new());
+    reset_secret_patterns_for_tests();
     _reset_schema_for_tests();
     reset_context_for_tests();
 }

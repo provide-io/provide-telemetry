@@ -7,8 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Span represents an active trace span.
@@ -103,9 +101,10 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 // Falls back to context key values set by SetTraceContext.
 // Returns empty strings if not set.
 func GetTraceContext(ctx context.Context) (traceID, spanID string) {
-	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
-		sc := span.SpanContext()
-		return sc.TraceID().String(), sc.SpanID().String()
+	if backend := _activeBackend(); backend != nil {
+		if traceID, spanID, ok := backend.TraceContext(ctx); ok {
+			return traceID, spanID
+		}
 	}
 	if v, ok := ctx.Value(_traceIDKey).(string); ok {
 		traceID = v
