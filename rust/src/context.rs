@@ -18,16 +18,11 @@ pub struct ContextSnapshot {
     pub span_id: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 enum ContextScopeKey {
     Task(tokio::task::Id),
+    #[default]
     Thread,
-}
-
-impl Default for ContextScopeKey {
-    fn default() -> Self {
-        Self::Thread
-    }
 }
 
 #[derive(Default)]

@@ -17,26 +17,18 @@ pub struct QueuePolicy {
     pub metrics_maxsize: usize,
 }
 
+#[derive(Default)]
 enum QueueLimiter {
+    #[default]
     Unlimited,
     Bounded(Arc<Semaphore>),
 }
 
-impl Default for QueueLimiter {
-    fn default() -> Self {
-        Self::Unlimited
-    }
-}
-
+#[derive(Default)]
 pub enum QueueTicket {
+    #[default]
     Unlimited,
     Bounded(OwnedSemaphorePermit),
-}
-
-impl Default for QueueTicket {
-    fn default() -> Self {
-        Self::Unlimited
-    }
 }
 
 struct QueueState {

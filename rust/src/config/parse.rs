@@ -25,10 +25,7 @@ pub(super) fn nonempty_env_value<'a>(
     env: &'a HashMap<String, String>,
     keys: &[&str],
 ) -> Option<&'a str> {
-    let value = match env_value(env, keys) {
-        Some(value) => value,
-        None => return None,
-    };
+    let value = env_value(env, keys)?;
     if value.trim().is_empty() {
         return None;
     }
@@ -107,10 +104,7 @@ pub(super) fn parse_rate(
 }
 
 pub(super) fn parse_otlp_headers(raw: Option<&str>) -> Option<HashMap<String, String>> {
-    let raw = match raw {
-        Some(raw) => raw,
-        None => return None,
-    };
+    let raw = raw?;
     if raw.trim().is_empty() {
         return Some(HashMap::new());
     }

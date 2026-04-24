@@ -103,7 +103,7 @@ fn tracer_test_trace_sampling_zero_skips_context_and_emission() {
     let after = get_health_snapshot();
     assert_eq!(after.emitted_traces, before.emitted_traces);
     assert!(
-        after.dropped_traces >= before.dropped_traces + 1,
+        after.dropped_traces > before.dropped_traces,
         "sampling rejection must increment dropped traces at least once"
     );
 }
@@ -135,7 +135,7 @@ fn tracer_test_trace_queue_full_skips_context_and_emission() {
     let after = get_health_snapshot();
     assert_eq!(after.emitted_traces, before.emitted_traces);
     assert!(
-        after.dropped_traces >= before.dropped_traces + 1,
+        after.dropped_traces > before.dropped_traces,
         "queue rejection must increment dropped traces at least once"
     );
 }
