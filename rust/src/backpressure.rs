@@ -75,15 +75,15 @@ fn queues() -> &'static Mutex<QueueState> {
 }
 
 pub fn set_queue_policy(policy: QueuePolicy) {
-    *queues().lock().expect("queue lock poisoned") = QueueState::from_policy(policy);
+    *crate::_lock::lock(queues()) = QueueState::from_policy(policy);
 }
 
 pub fn get_queue_policy() -> QueuePolicy {
-    queues().lock().expect("queue lock poisoned").policy.clone()
+    crate::_lock::lock(queues()).policy.clone()
 }
 
 pub fn try_acquire(signal: Signal) -> Option<QueueTicket> {
-    let guard = queues().lock().expect("queue lock poisoned");
+    let guard = crate::_lock::lock(queues());
     let limiter = match signal {
         Signal::Logs => &guard.logs,
         Signal::Traces => &guard.traces,
@@ -113,7 +113,7 @@ pub fn release(ticket: QueueTicket) {
 }
 
 pub fn _reset_backpressure_for_tests() {
-    *queues().lock().expect("queue lock poisoned") = QueueState::default();
+    *crate::_lock::lock(queues()) = QueueState::default();
 }
 
 #[cfg(test)]

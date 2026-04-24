@@ -48,7 +48,7 @@ fn health() -> &'static Mutex<HealthSnapshot> {
 }
 
 pub fn get_health_snapshot() -> HealthSnapshot {
-    let mut snapshot = health().lock().expect("health lock poisoned").clone();
+    let mut snapshot = crate::_lock::lock(health()).clone();
     if let Ok((state, count, _)) = crate::resilience::get_circuit_state(Signal::Logs) {
         snapshot.circuit_state_logs = state;
         snapshot.circuit_open_count_logs = count as u64;
@@ -65,7 +65,7 @@ pub fn get_health_snapshot() -> HealthSnapshot {
 }
 
 pub fn increment_dropped(signal: Signal, amount: u64) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
+    let mut snapshot = crate::_lock::lock(health());
     match signal {
         Signal::Logs => snapshot.dropped_logs += amount,
         Signal::Traces => snapshot.dropped_traces += amount,
@@ -74,7 +74,7 @@ pub fn increment_dropped(signal: Signal, amount: u64) {
 }
 
 pub fn increment_emitted(signal: Signal, amount: u64) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
+    let mut snapshot = crate::_lock::lock(health());
     match signal {
         Signal::Logs => snapshot.emitted_logs += amount,
         Signal::Traces => snapshot.emitted_traces += amount,
@@ -83,7 +83,7 @@ pub fn increment_emitted(signal: Signal, amount: u64) {
 }
 
 pub fn increment_retries(signal: Signal, amount: u64) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
+    let mut snapshot = crate::_lock::lock(health());
     match signal {
         Signal::Logs => snapshot.retries_logs += amount,
         Signal::Traces => snapshot.retries_traces += amount,
@@ -92,7 +92,7 @@ pub fn increment_retries(signal: Signal, amount: u64) {
 }
 
 pub fn record_export_failure(signal: Signal) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
+    let mut snapshot = crate::_lock::lock(health());
     match signal {
         Signal::Logs => snapshot.export_failures_logs += 1,
         Signal::Traces => snapshot.export_failures_traces += 1,
@@ -101,7 +101,7 @@ pub fn record_export_failure(signal: Signal) {
 }
 
 pub fn record_export_latency(signal: Signal, latency_ms: f64) {
-    let mut snapshot = health().lock().expect("health lock poisoned");
+    let mut snapshot = crate::_lock::lock(health());
     match signal {
         Signal::Logs => snapshot.export_latency_ms_logs = latency_ms.max(0.0),
         Signal::Traces => snapshot.export_latency_ms_traces = latency_ms.max(0.0),
@@ -110,7 +110,7 @@ pub fn record_export_latency(signal: Signal, latency_ms: f64) {
 }
 
 pub fn _reset_health_for_tests() {
-    *health().lock().expect("health lock poisoned") = HealthSnapshot::default();
+    *crate::_lock::lock(health()) = HealthSnapshot::default();
 }
 
 #[cfg(test)]

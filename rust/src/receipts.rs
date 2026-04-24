@@ -71,11 +71,8 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 }
 
 pub fn enable_receipts(enabled: bool, signing_key: Option<&str>, service_name: Option<&str>) {
-    let test_mode = config()
-        .lock()
-        .expect("receipt config lock poisoned")
-        .test_mode;
-    *config().lock().expect("receipt config lock poisoned") = ReceiptConfig {
+    let test_mode = crate::_lock::lock(config()).test_mode;
+    *crate::_lock::lock(config()) = ReceiptConfig {
         enabled,
         signing_key: signing_key.map(str::to_string),
         service_name: service_name.unwrap_or("unknown").to_string(),
@@ -84,10 +81,7 @@ pub fn enable_receipts(enabled: bool, signing_key: Option<&str>, service_name: O
 }
 
 pub fn emit_receipt(field_path: &str, action: &str, original_value: &str) {
-    let snapshot = config()
-        .lock()
-        .expect("receipt config lock poisoned")
-        .clone();
+    let snapshot = crate::_lock::lock(config()).clone();
     if !snapshot.enabled {
         return;
     }
@@ -120,29 +114,20 @@ pub fn emit_receipt(field_path: &str, action: &str, original_value: &str) {
     };
 
     if snapshot.test_mode {
-        receipts()
-            .lock()
-            .expect("receipt log lock poisoned")
-            .push(receipt);
+        crate::_lock::lock(receipts()).push(receipt);
     }
 }
 
 pub fn get_emitted_receipts_for_tests() -> Vec<RedactionReceipt> {
-    receipts()
-        .lock()
-        .expect("receipt log lock poisoned")
-        .clone()
+    crate::_lock::lock(receipts()).clone()
 }
 
 pub fn reset_receipts_for_tests() {
-    *config().lock().expect("receipt config lock poisoned") = ReceiptConfig {
+    *crate::_lock::lock(config()) = ReceiptConfig {
         test_mode: true,
         ..ReceiptConfig::default()
     };
-    receipts()
-        .lock()
-        .expect("receipt log lock poisoned")
-        .clear();
+    crate::_lock::lock(receipts()).clear();
 }
 
 #[cfg(test)]

@@ -41,9 +41,7 @@ pub struct RuntimeStatus {
 }
 
 pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {
-    *active_config()
-        .write()
-        .expect("runtime config lock poisoned") = config;
+    *crate::_lock::rwlock_write(active_config()) = config;
 }
 
 /// Resource identity fields — baked into every installed provider's `Resource`.
@@ -97,16 +95,11 @@ pub(crate) fn provider_config_changed(current: &TelemetryConfig, target: &Teleme
 }
 
 pub fn get_runtime_config() -> Option<TelemetryConfig> {
-    active_config()
-        .read()
-        .expect("runtime config lock poisoned")
-        .clone()
+    crate::_lock::rwlock_read(active_config()).clone()
 }
 
 fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
-    let guard = active_config()
-        .read()
-        .expect("runtime config lock poisoned");
+    let guard = crate::_lock::rwlock_read(active_config());
     let cfg = guard.clone();
     (cfg.clone(), cfg.is_some())
 }
@@ -150,9 +143,7 @@ pub fn update_runtime_config(
     overrides: RuntimeOverrides,
 ) -> Result<TelemetryConfig, TelemetryError> {
     let next = {
-        let mut guard = active_config()
-            .write()
-            .expect("runtime config lock poisoned");
+        let mut guard = crate::_lock::rwlock_write(active_config());
         let current = match guard.as_ref().cloned() {
             Some(current) => current,
             None => {

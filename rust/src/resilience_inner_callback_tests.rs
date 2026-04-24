@@ -166,7 +166,7 @@ fn inner_invokes_circuit_open_err_when_breaker_open_and_fail_closed() {
 
     // Trip the breaker into open state with active cooldown.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -226,7 +226,7 @@ fn inner_returns_none_when_breaker_open_and_fail_open() {
         .expect("runtime");
 
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -283,7 +283,7 @@ fn inner_success_path_covers_timeout_bypass_and_success_callbacks() {
     });
 
     assert_eq!(result, Ok(Some(7_u32)));
-    let state = circuits().lock().expect("circuit lock poisoned");
+    let state = crate::_lock::lock(circuits());
     assert_eq!(
         state
             .get(&Signal::Logs)
@@ -363,7 +363,7 @@ fn inner_half_open_probe_failure_reopens_circuit() {
         .expect("runtime");
 
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -391,7 +391,7 @@ fn inner_half_open_probe_failure_reopens_circuit() {
     });
 
     assert_eq!(result, Ok(None));
-    let state = circuits().lock().expect("circuit lock poisoned");
+    let state = crate::_lock::lock(circuits());
     let logs = state.get(&Signal::Logs).expect("logs state should exist");
     assert!(!logs.half_open_probing);
     assert!(logs.open_count >= 2);

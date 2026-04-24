@@ -164,9 +164,7 @@ pub(super) fn install_meter_provider(
 
     let arc = Arc::new(provider);
     global::set_meter_provider(arc.as_ref().clone());
-    *meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned") = Some(InstalledMeterProvider {
+    *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
         provider: arc,
         runtime,
     });
@@ -175,9 +173,7 @@ pub(super) fn install_meter_provider(
 
 /// Force-flush and shut down the installed `MeterProvider`.
 pub(super) fn shutdown_meter_provider() {
-    let mut guard = meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned");
+    let mut guard = crate::_lock::lock(meter_provider_slot());
     let provider = guard.take();
     drop(guard);
     if let Some(installed) = provider {
@@ -190,21 +186,18 @@ pub(super) fn shutdown_meter_provider() {
     }
     // Drop cached instruments so a subsequent install gets fresh ones.
     if let Some(m) = COUNTERS.get() {
-        m.lock().expect("counter cache lock poisoned").clear();
+        crate::_lock::lock(m).clear();
     }
     if let Some(m) = GAUGES.get() {
-        m.lock().expect("gauge cache lock poisoned").clear();
+        crate::_lock::lock(m).clear();
     }
     if let Some(m) = HISTOGRAMS.get() {
-        m.lock().expect("histogram cache lock poisoned").clear();
+        crate::_lock::lock(m).clear();
     }
 }
 
 pub(crate) fn meter_provider_installed() -> bool {
-    meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned")
-        .is_some()
+    crate::_lock::lock(meter_provider_slot()).is_some()
 }
 
 fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
@@ -220,7 +213,7 @@ fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
 /// Get-or-create an OTel Counter<f64> by name (cached).
 fn get_or_create_counter(name: &str) -> Counter<f64> {
     let map = COUNTERS.get_or_init(empty_counter_cache_mutex);
-    let mut guard = map.lock().expect("counter cache lock poisoned");
+    let mut guard = crate::_lock::lock(map);
     if let Some(c) = guard.get(name).cloned() {
         return c.clone();
     }
@@ -232,7 +225,7 @@ fn get_or_create_counter(name: &str) -> Counter<f64> {
 
 fn get_or_create_gauge(name: &str) -> Gauge<f64> {
     let map = GAUGES.get_or_init(empty_gauge_cache_mutex);
-    let mut guard = map.lock().expect("gauge cache lock poisoned");
+    let mut guard = crate::_lock::lock(map);
     if let Some(g) = guard.get(name).cloned() {
         return g.clone();
     }
@@ -244,7 +237,7 @@ fn get_or_create_gauge(name: &str) -> Gauge<f64> {
 
 fn get_or_create_histogram(name: &str) -> Histogram<f64> {
     let map = HISTOGRAMS.get_or_init(empty_histogram_cache_mutex);
-    let mut guard = map.lock().expect("histogram cache lock poisoned");
+    let mut guard = crate::_lock::lock(map);
     if let Some(h) = guard.get(name).cloned() {
         return h.clone();
     }
