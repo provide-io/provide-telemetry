@@ -308,3 +308,101 @@ fn parity_test_register_secret_pattern_deduplication() {
     assert_eq!(custom.len(), 1, "duplicate name must replace, not append");
     reset_secret_patterns_for_tests();
 }
+
+// ── Sampling Rate Bounds ────────────────────────────────────────────────────
+// Parity category: sampling_rate_bounds — set_sampling_policy clamps rates
+// outside [0.0, 1.0] silently to the nearest bound. All four language
+// implementations clamp (no error raised).
+
+#[test]
+fn parity_test_sampling_rate_bounds_negative_clamps_to_zero() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    let stored = set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: -0.5,
+            overrides: Default::default(),
+        },
+    )
+    .expect("out-of-range rates must clamp, not error");
+    assert_eq!(stored.default_rate, 0.0);
+    let fetched = get_sampling_policy(Signal::Logs).expect("get ok");
+    assert_eq!(fetched.default_rate, 0.0);
+    set_sampling_policy(Signal::Logs, SamplingPolicy::default()).expect("reset ok");
+}
+
+#[test]
+fn parity_test_sampling_rate_bounds_above_one_clamps_to_one() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    let stored = set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: 1.5,
+            overrides: Default::default(),
+        },
+    )
+    .expect("out-of-range rates must clamp, not error");
+    assert_eq!(stored.default_rate, 1.0);
+    let fetched = get_sampling_policy(Signal::Logs).expect("get ok");
+    assert_eq!(fetched.default_rate, 1.0);
+    set_sampling_policy(Signal::Logs, SamplingPolicy::default()).expect("reset ok");
+}
+
+// ── Propagation Oversized Traceparent ───────────────────────────────────────
+// Parity category: propagation_oversized_traceparent — a traceparent with
+// an additional hyphen-separated segment beyond the canonical 4-part W3C
+// form must be rejected. Returned context must have no trace_id / span_id.
+
+#[test]
+fn parity_test_propagation_oversized_traceparent_rejected() {
+    let tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra";
+    let ctx = extract_w3c_context(Some(tp), None, None);
+    assert!(ctx.trace_id.is_none(), "trace_id must be None");
+    assert!(ctx.span_id.is_none(), "span_id must be None");
+    assert!(
+        ctx.traceparent.is_none(),
+        "Rust nulls out traceparent when IDs fail to parse (language-local invariant)"
+    );
+}
+
+// ── Cardinality Saturation ──────────────────────────────────────────────────
+// Parity category: cardinality_saturation — once register_cardinality_limit
+// with max_values=3 is in effect for a key, the 4th distinct value for that
+// key is replaced by the canonical OVERFLOW_VALUE sentinel ("__overflow__").
+
+#[test]
+fn parity_test_cardinality_saturation_fourth_value_overflows() {
+    use provide_telemetry::cardinality::OVERFLOW_VALUE;
+    use provide_telemetry::guard_attributes;
+    use std::collections::HashMap;
+
+    let _guard = parity_lock().lock().expect("parity lock");
+    clear_cardinality_limits();
+    register_cardinality_limit(
+        "route",
+        CardinalityLimit {
+            max_values: 3,
+            ttl_seconds: 300.0,
+        },
+    );
+
+    let values = ["/a", "/b", "/c", "/d"];
+    let mut observed: Vec<String> = Vec::with_capacity(values.len());
+    for v in values {
+        let mut attrs = HashMap::new();
+        attrs.insert("route".to_string(), v.to_string());
+        let out = guard_attributes(attrs);
+        observed.push(out.get("route").cloned().expect("route attr present"));
+    }
+    assert_eq!(
+        observed,
+        vec![
+            "/a".to_string(),
+            "/b".to_string(),
+            "/c".to_string(),
+            OVERFLOW_VALUE.to_string(),
+        ]
+    );
+    assert_eq!(OVERFLOW_VALUE, "__overflow__");
+    clear_cardinality_limits();
+}

@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   setSamplingPolicy,
+  getSamplingPolicy,
   shouldSample,
   registerPiiRule,
   resetPiiRulesForTests,
@@ -17,6 +18,10 @@ import {
   EventSchemaError,
   extractW3cContext,
   setupTelemetry,
+  registerCardinalityLimit,
+  clearCardinalityLimits,
+  guardAttributes,
+  OVERFLOW_VALUE,
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
@@ -276,5 +281,58 @@ describe('parity: propagation_guards', () => {
       baggage,
     });
     expect(ctx.baggage).toBeUndefined();
+  });
+});
+
+// ── Sampling Rate Bounds ────────────────────────────────────────────────────
+// Parity category: sampling_rate_bounds — rates outside [0.0, 1.0] clamp
+// silently to the nearest bound across all four languages.
+
+describe('parity: sampling_rate_bounds', () => {
+  afterEach(() => _resetSamplingForTests());
+
+  it('negative rate clamps to 0.0', () => {
+    setSamplingPolicy('logs', { defaultRate: -0.5 });
+    expect(getSamplingPolicy('logs').defaultRate).toBe(0.0);
+  });
+
+  it('rate above 1.0 clamps to 1.0', () => {
+    setSamplingPolicy('logs', { defaultRate: 1.5 });
+    expect(getSamplingPolicy('logs').defaultRate).toBe(1.0);
+  });
+});
+
+// ── Propagation Oversized Traceparent ───────────────────────────────────────
+// Parity category: propagation_oversized_traceparent — a traceparent with an
+// extra hyphen-separated segment beyond the canonical 4-part W3C form must be
+// rejected; returned context has neither traceId nor spanId.
+
+describe('parity: propagation_oversized_traceparent', () => {
+  it('traceparent with trailing 5th segment is rejected', () => {
+    const tp = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra';
+    const ctx = extractW3cContext({ traceparent: tp });
+    expect(ctx.traceId).toBeUndefined();
+    expect(ctx.spanId).toBeUndefined();
+    expect(ctx.traceparent).toBeUndefined();
+  });
+});
+
+// ── Cardinality Saturation ──────────────────────────────────────────────────
+// Parity category: cardinality_saturation — after registerCardinalityLimit
+// with maxValues=3, the 4th distinct value is replaced by OVERFLOW_VALUE.
+
+describe('parity: cardinality_saturation', () => {
+  afterEach(() => clearCardinalityLimits());
+
+  it('fourth distinct value for the same key is replaced with OVERFLOW_VALUE', () => {
+    clearCardinalityLimits();
+    registerCardinalityLimit('route', { maxValues: 3, ttlSeconds: 300 });
+    const observed: string[] = [];
+    for (const value of ['/a', '/b', '/c', '/d']) {
+      const guarded = guardAttributes({ route: value });
+      observed.push(guarded['route']);
+    }
+    expect(observed).toEqual(['/a', '/b', '/c', OVERFLOW_VALUE]);
+    expect(OVERFLOW_VALUE).toBe('__overflow__');
   });
 });

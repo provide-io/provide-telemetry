@@ -269,3 +269,66 @@ def test_parity_pii_depth_at_max_depth_is_untouched() -> None:
     result = sanitize_payload(payload, enabled=True, max_depth=2)
     # At depth=2 recursion stops, so the inner dict is returned without redaction
     assert result["a"]["b"]["password"] == "secret"  # pragma: allowlist secret
+
+
+# ── Sampling Rate Bounds ─────────────────────────────────────────────────────
+# Parity category: sampling_rate_bounds — rates outside [0.0, 1.0] clamp
+# silently to the nearest bound.
+
+
+def test_parity_sampling_rate_bounds_negative_clamps_to_zero() -> None:
+    from provide.telemetry.sampling import get_sampling_policy
+
+    set_sampling_policy("logs", SamplingPolicy(default_rate=-0.5))
+    assert get_sampling_policy("logs").default_rate == 0.0
+
+
+def test_parity_sampling_rate_bounds_above_one_clamps_to_one() -> None:
+    from provide.telemetry.sampling import get_sampling_policy
+
+    set_sampling_policy("logs", SamplingPolicy(default_rate=1.5))
+    assert get_sampling_policy("logs").default_rate == 1.0
+
+
+# ── Propagation Oversized Traceparent ────────────────────────────────────────
+# Parity category: propagation_oversized_traceparent — a traceparent with an
+# extra hyphen-separated segment beyond the canonical 4-part W3C form must be
+# rejected; returned context must have no trace_id / span_id.
+
+
+def test_parity_propagation_oversized_traceparent_rejected() -> None:
+    # Python nulls out the `traceparent` field when IDs fail to parse. The
+    # cross-language contract (parity category: propagation_oversized_traceparent)
+    # strictly requires only trace_id and span_id to be absent; the
+    # language-specific handling of the raw traceparent field is tested
+    # alongside as a Python-local invariant.
+    tp = f"00-{_VALID_TRACE_ID}-{_VALID_SPAN_ID}-01-extra"
+    scope = _make_scope([(b"traceparent", tp.encode())])
+    ctx = extract_w3c_context(scope)
+    assert ctx.trace_id is None
+    assert ctx.span_id is None
+    assert ctx.traceparent is None
+
+
+# ── Cardinality Saturation ───────────────────────────────────────────────────
+# Parity category: cardinality_saturation — after register_cardinality_limit
+# with max_values=3, the 4th distinct value for the same key is replaced by
+# the canonical OVERFLOW_VALUE sentinel ("__overflow__").
+
+
+def test_parity_cardinality_saturation_fourth_value_overflows() -> None:
+    from provide.telemetry.cardinality import (
+        OVERFLOW_VALUE,
+        clear_cardinality_limits,
+        guard_attributes,
+        register_cardinality_limit,
+    )
+
+    clear_cardinality_limits()
+    register_cardinality_limit("route", max_values=3, ttl_seconds=300.0)
+    seen: list[str] = []
+    for value in ("/a", "/b", "/c", "/d"):
+        seen.append(guard_attributes({"route": value})["route"])
+    assert seen == ["/a", "/b", "/c", OVERFLOW_VALUE]
+    assert OVERFLOW_VALUE == "__overflow__"
+    clear_cardinality_limits()

@@ -123,3 +123,47 @@ func TestParity_ShouldSample_InvalidSignalErrors(t *testing.T) {
 		t.Fatal("ShouldSample with invalid signal must return error")
 	}
 }
+
+// ── Sampling Rate Bounds ────────────────────────────────────────────────────
+// Parity category: sampling_rate_bounds — rates outside [0.0, 1.0] clamp
+// silently to the nearest bound across all four languages.
+
+func TestParity_Sampling_RateBounds_NegativeClampsToZero(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+
+	stored, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: -0.5})
+	if err != nil {
+		t.Fatalf("SetSamplingPolicy should accept out-of-range rate by clamping, got error: %v", err)
+	}
+	if stored.DefaultRate != 0.0 {
+		t.Fatalf("rate=-0.5 expected to clamp to 0.0, got %v", stored.DefaultRate)
+	}
+	fetched, err := GetSamplingPolicy(signalLogs)
+	if err != nil {
+		t.Fatalf("GetSamplingPolicy unexpected error: %v", err)
+	}
+	if fetched.DefaultRate != 0.0 {
+		t.Fatalf("stored rate for logs expected 0.0, got %v", fetched.DefaultRate)
+	}
+}
+
+func TestParity_Sampling_RateBounds_AboveOneClampsToOne(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+
+	stored, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.5})
+	if err != nil {
+		t.Fatalf("SetSamplingPolicy should accept out-of-range rate by clamping, got error: %v", err)
+	}
+	if stored.DefaultRate != 1.0 {
+		t.Fatalf("rate=1.5 expected to clamp to 1.0, got %v", stored.DefaultRate)
+	}
+	fetched, err := GetSamplingPolicy(signalLogs)
+	if err != nil {
+		t.Fatalf("GetSamplingPolicy unexpected error: %v", err)
+	}
+	if fetched.DefaultRate != 1.0 {
+		t.Fatalf("stored rate for logs expected 1.0, got %v", fetched.DefaultRate)
+	}
+}
