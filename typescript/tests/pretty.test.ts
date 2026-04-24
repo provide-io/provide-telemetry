@@ -90,12 +90,27 @@ describe('formatPretty', () => {
     expect(line).toContain('\x1b[1muser\x1b[0m=\x1b[36m"alice"\x1b[0m');
   });
 
+  it('falls back to no color for unknown pretty color names', () => {
+    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true, {
+      keyColor: 'bogus',
+      valueColor: 'also-bogus',
+    });
+    expect(line).toContain('user="alice"');
+    expect(line).not.toContain('\x1b[2muser');
+    expect(line).not.toContain('\x1b[36m"alice"');
+  });
+
   it('filters pretty fields when provided', () => {
     const line = formatPretty({ level: 30, event: 'test', user: 'alice', hidden: 'nope' }, false, {
       fields: ['user'],
     });
     expect(line).toContain('user="alice"');
     expect(line).not.toContain('hidden=');
+  });
+
+  it('falls back to String(value) when JSON.stringify returns undefined', () => {
+    const line = formatPretty({ level: 30, event: 'test', missing: undefined }, false);
+    expect(line).toContain('missing=undefined');
   });
 
   it('formats non-string time as string', () => {
