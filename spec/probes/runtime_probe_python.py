@@ -246,14 +246,13 @@ def _case_hot_reload_log_format() -> dict[str, object]:
 
 
 def _case_hot_reload_module_level() -> dict[str, object]:
-    # Exercise the module-level plumbing through update_runtime_config.  Python's
-    # stdlib root-logger level is baked in at configure_logging time (not per
-    # module), so lifting DEBUG requires also raising the global level in the
-    # same hot-reload payload — languages that filter per-logger (TS pino, Rust,
-    # Go slog) work with just the module override.  The parity contract this
-    # case locks down is: the module_levels map round-trips through the hot
-    # reload AND a DEBUG event on the named logger actually reaches output
-    # after the reload, with provider identity untouched.
+    # Exercise the module-level plumbing through update_runtime_config as a
+    # pure module-only promotion: the global level stays at INFO and only the
+    # module override lifts `probe.child` to DEBUG.  All four languages must
+    # honour this precise contract — a DEBUG event on the named logger reaches
+    # output after the reload even though the global threshold never moved,
+    # the module_levels map round-trips through the hot reload, and provider
+    # identity stays untouched.
     buf_before = io.StringIO()
     with redirect_stderr(buf_before):
         setup_telemetry()
@@ -266,7 +265,6 @@ def _case_hot_reload_module_level() -> dict[str, object]:
         update_runtime_config(
             RuntimeOverrides(
                 logging=LoggingConfig(
-                    level="DEBUG",
                     fmt="json",
                     include_timestamp=False,
                     module_levels={"probe.child": "DEBUG"},

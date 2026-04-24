@@ -289,12 +289,11 @@ async function caseHotReloadModuleLevel(): Promise<Record<string, unknown>> {
   _resetRootLogger();
   const before = captureEmit('probe.child', 'debug', 'hot.module.debug.before');
 
-  // Python's stdlib root-logger filtering forces raising global level when
-  // promoting a module; mirror that in TS for parity even though pino would
-  // accept the module override without the global lift.
+  // Pure module-only promotion: the global level stays at info and only the
+  // module override lifts `probe.child` to debug.  All four languages must
+  // honour this precise contract.
   updateRuntimeConfig({
     logging: {
-      logLevel: 'debug',
       logModuleLevels: { 'probe.child': 'debug' },
     },
   });
