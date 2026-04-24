@@ -35,6 +35,7 @@ def has_go_canonical_header(text: str) -> bool:
 
 EXCLUDED_DIRS = {
     ".git",
+    ".provide",
     ".venv",
     "workenv",
     ".mypy_cache",

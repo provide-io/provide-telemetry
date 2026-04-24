@@ -278,7 +278,7 @@ outcome.
 
 ## React integration
 
-Requires React 18+ as a peer dependency.
+The core package does not require React. Install React 18+ only when importing the React subpath.
 
 ```typescript
 import { useTelemetryContext, TelemetryErrorBoundary } from '@provide-io/telemetry/react';
@@ -355,7 +355,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 
 ### Pretty renderer
 
-Set `logFormat: 'pretty'` (or `PROVIDE_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR` and `NO_COLOR` environment variables.
+Set `logFormat: 'pretty'` (or `PROVIDE_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR`, `NO_COLOR`, and stderr TTY detection.
 
 ```typescript
 setupTelemetry({ logFormat: 'pretty' });

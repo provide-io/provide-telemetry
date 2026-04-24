@@ -35,12 +35,18 @@ def test_ci_mutation_workflow_includes_rust_job() -> None:
 def test_ci_mutation_workflow_routes_jobs_by_language_changes() -> None:
     workflow = (_REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml").read_text(encoding="utf-8")
 
-    assert "paths-filter" in workflow
+    assert "Detect changed implementation surfaces" in workflow
+    assert "git diff --name-only" in workflow
+    assert "git rev-parse HEAD" in workflow
     assert "python-mutation" in workflow
     assert "typescript-mutation" in workflow
     assert "rust-mutation" in workflow
+    assert 'echo "python=${python}"' in workflow
+    assert 'echo "typescript=${typescript}"' in workflow
+    assert 'echo "rust=${rust}"' in workflow
+    assert 'echo "go=${go}"' in workflow
     assert "needs.changes.outputs.python" in workflow
     assert "needs.changes.outputs.typescript" in workflow
     assert "needs.changes.outputs.rust" not in workflow
     assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in workflow
-    assert "!tests/tooling/test_rust_*.py" in workflow
+    assert "tests/tooling/test_rust_*.py) ;;" in workflow

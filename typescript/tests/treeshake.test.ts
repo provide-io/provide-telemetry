@@ -12,4 +12,8 @@ describe('tree-shaking support', () => {
   it('package.json has ESM module type', () => {
     expect(pkg['type']).toBe('module');
   });
+
+  it('React peer dependency is optional for core consumers', () => {
+    expect(pkg['peerDependenciesMeta']?.['react']?.['optional']).toBe(true);
+  });
 });

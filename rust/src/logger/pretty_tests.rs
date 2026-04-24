@@ -22,6 +22,7 @@ fn reset_state() {
     std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
     std::env::remove_var("PROVIDE_LOG_PRETTY_KEY_COLOR");
     std::env::remove_var("PROVIDE_LOG_PRETTY_VALUE_COLOR");
+    std::env::remove_var("PROVIDE_LOG_PRETTY_FIELDS");
 }
 
 fn sample_event(level: &str) -> LogEvent {
@@ -47,8 +48,6 @@ fn pretty_test_non_tty_path_emits_no_ansi_escapes() {
     let cfg = LoggingConfig {
         fmt: "pretty".to_string(),
         include_timestamp: false,
-        pretty_key_color: "dim".to_string(),
-        pretty_value_color: "cyan".to_string(),
         ..LoggingConfig::default()
     };
 
@@ -69,14 +68,54 @@ fn pretty_test_non_tty_path_emits_no_ansi_escapes() {
 }
 
 #[test]
-fn pretty_test_tty_path_applies_ansi_colors_for_keys_and_values() {
+fn pretty_test_logger_name_is_rendered_as_key_value() {
     let _guard = acquire_test_state_lock();
     reset_state();
     let cfg = LoggingConfig {
         fmt: "pretty".to_string(),
         include_timestamp: false,
-        pretty_key_color: "bold".to_string(),
-        pretty_value_color: "red".to_string(),
+        ..LoggingConfig::default()
+    };
+
+    let line = format_pretty_line_with_colors(&sample_event("INFO"), &cfg, false);
+
+    assert!(line.contains("logger_name=\"tests.pretty\""));
+    assert!(
+        !line.contains("] tests.pretty pretty.message"),
+        "logger target must not be emitted as an unkeyed token: {line}"
+    );
+}
+
+#[test]
+fn pretty_test_pretty_fields_env_filters_context_and_standard_fields() {
+    let _guard = acquire_test_state_lock();
+    reset_state();
+    std::env::set_var("PROVIDE_LOG_PRETTY_FIELDS", "logger_name,user_id,trace_id");
+    let cfg = LoggingConfig {
+        fmt: "pretty".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
+
+    let line = format_pretty_line_with_colors(&sample_event("INFO"), &cfg, false);
+
+    assert!(line.contains("logger_name=\"tests.pretty\""));
+    assert!(line.contains("user_id=\"u-1\""));
+    assert!(line.contains("trace_id=\"0123456789abcdef0123456789abcdef\""));
+    assert!(!line.contains("ok=true"));
+    assert!(!line.contains("count=42"));
+    assert!(!line.contains("span_id=\"0123456789abcdef\""));
+}
+
+#[test]
+fn pretty_test_tty_path_applies_ansi_colors_for_keys_and_values() {
+    let _guard = acquire_test_state_lock();
+    reset_state();
+    std::env::set_var("PROVIDE_LOG_PRETTY_KEY_COLOR", "bold");
+    std::env::set_var("PROVIDE_LOG_PRETTY_VALUE_COLOR", "red");
+    let cfg = LoggingConfig {
+        fmt: "pretty".to_string(),
+        include_timestamp: false,
         ..LoggingConfig::default()
     };
 
@@ -164,11 +203,11 @@ fn pretty_test_timestamp_included_when_configured() {
 fn pretty_test_empty_key_value_colors_leave_text_uncolored() {
     let _guard = acquire_test_state_lock();
     reset_state();
+    std::env::set_var("PROVIDE_LOG_PRETTY_KEY_COLOR", "");
+    std::env::set_var("PROVIDE_LOG_PRETTY_VALUE_COLOR", "");
     let cfg = LoggingConfig {
         fmt: "pretty".to_string(),
         include_timestamp: false,
-        pretty_key_color: String::new(),
-        pretty_value_color: String::new(),
         ..LoggingConfig::default()
     };
 

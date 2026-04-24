@@ -52,13 +52,6 @@ pub struct LoggingConfig {
     /// (longest-prefix wins); values are level strings (TRACE/DEBUG/
     /// INFO/WARN/ERROR). Controlled by `PROVIDE_LOG_MODULE_LEVELS`.
     pub module_levels: HashMap<String, String>,
-    /// Named color (from `pretty::NAMED_COLORS`) applied to attribute keys
-    /// when `fmt == "pretty"`. Unknown names degrade to no color. Matches
-    /// Python's `pretty_key_color`. Controlled by `PROVIDE_LOG_PRETTY_KEY_COLOR`.
-    pub pretty_key_color: String,
-    /// Named color applied to attribute values in pretty output. Matches
-    /// Python's `pretty_value_color`. Controlled by `PROVIDE_LOG_PRETTY_VALUE_COLOR`.
-    pub pretty_value_color: String,
 }
 
 impl Default for LoggingConfig {
@@ -71,8 +64,6 @@ impl Default for LoggingConfig {
             otlp_endpoint: None,
             otlp_protocol: String::new(),
             module_levels: HashMap::new(),
-            pretty_key_color: "dim".to_string(),
-            pretty_value_color: String::new(),
         }
     }
 }

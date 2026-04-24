@@ -133,11 +133,11 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Quality
 
-- 100% branch coverage (Python + TypeScript + Go; Rust crate verified with `cargo test`)
-- 100% mutation kill score for Python and Go (mutmut + gremlins); TypeScript runs Stryker with a 96.65% current score / 95% break threshold (re-export barrels `index.ts` and `sanitize.ts` are excluded at the config level; remaining survivors are in `endpoint.ts` edge cases, `logger.ts` OTel wiring, and `secret-patterns-generated.ts`); Rust nightly mutation sweep is advisory (current baseline is re-verified manually; see `rust/README.md`)
+- Coverage gates: Python and TypeScript branch coverage; Go statement coverage for the root, logger, tracer, and otel packages; Rust crate verified with `cargo test`
+- Python runs mutmut with a 95.90% current score / 95% minimum threshold; Go requires 100% gremlins efficacy; TypeScript runs Stryker with a 96.07% current score / 95% break threshold (re-export barrels `index.ts` and `sanitize.ts` are excluded at the config level; remaining survivors are concentrated in config/runtime/pretty/propagation edge cases); Rust nightly mutation sweep is advisory (current baseline is re-verified manually; see `rust/README.md`)
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
-- SHA-pinned GitHub Actions
+- SHA-pinned third-party GitHub Actions
 - Sigstore artifact signing
 - CycloneDX SBOM on releases
 

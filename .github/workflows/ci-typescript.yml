@@ -128,8 +128,8 @@ jobs:
       - name: Start OTLP collector
         run: |
           docker run -d --name otelcol-typescript \
-            -p 4318:4318 \
-            -p 13133:13133 \
+            -p 127.0.0.1:4318:4318 \
+            -p 127.0.0.1:13133:13133 \
             -v "$PWD/../tests/integration/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro" \
             otel/opentelemetry-collector-contrib:0.102.1
       - name: Wait for collector health
