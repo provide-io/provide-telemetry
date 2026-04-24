@@ -20,6 +20,25 @@ fn capture_record(message: &str) -> Value {
     panic!("no JSON object found in output: {output:?}");
 }
 
+fn emit_debug_capture(name: &str, message: &str) -> Vec<Value> {
+    provide_telemetry::enable_json_capture_for_tests();
+    provide_telemetry::get_logger(Some(name)).debug(message);
+    let output = String::from_utf8(provide_telemetry::take_json_capture()).expect("utf8 output");
+    output
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect()
+}
+
+fn has_message(records: &[Value], message: &str) -> bool {
+    records.iter().any(|rec| {
+        rec.get("message")
+            .and_then(Value::as_str)
+            .map(|m| m == message)
+            .unwrap_or(false)
+    })
+}
+
 fn main() {
     let case = std::env::var("PROVIDE_PARITY_PROBE_CASE").expect("probe case");
     let result = match case.as_str() {
@@ -165,6 +184,100 @@ fn main() {
                 "re_setup_done": third.setup_done,
                 "signals_match": first.signals == third.signals,
                 "providers_match": first.providers == third.providers,
+            })
+        }
+        "hot_reload_log_level" => {
+            provide_telemetry::setup_telemetry().expect("setup");
+            let service_before = provide_telemetry::get_runtime_config()
+                .expect("runtime config")
+                .service_name;
+            let before = emit_debug_capture("probe", "hot.level.debug.before");
+            let next_logging = provide_telemetry::LoggingConfig {
+                level: "DEBUG".to_string(),
+                fmt: "json".to_string(),
+                include_timestamp: false,
+                ..provide_telemetry::LoggingConfig::default()
+            };
+            provide_telemetry::update_runtime_config(provide_telemetry::RuntimeOverrides {
+                logging: Some(next_logging),
+                ..provide_telemetry::RuntimeOverrides::default()
+            })
+            .expect("update must succeed");
+            let after = emit_debug_capture("probe", "hot.level.debug.after");
+            let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            json!({
+                "case": case,
+                "first_debug_suppressed": !has_message(&before, "hot.level.debug.before"),
+                "second_debug_emitted": has_message(&after, "hot.level.debug.after"),
+                "level_config_updated": cfg.logging.level.eq_ignore_ascii_case("DEBUG"),
+                "service_preserved": cfg.service_name == service_before,
+            })
+        }
+        "hot_reload_log_format" => {
+            provide_telemetry::setup_telemetry().expect("setup");
+            let status_before = provide_telemetry::get_runtime_status();
+            let service_before = provide_telemetry::get_runtime_config()
+                .expect("runtime config")
+                .service_name;
+            let next_logging = provide_telemetry::LoggingConfig {
+                level: "INFO".to_string(),
+                fmt: "console".to_string(),
+                include_timestamp: false,
+                ..provide_telemetry::LoggingConfig::default()
+            };
+            provide_telemetry::update_runtime_config(provide_telemetry::RuntimeOverrides {
+                logging: Some(next_logging),
+                ..provide_telemetry::RuntimeOverrides::default()
+            })
+            .expect("update must succeed");
+            let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
+            let status_after = provide_telemetry::get_runtime_status();
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            json!({
+                "case": case,
+                "format_config_updated": cfg.logging.fmt.eq_ignore_ascii_case("console"),
+                "service_preserved": cfg.service_name == service_before,
+                "providers_unchanged": status_before.providers == status_after.providers,
+            })
+        }
+        "hot_reload_module_level" => {
+            provide_telemetry::setup_telemetry().expect("setup");
+            let service_before = provide_telemetry::get_runtime_config()
+                .expect("runtime config")
+                .service_name;
+            let before = emit_debug_capture("probe.child", "hot.module.debug.before");
+            // Mirror Python/Go: raise the global level alongside the module
+            // override so languages with a single global threshold (Python
+            // stdlib, Go slog) surface the DEBUG record once the override lands.
+            let mut next_logging = provide_telemetry::LoggingConfig {
+                level: "DEBUG".to_string(),
+                fmt: "json".to_string(),
+                include_timestamp: false,
+                ..provide_telemetry::LoggingConfig::default()
+            };
+            next_logging
+                .module_levels
+                .insert("probe.child".to_string(), "DEBUG".to_string());
+            provide_telemetry::update_runtime_config(provide_telemetry::RuntimeOverrides {
+                logging: Some(next_logging),
+                ..provide_telemetry::RuntimeOverrides::default()
+            })
+            .expect("update must succeed");
+            let after = emit_debug_capture("probe.child", "hot.module.debug.after");
+            let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            json!({
+                "case": case,
+                "first_debug_suppressed": !has_message(&before, "hot.module.debug.before"),
+                "module_debug_emitted": has_message(&after, "hot.module.debug.after"),
+                "module_levels_config_updated": cfg
+                    .logging
+                    .module_levels
+                    .get("probe.child")
+                    .map(|v| v.eq_ignore_ascii_case("DEBUG"))
+                    .unwrap_or(false),
+                "service_preserved": cfg.service_name == service_before,
             })
         }
         _ => panic!("unknown case: {case}"),
