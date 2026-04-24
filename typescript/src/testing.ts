@@ -6,6 +6,7 @@
  * Mirrors Python provide.telemetry.testing.
  */
 
+import { context, metrics, trace } from '@opentelemetry/api';
 import { _resetConfig } from './config';
 import { _resetContext } from './context';
 import { _resetHealthForTests } from './health';
@@ -21,6 +22,12 @@ import { _resetOtelLogProviderForTests } from './otel-logs';
 import { _resetTraceContext } from './tracing';
 import { _resetRuntimeForTests } from './runtime';
 
+function resetInstalledOtelGlobalsForTests(): void {
+  trace.disable();
+  metrics.disable();
+  context.disable();
+}
+
 /** Reset all telemetry state (config, context, PII rules, health, queues, sampling, resilience, SLO). */
 export function resetTelemetryState(): void {
   _resetConfig();
@@ -33,6 +40,7 @@ export function resetTelemetryState(): void {
   resetPiiRulesForTests();
   _resetSloForTests();
   _resetPropagationForTests();
+  resetInstalledOtelGlobalsForTests();
   _resetRootLogger();
   _resetOtelLogProviderForTests();
   _resetRuntimeForTests();

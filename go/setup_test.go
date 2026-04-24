@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 )
@@ -65,6 +66,8 @@ func TestShutdownTelemetryResetsState(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
+	prevDefault := slog.Default()
+
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
@@ -78,11 +81,19 @@ func TestShutdownTelemetryResetsState(t *testing.T) {
 	if cfg != nil {
 		t.Error("expected nil config after shutdown")
 	}
+	if Logger != nil {
+		t.Error("expected package logger to be nil after shutdown")
+	}
+	if slog.Default() != prevDefault {
+		t.Error("expected slog default to be restored after shutdown")
+	}
 }
 
 func TestShutdownThenSetupReinitialises(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "initial-service")
 
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("first setup failed: %v", err)
@@ -91,12 +102,36 @@ func TestShutdownThenSetupReinitialises(t *testing.T) {
 		t.Fatalf("shutdown failed: %v", err)
 	}
 
+	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "restarted-service")
+
 	cfg, err := SetupTelemetry()
 	if err != nil {
 		t.Fatalf("second setup failed: %v", err)
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config after re-setup")
+	}
+	if cfg.ServiceName != "restarted-service" {
+		t.Fatalf("expected re-setup to pick up fresh config, got %q", cfg.ServiceName)
+	}
+}
+
+func TestShutdownTelemetryClearsLazyLoggerState(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	prevDefault := slog.Default()
+	GetLogger(context.Background(), "lazy").Info("lazy.logger.before.setup")
+
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	if Logger != nil {
+		t.Fatal("expected lazy logger state to be cleared by shutdown")
+	}
+	if slog.Default() != prevDefault {
+		t.Fatal("expected slog default to be restored after lazy logger shutdown")
 	}
 }
 
@@ -265,7 +300,11 @@ func TestSetupWithProviderOptions(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	sentinel := struct{ name string }{name: "test-tp"}
+	backend := &_fakeBackend{}
+	RegisterBackend("fake", backend)
+	t.Cleanup(func() { UnregisterBackend("fake") })
+
+	sentinel := struct{ name string }{name: "test-provider"}
 	cfg, err := SetupTelemetry(
 		WithTracerProvider(sentinel),
 		WithMeterProvider(sentinel),
@@ -276,6 +315,9 @@ func TestSetupWithProviderOptions(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
+	}
+	if backend.lastSetupCfg == nil {
+		t.Fatal("expected backend to observe setup config")
 	}
 }
 

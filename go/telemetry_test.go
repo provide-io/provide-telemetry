@@ -3,7 +3,10 @@
 
 package telemetry
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
 
 // TestEvent_ValidSegments verifies that Event returns a correctly populated EventRecord.
 func TestEvent_ValidSegments(t *testing.T) {
@@ -128,8 +131,10 @@ func TestReplacePIIRules(t *testing.T) {
 // TestResetForTests verifies the exported testing helper resets all subsystems.
 func TestResetForTests(t *testing.T) {
 	// Pollute state across multiple subsystems.
+	basePatternCount := len(GetSecretPatterns())
 	SetCardinalityLimit("x", CardinalityLimit{MaxValues: 99})
 	RegisterPIIRule(PIIRule{Path: []string{"secret"}, Mode: PIIModeRedact})
+	RegisterSecretPattern("test-reset", regexp.MustCompile(`RESETME`))
 	if _, err := SetSamplingPolicy("logs", SamplingPolicy{DefaultRate: 0.1}); err != nil {
 		t.Fatal(err)
 	}
@@ -155,8 +160,15 @@ func TestResetForTests(t *testing.T) {
 	if p := GetExporterPolicy("traces"); p.Retries != _defaultRetries {
 		t.Errorf("expected default retries=%d, got %d", _defaultRetries, p.Retries)
 	}
+	// Custom secret patterns cleared.
+	if got := len(GetSecretPatterns()); got != basePatternCount {
+		t.Errorf("expected custom secret patterns cleared, got %d patterns (want %d)", got, basePatternCount)
+	}
 	// Setup state cleared.
 	if GetRuntimeConfig() != nil {
 		t.Error("expected nil runtime config after ResetForTests")
+	}
+	if Logger != nil {
+		t.Error("expected nil logger after ResetForTests")
 	}
 }
