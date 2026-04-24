@@ -315,6 +315,27 @@ Hot-path benchmarks (`benches/hot_path.rs`) run on every CI push as the
 the gate's design (5x default tolerance, OS-tagged baselines) and how to
 seed or refresh entries.
 
+## Mutation testing
+
+The Rust nightly mutation sweep is **advisory only**. It does not gate
+CI the way the Python and Go mutation suites do, and the current
+baseline in [`rust/mutants.out/`](./mutants.out) records a `Failure`
+summary — the sweep's own build/test baseline is broken and no mutants
+have been scored against it yet. Configuration lives in
+[`rust/.cargo-mutants.toml`](./.cargo-mutants.toml) and
+[`rust/mutants.toml`](./mutants.toml).
+
+Re-run the sweep from `rust/`:
+
+```bash
+cargo mutants -j 4 --no-shuffle --minimum-test-timeout 20 --timeout-multiplier 4
+```
+
+This mirrors the invocation used by the `rust-mutants` job in
+[`.github/workflows/ci-mutation.yml`](../.github/workflows/ci-mutation.yml).
+Sweep outputs land in `rust/mutants.out/` (tracked), including
+`outcomes.json`, `caught.txt`, `missed.txt`, and per-mutant logs.
+
 ## License
 
 Apache-2.0. See [LICENSE](../LICENSES/Apache-2.0.txt).

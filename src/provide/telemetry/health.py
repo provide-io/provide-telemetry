@@ -74,30 +74,40 @@ _VALID_SIGNALS_HEALTH = frozenset({"logs", "traces", "metrics"})
 
 
 def _known_signal(signal: Signal) -> Signal:
-    if signal in _VALID_SIGNALS_HEALTH:  # pragma: no mutate
+    if (
+        signal in _VALID_SIGNALS_HEALTH
+    ):  # pragma: no mutate — membership guard; false branch raises and is exhaustively tested
         return signal
     raise ValueError(f"unknown signal {signal!r}, expected one of {sorted(_VALID_SIGNALS_HEALTH)}")
 
 
-def increment_emitted(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
+def increment_emitted(
+    signal: Signal, amount: int = 1
+) -> None:  # pragma: no mutate — default amount=1; all call sites pass explicitly
     sig = _known_signal(signal)
     with _lock:
         _emitted[sig] += max(0, amount)
 
 
-def increment_dropped(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
+def increment_dropped(
+    signal: Signal, amount: int = 1
+) -> None:  # pragma: no mutate — default amount=1; all call sites pass explicitly
     sig = _known_signal(signal)
     with _lock:
         _dropped[sig] += max(0, amount)
 
 
-def increment_retries(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
+def increment_retries(
+    signal: Signal, amount: int = 1
+) -> None:  # pragma: no mutate — default amount=1; all call sites pass explicitly
     sig = _known_signal(signal)
     with _lock:
         _retries[sig] += max(0, amount)
 
 
-def increment_async_blocking_risk(signal: Signal, amount: int = 1) -> None:  # pragma: no mutate
+def increment_async_blocking_risk(
+    signal: Signal, amount: int = 1
+) -> None:  # pragma: no mutate — default amount=1; all call sites pass explicitly
     sig = _known_signal(signal)
     with _lock:
         _async_blocking_risk[sig] += max(0, amount)
@@ -109,7 +119,9 @@ def record_export_failure(signal: Signal, exc: Exception) -> None:  # noqa: ARG0
         _export_failures[sig] += 1
 
 
-def record_export_latency(signal: Signal, latency_ms: float = 0.0) -> None:  # pragma: no mutate
+def record_export_latency(
+    signal: Signal, latency_ms: float = 0.0
+) -> None:  # pragma: no mutate — default 0.0 is equivalent to any non-negative default clamped by max() below
     sig = _known_signal(signal)
     with _lock:
         _export_latency_ms[sig] = max(0.0, latency_ms)

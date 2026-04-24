@@ -44,6 +44,12 @@ _SECRET_PATTERNS: tuple[tuple[str, _re.Pattern[str]], ...] = tuple(
 
 _custom_secret_patterns: list[tuple[str, _re.Pattern[str]]] = []
 
+# ReDoS safety cap: values longer than this are never scanned for secret
+# patterns.  API-shaped secrets are short (tens to low hundreds of chars); a
+# >8 KiB string almost certainly isn't a key, and scanning it exposes the
+# regex engine to pathological catastrophic-backtracking inputs.
+_MAX_SECRET_SCAN_LENGTH = 8192
+
 
 def register_secret_pattern(name: str, pattern: _re.Pattern[str]) -> None:
     """Register a custom secret detection pattern.
@@ -69,13 +75,16 @@ def _detect_secret_in_value(value: str) -> bool:
     """Return True if value matches a known secret pattern."""
     if len(value) < _MIN_SECRET_LENGTH:
         return False
+    if len(value) > _MAX_SECRET_SCAN_LENGTH:
+        # Oversize input: skip scan to avoid regex ReDoS risk.
+        return False
     # Thread-safe snapshot — list may be mutated by register_secret_pattern.
     with _lock:
         custom = list(_custom_secret_patterns)
-    for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate
+    for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate — tuple iteration over generated patterns
         if pattern.search(value):
             return True
-    for _name, pattern in custom:  # pragma: no mutate  # noqa: SIM110
+    for _name, pattern in custom:  # pragma: no mutate  # noqa: SIM110 — iteration mirrors built-in loop above
         if pattern.search(value):
             return True
     return False
@@ -137,7 +146,11 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
     if mode == "redact":
         return _REDACTED
     if mode == "hash":
-        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]  # pragma: no mutate
+        return hashlib.sha256(
+            str(value).encode("utf-8")
+        ).hexdigest()[
+            :12
+        ]  # pragma: no mutate — 12-char hash prefix is the PII hash-mode contract; exact value asserted in hash-mode tests
     text = str(value)
     limit = max(0, truncate_to)
     if len(text) <= limit:
@@ -148,14 +161,16 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
 def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     if len(path) != len(target):
         return False
-    return all(part == "*" or part == elem for part, elem in zip(path, target, strict=True))  # pragma: no mutate
+    return all(
+        part == "*" or part == elem for part, elem in zip(path, target, strict=True)
+    )  # pragma: no mutate — wildcard OR exact-match; both branches covered by PII rule tests
 
 
 def _apply_rule(
     node: Any,
     rule: PIIRule,
     current_path: tuple[str, ...] = (),
-    depth: int = 0,  # pragma: no mutate
+    depth: int = 0,  # pragma: no mutate — recursion-depth default; call sites always start at 0
     receipt_hook: Callable[[str, str, Any], None] | None = None,
 ) -> Any:
     if depth >= 32:  # hard safety limit
@@ -176,7 +191,7 @@ def _apply_rule(
     if isinstance(node, list):
         return [
             _apply_rule(item, rule, (*current_path, "*"), depth=depth + 1, receipt_hook=receipt_hook) for item in node
-        ]  # pragma: no mutate
+        ]  # pragma: no mutate — list-comp structure; traversal asserted by nested-list PII rule tests
     return node
 
 
@@ -188,8 +203,8 @@ def _path_has_rule(rule_paths: frozenset[tuple[str, ...]], child_path: tuple[str
 def _apply_default_sensitive_key_redaction(
     node: Any,
     original: Any,
-    depth: int = 0,  # pragma: no mutate
-    max_depth: int = 8,  # pragma: no mutate
+    depth: int = 0,  # pragma: no mutate — recursion-depth default; call sites always start at 0
+    max_depth: int = 8,  # pragma: no mutate — default max_depth is overridden by live runtime config at every call
     receipt_hook: Callable[[str, str, Any], None] | None = None,
     rule_targeted_paths: frozenset[tuple[str, ...]] | None = None,
     _current_path: tuple[str, ...] = (),
@@ -210,7 +225,9 @@ def _apply_default_sensitive_key_redaction(
                     output[key] = _REDACTED
                     if receipt_hook is not None:
                         receipt_hook(
-                            ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                            ".".join(
+                                cast(tuple[str, ...], child_path)
+                            ),  # pragma: no mutate — typing-only cast; runtime value is already a str tuple
                             "redact",
                             orig_value,
                         )
@@ -218,7 +235,9 @@ def _apply_default_sensitive_key_redaction(
                 output[key] = _REDACTED
                 if receipt_hook is not None:
                     receipt_hook(
-                        ".".join(cast(tuple[str, ...], child_path)),  # pragma: no mutate
+                        ".".join(
+                            cast(tuple[str, ...], child_path)
+                        ),  # pragma: no mutate — typing-only cast; runtime value is already a str tuple
                         "redact",
                         value,
                     )
@@ -233,9 +252,13 @@ def _apply_default_sensitive_key_redaction(
                     _current_path=child_path,
                 )
         return output
-    if isinstance(node, list) and isinstance(original, list):  # pragma: no mutate
+    if (
+        isinstance(node, list) and isinstance(original, list)
+    ):  # pragma: no mutate — dual isinstance guard; both False branches are unreachable given upstream recursion contract
         result: list[Any] = []
-        for item, orig in zip(node, original, strict=False):  # pragma: no mutate
+        for item, orig in zip(
+            node, original, strict=False
+        ):  # pragma: no mutate — strict=False because original may have extra trailing items after truncation upstream
             if isinstance(item, str) and _detect_secret_in_value(item):
                 result.append(_REDACTED)
                 if receipt_hook is not None:
@@ -261,7 +284,11 @@ def _collect_rule_paths(rules: tuple[PIIRule, ...]) -> frozenset[tuple[str, ...]
     return frozenset(rule.path for rule in rules if rule.path)
 
 
-def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8) -> dict[str, Any]:  # pragma: no mutate
+def sanitize_payload(
+    payload: dict[str, Any], enabled: bool, max_depth: int = 8
+) -> dict[
+    str, Any
+]:  # pragma: no mutate — default max_depth=8 is overridden by live runtime config at every call; default is cosmetic
     if not enabled:
         return dict(payload)
     # Snapshot hooks once to prevent TOCTOU races if they are replaced concurrently.
@@ -286,7 +313,9 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
         cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
-        for key, value in list(cast(Any, cleaned).items()):  # pragma: no mutate
+        for key, value in list(
+            cast(Any, cleaned).items()
+        ):  # pragma: no mutate — typing-only cast and list() snapshot for safe in-place mutation
             label = classification_hook(key, value)
             if label is not None:
                 action = (
@@ -299,7 +328,9 @@ def sanitize_payload(payload: dict[str, Any], enabled: bool, max_depth: int = 8)
                 else:
                     cleaned[f"__{key}__class"] = label
                     if action in ("redact", "hash", "truncate") and value != _REDACTED:
-                        cleaned[key] = _mask(value, cast(MaskMode, action), 8)  # pragma: no mutate
+                        cleaned[key] = _mask(
+                            value, cast(MaskMode, action), 8
+                        )  # pragma: no mutate — 8-char truncate default here mirrors PIIRule.truncate_to; equivalent to any small positive int for governance action mapping
     if isinstance(cleaned, dict):
         return cleaned
     return {}

@@ -88,5 +88,6 @@ def test_find_noncompliant_files(tmp_path: Path) -> None:
     bad = tmp_path / "bad.py"
     good.write_text("".join(_SPDX_MODULE.CANONICAL_BLOCK) + "x = 1\n", encoding="utf-8")
     bad.write_text("x = 1\n", encoding="utf-8")
-    offenders = _CHECK_MODULE.find_noncompliant_files(tmp_path)
-    assert offenders == [bad]
+    missing, invalid = _CHECK_MODULE.find_noncompliant_files(tmp_path)
+    assert missing == [bad]
+    assert invalid == []

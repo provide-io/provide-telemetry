@@ -65,6 +65,42 @@ Acceptance criteria:
 
 all pass.
 
+### P0b. Close Rust Facade Gaps
+
+Known gaps where the Rust crate lacks a feature that Python, TypeScript, and
+Go already ship. These are tracked here instead of under P1 because they are
+missing surface area, not drift between existing surfaces.
+
+- **ASGI/HTTP request-lifecycle middleware (P1 priority).** Python's
+  `provide.telemetry.asgi.TelemetryMiddleware`, the TypeScript middleware, and
+  the Go `httpmw` package each bind request/session context, extract W3C
+  traceparent/tracestate and baggage, and clear context on response. Rust has
+  `extract_w3c_context()` and `bind_context()` / `clear_context()` building
+  blocks, but users must wire them into axum/hyper handlers by hand. Ship a
+  `provide_telemetry::asgi`-equivalent crate module (or a sibling
+  `provide-telemetry-axum` facade) that wraps these primitives into a
+  `tower::Layer`.
+- **Pretty log renderer (P2 priority).** `PROVIDE_LOG_FORMAT=pretty` is honored
+  by Python, TypeScript, and Go and produces an ANSI-coloured multi-line
+  renderer. Rust's `rust/src/logger/emit.rs` only branches on `console` and
+  `json`; `pretty` silently falls back to `console`. Implement the pretty
+  renderer with configurable colors to match the other languages' output.
+- **Metrics fallback export on shutdown (P3 priority).** When the `otel`
+  feature is off, Rust accumulates counter/gauge/histogram state in-process
+  and drops it on shutdown. Python flushes a JSON snapshot of the fallback
+  state to stderr during `shutdown_telemetry()`
+  (`src/provide/telemetry/metrics/fallback.py`). Decide whether Rust, Go, and
+  TypeScript should adopt the same stderr-JSON fallback or whether this
+  becomes a documented Python-only convenience.
+
+Acceptance criteria:
+
+- A Rust axum service can install a single `TelemetryLayer` and observe the
+  same request-lifecycle telemetry as the Python ASGI middleware.
+- `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in Rust.
+- In-process metric state is either exported or documented as a known drop on
+  shutdown across all four languages.
+
 ### P1. Eliminate Public Facade Drift
 
 - Make `get_logger()`, `get_tracer()`, and `get_meter()` mean the same thing in

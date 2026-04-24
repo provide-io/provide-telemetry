@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* Stryker disable all
+/*
+ * Mutation-testing note (mirrored in typescript/stryker.config.mjs):
  *
- * WHY: This file uses `await import('pkg' as string)` so Stryker's V8
- * perTest coverage instrumentor cannot trace which test exercises which
- * mutation — every mutant shows covered:0 and is reported as "no coverage"
- * rather than being killed.  Switching to static imports is out of scope:
- * the dynamic pattern is the load-bearing mechanism that keeps all OTel
- * peer deps tree-shakeable for bundler users who set otelEnabled:false.
+ * This file is excluded from Stryker's `mutate` array because it uses
+ * `await import('pkg' as string)` so Stryker's V8 perTest coverage
+ * instrumentor cannot trace which test exercises which mutant — every mutant
+ * reports covered:0 and is labelled "no coverage" rather than being killed.
+ * Switching to static imports is out of scope: the dynamic pattern is the
+ * load-bearing mechanism that keeps all OTel peer deps tree-shakeable for
+ * bundler users who set otelEnabled:false.
  *
  * TRADEOFF: mutations in this file are not killed by unit tests.
  * The risk is accepted because:
@@ -21,7 +23,8 @@
  *      resilience.ts, which use static imports.
  *
  * If a future Stryker version can track V8 coverage through dynamic imports,
- * remove this exemption and add targeted unit tests.
+ * remove the `!src/otel.ts` exemption in stryker.config.mjs and add targeted
+ * unit tests.
  */
 
 /**

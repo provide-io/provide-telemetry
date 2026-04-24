@@ -29,6 +29,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from provide.telemetry._config_validation import (
+    parse_duration_float as _parse_duration_float,
+)
+from provide.telemetry._config_validation import (
+    warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing,
+)
 from provide.telemetry._masking import (
     _mask_endpoint_url as _mask_endpoint_url,
 )
@@ -235,6 +241,7 @@ class TelemetryConfig:
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
         data = env if env is not None else os.environ
+        _warn_on_endpoint_shadowing(data)
         return cls(
             service_name=data.get("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-service"),
             environment=data.get("PROVIDE_TELEMETRY_ENV", "dev"),
@@ -321,25 +328,25 @@ class TelemetryConfig:
                 metrics_retries=_parse_env_int(
                     data.get("PROVIDE_EXPORTER_METRICS_RETRIES", "0"), "PROVIDE_EXPORTER_METRICS_RETRIES"
                 ),
-                logs_backoff_seconds=_parse_env_float(
+                logs_backoff_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS", "0.0"), "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"
                 ),
-                traces_backoff_seconds=_parse_env_float(
+                traces_backoff_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS", "0.0"),
                     "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS",
                 ),
-                metrics_backoff_seconds=_parse_env_float(
+                metrics_backoff_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS", "0.0"),
                     "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS",
                 ),
-                logs_timeout_seconds=_parse_env_float(
+                logs_timeout_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "10.0"), "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"
                 ),
-                traces_timeout_seconds=_parse_env_float(
+                traces_timeout_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS",
                 ),
-                metrics_timeout_seconds=_parse_env_float(
+                metrics_timeout_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
                 ),
@@ -445,7 +452,7 @@ def _parse_module_levels(raw: str) -> dict[str, str]:
 
     Example: ``PROVIDE_LOG_MODULE_LEVELS="provide.server=DEBUG,asyncio=WARNING"``
     """
-    if not raw or not raw.strip():  # pragma: no mutate
+    if not raw or not raw.strip():  # pragma: no mutate — empty-env short-circuit
         return {}
     result: dict[str, str] = {}
     for pair in raw.split(","):
@@ -482,7 +489,7 @@ def _parse_otlp_headers(value: str | None) -> dict[str, str]:
         if "=" not in pair:
             stripped = pair.strip()
             if stripped:
-                _logger.warning("config.otlp.header_malformed")  # pragma: no mutate
+                _logger.warning("config.otlp.header_malformed")  # pragma: no mutate — warning string is non-semantic
             continue
         key, raw = pair.split("=", 1)
         key = unquote(key.strip())

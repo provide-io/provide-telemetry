@@ -192,6 +192,75 @@ snapshot, and `getRuntimeStatus()` to see signal enablement, provider install
 state, fallback mode, and the last setup error without reading internal
 modules.
 
+### Runtime reconfiguration
+
+Use `reconfigureTelemetry()` to change config at runtime without a process
+restart. It merges a partial `TelemetryConfig` over the current one and
+re-runs `setupTelemetry()` with the result, rebuilding the logger so fresh
+calls to `getLogger()` observe the new config.
+
+```typescript
+import { reconfigureTelemetry, getRuntimeConfig } from '@provide-io/telemetry';
+
+// Rotate to a new OTLP collector endpoint mid-flight.
+reconfigureTelemetry({
+  otlpEndpoint: 'http://collector.new.internal:4318',
+  otlpHeaders: { Authorization: 'Basic ...' },
+});
+
+console.log(getRuntimeConfig().otlpEndpoint);
+// → 'http://collector.new.internal:4318'
+```
+
+Guardrails:
+
+- If OTel providers are already registered (i.e. `registerOtelProviders()`
+  has run) and a provider-changing field differs — `serviceName`,
+  `environment`, `version`, `otelEnabled`, `tracingEnabled`, `metricsEnabled`,
+  any `otlp*Endpoint` / `otlp*Headers` — this call throws
+  `ConfigurationError`. Provider swap requires a process restart to avoid
+  losing buffered exports. For hot-reloadable fields only (sampling,
+  backpressure, exporter resilience, schema strictness, SLO toggles,
+  security limits, PII depth), use `updateRuntimeConfig()` or
+  `reloadRuntimeFromEnv()` instead — they never touch provider wiring.
+
+### AsyncLocalStorage initialisation (ESM gotcha)
+
+Under Node.js the library uses `node:async_hooks.AsyncLocalStorage` to
+isolate propagation context per async task. In CJS builds the store is
+attached synchronously at module load. Under pure ESM (`.mjs` entrypoints,
+`tsx --import`) `require` is undefined, so the library falls back to a
+fire-and-forget `await import('node:async_hooks')` that resolves on the
+next microtask. Callers that bind propagation context inside top-level
+async code before that microtask runs would hit the module-level fallback
+store and leak context between concurrent requests.
+
+`setupTelemetry()` papers over the race: when the init has not yet settled
+it schedules a deferred check that records a `setupError` and logs a
+warning if ALS really is unavailable. For code paths that need a hard
+guarantee (typically: servers that start accepting requests at module
+scope), await the init explicitly before serving traffic:
+
+```typescript
+import {
+  setupTelemetry,
+  awaitPropagationInit,
+  isFallbackMode,
+} from '@provide-io/telemetry';
+
+setupTelemetry({ serviceName: 'my-app' });
+await awaitPropagationInit();
+if (isFallbackMode()) {
+  throw new Error('AsyncLocalStorage unavailable — refusing to serve requests');
+}
+
+// Safe to accept concurrent requests here.
+```
+
+`awaitPropagationInit()` always resolves (it never rejects); inspect
+`isFallbackMode()` / `isPropagationInitDone()` afterwards to branch on the
+outcome.
+
 ## React integration
 
 Requires React 18+ as a peer dependency.
