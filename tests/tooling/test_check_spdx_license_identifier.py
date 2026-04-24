@@ -24,6 +24,16 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _CHECK_PATH = _REPO_ROOT / "scripts" / "check_spdx_headers.py"
 _SPDX_PATH = _REPO_ROOT / "scripts" / "spdx_headers.py"
 
+# `scripts/` is not mirrored into the mutmut `mutants/` source tree, so when
+# this test is collected under the mutation gate's sandbox the check/spdx
+# modules can't be loaded. Skip at module load time so mutmut's pytest stats
+# collection doesn't error on the missing file.
+if not _CHECK_PATH.exists() or not _SPDX_PATH.exists():
+    pytest.skip(
+        "scripts/check_spdx_headers.py not present (mutmut mirror or trimmed checkout)",
+        allow_module_level=True,
+    )
+
 
 def _load(path: Path, name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
