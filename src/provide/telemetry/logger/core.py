@@ -258,12 +258,13 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     global _configured, _active_config
 
     level = _get_level(config.logging.level)
-    handlers = [_BackpressureFanoutHandler(_build_handlers(config, level))]
-    logging.basicConfig(level=level, handlers=handlers, format="%(message)s", force=True)
 
-    # Compute effective level for FilteringBoundLogger: min of default
-    # and all module-level overrides so overridden modules reach the
-    # _LevelFilter processor which evaluates per-module thresholds.
+    # Compute effective level: min of default + every module-level override.
+    # Stdlib's root logger, the handlers, AND structlog's FilteringBoundLogger
+    # must all filter at effective_level, otherwise records promoted via
+    # module_levels are dropped before the _LevelFilter processor can
+    # evaluate them (e.g. global INFO + {"probe.child": "DEBUG"} would drop
+    # the DEBUG record at the stdlib root when only `level` was used here).
     effective_level = level
     for module_level_str in config.logging.module_levels.values():
         module_numeric = _LEVEL_NAME_TO_NUMERIC.get(
@@ -273,6 +274,9 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             module_numeric < effective_level
         ):  # pragma: no mutate — minimum-level fold; strict-less semantics verified by module-level override tests
             effective_level = module_numeric
+
+    handlers = [_BackpressureFanoutHandler(_build_handlers(config, effective_level))]
+    logging.basicConfig(level=effective_level, handlers=handlers, format="%(message)s", force=True)
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
