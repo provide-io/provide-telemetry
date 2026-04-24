@@ -41,7 +41,7 @@ def test_check_fixture_coverage_exits_zero_with_allowlist() -> None:
     assert result.returncode == 0, (
         f"check_fixture_coverage.py exited {result.returncode}:\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}\n"
-        f"Hint: add new gaps to spec/fixture_coverage_allowlist.yaml with reason+owner"
+        f"Hint: add new gaps to spec/fixture_coverage_accepted_gaps.yaml with reason+owner+expires_on"
     )
 
 
@@ -90,7 +90,8 @@ def test_check_fixture_coverage_python_all_covered() -> None:
     module = _load_module()
     fixtures_path = _REPO_ROOT / "spec" / "behavioral_fixtures.yaml"
 
-    coverage = module.run_report(fixtures_path, module._LANGUAGE_FILES)
+    language_files = module._discover_language_files(module._REPO_ROOT, module._LANGUAGE_GLOBS, module._LANGUAGE_EXTRAS)
+    coverage = module.run_report(fixtures_path, language_files)
 
     assert "python" in coverage, "Python should be in the coverage matrix"
     uncovered = [cat for cat, ok in coverage["python"].items() if not ok]
@@ -153,37 +154,43 @@ def test_run_report_missing_file_treated_as_empty(tmp_path: Path) -> None:
         assert coverage["phantom"][cat] is False, f"Expected {cat} to be uncovered for phantom language"
 
 
-def test_load_allowlist_returns_expected_pairs(tmp_path: Path) -> None:
-    """_load_allowlist should parse all (lang, category) pairs from YAML."""
+def test_load_accepted_gaps_returns_expected_pairs(tmp_path: Path) -> None:
+    """_load_accepted_gaps should parse all (lang, category) pairs from YAML."""
     module = _load_module()
-    al = tmp_path / "allowlist.yaml"
-    al.write_text(
-        "allowlist:\n"
+    gaps = tmp_path / "accepted_gaps.yaml"
+    gaps.write_text(
+        "accepted_gaps:\n"
         "  - lang: rust\n"
         "    category: config_headers\n"
         "    reason: pending\n"
         "    owner: provide-io\n"
+        "    expires_on: 2099-01-01\n"
         "  - lang: typescript\n"
         "    category: health_snapshot\n"
         "    reason: pending\n"
-        "    owner: provide-io\n",
+        "    owner: provide-io\n"
+        "    expires_on: 2099-01-01\n",
         encoding="utf-8",
     )
-    pairs = module._load_allowlist(al)
+    pairs, entries, errors = module._load_accepted_gaps(gaps)
+    assert errors == []
+    assert len(entries) == 2
     assert ("rust", "config_headers") in pairs
     assert ("typescript", "health_snapshot") in pairs
     assert ("go", "config_headers") not in pairs
 
 
-def test_load_allowlist_returns_empty_when_missing(tmp_path: Path) -> None:
-    """_load_allowlist should return empty set when file does not exist."""
+def test_load_accepted_gaps_returns_empty_when_missing(tmp_path: Path) -> None:
+    """_load_accepted_gaps should return empty set/entries when file does not exist."""
     module = _load_module()
-    pairs = module._load_allowlist(tmp_path / "nonexistent.yaml")
+    pairs, entries, errors = module._load_accepted_gaps(tmp_path / "nonexistent.yaml")
     assert pairs == set()
+    assert entries == []
+    assert errors == []
 
 
-def test_unallowlisted_gap_causes_nonzero_exit(tmp_path: Path) -> None:
-    """main() should return non-zero when a gap is not in the allowlist."""
+def test_unaccepted_gap_causes_nonzero_exit(tmp_path: Path) -> None:
+    """main() should return non-zero when a gap is not accepted."""
 
     module = _load_module()
 
@@ -194,18 +201,14 @@ def test_unallowlisted_gap_causes_nonzero_exit(tmp_path: Path) -> None:
     # Use a language file that doesn't mention it
     lang_files: dict[str, list[Path]] = {"go": [tmp_path / "nonexistent.go"]}
 
-    # Patch _load_allowlist to return nothing
-    import types
-
-    patched_module = types.ModuleType("check_fixture_coverage_patched")
-    patched_module.__dict__.update(module.__dict__)
-
     coverage = module.run_report(fixtures, lang_files)
     assert coverage["go"]["totally_new_category"] is False
 
-    # Simulate main with empty allowlist by calling _load_allowlist on a missing file
-    allowlist = module._load_allowlist(tmp_path / "empty_allowlist.yaml")
-    assert len(allowlist) == 0
+    # Simulate an empty accepted-gaps file
+    pairs, entries, errors = module._load_accepted_gaps(tmp_path / "empty.yaml")
+    assert pairs == set()
+    assert entries == []
+    assert errors == []
 
-    # Confirm the gap is not in the allowlist
-    assert ("go", "totally_new_category") not in allowlist
+    # Confirm the gap is not accepted
+    assert ("go", "totally_new_category") not in pairs

@@ -5,9 +5,9 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
-	"log/slog"
 )
 
 func TestNewCounterNonNil(t *testing.T) {

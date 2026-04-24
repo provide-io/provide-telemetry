@@ -9,17 +9,31 @@
 VERSION file contains "MAJOR.MINOR" (e.g. "0.3").
 Each language package version must start with that prefix.
 
+Required modules (see REQUIRED_MODULES) MUST be present — a missing or
+unreadable source is an ERROR that causes exit 1 regardless of mode.
+
+Optional modules (see OPTIONAL_MODULES) are polyglot submodules that may
+legitimately be absent in a trimmed-down checkout (e.g. `go/internal/VERSION`
+is not always present). When missing, these emit a warning on stderr and do
+NOT fail the check by default. Pass `--strict` to upgrade optional-missing
+warnings into errors.
+
 Usage:
     python scripts/check_version_sync.py
+    python scripts/check_version_sync.py --strict
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_VersionReader = Callable[[], "str | None"]
 
 
 def _read_version_file() -> str:
@@ -45,7 +59,8 @@ def _typescript_package_version() -> str | None:
     if not pkg.exists():
         return None
     data = json.loads(pkg.read_text(encoding="utf-8"))
-    return data.get("version")
+    version = data.get("version")
+    return version if isinstance(version, str) else None
 
 
 def _typescript_runtime_version() -> str | None:
@@ -162,41 +177,86 @@ def _rust_version() -> str | None:
     return match.group(1) if match else None
 
 
-_LANG_READERS = {
+# Modules that MUST be present in any valid polyglot checkout. A missing or
+# unreadable source for one of these is an ERROR and forces exit 1.
+REQUIRED_MODULES: dict[str, _VersionReader] = {
     "python": _python_version,
     "typescript/package": _typescript_package_version,
+    "go": _go_version,
+    "rust": _rust_version,
+}
+
+# Modules that may legitimately be absent in trimmed-down checkouts
+# (e.g. polyglot submodules still migrating to dedicated VERSION files).
+# Missing optional modules emit a warning on stderr (exit 0) by default,
+# or become errors when --strict is passed.
+OPTIONAL_MODULES: dict[str, _VersionReader] = {
     "typescript/runtime": _typescript_runtime_version,
     "typescript/lockfile": _typescript_lockfile_version,
-    "go": _go_version,
     "go/internal": _go_internal_version,
     "go/logger": _go_logger_version,
     "go/tracer": _go_tracer_version,
     "go/otel": _go_otel_version,
-    "rust": _rust_version,
 }
 
 
-def main() -> int:
-    """Check version sync. Returns 0 on success, 1 on mismatch."""
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Check cross-language version sync.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat missing optional modules as errors (exit 1).",
+    )
+    return parser
+
+
+def _check_modules(
+    canonical: str,
+    modules: dict[str, _VersionReader],
+    *,
+    required: bool,
+    strict: bool,
+    errors: list[str],
+) -> None:
+    """Compare each module's version against canonical major.minor."""
+    for lang, reader in modules.items():
+        version = reader()
+        if version is None:
+            if required:
+                print(f"  {lang}: MISSING — required module has no readable version", file=sys.stderr)
+                errors.append(f"{lang} is required but could not be read")
+            elif strict:
+                print(f"  {lang}: MISSING — optional module absent (strict mode)", file=sys.stderr)
+                errors.append(f"{lang} optional module is absent under --strict")
+            else:
+                print(f"  {lang}: not present (optional — skipped)", file=sys.stderr)
+            continue
+        parts = version.split(".")
+        lang_major_minor = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
+        if lang_major_minor == canonical:
+            print(f"  {lang}: {version} — OK")
+        else:
+            print(f"  {lang}: {version} — MISMATCH (expected {canonical}.*)")
+            errors.append(f"{lang} version {version} does not match {canonical}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Check version sync. Returns 0 on success, 1 on mismatch/missing-required."""
+    args = _build_parser().parse_args(argv)
+
+    version_file = _REPO_ROOT / "VERSION"
+    if not version_file.exists():
+        print(f"ERROR: required VERSION file missing at {version_file}", file=sys.stderr)
+        return 1
+
     canonical_raw = _read_version_file()
     canonical_parts = canonical_raw.split(".")
     canonical = f"{canonical_parts[0]}.{canonical_parts[1]}" if len(canonical_parts) >= 2 else canonical_raw
     print(f"VERSION file: {canonical_raw} (major.minor: {canonical})")
 
     errors: list[str] = []
-    for lang, reader in _LANG_READERS.items():
-        version = reader()
-        if version is None:
-            print(f"  {lang}: not present (skipped)")
-            continue
-        parts = version.split(".")
-        lang_major_minor = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
-
-        if lang_major_minor == canonical:
-            print(f"  {lang}: {version} — OK")
-        else:
-            print(f"  {lang}: {version} — MISMATCH (expected {canonical}.*)")
-            errors.append(f"{lang} version {version} does not match {canonical}")
+    _check_modules(canonical, REQUIRED_MODULES, required=True, strict=args.strict, errors=errors)
+    _check_modules(canonical, OPTIONAL_MODULES, required=False, strict=args.strict, errors=errors)
 
     ts_package = _typescript_package_version()
     ts_runtime = _typescript_runtime_version()
@@ -279,7 +339,7 @@ def main() -> int:
         )
 
     if errors:
-        print(f"\nFAILED — {len(errors)} version mismatches.")
+        print(f"\nFAILED — {len(errors)} version mismatches/errors.")
         return 1
 
     print("\nPASSED — all present languages match VERSION.")

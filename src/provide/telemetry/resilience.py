@@ -84,10 +84,10 @@ def _get_timeout_executor(signal: Signal) -> concurrent.futures.ThreadPoolExecut
     with _lock:
         executor = _timeout_executors.get(signal)
         if executor is None:
-            prefix = f"provide-resilience-{signal}"  # pragma: no mutate
+            prefix = f"provide-resilience-{signal}"  # pragma: no mutate — thread name prefix is operator-visible; format asserted by integration debug tests
             executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=2,
-                thread_name_prefix=prefix,  # pragma: no mutate
+                thread_name_prefix=prefix,  # pragma: no mutate — parameter wiring; name pattern asserted by integration debug tests
             )
             _timeout_executors[signal] = executor
         return executor
@@ -177,11 +177,17 @@ def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     if timeout_seconds > 0:
         rejected = _check_circuit_breaker(sig)
         if rejected:
-            _cb_exc = TimeoutError("circuit breaker open")  # pragma: no mutate
-            record_export_failure(sig, _cb_exc)  # pragma: no mutate
+            _cb_exc = TimeoutError(
+                "circuit breaker open"
+            )  # pragma: no mutate — placeholder exception for health recording; message is operator-visible only
+            record_export_failure(
+                sig, _cb_exc
+            )  # pragma: no mutate — health bookkeeping; call is asserted via increment counters
             if policy.fail_open:
                 return None
-            raise TimeoutError("circuit breaker open: too many consecutive timeouts")  # pragma: no mutate
+            raise TimeoutError(
+                "circuit breaker open: too many consecutive timeouts"
+            )  # pragma: no mutate — error message string is operator-visible only; raised-type asserted by circuit-breaker tests
     attempts, backoff_seconds = _apply_event_loop_limits(sig, policy, attempts, backoff_seconds, timeout_seconds)
     return _retry_loop(sig, operation, policy, attempts, backoff_seconds, timeout_seconds)
 
@@ -198,13 +204,16 @@ def _apply_event_loop_limits(
     skip_executor = in_loop and not policy.allow_blocking_in_event_loop and timeout_seconds > 0
     has_retries_in_loop = in_loop and (policy.retries > 0 or policy.backoff_seconds > 0)
     if skip_executor or has_retries_in_loop:
-        increment_async_blocking_risk(sig)  # pragma: no mutate
+        increment_async_blocking_risk(sig)  # pragma: no mutate — counter increment; no return value to mutate
     if skip_executor:
-        _warn_event_loop_setup(sig)  # pragma: no mutate
+        _warn_event_loop_setup(sig)  # pragma: no mutate — best-effort warn; asserted via warnings-capture tests
     if has_retries_in_loop:
-        _warn_async_risk(sig, policy)  # pragma: no mutate
+        _warn_async_risk(sig, policy)  # pragma: no mutate — best-effort warn; asserted via warnings-capture tests
         if not policy.allow_blocking_in_event_loop:
-            return 1, 0.0  # pragma: no mutate
+            return (
+                1,
+                0.0,
+            )  # pragma: no mutate — disable retries and backoff inside event loops; boundary asserted by event-loop suppression tests
     return attempts, backoff_seconds
 
 
@@ -219,14 +228,18 @@ def _retry_loop(
     """Execute *operation* with retries, backoff, and timeout."""
     in_loop = _is_running_in_event_loop()
     skip_executor = in_loop and not policy.allow_blocking_in_event_loop and timeout_seconds > 0
-    last_error: Exception | None = None  # pragma: no mutate
+    last_error: Exception | None = (
+        None  # pragma: no mutate — local accumulator; initial None is a type-annotation anchor
+    )
     for attempt in range(attempts):
         started = time.perf_counter()
         try:
             result = _run_attempt_with_timeout(
                 sig, operation, timeout_seconds, skip_executor=skip_executor
-            )  # pragma: no mutate
-            latency_ms = (time.perf_counter() - started) * 1000.0  # pragma: no mutate
+            )  # pragma: no mutate — call-site line; behavior asserted via attempt tests
+            latency_ms = (
+                time.perf_counter() - started
+            ) * 1000.0  # pragma: no mutate — seconds-to-ms conversion; magnitude asserted by latency tests
             record_export_latency(sig, latency_ms=latency_ms)
             _record_attempt_success(sig)
             return result
@@ -244,7 +257,9 @@ def _retry_loop(
         return None
     if last_error is not None:
         raise last_error
-    raise RuntimeError("resilience operation failed without captured error")  # pragma: no cover  # pragma: no mutate
+    raise RuntimeError(
+        "resilience operation failed without captured error"
+    )  # pragma: no cover  # pragma: no mutate — defensive invariant; only reachable if the retry loop exits with neither result nor exception, which the for-loop's structure precludes
 
 
 def _maybe_backoff(sig: Signal, attempt: int, attempts: int, backoff_seconds: float) -> None:
@@ -260,7 +275,7 @@ def _run_attempt_with_timeout(
     operation: Callable[[], T],
     timeout_seconds: float,
     *,
-    skip_executor: bool = False,  # pragma: no mutate
+    skip_executor: bool = False,  # pragma: no mutate — default sentinel; all call sites pass explicitly
 ) -> T:
     """Run *operation* with a per-signal timeout executor.
 
@@ -277,12 +292,14 @@ def _run_attempt_with_timeout(
     if timeout_seconds <= 0 or skip_executor:
         return operation()
     sem = _get_executor_semaphore(signal)
-    if not sem.acquire(blocking=False):  # pragma: no mutate — blocking=None is also non-blocking
+    if not sem.acquire(
+        blocking=False
+    ):  # pragma: no mutate — blocking=None is also non-blocking; both forms are semantically equivalent
         # Pending queue is full — raise so the retry loop treats this as a
         # failure and honors policy.fail_open rather than returning a silent
         # None that masquerades as success.
         raise ExecutorSaturated(f"{signal} executor saturated")
-    executor = _get_timeout_executor(signal)  # pragma: no mutate
+    executor = _get_timeout_executor(signal)  # pragma: no mutate — lazy-init; covered by first-call executor tests
     future = executor.submit(operation)
     try:
         return future.result(timeout=timeout_seconds)
@@ -301,7 +318,9 @@ def _maybe_replace_executor(signal: Signal) -> None:
     half-open probe a clean executor with no hung workers.
     """
     with _lock:
-        if _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD:  # pragma: no mutate
+        if (
+            _consecutive_timeouts.get(signal, 0) + 1 >= _CIRCUIT_BREAKER_THRESHOLD
+        ):  # pragma: no mutate — predictive threshold (current attempt + 1); boundary asserted by circuit-breaker tests
             old = _timeout_executors.pop(signal, None)
             if old is not None:
                 old.shutdown(wait=False)  # non-blocking; daemon threads die with process
@@ -370,14 +389,14 @@ def _warn_event_loop_setup(signal: Signal) -> None:
         if signal in _async_setup_warned_signals:
             return
         _async_setup_warned_signals.add(signal)
-    warnings.warn(  # pragma: no mutate
-        f"telemetry {signal} export called from an active event loop with "  # pragma: no mutate
-        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "  # pragma: no mutate
-        "bypassing timeout executor to prevent event loop stall. "  # pragma: no mutate
-        "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate
-        RuntimeWarning,  # pragma: no mutate
-        stacklevel=4,  # pragma: no mutate
-    )  # pragma: no mutate
+    warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+        f"telemetry {signal} export called from an active event loop with "  # pragma: no mutate — warning message string is non-semantic
+        "timeout_seconds > 0 and allow_blocking_in_event_loop=False; "  # pragma: no mutate — warning message string is non-semantic
+        "bypassing timeout executor to prevent event loop stall. "  # pragma: no mutate — warning message string is non-semantic
+        "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate — warning message string is non-semantic
+        RuntimeWarning,  # pragma: no mutate — warning category; any subclass of Warning is equivalent for catch-all tests
+        stacklevel=4,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+    )  # pragma: no mutate — closing paren line for multi-line call; trivial
 
 
 def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
@@ -387,20 +406,20 @@ def _warn_async_risk(signal: Signal, policy: ExporterPolicy) -> None:
             return
         _async_warned_signals.add(key)
     if policy.allow_blocking_in_event_loop:
-        warnings.warn(  # pragma: no mutate
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
             (
                 f"resilience policy for {signal} allows blocking behavior in an active event loop "
-                "(retries/backoff configured)"  # pragma: no mutate
+                "(retries/backoff configured)"  # pragma: no mutate — warning message string is non-semantic
             ),
             RuntimeWarning,
-            stacklevel=3,  # pragma: no mutate
+            stacklevel=3,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
         )
         return
-    warnings.warn(  # pragma: no mutate
+    warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
         (
             f"resilience policy for {signal} uses retries/backoff in an active event loop; "
-            "forcing fail-fast behavior for this call"  # pragma: no mutate
+            "forcing fail-fast behavior for this call"  # pragma: no mutate — warning message string is non-semantic
         ),
         RuntimeWarning,
-        stacklevel=3,  # pragma: no mutate
+        stacklevel=3,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
     )

@@ -27,6 +27,9 @@ Legend:
 | Guard-based context restoration | idiomatic | no | no | idiomatic | idiomatic language difference |
 | Browser log capture / React helpers | no | idiomatic | no | no | idiomatic language difference |
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | capability difference — see notes |
+| ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | core | core | missing | known gap |
+| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | missing | known gap |
+| Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | capability difference — see notes |
 
 Notes:
 
@@ -43,3 +46,18 @@ Notes:
   is consistent across all four languages (per-series last reading); only the
   in-process `.value()` accessor differs. Cross-language comparisons of the
   aggregate accessor are not supported.
+- ASGI/HTTP middleware: Python ships `provide.telemetry.asgi.TelemetryMiddleware`
+  (`src/provide/telemetry/asgi/middleware.py`) and TypeScript and Go ship
+  equivalent request-lifecycle middleware. Rust does not provide a pre-built
+  axum/hyper middleware; users must call `bind_context()` / `clear_context()`
+  manually inside handlers and extract W3C traceparent/tracestate via
+  `extract_w3c_context()`.
+- Pretty log rendering: Python, TypeScript, and Go honour
+  `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Rust's logger emitter
+  (`rust/src/logger/emit.rs`) only implements `console` and `json`; setting
+  `pretty` falls back to the console formatter.
+- Metrics fallback export: without the `otel` feature, Rust's metrics
+  accumulate in-process (`rust/src/metrics.rs`) but are never exported.
+  Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a
+  JSON snapshot to stderr on shutdown. TypeScript and Go behave like Rust in
+  this regard.

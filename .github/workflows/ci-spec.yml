@@ -59,7 +59,7 @@ jobs:
         with:
           python-version: "3.11"
       # Fails if any fixture category is missing from a language's parity tests
-      # without a corresponding entry in spec/fixture_coverage_allowlist.yaml.
+      # without a corresponding entry in spec/fixture_coverage_accepted_gaps.yaml.
       - name: Fixture coverage gate
         run: uv run python spec/check_fixture_coverage.py
 

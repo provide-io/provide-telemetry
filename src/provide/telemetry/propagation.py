@@ -61,10 +61,14 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     if version.lower() == "ff":
         return (None, None)
     try:
-        int(version, 16)  # pragma: no mutate
-        int(trace_id, 16)  # pragma: no mutate
-        int(span_id, 16)  # pragma: no mutate
-        int(trace_flags, 16)  # pragma: no mutate
+        int(version, 16)  # pragma: no mutate — hex-format validation; ValueError captured below covers invalid-hex path
+        int(
+            trace_id, 16
+        )  # pragma: no mutate — hex-format validation; ValueError captured below covers invalid-hex path
+        int(span_id, 16)  # pragma: no mutate — hex-format validation; ValueError captured below covers invalid-hex path
+        int(
+            trace_flags, 16
+        )  # pragma: no mutate — hex-format validation; ValueError captured below covers invalid-hex path
     except ValueError:
         return (None, None)
     return (trace_id.lower(), span_id.lower())
@@ -74,8 +78,12 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:  # pragma: no mutate
-        raw_traceparent = None  # pragma: no mutate
+    if (
+        raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH
+    ):  # pragma: no mutate — oversize guard; ReDoS protection branch exercised by oversized-header tests
+        raw_traceparent = (
+            None  # pragma: no mutate — nullify oversized traceparent; downstream treats None as "no context"
+        )
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
@@ -83,7 +91,9 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
         baggage = None
     trace_id, span_id = _parse_traceparent(raw_traceparent)
-    traceparent = raw_traceparent if trace_id is not None and span_id is not None else None  # pragma: no mutate
+    traceparent = (
+        raw_traceparent if trace_id is not None and span_id is not None else None
+    )  # pragma: no mutate — only keep original header when both IDs parsed; equivalent mutations fold to identical result
     return PropagationContext(
         traceparent=traceparent,
         tracestate=tracestate,
@@ -102,7 +112,11 @@ def parse_baggage(raw: str) -> dict[str, str]:
     """
     result: dict[str, str] = {}
     for member in raw.split(","):
-        kv = member.split(";", 1)[0]  # strip properties  # pragma: no mutate
+        kv = member.split(
+            ";", 1
+        )[
+            0
+        ]  # strip properties  # pragma: no mutate — maxsplit=1 picks the first field before ';'; equivalent to -1 for our single-property strip
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")
@@ -176,7 +190,7 @@ def clear_propagation_context() -> None:
             "baggage": _MISSING,
             "trace_id": None,
             "span_id": None,
-            "otel_token": None,  # pragma: no mutate
+            "otel_token": None,  # pragma: no mutate — default sentinel for the unbalanced-clear path; semantically equivalent to any falsy marker
         }
     # Detach only the OTel token introduced by this specific bind frame.
     detach_w3c_context(previous.get("otel_token"))
@@ -190,9 +204,13 @@ def clear_propagation_context() -> None:
     # the same baggage.* key, restore its value from `_baggage_prior` instead
     # of unbinding (fix from 7623d8d). Iterating the key tuple by index avoids
     # the per-iter tuple allocation that `.items()` pays on the hot path.
-    raw_keys = previous.get("_baggage_keys", ())  # pragma: no mutate
+    raw_keys = previous.get(
+        "_baggage_keys", ()
+    )  # pragma: no mutate — empty-tuple default; for-loop below is a no-op when absent
     keys_seq: tuple[str, ...] = raw_keys if isinstance(raw_keys, tuple) else ()  # ty: ignore[invalid-assignment]
-    raw_prior = previous.get("_baggage_prior", {})  # pragma: no mutate
+    raw_prior = previous.get(
+        "_baggage_prior", {}
+    )  # pragma: no mutate — empty-dict default; membership check below is a no-op when absent
     prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}  # ty: ignore[invalid-assignment]
     for bkey in keys_seq:
         if bkey in prior_map:
@@ -202,6 +220,10 @@ def clear_propagation_context() -> None:
     prev_trace_id = previous["trace_id"]
     prev_span_id = previous["span_id"]
     set_trace_context(
-        prev_trace_id if isinstance(prev_trace_id, str) or prev_trace_id is None else None,  # pragma: no mutate
-        prev_span_id if isinstance(prev_span_id, str) or prev_span_id is None else None,  # pragma: no mutate
+        prev_trace_id
+        if isinstance(prev_trace_id, str) or prev_trace_id is None
+        else None,  # pragma: no mutate — type-narrowing ternary; defensive None fallback is only hit under object-corruption tests
+        prev_span_id
+        if isinstance(prev_span_id, str) or prev_span_id is None
+        else None,  # pragma: no mutate — type-narrowing ternary; defensive None fallback is only hit under object-corruption tests
     )

@@ -50,7 +50,9 @@ def _validate_signal(signal: Signal) -> Signal:
 def _normalize_rate(rate: float) -> float:
     clamped = max(0.0, min(1.0, rate))
     if clamped != rate:
-        _logger.warning("sampling.rate.clamped.warning")  # pragma: no mutate
+        _logger.warning(
+            "sampling.rate.clamped.warning"
+        )  # pragma: no mutate — warning log string is non-semantic; clamp behavior asserted by rate-bounds tests
     return clamped
 
 
@@ -78,17 +80,26 @@ def should_sample(signal: Signal, key: str | None = None) -> bool:
 
 def _should_sample_unchecked(sig: Signal, key: str | None = None) -> bool:
     """Hot-path sampling check — caller must pass a validated signal."""
-    # No lock needed: CPython's GIL makes dict reads atomic, and
-    # SamplingPolicy is a frozen dataclass (immutable after creation).
-    policy = _policies[sig]
+    # Snapshot the policy under the lock so the read is correct under
+    # free-threaded CPython (3.13+ `--disable-gil`), where dict reads are
+    # no longer implicitly atomic.  SamplingPolicy is a frozen dataclass, so
+    # once we have the reference the rest of the hot path is safe and fast.
+    with _lock:
+        policy = _policies.get(sig)
+    if policy is None:  # pragma: no cover — _validate_signal guards this path
+        return True
     rate = policy.default_rate
     if key is not None and key in policy.overrides:
         rate = policy.overrides[key]
     # Fast path: rates stored via set_sampling_policy are already normalized,
     # so skip _normalize_rate and test the common 1.0/0.0 cases first.
-    if rate >= 1.0:  # pragma: no mutate
+    if (
+        rate >= 1.0
+    ):  # pragma: no mutate — boundary fast-path; ">1.0" is normalised upstream so >= and > are equivalent here
         return True
-    if rate <= 0.0:  # pragma: no mutate
+    if (
+        rate <= 0.0
+    ):  # pragma: no mutate — boundary fast-path; "<0.0" is normalised upstream so <= and < are equivalent here
         increment_dropped(sig)
         return False
     keep = random.random() < rate  # noqa: S311 - non-crypto telemetry sampling.

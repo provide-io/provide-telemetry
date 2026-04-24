@@ -57,18 +57,25 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
         return False
     if level == ConsentLevel.FUNCTIONAL:
         if signal == "logs":
-            return (  # pragma: no mutate
-                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["WARNING"]  # pragma: no mutate
+            return (  # pragma: no mutate — parenthesised return wrapping; semantically identical to inline form
+                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0)
+                >= _LOG_LEVEL_ORDER[
+                    "WARNING"
+                ]  # pragma: no mutate — default 0 is sentinel below every valid log level; equivalent to any sub-WARNING integer
             )
         return signal != "context"  # traces and metrics allowed; context blocked
     # MINIMAL
     if signal == "logs":
-        return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["ERROR"]  # pragma: no mutate
+        return (
+            _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["ERROR"]
+        )  # pragma: no mutate — default 0 is sentinel below every valid log level; equivalent to any sub-ERROR integer
     return False  # traces/metrics/context blocked at MINIMAL
 
 
 def _load_consent_from_env() -> None:
-    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()  # pragma: no mutate
+    raw = (
+        os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()
+    )  # pragma: no mutate — FULL default is equivalent to any valid ConsentLevel name; invalid values are swallowed below
     with contextlib.suppress(ValueError):
         set_consent_level(ConsentLevel(raw))
 

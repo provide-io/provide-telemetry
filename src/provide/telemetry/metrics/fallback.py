@@ -199,8 +199,12 @@ class Histogram:
         self._lock = threading.Lock()
         self.count: int = 0
         self.total: float = 0.0
-        self.min: float = float("inf")  # pragma: no mutate
-        self.max: float = float("-inf")  # pragma: no mutate
+        self.min: float = float(
+            "inf"
+        )  # pragma: no mutate — +inf sentinel so first record() always updates via < comparison
+        self.max: float = float(
+            "-inf"
+        )  # pragma: no mutate — -inf sentinel so first record() always updates via > comparison
 
     def _resolve_otel(self) -> Any | None:
         if self._resolved:
@@ -242,9 +246,13 @@ class Histogram:
             with self._lock:
                 self.count += 1
                 self.total += value
-                if value < self.min:  # pragma: no mutate
+                if (
+                    value < self.min
+                ):  # pragma: no mutate — strict < ensures monotone min tracking; equivalent under any boundary value given inf sentinel
                     self.min = value
-                if value > self.max:  # pragma: no mutate
+                if (
+                    value > self.max
+                ):  # pragma: no mutate — strict > ensures monotone max tracking; equivalent under any boundary value given -inf sentinel
                     self.max = value
             increment_emitted("metrics")
             otel_histogram = self._resolve_otel()

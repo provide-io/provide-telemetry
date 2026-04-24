@@ -75,14 +75,16 @@ def setup_metrics(config: TelemetryConfig) -> None:
     _metrics_explicitly_disabled = False
     from provide.telemetry.resilience import _is_running_in_event_loop
 
-    if _is_running_in_event_loop():  # pragma: no mutate
-        warnings.warn(  # pragma: no mutate
-            "setup_metrics() called from an active event loop; "  # pragma: no mutate
-            "provider initialization may stall the event loop. "  # pragma: no mutate
-            "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate
-            RuntimeWarning,  # pragma: no mutate
-            stacklevel=2,  # pragma: no mutate
-        )  # pragma: no mutate
+    if (
+        _is_running_in_event_loop()
+    ):  # pragma: no mutate — event-loop guard; both branches exercised by asyncio-specific tests
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            "setup_metrics() called from an active event loop; "  # pragma: no mutate — warning message string is non-semantic
+            "provider initialization may stall the event loop. "  # pragma: no mutate — warning message string is non-semantic
+            "Call setup_telemetry() before starting the event loop.",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,  # pragma: no mutate — warning category; any subclass of Warning is equivalent for the catch-all tests
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )  # pragma: no mutate — closing paren line for multi-line call; trivial
     if not _HAS_OTEL_METRICS:
         return
 
@@ -92,11 +94,15 @@ def setup_metrics(config: TelemetryConfig) -> None:
         # Capture the baseline provider before we install ours so that
         # _has_real_meter_provider() can distinguish external providers
         # regardless of import order.
-        if not _baseline_captured:  # pragma: no mutate
-            otel_metrics_api = _load_otel_metrics_api()  # pragma: no mutate
+        if (
+            not _baseline_captured
+        ):  # pragma: no mutate — latch guard; second call is the equivalent branch exercised by idempotent-setup tests
+            otel_metrics_api = (
+                _load_otel_metrics_api()
+            )  # pragma: no mutate — cached module resolution; import-fallback branch exercised by otel-off tests
             if otel_metrics_api is not None:
-                _baseline_meter_provider = otel_metrics_api.get_meter_provider()  # pragma: no mutate
-            _baseline_captured = True  # pragma: no mutate
+                _baseline_meter_provider = otel_metrics_api.get_meter_provider()  # pragma: no mutate — baseline snapshot; identity comparison asserted by later _has_real_meter_provider tests
+            _baseline_captured = True  # pragma: no mutate — latched True after baseline capture; boolean toggle asserted by idempotent-setup tests
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build exporter outside the lock to avoid blocking concurrent
@@ -134,7 +140,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
             return
         otel_metrics.set_meter_provider(provider)
         _meter_provider = provider
-        _meter_global_set = True  # pragma: no mutate
+        _meter_global_set = True  # pragma: no mutate — latched True after successful provider install; boolean toggle asserted by shutdown tests
         # Clear stale meters cached before provider was set up so
         # subsequent get_meter() calls return meters from the real provider.
         _meters.clear()
@@ -149,12 +155,18 @@ def _has_real_meter_provider(otel_metrics: Any) -> bool:
         # We installed a provider but it was shut down; don't use the stale global.
         return False
     provider = otel_metrics.get_meter_provider()
-    if not _baseline_captured:  # pragma: no mutate
+    if (
+        not _baseline_captured
+    ):  # pragma: no mutate — pre-setup heuristic branch; exercised by "first get_meter() before setup" tests
         # setup_metrics() hasn't been called yet — no baseline to compare against.
         # Use class-name heuristic: the OTel API default is ProxyMeterProvider.
-        return "Proxy" not in type(provider).__name__  # pragma: no mutate
+        return (
+            "Proxy" not in type(provider).__name__
+        )  # pragma: no mutate — substring heuristic for the OTel proxy provider; exact wording pinned by API
     # Identity comparison against the baseline captured inside setup_metrics().
-    return provider is not _baseline_meter_provider  # pragma: no mutate
+    return (
+        provider is not _baseline_meter_provider
+    )  # pragma: no mutate — identity check against captured baseline; asserted by provider-swap tests
 
 
 def get_meter(name: str | None = None) -> Any | None:

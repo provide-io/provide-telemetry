@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"sync/atomic"
 
 	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
@@ -35,7 +36,39 @@ var (
 	_policyHook         func(label string) string
 	_receiptHook        func(fieldPath string, action string, originalValue any)
 	_customSecretPats   map[string]*regexp.Regexp
+	// _customSecretPatsCache holds an immutable snapshot of _customSecretPats
+	// so hot-path readers (message-body secret scrubbing inside the logger
+	// handler chain) can load the current pattern map with a single atomic
+	// operation — no RLock, no map copy. The snapshot is swapped whenever
+	// _customSecretPats is mutated (RegisterSecretPattern / _resetSecretPatterns).
+	_customSecretPatsCache atomic.Pointer[map[string]*regexp.Regexp]
 )
+
+// _publishCustomSecretPatsSnapshot installs an immutable snapshot of the
+// current _customSecretPats map into _customSecretPatsCache. Caller MUST hold
+// _piiMu for writing (so the snapshot matches the authoritative map).
+func _publishCustomSecretPatsSnapshot() {
+	if len(_customSecretPats) == 0 {
+		_customSecretPatsCache.Store(nil)
+		return
+	}
+	snapshot := make(map[string]*regexp.Regexp, len(_customSecretPats))
+	for name, re := range _customSecretPats {
+		snapshot[name] = re
+	}
+	_customSecretPatsCache.Store(&snapshot)
+}
+
+// _loadCustomSecretPatsSnapshot returns the latest published snapshot, or nil
+// if no custom patterns are registered. The returned map must be treated as
+// read-only — mutating it would corrupt the snapshot shared across goroutines.
+func _loadCustomSecretPatsSnapshot() map[string]*regexp.Regexp {
+	p := _customSecretPatsCache.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
+}
 
 // RegisterSecretPattern registers a custom secret detection pattern.
 // If a pattern with the same name already exists, it is replaced.
@@ -47,6 +80,9 @@ func RegisterSecretPattern(name string, pattern *regexp.Regexp) {
 		_customSecretPats = make(map[string]*regexp.Regexp) // pragma: allowlist secret
 	}
 	_customSecretPats[name] = pattern
+	// Publish a fresh snapshot so concurrent hot-path readers see the new
+	// pattern without taking the RWMutex or reallocating on every record.
+	_publishCustomSecretPatsSnapshot()
 }
 
 // GetSecretPatterns returns all secret patterns (built-in + custom).
@@ -69,6 +105,7 @@ func _resetSecretPatterns() {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	_customSecretPats = nil // pragma: allowlist secret
+	_publishCustomSecretPatsSnapshot()
 }
 
 // SetClassificationHook registers a classification callback on the PII engine.

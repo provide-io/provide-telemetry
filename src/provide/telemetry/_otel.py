@@ -40,7 +40,9 @@ def has_otel() -> bool:
         _import_module("opentelemetry")
         return True
     except ImportError:
-        _logger.debug("otel.import.not_installed")  # pragma: no mutate
+        _logger.debug(
+            "otel.import.not_installed"
+        )  # pragma: no mutate — debug log message is non-semantic; behavior lives in the return below
         return False
 
 
@@ -52,7 +54,9 @@ def load_otel_trace_api() -> Any | None:
     try:
         return _import_module("opentelemetry.trace")
     except ImportError:
-        _logger.debug("otel.trace.import_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.trace.import_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
 
 
@@ -69,7 +73,9 @@ def load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
             otlp_mod.OTLPSpanExporter,
         )
     except ImportError:
-        _logger.debug("otel.trace.sdk_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.trace.sdk_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
 
 
@@ -77,7 +83,9 @@ def load_otel_metrics_api() -> Any | None:
     try:
         return _import_module("opentelemetry.metrics")
     except ImportError:
-        _logger.debug("otel.metrics.import_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.metrics.import_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
 
 
@@ -94,7 +102,9 @@ def load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
             otlp_mod.OTLPMetricExporter,
         )
     except ImportError:
-        _logger.debug("otel.metrics.sdk_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.metrics.sdk_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
 
 
@@ -113,7 +123,9 @@ def load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
             otlp_logs_mod.OTLPLogExporter,
         )
     except ImportError:
-        _logger.debug("otel.logs.sdk_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.logs.sdk_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
 
 
@@ -123,7 +135,9 @@ def attach_w3c_context(traceparent: str, tracestate: str | None) -> object | Non
         propagator_mod = _import_module("opentelemetry.trace.propagation.tracecontext")
         context_mod = _import_module("opentelemetry.context")
     except ImportError:
-        _logger.debug("otel.propagation.attach_skipped")  # pragma: no mutate
+        _logger.debug(
+            "otel.propagation.attach_skipped"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
     carrier: dict[str, str] = {"traceparent": traceparent}
     if tracestate is not None:
@@ -141,7 +155,9 @@ def detach_w3c_context(token: object | None) -> None:
     try:
         context_mod = _import_module("opentelemetry.context")
     except ImportError:
-        _logger.debug("otel.propagation.detach_skipped")  # pragma: no mutate
+        _logger.debug(
+            "otel.propagation.detach_skipped"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return
     context_mod.detach(token)
 
@@ -152,7 +168,11 @@ def load_instrumentation_logging_handler() -> InstrumentationLoggingHandlerFacto
         handler_cls: object | None = getattr(handler_mod, "LoggingHandler", None)
         if handler_cls is None:
             return None
-        return cast(InstrumentationLoggingHandlerFactory, handler_cls)  # pragma: no cover # pragma: no mutate
+        return cast(
+            InstrumentationLoggingHandlerFactory, handler_cls
+        )  # pragma: no cover # pragma: no mutate — typing-only cast; runtime value is a protocol-compatible class
     except ImportError:
-        _logger.debug("otel.instrumentation.handler_unavailable")  # pragma: no mutate
+        _logger.debug(
+            "otel.instrumentation.handler_unavailable"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None

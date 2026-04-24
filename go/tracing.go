@@ -77,7 +77,7 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 	if !ShouldAllow(signalTraces, "") {
 		return fn(ctx)
 	}
-	if sampled, _ := ShouldSample(signalTraces, name); !sampled {
+	if sampled := _shouldSampleFailOpen(signalTraces, name); !sampled {
 		return fn(ctx)
 	}
 	if !TryAcquire(signalTraces) {

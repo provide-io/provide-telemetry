@@ -56,7 +56,7 @@ def enable_receipts(
 ) -> None:
     global _enabled, _signing_key, _service_name
     with _lock:
-        _enabled = enabled  # pragma: no mutate
+        _enabled = enabled  # pragma: no mutate — direct assignment; read-back asserted by enable_receipts tests
         _signing_key = signing_key
         _service_name = service_name
     if enabled:
@@ -68,7 +68,9 @@ def enable_receipts(
 def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
     receipt_id = str(uuid.uuid4())
     timestamp = datetime.now(tz=UTC).isoformat()
-    original_hash = hashlib.sha256(str(original_value).encode("utf-8")).hexdigest()  # pragma: no mutate
+    original_hash = (
+        hashlib.sha256(str(original_value).encode("utf-8")).hexdigest()
+    )  # pragma: no mutate — sha256 hex digest is the receipt contract; exact value asserted in receipt tests
 
     with _lock:
         key = _signing_key
@@ -82,7 +84,7 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
             key.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
             payload.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
             hashlib.sha256,
-        ).hexdigest()  # pragma: no mutate
+        ).hexdigest()  # pragma: no mutate — hex digest finaliser; exact output asserted in HMAC receipt tests
 
     receipt = RedactionReceipt(
         receipt_id=receipt_id,
@@ -112,7 +114,7 @@ def get_emitted_receipts_for_tests() -> list[RedactionReceipt]:
 def _reset_receipts_for_tests() -> None:
     global _enabled, _signing_key, _test_mode
     with _lock:
-        _enabled = False  # pragma: no mutate
+        _enabled = False  # pragma: no mutate — test reset; False is the canonical disabled value
         _signing_key = None  # pragma: no mutate — "" is equivalent (both falsy for HMAC check)
         _test_receipts.clear()
         _test_mode = True

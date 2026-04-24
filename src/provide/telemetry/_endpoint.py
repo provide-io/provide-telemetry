@@ -22,7 +22,9 @@ def _check_port(parsed: ParseResult, endpoint: str) -> None:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
     # "http://host:" — colon present but urlparse sets port=None.
     # rsplit on "]" avoids false positives from IPv6 colons.
-    if port is None and ":" in parsed.netloc.rsplit("]", 1)[-1]:  # pragma: no mutate
+    if (
+        port is None and ":" in parsed.netloc.rsplit("]", 1)[-1]
+    ):  # pragma: no mutate — guard against trailing-colon endpoints; both branches hit via explicit tests
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
 
 

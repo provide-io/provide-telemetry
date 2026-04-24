@@ -316,3 +316,49 @@ func TestGetTraceSpanFromContext_ReturnsEmpty(t *testing.T) {
 		t.Errorf("expected empty trace/span IDs, got %q %q", traceID, spanID)
 	}
 }
+
+// TestShouldSampleFailOpen_ValidSignalReturnsSamplingDecision covers the
+// happy path: a known signal delegates to ShouldSample and returns its bool.
+func TestShouldSampleFailOpen_ValidSignalReturnsSamplingDecision(t *testing.T) {
+	_resetSamplingPolicies()
+	t.Cleanup(_resetSamplingPolicies)
+
+	if _, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 1.0}); err != nil {
+		t.Fatal(err)
+	}
+	if !_shouldSampleFailOpen(signalLogs, "event") {
+		t.Error("expected sampled=true at rate 1.0")
+	}
+
+	if _, err := SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0.0}); err != nil {
+		t.Fatal(err)
+	}
+	if _shouldSampleFailOpen(signalLogs, "event") {
+		t.Error("expected sampled=false at rate 0.0")
+	}
+}
+
+// TestShouldSampleFailOpen_InvalidSignalFailsOpen pins the degradation
+// contract: when ShouldSample returns an error (unknown signal), the helper
+// MUST return true (fail-open) so a misconfiguration never silently drops
+// telemetry. Routing through slog.Default() avoids recursion through the
+// telemetry handler chain.
+func TestShouldSampleFailOpen_InvalidSignalFailsOpen(t *testing.T) {
+	// Redirect slog.Default to a buffer so we can assert the diagnostic
+	// was emitted without polluting test output.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	sampled := _shouldSampleFailOpen("not-a-real-signal", "event")
+	if !sampled {
+		t.Fatal("expected fail-open (sampled=true) on invalid signal; got false")
+	}
+	if !strings.Contains(buf.String(), "telemetry.sampling.error") {
+		t.Errorf("expected sampling error diagnostic in slog output, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "not-a-real-signal") {
+		t.Errorf("expected signal name in diagnostic, got: %s", buf.String())
+	}
+}

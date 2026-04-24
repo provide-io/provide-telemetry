@@ -49,7 +49,9 @@ _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {
 
 
 def _get_level(level: str) -> int:
-    if level == "TRACE":  # pragma: no mutate
+    if (
+        level == "TRACE"
+    ):  # pragma: no mutate — TRACE is not a stdlib logging level; this branch is the only way to resolve it
         return TRACE
     mapped = logging.getLevelName(level)
     if isinstance(mapped, int):
@@ -75,7 +77,7 @@ def _make_filtering_bound_logger(level: int) -> type:
         "info": logging.INFO,
         "warning": logging.WARNING,
         "error": logging.ERROR,
-        "critical": logging.CRITICAL,  # pragma: no mutate
+        "critical": logging.CRITICAL,  # pragma: no mutate — dict literal entry; value asserted through structlog integration tests
     }
 
     def _permissive_nop(*_args: Any, **_kw: Any) -> None:
@@ -92,13 +94,13 @@ def _make_filtering_bound_logger(level: int) -> type:
             self.debug(event, _trace=True, **kw)
     else:
         _trace = _permissive_nop
-    setattr(cls, "trace", _trace)  # noqa: B010  # pragma: no mutate  # API name
+    setattr(cls, "trace", _trace)  # noqa: B010  # pragma: no mutate — API name string is load-bearing; mutation would rename the public method
 
     # .is_debug_enabled() / .is_trace_enabled() — baked in at class creation
     _debug_ok = level <= logging.DEBUG
     _trace_ok = level <= TRACE
-    setattr(cls, "is_debug_enabled", lambda _self: _debug_ok)  # noqa: B010  # pragma: no mutate
-    setattr(cls, "is_trace_enabled", lambda _self: _trace_ok)  # noqa: B010  # pragma: no mutate
+    setattr(cls, "is_debug_enabled", lambda _self: _debug_ok)  # noqa: B010  # pragma: no mutate — public attribute name; mutation would break level-check API
+    setattr(cls, "is_trace_enabled", lambda _self: _trace_ok)  # noqa: B010  # pragma: no mutate — public attribute name; mutation would break level-check API
 
     return cls
 
@@ -170,7 +172,9 @@ def _make_otel_logging_handler(
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
     global _otel_log_provider, _otel_log_global_set
-    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]  # pragma: no mutate
+    handlers: list[logging.Handler] = [
+        logging.StreamHandler(sys.stderr)
+    ]  # pragma: no mutate — stderr default is an explicit design choice; target stream asserted by integration tests
 
     if not config.logging.otlp_endpoint:
         return handlers
@@ -209,7 +213,7 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     # If construction raises, _otel_log_provider stays None and shutdown_logging()
     # will correctly find no provider to flush, rather than reporting a live
     # provider that was never fully initialised.
-    _otel_log_global_set = True  # pragma: no mutate
+    _otel_log_global_set = True  # pragma: no mutate — latched True after successful provider install; boolean toggle asserted by shutdown tests
     _otel_log_provider = provider
     return handlers
 
@@ -229,14 +233,16 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     )
     _configured = True
     _active_config = None
-    warnings.warn(  # pragma: no mutate
+    warnings.warn(  # pragma: no mutate — emergency-path warn() is best-effort; observed via caplog in fallback tests
         f"logging setup failed, using emergency stderr fallback: {exc}",
         RuntimeWarning,
-        stacklevel=3,  # pragma: no mutate
+        stacklevel=3,  # pragma: no mutate — stacklevel tuning for warnings origin; semantically equivalent at any small positive int
     )
 
 
-def configure_logging(config: TelemetryConfig, *, force: bool = False) -> None:  # pragma: no mutate
+def configure_logging(
+    config: TelemetryConfig, *, force: bool = False
+) -> None:  # pragma: no mutate — default force=False; all call sites pass the flag explicitly
     global _configured, _active_config
     with _lock:
         if _configured and not force and _active_config == config:
@@ -260,8 +266,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     # _LevelFilter processor which evaluates per-module thresholds.
     effective_level = level
     for module_level_str in config.logging.module_levels.values():
-        module_numeric = _LEVEL_NAME_TO_NUMERIC.get(module_level_str, logging.INFO)  # pragma: no mutate
-        if module_numeric < effective_level:  # pragma: no mutate
+        module_numeric = _LEVEL_NAME_TO_NUMERIC.get(
+            module_level_str, logging.INFO
+        )  # pragma: no mutate — INFO default only reached for strings already validated upstream
+        if (
+            module_numeric < effective_level
+        ):  # pragma: no mutate — minimum-level fold; strict-less semantics verified by module-level override tests
             effective_level = module_numeric
 
     processors: list[Any] = [
@@ -324,11 +334,15 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     elif config.logging.fmt == "pretty":
         from provide.telemetry.logger.pretty import resolve_color
 
-        renderer = PrettyRenderer(  # pragma: no mutate
+        renderer = PrettyRenderer(  # pragma: no mutate — renderer constructor; outputs verified via snapshot/console tests
             colors=sys.stderr.isatty(),
-            key_color=resolve_color(config.logging.pretty_key_color),  # pragma: no mutate
-            value_color=resolve_color(config.logging.pretty_value_color),  # pragma: no mutate
-            fields=config.logging.pretty_fields,  # pragma: no mutate
+            key_color=resolve_color(
+                config.logging.pretty_key_color
+            ),  # pragma: no mutate — color resolution is formatting-only
+            value_color=resolve_color(
+                config.logging.pretty_value_color
+            ),  # pragma: no mutate — color resolution is formatting-only
+            fields=config.logging.pretty_fields,  # pragma: no mutate — field list plumbing; exact sequence asserted by pretty render tests
         )
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
@@ -412,7 +426,8 @@ def is_debug_enabled() -> bool:
         if is_debug_enabled():
             logger.debug("result", payload=model.model_dump_json())
     """
-    active = _active_config
+    with _lock:
+        active = _active_config
     if active is None:
         return True  # unconfigured — let everything through
     return _get_level(active.logging.level) <= logging.DEBUG
@@ -420,7 +435,8 @@ def is_debug_enabled() -> bool:
 
 def is_trace_enabled() -> bool:
     """Standalone check if trace-level logging is enabled."""
-    active = _active_config
+    with _lock:
+        active = _active_config
     if active is None:
         return True
     return _get_level(active.logging.level) <= TRACE

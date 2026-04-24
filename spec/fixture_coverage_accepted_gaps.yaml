@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Known fixture-coverage gaps that are explicitly accepted.
+# Each entry MUST include reason, owner, and expires_on so the gap is a visible,
+# time-boxed TODO rather than silent drift. Remove entries when the gap closes.
+#
+# Format:
+#   - lang: <language>         # python | typescript | go | rust
+#     category: <category>    # top-level key in behavioral_fixtures.yaml
+#     reason: >               # why the gap is acceptable right now
+#       ...
+#     owner: <github-handle>  # who is responsible for closing this gap
+#     expires_on: YYYY-MM-DD  # REQUIRED — review/renew/remove on or before this date
+#     tracking: <issue-url>   # optional: link to tracking issue or PR
+#
+# Expiry behaviour:
+#   - Default mode prints a warning when today >= expires_on (exit 0).
+#   - `--strict` mode fails with exit 1 on any expired entry.
+#   - `expires_on` is REQUIRED; the checker errors if the field is missing or malformed.
+#
+# NOTE: 2026-07-31 below is a placeholder default expiry — review and set a real
+# date that corresponds to a concrete plan to close the gap.
+
+accepted_gaps: []

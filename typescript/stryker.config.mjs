@@ -10,8 +10,16 @@ export default {
   mutate: [
     'src/**/*.ts',
     '!src/index.ts',                    // re-export barrel — no logic to mutate
-    '!src/sanitize.ts',                 // re-export shim
+    '!src/sanitize.ts',                 // deprecated re-export shim (see src/sanitize.ts)
     '!src/secret-patterns-generated.ts', // generated from spec/secret_patterns.yaml — kill via spec/ tests, not unit tests
+    // otel.ts / otel-logs.ts use `await import('pkg' as string)` so Stryker's
+    // V8 perTest instrumentor cannot trace which test exercises which mutant
+    // (every mutant reports covered:0). Dynamic imports are load-bearing for
+    // tree-shakeable peer-dep wiring — switching to static imports is out of
+    // scope. Integration tests in tests/integration/otel-providers-*.test.ts
+    // exercise every branch with real OTel SDK objects.
+    '!src/otel.ts',
+    '!src/otel-logs.ts',
   ],
 
   // Vitest config for Stryker

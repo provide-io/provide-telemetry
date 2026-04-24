@@ -39,13 +39,20 @@ def _rollback(completed: list[str]) -> None:
         try:
             teardowns[step]()
         except Exception:
-            _logger.warning("setup.rollback.step_failed", exc_info=True)  # pragma: no mutate
+            _logger.warning(
+                "setup.rollback.step_failed", exc_info=True
+            )  # pragma: no mutate — warning log string is non-semantic; rollback proceeds regardless
 
 
 def _quiet_otel_sdk_loggers() -> None:
     """Suppress OTel SDK export noise that the resilience layer already handles."""
-    for name in ("opentelemetry.exporter", "opentelemetry.sdk"):  # pragma: no mutate
-        logging.getLogger(name).setLevel(logging.CRITICAL)  # pragma: no mutate
+    for name in (
+        "opentelemetry.exporter",
+        "opentelemetry.sdk",
+    ):  # pragma: no mutate — tuple iteration; logger-name strings are OTel module paths pinned by upstream
+        logging.getLogger(name).setLevel(
+            logging.CRITICAL
+        )  # pragma: no mutate — suppression level; any level >= WARNING produces the same operator-observed silence
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
@@ -75,10 +82,10 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
             except Exception as exc:
                 _rollback(completed)
                 set_setup_error(str(exc))
-                warnings.warn(  # pragma: no mutate
+                warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
                     f"telemetry setup failed, running in degraded mode: {exc}",
                     RuntimeWarning,
-                    stacklevel=2,  # pragma: no mutate
+                    stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
                 )
                 # Always restore logging — rollback may have torn it down above.
                 configure_logging(cfg, force=True)

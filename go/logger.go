@@ -74,7 +74,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		r.AddAttrs(slog.String("_schema_error", err.Error()))
 	}
 
-	if sampled, _ := ShouldSample(signalLogs, r.Message); !sampled { // signalLogs is a package-level constant; err is always nil
+	if sampled := _shouldSampleFailOpen(signalLogs, r.Message); !sampled {
 		return nil
 	}
 
@@ -217,20 +217,32 @@ func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 	return nr
 }
 
+// _shouldSampleFailOpen invokes ShouldSample and returns the sampled bool.
+// If ShouldSample returns an error — which only happens when signal is unknown,
+// a case our hard-coded callers never trigger — we log the error via slog.Default
+// (NOT the telemetry Logger, to avoid recursion through the handler chain) and
+// fail-open by returning true. Fail-open matches the library's graceful-
+// degradation convention: never drop telemetry on an internal misconfiguration.
+func _shouldSampleFailOpen(signal, key string) bool {
+	sampled, err := ShouldSample(signal, key)
+	if err != nil {
+		// Bypass the telemetry Logger so we do not re-enter the handler chain.
+		slog.Default().Warn("telemetry.sampling.error",
+			slog.String("signal", signal),
+			slog.String("error", err.Error()),
+		)
+		return true
+	}
+	return sampled
+}
+
 // _customPIIPatterns returns the registered custom secret patterns (if any).
-// Mirrors the snapshot construction inside SanitizePayload so message-body
-// scrubbing and map-value scrubbing see the same custom registrations.
+// Reads the atomic snapshot published by RegisterSecretPattern /
+// _resetSecretPatterns so the hot path — message-body secret scrubbing for
+// every log record — avoids both _piiMu.RLock() and a per-call map clone.
+// The returned map is a shared immutable snapshot: callers must NOT mutate it.
 func _customPIIPatterns() map[string]*regexp.Regexp {
-	_piiMu.RLock()
-	defer _piiMu.RUnlock()
-	if len(_customSecretPats) == 0 {
-		return nil
-	}
-	patterns := make(map[string]*regexp.Regexp, len(_customSecretPats))
-	for name, re := range _customSecretPats {
-		patterns[name] = re
-	}
-	return patterns
+	return _loadCustomSecretPatsSnapshot()
 }
 
 // _attrsToMap converts a slog.Record's attributes into a flat map[string]any.

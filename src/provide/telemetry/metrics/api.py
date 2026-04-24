@@ -25,7 +25,9 @@ def counter(name: str, description: str | None = None, unit: str | None = None) 
         try:
             return Counter(name, meter.create_counter(name=name, description=desc, unit=metric_unit))
         except Exception:
-            _logger.warning("metrics.counter.create_failed", exc_info=True)  # pragma: no mutate
+            _logger.warning(
+                "metrics.counter.create_failed", exc_info=True
+            )  # pragma: no mutate — warning log string is non-semantic; behaviour lives in the fallback Counter(name) return
             return Counter(name)
     return Counter(name)
 
@@ -38,7 +40,9 @@ def gauge(name: str, description: str | None = None, unit: str | None = None) ->
         try:
             return Gauge(name, meter.create_up_down_counter(name=name, description=desc, unit=metric_unit))
         except Exception:
-            _logger.warning("metrics.gauge.create_failed", exc_info=True)  # pragma: no mutate
+            _logger.warning(
+                "metrics.gauge.create_failed", exc_info=True
+            )  # pragma: no mutate — warning log string is non-semantic; behaviour lives in the fallback Gauge(name) return
             return Gauge(name)
     return Gauge(name)
 
@@ -51,6 +55,8 @@ def histogram(name: str, description: str | None = None, unit: str | None = None
         try:
             return Histogram(name, meter.create_histogram(name=name, description=desc, unit=metric_unit))
         except Exception:
-            _logger.warning("metrics.histogram.create_failed", exc_info=True)  # pragma: no mutate
+            _logger.warning(
+                "metrics.histogram.create_failed", exc_info=True
+            )  # pragma: no mutate — warning log string is non-semantic; behaviour lives in the fallback Histogram(name) return
             return Histogram(name)
     return Histogram(name)

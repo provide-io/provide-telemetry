@@ -80,17 +80,15 @@ func UnregisterBackend(name string) (previous Backend, removed bool) {
 	return previous, removed
 }
 
-func _activeBackendLocked() Backend {
+// _activeBackend returns the currently active Backend, or nil when none is registered.
+// It self-locks _backendMu for reading; callers must NOT already hold the lock.
+func _activeBackend() Backend {
 	_backendMu.RLock()
 	defer _backendMu.RUnlock()
 	if _activeBackendName == "" {
 		return nil
 	}
 	return _registeredBackends[_activeBackendName]
-}
-
-func _activeBackend() Backend {
-	return _activeBackendLocked()
 }
 
 func _backendSetupState(state *_setupState) BackendSetupState {
@@ -115,7 +113,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 		return
 	}
 
-	backend := _activeBackendLocked()
+	backend := _activeBackend()
 	if backend == nil {
 		return
 	}
@@ -135,7 +133,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 }
 
 func _setupBackendLocked(state *_setupState, cfg *TelemetryConfig) error {
-	backend := _activeBackendLocked()
+	backend := _activeBackend()
 	if backend == nil {
 		if _backendOptionsSupplied(state) {
 			return NewConfigurationError(
@@ -157,7 +155,7 @@ func _setupBackendLocked(state *_setupState, cfg *TelemetryConfig) error {
 }
 
 func _shutdownBackendLocked(ctx context.Context) error {
-	if backend := _activeBackendLocked(); backend != nil {
+	if backend := _activeBackend(); backend != nil {
 		return backend.Shutdown(ctx)
 	}
 	return nil
@@ -170,7 +168,7 @@ func _resetBackendsLocked() {
 }
 
 func _providerStatusLocked() SignalStatus {
-	if backend := _activeBackendLocked(); backend != nil {
+	if backend := _activeBackend(); backend != nil {
 		return backend.Providers()
 	}
 	return SignalStatus{}

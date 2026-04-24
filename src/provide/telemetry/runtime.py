@@ -45,7 +45,9 @@ _reconfigure_lock = threading.Lock()
 
 def _apply_policies(snapshot: TelemetryConfig) -> None:
     """Push hot policy values from a config snapshot to signal subsystems. Lock-free."""
-    set_sampling_policy("logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate))  # pragma: no mutate
+    set_sampling_policy(
+        "logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate)
+    )  # pragma: no mutate — signal name string is the API contract; pinned across reloads
     set_sampling_policy(
         "traces",
         SamplingPolicy(default_rate=min(snapshot.sampling.traces_rate, snapshot.tracing.sample_rate)),
@@ -170,7 +172,9 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
         _active_config = merged
     _apply_policies(merged)
     if logging_changed:
-        from provide.telemetry.logger.core import configure_logging  # pragma: no mutate
+        from provide.telemetry.logger.core import (
+            configure_logging,  # pragma: no mutate — lazy import to avoid circular dependency at module load; path is a stable public name
+        )
 
         configure_logging(merged, force=True)
     return get_runtime_config()

@@ -86,9 +86,14 @@ if TYPE_CHECKING:
 _LAZY_REGISTRY: dict[str, tuple[str, str]] = {}
 
 
-def _register(module: str, *names: str) -> None:  # pragma: no mutate
+def _register(
+    module: str, *names: str
+) -> None:  # pragma: no mutate — pure registry population; covered via __getattr__ exports
     for name in names:
-        _LAZY_REGISTRY[name] = (module, name)  # pragma: no mutate
+        _LAZY_REGISTRY[name] = (
+            module,
+            name,
+        )  # pragma: no mutate — symmetric tuple assignment; asserted through public re-exports
 
 
 _register("provide.telemetry.asgi", "TelemetryMiddleware", "bind_websocket_context", "clear_websocket_context")
