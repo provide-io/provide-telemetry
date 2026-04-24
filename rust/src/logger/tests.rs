@@ -202,6 +202,20 @@ fn get_logger_before_setup_applies_env_log_sampling_policy() {
 }
 
 #[test]
+fn get_logger_before_setup_ignores_invalid_env_log_sampling_policy() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+
+    std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "not-a-float");
+    let log = get_logger(Some("tests.lazy.env.invalid_sampling"));
+    log.info("invalid.sampling.env");
+
+    let events = Logger::drain_events_for_tests();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].message, "invalid.sampling.env");
+}
+
+#[test]
 fn new_event_injects_runtime_identity_context_and_trace() {
     let _guard = acquire_test_state_lock();
     reset_logger_state();

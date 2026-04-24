@@ -282,10 +282,7 @@ mod tests {
         runtime.block_on(async {
             tokio::spawn(async {
                 let task_id = tokio::task::id();
-                match current_scope_key() {
-                    ContextScopeKey::Task(key) => assert_eq!(key, task_id),
-                    ContextScopeKey::Thread => panic!("task scope should use the task id"),
-                }
+                assert_eq!(current_scope_key(), ContextScopeKey::Task(task_id));
 
                 let _bound = bind_context([("task_id".to_string(), json!(task_id.to_string()))]);
                 assert_eq!(

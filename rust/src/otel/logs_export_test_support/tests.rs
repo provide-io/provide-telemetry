@@ -247,6 +247,41 @@ fn export_test_support_read_request_path_handles_invalid_inputs() {
         None
     );
 }
+
+#[test]
+fn export_test_support_read_request_path_handles_body_read_errors() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind body error reader listener");
+    let addr = listener.local_addr().expect("body error reader local addr");
+    let (headers_flushed_tx, headers_flushed_rx) = std::sync::mpsc::channel();
+    let (release_client_tx, release_client_rx) = std::sync::mpsc::channel();
+    let writer = thread::spawn(move || {
+        let mut client = TcpStream::connect(addr).expect("connect body error reader");
+        client
+            .write_all(b"POST /v1/logs HTTP/1.1\r\nContent-Length: 5\r\n\r\n")
+            .expect("write body error request headers");
+        client.flush().expect("flush body error request headers");
+        headers_flushed_tx
+            .send(())
+            .expect("notify body error headers flushed");
+        release_client_rx
+            .recv()
+            .expect("wait for body error read completion");
+    });
+
+    let (mut stream, _) = listener.accept().expect("accept body error reader");
+    headers_flushed_rx
+        .recv()
+        .expect("wait for body error request headers");
+    stream
+        .set_nonblocking(true)
+        .expect("set nonblocking body error reader");
+
+    assert_eq!(read_request_path(&mut stream), None);
+    release_client_tx
+        .send(())
+        .expect("release body error client");
+    writer.join().expect("body error writer thread");
+}
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
