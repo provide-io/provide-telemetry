@@ -80,3 +80,7 @@ fn enforce_schema_prefers_runtime_required_key_errors() {
 
     set_active_config(None);
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

@@ -296,3 +296,7 @@ fn handle_accept_result(
 #[cfg(test)]
 #[path = "logs_export_test_support/tests.rs"]
 mod tests;
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

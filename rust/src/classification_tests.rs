@@ -81,3 +81,7 @@ fn classification_test_register_rules_extends_and_first_match_wins() {
 
     clear_classification_rules();
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
