@@ -8,9 +8,9 @@
 
 use std::sync::{LazyLock, Mutex};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{active_logging_config, LogEvent};
+use super::{LogEvent, active_logging_config};
 
 // ---------------------------------------------------------------------------
 // Test capture buffers
@@ -55,8 +55,10 @@ pub(super) fn now_iso8601() -> String {
     let d = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
-    let ts = d.as_secs();
-    let ms = d.subsec_millis();
+    iso8601_from_unix_parts(d.as_secs(), d.subsec_millis())
+}
+
+fn iso8601_from_unix_parts(ts: u64, ms: u32) -> String {
     let z: i64 = (ts / 86_400) as i64 + 719_468;
     let era: i64 = z / 146_097;
     let doe: i64 = z - era * 146_097;
@@ -158,3 +160,15 @@ pub(super) fn emit_if_console(event: &LogEvent) {
         }
     }
 }
+
+#[cfg(feature = "otel")]
+pub(super) fn emit_if_otel(event: &LogEvent) {
+    crate::otel::logs::emit_log(event);
+}
+
+#[cfg(not(feature = "otel"))]
+pub(super) fn emit_if_otel(_event: &LogEvent) {}
+
+#[cfg(test)]
+#[path = "emit_tests.rs"]
+mod tests;

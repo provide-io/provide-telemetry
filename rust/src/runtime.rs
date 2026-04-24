@@ -16,8 +16,12 @@ use crate::RuntimeOverrides;
 
 static ACTIVE_CONFIG: OnceLock<RwLock<Option<TelemetryConfig>>> = OnceLock::new();
 
+fn empty_active_config() -> RwLock<Option<TelemetryConfig>> {
+    RwLock::new(None)
+}
+
 fn active_config() -> &'static RwLock<Option<TelemetryConfig>> {
-    ACTIVE_CONFIG.get_or_init(|| RwLock::new(None))
+    ACTIVE_CONFIG.get_or_init(empty_active_config)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,7 +113,7 @@ fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
 
 pub fn get_runtime_status() -> RuntimeStatus {
     let (cfg, setup_done) = runtime_config_snapshot();
-    let cfg = cfg.unwrap_or_else(|| TelemetryConfig::from_env().unwrap_or_default());
+    let cfg = runtime_config_or_default(cfg);
 
     #[cfg(feature = "otel")]
     let providers = SignalStatus {
@@ -149,34 +153,15 @@ pub fn update_runtime_config(
         let mut guard = active_config()
             .write()
             .expect("runtime config lock poisoned");
-        let current = guard.as_ref().cloned().ok_or_else(|| {
-            TelemetryError::new("telemetry not set up: call setup_telemetry first")
-        })?;
-        let mut next = current;
-        if let Some(sampling) = overrides.sampling {
-            next.sampling = sampling;
-        }
-        if let Some(backpressure) = overrides.backpressure {
-            next.backpressure = backpressure;
-        }
-        if let Some(exporter) = overrides.exporter {
-            next.exporter = exporter;
-        }
-        if let Some(security) = overrides.security {
-            next.security = security;
-        }
-        if let Some(slo) = overrides.slo {
-            next.slo = slo;
-        }
-        if let Some(pii_max_depth) = overrides.pii_max_depth {
-            next.pii_max_depth = pii_max_depth;
-        }
-        if let Some(strict_schema) = overrides.strict_schema {
-            next.strict_schema = strict_schema;
-        }
-        if let Some(event_schema) = overrides.event_schema {
-            next.event_schema = event_schema;
-        }
+        let current = match guard.as_ref().cloned() {
+            Some(current) => current,
+            None => {
+                return Err(TelemetryError::new(
+                    "telemetry not set up: call setup_telemetry first",
+                ));
+            }
+        };
+        let next = apply_runtime_overrides(current, overrides);
         *guard = Some(next.clone());
         next
     }; // write lock released here before calling apply_policies
@@ -185,9 +170,18 @@ pub fn update_runtime_config(
 }
 
 pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
-    let fresh = TelemetryConfig::from_env().map_err(|err| TelemetryError::new(err.message))?;
-    let current = get_runtime_config()
-        .ok_or_else(|| TelemetryError::new("telemetry not set up: call setup_telemetry first"))?;
+    let fresh = match TelemetryConfig::from_env() {
+        Ok(fresh) => fresh,
+        Err(err) => return Err(TelemetryError::new(err.message)),
+    };
+    let current = match get_runtime_config() {
+        Some(current) => current,
+        None => {
+            return Err(TelemetryError::new(
+                "telemetry not set up: call setup_telemetry first",
+            ))
+        }
+    };
 
     // Warn on cold-field drift (matches Python/TypeScript/Go behavior).
     let mut drifted: Vec<&str> = Vec::new();
@@ -244,7 +238,9 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
         event_schema: Some(fresh.event_schema),
     };
 
-    let mut next = update_runtime_config(overrides)?;
+    let mut next = apply_runtime_overrides(current.clone(), overrides);
+    set_active_config(Some(next.clone()));
+    apply_policies(&next);
     next.service_name = current.service_name;
     next.environment = current.environment;
     next.version = current.version;
@@ -260,12 +256,38 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     Ok(next)
 }
 
+fn apply_runtime_overrides(
+    current: TelemetryConfig,
+    overrides: RuntimeOverrides,
+) -> TelemetryConfig {
+    let mut next = current;
+    next.sampling = overrides.sampling.unwrap_or(next.sampling);
+    next.backpressure = overrides.backpressure.unwrap_or(next.backpressure);
+    next.exporter = overrides.exporter.unwrap_or(next.exporter);
+    next.security = overrides.security.unwrap_or(next.security);
+    next.slo = overrides.slo.unwrap_or(next.slo);
+    next.pii_max_depth = overrides.pii_max_depth.unwrap_or(next.pii_max_depth);
+    next.strict_schema = overrides.strict_schema.unwrap_or(next.strict_schema);
+    next.event_schema = overrides.event_schema.unwrap_or(next.event_schema);
+    next
+}
+
+fn runtime_config_or_default(config: Option<TelemetryConfig>) -> TelemetryConfig {
+    match config {
+        Some(config) => config,
+        None => TelemetryConfig::from_env().unwrap_or_default(),
+    }
+}
+
 pub fn reconfigure_telemetry(
     config: Option<TelemetryConfig>,
 ) -> Result<TelemetryConfig, TelemetryError> {
     let target = match config {
         Some(config) => config,
-        None => TelemetryConfig::from_env().map_err(|err| TelemetryError::new(err.message))?,
+        None => match TelemetryConfig::from_env() {
+            Ok(config) => config,
+            Err(err) => return Err(TelemetryError::new(err.message)),
+        },
     };
 
     #[cfg(feature = "otel")]
@@ -276,8 +298,7 @@ pub fn reconfigure_telemetry(
             let metrics_live = crate::otel::metrics::meter_provider_installed();
             // Identity fields affect every installed provider's Resource; per-signal
             // fields only matter when that signal's provider is actually live.
-            let reject = ((logs_live || traces_live || metrics_live)
-                && identity_config_changed(&current, &target))
+            let reject = identity_config_changed(&current, &target)
                 || (logs_live && logging_provider_config_changed(&current, &target))
                 || (traces_live && tracing_provider_config_changed(&current, &target))
                 || (metrics_live && metrics_provider_config_changed(&current, &target));
@@ -295,198 +316,5 @@ pub fn reconfigure_telemetry(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn runtime_test_provider_config_changed_detects_each_provider_field() {
-        let current = TelemetryConfig::default();
-
-        let mut changed = current.clone();
-        changed.service_name = "svc-2".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.environment = "prod".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.version = "1.2.3".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.logging.otlp_headers.insert("x".into(), "1".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.tracing.enabled = !changed.tracing.enabled;
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.metrics.enabled = !changed.metrics.enabled;
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.logging.otlp_endpoint = Some("http://other:4318".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.tracing.otlp_endpoint = Some("http://other:4318".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.metrics.otlp_endpoint = Some("http://other:4318".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        // --- headers (all three signals) ---
-        let mut changed = current.clone();
-        changed
-            .tracing
-            .otlp_headers
-            .insert("auth".into(), "tok".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed
-            .metrics
-            .otlp_headers
-            .insert("auth".into(), "tok".into());
-        assert!(provider_config_changed(&current, &changed));
-
-        // --- protocol (all three signals) ---
-        let mut changed = current.clone();
-        changed.logging.otlp_protocol = "http/json".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.tracing.otlp_protocol = "http/json".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.metrics.otlp_protocol = "http/json".to_string();
-        assert!(provider_config_changed(&current, &changed));
-
-        // --- exporter timeouts (baked into exporter at construction) ---
-        let mut changed = current.clone();
-        changed.exporter.logs_timeout_seconds = 5.0;
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.exporter.traces_timeout_seconds = 5.0;
-        assert!(provider_config_changed(&current, &changed));
-
-        let mut changed = current.clone();
-        changed.exporter.metrics_timeout_seconds = 5.0;
-        assert!(provider_config_changed(&current, &changed));
-
-        // --- metrics export interval (baked into PeriodicReader) ---
-        let mut changed = current.clone();
-        changed.metrics.metric_export_interval_ms = 30_000;
-        assert!(provider_config_changed(&current, &changed));
-    }
-
-    #[test]
-    fn runtime_test_provider_config_changed_is_false_for_hot_only_changes() {
-        let current = TelemetryConfig::default();
-        let mut changed = current.clone();
-        changed.sampling.logs_rate = 0.25;
-        changed.backpressure.logs_maxsize = 9;
-        changed.exporter.logs_retries = 2;
-        changed.security.max_attr_count = 99;
-        changed.slo.enable_red_metrics = !changed.slo.enable_red_metrics;
-        changed.pii_max_depth = 3;
-        changed.strict_schema = true;
-
-        assert!(!provider_config_changed(&current, &changed));
-    }
-
-    #[test]
-    fn runtime_test_per_signal_helpers_are_independent() {
-        let base = TelemetryConfig::default();
-
-        // logging-only change — only logging helper fires
-        let mut changed = base.clone();
-        changed.logging.otlp_protocol = "http/json".to_string();
-        assert!(logging_provider_config_changed(&base, &changed));
-        assert!(!tracing_provider_config_changed(&base, &changed));
-        assert!(!metrics_provider_config_changed(&base, &changed));
-
-        // tracing-only change — only tracing helper fires
-        let mut changed = base.clone();
-        changed.exporter.traces_timeout_seconds = 5.0;
-        assert!(!logging_provider_config_changed(&base, &changed));
-        assert!(tracing_provider_config_changed(&base, &changed));
-        assert!(!metrics_provider_config_changed(&base, &changed));
-
-        // metrics-only change — only metrics helper fires
-        let mut changed = base.clone();
-        changed.metrics.metric_export_interval_ms = 30_000;
-        assert!(!logging_provider_config_changed(&base, &changed));
-        assert!(!tracing_provider_config_changed(&base, &changed));
-        assert!(metrics_provider_config_changed(&base, &changed));
-    }
-
-    #[test]
-    fn runtime_test_reload_timeout_hot_when_no_provider_snapshot_matches_live_policy() {
-        // Serialize against other tests that touch env or runtime state.
-        let _guard = crate::testing::acquire_test_state_lock();
-        use std::env;
-
-        // Set up with a known timeout.
-        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "7.0");
-        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "1.0");
-        set_active_config(Some(
-            TelemetryConfig::from_env().expect("config must parse"),
-        ));
-        apply_policies(&get_runtime_config().expect("config must exist"));
-
-        // No OTel provider is installed in this unit-test environment, so the
-        // timeout field is hot-reloadable.  Change it and reload.
-        env::set_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "99.0");
-        env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.5");
-
-        let reloaded = reload_runtime_from_env().expect("reload must succeed");
-
-        // Without a live provider, timeout IS hot-reloadable.
-        assert_eq!(
-            reloaded.exporter.logs_timeout_seconds, 99.0,
-            "timeout must be hot-reloadable when no OTel provider is installed"
-        );
-
-        // The key invariant: config snapshot and live exporter policy agree —
-        // no split-brain regardless of which path (freeze or update) was taken.
-        let policy = crate::resilience::get_exporter_policy(crate::sampling::Signal::Logs)
-            .expect("policy must exist");
-        assert_eq!(
-            policy.timeout_seconds, reloaded.exporter.logs_timeout_seconds,
-            "live exporter policy must match the config snapshot (no split-brain)"
-        );
-
-        // Hot-reloadable non-timeout field also updated correctly.
-        assert_eq!(
-            reloaded.sampling.logs_rate, 0.5,
-            "sampling rate must update"
-        );
-
-        // Cleanup: remove env vars and reset all global telemetry state so
-        // subsequent tests (sampling, backpressure, schema, resilience, etc.)
-        // start from a known clean slate.
-        env::remove_var("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS");
-        env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
-        crate::testing::reset_telemetry_state();
-    }
-
-    #[test]
-    fn runtime_test_runtime_config_snapshot_reports_cfg_and_setup_done_from_one_read() {
-        set_active_config(None);
-        let (cfg, setup_done) = runtime_config_snapshot();
-        assert!(cfg.is_none());
-        assert!(!setup_done);
-
-        let configured = TelemetryConfig::default();
-        set_active_config(Some(configured.clone()));
-        let (cfg, setup_done) = runtime_config_snapshot();
-        assert_eq!(cfg, Some(configured));
-        assert!(setup_done);
-    }
-}
+#[path = "runtime_tests.rs"]
+mod tests;

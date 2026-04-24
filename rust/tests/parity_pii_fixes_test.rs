@@ -94,6 +94,34 @@ fn pii_rule_exact_path_still_works_without_wildcard() {
     replace_pii_rules(Vec::new());
 }
 
+#[test]
+fn pii_rule_hash_and_truncate_convert_non_string_values() {
+    let _guard = pii_fixes_lock().lock().expect("lock poisoned");
+    replace_pii_rules(vec![
+        PIIRule::new(
+            vec!["payload".to_string(), "ssn".to_string()],
+            PIIMode::Hash,
+            0,
+        ),
+        PIIRule::new(
+            vec!["payload".to_string(), "code".to_string()],
+            PIIMode::Truncate,
+            4,
+        ),
+    ]);
+    let payload = json!({ "payload": { "ssn": 123456789, "code": 987654321 } });
+    let result = sanitize_payload(&payload, true, 32);
+
+    assert_eq!(
+        result["payload"]["ssn"].as_str().map(|s| s.len()),
+        Some(12),
+        "numeric values should hash via their JSON string form"
+    );
+    assert_eq!(result["payload"]["code"], "9876...");
+
+    replace_pii_rules(Vec::new());
+}
+
 // ── Fix 5: Array recursion pushes `*` segment ───────────────────────────────
 
 #[test]
@@ -382,5 +410,17 @@ mod classification_policy_enforcement {
             "pass",
             "unknown label must fall through to pass"
         );
+    }
+
+    #[test]
+    fn governance_annotation_skips_non_object_payloads() {
+        let _guard = pii_fixes_lock().lock().expect("lock poisoned");
+        setup(ClassificationPolicy::default());
+
+        let value = json!("scalar");
+        let result = sanitize_payload(&value, true, 32);
+
+        assert_eq!(result, value);
+        teardown();
     }
 }

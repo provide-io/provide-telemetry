@@ -8,10 +8,11 @@
 #[cfg(feature = "governance")]
 mod classification_mutation {
     use provide_telemetry::{
-        classify_key, clear_classification_rules, register_classification_rule, ClassificationRule,
-        DataClass,
+        ClassificationPolicy, ClassificationRule, DataClass, classify_key,
+        clear_classification_rules, register_classification_rule,
     };
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Mutex, OnceLock, mpsc};
+    use std::time::Duration;
 
     static CLS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -148,6 +149,50 @@ mod classification_mutation {
         );
     }
 
+    #[test]
+    fn glob_consecutive_wildcards_collapse_like_single_wildcard() {
+        let _guard = cls_lock().lock().expect("cls lock");
+        clear_classification_rules();
+        register_classification_rule(ClassificationRule::new("user**id", DataClass::Pii));
+        assert_eq!(
+            classify_key("userid").as_deref(),
+            Some("PII"),
+            "consecutive wildcards must still match zero consumed chars"
+        );
+        assert_eq!(
+            classify_key("user_42id").as_deref(),
+            Some("PII"),
+            "consecutive wildcards must still match non-empty runs"
+        );
+        assert_eq!(
+            classify_key("user_42name"),
+            None,
+            "consecutive wildcards must still honor the literal suffix"
+        );
+    }
+
+    #[test]
+    fn glob_consecutive_wildcards_returns_promptly() {
+        let _guard = cls_lock().lock().expect("cls lock");
+        clear_classification_rules();
+        register_classification_rule(ClassificationRule::new("user**id", DataClass::Pii));
+
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = classify_key("userid");
+            let _ = tx.send(result);
+        });
+
+        let result = rx
+            .recv_timeout(Duration::from_millis(250))
+            .expect("consecutive-wildcard matcher must complete promptly");
+        assert_eq!(
+            result.as_deref(),
+            Some("PII"),
+            "consecutive wildcards must not hang the matcher"
+        );
+    }
+
     // ── match_glob: exact match branch (pattern == key) ──────────────────────
 
     // Kills: `pattern == key` → `true` (every no-wildcard pattern matches anything).
@@ -208,6 +253,47 @@ mod classification_mutation {
         assert_eq!(DataClass::Phi.as_str(), "PHI");
         assert_eq!(DataClass::Pci.as_str(), "PCI");
         assert_eq!(DataClass::Secret.as_str(), "SECRET"); // pragma: allowlist secret
+    }
+
+    #[test]
+    fn classify_key_uses_exact_labels_for_all_data_classes() {
+        let _guard = cls_lock().lock().expect("cls lock");
+
+        let cases = [
+            ("public_field", DataClass::Public, "PUBLIC"),
+            ("internal_field", DataClass::Internal, "INTERNAL"),
+            ("pii_field", DataClass::Pii, "PII"),
+            ("phi_field", DataClass::Phi, "PHI"),
+            ("pci_field", DataClass::Pci, "PCI"),
+            ("secret_field", DataClass::Secret, "SECRET"), // pragma: allowlist secret
+        ];
+
+        for (key, classification, expected) in cases {
+            clear_classification_rules();
+            register_classification_rule(ClassificationRule::new(key, classification));
+            assert_eq!(
+                classify_key(key).as_deref(),
+                Some(expected),
+                "classify_key must preserve the canonical DataClass label"
+            );
+        }
+
+        clear_classification_rules();
+    }
+
+    #[test]
+    fn classification_policy_lookup_action_treats_public_as_distinct_from_unknown() {
+        let policy = ClassificationPolicy {
+            public: "hash".to_string(),
+            internal: "drop".to_string(),
+            pii: "redact".to_string(),
+            phi: "drop".to_string(),
+            pci: "hash".to_string(),
+            secret: "drop".to_string(), // pragma: allowlist secret
+        };
+
+        assert_eq!(policy.lookup_action("PUBLIC"), "hash");
+        assert_eq!(policy.lookup_action("UNKNOWN"), "pass");
     }
 
     // ── classify_key returns None when no rules registered ───────────────────

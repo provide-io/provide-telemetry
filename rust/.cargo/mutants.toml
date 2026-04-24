@@ -10,4 +10,9 @@ exclude_re = [
     # consent.rs: "TRACE" => 0 and the catch-all `_ => 0` both return 0.
     # Deleting the TRACE arm produces no observable change in behaviour.
     'delete match arm "TRACE" in log_level_order',
+    # classification.rs: these constructor rewrites and redundant-star
+    # collapse changes are behaviorally identical.
+    'default_policy_mutex.*Default::default',
+    'empty_rules_mutex.*vec!\\[\\]',
+    'src/classification.rs:139:29: replace < with > in match_glob::glob_match',
 ]

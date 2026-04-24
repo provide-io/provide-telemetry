@@ -32,16 +32,17 @@ otel = [
     "dep:url",
 ]
 # OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
-otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic"]
+otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic", "dep:http"]
 
 [dependencies]
 base64 = "0.22"
 hmac = "0.12"
+http = { version = "1.1", optional = true, default-features = false, features = ["std"] }
 log = "0.4"
 mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace"] }
+opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace", "experimental_logs_batch_log_processor_with_async_runtime", "experimental_metrics_periodicreader_with_async_runtime", "experimental_trace_batch_span_processor_with_async_runtime"] }
 opentelemetry-semantic-conventions = { version = "0.31", optional = true }
 percent-encoding = "2.3.1"
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
@@ -51,6 +52,7 @@ serde_json = "1.0"
 sha2 = "0.10"
 thiserror = "1.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 tracing-opentelemetry = { version = "0.32", optional = true }
 url = { version = "2", optional = true }
 uuid = { version = "1.18", features = ["v4"] }

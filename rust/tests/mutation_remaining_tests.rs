@@ -80,7 +80,11 @@ fn test_fingerprint_different_errors() {
 
 #[test]
 fn test_trace_context() {
+    use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
     use provide_telemetry::{get_trace_context, set_trace_context};
+
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     let _guard = set_trace_context(Some("trace123".to_string()), Some("span456".to_string()));
     let ctx = get_trace_context();
     assert_eq!(ctx.get("trace_id"), Some(&Some("trace123".to_string())));
@@ -174,6 +178,10 @@ fn classification_policy_default_values() {
 #[cfg(feature = "governance")]
 #[test]
 fn classification_policy_set_and_get_roundtrip() {
+    use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
+
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     // Kills: replace set_classification_policy with () or get with default.
     let custom = provide_telemetry::ClassificationPolicy {
         public: "pass".to_string(),
@@ -208,7 +216,11 @@ fn classification_policy_fields_are_distinct() {
 
 #[test]
 fn test_set_and_get_strict_schema() {
+    use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
     use provide_telemetry::{get_strict_schema, set_strict_schema};
+
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     // Reset to known state.
     set_strict_schema(false);
     assert!(!get_strict_schema(), "default should be false");
@@ -220,11 +232,14 @@ fn test_set_and_get_strict_schema() {
 
 #[test]
 fn test_guard_attributes_enforces_limits() {
+    use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
     use provide_telemetry::{
         clear_cardinality_limits, guard_attributes, register_cardinality_limit, CardinalityLimit,
     };
     use std::collections::HashMap;
 
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     clear_cardinality_limits();
     register_cardinality_limit(
         "env",
@@ -237,16 +252,13 @@ fn test_guard_attributes_enforces_limits() {
     let mut attrs: HashMap<String, String> = HashMap::new();
     attrs.insert("env".to_string(), "prod".to_string());
     let result = guard_attributes(attrs);
-    // First value within limit passes through unchanged.
     assert_eq!(result.get("env").map(String::as_str), Some("prod"));
 
-    // A second unique value for the same key should overflow when limit=1 and seen=1.
-    // (guard_attributes does not track cross-call state; within one call it counts uniqueness per key)
     let mut attrs2: HashMap<String, String> = HashMap::new();
     attrs2.insert("env".to_string(), "staging".to_string());
     attrs2.insert("region".to_string(), "us-east".to_string());
     let result2 = guard_attributes(attrs2);
-    // "region" has no limit, passes through.
+    assert_eq!(result2.get("env").map(String::as_str), Some("__overflow__"));
     assert_eq!(result2.get("region").map(String::as_str), Some("us-east"));
 
     clear_cardinality_limits();
@@ -254,9 +266,12 @@ fn test_guard_attributes_enforces_limits() {
 
 #[test]
 fn test_guard_attributes_no_limits_passthrough() {
+    use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
     use provide_telemetry::{clear_cardinality_limits, guard_attributes};
     use std::collections::HashMap;
 
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
     clear_cardinality_limits();
     let mut attrs: HashMap<String, String> = HashMap::new();
     attrs.insert("key".to_string(), "value".to_string());

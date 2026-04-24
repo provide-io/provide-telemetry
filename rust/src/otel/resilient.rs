@@ -231,3 +231,7 @@ mod log_metric_tests;
 #[cfg(test)]
 #[path = "resilient_health_tests.rs"]
 mod health_tests;
+
+#[cfg(test)]
+#[path = "resilient_forwarding_tests.rs"]
+mod forwarding_tests;

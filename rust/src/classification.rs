@@ -15,6 +15,12 @@ pub enum DataClass {
     Secret,
 }
 
+impl Default for DataClass {
+    fn default() -> Self {
+        Self::Public
+    }
+}
+
 impl DataClass {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -32,6 +38,15 @@ impl DataClass {
 pub struct ClassificationRule {
     pub pattern: String,
     pub classification: DataClass,
+}
+
+impl Default for ClassificationRule {
+    fn default() -> Self {
+        Self {
+            pattern: String::new(),
+            classification: DataClass::default(),
+        }
+    }
 }
 
 impl ClassificationRule {
@@ -85,8 +100,13 @@ impl Default for ClassificationPolicy {
 
 static POLICY: OnceLock<Mutex<ClassificationPolicy>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
+fn default_policy_mutex() -> Mutex<ClassificationPolicy> {
+    Mutex::new(ClassificationPolicy::default())
+}
+
 fn policy() -> &'static Mutex<ClassificationPolicy> {
-    POLICY.get_or_init(|| Mutex::new(ClassificationPolicy::default()))
+    POLICY.get_or_init(default_policy_mutex)
 }
 
 pub fn set_classification_policy(p: ClassificationPolicy) {
@@ -104,8 +124,13 @@ pub fn get_classification_policy() -> ClassificationPolicy {
 
 static RULES: OnceLock<Mutex<Vec<ClassificationRule>>> = OnceLock::new();
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only rewrite Vec::new() syntax.
+fn empty_rules_mutex() -> Mutex<Vec<ClassificationRule>> {
+    Mutex::new(Vec::new())
+}
+
 fn rules() -> &'static Mutex<Vec<ClassificationRule>> {
-    RULES.get_or_init(|| Mutex::new(Vec::new()))
+    RULES.get_or_init(empty_rules_mutex)
 }
 
 /// Match *key* against *pattern* using fnmatch semantics:
@@ -125,14 +150,7 @@ fn match_glob(pattern: &str, key: &str) -> bool {
             (None, Some(_)) => false,
             // `*` — try skipping zero or more characters in s.
             (Some(b'*'), _) => {
-                // Skip consecutive stars.
-                let p_rest = {
-                    let mut i = 1;
-                    while i < p.len() && p[i] == b'*' {
-                        i += 1;
-                    }
-                    &p[i..]
-                };
+                let p_rest = &p[1..];
                 // Try matching p_rest against every suffix of s (including empty).
                 for offset in 0..=s.len() {
                     if glob_match(p_rest, &s[offset..]) {
@@ -176,28 +194,15 @@ pub fn clear_classification_rules() {
 }
 
 pub fn classify_key(key: &str) -> Option<String> {
-    rules()
-        .lock()
-        .expect("classification lock poisoned")
-        .iter()
-        .find(|rule| match_glob(&rule.pattern, key))
-        .map(|rule| rule.classification.as_str().to_string())
+    let rules = rules().lock().expect("classification lock poisoned");
+    for rule in rules.iter() {
+        if match_glob(&rule.pattern, key) {
+            return Some(rule.classification.as_str().to_string());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testing::acquire_test_state_lock;
-
-    #[test]
-    fn classification_test_clear_rules_removes_registered_matches() {
-        let _guard = acquire_test_state_lock();
-        clear_classification_rules();
-        register_classification_rule(ClassificationRule::new("email*", DataClass::Pii));
-        assert_eq!(classify_key("email_address").as_deref(), Some("PII"));
-
-        clear_classification_rules();
-
-        assert_eq!(classify_key("email_address"), None);
-    }
-}
+#[path = "classification_tests.rs"]
+mod tests;
