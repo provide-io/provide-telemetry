@@ -45,3 +45,7 @@ fn receipts_test_emit_captures_unsigned_and_signed_receipts_in_test_mode() {
     enable_receipts(false, None, None);
     reset_receipts_for_tests();
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

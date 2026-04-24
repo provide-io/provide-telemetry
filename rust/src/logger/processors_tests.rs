@@ -489,3 +489,7 @@ fn process_event_reads_env_config_when_runtime_is_absent() {
 
     std::env::remove_var("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH");
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

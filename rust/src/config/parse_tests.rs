@@ -147,3 +147,7 @@ fn parse_module_levels_skips_blank_pairs_and_trims_entries() {
     assert_eq!(map.get("pkg").map(String::as_str), Some("INFO"));
     assert_eq!(map.get("other").map(String::as_str), Some("WARN"));
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

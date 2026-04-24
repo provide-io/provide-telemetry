@@ -354,3 +354,7 @@ fn apply_policies_alone_does_not_block_direct_trace_exports() {
 
     reset_all_otel_state();
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

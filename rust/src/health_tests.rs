@@ -51,3 +51,7 @@ fn health_test_snapshot_ignores_missing_circuit_states() {
     assert_eq!(snapshot.circuit_state_traces, "");
     assert_eq!(snapshot.circuit_state_metrics, "");
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

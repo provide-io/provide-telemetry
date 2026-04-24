@@ -57,3 +57,7 @@ fn pii_test_max_depth_boundary_keeps_array_elements_untouched() {
 
     replace_pii_rules(Vec::new());
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//

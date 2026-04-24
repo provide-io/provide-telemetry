@@ -368,3 +368,7 @@ fn runtime_test_reload_timeout_stays_frozen_when_provider_snapshot_is_live() {
     crate::testing::reset_telemetry_state();
     crate::otel::_reset_otel_for_tests();
 }
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
