@@ -25,7 +25,7 @@ import {
   unbindContext,
 } from '../../src/context';
 import { _resetRootLogger, getLogger } from '../../src/logger';
-import { sanitize } from '../../src/sanitize';
+import { sanitize } from '../../src/pii';
 import { withTrace } from '../../src/tracing';
 import { counter, gauge, histogram } from '../../src/metrics';
 

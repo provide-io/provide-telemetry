@@ -1565,7 +1565,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.27.0" },
     { name = "opentelemetry-instrumentation-logging", marker = "extra == 'otel'", specifier = ">=0.61b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "provide-telemetry", extras = ["fastapi", "otel"], marker = "extra == 'all'", specifier = ">=0.4.0" },
+    { name = "provide-telemetry", extras = ["fastapi", "otel"], marker = "extra == 'all'", specifier = ">=0.4.3" },
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40.0" },
     { name = "structlog", specifier = ">=24.0.0" },
 ]

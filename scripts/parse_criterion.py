@@ -34,7 +34,7 @@ _UNIT_TO_NS = {
 def _normalize_unit(unit: str) -> str:
     """Map any micro-prefix codepoint to ASCII ``u`` so the dict lookup is
     encoding-independent. Criterion emits U+00B5 (MICRO SIGN); some shells
-    or terminals re-encode to U+03BC (GREEK SMALL LETTER MU); legacy CP1252
+    or terminals re-encode to U+03BC (GREEK SMALL LETTER MU); CP1252-era
     pipelines may produce yet another representation. Collapsing to ``u``
     sidesteps all of that.
     """

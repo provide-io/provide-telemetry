@@ -33,6 +33,9 @@ from provide.telemetry._config_validation import (
     parse_duration_float as _parse_duration_float,
 )
 from provide.telemetry._config_validation import (
+    resolve_otlp_endpoint as _resolve_otlp_endpoint,
+)
+from provide.telemetry._config_validation import (
     warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing,
 )
 from provide.telemetry._masking import (
@@ -186,12 +189,6 @@ class SecurityConfig:
 
 @dataclass(slots=True)
 class RuntimeOverrides:
-    """Hot-reloadable config subset.
-
-    Only fields that can be changed at runtime without restarting providers.
-    All fields are optional (None = keep current value).
-    """
-
     sampling: SamplingConfig | None = None
     backpressure: BackpressureConfig | None = None
     exporter: ExporterPolicyConfig | None = None
@@ -263,7 +260,7 @@ class TelemetryConfig:
                 log_code_attributes=_parse_env_bool(
                     data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False, "PROVIDE_LOG_CODE_ATTRIBUTES"
                 ),
-                otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+                otlp_endpoint=_resolve_otlp_endpoint(data, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "v1/logs"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),
@@ -277,15 +274,14 @@ class TelemetryConfig:
             tracing=TracingConfig(
                 enabled=_parse_env_bool(data.get("PROVIDE_TRACE_ENABLED"), True, "PROVIDE_TRACE_ENABLED"),
                 sample_rate=_parse_env_float(data.get("PROVIDE_TRACE_SAMPLE_RATE", "1.0"), "PROVIDE_TRACE_SAMPLE_RATE"),
-                otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+                otlp_endpoint=_resolve_otlp_endpoint(data, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "v1/traces"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),
             ),
             metrics=MetricsConfig(
                 enabled=_parse_env_bool(data.get("PROVIDE_METRICS_ENABLED"), True, "PROVIDE_METRICS_ENABLED"),
-                otlp_endpoint=data.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
-                or data.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+                otlp_endpoint=_resolve_otlp_endpoint(data, "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "v1/metrics"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_METRICS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),

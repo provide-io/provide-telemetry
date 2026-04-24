@@ -137,9 +137,9 @@ def test_repo_accepted_gaps_file_exists_under_new_name() -> None:
     assert module._ACCEPTED_GAPS_PATH.exists(), (
         f"Expected file at {module._ACCEPTED_GAPS_PATH} — did the rename succeed?"
     )
-    # The legacy filename must no longer exist in the repo.
-    legacy = _REPO_ROOT / "spec" / "fixture_coverage_allowlist.yaml"
-    assert not legacy.exists(), "Legacy allowlist filename still present — rename incomplete"
+    # The previous filename must no longer exist in the repo.
+    old_path = _REPO_ROOT / "spec" / "fixture_coverage_allowlist.yaml"
+    assert not old_path.exists(), "Previous allowlist filename still present — rename incomplete"
 
 
 # ---------------------------------------------------------------------------

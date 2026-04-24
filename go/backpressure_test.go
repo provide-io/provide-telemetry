@@ -29,7 +29,7 @@ func TestTryAcquire_UnderLimit_ReturnsTrue(t *testing.T) {
 	t.Cleanup(_resetQueuePolicy)
 
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-		if !TryAcquire(signal) {
+		if TryAcquire(signal) == nil {
 			t.Errorf("TryAcquire(%q): expected true when under limit", signal)
 		}
 	}
@@ -43,14 +43,14 @@ func TestTryAcquire_AtCapacity_ReturnsFalse(t *testing.T) {
 
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
 		// Fill to capacity.
-		if !TryAcquire(signal) {
+		if TryAcquire(signal) == nil {
 			t.Fatalf("TryAcquire(%q) slot 1: expected true", signal)
 		}
-		if !TryAcquire(signal) {
+		if TryAcquire(signal) == nil {
 			t.Fatalf("TryAcquire(%q) slot 2: expected true", signal)
 		}
 		// At capacity — must return false.
-		if TryAcquire(signal) {
+		if TryAcquire(signal) != nil {
 			t.Errorf("TryAcquire(%q) over capacity: expected false", signal)
 		}
 	}
@@ -63,17 +63,18 @@ func TestRelease_FreesSlot(t *testing.T) {
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
 
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-		if !TryAcquire(signal) {
+		ticket := TryAcquire(signal)
+		if ticket == nil {
 			t.Fatalf("TryAcquire(%q): expected true", signal)
 		}
 		// Channel full — acquire should fail.
-		if TryAcquire(signal) {
+		if TryAcquire(signal) != nil {
 			t.Fatalf("TryAcquire(%q) when full: expected false", signal)
 		}
 		// Release the slot.
-		Release(signal)
+		Release(ticket)
 		// Now acquire should succeed.
-		if !TryAcquire(signal) {
+		if TryAcquire(signal) == nil {
 			t.Errorf("TryAcquire(%q) after Release: expected true", signal)
 		}
 	}
@@ -150,12 +151,42 @@ func TestSetQueuePolicy_RebuildsChannels(t *testing.T) {
 
 	// Verify new channel capacities are honoured.
 	for i := 0; i < 5; i++ {
-		if !TryAcquire(signalLogs) {
+		if TryAcquire(signalLogs) == nil {
 			t.Errorf("TryAcquire(logs) slot %d: expected true", i+1)
 		}
 	}
-	if TryAcquire(signalLogs) {
+	if TryAcquire(signalLogs) != nil {
 		t.Errorf("TryAcquire(logs) slot 6: expected false (capacity 5)")
+	}
+}
+
+func TestTicketAcquireReleaseDoesNotFreeNewQueueAfterPolicySwap(t *testing.T) {
+	_resetQueuePolicy()
+	t.Cleanup(_resetQueuePolicy)
+
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
+	oldTicket := TryAcquire(signalLogs)
+	if oldTicket == nil {
+		t.Fatal("expected old queue ticket")
+	}
+
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
+	newTicket := TryAcquire(signalLogs)
+	if newTicket == nil {
+		t.Fatal("expected new queue ticket")
+	}
+
+	Release(oldTicket)
+	if third := TryAcquire(signalLogs); third != nil {
+		Release(third)
+		t.Fatal("old ticket release must not free the still-held new queue slot")
+	}
+
+	Release(newTicket)
+	if afterRelease := TryAcquire(signalLogs); afterRelease == nil {
+		t.Fatal("new ticket release should free its own queue slot")
+	} else {
+		Release(afterRelease)
 	}
 }
 
@@ -163,7 +194,7 @@ func TestTryAcquire_UnknownSignal_ReturnsFalse(t *testing.T) {
 	_resetQueuePolicy()
 	t.Cleanup(_resetQueuePolicy)
 
-	if TryAcquire("unknown") {
+	if TryAcquire("unknown") != nil {
 		t.Error("TryAcquire(unknown): expected false")
 	}
 }
@@ -173,17 +204,19 @@ func TestRelease_UnknownSignal_NoOp(t *testing.T) {
 	t.Cleanup(_resetQueuePolicy)
 
 	// Should not panic or block.
-	Release("unknown")
+	Release(nil)
 }
 
 func TestRelease_EmptyChannel_NoOp(t *testing.T) {
 	_resetQueuePolicy()
 	t.Cleanup(_resetQueuePolicy)
 
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
+
 	// Release on an empty channel should not block.
-	Release(signalLogs)
-	Release(signalTraces)
-	Release(signalMetrics)
+	Release(&QueueTicket{signal: signalLogs, ch: _logsQueue})
+	Release(&QueueTicket{signal: signalTraces, ch: _tracesQueue})
+	Release(&QueueTicket{signal: signalMetrics, ch: _metricsQueue})
 }
 
 func TestSetQueuePolicy_ZeroSize_Unlimited(t *testing.T) {
@@ -195,7 +228,7 @@ func TestSetQueuePolicy_ZeroSize_Unlimited(t *testing.T) {
 
 	for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
 		for i := 0; i < 10; i++ {
-			if !TryAcquire(signal) {
+			if TryAcquire(signal) == nil {
 				t.Errorf("TryAcquire(%q) iteration %d with unlimited size: expected true", signal, i)
 			}
 		}
@@ -240,8 +273,8 @@ func TestTryAcquireRelease_ConcurrentSetQueuePolicy(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
 				for _, signal := range []string{signalLogs, signalTraces, signalMetrics} {
-					if TryAcquire(signal) {
-						Release(signal)
+					if ticket := TryAcquire(signal); ticket != nil {
+						Release(ticket)
 					}
 				}
 			}
@@ -268,16 +301,16 @@ func TestBackpressureConcurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
 				acquired := TryAcquire(signalLogs)
-				if acquired {
-					Release(signalLogs)
+				if acquired != nil {
+					Release(acquired)
 				}
 				acquired = TryAcquire(signalTraces)
-				if acquired {
-					Release(signalTraces)
+				if acquired != nil {
+					Release(acquired)
 				}
 				acquired = TryAcquire(signalMetrics)
-				if acquired {
-					Release(signalMetrics)
+				if acquired != nil {
+					Release(acquired)
 				}
 			}
 		}()

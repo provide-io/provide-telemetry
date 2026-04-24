@@ -107,7 +107,7 @@ Only do that if the org decision is:
 - "We are buying observability as a platform capability."
 - "We do not want to own a telemetry abstraction layer."
 
-Then this repo should not remain the primary API. Either retire it or reduce it to a compatibility shim.
+Then this repo should not remain the primary API. Either retire it or reduce it to a thin integration adapter.
 
 ### Net
 

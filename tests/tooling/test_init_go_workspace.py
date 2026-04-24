@@ -115,7 +115,7 @@ def _run_workspace_script(
     return result.stdout.strip(), workfile.read_text(encoding="utf-8")
 
 
-def test_workspace_script_supports_legacy_multi_module_layout(tmp_path: Path) -> None:
+def test_workspace_script_supports_multi_module_layout(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     _write_go_module(repo_root / "go", "github.com/provide-io/provide-telemetry/go")
     _write_go_module(repo_root / "go" / "internal", "github.com/provide-io/provide-telemetry/go/internal")

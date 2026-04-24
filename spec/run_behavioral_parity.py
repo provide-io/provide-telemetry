@@ -321,11 +321,6 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Skip contract probe DSL cases (default: cases are run)",
     )
-    # Legacy opt-in flags kept for backward compatibility — they are now no-ops
-    # because output and contract checks are on by default.  Passing them still
-    # works and produces the same result.
-    parser.add_argument("--check-output", action="store_true", default=True, help=argparse.SUPPRESS)
-    parser.add_argument("--check-contracts", action="store_true", default=True, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     selected = {s.strip().lower() for s in args.lang.split(",")}

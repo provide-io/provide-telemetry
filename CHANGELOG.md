@@ -6,6 +6,29 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.4.3] — 2026-04-24
+
+### API Alignment
+
+- **Go: ticket-based backpressure API** — `TryAcquire(signal)` returns a `*QueueTicket`; pass that ticket to `Release(ticket)` so acquisition and release share one opaque queue handle.
+- **TypeScript: canonical sanitizer export** — `sanitize` is exported from the package root and implemented by the PII module; no separate sanitizer module is shipped.
+
+### Reliability
+
+- **All: OTLP shared endpoint expansion** — `OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318` resolves to `/v1/traces`, `/v1/metrics`, and `/v1/logs` consistently across implementations.
+- **Rust: probabilistic sampling** — fractional sampling rates now perform a fresh uniform random draw per call; keys only select override rates.
+- **Go: disabled signal gates** — disabled tracing and metrics no longer install providers or emit through local instrument wrappers.
+- **Python: tracing failure cleanup** — tracing decorators now release backpressure tickets and restore local context if span entry fails.
+- **TypeScript: PII path specificity** — exact custom rules no longer exempt unrelated default-sensitive keys.
+- **Go/TypeScript/Rust: lazy logger sampling** — log sampling from environment is applied consistently before explicit setup.
+
+### Quality
+
+- **Cross-language tests** — added focused regression tests for sampling, OTLP endpoint resolution, disabled-signal gates, lazy logging, backpressure release, tracing cleanup, and PII rule specificity.
+- **End-state cleanup** — removed duplicate sanitizer and backpressure surfaces so the public API matches the canonical implementation from the start.
+
+---
+
 ## [0.2.4] — 2026-04-08
 
 ### Features

@@ -49,6 +49,7 @@ fn reset_logger_state() {
         "PROVIDE_LOG_FORMAT",
         "PROVIDE_LOG_INCLUDE_TIMESTAMP",
         "PROVIDE_LOG_MODULE_LEVELS",
+        "PROVIDE_SAMPLING_LOGS_RATE",
     ] {
         std::env::remove_var(key);
     }
@@ -185,6 +186,19 @@ fn reset_logging_config_for_tests_clears_programmatic_override() {
     );
 
     std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+}
+
+#[test]
+fn get_logger_before_setup_applies_env_log_sampling_policy() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+
+    std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0");
+    let log = get_logger(Some("tests.lazy.env.sampling"));
+    log.info("sampled.out");
+
+    assert!(Logger::drain_events_for_tests().is_empty());
+    assert_eq!(crate::health::get_health_snapshot().dropped_logs, 1);
 }
 
 #[test]

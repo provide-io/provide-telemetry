@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.3] — 2026-04-24
+
+### API Alignment
+
+- **Backpressure tickets** — `TryAcquire(signal)` returns a `*QueueTicket`; pass that exact ticket to `Release(ticket)`. This keeps release ownership tied to the queue slot that was acquired.
+
+### Reliability
+
+- **Disabled tracing/metrics gates** — disabled signals no longer install OTel providers or emit through local wrappers.
+- **Lazy logger sampling** — environment log sampling is applied before explicit setup.
+- **OTLP shared endpoint expansion** — the optional OTel module resolves shared OTLP endpoints to the correct per-signal `/v1/*` paths.
+
+### Quality
+
+- Added regression coverage for ticket release, disabled tracing/metrics, lazy sampling, and shared OTLP endpoint resolution.
+
+---
+
 ## [0.2.4] — 2026-04-08
 
 ### Features

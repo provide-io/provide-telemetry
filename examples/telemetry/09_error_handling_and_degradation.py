@@ -8,7 +8,7 @@
 
 Demonstrates:
 - TelemetryError hierarchy for structured exception handling
-- ConfigurationError for invalid config (backwards-compatible with ValueError)
+- ConfigurationError for invalid config (also catchable as ValueError)
 - EventSchemaError for invalid event names
 - Catching all telemetry errors with a single except clause
 - Graceful degradation when OTel is not installed

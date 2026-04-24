@@ -690,7 +690,7 @@ behavioral_parity:
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"
   min_segments: 3
-  max_segments: 4  # event() implementations accept 3-4 segments (DARS); event_name() remains lenient at 3-5 for backward compat
+  max_segments: 4  # event() implementations accept 3-4 segments (DARS); event_name() is the plain-string helper.
   separator: "."
 
 # TypeScript-only extras: framework helpers that have no polyglot equivalent.

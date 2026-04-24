@@ -232,8 +232,8 @@ class TestOtlpEndpointPriority:
             }
         )
         assert cfg.logging.otlp_endpoint == "http://logs-specific"
-        assert cfg.tracing.otlp_endpoint == "http://general"
-        assert cfg.metrics.otlp_endpoint == "http://general"
+        assert cfg.tracing.otlp_endpoint == "http://general/v1/traces"
+        assert cfg.metrics.otlp_endpoint == "http://general/v1/metrics"
 
     def test_specific_headers_override_general(self) -> None:
         cfg = TelemetryConfig.from_env(

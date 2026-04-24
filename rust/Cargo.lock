@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "provide-telemetry"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "base64",
  "criterion",
@@ -1177,6 +1177,7 @@ dependencies = [
  "opentelemetry_sdk",
  "percent-encoding",
  "proptest",
+ "rand",
  "regex",
  "reqwest",
  "rstest",

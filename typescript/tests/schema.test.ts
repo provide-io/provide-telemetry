@@ -338,7 +338,7 @@ describe('event()', () => {
     expect(rec.domain).toBe('Auth');
   });
 
-  it('eventName() still works as deprecated alias', () => {
+  it('eventName() returns a plain string helper result', () => {
     const name = eventName('auth', 'login', 'success');
     expect(name).toBe('auth.login.success');
     expect(typeof name).toBe('string');
