@@ -235,11 +235,28 @@ next microtask. Callers that bind propagation context inside top-level
 async code before that microtask runs would hit the module-level fallback
 store and leak context between concurrent requests.
 
-`setupTelemetry()` papers over the race: when the init has not yet settled
-it schedules a deferred check that records a `setupError` and logs a
-warning if ALS really is unavailable. For code paths that need a hard
-guarantee (typically: servers that start accepting requests at module
-scope), await the init explicitly before serving traffic:
+For code paths that need a hard guarantee (typically: servers that start
+accepting requests at module scope) prefer the async variant:
+
+```typescript
+import { setupTelemetryAsync } from '@provide-io/telemetry';
+
+// Awaits ALS init before resolving. Throws ConfigurationError when
+// AsyncLocalStorage is genuinely unavailable on a Node runtime.
+await setupTelemetryAsync({ serviceName: 'my-app' });
+
+// Safe to accept concurrent requests here.
+```
+
+The synchronous `setupTelemetry()` is preserved for backwards compatibility
+and remains the right choice for non-async-init environments (bundled CJS
+tests, vitest, scripts that do not race with request serving). It applies
+a best-effort ALS check: when the init has not yet settled it schedules a
+deferred check that records a `setupError` and logs a warning if ALS really
+is unavailable — it does not throw in that case.
+
+If you would rather compose the primitives yourself, both helpers remain
+exported:
 
 ```typescript
 import {
@@ -253,8 +270,6 @@ await awaitPropagationInit();
 if (isFallbackMode()) {
   throw new Error('AsyncLocalStorage unavailable — refusing to serve requests');
 }
-
-// Safe to accept concurrent requests here.
 ```
 
 `awaitPropagationInit()` always resolves (it never rejects); inspect
