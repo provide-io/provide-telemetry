@@ -96,16 +96,11 @@ fn policy() -> &'static Mutex<ClassificationPolicy> {
 }
 
 pub fn set_classification_policy(p: ClassificationPolicy) {
-    *policy()
-        .lock()
-        .expect("classification policy lock poisoned") = p;
+    *crate::_lock::lock(policy()) = p;
 }
 
 pub fn get_classification_policy() -> ClassificationPolicy {
-    policy()
-        .lock()
-        .expect("classification policy lock poisoned")
-        .clone()
+    crate::_lock::lock(policy()).clone()
 }
 
 static RULES: OnceLock<Mutex<Vec<ClassificationRule>>> = OnceLock::new();
@@ -159,28 +154,19 @@ fn match_glob(pattern: &str, key: &str) -> bool {
 }
 
 pub fn register_classification_rule(rule: ClassificationRule) {
-    rules()
-        .lock()
-        .expect("classification lock poisoned")
-        .push(rule);
+    crate::_lock::lock(rules()).push(rule);
 }
 
 pub fn register_classification_rules(next: Vec<ClassificationRule>) {
-    rules()
-        .lock()
-        .expect("classification lock poisoned")
-        .extend(next);
+    crate::_lock::lock(rules()).extend(next);
 }
 
 pub fn clear_classification_rules() {
-    rules()
-        .lock()
-        .expect("classification lock poisoned")
-        .clear();
+    crate::_lock::lock(rules()).clear();
 }
 
 pub fn classify_key(key: &str) -> Option<String> {
-    let rules = rules().lock().expect("classification lock poisoned");
+    let rules = crate::_lock::lock(rules());
     for rule in rules.iter() {
         if match_glob(&rule.pattern, key) {
             return Some(rule.classification.as_str().to_string());

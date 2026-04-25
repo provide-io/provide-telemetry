@@ -5,6 +5,7 @@
 
 #![allow(non_upper_case_globals)]
 
+mod _lock;
 pub mod backpressure;
 pub mod cardinality;
 #[cfg(feature = "governance")]

@@ -23,7 +23,7 @@ fn resilience_test_get_circuit_state_closed_open_half_open() {
 
     // Open: threshold reached, cooldown still active.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -38,7 +38,7 @@ fn resilience_test_get_circuit_state_closed_open_half_open() {
 
     // Half-open: cooldown elapsed, no probe in flight yet.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -52,7 +52,7 @@ fn resilience_test_get_circuit_state_closed_open_half_open() {
 
     // Half-open: probe explicitly in flight (half_open_probing=true).
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -86,7 +86,7 @@ fn resilience_test_half_open_probe_success_closes_breaker() {
 
     // Trip the breaker.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -131,7 +131,7 @@ fn resilience_test_half_open_probe_failure_reopens_breaker() {
 
     // Trip the breaker with expired cooldown — ready for half-open.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -173,7 +173,7 @@ fn resilience_test_concurrent_callers_during_probe_are_rejected() {
 
     // Manually put the breaker into "probe in flight" state.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -217,7 +217,7 @@ fn resilience_test_concurrent_callers_during_probe_fail_closed_returns_error() {
 
     // Probe already in flight.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");
@@ -346,7 +346,7 @@ fn resilience_test_zero_timeout_bypasses_circuit_gate() {
 
     // Pre-load the breaker into the open state with active cooldown.
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs state should exist");

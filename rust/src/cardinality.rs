@@ -37,7 +37,7 @@ fn state() -> &'static Mutex<CardinalityState> {
 
 pub fn register_cardinality_limit(key: impl Into<String>, limit: CardinalityLimit) {
     let key = key.into();
-    let mut guard = state().lock().expect("cardinality lock poisoned");
+    let mut guard = crate::_lock::lock(state());
     guard.limits.insert(
         key.clone(),
         CardinalityLimit {
@@ -49,15 +49,11 @@ pub fn register_cardinality_limit(key: impl Into<String>, limit: CardinalityLimi
 }
 
 pub fn get_cardinality_limits() -> BTreeMap<String, CardinalityLimit> {
-    state()
-        .lock()
-        .expect("cardinality lock poisoned")
-        .limits
-        .clone()
+    crate::_lock::lock(state()).limits.clone()
 }
 
 pub fn clear_cardinality_limits() {
-    let mut guard = state().lock().expect("cardinality lock poisoned");
+    let mut guard = crate::_lock::lock(state());
     guard.limits.clear();
     guard.seen.clear();
     guard.last_prune.clear();
@@ -81,7 +77,7 @@ pub fn guard_attributes(attributes: HashMap<String, String>) -> HashMap<String, 
     let mut out = HashMap::with_capacity(attributes.len());
 
     for (key, value) in attributes {
-        let mut guard = state().lock().expect("cardinality lock poisoned");
+        let mut guard = crate::_lock::lock(state());
         let Some(limit) = guard.limits.get(&key).cloned() else {
             out.insert(key, value);
             continue;
@@ -200,7 +196,7 @@ mod tests {
         let stale_seen_at = Instant::now() - Duration::from_secs(2);
         let stale_last_prune = Instant::now() - PRUNE_INTERVAL - Duration::from_millis(1);
         {
-            let mut state = state().lock().expect("cardinality lock poisoned");
+            let mut state = crate::_lock::lock(state());
             state.seen.insert(
                 "user.id".to_string(),
                 HashMap::from([("stale".to_string(), stale_seen_at)]),
@@ -216,7 +212,7 @@ mod tests {
         )]));
 
         assert_eq!(result.get("user.id").map(String::as_str), Some("fresh"));
-        let state = state().lock().expect("cardinality lock poisoned");
+        let state = crate::_lock::lock(state());
         let seen = state.seen.get("user.id").expect("seen values should exist");
         assert_eq!(seen.len(), 1);
         assert!(seen.contains_key("fresh"));

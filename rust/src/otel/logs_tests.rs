@@ -341,9 +341,7 @@ fn shutdown_logger_provider_clears_provider_even_when_processor_shutdown_errors(
         .with_resource(super::super::resource::build_resource(&test_config()))
         .with_log_processor(ShutdownErrorLogProcessor)
         .build();
-    *logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned") = Some(InstalledLoggerProvider {
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
         provider: Arc::new(provider),
         runtime: ProvideTokioRuntime::test(),
     });

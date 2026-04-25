@@ -29,7 +29,7 @@ fn resilience_test_missing_internal_state_surfaces_unknown_signal_errors() {
         Some(())
     );
 
-    policies().lock().expect("policy lock poisoned").clear();
+    crate::_lock::lock(policies()).clear();
     let err = get_exporter_policy(Signal::Logs).expect_err("missing policy must error");
     assert!(err.message.contains("unknown signal"));
 
@@ -38,7 +38,7 @@ fn resilience_test_missing_internal_state_surfaces_unknown_signal_errors() {
         .expect_err("missing policy must bubble up");
     assert!(err.message.contains("unknown signal"));
 
-    circuits().lock().expect("circuit lock poisoned").clear();
+    crate::_lock::lock(circuits()).clear();
     let err = get_circuit_state(Signal::Logs).expect_err("missing circuit must error");
     assert!(err.message.contains("unknown signal"));
 
@@ -55,7 +55,7 @@ fn resilience_test_record_success_closes_half_open_probe_state() {
     _reset_resilience_for_tests();
 
     {
-        let mut lock = circuits().lock().expect("circuit lock poisoned");
+        let mut lock = crate::_lock::lock(circuits());
         let state = lock
             .get_mut(&Signal::Logs)
             .expect("logs circuit must exist after reset");
@@ -67,7 +67,7 @@ fn resilience_test_record_success_closes_half_open_probe_state() {
 
     let (state, _, _) = get_circuit_state(Signal::Logs).expect("logs circuit state should exist");
     assert_eq!(state, "closed");
-    let lock = circuits().lock().expect("circuit lock poisoned");
+    let lock = crate::_lock::lock(circuits());
     let state = lock
         .get(&Signal::Logs)
         .expect("logs circuit must exist after success");

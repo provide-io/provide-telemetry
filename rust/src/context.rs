@@ -57,9 +57,7 @@ fn current_scope_key() -> ContextScopeKey {
 
 fn current_snapshot() -> ContextSnapshot {
     match current_scope_key() {
-        ContextScopeKey::Task(task_id) => task_contexts()
-            .lock()
-            .expect("task context lock poisoned")
+        ContextScopeKey::Task(task_id) => crate::_lock::lock(task_contexts())
             .get(&task_id)
             .cloned()
             .unwrap_or_default(),
@@ -70,7 +68,7 @@ fn current_snapshot() -> ContextSnapshot {
 fn set_snapshot_for_key(key: ContextScopeKey, snapshot: ContextSnapshot) {
     match key {
         ContextScopeKey::Task(task_id) => {
-            let mut map = task_contexts().lock().expect("task context lock poisoned");
+            let mut map = crate::_lock::lock(task_contexts());
             if snapshot == ContextSnapshot::default() {
                 // Remove the entry when restoring to default to prevent unbounded growth
                 map.remove(&task_id);
@@ -167,10 +165,7 @@ pub(crate) fn reset_context_for_tests() {
     THREAD_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = ContextSnapshot::default();
     });
-    task_contexts()
-        .lock()
-        .expect("task context lock poisoned")
-        .clear();
+    crate::_lock::lock(task_contexts()).clear();
 }
 
 pub(crate) fn reset_trace_context_for_tests() {
@@ -180,7 +175,7 @@ pub(crate) fn reset_trace_context_for_tests() {
         snapshot.trace_id = None;
         snapshot.span_id = None;
     });
-    let mut tasks = task_contexts().lock().expect("task context lock poisoned");
+    let mut tasks = crate::_lock::lock(task_contexts());
     for snapshot in tasks.values_mut() {
         snapshot.trace_id = None;
         snapshot.span_id = None;
@@ -351,21 +346,18 @@ mod tests {
         runtime.block_on(async {
             tokio::spawn(async {
                 let task_id = tokio::task::id();
-                task_contexts()
-                    .lock()
-                    .expect("task context lock poisoned")
-                    .insert(
-                        task_id,
-                        ContextSnapshot {
-                            trace_id: Some("trace".to_string()),
-                            span_id: Some("span".to_string()),
-                            ..ContextSnapshot::default()
-                        },
-                    );
+                crate::_lock::lock(task_contexts()).insert(
+                    task_id,
+                    ContextSnapshot {
+                        trace_id: Some("trace".to_string()),
+                        span_id: Some("span".to_string()),
+                        ..ContextSnapshot::default()
+                    },
+                );
 
                 reset_trace_context_for_tests();
 
-                let tasks = task_contexts().lock().expect("task context lock poisoned");
+                let tasks = crate::_lock::lock(task_contexts());
                 let snapshot = tasks
                     .get(&task_id)
                     .expect("task snapshot should still exist");

@@ -122,9 +122,7 @@ pub(crate) fn detect_secret_in_string(text: &str) -> bool {
             return true;
         }
     }
-    let patterns = custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned");
+    let patterns = crate::_lock::lock(custom_secret_patterns());
     for (_, pattern) in patterns.iter() {
         if pattern.is_match(text) {
             return true;
@@ -140,9 +138,7 @@ pub(crate) const REDACTED_SENTINEL: &str = REDACTED;
 /// Register a custom secret detection pattern. If *name* already exists, the
 /// pattern is replaced.
 pub fn register_secret_pattern(name: &str, pattern: Regex) {
-    let mut patterns = custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned");
+    let mut patterns = crate::_lock::lock(custom_secret_patterns());
     let mut index = 0;
     while index < patterns.len() {
         if patterns[index].0 == name {
@@ -164,9 +160,7 @@ pub fn get_secret_patterns() -> Vec<SecretPattern> {
             pattern: p.clone(),
         })
         .collect();
-    let patterns = custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned");
+    let patterns = crate::_lock::lock(custom_secret_patterns());
     for (name, pattern) in patterns.iter() {
         out.push(SecretPattern {
             name: name.clone(),
@@ -178,22 +172,19 @@ pub fn get_secret_patterns() -> Vec<SecretPattern> {
 
 /// Reset custom secret patterns — for test isolation only.
 pub fn reset_secret_patterns_for_tests() {
-    custom_secret_patterns()
-        .lock()
-        .expect("custom patterns lock poisoned")
-        .clear();
+    crate::_lock::lock(custom_secret_patterns()).clear();
 }
 
 pub fn register_pii_rule(rule: PIIRule) {
-    rules().lock().expect("pii lock poisoned").push(rule);
+    crate::_lock::lock(rules()).push(rule);
 }
 
 pub fn replace_pii_rules(next: Vec<PIIRule>) {
-    *rules().lock().expect("pii lock poisoned") = next;
+    *crate::_lock::lock(rules()) = next;
 }
 
 pub fn get_pii_rules() -> Vec<PIIRule> {
-    rules().lock().expect("pii lock poisoned").clone()
+    crate::_lock::lock(rules()).clone()
 }
 
 fn hash_value(value: &Value) -> String {

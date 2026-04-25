@@ -54,10 +54,7 @@ fn export_test_support_wait_helpers_cover_timeout_paths() {
     assert!(collector
         .wait_for_all(&["/v1/logs", "/v1/traces"], Duration::from_millis(10))
         .is_empty());
-    collector
-        .seen_paths
-        .lock()
-        .expect("seen paths lock poisoned")
+    crate::_lock::lock(&collector.seen_paths)
         .extend(["/v1/logs".to_string(), "/v1/traces".to_string()]);
     assert_eq!(
         collector.wait_for_all(&["/v1/logs", "/v1/traces"], Duration::from_millis(10)),
@@ -122,10 +119,7 @@ fn export_test_support_handles_connection_edge_cases() {
     let accepted = listener.accept().expect("accept helper connection");
     handle_accept_result(Ok(accepted), &worker_paths);
     closer.join().expect("accept helper closer");
-    assert!(worker_paths
-        .lock()
-        .expect("accept helper lock poisoned")
-        .is_empty());
+    assert!(crate::_lock::lock(&worker_paths).is_empty());
 
     handle_accept_result(
         Err(std::io::Error::new(ErrorKind::WouldBlock, "retry")),

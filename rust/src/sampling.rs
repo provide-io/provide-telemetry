@@ -55,17 +55,12 @@ pub fn set_sampling_policy(
             .map(|(key, rate)| (key, rate.clamp(0.0, 1.0)))
             .collect(),
     };
-    policies()
-        .lock()
-        .expect("sampling policy lock poisoned")
-        .insert(signal, normalized.clone());
+    crate::_lock::lock(policies()).insert(signal, normalized.clone());
     Ok(normalized)
 }
 
 pub fn get_sampling_policy(signal: Signal) -> Result<SamplingPolicy, TelemetryError> {
-    policies()
-        .lock()
-        .expect("sampling policy lock poisoned")
+    crate::_lock::lock(policies())
         .get(&signal)
         .cloned()
         .ok_or_else(|| TelemetryError::new("unknown signal"))
@@ -102,7 +97,7 @@ pub fn should_sample(signal: Signal, key: Option<&str>) -> Result<bool, Telemetr
 }
 
 pub fn _reset_sampling_for_tests() {
-    *policies().lock().expect("sampling policy lock poisoned") = BTreeMap::from([
+    *crate::_lock::lock(policies()) = BTreeMap::from([
         (Signal::Logs, SamplingPolicy::default()),
         (Signal::Traces, SamplingPolicy::default()),
         (Signal::Metrics, SamplingPolicy::default()),
@@ -188,10 +183,7 @@ mod tests {
     #[test]
     fn sampling_test_unknown_policy_errors_when_internal_state_is_missing() {
         let _guard = acquire_test_state_lock();
-        policies()
-            .lock()
-            .expect("sampling policy lock poisoned")
-            .clear();
+        crate::_lock::lock(policies()).clear();
 
         let err = get_sampling_policy(Signal::Logs).expect_err("missing policy must error");
         assert!(err.message.contains("unknown signal"));

@@ -99,15 +99,12 @@ pub fn set_exporter_policy(
     signal: Signal,
     policy: ExporterPolicy,
 ) -> Result<ExporterPolicy, TelemetryError> {
-    policies()
-        .lock()
-        .expect("policy lock poisoned")
-        .insert(signal, policy.clone());
+    crate::_lock::lock(policies()).insert(signal, policy.clone());
     Ok(policy)
 }
 
 pub fn get_exporter_policy(signal: Signal) -> Result<ExporterPolicy, TelemetryError> {
-    let policy_lock = policies().lock().expect("policy lock poisoned");
+    let policy_lock = crate::_lock::lock(policies());
     match policy_lock.get(&signal).cloned() {
         Some(policy) => Ok(policy),
         None => Err(TelemetryError::new("unknown signal")),
@@ -115,7 +112,7 @@ pub fn get_exporter_policy(signal: Signal) -> Result<ExporterPolicy, TelemetryEr
 }
 
 pub fn get_circuit_state(signal: Signal) -> Result<(String, u32, f64), TelemetryError> {
-    let circuits = circuits().lock().expect("circuit lock poisoned");
+    let circuits = crate::_lock::lock(circuits());
     let state = match circuits.get(&signal).cloned() {
         Some(state) => state,
         None => return Err(TelemetryError::new("unknown signal")),
@@ -280,7 +277,7 @@ where
 /// timeouts increment the breaker counter; other failures reset it. Mirrors
 /// Python (resilience.py:154), Go (resilience.go:118), and TS (resilience.ts:180).
 pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: bool) {
-    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+    let mut circuit_lock = crate::_lock::lock(circuits());
     let Some(state) = circuit_lock.get_mut(&signal) else {
         return;
     };
@@ -305,7 +302,7 @@ pub(crate) fn _record_circuit_failure_for_wrappers(signal: Signal, is_timeout: b
 /// circuit can close again. Handles half-open probe close. Called by resilient
 /// exporter wrappers.
 pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
-    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+    let mut circuit_lock = crate::_lock::lock(circuits());
     let Some(state) = circuit_lock.get_mut(&signal) else {
         return;
     };
@@ -321,7 +318,7 @@ pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
 /// callers should be rejected). Returns `false` if the operation may proceed
 /// (either circuit closed, or cooldown elapsed and this call starts the probe).
 pub(crate) fn _check_and_start_probe_for_wrappers(signal: Signal) -> bool {
-    let mut circuit_lock = circuits().lock().expect("circuit lock poisoned");
+    let mut circuit_lock = crate::_lock::lock(circuits());
     let Some(state) = circuit_lock.get_mut(&signal) else {
         return false;
     };
@@ -344,12 +341,12 @@ pub(crate) fn _check_and_start_probe_for_wrappers(signal: Signal) -> bool {
 }
 
 pub fn _reset_resilience_for_tests() {
-    *policies().lock().expect("policy lock poisoned") = BTreeMap::from([
+    *crate::_lock::lock(policies()) = BTreeMap::from([
         (Signal::Logs, ExporterPolicy::default()),
         (Signal::Traces, ExporterPolicy::default()),
         (Signal::Metrics, ExporterPolicy::default()),
     ]);
-    *circuits().lock().expect("circuit lock poisoned") = BTreeMap::from([
+    *crate::_lock::lock(circuits()) = BTreeMap::from([
         (Signal::Logs, CircuitState::default()),
         (Signal::Traces, CircuitState::default()),
         (Signal::Metrics, CircuitState::default()),
@@ -357,8 +354,8 @@ pub fn _reset_resilience_for_tests() {
 }
 
 pub fn _clear_resilience_state_for_tests() {
-    policies().lock().expect("policy lock poisoned").clear();
-    circuits().lock().expect("circuit lock poisoned").clear();
+    crate::_lock::lock(policies()).clear();
+    crate::_lock::lock(circuits()).clear();
 }
 
 #[cfg(test)]

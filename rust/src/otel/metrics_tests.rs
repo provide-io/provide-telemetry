@@ -176,21 +176,9 @@ fn attrs_to_kvs_handles_none_and_populated_attributes() {
 fn get_or_create_instruments_reuse_cached_instances() {
     let _guard = acquire_test_state_lock();
     shutdown_meter_provider();
-    COUNTERS
-        .get_or_init(empty_counter_cache_mutex)
-        .lock()
-        .expect("counter cache lock poisoned")
-        .clear();
-    GAUGES
-        .get_or_init(empty_gauge_cache_mutex)
-        .lock()
-        .expect("gauge cache lock poisoned")
-        .clear();
-    HISTOGRAMS
-        .get_or_init(empty_histogram_cache_mutex)
-        .lock()
-        .expect("histogram cache lock poisoned")
-        .clear();
+    crate::_lock::lock(COUNTERS.get_or_init(empty_counter_cache_mutex)).clear();
+    crate::_lock::lock(GAUGES.get_or_init(empty_gauge_cache_mutex)).clear();
+    crate::_lock::lock(HISTOGRAMS.get_or_init(empty_histogram_cache_mutex)).clear();
 
     let _ = get_or_create_counter("reuse.counter");
     let _ = get_or_create_counter("reuse.counter");
@@ -200,30 +188,15 @@ fn get_or_create_instruments_reuse_cached_instances() {
     let _ = get_or_create_histogram("reuse.histogram");
 
     assert_eq!(
-        COUNTERS
-            .get()
-            .expect("counter cache must exist")
-            .lock()
-            .expect("counter cache lock poisoned")
-            .len(),
+        crate::_lock::lock(COUNTERS.get().expect("counter cache must exist")).len(),
         1
     );
     assert_eq!(
-        GAUGES
-            .get()
-            .expect("gauge cache must exist")
-            .lock()
-            .expect("gauge cache lock poisoned")
-            .len(),
+        crate::_lock::lock(GAUGES.get().expect("gauge cache must exist")).len(),
         1
     );
     assert_eq!(
-        HISTOGRAMS
-            .get()
-            .expect("histogram cache must exist")
-            .lock()
-            .expect("histogram cache lock poisoned")
-            .len(),
+        crate::_lock::lock(HISTOGRAMS.get().expect("histogram cache must exist")).len(),
         1
     );
 }
@@ -298,9 +271,7 @@ fn shutdown_meter_provider_clears_provider_even_when_reader_shutdown_errors() {
         .with_resource(super::super::resource::build_resource(&test_config()))
         .with_reader(reader)
         .build();
-    *meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned") = Some(InstalledMeterProvider {
+    *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
         provider: Arc::new(provider),
         runtime: ProvideTokioRuntime::test(),
     });
@@ -318,9 +289,7 @@ fn shutdown_meter_provider_logs_error_when_provider_is_already_shutdown() {
         .with_resource(super::super::resource::build_resource(&test_config()))
         .build();
     provider.shutdown().expect("first shutdown should succeed");
-    *meter_provider_slot()
-        .lock()
-        .expect("meter provider lock poisoned") = Some(InstalledMeterProvider {
+    *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
         provider: Arc::new(provider),
         runtime: ProvideTokioRuntime::test(),
     });

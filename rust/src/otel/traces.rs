@@ -135,9 +135,7 @@ pub(super) fn install_tracer_provider(
 
     let arc = Arc::new(provider);
     global::set_tracer_provider(arc.as_ref().clone());
-    *tracer_provider_slot()
-        .lock()
-        .expect("tracer provider lock poisoned") = Some(InstalledTracerProvider {
+    *crate::_lock::lock(tracer_provider_slot()) = Some(InstalledTracerProvider {
         provider: arc,
         runtime,
     });
@@ -147,9 +145,7 @@ pub(super) fn install_tracer_provider(
 /// Shut down the installed `TracerProvider`. Safe to
 /// call when no provider has been installed (no-op).
 pub(super) fn shutdown_tracer_provider() {
-    let mut guard = tracer_provider_slot()
-        .lock()
-        .expect("tracer provider lock poisoned");
+    let mut guard = crate::_lock::lock(tracer_provider_slot());
     let provider = guard.take();
     drop(guard);
     if let Some(installed) = provider {
@@ -163,10 +159,7 @@ pub(super) fn shutdown_tracer_provider() {
 }
 
 pub(crate) fn tracer_provider_installed() -> bool {
-    tracer_provider_slot()
-        .lock()
-        .expect("tracer provider lock poisoned")
-        .is_some()
+    crate::_lock::lock(tracer_provider_slot()).is_some()
 }
 
 /// Wraps an OTel boxed span + the trace-context guard so that on drop
@@ -451,9 +444,7 @@ mod tests {
             .with_resource(super::super::resource::build_resource(&test_config()))
             .build();
         provider.shutdown().expect("first shutdown should succeed");
-        *tracer_provider_slot()
-            .lock()
-            .expect("tracer provider lock poisoned") = Some(InstalledTracerProvider {
+        *crate::_lock::lock(tracer_provider_slot()) = Some(InstalledTracerProvider {
             provider: Arc::new(provider),
             runtime: ProvideTokioRuntime::test(),
         });

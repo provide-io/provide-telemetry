@@ -59,25 +59,18 @@ fn empty_events_mutex() -> Mutex<Vec<LogEvent>> {
 /// Useful when the caller wants to set level/format at startup in code
 /// rather than relying solely on environment variables.
 pub fn configure_logging(config: crate::config::LoggingConfig) {
-    *LOGGING_CONFIG_OVERRIDE
-        .lock()
-        .expect("logging config override lock poisoned") = Some(config);
+    *crate::_lock::lock(&LOGGING_CONFIG_OVERRIDE) = Some(config);
 }
 
 /// Clear the programmatic logging override (test helper).
 pub fn reset_logging_config_for_tests() {
-    *LOGGING_CONFIG_OVERRIDE
-        .lock()
-        .expect("logging config override lock poisoned") = None;
+    *crate::_lock::lock(&LOGGING_CONFIG_OVERRIDE) = None;
 }
 
 /// Read the active logging config.
 /// Priority order: programmatic override, runtime config, then env/defaults.
 fn active_logging_config() -> crate::config::LoggingConfig {
-    let override_cfg = LOGGING_CONFIG_OVERRIDE
-        .lock()
-        .expect("logging config override lock poisoned")
-        .clone();
+    let override_cfg = crate::_lock::lock(&LOGGING_CONFIG_OVERRIDE).clone();
     if let Some(cfg) = override_cfg {
         return cfg;
     }
@@ -126,7 +119,7 @@ fn emit_event(mut event: LogEvent) {
     emit_if_json(&event);
     emit_if_console(&event);
     emit_if_otel(&event);
-    let mut buf = events().lock().expect("logger event lock poisoned");
+    let mut buf = crate::_lock::lock(events());
     if buf.len() >= MAX_FALLBACK_EVENTS {
         return;
     }
@@ -335,7 +328,7 @@ impl Logger {
     }
 
     pub fn drain_events_for_tests() -> Vec<LogEvent> {
-        std::mem::take(&mut *events().lock().expect("logger event lock poisoned"))
+        std::mem::take(&mut *crate::_lock::lock(events()))
     }
 }
 
@@ -394,19 +387,11 @@ impl BufferLogger {
         }
         let mut event = new_event(&self.target, level, message);
         process_event(&mut event);
-        self.events
-            .lock()
-            .expect("buffer logger event lock poisoned")
-            .push(event);
+        crate::_lock::lock(&self.events).push(event);
     }
 
     pub fn drain(&self) -> Vec<LogEvent> {
-        std::mem::take(
-            &mut *self
-                .events
-                .lock()
-                .expect("buffer logger event lock poisoned"),
-        )
+        std::mem::take(&mut *crate::_lock::lock(&self.events))
     }
 }
 

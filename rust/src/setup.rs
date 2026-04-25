@@ -28,7 +28,7 @@ fn setup_state() -> &'static Mutex<SetupState> {
 }
 
 pub fn setup_telemetry() -> Result<TelemetryConfig, TelemetryError> {
-    let mut state = setup_state().lock().expect("setup state lock poisoned");
+    let mut state = crate::_lock::lock(setup_state());
     if state.done {
         return get_runtime_config()
             .ok_or_else(|| TelemetryError::new("telemetry setup state is inconsistent"));
@@ -44,7 +44,7 @@ pub fn setup_telemetry() -> Result<TelemetryConfig, TelemetryError> {
 
 pub fn shutdown_telemetry() -> Result<(), TelemetryError> {
     {
-        let mut state = setup_state().lock().expect("setup state lock poisoned");
+        let mut state = crate::_lock::lock(setup_state());
         state.done = false;
     }
     shutdown_otel();
@@ -68,21 +68,11 @@ mod tests {
             get_runtime_config().expect("runtime config should exist"),
             config
         );
-        assert!(
-            setup_state()
-                .lock()
-                .expect("setup state lock poisoned")
-                .done
-        );
+        assert!(crate::_lock::lock(setup_state()).done);
 
         shutdown_telemetry().expect("shutdown should succeed");
         assert!(get_runtime_config().is_none());
-        assert!(
-            !setup_state()
-                .lock()
-                .expect("setup state lock poisoned")
-                .done
-        );
+        assert!(!crate::_lock::lock(setup_state()).done);
     }
 
     #[test]
@@ -102,10 +92,7 @@ mod tests {
         let _guard = acquire_test_state_lock();
         shutdown_telemetry().expect("pre-test shutdown should succeed");
         set_active_config(None);
-        setup_state()
-            .lock()
-            .expect("setup state lock poisoned")
-            .done = true;
+        crate::_lock::lock(setup_state()).done = true;
 
         let err = setup_telemetry().expect_err("inconsistent state must fail");
         assert!(
@@ -114,10 +101,7 @@ mod tests {
             err.message
         );
 
-        setup_state()
-            .lock()
-            .expect("setup state lock poisoned")
-            .done = false;
+        crate::_lock::lock(setup_state()).done = false;
     }
 
     #[test]
