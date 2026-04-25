@@ -166,6 +166,9 @@ sanitize(obj);
 registerPiiRule({ path: 'user.ssn', mode: 'redact' });
 ```
 
+`sanitize` is a package-root export. Import it from `@provide-io/telemetry`;
+the package does not publish a separate `sanitize` subpath.
+
 ### Health snapshot
 
 ```typescript
@@ -248,8 +251,7 @@ await setupTelemetryAsync({ serviceName: 'my-app' });
 // Safe to accept concurrent requests here.
 ```
 
-The synchronous `setupTelemetry()` is preserved for backwards compatibility
-and remains the right choice for non-async-init environments (bundled CJS
+The synchronous `setupTelemetry()` remains the right choice for non-async-init environments (bundled CJS
 tests, vitest, scripts that do not race with request serving). It applies
 a best-effort ALS check: when the init has not yet settled it schedules a
 deferred check that records a `setupError` and logs a warning if ALS really

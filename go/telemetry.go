@@ -93,6 +93,7 @@
 //
 // ## Types
 //   - [SamplingPolicy] / [QueuePolicy] / [ExporterPolicy]
+//   - [QueueTicket]
 //   - [CardinalityLimit] / [PIIRule] / [HealthSnapshot]
 //   - [TelemetryConfig] / [Span] / [Tracer] / [Counter] / [Gauge] / [Histogram]
 //

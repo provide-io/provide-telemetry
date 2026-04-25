@@ -26,6 +26,13 @@ func init() {
 	_resetQueuePolicy()
 }
 
+// QueueTicket represents one acquired backpressure slot.
+// Release the returned ticket to free the exact queue slot that was acquired.
+type QueueTicket struct {
+	signal string
+	ch     chan struct{}
+}
+
 // _buildQueue returns a buffered channel of the given size, or nil for unlimited (size <= 0).
 func _buildQueue(size int) chan struct{} {
 	if size <= 0 {
@@ -91,64 +98,60 @@ func _channelForSignal(signal string) chan struct{} {
 	}
 }
 
-// TryAcquire attempts a non-blocking acquire on the signal's semaphore.
-// Returns true if a slot was acquired; false if the queue is at capacity or the signal is unknown.
-// A maxSize of 0 (or negative) means unlimited — always succeeds without a channel.
-// The RLock is held through the entire read + send to prevent a TOCTOU race where
-// SetQueuePolicy swaps the channel pointer between the read and the send.
-func TryAcquire(signal string) bool {
-	_queueMu.RLock()
-	defer _queueMu.RUnlock()
-
-	maxSize := 0
+func _maxSizeForSignal(signal string) (int, bool) {
 	switch signal {
 	case signalLogs:
-		maxSize = _queuePolicy.LogsMaxSize
+		return _queuePolicy.LogsMaxSize, true
 	case signalTraces:
-		maxSize = _queuePolicy.TracesMaxSize
+		return _queuePolicy.TracesMaxSize, true
 	case signalMetrics:
-		maxSize = _queuePolicy.MetricsMaxSize
+		return _queuePolicy.MetricsMaxSize, true
 	default:
-		return false
-	}
-	if maxSize <= 0 {
-		return true
-	}
-
-	ch := _channelForSignal(signal)
-	select {
-	case ch <- struct{}{}:
-		return true
-	default:
-		_incDropped(signal)
-		return false
+		return 0, false
 	}
 }
 
-// Release frees one slot on the signal's semaphore. No-op for unknown signals or unlimited queues.
-// The RLock is held through the entire read + receive to prevent a TOCTOU race where
-// SetQueuePolicy swaps the channel pointer between the read and the receive.
-func Release(signal string) {
+// TryAcquire attempts a non-blocking acquire on the signal's semaphore.
+// Returns a ticket if a slot was acquired, or nil if the queue is at capacity
+// or the signal is unknown. A maxSize of 0 (or negative) means unlimited:
+// acquisition succeeds with a ticket that does not hold a channel slot.
+// The RLock is held through the entire read + send to prevent a TOCTOU race where
+// SetQueuePolicy swaps the channel pointer between the read and the send.
+func TryAcquire(signal string) *QueueTicket {
 	_queueMu.RLock()
 	defer _queueMu.RUnlock()
 
-	maxSize := 0
-	switch signal {
-	case signalLogs:
-		maxSize = _queuePolicy.LogsMaxSize
-	case signalTraces:
-		maxSize = _queuePolicy.TracesMaxSize
-	case signalMetrics:
-		maxSize = _queuePolicy.MetricsMaxSize
+	maxSize, ok := _maxSizeForSignal(signal)
+	if !ok {
+		return nil
+	}
+	if maxSize <= 0 {
+		return &QueueTicket{signal: signal}
 	}
 
 	ch := _channelForSignal(signal)
-	if maxSize <= 0 || ch == nil {
+	if ch == nil {
+		_incDropped(signal)
+		return nil
+	}
+	select {
+	case ch <- struct{}{}:
+		return &QueueTicket{signal: signal, ch: ch}
+	default:
+		_incDropped(signal)
+		return nil
+	}
+}
+
+// Release frees the exact queue slot represented by ticket.
+// It is a no-op for nil tickets and unlimited queues.
+func Release(ticket *QueueTicket) {
+	if ticket == nil || ticket.ch == nil {
 		return
 	}
 
 	select {
-	case <-ch:
+	case <-ticket.ch:
 	default:
 	}
 }

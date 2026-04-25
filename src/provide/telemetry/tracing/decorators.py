@@ -48,13 +48,13 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
                 increment_emitted("traces")
                 prev_trace = get_trace_id()
                 prev_span = get_span_id()
-                with get_tracer(fn.__module__).start_as_current_span(span_name):
-                    _sync_otel_trace_context()
-                    try:
+                try:
+                    with get_tracer(fn.__module__).start_as_current_span(span_name):
+                        _sync_otel_trace_context()
                         return await fn(*args, **kwargs)
-                    finally:
-                        set_trace_context(prev_trace, prev_span)
-                        release(ticket)
+                finally:
+                    set_trace_context(prev_trace, prev_span)
+                    release(ticket)
 
             return cast(
                 Callable[P, R], async_wrapper
@@ -83,13 +83,13 @@ def trace(name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]
             increment_emitted("traces")
             prev_trace = get_trace_id()
             prev_span = get_span_id()
-            with get_tracer(fn.__module__).start_as_current_span(span_name):
-                _sync_otel_trace_context()
-                try:
+            try:
+                with get_tracer(fn.__module__).start_as_current_span(span_name):
+                    _sync_otel_trace_context()
                     return fn(*args, **kwargs)
-                finally:
-                    set_trace_context(prev_trace, prev_span)
-                    release(ticket)
+            finally:
+                set_trace_context(prev_trace, prev_span)
+                release(ticket)
 
         return cast(
             Callable[P, R], sync_wrapper

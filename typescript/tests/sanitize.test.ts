@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SANITIZE_FIELDS, sanitize } from '../src/sanitize';
+import { DEFAULT_SANITIZE_FIELDS, sanitize } from '../src/pii';
 
 describe('sanitize', () => {
   it('redacts default PII fields', () => {

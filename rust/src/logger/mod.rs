@@ -15,7 +15,7 @@ use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
-use crate::sampling::{should_sample, Signal};
+use crate::sampling::{set_sampling_policy, should_sample, SamplingPolicy, Signal};
 use crate::tracer::get_trace_context;
 
 mod emit;
@@ -92,6 +92,25 @@ fn runtime_identity_config() -> Option<TelemetryConfig> {
         Some(cfg) => Some(cfg),
         None => TelemetryConfig::from_env().ok(),
     }
+}
+
+fn apply_lazy_logger_policies_from_env() {
+    if get_runtime_config().is_some() {
+        return;
+    }
+    if std::env::var_os("PROVIDE_SAMPLING_LOGS_RATE").is_none() {
+        return;
+    }
+    let Ok(cfg) = TelemetryConfig::from_env() else {
+        return;
+    };
+    let _ = set_sampling_policy(
+        Signal::Logs,
+        SamplingPolicy {
+            default_rate: cfg.sampling.logs_rate,
+            overrides: BTreeMap::new(),
+        },
+    );
 }
 
 fn inject_identity_fields(context: &mut BTreeMap<String, Value>, cfg: TelemetryConfig) {
@@ -398,6 +417,7 @@ impl BufferLogger {
 }
 
 pub fn get_logger(name: Option<&str>) -> Logger {
+    apply_lazy_logger_policies_from_env();
     Logger::new(name)
 }
 

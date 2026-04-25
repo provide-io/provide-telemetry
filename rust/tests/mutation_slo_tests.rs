@@ -96,9 +96,9 @@ fn slo_classify_error_404_has_warning_severity() {
 #[test]
 fn slo_classify_error_returns_all_spec_keys() {
     let result = classify_error("TestError", Some(503));
-    assert!(result.contains_key("error_type"), "legacy key");
-    assert!(result.contains_key("error_code"), "legacy key");
-    assert!(result.contains_key("error_name"), "legacy key");
+    assert!(result.contains_key("error_type"), "short key");
+    assert!(result.contains_key("error_code"), "short key");
+    assert!(result.contains_key("error_name"), "short key");
     assert!(result.contains_key("error.type"), "spec key");
     assert!(result.contains_key("error.category"), "spec key");
     assert!(result.contains_key("error.severity"), "spec key");

@@ -103,6 +103,25 @@ func TestOTel_TraceEndpointAutoWiresTracerProvider(t *testing.T) {
 	}
 }
 
+func TestOTel_TraceEndpointDoesNotInstallWhenTracingDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_TRACE_ENABLED", "false")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://collector:4318")
+
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if _otelTracerProvider != nil {
+		t.Fatal("expected tracing disabled to skip OTel tracer provider installation")
+	}
+	if _, ok := telemetry.DefaultTracer.(_otelTracerAdapter); ok {
+		t.Fatalf("expected fallback tracer when tracing disabled, got %T", telemetry.DefaultTracer)
+	}
+}
+
 func TestOTel_WithMeterProvider_WiresRealMeter(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
@@ -117,6 +136,22 @@ func TestOTel_WithMeterProvider_WiresRealMeter(t *testing.T) {
 	}
 	if telemetry.GetMeter("otel.test") == nil {
 		t.Fatal("expected GetMeter to return provider-backed meter")
+	}
+}
+
+func TestOTel_MetricsEndpointDoesNotInstallWhenMetricsDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://collector:4318")
+
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	if _otelMeterProvider != nil {
+		t.Fatal("expected metrics disabled to skip OTel meter provider installation")
 	}
 }
 

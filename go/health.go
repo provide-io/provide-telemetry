@@ -153,7 +153,7 @@ func _incAsyncBlockingRisk(signal string) { _healthFor(signal).asyncBlocking.Add
 // _setSetupError records a setup-time error message.
 func _setSetupError(msg string) { _setupErrorHealth.Store(msg) }
 
-// Backward-compatible wrappers — used by sampling, backpressure, and resilience.
+// Signal-specific helpers used by sampling, backpressure, and resilience.
 
 func _incLogsEmitted()         { _healthLogs.emitted.Add(1) }
 func _incLogsDropped()         { _healthLogs.dropped.Add(1) }

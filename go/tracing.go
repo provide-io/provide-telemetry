@@ -74,16 +74,20 @@ func GetTracer(name string) Tracer {
 // Consent, sampling, and backpressure are applied before starting the span;
 // fn is still invoked (without a span) when any gate rejects.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
+	if !_runtimeTracingEnabled() {
+		return fn(ctx)
+	}
 	if !ShouldAllow(signalTraces, "") {
 		return fn(ctx)
 	}
 	if sampled := _shouldSampleFailOpen(signalTraces, name); !sampled {
 		return fn(ctx)
 	}
-	if !TryAcquire(signalTraces) {
+	ticket := TryAcquire(signalTraces)
+	if ticket == nil {
 		return fn(ctx)
 	}
-	defer Release(signalTraces)
+	defer Release(ticket)
 	_incSpansStarted()
 
 	spanCtx, span := DefaultTracer.Start(ctx, name)

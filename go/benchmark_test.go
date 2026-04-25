@@ -104,8 +104,8 @@ func BenchmarkTryAcquireRelease_Unlimited(b *testing.B) {
 	SetQueuePolicy(QueuePolicy{}) // unlimited
 	b.ResetTimer()
 	for b.Loop() {
-		if TryAcquire(signalLogs) {
-			Release(signalLogs)
+		if ticket := TryAcquire(signalLogs); ticket != nil {
+			Release(ticket)
 		}
 	}
 }

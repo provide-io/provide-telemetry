@@ -172,6 +172,19 @@ safe := telemetry.GuardAttributes(map[string]string{
 })
 ```
 
+### Backpressure
+
+```go
+ticket := telemetry.TryAcquire("logs")
+if ticket == nil {
+    return
+}
+defer telemetry.Release(ticket)
+```
+
+`Release` takes the `*QueueTicket` returned by `TryAcquire`, which keeps queue
+ownership tied to the acquired slot.
+
 ### Health snapshot
 
 ```go

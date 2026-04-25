@@ -27,10 +27,10 @@ func TestLogger_BackpressureFull_DropsRecord(t *testing.T) {
 	})
 
 	ticket := TryAcquire(signalLogs)
-	if !ticket {
+	if ticket == nil {
 		t.Fatal("expected to acquire the only log slot")
 	}
-	t.Cleanup(func() { Release(signalLogs) })
+	t.Cleanup(func() { Release(ticket) })
 
 	before := GetHealthSnapshot()
 	logger := GetLogger(context.Background(), "test.backpressure.logger")

@@ -35,7 +35,7 @@ func TestParity_Backpressure_UnlimitedAlwaysAcquires(t *testing.T) {
 	t.Cleanup(_resetQueuePolicy)
 
 	for i := 0; i < 5000; i++ {
-		if !TryAcquire(signalLogs) {
+		if TryAcquire(signalLogs) == nil {
 			t.Fatalf("TryAcquire failed at iteration %d with unlimited queue", i)
 		}
 	}
@@ -51,7 +51,7 @@ func TestParity_Backpressure_ZeroIsUnlimited(t *testing.T) {
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 0, TracesMaxSize: 0, MetricsMaxSize: 0})
 	// 100 concurrent acquires must all succeed without release.
 	for i := 0; i < 100; i++ {
-		if !TryAcquire(signalLogs) {
+		if TryAcquire(signalLogs) == nil {
 			t.Fatalf("acquire %d failed with unlimited (0) queue", i)
 		}
 	}
@@ -64,10 +64,10 @@ func TestParity_Backpressure_BoundedRejects(t *testing.T) {
 	t.Cleanup(_resetHealth)
 
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
-	if !TryAcquire(signalLogs) {
+	if TryAcquire(signalLogs) == nil {
 		t.Fatal("first acquire must succeed")
 	}
-	if TryAcquire(signalLogs) {
+	if TryAcquire(signalLogs) != nil {
 		t.Fatal("second acquire must fail with queue size 1")
 	}
 }

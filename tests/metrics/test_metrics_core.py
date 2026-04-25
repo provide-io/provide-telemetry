@@ -218,7 +218,7 @@ def test_setup_metrics_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     setup_metrics(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
     provider_cls.assert_called_once_with(resource="res", metric_readers=["reader"])
-    exporter_cls.assert_called_once_with(endpoint="http://metrics", headers={}, timeout=10.0)
+    exporter_cls.assert_called_once_with(endpoint="http://metrics/v1/metrics", headers={}, timeout=10.0)
     reader_cls.assert_called_once_with("exporter")
     mock_otel.set_meter_provider.assert_called_once_with("provider")
     mock_otel.get_meter.assert_called_once_with("provide.telemetry")

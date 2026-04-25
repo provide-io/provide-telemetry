@@ -251,6 +251,7 @@ Return a copy of the current sampling policy for the given signal.
 ### `should_sample(signal: str, key: str | None = None) -> bool`
 
 Probabilistic sampling check. Uses per-key override rate if `key` matches, else the default rate. Increments drop counter on rejection.
+Every call performs a fresh uniform random draw; `key` selects the rate bucket, not a deterministic keep/drop result.
 
 ## Backpressure Policies
 
@@ -271,6 +272,22 @@ Replace the active queue policy.
 ### `get_queue_policy() -> QueuePolicy`
 
 Return the current queue policy.
+
+### Manual tickets
+
+Manual backpressure acquisition uses an opaque ticket in languages that expose
+the primitive directly. In Go:
+
+```go
+ticket := telemetry.TryAcquire("logs")
+if ticket == nil {
+    return
+}
+defer telemetry.Release(ticket)
+```
+
+`Release` consumes the returned ticket, which ties release ownership to the
+slot acquired from the queue.
 
 ### Cross-language scope of backpressure
 

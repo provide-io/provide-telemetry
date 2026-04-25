@@ -25,7 +25,7 @@ Behavior:
 
 ## Compat Profile
 
-Use for migration windows where legacy event names/fields may still appear.
+Use for migration windows where older event names/fields may still appear.
 
 ```bash
 export PROVIDE_TELEMETRY_STRICT_SCHEMA=false

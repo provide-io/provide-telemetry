@@ -15,7 +15,7 @@ import {
 
 afterEach(() => resetPiiRulesForTests());
 
-describe('sanitize (backwards-compat)', () => {
+describe('sanitize', () => {
   it('redacts default PII fields', () => {
     const obj: Record<string, unknown> = { password: 'secret', status: 200 };
     sanitize(obj);
@@ -323,6 +323,20 @@ describe('pii — ruleTargets dedup guard (kills ArrowFunction + MethodExpressio
     // With correct code: truncated value 'hunt...' NOT '***'
     expect(String(obj['password'])).toBe('hunt...');
     expect(obj['name']).toBe('Bob');
+  });
+
+  it('custom rule for one password path does not exempt another password path', () => {
+    resetPiiRulesForTests();
+    registerPiiRule({ path: 'user.password', mode: 'hash' });
+    const obj: Record<string, unknown> = {
+      user: { password: 'hunter2' }, // pragma: allowlist secret
+      admin: { password: 'adminpw' }, // pragma: allowlist secret
+    };
+
+    sanitizePayload(obj);
+
+    expect(String((obj['user'] as Record<string, unknown>)['password'])).toMatch(/^[0-9a-f]{12}$/);
+    expect((obj['admin'] as Record<string, unknown>)['password']).toBe('***');
   });
 });
 

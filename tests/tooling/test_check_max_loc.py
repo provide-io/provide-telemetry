@@ -79,14 +79,14 @@ def test_find_loc_offenders_scans_all_polyglot_extensions(tmp_path: Path) -> Non
 def test_allowlist_grandfathers_existing_violators_under_ceiling(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
-    grand = src / "legacy.go"
+    grand = src / "large.go"
     grand.write_text("// line\n" * 700, encoding="utf-8")
 
     offenders, grandfathered = find_loc_offenders(
         [src],
         max_lines=500,
         extensions=DEFAULT_EXTENSIONS,
-        allowlist={"src/legacy.go": 800},
+        allowlist={"src/large.go": 800},
         repo_root=tmp_path,
     )
     assert offenders == []
@@ -96,14 +96,14 @@ def test_allowlist_grandfathers_existing_violators_under_ceiling(tmp_path: Path)
 def test_allowlist_does_not_let_files_grow_past_ceiling(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
-    grand = src / "legacy.go"
+    grand = src / "large.go"
     grand.write_text("// line\n" * 700, encoding="utf-8")
 
     offenders, grandfathered = find_loc_offenders(
         [src],
         max_lines=500,
         extensions=DEFAULT_EXTENSIONS,
-        allowlist={"src/legacy.go": 600},  # ceiling lower than current size
+        allowlist={"src/large.go": 600},  # ceiling lower than current size
         repo_root=tmp_path,
     )
     assert offenders == [(grand, 700)]

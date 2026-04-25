@@ -134,7 +134,7 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 ## Quality
 
 - Coverage gates: Python and TypeScript branch coverage; Go statement coverage for the root, logger, tracer, and otel packages; Rust crate verified with `cargo test`
-- Python runs mutmut with a 95.90% current score / 95% minimum threshold; Go requires 100% gremlins efficacy; TypeScript runs Stryker with a 96.07% current score / 95% break threshold (re-export barrels `index.ts` and `sanitize.ts` are excluded at the config level; remaining survivors are concentrated in config/runtime/pretty/propagation edge cases); Rust nightly mutation sweep is advisory (current baseline is re-verified manually; see `rust/README.md`)
+- Python runs mutmut with a 95.90% current score / 95% minimum threshold; Go requires 100% gremlins efficacy; TypeScript runs Stryker with a 96.07% current score / 95% break threshold (the re-export barrel `index.ts` is excluded at the config level; remaining survivors are concentrated in config/runtime/pretty/propagation edge cases); Rust nightly mutation sweep is advisory (current baseline is re-verified manually; see `rust/README.md`)
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
 - SHA-pinned third-party GitHub Actions

@@ -84,14 +84,14 @@ func main() {
 	// TryAcquire / Release
 	fmt.Println("\nTryAcquire / Release for traces:")
 	acquired := telemetry.TryAcquire("traces")
-	fmt.Printf("  First acquire: %v\n", acquired)
-	if acquired {
+	fmt.Printf("  First acquire: %v\n", acquired != nil)
+	if acquired != nil {
 		second := telemetry.TryAcquire("traces")
-		fmt.Printf("  Second acquire (expect false): %v\n", second)
-		telemetry.Release("traces")
+		fmt.Printf("  Second acquire (expect false): %v\n", second != nil)
+		telemetry.Release(acquired)
 		after := telemetry.TryAcquire("traces")
-		fmt.Printf("  After release (expect true): %v\n", after)
-		telemetry.Release("traces")
+		fmt.Printf("  After release (expect true): %v\n", after != nil)
+		telemetry.Release(after)
 	}
 
 	// Concurrent traced work (will saturate queue)

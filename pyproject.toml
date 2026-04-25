@@ -1,5 +1,5 @@
 #
-# provide-telemetry>=0.4.0/pyproject.toml
+# provide-telemetry>=0.4.3/pyproject.toml
 #
 # Unified telemetry library for the provide.io ecosystem
 #
@@ -58,7 +58,7 @@ fastapi = [
   "starlette>=0.40.0",
 ]
 all = [
-  "provide-telemetry[otel,fastapi]>=0.4.0",
+  "provide-telemetry[otel,fastapi]>=0.4.3",
 ]
 
 [tool.setuptools.dynamic]

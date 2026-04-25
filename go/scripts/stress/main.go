@@ -107,9 +107,9 @@ func stressBackpressure() {
 	start := time.Now()
 	acquired := 0
 	for range n {
-		if telemetry.TryAcquire("logs") {
+		if ticket := telemetry.TryAcquire("logs"); ticket != nil {
 			acquired++
-			telemetry.Release("logs")
+			telemetry.Release(ticket)
 		}
 	}
 	elapsed := time.Since(start)

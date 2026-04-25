@@ -5,7 +5,7 @@ go 1.26.0
 replace github.com/provide-io/provide-telemetry/go => ../
 
 require (
-	github.com/provide-io/provide-telemetry/go v0.4.0
+	github.com/provide-io/provide-telemetry/go v0.4.3
 	go.opentelemetry.io/contrib/bridges/otelslog v0.17.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.18.0

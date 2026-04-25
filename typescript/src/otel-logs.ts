@@ -75,6 +75,10 @@ function normalizeEndpoint(endpoint: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function appendSignalPath(endpoint: string, signalPath: string): string {
+  return `${endpoint.replace(/\/+$/, '')}${signalPath}`;
+}
+
 /**
  * Construct an OTLPLogExporter + LoggerProvider and register it globally.
  * Returns a ShutdownableProvider so the caller can flush/shutdown it.
@@ -102,7 +106,8 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const { logs } = apiLogs;
   const { resourceFromAttributes } = res;
 
-  const logsEndpoint = normalizeEndpoint(cfg.otlpLogsEndpoint) ?? `${endpoint}/v1/logs`;
+  const logsEndpoint =
+    normalizeEndpoint(cfg.otlpLogsEndpoint) ?? appendSignalPath(endpoint, '/v1/logs');
   validateOtlpEndpoint(logsEndpoint);
   const logsHeaders = cfg.otlpLogsHeaders ?? headers;
   const rawLogExporter = new OTLPLogExporter({

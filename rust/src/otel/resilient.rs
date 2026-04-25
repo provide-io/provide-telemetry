@@ -7,8 +7,8 @@
 //! ## Why a separate file
 //!
 //! The generic [`crate::resilience::run_with_resilience`] is hard-typed to
-//! `Result<T, TelemetryError>` for backwards compatibility with downstream
-//! callers. The OTel SDK exporter traits return [`OTelSdkResult`]
+//! `Result<T, TelemetryError>` as its public error boundary. The OTel SDK
+//! exporter traits return [`OTelSdkResult`]
 //! (`Result<(), OTelSdkError>`) instead, so this module exists only to
 //! adapt the SDK trait signatures. The retry/timeout/backoff/circuit-breaker
 //! body itself lives in [`crate::resilience::run_with_resilience_inner`] and

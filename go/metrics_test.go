@@ -32,6 +32,26 @@ func TestCounterAdd(t *testing.T) {
 	}
 }
 
+func TestCounterAddDropsWhenMetricsDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	c := NewCounter("test.metrics.disabled")
+	ac := c.(*_atomicCounter)
+	c.Add(context.Background(), 10)
+	if got := ac.Value(); got != 0 {
+		t.Fatalf("expected disabled metrics to skip counter mutation, got %d", got)
+	}
+	if got := GetHealthSnapshot().MetricsEmitted; got != 0 {
+		t.Fatalf("expected disabled metrics not to increment emitted metrics, got %d", got)
+	}
+}
+
 func TestCounterAddDropsWhenSamplingZero(t *testing.T) {
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
@@ -54,7 +74,7 @@ func TestCounterAddDropsWhenBackpressureAtCapacity(t *testing.T) {
 	defer _resetQueuePolicy()
 
 	// fill the queue
-	TryAcquire(signalMetrics)
+	_ = TryAcquire(signalMetrics)
 
 	c := NewCounter("test.bp.drop")
 	ac := c.(*_atomicCounter)
@@ -105,7 +125,7 @@ func TestGaugeSetDropsWhenBackpressureAtCapacity(t *testing.T) {
 	defer _resetQueuePolicy()
 
 	// fill the queue
-	TryAcquire(signalMetrics)
+	_ = TryAcquire(signalMetrics)
 
 	g := NewGauge("test.gauge.bp.drop")
 	ag := g.(*_atomicGauge)
@@ -163,7 +183,7 @@ func TestHistogramRecordDropsWhenBackpressureAtCapacity(t *testing.T) {
 	defer _resetQueuePolicy()
 
 	// fill the queue
-	TryAcquire(signalMetrics)
+	_ = TryAcquire(signalMetrics)
 
 	h := NewHistogram("test.hist.bp.drop")
 	ah := h.(*_atomicHistogram)
@@ -293,7 +313,7 @@ func TestProviderBackedMetricsRespectSampling(t *testing.T) {
 func TestProviderBackedMetricsRespectBackpressure(t *testing.T) {
 	counter, gauge, histogram := setupProviderBackedMetricsForGate(t)
 	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1, TracesMaxSize: 1, MetricsMaxSize: 1})
-	if !TryAcquire(signalMetrics) {
+	if TryAcquire(signalMetrics) == nil {
 		t.Fatal("expected initial acquire to fill the metrics queue")
 	}
 

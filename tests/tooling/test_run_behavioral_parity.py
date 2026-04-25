@@ -484,7 +484,7 @@ def test_cli_main_prints_clean_error_and_fails_when_otel_stack_missing(
         ),
     )
 
-    exit_code = runner.main(["--check-output", "--lang", "python"])
+    exit_code = runner.main(["--lang", "python"])
 
     captured = capsys.readouterr()
     assert exit_code != 0, "main() should return non-zero when runtime probe raises"

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.3] — 2026-04-24
+
+### API Alignment
+
+- **Canonical sanitizer export** — `sanitize` is exported from the package root and implemented by `pii`; no separate sanitizer module is shipped.
+
+### Reliability
+
+- **OTLP shared endpoint expansion** — shared OTLP endpoints resolve to `/v1/traces`, `/v1/metrics`, and `/v1/logs`, with trailing slashes normalized.
+- **Lazy logger sampling** — environment log sampling is applied before explicit setup.
+- **PII path specificity** — exact custom rules no longer exempt unrelated default-sensitive keys.
+
+### Quality
+
+- Added regression coverage for lazy sampling, PII rule specificity, sanitizer exports, and OTLP endpoint resolution.
+
+---
+
 ## [0.2.4] — 2026-04-08
 
 ### Features

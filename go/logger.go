@@ -79,10 +79,11 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	// Backpressure gate: drop when the log queue is full.
-	if !TryAcquire(signalLogs) {
+	ticket := TryAcquire(signalLogs)
+	if ticket == nil {
 		return nil
 	}
-	defer Release(signalLogs)
+	defer Release(ticket)
 	_incLogsEmitted()
 
 	r = h.applyErrorFingerprint(r)
@@ -398,6 +399,9 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		cfg = DefaultTelemetryConfig()
+	}
+	if !_runtimeSetupDone() {
+		_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
 	}
 	if Logger != nil {
 		if liveCfg, ok := _telemetryConfigFromHandler(Logger.Handler()); ok {

@@ -77,6 +77,9 @@ func _warnIfLoggerProviderConflict() {
 }
 
 func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
+	if !cfg.Tracing.Enabled {
+		return
+	}
 	provider := state.TracerProvider()
 	if provider == nil && cfg.Tracing.OTLPEndpoint != "" {
 		tp, err := _buildDefaultTracerProvider(cfg)
@@ -96,6 +99,9 @@ func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 }
 
 func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
+	if !cfg.Metrics.Enabled {
+		return
+	}
 	provider := state.MeterProvider()
 	if provider == nil && cfg.Metrics.OTLPEndpoint != "" {
 		mp, err := _buildDefaultMeterProvider(cfg)
