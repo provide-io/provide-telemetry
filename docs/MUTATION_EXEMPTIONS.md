@@ -98,7 +98,8 @@ _logger.debug("otel.import.not_installed")  # pragma: no mutate — logs a debug
 - Unit tests for the gate live at `tests/tooling/test_check_pragma_reasons.py`
   and run under the `tooling` pytest marker.
 
-- The mutation gate itself (`uv run python scripts/run_mutation_gate.py`) is
+- The mutation gate itself
+  (`uv run python scripts/run_mutation_gate.py --min-mutation-score 100`) is
   unchanged; this policy document is about *who gets to use* `# pragma: no
   mutate` and under what documented justification.
 

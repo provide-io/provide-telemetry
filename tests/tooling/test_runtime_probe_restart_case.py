@@ -64,7 +64,10 @@ def test_runtime_probe_restart_case_reports_fresh_config(lang: str) -> None:
 
     runners = support._runtime_probe_runners(_REPO_ROOT, runner_module._CARGO_BIN, runner_module._CARGO_ENV)
     runner = next(r for r in runners if r.name == lang)
-    timeout = 240 if lang == "rust" and sys.platform == "win32" else 60
+    # Go on Windows compiles the probe via `go run` each invocation; combined
+    # with Windows FS overhead this regularly exceeds 60s even on idle runners.
+    # Rust has long been bumped to 240s for the same reason (cargo run).
+    timeout = 240 if sys.platform == "win32" and lang in ("rust", "go") else 60
 
     output, err = support._run_runtime_probe(
         runner,
