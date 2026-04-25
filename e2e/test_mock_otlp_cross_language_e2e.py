@@ -149,7 +149,7 @@ def _run_ts_client(backend_url: str, otlp_base: str) -> subprocess.CompletedProc
         # Dummy creds — the mock receiver does not validate auth, but the TS
         # client script requires these env vars to be set.
         "OPENOBSERVE_USER": "mock",
-        "OPENOBSERVE_PASSWORD": "mock",
+        "OPENOBSERVE_PASSWORD": "mock",  # pragma: allowlist secret — mock receiver does not validate
         "OTEL_EXPORTER_OTLP_ENDPOINT": otlp_base,
     }
     return subprocess.run(
@@ -168,7 +168,7 @@ def _run_go_client(backend_url: str, otlp_base: str) -> subprocess.CompletedProc
         **os.environ,
         "E2E_BACKEND_URL": backend_url,
         "OPENOBSERVE_USER": "mock",
-        "OPENOBSERVE_PASSWORD": "mock",
+        "OPENOBSERVE_PASSWORD": "mock",  # pragma: allowlist secret — mock receiver does not validate
         "OTEL_EXPORTER_OTLP_ENDPOINT": otlp_base,
     }
     return subprocess.run(
