@@ -83,6 +83,12 @@ impl TelemetryConfig {
                 module_levels: parse_module_levels(
                     env_value(env, &["PROVIDE_LOG_MODULE_LEVELS"]).unwrap_or(""),
                 ),
+                pretty_key_color: env_value(env, &["PROVIDE_LOG_PRETTY_KEY_COLOR"])
+                    .unwrap_or("dim")
+                    .to_string(),
+                pretty_value_color: env_value(env, &["PROVIDE_LOG_PRETTY_VALUE_COLOR"])
+                    .unwrap_or("")
+                    .to_string(),
             },
             tracing: TracingConfig {
                 enabled: parse_bool(

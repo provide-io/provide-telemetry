@@ -21,6 +21,8 @@ fn trace_json_config() -> LoggingConfig {
         otlp_endpoint: None,
         otlp_protocol: String::new(),
         module_levels: HashMap::new(),
+        pretty_key_color: "dim".to_string(),
+        pretty_value_color: String::new(),
     }
 }
 
