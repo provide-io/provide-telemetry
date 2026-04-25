@@ -506,3 +506,53 @@ endpoint_validation:
       description: "empty port"
     - endpoint: "http://host:/v1/traces"
       description: "empty port with path"
+
+# Negative-case fixtures for bounds and saturation behaviors. All four languages
+# must behave identically on these edge cases so CI can guard against drift.
+
+sampling_rate_bounds:
+  description: >
+    set_sampling_policy clamps rates outside [0.0, 1.0] to the nearest bound.
+    Negative rates clamp to 0.0; rates above 1.0 clamp to 1.0. All four
+    language implementations clamp silently (no error raised), so the call
+    must succeed and a subsequent get_sampling_policy must return the clamped
+    value. Signal validation is unaffected (exercised separately by
+    sampling_signal_validation).
+  signal: "logs"
+  cases:
+    - description: "rate=-0.5 clamps to 0.0"
+      rate: -0.5
+      expected_rate: 0.0
+    - description: "rate=1.5 clamps to 1.0"
+      rate: 1.5
+      expected_rate: 1.0
+
+propagation_oversized_traceparent:
+  description: >
+    The canonical W3C traceparent is a 55-char, 4-part, hyphen-separated
+    string: version(2) - trace_id(32) - span_id(16) - flags(2). A traceparent
+    with ANY additional content beyond that shape — e.g. a 5th hyphen-separated
+    segment — MUST be rejected by extract_w3c_context. The returned context
+    must expose neither a trace_id nor a span_id (no truncation, no partial
+    acceptance). This fixture complements propagation_guards, which covers
+    length-based oversize (>512 bytes) rejection.
+  cases:
+    - description: "traceparent with trailing 5th segment is rejected"
+      # 55-char canonical base with "-extra" appended = 61 chars, 5 parts.
+      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra"
+      expected_trace_id: null
+      expected_span_id: null
+
+cardinality_saturation:
+  description: >
+    Once register_cardinality_limit("<key>", max_values=N) is registered,
+    guard_attributes accepts the first N distinct values unchanged. The
+    (N+1)-th distinct value is replaced by the canonical overflow sentinel
+    "__overflow__" (the OVERFLOW_VALUE constant). Every call must observe the
+    sentinel deterministically — no sampling, no probabilistic behavior.
+  overflow_sentinel: "__overflow__"
+  key: "route"
+  max_values: 3
+  ttl_seconds: 300.0
+  values: ["/a", "/b", "/c", "/d"]
+  expected: ["/a", "/b", "/c", "__overflow__"]

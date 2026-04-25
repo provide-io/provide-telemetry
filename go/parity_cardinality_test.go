@@ -74,3 +74,31 @@ func TestParity_Cardinality_ValidValuesUnchanged(t *testing.T) {
 		t.Fatalf("expected TTLSeconds 300.0, got %f", got.TTLSeconds)
 	}
 }
+
+// ── Cardinality Saturation ──────────────────────────────────────────────────
+// Parity category: cardinality_saturation — once a limit is registered for
+// a key, the (N+1)-th distinct value is replaced by the "__overflow__"
+// sentinel.
+
+func TestParity_Cardinality_Saturation_FourthValueOverflows(t *testing.T) {
+	_resetCardinalityLimits()
+	t.Cleanup(_resetCardinalityLimits)
+
+	RegisterCardinalityLimit("route", CardinalityLimit{MaxValues: 3, TTLSeconds: 300.0})
+
+	values := []string{"/a", "/b", "/c", "/d"}
+	want := []string{"/a", "/b", "/c", _overflowValue}
+	got := make([]string, 0, len(values))
+	for _, v := range values {
+		out := GuardAttributes(map[string]string{"route": v})
+		got = append(got, out["route"])
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("value %d: expected %q, got %q (full sequence: %v)", i, want[i], got[i], got)
+		}
+	}
+	if _overflowValue != "__overflow__" {
+		t.Fatalf("overflow sentinel must be \"__overflow__\", got %q", _overflowValue)
+	}
+}

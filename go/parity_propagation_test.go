@@ -85,3 +85,24 @@ func TestParity_Propagation_BaggageOverLimit_Discarded(t *testing.T) {
 		t.Error("expected baggage over limit (8193) to be discarded")
 	}
 }
+
+// ── Propagation Oversized Traceparent ───────────────────────────────────────
+// Parity category: propagation_oversized_traceparent — a traceparent with
+// content beyond the canonical 4-part W3C form (e.g. an extra hyphen-
+// separated segment) must be rejected. Returned context must have neither
+// a TraceID nor a SpanID — no partial acceptance, no truncation. Go keeps
+// the raw Traceparent string on the context for diagnostics; the behavioral
+// contract checked cross-language is strictly the absence of parsed IDs.
+
+func TestParity_Propagation_OversizedTraceparent_Rejected(t *testing.T) {
+	headers := http.Header{}
+	tp := "00-" + _validTraceID + "-" + _validSpanID + "-01-extra"
+	headers.Set("Traceparent", tp)
+	pc := ExtractW3CContext(headers)
+	if pc.TraceID != "" {
+		t.Errorf("oversized traceparent must yield empty TraceID, got %q", pc.TraceID)
+	}
+	if pc.SpanID != "" {
+		t.Errorf("oversized traceparent must yield empty SpanID, got %q", pc.SpanID)
+	}
+}
