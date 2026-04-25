@@ -299,8 +299,8 @@ def test_event_is_string_subclass() -> None:
     assert "login" in e
 
 
-def test_event_name_still_works_as_deprecated_alias() -> None:
-    """event_name() continues to work and returns a plain str."""
+def test_event_name_returns_plain_string_helper_result() -> None:
+    """event_name() returns a plain str."""
     with _relaxed_config():
         result = event_name("auth", "login", "success")
         assert result == "auth.login.success"

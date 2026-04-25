@@ -65,8 +65,8 @@ pub fn record_use_metrics(resource: &str, utilization_percent: i32) {
 
 /// Classify an error by exception name and/or HTTP status code.
 ///
-/// Returns a map with both legacy keys (`error_type`, `error_code`,
-/// `error_name`) and spec-aligned keys (`error.type`, `error.category`,
+/// Returns a map with both Python-compatible short keys (`error_type`,
+/// `error_code`, `error_name`) and spec-aligned keys (`error.type`, `error.category`,
 /// `error.severity`, `http.status_code`) matching the Python reference.
 pub fn classify_error(error_name: &str, status_code: Option<u16>) -> BTreeMap<String, String> {
     SLO_INITIALIZED.store(true, Ordering::SeqCst);

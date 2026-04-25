@@ -88,11 +88,11 @@ func TestTrace_BackpressureFull_FnStillRuns(t *testing.T) {
 	t.Cleanup(_resetQueuePolicy)
 	t.Cleanup(_resetHealth)
 	SetQueuePolicy(QueuePolicy{TracesMaxSize: 1})
-	ok := TryAcquire(signalTraces)
-	if !ok {
+	ticket := TryAcquire(signalTraces)
+	if ticket == nil {
 		t.Fatal("could not acquire initial trace slot")
 	}
-	defer Release(signalTraces)
+	defer Release(ticket)
 
 	ran := false
 	_ = Trace(context.Background(), "test.span", func(_ context.Context) error {
@@ -101,6 +101,37 @@ func TestTrace_BackpressureFull_FnStillRuns(t *testing.T) {
 	})
 	if !ran {
 		t.Error("expected fn to run even under full backpressure")
+	}
+}
+
+func TestTrace_DisabledByRuntimeConfig_FnRunsWithoutSpan(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_TRACE_ENABLED", "false")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	ran := false
+	var traceID string
+	var spanID string
+	err := Trace(context.Background(), "disabled.span", func(ctx context.Context) error {
+		ran = true
+		traceID, spanID = GetTraceContext(ctx)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Trace returned error: %v", err)
+	}
+	if !ran {
+		t.Fatal("expected fn to run when tracing is disabled")
+	}
+	if traceID != "" || spanID != "" {
+		t.Fatalf("expected no trace context when tracing disabled, got %q/%q", traceID, spanID)
+	}
+	if got := GetHealthSnapshot().TracesEmitted; got != 0 {
+		t.Fatalf("expected disabled tracing not to increment emitted spans, got %d", got)
 	}
 }
 

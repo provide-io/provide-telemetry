@@ -80,16 +80,7 @@ pub fn should_sample(signal: Signal, key: Option<&str>) -> Result<bool, Telemetr
         return Ok(false);
     }
 
-    let keep = key
-        .map(|value| {
-            let total = value
-                .as_bytes()
-                .iter()
-                .fold(0u64, |acc, byte| acc + u64::from(*byte));
-            let normalized = (total % 100) as f64 / 100.0;
-            normalized < rate
-        })
-        .unwrap_or(rate >= 0.5);
+    let keep = rand::random::<f64>() < rate;
     if !keep {
         increment_dropped(signal, 1);
     }
@@ -149,7 +140,69 @@ mod tests {
     }
 
     #[test]
-    fn sampling_test_keyed_hashing_hits_threshold_edges() {
+    fn sampling_test_fractional_default_rate_rolls_per_call() {
+        let _guard = acquire_test_state_lock();
+        _reset_sampling_for_tests();
+        _reset_health_for_tests();
+        set_sampling_policy(
+            Signal::Logs,
+            SamplingPolicy {
+                default_rate: 0.5,
+                overrides: BTreeMap::new(),
+            },
+        )
+        .expect("policy should set");
+
+        let mut kept = 0;
+        let mut dropped = 0;
+        for _ in 0..256 {
+            if should_sample(Signal::Logs, None).expect("sampling should work") {
+                kept += 1;
+            } else {
+                dropped += 1;
+            }
+        }
+
+        assert!(kept > 0, "fractional sampling should keep some events");
+        assert!(dropped > 0, "fractional sampling should drop some events");
+    }
+
+    #[test]
+    fn sampling_test_fractional_override_rate_rolls_per_call_for_same_key() {
+        let _guard = acquire_test_state_lock();
+        _reset_sampling_for_tests();
+        _reset_health_for_tests();
+        set_sampling_policy(
+            Signal::Logs,
+            SamplingPolicy {
+                default_rate: 1.0,
+                overrides: BTreeMap::from([("special".to_string(), 0.5)]),
+            },
+        )
+        .expect("policy should set");
+
+        let mut kept = 0;
+        let mut dropped = 0;
+        for _ in 0..256 {
+            if should_sample(Signal::Logs, Some("special")).expect("sampling should work") {
+                kept += 1;
+            } else {
+                dropped += 1;
+            }
+        }
+
+        assert!(
+            kept > 0,
+            "fractional override sampling should keep some events"
+        );
+        assert!(
+            dropped > 0,
+            "fractional override sampling should drop some events for the same key"
+        );
+    }
+
+    #[test]
+    fn sampling_test_override_boundaries_use_matching_key() {
         let _guard = acquire_test_state_lock();
         _reset_sampling_for_tests();
         _reset_health_for_tests();
@@ -157,27 +210,16 @@ mod tests {
         set_sampling_policy(
             Signal::Logs,
             SamplingPolicy {
-                default_rate: 0.5,
-                overrides: BTreeMap::from([("edge".to_string(), 0.5)]),
+                default_rate: 0.0,
+                overrides: BTreeMap::from([("special".to_string(), 1.0)]),
             },
         )
         .expect("policy should set");
 
-        let after_first_keep = get_health_snapshot().dropped_logs;
-        assert!(should_sample(Signal::Logs, Some("1")).expect("sampling should work"));
-        assert_eq!(get_health_snapshot().dropped_logs, after_first_keep);
-
-        assert!(!should_sample(Signal::Logs, Some("11")).expect("sampling should work"));
-        let after_first_drop = get_health_snapshot().dropped_logs;
-        assert_eq!(after_first_drop - before, 1);
-
-        assert!(!should_sample(Signal::Logs, Some("2")).expect("sampling should work"));
-        let after_second_drop = get_health_snapshot().dropped_logs;
-        assert_eq!(after_second_drop - before, 2);
-
-        assert!(should_sample(Signal::Logs, None).expect("sampling should work"));
+        assert!(should_sample(Signal::Logs, Some("special")).expect("sampling should work"));
+        assert!(!should_sample(Signal::Logs, Some("other")).expect("sampling should work"));
         let after = get_health_snapshot().dropped_logs;
-        assert_eq!(after - before, 2);
+        assert_eq!(after - before, 1);
     }
 
     #[test]

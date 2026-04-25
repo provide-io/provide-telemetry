@@ -20,6 +20,6 @@ class TelemetryError(Exception):
 class ConfigurationError(TelemetryError, ValueError):
     """Raised when telemetry configuration is invalid.
 
-    Inherits from both TelemetryError and ValueError for
-    backwards compatibility with code catching ValueError.
+    Invalid configuration is both a telemetry-domain error and an invalid
+    value error, so callers may catch either boundary.
     """

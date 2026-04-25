@@ -7,4 +7,4 @@ from __future__ import annotations
 
 
 def setproctitle(_title: str) -> None:
-    """No-op mutmut compatibility shim for environments where setproctitle can segfault."""
+    """No-op mutmut process-title hook for environments where setproctitle can segfault."""

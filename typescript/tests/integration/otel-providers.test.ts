@@ -329,6 +329,32 @@ describe('registerOtelProviders', () => {
     });
   });
 
+  it('appends signal paths to shared otlpEndpoint without duplicating trailing slashes', async () => {
+    setupTelemetry({
+      serviceName: 'my-svc',
+      otelEnabled: true,
+      otlpEndpoint: 'http://otel-collector:4318/',
+    });
+
+    await registerOtelProviders(getConfig());
+
+    expect(vi.mocked(OTLPTraceExporter)).toHaveBeenCalledWith({
+      url: 'http://otel-collector:4318/v1/traces',
+      headers: {},
+      timeoutMillis: 10000,
+    });
+    expect(vi.mocked(OTLPMetricExporter)).toHaveBeenCalledWith({
+      url: 'http://otel-collector:4318/v1/metrics',
+      headers: {},
+      timeoutMillis: 10000,
+    });
+    expect(vi.mocked(OTLPLogExporter)).toHaveBeenCalledWith({
+      url: 'http://otel-collector:4318/v1/logs',
+      headers: {},
+      timeoutMillis: 10000,
+    });
+  });
+
   it('passes service resource attributes to resourceFromAttributes', async () => {
     setupTelemetry({
       serviceName: 'attr-svc',

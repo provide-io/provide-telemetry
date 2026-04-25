@@ -135,6 +135,23 @@ func TestShutdownTelemetryClearsLazyLoggerState(t *testing.T) {
 	}
 }
 
+func TestGetLoggerBeforeSetupAppliesEnvLogSamplingPolicy(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_SAMPLING_LOGS_RATE", "0")
+	before := GetHealthSnapshot()
+	GetLogger(context.Background(), "lazy.env.sampling").Info("lazy.logger.sampled.out")
+	after := GetHealthSnapshot()
+
+	if after.LogsEmitted != before.LogsEmitted {
+		t.Fatalf("expected lazy env sampling=0 to drop log before emission: before=%d after=%d", before.LogsEmitted, after.LogsEmitted)
+	}
+	if after.LogsDropped <= before.LogsDropped {
+		t.Fatalf("expected lazy env sampling=0 to increment dropped logs: before=%d after=%d", before.LogsDropped, after.LogsDropped)
+	}
+}
+
 func TestSetupAppliesSamplingFromEnv(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

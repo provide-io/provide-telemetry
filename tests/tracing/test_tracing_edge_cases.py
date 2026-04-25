@@ -98,6 +98,34 @@ class TestTraceDecoratorExceptions:
             boom()
         assert len(releases) == 1
 
+    def test_sync_span_enter_exception_releases_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        releases: list[object] = []
+        ticket = object()
+
+        class _Span:
+            def __enter__(self) -> None:
+                raise RuntimeError("span enter failed")
+
+            def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+                return None
+
+        class _Tracer:
+            def start_as_current_span(self, _name: str, **_: object) -> _Span:
+                return _Span()
+
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: ticket)
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+
+        @trace("fail.enter.sync")
+        def boom() -> None:
+            raise AssertionError("function body should not run")
+
+        with pytest.raises(RuntimeError, match="span enter failed"):
+            boom()
+        assert releases == [ticket]
+
     async def test_async_exception_propagates_and_releases_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
         releases: list[object] = []
 
@@ -124,6 +152,34 @@ class TestTraceDecoratorExceptions:
         with pytest.raises(ValueError, match="async boom"):
             await boom()
         assert len(releases) == 1
+
+    async def test_async_span_enter_exception_releases_ticket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        releases: list[object] = []
+        ticket = object()
+
+        class _Span:
+            def __enter__(self) -> None:
+                raise RuntimeError("span enter failed")
+
+            def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+                return None
+
+        class _Tracer:
+            def start_as_current_span(self, _name: str, **_: object) -> _Span:
+                return _Span()
+
+        monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: True)
+        monkeypatch.setattr("provide.telemetry.backpressure.try_acquire", lambda _s: ticket)
+        monkeypatch.setattr("provide.telemetry.backpressure.release", lambda t: releases.append(t))
+        monkeypatch.setattr("provide.telemetry.tracing.decorators.get_tracer", lambda _n: _Tracer())
+
+        @trace("fail.enter.async")
+        async def boom() -> None:
+            raise AssertionError("function body should not run")
+
+        with pytest.raises(RuntimeError, match="span enter failed"):
+            await boom()
+        assert releases == [ticket]
 
     def test_sync_exception_does_not_swallow_original(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The original exception type and message must be preserved."""

@@ -118,7 +118,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     provider_mod.setup_tracing(cfg)
     resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
     provider_cls.assert_called_once_with(resource="res")
-    exporter_cls.assert_called_once_with(endpoint="http://trace", headers={}, timeout=10.0)
+    exporter_cls.assert_called_once_with(endpoint="http://trace/v1/traces", headers={}, timeout=10.0)
     processor_cls.assert_called_once_with("exporter")
     provider.add_span_processor.assert_called_once_with("processor")
     mock_otel.set_tracer_provider.assert_called_once_with(provider)

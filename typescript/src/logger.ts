@@ -21,11 +21,10 @@ import { computeErrorFingerprint } from './fingerprint';
 import { formatPretty, supportsColor } from './pretty';
 import { _emittedField, _incrementHealth } from './health';
 import { emitLogRecord } from './otel-logs';
-import { sanitizePayload } from './pii';
-import { sanitize } from './sanitize';
+import { sanitize, sanitizePayload } from './pii';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
 import { tryAcquire, release } from './backpressure';
-import { shouldSample } from './sampling';
+import { setSamplingPolicy, shouldSample } from './sampling';
 import { getTraceContext } from './tracing';
 
 /** Pino level number → console method name. */
@@ -66,6 +65,12 @@ let _rootConfigVersion = -1;
 function resolveLoggerConfig() {
   // Before setupTelemetry() runs, logger lazy-init should still honor env config.
   return _getConfigVersion() === 0 ? configFromEnv() : getConfig();
+}
+
+function applyLazyLoggerPoliciesFromEnv(): void {
+  if (_getConfigVersion() !== 0) return;
+  const cfg = configFromEnv();
+  setSamplingPolicy('logs', { defaultRate: cfg.samplingLogsRate });
 }
 
 /**
@@ -228,6 +233,7 @@ function getRootLogger(): pino.Logger {
   _root = null;
   _rootConfigVersion = currentVersion;
   const cfg = resolveLoggerConfig();
+  applyLazyLoggerPoliciesFromEnv();
   const hook = makeWriteHook();
 
   // pino only invokes browser.write when process.version is absent (real browser).

@@ -61,6 +61,10 @@ function normalizeEndpoint(endpoint: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function appendSignalPath(endpoint: string, signalPath: string): string {
+  return `${endpoint.replace(/\/+$/, '')}${signalPath}`;
+}
+
 /**
  * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters.
  * Safe to call multiple times — subsequent calls are no-ops if already registered.
@@ -73,13 +77,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   const sharedEndpoint = normalizeEndpoint(cfg.otlpEndpoint);
   const logsEndpoint =
     normalizeEndpoint(cfg.otlpLogsEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/logs` : undefined);
+    (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/logs') : undefined);
   const tracesEndpoint =
     normalizeEndpoint(cfg.otlpTracesEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/traces` : undefined);
+    (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/traces') : undefined);
   const metricsEndpoint =
     normalizeEndpoint(cfg.otlpMetricsEndpoint) ??
-    (sharedEndpoint ? `${sharedEndpoint}/v1/metrics` : undefined);
+    (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/metrics') : undefined);
   const hasAnyEndpoint =
     logsEndpoint !== undefined || tracesEndpoint !== undefined || metricsEndpoint !== undefined;
   if (!hasAnyEndpoint) {

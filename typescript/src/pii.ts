@@ -5,8 +5,7 @@
  * PII policy engine with rule-based masking and nested traversal.
  * Mirrors Python provide.telemetry.pii.
  *
- * Also serves as the canonical home for sanitize() / DEFAULT_SANITIZE_FIELDS;
- * sanitize.ts re-exports these for backwards compatibility.
+ * Canonical home for sanitize() / DEFAULT_SANITIZE_FIELDS.
  */
 
 import { shortHash12 } from './hash';
@@ -206,6 +205,10 @@ function _matches(ruleSegs: string[], valueSegs: string[]): boolean {
   return ruleSegs.every((seg, i) => seg === '*' || seg === valueSegs[i]);
 }
 
+function _pathHasRule(ruleTargets: string[][], childPath: string[]): boolean {
+  return ruleTargets.some((ruleSegs) => _matches(ruleSegs, childPath));
+}
+
 function _applyRuleFull(
   node: unknown,
   rule: PIIRule,
@@ -249,10 +252,11 @@ function _applyDefaultSensitiveKeyRedaction(
   node: unknown,
   original: unknown,
   blocked: Set<string>,
-  ruleTargets: Set<string | undefined>,
+  ruleTargets: string[][],
   maxDepth: number,
   receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null,
   depth: number = 0,
+  currentPath: string[] = [],
 ): unknown {
   if (depth >= maxDepth) return node;
   if (typeof node !== 'object' || node === null) return node;
@@ -271,6 +275,7 @@ function _applyDefaultSensitiveKeyRedaction(
         receiptHook,
         // Stryker disable next-line ArithmeticOperator: depth-1 causes infinite recursion killed by timeout — equivalent
         depth + 1,
+        [...currentPath, '*'],
       ),
     );
   }
@@ -287,11 +292,12 @@ function _applyDefaultSensitiveKeyRedaction(
   for (const [key, val] of Object.entries(obj)) {
     const lk = key.toLowerCase();
     const origVal = orig[key];
-    if (blocked.has(lk) && !ruleTargets.has(lk)) {
+    const childPath = [...currentPath, key];
+    if (blocked.has(lk)) {
       // If a custom rule already changed the value, keep the rule's result.
       // Stryker disable next-line ConditionalExpression,BlockStatement: defensive guard — val always equals origVal; removing branch is equivalent
       /* v8 ignore next 2 */
-      if (val !== origVal) {
+      if (val !== origVal || _pathHasRule(ruleTargets, childPath)) {
         result[key] = val;
       } else {
         result[key] = REDACTED;
@@ -310,6 +316,7 @@ function _applyDefaultSensitiveKeyRedaction(
         maxDepth,
         receiptHook,
         depth + 1,
+        childPath,
       );
     }
   }
@@ -371,8 +378,7 @@ export function sanitizePayload(
   // Stryker disable next-line LogicalOperator,ConditionalExpression
   /* v8 ignore next */
   if (typeof current === 'object' && current !== null && !Array.isArray(current)) {
-    // Stryker disable next-line OptionalChaining,MethodExpression,ArrowFunction: _pathSegments always returns a non-empty array; pop() and toLowerCase() are tested via hash-rule-on-password test; ArrowFunction mutation produces Set{undefined} which misses all keys — tested but perTest misattributes
-    const ruleTargets = new Set(_rules.map((r) => _pathSegments(r.path).pop()?.toLowerCase()));
+    const ruleTargets = _rules.map((r) => _pathSegments(r.path));
     const blocked = new Set([
       ...DEFAULT_SANITIZE_FIELDS.map((f) => f.toLowerCase()),
       ...extraFields.map((f) => f.toLowerCase()),

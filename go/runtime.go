@@ -23,6 +23,30 @@ func GetRuntimeConfig() *TelemetryConfig {
 	return cloneTelemetryConfig(_runtimeCfg)
 }
 
+func _runtimeTracingEnabled() bool {
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+	if _runtimeCfg == nil {
+		return true
+	}
+	return _runtimeCfg.Tracing.Enabled
+}
+
+func _runtimeMetricsEnabled() bool {
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+	if _runtimeCfg == nil {
+		return true
+	}
+	return _runtimeCfg.Metrics.Enabled
+}
+
+func _runtimeSetupDone() bool {
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+	return _setupDone
+}
+
 // UpdateRuntimeConfig applies the given hot-reloadable overrides atomically.
 // Nil pointer fields in RuntimeOverrides are left unchanged.
 // Returns an error if the telemetry system is not set up.

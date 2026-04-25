@@ -10,7 +10,6 @@ export default {
   mutate: [
     'src/**/*.ts',
     '!src/index.ts',                    // re-export barrel — no logic to mutate
-    '!src/sanitize.ts',                 // deprecated re-export shim (see src/sanitize.ts)
     '!src/secret-patterns-generated.ts', // generated from spec/secret_patterns.yaml — kill via spec/ tests, not unit tests
     // otel.ts / otel-logs.ts use `await import('pkg' as string)` so Stryker's
     // V8 perTest instrumentor cannot trace which test exercises which mutant

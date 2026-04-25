@@ -87,16 +87,20 @@ type _atomicCounter struct {
 func (c *_atomicCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, c.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	c.value.Add(value)
 	_incMetricsRecorded()
 }
@@ -114,16 +118,20 @@ type _atomicGauge struct {
 func (g *_atomicGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, g.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	g.value.Store(math.Float64bits(value))
 	_incMetricsRecorded()
 }
@@ -142,16 +150,20 @@ type _atomicHistogram struct {
 func (h *_atomicHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, h.name); !sampled { // signalMetrics is a package-level constant; err is always nil
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	h.count.Add(1)
 	for {
 		old := h.sum.Load()
@@ -215,46 +227,58 @@ func GetMeter(name string) any {
 }
 
 func (c *_backendCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, c.name); !sampled {
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	c.inner.Add(ctx, value, attrs...)
 	_incMetricsRecorded()
 }
 
 func (g *_backendGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, g.name); !sampled {
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	g.inner.Set(ctx, value, attrs...)
 	_incMetricsRecorded()
 }
 
 func (h *_backendHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
+	if !_runtimeMetricsEnabled() {
+		return
+	}
 	if !ShouldAllow(signalMetrics, "") {
 		return
 	}
 	if sampled, _ := ShouldSample(signalMetrics, h.name); !sampled {
 		return
 	}
-	if !TryAcquire(signalMetrics) {
+	ticket := TryAcquire(signalMetrics)
+	if ticket == nil {
 		return
 	}
-	defer Release(signalMetrics)
+	defer Release(ticket)
 	h.inner.Record(ctx, value, attrs...)
 	_incMetricsRecorded()
 }

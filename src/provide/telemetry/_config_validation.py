@@ -13,6 +13,7 @@ from __future__ import annotations
 __all__ = [
     "MAX_DURATION_SECONDS",
     "parse_duration_float",
+    "resolve_otlp_endpoint",
     "warn_on_endpoint_shadowing",
 ]
 
@@ -54,6 +55,17 @@ _SIGNAL_SPECIFIC_VARS: tuple[tuple[str, str], ...] = (
     ("traces", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
 )
 _FALLBACK_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
+
+
+def resolve_otlp_endpoint(data: Mapping[str, str], specific_var: str, signal_path: str) -> str | None:
+    """Resolve a per-signal OTLP endpoint from specific or shared env vars."""
+    specific = data.get(specific_var)
+    if specific:
+        return specific
+    shared = data.get(_FALLBACK_VAR)
+    if not shared:
+        return None
+    return f"{shared.rstrip('/')}/{signal_path}"
 
 
 def warn_on_endpoint_shadowing(data: Mapping[str, str]) -> None:

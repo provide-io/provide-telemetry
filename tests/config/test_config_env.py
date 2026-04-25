@@ -257,11 +257,19 @@ def test_telemetry_otlp_fallback_endpoint() -> None:
             "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic%20all",
         }
     )
-    assert cfg.tracing.otlp_endpoint == "http://all"
-    assert cfg.metrics.otlp_endpoint == "http://all"
-    assert cfg.logging.otlp_endpoint == "http://all"
+    assert cfg.tracing.otlp_endpoint == "http://all/v1/traces"
+    assert cfg.metrics.otlp_endpoint == "http://all/v1/metrics"
+    assert cfg.logging.otlp_endpoint == "http://all/v1/logs"
     assert cfg.logging.otlp_headers == {"Authorization": "Basic all"}
     assert cfg.tracing.otlp_headers == {"Authorization": "Basic all"}
+
+
+def test_telemetry_otlp_fallback_endpoint_strips_trailing_slash() -> None:
+    cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://all/"})
+
+    assert cfg.tracing.otlp_endpoint == "http://all/v1/traces"
+    assert cfg.metrics.otlp_endpoint == "http://all/v1/metrics"
+    assert cfg.logging.otlp_endpoint == "http://all/v1/logs"
 
 
 def test_logging_code_attributes_flag() -> None:
