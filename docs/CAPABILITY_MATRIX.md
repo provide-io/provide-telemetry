@@ -58,8 +58,11 @@ Notes:
   `typescript/src/pretty.ts`, Go's in `go/logger_pretty.go`, and Rust's
   in `rust/src/logger/pretty.rs`. All four gate ANSI output on stderr
   being a TTY, honour `PROVIDE_LOG_PRETTY_KEY_COLOR` and
-  `PROVIDE_LOG_PRETTY_VALUE_COLOR`, and emit the same standard field
-  set (timestamp, level, message, kv pairs).
+  `PROVIDE_LOG_PRETTY_VALUE_COLOR`, honour `PROVIDE_LOG_PRETTY_FIELDS`,
+  and emit the same standard field set (timestamp, level, message, kv
+  pairs). The Go row covers the root
+  `github.com/provide-io/provide-telemetry/go` package; compatibility
+  subpackages intentionally expose narrower surfaces.
 - Metrics fallback export: without the `otel` feature, Rust's metrics
   accumulate in-process (`rust/src/metrics.rs`) but are never exported.
   Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a

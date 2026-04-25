@@ -424,6 +424,21 @@ describe('write hook — config read dynamically (Bug 2 regression)', () => {
     spy.mockRestore();
   });
 
+  it('write hook passes configured pretty field filters to the formatter', () => {
+    makeCfg({
+      consoleOutput: true,
+      logFormat: 'pretty' as 'json' | 'pretty',
+      logPrettyFields: ['user'],
+    });
+    const hook = makeWriteHook();
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    hook({ level: 30, event: 'pretty.filter', user: 'alice', hidden: 'nope' });
+    const output = spy.mock.calls[0][0] as string;
+    expect(output).toContain('user="alice"');
+    expect(output).not.toContain('hidden=');
+    spy.mockRestore();
+  });
+
   it('json format passes stringified JSON to console, not a pretty string', () => {
     makeCfg({ consoleOutput: true, logFormat: 'json' });
     const hook = makeWriteHook();

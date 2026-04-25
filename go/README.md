@@ -232,6 +232,9 @@ All options can be set via environment variables:
 | `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
 | `PROVIDE_LOG_LEVEL` | `INFO` | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` |
 | `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
+| `PROVIDE_LOG_PRETTY_KEY_COLOR` | `dim` | ANSI color name for keys in pretty format |
+| `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format |
+| `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |

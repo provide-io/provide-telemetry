@@ -102,6 +102,14 @@ function parseModuleLevels(raw: string | undefined): Record<string, string> {
   return result;
 }
 
+function splitTrimmed(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /**
  * Build a TelemetryConfig from environment variables.
  * Uses the same env var names as the Python package.
@@ -171,6 +179,9 @@ export function configFromEnv(): TelemetryConfig {
     logSanitize: envBool('PROVIDE_LOG_SANITIZE', DEFAULTS.logSanitize),
     logCodeAttributes: envBool('PROVIDE_LOG_CODE_ATTRIBUTES', DEFAULTS.logCodeAttributes),
     logModuleLevels: parseModuleLevels(nodeEnv('PROVIDE_LOG_MODULE_LEVELS')),
+    logPrettyKeyColor: nodeEnv('PROVIDE_LOG_PRETTY_KEY_COLOR') ?? DEFAULTS.logPrettyKeyColor,
+    logPrettyValueColor: nodeEnv('PROVIDE_LOG_PRETTY_VALUE_COLOR') ?? DEFAULTS.logPrettyValueColor,
+    logPrettyFields: splitTrimmed(nodeEnv('PROVIDE_LOG_PRETTY_FIELDS')),
 
     // Tracing
     traceSampleRate: envFloatInRange('PROVIDE_TRACE_SAMPLE_RATE', DEFAULTS.traceSampleRate, 0, 1),

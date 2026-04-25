@@ -184,7 +184,7 @@ def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None
     assert captured["env"] == env
 
 
-def test_main_uses_default_100_mutation_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_uses_default_python_mutation_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate, "_third_cpu_count", lambda: 4)
     monkeypatch.setattr(gate, "run_mutation_gate", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
@@ -194,7 +194,7 @@ def test_main_uses_default_100_mutation_threshold(monkeypatch: pytest.MonkeyPatc
             python_version="3.11",
             max_children=None,
             retries=1,
-            min_mutation_score=100.0,
+            min_mutation_score=gate.DEFAULT_MIN_MUTATION_SCORE,
         ),
     )
     assert gate.main() == 0

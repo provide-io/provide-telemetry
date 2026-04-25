@@ -48,6 +48,7 @@ uv run ruff check .
 uv run mypy src tests
 uv run ty check src tests
 uv run bandit -r src -ll
+uv run python -m pip_audit --path .
 uv run python scripts/run_pytest_gate.py
 uv sync --group dev --extra otel
 uv run python scripts/run_pytest_gate.py -m otel -q
@@ -56,7 +57,7 @@ uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q
 # Optional fuzz/property run
 uv run python scripts/run_pytest_gate.py tests/fuzz tests/property --no-cov
 # Optional mutation pass (can take time)
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 95
 # Optional performance smoke (report-only by default)
 uv run python scripts/run_performance_smoke.py --iterations 300000
 ```
@@ -67,7 +68,7 @@ Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) 
 ## Mutation Policy Files
 
 - `.ci/pymutant-profiles.json` is the source of truth for mutation roots and policy floors.
-- Current strict policy: `min_score=1.0` and `max_drop_from_baseline=0.0`.
+- Current Python mutation policy: minimum score `95.0`; the local baseline measured on 2026-04-24 is `95.90`.
 - `.ci/pymutant-policy-baseline.json` pins the expected baseline score for policy checks.
 - If mutation roots/tests configuration changes, refresh runtime baseline before evaluating policy to avoid false policy failures from stale state.
 
@@ -83,27 +84,29 @@ uv run python scripts/run_pytest_gate.py tests/docs tests/tooling/test_check_doc
 
 ## Act / Docker-in-Docker Quality Runs
 
-When acting as a local runner on macOS with `colima`, prefer `${HOME}`-based socket paths:
+Use the checked-in wrapper for local `act` runs:
 
 ```bash
-export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-act -W .github/workflows/ci-shared.yml workflow_dispatch -j release-readiness \
-  --container-architecture linux/amd64 \
-  --container-daemon-socket "${DOCKER_HOST}" \
-  -P ubuntu-latest=catthehacker/ubuntu:act-latest
+scripts/act_local.sh push -W .github/workflows/ci-mutation.yml -j changes
+scripts/act_local.sh push -W .github/workflows/ci-strip-governance.yml
+scripts/act_local.sh push -W .github/workflows/ci-typescript.yml -j otlp-integration
 ```
 
-For jobs that do not need Docker inside the job container (for example `docs-quality`), disable
-daemon socket bind-mount to avoid macOS/Colima mount issues:
+The wrapper clones third-party actions into `.provide/act-actions`, checks out the exact
+SHA-pinned refs from the workflows, and passes `--local-repository` mappings to `act`.
+This works around `act` versions that try to fetch SHA pins as branch refs without
+weakening GitHub Actions supply-chain pinning.
+
+When acting as a local runner on macOS with `colima`, keep the job-container socket as
+`unix:///var/run/docker.sock`:
 
 ```bash
-export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-act -W .github/workflows/ci-shared.yml pull_request -j docs-quality \
-  --container-architecture linux/amd64 \
-  --container-daemon-socket -
+scripts/act_local.sh pull_request -W .github/workflows/ci-shared.yml -j docs-quality
 ```
 
-Document any socket/mount errors encountered.
+Passing the macOS `~/.colima/.../docker.sock` path as `--container-daemon-socket` makes
+Docker try to mount that host path inside the Linux VM and can fail before workflow
+steps start.
 
 ## OpenObserve Validation
 

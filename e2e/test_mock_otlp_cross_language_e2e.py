@@ -169,7 +169,13 @@ def _run_go_client(backend_url: str, otlp_base: str) -> subprocess.CompletedProc
         "E2E_BACKEND_URL": backend_url,
         "OPENOBSERVE_USER": "mock",
         "OPENOBSERVE_PASSWORD": "mock",  # pragma: allowlist secret — mock receiver does not validate
-        "OTEL_EXPORTER_OTLP_ENDPOINT": otlp_base,
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{otlp_base}/v1/traces",
+        "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "",
+        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "",
+        "PROVIDE_TELEMETRY_SERVICE_NAME": "go-e2e-client",
+        "PROVIDE_TELEMETRY_ENV": "mock-e2e",
+        "PROVIDE_TELEMETRY_VERSION": "mock-e2e",
     }
     return subprocess.run(
         ["go", "run", "."],
@@ -283,7 +289,8 @@ def test_cross_language_mock_otlp_traceparent_propagation(mock_otlp_receiver: Mo
 
         # ── Hop 2: Go ────────────────────────────────────────────────────────
         go_result = _run_go_client(backend_url, otlp_base)
-        go_trace_id, go_root_span_id, _go_service = _run_hop(mock_otlp_receiver, "go", go_result)
+        go_trace_id, go_root_span_id, go_service = _run_hop(mock_otlp_receiver, "go", go_result)
+        assert go_service == "go-e2e-client", f"unexpected Go service name: {go_service!r}"
 
         # The two hops must not collide — independent clients always get
         # fresh trace_ids / span_ids.

@@ -27,9 +27,8 @@ import (
 	"os"
 	"time"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	telemetry "github.com/provide-io/provide-telemetry/go"
+	_ "github.com/provide-io/provide-telemetry/go/otel"
 )
 
 func requireEnv(name string) string {
@@ -41,87 +40,69 @@ func requireEnv(name string) string {
 	return v
 }
 
+func requireAnyEnv(names ...string) string {
+	for _, name := range names {
+		if v := os.Getenv(name); v != "" {
+			return v
+		}
+	}
+	fmt.Fprintf(os.Stderr, "missing required env var: one of %v\n", names)
+	os.Exit(1)
+	return ""
+}
+
 func main() {
 	backendURL := requireEnv("E2E_BACKEND_URL")
 	user := requireEnv("OPENOBSERVE_USER")
 	password := requireEnv("OPENOBSERVE_PASSWORD")
-	endpoint := requireEnv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	_ = requireAnyEnv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT")
 
 	auth := base64.StdEncoding.EncodeToString([]byte(user + ":" + password))
+	if os.Getenv("OTEL_EXPORTER_OTLP_HEADERS") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_HEADERS") == "" {
+		_ = os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Basic%20"+url.PathEscape(auth))
+	}
 
-	// Set up a real OTel tracer provider exporting to OpenObserve.
-	ctx := context.Background()
-	traceEndpoint := endpoint + "/v1/traces"
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		fmt.Fprintf(os.Stderr, "setup telemetry: %v\n", err)
+		os.Exit(1)
+	}
 
-	parsed, err := url.Parse(traceEndpoint)
+	var traceID string
+	err := telemetry.Trace(context.Background(), "go.e2e.cross_language_request", func(spanCtx context.Context) error {
+		var spanID string
+		traceID, spanID = telemetry.GetTraceContext(spanCtx)
+		if traceID == "" || spanID == "" {
+			return fmt.Errorf("missing trace context")
+		}
+		traceparent := fmt.Sprintf("00-%s-%s-01", traceID, spanID)
+
+		req, err := http.NewRequestWithContext(spanCtx, http.MethodGet, backendURL+"/traced", nil)
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("traceparent", traceparent)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		_, _ = io.ReadAll(resp.Body)
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("backend returned HTTP %d", resp.StatusCode)
+		}
+		return nil
+	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "parse endpoint: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
-	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpointURL(traceEndpoint),
-		otlptracehttp.WithHeaders(map[string]string{
-			"Authorization": "Basic " + auth,
-		}),
-	}
-	if parsed.Scheme == "http" {
-		opts = append(opts, otlptracehttp.WithInsecure())
-	}
-
-	exporter, err := otlptracehttp.New(ctx, opts...)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "create exporter: %v\n", err)
-		os.Exit(1)
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter,
-			sdktrace.WithBatchTimeout(200*time.Millisecond),
-			sdktrace.WithMaxExportBatchSize(1),
-		),
-	)
-	otel.SetTracerProvider(tp)
-
-	tracer := tp.Tracer("go.e2e.client")
-
-	// Create a root span and propagate traceparent to the Python backend.
-	spanCtx, span := tracer.Start(ctx, "go.e2e.cross_language_request")
-
-	sc := span.SpanContext()
-	traceID := sc.TraceID().String()
-	spanID := sc.SpanID().String()
-	traceparent := fmt.Sprintf("00-%s-%s-01", traceID, spanID)
-
-	// Call the Python backend with the traceparent header.
-	req, err := http.NewRequestWithContext(spanCtx, http.MethodGet, backendURL+"/traced", nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "create request: %v\n", err)
-		os.Exit(1)
-	}
-	req.Header.Set("traceparent", traceparent)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "request failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "backend returned HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
-	}
-
-	span.End()
-
-	// Flush and shutdown.
-	if err := tp.ForceFlush(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "force flush: %v\n", err)
-	}
-	if err := tp.Shutdown(ctx); err != nil {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := telemetry.ShutdownTelemetry(shutdownCtx); err != nil {
 		fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
 	}
 

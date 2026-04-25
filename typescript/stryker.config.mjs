@@ -28,7 +28,7 @@ export default {
   },
 
   // Thresholds — fail CI if mutation score drops below these.
-  // Current measured score is 96.65% (see docs) — keeping a 95% break
+  // Current measured score is 96.07% (see docs) — keeping a 95% break
   // threshold so a small churn in survivors doesn't trip CI, and lifting
   // the "high" target to 98 so the reports highlight any regression.
   thresholds: {

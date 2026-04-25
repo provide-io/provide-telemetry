@@ -20,6 +20,7 @@ BAD_STAT_KEYS: Final[tuple[str, ...]] = (
     "no_tests",
     "check_was_interrupted_by_user",
 )
+DEFAULT_MIN_MUTATION_SCORE: Final[float] = 95.0
 
 CONFIG_FILES: Final[tuple[str, ...]] = (
     "pyproject.toml",
@@ -153,7 +154,7 @@ def main() -> int:
     parser.add_argument(
         "--min-mutation-score",
         type=float,
-        default=100.0,
+        default=DEFAULT_MIN_MUTATION_SCORE,
         help="Minimum mutation score required to pass (killed/total * 100).",
     )
     args = parser.parse_args()

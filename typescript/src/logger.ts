@@ -203,7 +203,13 @@ export function makeWriteHook() {
         const method = LEVEL_MAP[o['level'] as number] ?? 'log';
         if (cfg.logFormat === 'pretty' || cfg.logFormat === 'console') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (console as any)[method](formatPretty(o, supportsColor()));
+          (console as any)[method](
+            formatPretty(o, supportsColor(), {
+              keyColor: cfg.logPrettyKeyColor,
+              valueColor: cfg.logPrettyValueColor,
+              fields: cfg.logPrettyFields,
+            }),
+          );
         } else {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (console as any)[method](JSON.stringify(o));

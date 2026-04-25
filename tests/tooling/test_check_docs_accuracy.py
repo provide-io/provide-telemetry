@@ -92,4 +92,36 @@ def test_check_docs_flags_mutation_command_without_threshold(tmp_path: Path) -> 
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n")
     violations = checker.check_docs(tmp_path)
-    assert any("--min-mutation-score 100" in v for v in violations)
+    assert any("--min-mutation-score 95" in v for v in violations)
+
+
+def test_check_docs_accepts_documented_python_mutation_floor(tmp_path: Path) -> None:
+    _write_file(
+        tmp_path / "README.md",
+        "# Project\n\nuv run python scripts/run_mutation_gate.py --python-version 3.11 --min-mutation-score 95\n",
+    )
+    _write_file(
+        tmp_path / "docs/ARCHITECTURE.md",
+        "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
+    )
+    _write_file(tmp_path / "examples/README.md", "# Examples\n")
+
+    violations = checker.check_docs(tmp_path)
+
+    assert not any("run_mutation_gate command must include" in v for v in violations)
+
+
+def test_check_docs_flags_python_mutation_threshold_below_floor(tmp_path: Path) -> None:
+    _write_file(
+        tmp_path / "README.md",
+        "# Project\n\nuv run python scripts/run_mutation_gate.py --python-version 3.11 --min-mutation-score 94.9\n",
+    )
+    _write_file(
+        tmp_path / "docs/ARCHITECTURE.md",
+        "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
+    )
+    _write_file(tmp_path / "examples/README.md", "# Examples\n")
+
+    violations = checker.check_docs(tmp_path)
+
+    assert any("--min-mutation-score 95" in v for v in violations)

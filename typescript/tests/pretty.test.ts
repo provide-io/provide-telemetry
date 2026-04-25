@@ -82,6 +82,22 @@ describe('formatPretty', () => {
     expect(line).toContain('\x1b[2m'); // dim
   });
 
+  it('honors explicit pretty key and value colors', () => {
+    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true, {
+      keyColor: 'bold',
+      valueColor: 'cyan',
+    });
+    expect(line).toContain('\x1b[1muser\x1b[0m=\x1b[36m"alice"\x1b[0m');
+  });
+
+  it('filters pretty fields when provided', () => {
+    const line = formatPretty({ level: 30, event: 'test', user: 'alice', hidden: 'nope' }, false, {
+      fields: ['user'],
+    });
+    expect(line).toContain('user="alice"');
+    expect(line).not.toContain('hidden=');
+  });
+
   it('formats non-string time as string', () => {
     const line = formatPretty({ level: 30, event: 'test', time: 'custom-timestamp' }, false);
     expect(line).toContain('custom-timestamp');
@@ -149,7 +165,7 @@ describe('supportsColor', () => {
     expect(supportsColor()).toBe(false);
   });
 
-  it('returns true when stdout.isTTY is true', () => {
+  it('returns true when stderr.isTTY is true', () => {
     const origProcess = globalThis.process;
     const origForceColor = process.env['FORCE_COLOR'];
     const origNoColor = process.env['NO_COLOR'];
@@ -159,7 +175,8 @@ describe('supportsColor', () => {
       vi.stubGlobal('process', {
         ...origProcess,
         env: { ...origProcess.env },
-        stdout: { ...origProcess.stdout, isTTY: true },
+        stderr: { ...origProcess.stderr, isTTY: true },
+        stdout: { ...origProcess.stdout, isTTY: false },
       });
       expect(supportsColor()).toBe(true);
     } finally {
@@ -171,13 +188,13 @@ describe('supportsColor', () => {
     }
   });
 
-  it('returns false when stdout exists but isTTY is not boolean', () => {
+  it('returns false when stderr exists but isTTY is not boolean', () => {
     const origProcess = globalThis.process;
     try {
       vi.stubGlobal('process', {
         ...origProcess,
         env: { ...origProcess.env },
-        stdout: {},
+        stderr: {},
       });
       expect(supportsColor()).toBe(false);
     } finally {
@@ -246,12 +263,12 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
 
   it('NO_COLOR env takes precedence over isTTY=true', () => {
     vi.stubEnv('NO_COLOR', '');
-    const orig = (process.stdout as { isTTY?: boolean }).isTTY;
+    const orig = (process.stderr as { isTTY?: boolean }).isTTY;
     try {
-      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, configurable: true });
       expect(supportsColor()).toBe(false);
     } finally {
-      Object.defineProperty(process.stdout, 'isTTY', { value: orig, configurable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: orig, configurable: true });
       vi.unstubAllEnvs();
     }
   });

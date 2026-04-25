@@ -11,7 +11,7 @@ import time
 import pytest
 
 from provide.telemetry import setup as setup_mod
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import BackpressureConfig, ExporterPolicyConfig, SamplingConfig, TelemetryConfig
 from provide.telemetry.setup import (
     _reset_all_for_tests,
     _reset_setup_state_for_tests,
@@ -234,6 +234,36 @@ def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
     shutdown_telemetry()
     assert setup_mod._setup_done is False
+
+
+def test_shutdown_telemetry_resets_runtime_signal_policies(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.backpressure import get_queue_policy
+    from provide.telemetry.resilience import get_exporter_policy
+    from provide.telemetry.sampling import get_sampling_policy
+
+    _reset_all_for_tests()
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    setup_telemetry(
+        TelemetryConfig(
+            sampling=SamplingConfig(logs_rate=0.25),
+            backpressure=BackpressureConfig(logs_maxsize=7),
+            exporter=ExporterPolicyConfig(logs_retries=3, logs_timeout_seconds=2.5, logs_fail_open=False),
+        )
+    )
+    assert get_sampling_policy("logs").default_rate == 0.25
+    assert get_queue_policy().logs_maxsize == 7
+    assert get_exporter_policy("logs").retries == 3
+
+    shutdown_telemetry()
+
+    assert get_sampling_policy("logs").default_rate == 1.0
+    assert get_queue_policy().logs_maxsize == 0
+    logs_policy = get_exporter_policy("logs")
+    assert logs_policy.retries == 0
+    assert logs_policy.timeout_seconds == 10.0
+    assert logs_policy.fail_open is True
 
 
 def test_reconfigure_telemetry_allows_provider_replacement_after_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:

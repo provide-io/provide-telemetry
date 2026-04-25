@@ -10,6 +10,7 @@
 - `mypy`
 - `ty`
 - `bandit -r src -ll`
+- `python -m pip_audit --path .`
 - `pytest` with `--cov-fail-under=100`
 
 ## SPDX Policy

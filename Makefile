@@ -1,4 +1,4 @@
-.PHONY: test lint memray memray-flamegraph memray-analyze memray-baseline perf-smoke perf perf-python perf-typescript perf-go perf-rust perf-baseline-python perf-baseline-typescript perf-baseline-go perf-baseline-rust bench bench-python bench-typescript bench-go stress stress-typescript stress-go
+.PHONY: test lint security memray memray-flamegraph memray-analyze memray-baseline perf-smoke perf perf-python perf-typescript perf-go perf-rust perf-baseline-python perf-baseline-typescript perf-baseline-go perf-baseline-rust bench bench-python bench-typescript bench-go stress stress-typescript stress-go
 
 MEMRAY_OUTPUT_DIR ?= memray-output
 
@@ -13,6 +13,10 @@ lint: ## Run all linters and type checkers
 	uv run codespell
 	uv run python scripts/check_spdx_headers.py
 	uv run python scripts/check_max_loc.py --max-lines 500
+
+security: ## Run project-targeted security scans
+	uv run bandit -r src -ll
+	uv run python -m pip_audit --path .
 
 memray: ## Run all memray stress tests
 	uv run python scripts/memray/run_memray_stress.py

@@ -257,6 +257,9 @@ export function reloadRuntimeFromEnv(): void {
       logSanitize: fresh.logSanitize,
       logCodeAttributes: fresh.logCodeAttributes,
       logModuleLevels: fresh.logModuleLevels,
+      logPrettyKeyColor: fresh.logPrettyKeyColor,
+      logPrettyValueColor: fresh.logPrettyValueColor,
+      logPrettyFields: fresh.logPrettyFields,
     },
   };
   updateRuntimeConfig(overrides);

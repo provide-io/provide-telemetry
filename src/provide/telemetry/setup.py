@@ -134,9 +134,11 @@ def _reset_all_for_tests() -> None:
 
 def shutdown_telemetry() -> None:
     """Flush and tear down telemetry providers and reset runtime policies."""
+    from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
     from provide.telemetry.metrics.provider import shutdown_metrics
-    from provide.telemetry.resilience import shutdown_timeout_executors as _shutdown_executors
+    from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
     from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
+    from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
 
     global _setup_done
     with _lock:
@@ -145,4 +147,6 @@ def shutdown_telemetry() -> None:
         shutdown_metrics()
         shutdown_logging()
         _reset_runtime()
-        _shutdown_executors()
+        _reset_sampling()
+        _reset_queues()
+        _reset_resilience()

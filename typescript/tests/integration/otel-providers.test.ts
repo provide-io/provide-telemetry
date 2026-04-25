@@ -343,6 +343,29 @@ describe('registerOtelProviders', () => {
     });
   });
 
+  it('passes service resource attributes to the metrics provider', async () => {
+    vi.mocked(resourceFromAttributes).mockReturnValue({ resource: 'metrics' } as never);
+    setupTelemetry({
+      serviceName: 'metrics-svc',
+      environment: 'prod',
+      version: '1.2.3',
+      otelEnabled: true,
+      tracingEnabled: false,
+      otlpMetricsEndpoint: 'http://metrics-collector:4318',
+    });
+    await registerOtelProviders(getConfig());
+    expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
+      'service.name': 'metrics-svc',
+      'deployment.environment': 'prod',
+      'service.version': '1.2.3',
+    });
+    expect(vi.mocked(MeterProvider)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: { resource: 'metrics' },
+      }),
+    );
+  });
+
   it('wires BatchSpanProcessor with the trace exporter', async () => {
     setupTelemetry({
       serviceName: 'test',
