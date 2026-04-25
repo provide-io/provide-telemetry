@@ -15,6 +15,9 @@ use crate::policies::apply_policies;
 use crate::RuntimeOverrides;
 
 static ACTIVE_CONFIG: OnceLock<RwLock<Option<TelemetryConfig>>> = OnceLock::new();
+#[cfg(feature = "otel")]
+const PROVIDER_CHANGE_RESTART_MESSAGE: &str =
+    "OpenTelemetry providers already installed; restart the process for provider-changing config";
 
 fn empty_active_config() -> RwLock<Option<TelemetryConfig>> {
     RwLock::new(None)
@@ -321,10 +324,10 @@ pub fn reconfigure_telemetry(
                 || (traces_live && tracing_provider_config_changed(&current, &target))
                 || (metrics_live && metrics_provider_config_changed(&current, &target));
             if reject {
-                return Err(TelemetryError::new(
-                    "OpenTelemetry providers already installed; restart the process for provider-changing config",
-                ));
-            }
+                Err(TelemetryError::new(PROVIDER_CHANGE_RESTART_MESSAGE))
+            } else {
+                Ok(())
+            }?;
         }
     }
 

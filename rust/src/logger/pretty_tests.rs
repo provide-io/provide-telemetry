@@ -108,6 +108,27 @@ fn pretty_test_pretty_fields_env_filters_context_and_standard_fields() {
 }
 
 #[test]
+fn pretty_test_blank_pretty_fields_env_keeps_default_field_set() {
+    let _guard = acquire_test_state_lock();
+    reset_state();
+    std::env::set_var("PROVIDE_LOG_PRETTY_FIELDS", " , , ");
+    let cfg = LoggingConfig {
+        fmt: "pretty".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
+
+    let line = format_pretty_line_with_colors(&sample_event("INFO"), &cfg, false);
+
+    assert!(line.contains("logger_name=\"tests.pretty\""));
+    assert!(line.contains("user_id=\"u-1\""));
+    assert!(line.contains("ok=true"));
+    assert!(line.contains("count=42"));
+    assert!(line.contains("trace_id=\"0123456789abcdef0123456789abcdef\""));
+    assert!(line.contains("span_id=\"0123456789abcdef\""));
+}
+
+#[test]
 fn pretty_test_tty_path_applies_ansi_colors_for_keys_and_values() {
     let _guard = acquire_test_state_lock();
     reset_state();

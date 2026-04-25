@@ -484,12 +484,40 @@ fn runtime_test_reconfigure_telemetry_rejects_identity_change_when_otel_provider
         || {
             reset_runtime();
             let current = setup_telemetry().expect("setup should succeed");
+            let status = get_runtime_status();
+            assert!(status.providers.logs, "logs provider should be live");
+            assert!(status.providers.traces, "traces provider should be live");
+            assert!(status.providers.metrics, "metrics provider should be live");
+
+            let mut hot_only = current.clone();
+            hot_only.sampling.logs_rate = 0.75;
+            let updated = reconfigure_telemetry(Some(hot_only))
+                .expect("hot-only drift must remain allowed with live providers");
+            assert_eq!(updated.sampling.logs_rate, 0.75);
 
             let mut changed = current.clone();
             changed.service_name = "other-service".to_string();
 
             let err = reconfigure_telemetry(Some(changed))
                 .expect_err("provider-changing identity drift must be rejected");
+            assert!(err.message.contains("restart the process"));
+
+            let mut changed = current.clone();
+            changed.logging.otlp_endpoint = Some("http://127.0.0.1:4319/v1/logs".to_string());
+            let err = reconfigure_telemetry(Some(changed))
+                .expect_err("live log provider drift must be rejected");
+            assert!(err.message.contains("restart the process"));
+
+            let mut changed = current.clone();
+            changed.tracing.otlp_endpoint = Some("http://127.0.0.1:4319/v1/traces".to_string());
+            let err = reconfigure_telemetry(Some(changed))
+                .expect_err("live trace provider drift must be rejected");
+            assert!(err.message.contains("restart the process"));
+
+            let mut changed = current.clone();
+            changed.metrics.metric_export_interval_ms += 1;
+            let err = reconfigure_telemetry(Some(changed))
+                .expect_err("live metrics provider drift must be rejected");
             assert!(err.message.contains("restart the process"));
         },
     );
