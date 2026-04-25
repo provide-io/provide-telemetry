@@ -65,9 +65,10 @@ pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
 pub use logger::{
     buffer_logger, configure_logging, enable_console_capture_for_tests,
-    enable_json_capture_for_tests, get_logger, logger, null_logger, reset_logging_config_for_tests,
-    set_as_global_logger, take_console_capture, take_json_capture, BufferLogger, EventMetadata,
-    LogEvent, Logger, NullLogger,
+    enable_json_capture_for_tests, enable_pretty_capture_for_tests, get_logger, logger,
+    null_logger, reset_logging_config_for_tests, set_as_global_logger, take_console_capture,
+    take_json_capture, take_pretty_capture, BufferLogger, EventMetadata, LogEvent, Logger,
+    NullLogger,
 };
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,

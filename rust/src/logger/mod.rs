@@ -20,12 +20,13 @@ use crate::tracer::get_trace_context;
 
 mod emit;
 mod levels;
+mod pretty;
 mod processors;
 
-use emit::{emit_if_console, emit_if_json, emit_if_otel};
+use emit::{emit_if_console, emit_if_json, emit_if_otel, emit_if_pretty};
 pub use emit::{
-    enable_console_capture_for_tests, enable_json_capture_for_tests, take_console_capture,
-    take_json_capture,
+    enable_console_capture_for_tests, enable_json_capture_for_tests,
+    enable_pretty_capture_for_tests, take_console_capture, take_json_capture, take_pretty_capture,
 };
 use levels::{effective_level_threshold, level_order};
 use processors::process_event;
@@ -117,6 +118,7 @@ fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) {
 fn emit_event(mut event: LogEvent) {
     process_event(&mut event);
     emit_if_json(&event);
+    emit_if_pretty(&event);
     emit_if_console(&event);
     emit_if_otel(&event);
     let mut buf = crate::_lock::lock(events());

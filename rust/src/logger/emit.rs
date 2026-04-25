@@ -10,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 
 use serde_json::{json, Value};
 
+use super::pretty::format_pretty_line;
 use super::{active_logging_config, LogEvent};
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,18 @@ pub fn enable_console_capture_for_tests() {
 
 pub fn take_console_capture() -> Vec<u8> {
     crate::_lock::lock(&CONSOLE_CAPTURE)
+        .take()
+        .unwrap_or_default()
+}
+
+static PRETTY_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
+
+pub fn enable_pretty_capture_for_tests() {
+    *crate::_lock::lock(&PRETTY_CAPTURE) = Some(Vec::new());
+}
+
+pub fn take_pretty_capture() -> Vec<u8> {
+    crate::_lock::lock(&PRETTY_CAPTURE)
         .take()
         .unwrap_or_default()
 }
@@ -139,15 +152,31 @@ fn format_console_line(event: &LogEvent, include_timestamp: bool) -> String {
 
 pub(super) fn emit_if_console(event: &LogEvent) {
     let logging = active_logging_config();
-    if !logging.fmt.eq_ignore_ascii_case("json") {
-        let line = format_console_line(event, logging.include_timestamp);
-        let mut capture = crate::_lock::lock(&CONSOLE_CAPTURE);
-        if let Some(buf) = capture.as_mut() {
-            buf.extend_from_slice(line.as_bytes());
-            buf.push(b'\n');
-        } else {
-            eprintln!("{line}");
-        }
+    if logging.fmt.eq_ignore_ascii_case("json") || logging.fmt.eq_ignore_ascii_case("pretty") {
+        return;
+    }
+    let line = format_console_line(event, logging.include_timestamp);
+    let mut capture = crate::_lock::lock(&CONSOLE_CAPTURE);
+    if let Some(buf) = capture.as_mut() {
+        buf.extend_from_slice(line.as_bytes());
+        buf.push(b'\n');
+    } else {
+        eprintln!("{line}");
+    }
+}
+
+pub(super) fn emit_if_pretty(event: &LogEvent) {
+    let logging = active_logging_config();
+    if !logging.fmt.eq_ignore_ascii_case("pretty") {
+        return;
+    }
+    let line = format_pretty_line(event, &logging);
+    let mut capture = crate::_lock::lock(&PRETTY_CAPTURE);
+    if let Some(buf) = capture.as_mut() {
+        buf.extend_from_slice(line.as_bytes());
+        buf.push(b'\n');
+    } else {
+        eprintln!("{line}");
     }
 }
 
