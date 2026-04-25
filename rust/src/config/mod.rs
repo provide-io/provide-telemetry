@@ -24,6 +24,10 @@ pub struct RuntimeOverrides {
     pub pii_max_depth: Option<usize>,
     pub strict_schema: Option<bool>,
     pub event_schema: Option<EventSchemaConfig>,
+    /// Hot-reloadable logging overrides. When `Some(cfg)`, the logger is
+    /// reconfigured so subsequent log events honor the new level, format,
+    /// and module-level thresholds. Matches Python's reference behavior.
+    pub logging: Option<LoggingConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
