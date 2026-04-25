@@ -243,7 +243,7 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 			IncludeCaller:    true,
 			Sanitize:         true,
 			OTLPHeaders:      map[string]string{},
-			PrettyKeyColor:   "dim",
+			PrettyKeyColor:   _prettyColorDimName,
 			PrettyValueColor: "",
 			PrettyFields:     []string{},
 			ModuleLevels:     map[string]string{},

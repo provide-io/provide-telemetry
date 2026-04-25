@@ -52,6 +52,43 @@ func TestCounterAddDropsWhenMetricsDisabled(t *testing.T) {
 	}
 }
 
+func TestGaugeSetDropsWhenMetricsDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	g := NewGauge("test.metrics.disabled.gauge")
+	ag := g.(*_atomicGauge)
+	g.Set(context.Background(), 10.5)
+	if got := ag.Value(); got != 0 {
+		t.Fatalf("expected disabled metrics to skip gauge mutation, got %f", got)
+	}
+}
+
+func TestHistogramRecordDropsWhenMetricsDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	h := NewHistogram("test.metrics.disabled.histogram")
+	ah := h.(*_atomicHistogram)
+	h.Record(context.Background(), 10.5)
+	if got := ah.Count(); got != 0 {
+		t.Fatalf("expected disabled metrics to skip histogram count mutation, got %d", got)
+	}
+	if got := ah.Sum(); got != 0 {
+		t.Fatalf("expected disabled metrics to skip histogram sum mutation, got %f", got)
+	}
+}
+
 func TestCounterAddDropsWhenSamplingZero(t *testing.T) {
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
@@ -325,6 +362,56 @@ func TestProviderBackedMetricsRespectBackpressure(t *testing.T) {
 
 	if after.MetricsEmitted != before.MetricsEmitted {
 		t.Fatalf("expected backend-backed metrics to respect backpressure gate: before=%d after=%d", before.MetricsEmitted, after.MetricsEmitted)
+	}
+}
+
+func TestProviderBackedMetricsRespectRuntimeDisabled(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	_resetSamplingPolicies()
+	_resetQueuePolicy()
+	_resetHealth()
+	t.Cleanup(_resetSamplingPolicies)
+	t.Cleanup(_resetQueuePolicy)
+	t.Cleanup(_resetHealth)
+
+	backend := &_fakeBackend{}
+	RegisterBackend("fake", backend)
+	t.Cleanup(func() { UnregisterBackend("fake") })
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry failed: %v", err)
+	}
+
+	counter := NewCounter("backend.metrics.disabled.counter")
+	gauge := NewGauge("backend.metrics.disabled.gauge")
+	histogram := NewHistogram("backend.metrics.disabled.histogram")
+	if _, ok := counter.(*_backendCounter); !ok {
+		t.Fatalf("expected backend-backed counter, got %T", counter)
+	}
+	if _, ok := gauge.(*_backendGauge); !ok {
+		t.Fatalf("expected backend-backed gauge, got %T", gauge)
+	}
+	if _, ok := histogram.(*_backendHistogram); !ok {
+		t.Fatalf("expected backend-backed histogram, got %T", histogram)
+	}
+
+	counter.Add(context.Background(), 1)
+	gauge.Set(context.Background(), 2.5)
+	histogram.Record(context.Background(), 3.5)
+
+	if len(backend.counterAdds) != 0 || len(backend.gaugeSets) != 0 || len(backend.histRecords) != 0 {
+		t.Fatalf(
+			"expected disabled metrics to skip backend instruments, got counters=%v gauges=%v histograms=%v",
+			backend.counterAdds,
+			backend.gaugeSets,
+			backend.histRecords,
+		)
+	}
+	if got := GetHealthSnapshot().MetricsEmitted; got != 0 {
+		t.Fatalf("expected disabled backend metrics not to increment emitted metrics, got %d", got)
 	}
 }
 

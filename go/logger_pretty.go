@@ -37,17 +37,17 @@ const (
 // _levelColorMap returns the ANSI color for a lowercased level name.
 func _levelColorMap(levelLower string) string {
 	switch levelLower {
-	case "critical":
+	case _severityCritical:
 		return _ansiBoldRed
-	case "error":
+	case _severityError:
 		return _ansiRed
-	case "warning", "warn":
+	case _severityWarning, _levelAliasWarn:
 		return _ansiYellow
-	case "info":
+	case _severityInfo:
 		return _ansiGreen
-	case "debug":
+	case _severityDebug:
 		return _ansiBlue
-	case "trace":
+	case _severityTrace:
 		return _ansiCyan
 	default:
 		return ""
@@ -58,7 +58,7 @@ func _levelColorMap(levelLower string) string {
 // to ANSI escape sequences. Unknown or empty names resolve to "".
 func _resolveNamedColor(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "dim":
+	case _prettyColorDimName:
 		return _ansiDim
 	case "bold":
 		return _ansiBold
@@ -287,14 +287,14 @@ func _formatValue(v any) string {
 func _levelName(lvl slog.Level) string {
 	switch {
 	case lvl <= LevelTrace:
-		return "trace"
+		return _severityTrace
 	case lvl <= slog.LevelDebug:
-		return "debug"
+		return _severityDebug
 	case lvl <= slog.LevelInfo:
-		return "info"
+		return _severityInfo
 	case lvl <= slog.LevelWarn:
-		return "warning"
+		return _severityWarning
 	default:
-		return "error"
+		return _severityError
 	}
 }

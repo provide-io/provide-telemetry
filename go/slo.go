@@ -16,9 +16,6 @@ const (
 	_errCatServerError = "server_error"
 	_errCatTimeout     = "timeout"
 	_errCatUnknown     = "unknown"
-	_errSevCritical    = "critical"
-	_errSevWarning     = "warning"
-	_errSevInfo        = "info"
 )
 
 // Package-level RED metric instruments (Rate, Errors, Duration).
@@ -46,20 +43,20 @@ func ClassifyError(excName string, statusCode int) map[string]string {
 	switch {
 	case isTimeout:
 		result["error.category"] = _errCatTimeout
-		result["error.severity"] = _errSevInfo
+		result["error.severity"] = _severityInfo
 	case statusCode >= 500:
 		result["error.category"] = _errCatServerError
-		result["error.severity"] = _errSevCritical
+		result["error.severity"] = _severityCritical
 	case statusCode >= 400:
 		result["error.category"] = _errCatClientError
 		if statusCode == 429 {
-			result["error.severity"] = _errSevCritical
+			result["error.severity"] = _severityCritical
 		} else {
-			result["error.severity"] = _errSevWarning
+			result["error.severity"] = _severityWarning
 		}
 	default:
 		result["error.category"] = _errCatUnknown
-		result["error.severity"] = _errSevInfo
+		result["error.severity"] = _severityInfo
 	}
 
 	return result

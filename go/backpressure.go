@@ -83,31 +83,18 @@ func GetQueuePolicy() QueuePolicy {
 	return _queuePolicy
 }
 
-// _channelForSignal returns the channel for the given signal, or nil for unknown signals.
+// _queueForSignal returns the configured max size and current channel for a signal.
 // Caller must hold at least a read lock.
-func _channelForSignal(signal string) chan struct{} {
+func _queueForSignal(signal string) (int, chan struct{}, bool) {
 	switch signal {
 	case signalLogs:
-		return _logsQueue
+		return _queuePolicy.LogsMaxSize, _logsQueue, true
 	case signalTraces:
-		return _tracesQueue
+		return _queuePolicy.TracesMaxSize, _tracesQueue, true
 	case signalMetrics:
-		return _metricsQueue
+		return _queuePolicy.MetricsMaxSize, _metricsQueue, true
 	default:
-		return nil
-	}
-}
-
-func _maxSizeForSignal(signal string) (int, bool) {
-	switch signal {
-	case signalLogs:
-		return _queuePolicy.LogsMaxSize, true
-	case signalTraces:
-		return _queuePolicy.TracesMaxSize, true
-	case signalMetrics:
-		return _queuePolicy.MetricsMaxSize, true
-	default:
-		return 0, false
+		return 0, nil, false
 	}
 }
 
@@ -121,7 +108,7 @@ func TryAcquire(signal string) *QueueTicket {
 	_queueMu.RLock()
 	defer _queueMu.RUnlock()
 
-	maxSize, ok := _maxSizeForSignal(signal)
+	maxSize, ch, ok := _queueForSignal(signal)
 	if !ok {
 		return nil
 	}
@@ -129,11 +116,6 @@ func TryAcquire(signal string) *QueueTicket {
 		return &QueueTicket{signal: signal}
 	}
 
-	ch := _channelForSignal(signal)
-	if ch == nil {
-		_incDropped(signal)
-		return nil
-	}
 	select {
 	case ch <- struct{}{}:
 		return &QueueTicket{signal: signal, ch: ch}
