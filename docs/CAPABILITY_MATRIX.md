@@ -28,7 +28,7 @@ Legend:
 | Browser log capture / React helpers | no | idiomatic | no | no | idiomatic language difference |
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | capability difference — see notes |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | core | core | missing | known gap |
-| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | missing | Rust gap only |
+| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | core guaranteed across all four languages |
 | Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | capability difference — see notes |
 
 Notes:
@@ -52,12 +52,14 @@ Notes:
   axum/hyper middleware; users must call `bind_context()` / `clear_context()`
   manually inside handlers and extract W3C traceparent/tracestate via
   `extract_w3c_context()`.
-- Pretty log rendering: Python, TypeScript, and Go all honour
-  `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Go's implementation
-  lives in `go/logger_pretty.go` and uses stdlib-only ANSI escapes with
-  TTY-gated color. Rust's logger emitter (`rust/src/logger/emit.rs`)
-  only implements `console` and `json`; setting `pretty` on Rust falls
-  back to the console formatter.
+- Pretty log rendering: all four languages honour
+  `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Python's lives in
+  `src/provide/telemetry/logger/pretty.py`, TypeScript's in
+  `typescript/src/pretty.ts`, Go's in `go/logger_pretty.go`, and Rust's
+  in `rust/src/logger/pretty.rs`. All four gate ANSI output on stderr
+  being a TTY, honour `PROVIDE_LOG_PRETTY_KEY_COLOR` and
+  `PROVIDE_LOG_PRETTY_VALUE_COLOR`, and emit the same standard field
+  set (timestamp, level, message, kv pairs).
 - Metrics fallback export: without the `otel` feature, Rust's metrics
   accumulate in-process (`rust/src/metrics.rs`) but are never exported.
   Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a
