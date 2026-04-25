@@ -145,6 +145,22 @@ export interface TelemetryConfig {
 }
 
 /**
+ * Hot-reloadable logging subset of `RuntimeOverrides.logging`. Mirrors
+ * Python `LoggingConfig` field coverage (level, format, include-timestamp,
+ * include-caller, sanitize, code-attributes, module-levels). OTLP endpoint
+ * and headers are intentionally excluded — they require a cold reconfigure.
+ */
+export interface LoggingOverrides {
+  logLevel?: string;
+  logFormat?: 'json' | 'pretty' | 'console';
+  logIncludeTimestamp?: boolean;
+  logIncludeCaller?: boolean;
+  logSanitize?: boolean;
+  logCodeAttributes?: boolean;
+  logModuleLevels?: Record<string, string>;
+}
+
+/**
  * Hot-reloadable config subset. Only fields that can be changed at runtime
  * without restarting providers. All fields are optional.
  */
@@ -187,6 +203,9 @@ export interface RuntimeOverrides {
   // Schema
   strictSchema?: boolean;
   strictEventName?: boolean;
+
+  /** Hot-reloadable logging subset. Mirrors Python `RuntimeOverrides.logging`. */
+  logging?: LoggingOverrides;
 }
 
 export const DEFAULTS: TelemetryConfig = {
@@ -290,37 +309,20 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
   });
 }
 
-/**
- * Configure telemetry. Call once at app startup.
- * Merges explicit values over the current config (which may include env-derived values).
- */
-export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
-  _config = { ...configFromEnv(), ...overrides };
-  _validateConfig(_config);
-  const isNodeLike =
+const _FALLBACK_MESSAGE =
+  'AsyncLocalStorage unavailable in a Node.js environment — concurrent requests would share propagation context. Check that node:async_hooks is not excluded from your bundler config.';
+
+function _isNodeLike(): boolean {
+  return (
     typeof process !== 'undefined' &&
     typeof process.versions === 'object' &&
-    typeof (process.versions as Record<string, unknown>).node === 'string';
-  const fallbackMessage =
-    'AsyncLocalStorage unavailable in a Node.js environment — ' +
-    'concurrent requests would share propagation context. ' +
-    'Check that node:async_hooks is not excluded from your bundler config.';
-  if (isNodeLike && isFallbackMode()) {
-    if (isPropagationInitDone()) {
-      // Init has settled and ALS is genuinely unavailable — fail loud as before.
-      throw new ConfigurationError(fallbackMessage);
-    }
-    // Init still racing (typical of tsx/ESM Node where propagation.ts loads
-    // node:async_hooks via fire-and-forget `await import`). Defer the check
-    // to after init resolves; record + warn instead of throwing because the
-    // call site has already returned by the time we know the verdict.
-    void awaitPropagationInit().then(() => {
-      if (isFallbackMode()) {
-        setSetupError(fallbackMessage);
-        console.warn(`[provide-telemetry] ${fallbackMessage}`);
-      }
-    });
-  }
+    typeof (process.versions as Record<string, unknown>).node === 'string'
+  );
+}
+
+function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
+  _config = { ...configFromEnv(), ...overrides };
+  _validateConfig(_config);
   _configVersion++;
   _setActiveConfig(_config);
   try {
@@ -329,6 +331,50 @@ export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
     const message = err instanceof Error ? err.message : String(err);
     setSetupError(message);
     console.warn(`setupTelemetry: applyConfigPolicies failed: ${message}`);
+  }
+}
+
+/**
+ * Configure telemetry. Merges explicit values over env-derived defaults.
+ * Best-effort ALS check: defers a warning when init is still racing.
+ * Prefer `setupTelemetryAsync` from ESM entry points that need a hard
+ * "safe or throws" guarantee.
+ */
+export function setupTelemetry(overrides?: Partial<TelemetryConfig>): void {
+  const isNode = _isNodeLike();
+  if (isNode && isFallbackMode()) {
+    if (isPropagationInitDone()) {
+      // Init has settled and ALS is genuinely unavailable — fail loud as before.
+      throw new ConfigurationError(_FALLBACK_MESSAGE);
+    }
+    // Init still racing (typical of tsx/ESM Node where propagation.ts loads
+    // node:async_hooks via fire-and-forget `await import`). Defer the check
+    // to after init resolves; record + warn instead of throwing because the
+    // call site has already returned by the time we know the verdict.
+    void awaitPropagationInit().then(() => {
+      if (isFallbackMode()) {
+        setSetupError(_FALLBACK_MESSAGE);
+        console.warn(`[provide-telemetry] ${_FALLBACK_MESSAGE}`);
+      }
+    });
+  }
+  _applySetupBody(overrides);
+}
+
+/**
+ * Async variant of `setupTelemetry` that awaits AsyncLocalStorage init
+ * before returning. Use this from ESM entry points (e.g. servers starting
+ * at module scope) so you get an "either safe or throws" contract rather
+ * than the best-effort deferred warning of the sync variant. Throws
+ * `ConfigurationError` when ALS is genuinely unavailable on a Node runtime.
+ */
+export async function setupTelemetryAsync(overrides?: Partial<TelemetryConfig>): Promise<void> {
+  _applySetupBody(overrides);
+  if (!_isNodeLike()) return;
+  await awaitPropagationInit();
+  if (isFallbackMode()) {
+    setSetupError(_FALLBACK_MESSAGE);
+    throw new ConfigurationError(_FALLBACK_MESSAGE);
   }
 }
 

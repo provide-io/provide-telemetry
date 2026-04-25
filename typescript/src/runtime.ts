@@ -120,11 +120,23 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
   const base = _activeConfig ?? configFromEnv();
   const merged: TelemetryConfig = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
-    if (value !== undefined) {
-      (merged as unknown as Record<string, unknown>)[key] = value;
+    if (value === undefined) continue;
+    if (key === 'logging') {
+      // Flatten the nested logging override onto the flat TelemetryConfig
+      // (parity with Python's RuntimeOverrides.logging which carries the
+      // whole LoggingConfig dataclass).
+      for (const [lk, lv] of Object.entries(value as Record<string, unknown>)) {
+        if (lv !== undefined) {
+          (merged as unknown as Record<string, unknown>)[lk] = lv;
+        }
+      }
+      continue;
     }
+    (merged as unknown as Record<string, unknown>)[key] = value;
   }
   _activeConfig = merged;
+  // setupTelemetry() bumps _configVersion, which forces the logger root to
+  // rebuild on next getLogger() call so new level/format take effect.
   setupTelemetry(_activeConfig);
 }
 
@@ -237,6 +249,15 @@ export function reloadRuntimeFromEnv(): void {
     piiMaxDepth: fresh.piiMaxDepth,
     strictSchema: fresh.strictSchema,
     strictEventName: fresh.strictEventName,
+    logging: {
+      logLevel: fresh.logLevel,
+      logFormat: fresh.logFormat,
+      logIncludeTimestamp: fresh.logIncludeTimestamp,
+      logIncludeCaller: fresh.logIncludeCaller,
+      logSanitize: fresh.logSanitize,
+      logCodeAttributes: fresh.logCodeAttributes,
+      logModuleLevels: fresh.logModuleLevels,
+    },
   };
   updateRuntimeConfig(overrides);
 }

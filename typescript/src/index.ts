@@ -17,6 +17,7 @@
 // Config + setup
 export {
   setupTelemetry,
+  setupTelemetryAsync,
   applyConfigPolicies,
   getConfig,
   configFromEnv,
@@ -25,7 +26,7 @@ export {
   version,
   __version__,
 } from './config';
-export type { TelemetryConfig, RuntimeOverrides } from './config';
+export type { TelemetryConfig, LoggingOverrides, RuntimeOverrides } from './config';
 
 // Logger
 export { getLogger, logger } from './logger';
