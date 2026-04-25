@@ -127,6 +127,11 @@ type RuntimeOverrides struct {
 	EventSchema  *SchemaConfig
 	PIIMaxDepth  *int
 	StrictSchema *bool
+	// Logging replaces the active LoggingConfig when non-nil. Level, Format,
+	// and ModuleLevels take effect on the next GetLogger() call; provider-
+	// changing fields (OTLPEndpoint, OTLPHeaders) must match the active
+	// config — callers should use ReconfigureTelemetry for those.
+	Logging *LoggingConfig
 }
 
 // TelemetryConfig is the top-level configuration for provide-telemetry.

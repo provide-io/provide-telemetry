@@ -312,7 +312,7 @@ func TestSamplingFuncDrops(t *testing.T) {
 	logger.Logger.Info("test.event.ok")
 }
 
-func TestStrictSchemaDropsInvalidEvent(t *testing.T) {
+func TestStrictSchemaAnnotatesInvalidEvent(t *testing.T) {
 	cfg := logger.DefaultLogConfig()
 	cfg.StrictSchema = true
 	logger.Configure(cfg)
@@ -321,7 +321,8 @@ func TestStrictSchemaDropsInvalidEvent(t *testing.T) {
 		logger.Configure(cfg)
 	}()
 
-	// Message with invalid segment count should be dropped (no panic).
+	// Message with invalid segment count is annotated with _schema_error
+	// (cross-language contract) — not dropped. No panic expected.
 	logger.Logger.Info("not_a_valid_event")
 }
 
