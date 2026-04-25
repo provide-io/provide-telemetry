@@ -345,6 +345,9 @@ func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 	if cfg.Logging.Format == LogFormatJSON {
 		return slog.NewJSONHandler(os.Stderr, opts)
 	}
+	if cfg.Logging.Format == LogFormatPretty {
+		return newPrettyHandler(os.Stderr, cfg)
+	}
 	return slog.NewTextHandler(os.Stderr, opts)
 }
 
