@@ -309,6 +309,16 @@ the OTLP E2E client/server pair used by the cross-language verification flow.
 
 - Rust 1.81+
 
+## Coverage gate
+
+Rust CI enforces zero uncovered project lines with `cargo-llvm-cov`.
+The gate ignores Rust standard-library source paths only; missed lines in
+`rust/` fail the workflow. Locally:
+
+```bash
+RUST_TEST_THREADS=1 cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0
+```
+
 ## Performance gate
 
 Hot-path benchmarks (`benches/hot_path.rs`) run on every CI push as the

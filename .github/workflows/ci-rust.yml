@@ -5,11 +5,13 @@ on:
     paths:
       - "rust/**"
       - "spec/**"
+      - "VERSION"
       - ".github/workflows/ci-rust.yml"
   pull_request:
     paths:
       - "rust/**"
       - "spec/**"
+      - "VERSION"
       - ".github/workflows/ci-rust.yml"
   workflow_dispatch:
 
@@ -58,6 +60,29 @@ jobs:
       # Clippy with all features on Linux default; with selected features elsewhere
       - name: Cargo clippy ${{ matrix.features }}
         run: cargo clippy --manifest-path Cargo.toml --all-targets ${{ matrix.features || '--all-features' }} -- -D warnings
+
+  coverage:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      # Bump explicitly when the upstream `stable` branch advances.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+        with:
+          workspaces: rust
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --version 0.8.5 --locked
+      - name: Enforce 100% project line coverage
+        env:
+          RUST_TEST_THREADS: "1"
+        run: cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0
 
   conformance:
     runs-on: ubuntu-24.04
