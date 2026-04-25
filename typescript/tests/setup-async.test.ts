@@ -14,7 +14,7 @@
  *      same per-task isolation guarantee callers rely on in production.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetConfig, setupTelemetryAsync } from '../src/config';
 import { ConfigurationError } from '../src/exceptions';
@@ -40,6 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   _resetConfig();
   _resetRuntimeForTests();
   _resetPropagationForTests();
@@ -85,6 +86,19 @@ describe('setupTelemetryAsync', () => {
     const { getConfig } = await import('../src/config');
     expect(getConfig().serviceName).toBe('applied-async');
     expect(getConfig().logLevel).toBe('debug');
+  });
+
+  it('returns after applying config when the runtime is not Node-like', async () => {
+    const originalProcess = globalThis.process;
+    vi.stubGlobal('process', {
+      ...originalProcess,
+      versions: {},
+    });
+
+    await expect(setupTelemetryAsync({ serviceName: 'edge-like' })).resolves.toBeUndefined();
+
+    const { getConfig } = await import('../src/config');
+    expect(getConfig().serviceName).toBe('edge-like');
   });
 
   it('preserves per-task isolation for bindPropagationContext calls interleaved around setup', async () => {

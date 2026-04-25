@@ -129,6 +129,14 @@ describe('updateRuntimeConfig', () => {
     expect(getRuntimeConfig().samplingTracesRate).toBe(before);
   });
 
+  it('ignores undefined values inside nested logging overrides', () => {
+    updateRuntimeConfig({ logging: { logLevel: 'debug' } });
+    updateRuntimeConfig({ logging: { logLevel: undefined, logFormat: 'json' } });
+    const cfg = getRuntimeConfig();
+    expect(cfg.logLevel).toBe('debug');
+    expect(cfg.logFormat).toBe('json');
+  });
+
   it('rejects invalid override values before applying them', () => {
     updateRuntimeConfig({ samplingLogsRate: 0.5, backpressureLogsMaxsize: 5 });
     expect(() => updateRuntimeConfig({ samplingLogsRate: -0.1 })).toThrow();
