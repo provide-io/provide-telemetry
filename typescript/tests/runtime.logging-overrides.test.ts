@@ -136,6 +136,20 @@ describe('RuntimeOverrides.logging — other logging flags', () => {
     expect(cfg.logSanitize).toBe(false);
     expect(cfg.logCodeAttributes).toBe(true);
   });
+
+  it('pretty renderer settings round-trip through the nested override', () => {
+    updateRuntimeConfig({
+      logging: {
+        logPrettyKeyColor: 'bold',
+        logPrettyValueColor: 'cyan',
+        logPrettyFields: ['user_id', 'trace_id'],
+      },
+    });
+    const cfg = getRuntimeConfig();
+    expect(cfg.logPrettyKeyColor).toBe('bold');
+    expect(cfg.logPrettyValueColor).toBe('cyan');
+    expect(cfg.logPrettyFields).toEqual(['user_id', 'trace_id']);
+  });
 });
 
 describe('RuntimeOverrides.logging — provider guardrails', () => {
@@ -195,6 +209,23 @@ describe('reloadRuntimeFromEnv — logging parity', () => {
     }
   });
 
+  it('picks pretty renderer settings up from env vars', () => {
+    process.env['PROVIDE_LOG_PRETTY_KEY_COLOR'] = 'bold';
+    process.env['PROVIDE_LOG_PRETTY_VALUE_COLOR'] = 'cyan';
+    process.env['PROVIDE_LOG_PRETTY_FIELDS'] = 'user_id, trace_id';
+    try {
+      reloadRuntimeFromEnv();
+      const cfg = getRuntimeConfig();
+      expect(cfg.logPrettyKeyColor).toBe('bold');
+      expect(cfg.logPrettyValueColor).toBe('cyan');
+      expect(cfg.logPrettyFields).toEqual(['user_id', 'trace_id']);
+    } finally {
+      delete process.env['PROVIDE_LOG_PRETTY_KEY_COLOR'];
+      delete process.env['PROVIDE_LOG_PRETTY_VALUE_COLOR'];
+      delete process.env['PROVIDE_LOG_PRETTY_FIELDS'];
+    }
+  });
+
   it('picks logModuleLevels up from env vars', () => {
     process.env['PROVIDE_LOG_MODULE_LEVELS'] = 'provide.server=debug,asyncio=warning';
     try {
@@ -224,6 +255,9 @@ describe('LoggingOverrides typing', () => {
         logSanitize: true,
         logCodeAttributes: false,
         logModuleLevels: {},
+        logPrettyKeyColor: 'bold',
+        logPrettyValueColor: 'cyan',
+        logPrettyFields: ['user_id'],
       },
     };
     expect(overrides.logging).toBeDefined();

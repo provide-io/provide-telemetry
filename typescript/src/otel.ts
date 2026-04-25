@@ -157,9 +157,12 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const sdkMetrics: any = await import('@opentelemetry/sdk-metrics' as string);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const otlpMetrics: any = await import('@opentelemetry/exporter-metrics-otlp-http' as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await import('@opentelemetry/resources' as string);
       const { metrics } = await import('@opentelemetry/api');
       const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
       const { OTLPMetricExporter } = otlpMetrics;
+      const { resourceFromAttributes } = res;
 
       if (metricsEndpoint) {
         validateOtlpEndpoint(metricsEndpoint);
@@ -173,6 +176,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
 
         const meterProvider = new MeterProvider({
+          resource: resourceFromAttributes({
+            'service.name': cfg.serviceName,
+            'deployment.environment': cfg.environment,
+            'service.version': cfg.version,
+          }),
           readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
         });
         metrics.setGlobalMeterProvider(meterProvider);

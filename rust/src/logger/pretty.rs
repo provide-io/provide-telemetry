@@ -11,7 +11,7 @@
 //! Line layout (matches Python `PrettyRenderer`):
 //!
 //! ```text
-//! <dim timestamp> [<level-colored>] <logger_name> <message> key=value ...
+//! <dim timestamp> [<level-colored>] <message> logger_name=... key=value ...
 //! ```
 //!
 //! Colors activate only when the sink is a TTY. Callers use
@@ -20,6 +20,7 @@
 
 use super::LogEvent;
 use crate::config::LoggingConfig;
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // ANSI constants (inlined — stdlib-only, no new crate dependency)
@@ -111,6 +112,32 @@ fn format_value(v: &serde_json::Value) -> String {
     }
 }
 
+fn pretty_env_value(name: &str, default: &str) -> String {
+    std::env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+fn pretty_fields_filter() -> Option<Vec<String>> {
+    let raw = std::env::var("PROVIDE_LOG_PRETTY_FIELDS").ok()?;
+    let fields = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if fields.is_empty() {
+        None
+    } else {
+        Some(fields)
+    }
+}
+
+fn field_allowed(fields: Option<&[String]>, key: &str) -> bool {
+    match fields {
+        Some(allowed) => allowed.iter().any(|field| field == key),
+        None => true,
+    }
+}
+
 /// Render a complete pretty log line for the given `event` with the
 /// explicit `colors` flag — primarily used by tests.
 pub(super) fn format_pretty_line_with_colors(
@@ -127,33 +154,41 @@ pub(super) fn format_pretty_line_with_colors(
 
     parts.push(format_level(&event.level, colors));
 
-    if !event.target.is_empty() {
-        parts.push(event.target.clone());
-    }
-
     parts.push(event.message.clone());
 
-    let key_color = resolve_named_color(&cfg.pretty_key_color);
-    let value_color = resolve_named_color(&cfg.pretty_value_color);
+    let key_color = resolve_named_color(&pretty_env_value("PROVIDE_LOG_PRETTY_KEY_COLOR", "dim"));
+    let value_color = resolve_named_color(&pretty_env_value("PROVIDE_LOG_PRETTY_VALUE_COLOR", ""));
+    let fields = pretty_fields_filter();
 
     // `BTreeMap` iteration is sorted — keeps output deterministic and matches
     // the Python renderer which sorts keys.
-    for (k, v) in &event.context {
-        let kp = wrap(k, key_color, colors);
-        let vs = format_value(v);
-        let vp = wrap(&vs, value_color, colors);
-        parts.push(format!("{kp}={vp}"));
+    let mut display_fields = BTreeMap::new();
+    if !event.target.is_empty() {
+        display_fields.insert(
+            "logger_name".to_string(),
+            serde_json::Value::String(event.target.clone()),
+        );
     }
-
+    display_fields.extend(event.context.clone());
     if let Some(trace_id) = &event.trace_id {
-        let kp = wrap("trace_id", key_color, colors);
-        let vs = format!("{trace_id:?}");
-        let vp = wrap(&vs, value_color, colors);
-        parts.push(format!("{kp}={vp}"));
+        display_fields.insert(
+            "trace_id".to_string(),
+            serde_json::Value::String(trace_id.clone()),
+        );
     }
     if let Some(span_id) = &event.span_id {
-        let kp = wrap("span_id", key_color, colors);
-        let vs = format!("{span_id:?}");
+        display_fields.insert(
+            "span_id".to_string(),
+            serde_json::Value::String(span_id.clone()),
+        );
+    }
+
+    for (k, v) in &display_fields {
+        if !field_allowed(fields.as_deref(), k) {
+            continue;
+        }
+        let kp = wrap(k, key_color, colors);
+        let vs = format_value(v);
         let vp = wrap(&vs, value_color, colors);
         parts.push(format!("{kp}={vp}"));
     }

@@ -239,6 +239,22 @@ describe('configFromEnv — env var reads', () => {
     });
   });
 
+  it('reads pretty renderer color and field env vars', () => {
+    withEnv(
+      {
+        PROVIDE_LOG_PRETTY_KEY_COLOR: 'bold',
+        PROVIDE_LOG_PRETTY_VALUE_COLOR: 'cyan',
+        PROVIDE_LOG_PRETTY_FIELDS: 'user_id, trace_id',
+      },
+      () => {
+        const cfg = configFromEnv();
+        expect(cfg.logPrettyKeyColor).toBe('bold');
+        expect(cfg.logPrettyValueColor).toBe('cyan');
+        expect(cfg.logPrettyFields).toEqual(['user_id', 'trace_id']);
+      },
+    );
+  });
+
   it('reads PROVIDE_LOG_FORMAT=console', () => {
     withEnv({ PROVIDE_LOG_FORMAT: 'console' }, () => {
       expect(configFromEnv().logFormat).toBe('console');

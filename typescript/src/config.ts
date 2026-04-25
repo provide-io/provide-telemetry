@@ -65,7 +65,6 @@ export interface TelemetryConfig {
   /** Keys required on every log record. */
   requiredLogKeys: string[];
 
-  // — Logging extras —
   /** Include timestamp in log output. */
   logIncludeTimestamp: boolean;
   /** Include caller info in log output. */
@@ -76,16 +75,19 @@ export interface TelemetryConfig {
   logCodeAttributes: boolean;
   /** Per-module log level overrides (e.g. {"provide.server": "DEBUG"}). */
   logModuleLevels: Record<string, string>;
+  /** Named ANSI color for pretty-rendered attribute keys. Empty string disables key color. */
+  logPrettyKeyColor: string;
+  /** Named ANSI color for pretty-rendered attribute values. Empty string disables value color. */
+  logPrettyValueColor: string;
+  /** Optional allow-list of pretty-rendered key=value fields. Empty means render all. */
+  logPrettyFields: string[];
 
-  // — Tracing —
   /** Trace sampling rate (0.0–1.0). */
   traceSampleRate: number;
 
-  // — Metrics —
   /** Enable metrics collection. */
   metricsEnabled: boolean;
 
-  // — Per-signal sampling —
   /** Probabilistic sampling rate for logs (0.0–1.0). */
   samplingLogsRate: number;
   /** Probabilistic sampling rate for traces (0.0–1.0). */
@@ -93,7 +95,6 @@ export interface TelemetryConfig {
   /** Probabilistic sampling rate for metrics (0.0–1.0). */
   samplingMetricsRate: number;
 
-  // — Per-signal backpressure —
   /** Max queue size for log export (0 = unbounded). */
   backpressureLogsMaxsize: number;
   /** Max queue size for trace export (0 = unbounded). */
@@ -101,7 +102,6 @@ export interface TelemetryConfig {
   /** Max queue size for metric export (0 = unbounded). */
   backpressureMetricsMaxsize: number;
 
-  // — Per-signal exporter resilience —
   /** Max retries for log export. */
   exporterLogsRetries: number;
   /** Backoff between log export retries (ms). */
@@ -127,17 +127,14 @@ export interface TelemetryConfig {
   /** If true, drop telemetry on export failure instead of crashing. */
   exporterMetricsFailOpen: boolean;
 
-  // — SLO —
   /** Enable RED (Rate/Error/Duration) metrics. */
   sloEnableRedMetrics: boolean;
   /** Enable USE (Utilization/Saturation/Errors) metrics. */
   sloEnableUseMetrics: boolean;
 
-  // — PII —
   /** Maximum recursion depth for PII sanitization of nested objects. */
   piiMaxDepth: number;
 
-  // — Security —
   /** Max length for any single attribute value. */
   securityMaxAttrValueLength: number;
   /** Max number of attributes on a single span/log/metric point. */
@@ -158,6 +155,9 @@ export interface LoggingOverrides {
   logSanitize?: boolean;
   logCodeAttributes?: boolean;
   logModuleLevels?: Record<string, string>;
+  logPrettyKeyColor?: string;
+  logPrettyValueColor?: string;
+  logPrettyFields?: string[];
 }
 
 /**
@@ -165,17 +165,14 @@ export interface LoggingOverrides {
  * without restarting providers. All fields are optional.
  */
 export interface RuntimeOverrides {
-  // Sampling
   samplingLogsRate?: number;
   samplingTracesRate?: number;
   samplingMetricsRate?: number;
 
-  // Backpressure
   backpressureLogsMaxsize?: number;
   backpressureTracesMaxsize?: number;
   backpressureMetricsMaxsize?: number;
 
-  // Exporter resilience
   exporterLogsRetries?: number;
   exporterLogsBackoffMs?: number;
   exporterLogsTimeoutMs?: number;
@@ -189,18 +186,14 @@ export interface RuntimeOverrides {
   exporterMetricsTimeoutMs?: number;
   exporterMetricsFailOpen?: boolean;
 
-  // Security
   securityMaxAttrValueLength?: number;
   securityMaxAttrCount?: number;
 
-  // SLO
   sloEnableRedMetrics?: boolean;
   sloEnableUseMetrics?: boolean;
 
-  // PII
   piiMaxDepth?: number;
 
-  // Schema
   strictSchema?: boolean;
   strictEventName?: boolean;
 
@@ -226,6 +219,9 @@ export const DEFAULTS: TelemetryConfig = {
   logSanitize: true,
   logCodeAttributes: false,
   logModuleLevels: {},
+  logPrettyKeyColor: 'dim',
+  logPrettyValueColor: '',
+  logPrettyFields: [],
   traceSampleRate: 1.0,
   tracingEnabled: true,
   metricsEnabled: true,

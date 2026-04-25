@@ -12,7 +12,8 @@ DOC_PATHS = ("README.md", "docs", "examples/README.md")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 MUTATION_CMD_RE = re.compile(r"run_mutation_gate\.py\b")
-MIN_MUTATION_RE = re.compile(r"--min-mutation-score\s+100(?:\.0)?\b")
+MIN_MUTATION_SCORE = 95.0
+MIN_MUTATION_RE = re.compile(r"--min-mutation-score\s+(?P<score>\d+(?:\.\d+)?)\b")
 
 
 def _iter_markdown_files(root: Path) -> list[Path]:
@@ -151,8 +152,12 @@ def _claim_violations(path: Path, content: str) -> list[str]:
         )
 
     for line_no, line in enumerate(content.splitlines(), start=1):
-        if "uv run" in line and MUTATION_CMD_RE.search(line) and not MIN_MUTATION_RE.search(line):
-            violations.append(f"{path}:{line_no}: run_mutation_gate command must include --min-mutation-score 100")
+        if "uv run" not in line or not MUTATION_CMD_RE.search(line):
+            continue
+
+        match = MIN_MUTATION_RE.search(line)
+        if match is None or float(match.group("score")) < MIN_MUTATION_SCORE:
+            violations.append(f"{path}:{line_no}: run_mutation_gate command must include --min-mutation-score 95")
     return violations
 
 

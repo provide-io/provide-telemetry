@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ CI_MUTATION = REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml"
 README = REPO_ROOT / "README.md"
 TS_STRYKER = REPO_ROOT / "typescript" / "stryker.config.mjs"
 OTEL_COLLECTOR_CONFIG = REPO_ROOT / "tests" / "integration" / "otel-collector-config.yaml"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
 def test_ci_spec_watches_full_runtime_surface() -> None:
@@ -66,6 +68,22 @@ def test_python_facing_workflows_retry_uv_sync() -> None:
     ):
         workflow = workflow_path.read_text(encoding="utf-8")
         assert helper in workflow
+
+
+def test_non_local_github_actions_are_sha_pinned() -> None:
+    uses_pattern = re.compile(r"uses:\s+([^@\s]+)@([^\s#]+)")
+    unpinned: list[str] = []
+    for workflow_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        for line_no, line in enumerate(workflow_path.read_text(encoding="utf-8").splitlines(), start=1):
+            match = uses_pattern.search(line)
+            if match is None:
+                continue
+            action, ref = match.groups()
+            if action.startswith("./"):
+                continue
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{workflow_path.relative_to(REPO_ROOT)}:{line_no}: {action}@{ref}")
+    assert unpinned == []
 
 
 def test_strict_parity_bootstrap_installs_runtime_probe_dependencies() -> None:
@@ -123,8 +141,16 @@ def test_typescript_mutation_threshold_matches_documented_regression_floor() -> 
     readme = README.read_text(encoding="utf-8")
 
     assert "break: 95" in stryker
-    assert "TypeScript runs Stryker with a 96.65% current score / 95% break threshold" in readme
+    assert "TypeScript runs Stryker with a 96.07% current score / 95% break threshold" in readme
     assert "Rust nightly mutation sweep is advisory" in readme
+
+
+def test_python_mutation_threshold_matches_documented_regression_floor() -> None:
+    workflow = CI_MUTATION.read_text(encoding="utf-8")
+    readme = README.read_text(encoding="utf-8")
+
+    assert "--min-mutation-score 95" in workflow
+    assert "Python runs mutmut with a 95.90% current score / 95% minimum threshold" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:

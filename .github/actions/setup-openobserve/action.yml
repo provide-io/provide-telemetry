@@ -60,7 +60,7 @@ runs:
       run: |
         docker run -d \
           --name "${{ inputs.container-name }}" \
-          -p "${{ inputs.port }}:5080" \
+          -p "127.0.0.1:${{ inputs.port }}:5080" \
           -e "ZO_ROOT_USER_EMAIL=${{ steps.creds.outputs.user }}" \
           -e "ZO_ROOT_USER_PASSWORD=${{ steps.creds.outputs.password }}" \
           "${{ inputs.image }}"

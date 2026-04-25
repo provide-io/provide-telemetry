@@ -71,6 +71,8 @@ def test_find_python_files_skips_excluded_dirs(tmp_path: Path) -> None:
     (tmp_path / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / ".venv").mkdir()
     (tmp_path / ".venv" / "ignored.py").write_text("x = 2\n", encoding="utf-8")
+    (tmp_path / ".provide" / "act-actions").mkdir(parents=True)
+    (tmp_path / ".provide" / "act-actions" / "third_party.py").write_text("x = 3\n", encoding="utf-8")
     found = _SPDX_MODULE.find_python_files(tmp_path)
     assert found == [tmp_path / "src" / "a.py"]
 

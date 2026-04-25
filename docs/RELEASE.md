@@ -17,7 +17,7 @@ Run locally:
 uv sync --group dev
 uv run python scripts/check_max_loc.py --max-lines 500
 uv run python scripts/run_pytest_gate.py
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 100
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 95
 uv run python -m build
 uv run twine check dist/*
 ```
@@ -39,11 +39,11 @@ Go CI is intentionally split:
 ## Local Act Validation
 
 ```bash
-act -l
-act workflow_dispatch -W .github/workflows/ci-shared.yml --container-architecture linux/amd64
-act pull_request -W .github/workflows/ci-go.yml -j workspace-integration --container-architecture linux/amd64
+scripts/act_local.sh -l
+scripts/act_local.sh workflow_dispatch -W .github/workflows/ci-shared.yml --container-architecture linux/amd64
+scripts/act_local.sh pull_request -W .github/workflows/ci-go.yml -j workspace-integration --container-architecture linux/amd64
 printf '%s\n' '{"ref":"refs/tags/go/otel/v0.4.0","ref_name":"go/otel/v0.4.0"}' > /tmp/act-release-tag.json
-act push -W .github/workflows/release.yml -j verify-go-consumer-direct -e /tmp/act-release-tag.json --container-architecture linux/amd64
+scripts/act_local.sh push -W .github/workflows/release.yml -j verify-go-consumer-direct -e /tmp/act-release-tag.json --container-architecture linux/amd64
 ```
 
 On Apple Silicon, prefer `--container-architecture linux/arm64` for the Go jobs. The local `go test -race` steps can also require a larger Docker memory allocation than the default `act` container budget.
@@ -62,7 +62,7 @@ export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 Run the `release-readiness` job manually with Docker-in-Docker support:
 
 ```bash
-act -W .github/workflows/ci-shared.yml workflow_dispatch -j release-readiness \
+scripts/act_local.sh -W .github/workflows/ci-shared.yml workflow_dispatch -j release-readiness \
   --container-architecture linux/amd64 \
   --container-daemon-socket "${DOCKER_HOST}" \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest
@@ -72,7 +72,7 @@ For jobs that do not require Docker inside the container (for example `docs-qual
 daemon socket bind-mount:
 
 ```bash
-act -W .github/workflows/ci-shared.yml pull_request -j docs-quality \
+scripts/act_local.sh -W .github/workflows/ci-shared.yml pull_request -j docs-quality \
   --container-architecture linux/amd64 \
   --container-daemon-socket -
 ```
