@@ -131,9 +131,7 @@ pub(super) fn install_logger_provider(
     // OTel 0.31 doesn't expose a global logger-provider setter (unlike
     // tracer and meter), so we keep the provider only in our OnceLock
     // and emit_log() resolves through it directly.
-    *logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned") = Some(InstalledLoggerProvider {
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
         provider: arc,
         runtime,
     });
@@ -142,9 +140,7 @@ pub(super) fn install_logger_provider(
 
 /// Shut down the installed `LoggerProvider`.
 pub(super) fn shutdown_logger_provider() {
-    let mut guard = logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned");
+    let mut guard = crate::_lock::lock(logger_provider_slot());
     let provider = guard.take();
     drop(guard);
     if provider.is_none() {
@@ -160,10 +156,7 @@ pub(super) fn shutdown_logger_provider() {
 }
 
 pub(crate) fn logger_provider_installed() -> bool {
-    logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned")
-        .is_some()
+    crate::_lock::lock(logger_provider_slot()).is_some()
 }
 
 /// Map our level string to OTel severity. Unknown levels default to
@@ -229,9 +222,7 @@ fn parse_hex_u64(hex: &str) -> Option<u64> {
 /// and emit via the installed LoggerProvider. No-op when no provider
 /// has been installed.
 pub(crate) fn emit_log(event: &LogEvent) {
-    let provider = logger_provider_slot()
-        .lock()
-        .expect("logger provider lock poisoned")
+    let provider = crate::_lock::lock(logger_provider_slot())
         .as_ref()
         .map(|installed| installed.provider.clone());
     let provider = match provider {

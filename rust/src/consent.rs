@@ -26,11 +26,11 @@ fn consent_level() -> &'static Mutex<ConsentLevel> {
 }
 
 pub fn set_consent_level(level: ConsentLevel) {
-    *consent_level().lock().expect("consent lock poisoned") = level;
+    *crate::_lock::lock(consent_level()) = level;
 }
 
 pub fn get_consent_level() -> ConsentLevel {
-    *consent_level().lock().expect("consent lock poisoned")
+    *crate::_lock::lock(consent_level())
 }
 
 fn log_level_order(level: Option<&str>) -> usize {

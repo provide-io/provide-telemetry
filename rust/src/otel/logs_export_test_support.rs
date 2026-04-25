@@ -81,10 +81,7 @@ impl MockOtlpCollector {
     }
 
     pub(super) fn paths(&self) -> Vec<String> {
-        self.seen_paths
-            .lock()
-            .expect("OTLP mock seen_paths lock poisoned")
-            .clone()
+        crate::_lock::lock(&self.seen_paths).clone()
     }
 }
 
@@ -277,10 +274,7 @@ fn handle_accept_result(
     match result {
         Ok((mut stream, _)) => {
             if let Some(path) = read_request_path(&mut stream) {
-                worker_paths
-                    .lock()
-                    .expect("OTLP mock seen_paths lock poisoned")
-                    .push(path);
+                crate::_lock::lock(worker_paths).push(path);
             }
             let _ = stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");

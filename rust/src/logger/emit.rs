@@ -19,29 +19,21 @@ use super::{active_logging_config, LogEvent};
 static JSON_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
 
 pub fn enable_json_capture_for_tests() {
-    *JSON_CAPTURE.lock().expect("json capture lock poisoned") = Some(Vec::new());
+    *crate::_lock::lock(&JSON_CAPTURE) = Some(Vec::new());
 }
 
 pub fn take_json_capture() -> Vec<u8> {
-    JSON_CAPTURE
-        .lock()
-        .expect("json capture lock poisoned")
-        .take()
-        .unwrap_or_default()
+    crate::_lock::lock(&JSON_CAPTURE).take().unwrap_or_default()
 }
 
 static CONSOLE_CAPTURE: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
 
 pub fn enable_console_capture_for_tests() {
-    *CONSOLE_CAPTURE
-        .lock()
-        .expect("console capture lock poisoned") = Some(Vec::new());
+    *crate::_lock::lock(&CONSOLE_CAPTURE) = Some(Vec::new());
 }
 
 pub fn take_console_capture() -> Vec<u8> {
-    CONSOLE_CAPTURE
-        .lock()
-        .expect("console capture lock poisoned")
+    crate::_lock::lock(&CONSOLE_CAPTURE)
         .take()
         .unwrap_or_default()
 }
@@ -108,7 +100,7 @@ fn emit_json_line(event: &LogEvent, include_timestamp: bool) {
         Value::String(event.target.clone()),
     );
     let line = serde_json::to_string(obj).unwrap_or_default();
-    let mut capture = JSON_CAPTURE.lock().expect("json capture lock poisoned");
+    let mut capture = crate::_lock::lock(&JSON_CAPTURE);
     if let Some(buf) = capture.as_mut() {
         buf.extend_from_slice(line.as_bytes());
         buf.push(b'\n');
@@ -149,9 +141,7 @@ pub(super) fn emit_if_console(event: &LogEvent) {
     let logging = active_logging_config();
     if !logging.fmt.eq_ignore_ascii_case("json") {
         let line = format_console_line(event, logging.include_timestamp);
-        let mut capture = CONSOLE_CAPTURE
-            .lock()
-            .expect("console capture lock poisoned");
+        let mut capture = crate::_lock::lock(&CONSOLE_CAPTURE);
         if let Some(buf) = capture.as_mut() {
             buf.extend_from_slice(line.as_bytes());
             buf.push(b'\n');

@@ -90,10 +90,7 @@ impl Counter {
             return;
         }
         let ticket = acquired.expect("metrics ticket must exist after none guard");
-        self.state
-            .lock()
-            .expect("counter state lock poisoned")
-            .value += value;
+        crate::_lock::lock(&self.state).value += value;
         #[cfg(feature = "otel")]
         {
             maybe_record_counter_add(&self.name, value, attributes.as_ref());
@@ -105,10 +102,7 @@ impl Counter {
     }
 
     pub fn value(&self) -> f64 {
-        self.state
-            .lock()
-            .expect("counter state lock poisoned")
-            .value
+        crate::_lock::lock(&self.state).value
     }
 }
 
@@ -145,7 +139,7 @@ impl Gauge {
         let ticket = acquired.expect("metrics ticket must exist after none guard");
         #[cfg_attr(not(feature = "otel"), allow(unused_variables))]
         let new_absolute = {
-            let mut state = self.state.lock().expect("gauge state lock poisoned");
+            let mut state = crate::_lock::lock(&self.state);
             state.last_value += value;
             state.last_value
         };
@@ -174,10 +168,7 @@ impl Gauge {
             return;
         }
         let ticket = acquired.expect("metrics ticket must exist after none guard");
-        self.state
-            .lock()
-            .expect("gauge state lock poisoned")
-            .last_value = value;
+        crate::_lock::lock(&self.state).last_value = value;
         #[cfg(feature = "otel")]
         {
             maybe_record_gauge_set(&self.name, value, attributes.as_ref());
@@ -189,10 +180,7 @@ impl Gauge {
     }
 
     pub fn value(&self) -> f64 {
-        self.state
-            .lock()
-            .expect("gauge state lock poisoned")
-            .last_value
+        crate::_lock::lock(&self.state).last_value
     }
 }
 
@@ -228,7 +216,7 @@ impl Histogram {
             return;
         }
         let ticket = acquired.expect("metrics ticket must exist after none guard");
-        let mut state = self.state.lock().expect("histogram state lock poisoned");
+        let mut state = crate::_lock::lock(&self.state);
         state.count += 1;
         state.total += value;
         drop(state);
@@ -243,17 +231,11 @@ impl Histogram {
     }
 
     pub fn count(&self) -> usize {
-        self.state
-            .lock()
-            .expect("histogram state lock poisoned")
-            .count
+        crate::_lock::lock(&self.state).count
     }
 
     pub fn total(&self) -> f64 {
-        self.state
-            .lock()
-            .expect("histogram state lock poisoned")
-            .total
+        crate::_lock::lock(&self.state).total
     }
 }
 

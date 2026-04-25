@@ -3,11 +3,8 @@ use super::*;
 #[test]
 fn receipts_test_emit_is_ignored_when_not_in_test_mode() {
     let _guard = crate::testing::acquire_test_state_lock();
-    *config().lock().expect("receipt config lock poisoned") = ReceiptConfig::default();
-    receipts()
-        .lock()
-        .expect("receipt log lock poisoned")
-        .clear();
+    *crate::_lock::lock(config()) = ReceiptConfig::default();
+    crate::_lock::lock(receipts()).clear();
     enable_receipts(true, Some("signing-key"), Some("svc"));
     emit_receipt("payload.secret", "redact", "value");
 
