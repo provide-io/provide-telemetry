@@ -292,11 +292,10 @@ func caseHotReloadModuleLevel() map[string]any {
 	serviceBefore := telemetry.GetRuntimeConfig().ServiceName
 	before := captureEmit("probe.child", "debug", "hot.module.debug.before")
 
-	// Mirror Python — raising global level alongside the module override keeps
-	// the cross-language contract testable in languages that filter via a
-	// global handler level (Python stdlib, Go slog handler).
+	// Pure module-only promotion: the global level stays at INFO and only
+	// the module override lifts `probe.child` to DEBUG.  All four languages
+	// must honour this precise contract.
 	nextLogging := telemetry.DefaultTelemetryConfig().Logging
-	nextLogging.Level = telemetry.LogLevelDebug
 	nextLogging.Format = telemetry.LogFormatJSON
 	nextLogging.IncludeTimestamp = false
 	nextLogging.IncludeCaller = false

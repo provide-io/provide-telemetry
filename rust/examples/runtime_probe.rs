@@ -247,11 +247,10 @@ fn main() {
                 .expect("runtime config")
                 .service_name;
             let before = emit_debug_capture("probe.child", "hot.module.debug.before");
-            // Mirror Python/Go: raise the global level alongside the module
-            // override so languages with a single global threshold (Python
-            // stdlib, Go slog) surface the DEBUG record once the override lands.
+            // Pure module-only promotion: the global level stays at INFO and
+            // only the module override lifts `probe.child` to DEBUG.  All
+            // four languages must honour this precise contract.
             let mut next_logging = provide_telemetry::LoggingConfig {
-                level: "DEBUG".to_string(),
                 fmt: "json".to_string(),
                 include_timestamp: false,
                 ..provide_telemetry::LoggingConfig::default()
