@@ -88,3 +88,32 @@ cases:
       re_setup_done: true
       signals_match: true
       providers_match: true
+
+  # ── Hot-reload logging parity (Claim 3 coverage) ────────────────────────
+  # All four languages expose update_runtime_config({logging: ...}) which
+  # must rebuild the logging pipeline so level/format/module-level changes
+  # take effect on the next log event without touching provider-wiring
+  # fields. These three cases probe that contract end-to-end.
+
+  - id: hot_reload_log_level
+    kind: flags
+    expected:
+      first_debug_suppressed: true
+      second_debug_emitted: true
+      level_config_updated: true
+      service_preserved: true
+
+  - id: hot_reload_log_format
+    kind: flags
+    expected:
+      format_config_updated: true
+      service_preserved: true
+      providers_unchanged: true
+
+  - id: hot_reload_module_level
+    kind: flags
+    expected:
+      first_debug_suppressed: true
+      module_debug_emitted: true
+      module_levels_config_updated: true
+      service_preserved: true

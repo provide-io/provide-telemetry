@@ -13,7 +13,9 @@ import {
   setTraceContext,
   setupTelemetry,
   shutdownTelemetry,
+  updateRuntimeConfig,
 } from '../../typescript/src/index.js';
+import { _resetRootLogger } from '../../typescript/src/logger.js';
 
 const TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
 const SPAN_ID = 'b7ad6b7169203331';
@@ -195,6 +197,122 @@ async function caseProviderIdentityReconfigure(): Promise<Record<string, unknown
   };
 }
 
+function captureEmit(name: string, level: 'debug' | 'info', message: string): Record<string, unknown>[] {
+  const windowRef = ensureWindow();
+  const restore = { log: console.log, warn: console.warn, error: console.error };
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    const logger = getLogger(name);
+    if (level === 'debug') {
+      logger.debug({ event: message }, message);
+    } else {
+      logger.info({ event: message }, message);
+    }
+    return [...((windowRef['__pinoLogs'] ?? []) as Record<string, unknown>[])];
+  } finally {
+    console.log = restore.log;
+    console.warn = restore.warn;
+    console.error = restore.error;
+  }
+}
+
+function hasMessage(records: Record<string, unknown>[], message: string): boolean {
+  return records.some((rec) => rec['message'] === message || rec['msg'] === message);
+}
+
+async function caseHotReloadLogLevel(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  setupTelemetry({
+    serviceName: 'probe',
+    logLevel: 'info',
+    logFormat: 'json',
+    captureToWindow: true,
+    consoleOutput: false,
+  });
+  const serviceBefore = getRuntimeConfig().serviceName;
+  ensureWindow();
+  _resetRootLogger();
+  const before = captureEmit('probe', 'debug', 'hot.level.debug.before');
+
+  updateRuntimeConfig({ logging: { logLevel: 'debug' } });
+  _resetRootLogger();
+  ensureWindow();
+  const after = captureEmit('probe', 'debug', 'hot.level.debug.after');
+  const cfg = getRuntimeConfig();
+  await shutdownTelemetry();
+  return {
+    case: 'hot_reload_log_level',
+    first_debug_suppressed: !hasMessage(before, 'hot.level.debug.before'),
+    second_debug_emitted: hasMessage(after, 'hot.level.debug.after'),
+    level_config_updated: String(cfg.logLevel).toLowerCase() === 'debug',
+    service_preserved: cfg.serviceName === serviceBefore,
+  };
+}
+
+async function caseHotReloadLogFormat(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  setupTelemetry({
+    serviceName: 'probe',
+    logLevel: 'info',
+    logFormat: 'json',
+    captureToWindow: true,
+    consoleOutput: false,
+  });
+  const statusBefore = getRuntimeStatus();
+  const serviceBefore = getRuntimeConfig().serviceName;
+  updateRuntimeConfig({ logging: { logFormat: 'console' } });
+  const cfg = getRuntimeConfig();
+  const statusAfter = getRuntimeStatus();
+  await shutdownTelemetry();
+  return {
+    case: 'hot_reload_log_format',
+    format_config_updated: String(cfg.logFormat).toLowerCase() === 'console',
+    service_preserved: cfg.serviceName === serviceBefore,
+    providers_unchanged:
+      JSON.stringify(statusBefore.providers) === JSON.stringify(statusAfter.providers),
+  };
+}
+
+async function caseHotReloadModuleLevel(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  setupTelemetry({
+    serviceName: 'probe',
+    logLevel: 'info',
+    logFormat: 'json',
+    captureToWindow: true,
+    consoleOutput: false,
+  });
+  const serviceBefore = getRuntimeConfig().serviceName;
+  ensureWindow();
+  _resetRootLogger();
+  const before = captureEmit('probe.child', 'debug', 'hot.module.debug.before');
+
+  // Python's stdlib root-logger filtering forces raising global level when
+  // promoting a module; mirror that in TS for parity even though pino would
+  // accept the module override without the global lift.
+  updateRuntimeConfig({
+    logging: {
+      logLevel: 'debug',
+      logModuleLevels: { 'probe.child': 'debug' },
+    },
+  });
+  _resetRootLogger();
+  ensureWindow();
+  const after = captureEmit('probe.child', 'debug', 'hot.module.debug.after');
+  const cfg = getRuntimeConfig();
+  await shutdownTelemetry();
+  return {
+    case: 'hot_reload_module_level',
+    first_debug_suppressed: !hasMessage(before, 'hot.module.debug.before'),
+    module_debug_emitted: hasMessage(after, 'hot.module.debug.after'),
+    module_levels_config_updated:
+      String((cfg.logModuleLevels ?? {})['probe.child']).toLowerCase() === 'debug',
+    service_preserved: cfg.serviceName === serviceBefore,
+  };
+}
+
 async function caseShutdownReSetup(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry();
@@ -231,6 +349,9 @@ async function main(): Promise<void> {
     per_signal_logs_endpoint: casePerSignalLogsEndpoint,
     provider_identity_reconfigure: caseProviderIdentityReconfigure,
     shutdown_re_setup: caseShutdownReSetup,
+    hot_reload_log_level: caseHotReloadLogLevel,
+    hot_reload_log_format: caseHotReloadLogFormat,
+    hot_reload_module_level: caseHotReloadModuleLevel,
   };
 
   const handler = cases[caseId ?? ''];

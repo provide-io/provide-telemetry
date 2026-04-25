@@ -186,6 +186,136 @@ func caseProviderIdentityReconfigure() map[string]any {
 	}
 }
 
+func captureEmit(name string, level string, message string) []map[string]any {
+	r, w, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	func() {
+		defer func() {
+			os.Stderr = orig
+			_ = w.Close()
+		}()
+		logger := telemetry.GetLogger(context.Background(), name)
+		switch level {
+		case "debug":
+			logger.Debug(message)
+		default:
+			logger.Info(message)
+		}
+	}()
+	data, _ := io.ReadAll(r)
+	var records []map[string]any
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err == nil {
+			records = append(records, rec)
+		}
+	}
+	return records
+}
+
+func hasMessage(records []map[string]any, message string) bool {
+	for _, rec := range records {
+		if rec["message"] == message || rec["msg"] == message {
+			return true
+		}
+	}
+	return false
+}
+
+func caseHotReloadLogLevel() map[string]any {
+	telemetry.ResetForTests()
+	_ = os.Setenv("PROVIDE_LOG_FORMAT", "json")
+	_ = os.Setenv("PROVIDE_LOG_LEVEL", "INFO")
+	_, _ = telemetry.SetupTelemetry()
+	serviceBefore := telemetry.GetRuntimeConfig().ServiceName
+	before := captureEmit("probe", "debug", "hot.level.debug.before")
+
+	nextLogging := telemetry.DefaultTelemetryConfig().Logging
+	nextLogging.Level = telemetry.LogLevelDebug
+	nextLogging.Format = telemetry.LogFormatJSON
+	nextLogging.IncludeTimestamp = false
+	nextLogging.IncludeCaller = false
+	if err := telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{Logging: &nextLogging}); err != nil {
+		panic(err)
+	}
+	after := captureEmit("probe", "debug", "hot.level.debug.after")
+	cfg := telemetry.GetRuntimeConfig()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":                   "hot_reload_log_level",
+		"first_debug_suppressed": !hasMessage(before, "hot.level.debug.before"),
+		"second_debug_emitted":   hasMessage(after, "hot.level.debug.after"),
+		"level_config_updated":   strings.EqualFold(cfg.Logging.Level, "DEBUG"),
+		"service_preserved":      cfg.ServiceName == serviceBefore,
+	}
+}
+
+func caseHotReloadLogFormat() map[string]any {
+	telemetry.ResetForTests()
+	_ = os.Setenv("PROVIDE_LOG_FORMAT", "json")
+	_, _ = telemetry.SetupTelemetry()
+	statusBefore := telemetry.GetRuntimeStatus()
+	serviceBefore := telemetry.GetRuntimeConfig().ServiceName
+
+	nextLogging := telemetry.DefaultTelemetryConfig().Logging
+	nextLogging.Level = telemetry.LogLevelInfo
+	nextLogging.Format = telemetry.LogFormatConsole
+	nextLogging.IncludeTimestamp = false
+	nextLogging.IncludeCaller = false
+	if err := telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{Logging: &nextLogging}); err != nil {
+		panic(err)
+	}
+	cfg := telemetry.GetRuntimeConfig()
+	statusAfter := telemetry.GetRuntimeStatus()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":                   "hot_reload_log_format",
+		"format_config_updated":  strings.EqualFold(cfg.Logging.Format, "console"),
+		"service_preserved":      cfg.ServiceName == serviceBefore,
+		"providers_unchanged":    statusBefore.Providers == statusAfter.Providers,
+	}
+}
+
+func caseHotReloadModuleLevel() map[string]any {
+	telemetry.ResetForTests()
+	_ = os.Setenv("PROVIDE_LOG_FORMAT", "json")
+	_ = os.Setenv("PROVIDE_LOG_LEVEL", "INFO")
+	_, _ = telemetry.SetupTelemetry()
+	serviceBefore := telemetry.GetRuntimeConfig().ServiceName
+	before := captureEmit("probe.child", "debug", "hot.module.debug.before")
+
+	// Mirror Python — raising global level alongside the module override keeps
+	// the cross-language contract testable in languages that filter via a
+	// global handler level (Python stdlib, Go slog handler).
+	nextLogging := telemetry.DefaultTelemetryConfig().Logging
+	nextLogging.Level = telemetry.LogLevelDebug
+	nextLogging.Format = telemetry.LogFormatJSON
+	nextLogging.IncludeTimestamp = false
+	nextLogging.IncludeCaller = false
+	nextLogging.ModuleLevels = map[string]string{"probe.child": telemetry.LogLevelDebug}
+	if err := telemetry.UpdateRuntimeConfig(telemetry.RuntimeOverrides{Logging: &nextLogging}); err != nil {
+		panic(err)
+	}
+	after := captureEmit("probe.child", "debug", "hot.module.debug.after")
+	cfg := telemetry.GetRuntimeConfig()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":                         "hot_reload_module_level",
+		"first_debug_suppressed":       !hasMessage(before, "hot.module.debug.before"),
+		"module_debug_emitted":         hasMessage(after, "hot.module.debug.after"),
+		"module_levels_config_updated": strings.EqualFold(cfg.Logging.ModuleLevels["probe.child"], "DEBUG"),
+		"service_preserved":            cfg.ServiceName == serviceBefore,
+	}
+}
+
 func caseShutdownReSetup() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -237,6 +367,12 @@ func main() {
 		result = caseProviderIdentityReconfigure()
 	case "shutdown_re_setup":
 		result = caseShutdownReSetup()
+	case "hot_reload_log_level":
+		result = caseHotReloadLogLevel()
+	case "hot_reload_log_format":
+		result = caseHotReloadLogFormat()
+	case "hot_reload_module_level":
+		result = caseHotReloadModuleLevel()
 	default:
 		panic("unknown case: " + caseID)
 	}

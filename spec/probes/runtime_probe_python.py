@@ -15,6 +15,7 @@ from contextlib import redirect_stderr
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from provide.telemetry import (
+    RuntimeOverrides,
     get_logger,
     get_runtime_config,
     get_runtime_status,
@@ -22,7 +23,9 @@ from provide.telemetry import (
     set_trace_context,
     setup_telemetry,
     shutdown_telemetry,
+    update_runtime_config,
 )
+from provide.telemetry.config import LoggingConfig
 
 TRACE_ID = "0af7651916cd43dd8448eb211c80319c"
 SPAN_ID = "b7ad6b7169203331"
@@ -179,6 +182,109 @@ def _case_provider_identity_reconfigure() -> dict[str, object]:
     }
 
 
+def _json_records(output: str) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return records
+
+
+def _has_message(output: str, message: str) -> bool:
+    return any(rec.get("message") == message for rec in _json_records(output))
+
+
+def _case_hot_reload_log_level() -> dict[str, object]:
+    # Capture stderr from before setup_telemetry() so the structlog handler is
+    # constructed inside the redirected-stderr block and writes to our buffer.
+    buf_before = io.StringIO()
+    with redirect_stderr(buf_before):
+        setup_telemetry()
+        service_before = get_runtime_config().service_name
+        set_trace_context(TRACE_ID, SPAN_ID)
+        # Default INFO — DEBUG must be filtered before the reload.
+        get_logger("probe").debug("hot.level.debug.before")
+
+    buf_after = io.StringIO()
+    with redirect_stderr(buf_after):
+        # update_runtime_config(force=True) rebuilds the structlog pipeline
+        # with a fresh StreamHandler bound to the now-redirected sys.stderr.
+        update_runtime_config(
+            RuntimeOverrides(logging=LoggingConfig(level="DEBUG", fmt="json", include_timestamp=False))
+        )
+        get_logger("probe").debug("hot.level.debug.after")
+    cfg = get_runtime_config()
+    shutdown_telemetry()
+    return {
+        "case": "hot_reload_log_level",
+        "first_debug_suppressed": not _has_message(buf_before.getvalue(), "hot.level.debug.before"),
+        "second_debug_emitted": _has_message(buf_after.getvalue(), "hot.level.debug.after"),
+        "level_config_updated": cfg.logging.level == "DEBUG",
+        "service_preserved": cfg.service_name == service_before,
+    }
+
+
+def _case_hot_reload_log_format() -> dict[str, object]:
+    setup_telemetry()
+    status_before = get_runtime_status()
+    service_before = get_runtime_config().service_name
+    update_runtime_config(RuntimeOverrides(logging=LoggingConfig(level="INFO", fmt="console", include_timestamp=False)))
+    cfg = get_runtime_config()
+    status_after = get_runtime_status()
+    shutdown_telemetry()
+    return {
+        "case": "hot_reload_log_format",
+        "format_config_updated": cfg.logging.fmt == "console",
+        "service_preserved": cfg.service_name == service_before,
+        "providers_unchanged": status_before["providers"] == status_after["providers"],
+    }
+
+
+def _case_hot_reload_module_level() -> dict[str, object]:
+    # Exercise the module-level plumbing through update_runtime_config.  Python's
+    # stdlib root-logger level is baked in at configure_logging time (not per
+    # module), so lifting DEBUG requires also raising the global level in the
+    # same hot-reload payload — languages that filter per-logger (TS pino, Rust,
+    # Go slog) work with just the module override.  The parity contract this
+    # case locks down is: the module_levels map round-trips through the hot
+    # reload AND a DEBUG event on the named logger actually reaches output
+    # after the reload, with provider identity untouched.
+    buf_before = io.StringIO()
+    with redirect_stderr(buf_before):
+        setup_telemetry()
+        service_before = get_runtime_config().service_name
+        set_trace_context(TRACE_ID, SPAN_ID)
+        get_logger("probe.child").debug("hot.module.debug.before")
+
+    buf_after = io.StringIO()
+    with redirect_stderr(buf_after):
+        update_runtime_config(
+            RuntimeOverrides(
+                logging=LoggingConfig(
+                    level="DEBUG",
+                    fmt="json",
+                    include_timestamp=False,
+                    module_levels={"probe.child": "DEBUG"},
+                )
+            )
+        )
+        get_logger("probe.child").debug("hot.module.debug.after")
+    cfg = get_runtime_config()
+    shutdown_telemetry()
+    return {
+        "case": "hot_reload_module_level",
+        "first_debug_suppressed": not _has_message(buf_before.getvalue(), "hot.module.debug.before"),
+        "module_debug_emitted": _has_message(buf_after.getvalue(), "hot.module.debug.after"),
+        "module_levels_config_updated": cfg.logging.module_levels.get("probe.child") == "DEBUG",
+        "service_preserved": cfg.service_name == service_before,
+    }
+
+
 def _case_shutdown_re_setup() -> dict[str, object]:
     setup_telemetry()
     first = get_runtime_status()
@@ -213,6 +319,9 @@ def main() -> int:
         "per_signal_logs_endpoint": _case_per_signal_logs_endpoint,
         "provider_identity_reconfigure": _case_provider_identity_reconfigure,
         "shutdown_re_setup": _case_shutdown_re_setup,
+        "hot_reload_log_level": _case_hot_reload_log_level,
+        "hot_reload_log_format": _case_hot_reload_log_format,
+        "hot_reload_module_level": _case_hot_reload_module_level,
     }[case]()
     print(json.dumps(result, sort_keys=True))
     return 0
