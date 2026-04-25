@@ -90,9 +90,9 @@ func TestParity_Propagation_BaggageOverLimit_Discarded(t *testing.T) {
 // Parity category: propagation_oversized_traceparent — a traceparent with
 // content beyond the canonical 4-part W3C form (e.g. an extra hyphen-
 // separated segment) must be rejected. Returned context must have neither
-// a TraceID nor a SpanID — no partial acceptance, no truncation. Go keeps
-// the raw Traceparent string on the context for diagnostics; the behavioral
-// contract checked cross-language is strictly the absence of parsed IDs.
+// a TraceID nor a SpanID — no partial acceptance, no truncation. The raw
+// Traceparent field is also cleared on parse failure so Python, TypeScript,
+// Go, and Rust all agree: a malformed traceparent produces an empty context.
 
 func TestParity_Propagation_OversizedTraceparent_Rejected(t *testing.T) {
 	headers := http.Header{}
@@ -100,9 +100,12 @@ func TestParity_Propagation_OversizedTraceparent_Rejected(t *testing.T) {
 	headers.Set("Traceparent", tp)
 	pc := ExtractW3CContext(headers)
 	if pc.TraceID != "" {
-		t.Errorf("oversized traceparent must yield empty TraceID, got %q", pc.TraceID)
+		t.Errorf("malformed traceparent must yield empty TraceID, got %q", pc.TraceID)
 	}
 	if pc.SpanID != "" {
-		t.Errorf("oversized traceparent must yield empty SpanID, got %q", pc.SpanID)
+		t.Errorf("malformed traceparent must yield empty SpanID, got %q", pc.SpanID)
+	}
+	if pc.Traceparent != "" {
+		t.Errorf("malformed traceparent must also clear Traceparent for cross-language parity, got %q", pc.Traceparent)
 	}
 }

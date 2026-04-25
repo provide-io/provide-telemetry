@@ -35,6 +35,12 @@ func ExtractW3CContext(headers http.Header) PropagationContext {
 	bg := _guardSize(headers.Get("Baggage"), _maxBaggageBytes)
 
 	traceID, spanID := _parseTraceparent(tp)
+	// Cross-language parity (Python/TS/Rust): when the traceparent fails the
+	// structural parse, clear the raw header too. A malformed traceparent
+	// produces an empty context, not a context carrying diagnostic text.
+	if traceID == "" && spanID == "" {
+		tp = ""
+	}
 
 	return PropagationContext{
 		Traceparent: tp,
