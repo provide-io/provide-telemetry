@@ -117,6 +117,7 @@ markers = [
   "otel: tests that validate optional OpenTelemetry extras",
   "integration: tests that require external runtime dependencies",
   "e2e: end-to-end validation against a live telemetry backend",
+  "mock_e2e: cross-language end-to-end validation against an in-process mock OTLP receiver (runs by default)",
   "tooling: tests that validate local development scripts/tooling",
   "memray: memory profiling stress tests (deselected by default, run with -m memray)",
   "slow: long-running tests excluded from default runs",
