@@ -190,6 +190,7 @@ fn runtime_test_update_runtime_config_applies_hot_fields() {
             pii_max_depth: Some(3),
             strict_schema: Some(true),
             event_schema: None,
+            logging: None,
         })
         .expect("update should succeed");
 
@@ -297,6 +298,7 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
             pii_max_depth: None,
             strict_schema: None,
             event_schema: None,
+            logging: None,
         })
         .expect("update should succeed");
 
