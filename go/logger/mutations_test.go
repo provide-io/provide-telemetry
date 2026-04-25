@@ -190,8 +190,12 @@ func TestHandlerStandardFieldsInOutput(t *testing.T) {
 	}
 }
 
-// TestHandlerRequiredKeysMissing verifies that a record is dropped when required
-// keys are missing. Kills CONDITIONALS_NEGATION at logger.go:155.
+// TestHandlerRequiredKeysMissing verifies that a record missing required keys
+// is annotated with _schema_error rather than dropped — matching the root
+// telemetry package's contract and the cross-language standard documented in
+// docs/CAPABILITY_MATRIX.md ("Required-key rejection emits _schema_error
+// instead of dropping the record"). Kills CONDITIONALS_NEGATION at the
+// applySchema call-site.
 func TestHandlerRequiredKeysMissing(t *testing.T) {
 	buf := &bytes.Buffer{}
 	base := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: LevelTrace})
@@ -202,10 +206,15 @@ func TestHandlerRequiredKeysMissing(t *testing.T) {
 
 	ctx := context.Background()
 	r := slog.NewRecord(time.Now(), slog.LevelInfo, "a.b.c", 0)
-	// No "must_have" attr → schema validation fails → record dropped.
+	// No "must_have" attr → schema validation fails → record is annotated
+	// with _schema_error and still emitted.
 	_ = h.Handle(ctx, r)
-	if len(buf.String()) > 0 {
-		t.Fatalf("record missing required key should be dropped, got: %s", buf.String())
+	out := buf.String()
+	if len(out) == 0 {
+		t.Fatal("record missing required key should be annotated and emitted, not dropped")
+	}
+	if !strings.Contains(out, "_schema_error") {
+		t.Fatalf("expected _schema_error annotation on emitted record, got: %s", out)
 	}
 }
 

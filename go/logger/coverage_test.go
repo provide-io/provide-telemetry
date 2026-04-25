@@ -165,9 +165,10 @@ func TestHandlerSchemaRequiredKeys(t *testing.T) {
 		logger.Configure(base)
 	}()
 
-	// Missing required key → record is dropped (no panic).
+	// Missing required key → record is annotated with _schema_error and
+	// still emitted (cross-language contract).
 	logger.Logger.Info("test.schema.check")
-	// With required key → record passes.
+	// With required key → record passes cleanly (no annotation).
 	logger.Logger.Info("test.schema.check", slog.String("request_id", "req-1"))
 }
 

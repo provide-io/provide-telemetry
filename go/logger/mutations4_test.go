@@ -219,7 +219,7 @@ func TestHandlerRequiredKeysLenOneMinimum(t *testing.T) {
 	cfg.RequiredKeys = []string{"k"}
 	h := _newTelemetryHandler(newTestJSONHandler(), cfg, "test")
 
-	// Missing required key → record dropped.
+	// Missing required key → record annotated with _schema_error, still emitted.
 	r := newTestRecord("a.b.c")
 	_ = h.Handle(context.Background(), r)
 
