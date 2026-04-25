@@ -178,6 +178,20 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
         }
+    if case_id in {"hot_reload_log_level", "hot_reload_module_level"}:
+        return {
+            "PROVIDE_LOG_LEVEL": "INFO",
+            "PROVIDE_LOG_FORMAT": "json",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
+    if case_id == "hot_reload_log_format":
+        return {
+            "PROVIDE_LOG_LEVEL": "INFO",
+            "PROVIDE_LOG_FORMAT": "json",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     return {}
 
 
