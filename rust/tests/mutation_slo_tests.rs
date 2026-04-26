@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 
 use provide_telemetry::{
     classify_error, get_error_count_for_tests, get_request_count_for_tests, record_red_metrics,
-    record_use_metrics, reset_slo_for_tests,
+    record_use_metrics, reset_slo_for_tests, slo_initialized_for_tests,
 };
 
 static SLO_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -223,4 +223,15 @@ fn slo_use_metrics_does_not_panic_for_boundary_values() {
     record_use_metrics("cpu", 100);
     record_use_metrics("cpu", i32::MAX);
     record_use_metrics("cpu", i32::MIN);
+}
+
+// Kills: `record_use_metrics` body replaced with `()` — empty body would skip
+// the SLO_INITIALIZED store, leaving the flag false after the call.
+#[test]
+fn slo_use_metrics_sets_initialized_flag() {
+    let _guard = slo_lock().lock().expect("slo lock");
+    reset_slo_for_tests();
+    assert!(!slo_initialized_for_tests());
+    record_use_metrics("cpu", 50);
+    assert!(slo_initialized_for_tests());
 }

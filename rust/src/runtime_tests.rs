@@ -369,6 +369,36 @@ fn runtime_test_reload_timeout_stays_frozen_when_provider_snapshot_is_live() {
     crate::testing::reset_telemetry_state();
     crate::otel::_reset_otel_for_tests();
 }
+
+// Kills: each `!=` -> `==` mutation in compute_cold_drift (service_name,
+// environment, version, tracing.enabled, metrics.enabled). Asserts every
+// individual field appears in the result when only that field differs, and
+// that an unchanged config yields an empty drift list.
+#[test]
+fn runtime_test_compute_cold_drift_lists_each_changed_field() {
+    let base = TelemetryConfig::default();
+    assert!(compute_cold_drift(&base, &base).is_empty());
+
+    let mut changed = base.clone();
+    changed.service_name = "other-service".to_string();
+    assert_eq!(compute_cold_drift(&base, &changed), vec!["service_name"]);
+
+    let mut changed = base.clone();
+    changed.environment = "prod".to_string();
+    assert_eq!(compute_cold_drift(&base, &changed), vec!["environment"]);
+
+    let mut changed = base.clone();
+    changed.version = "9.9.9".to_string();
+    assert_eq!(compute_cold_drift(&base, &changed), vec!["version"]);
+
+    let mut changed = base.clone();
+    changed.tracing.enabled = !base.tracing.enabled;
+    assert_eq!(compute_cold_drift(&base, &changed), vec!["tracing.enabled"]);
+
+    let mut changed = base.clone();
+    changed.metrics.enabled = !base.metrics.enabled;
+    assert_eq!(compute_cold_drift(&base, &changed), vec!["metrics.enabled"]);
+}
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
