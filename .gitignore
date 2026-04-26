@@ -29,6 +29,8 @@ go/cover.out
 go/coverage_prop.out
 coverage.out
 rust/target/
+rust/*.profraw
+*.profraw
 go/coverage.html
 .claude/settings.local.json
 .claude/worktrees/

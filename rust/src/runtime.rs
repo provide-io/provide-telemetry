@@ -101,6 +101,29 @@ pub fn get_runtime_config() -> Option<TelemetryConfig> {
     crate::_lock::rwlock_read(active_config()).clone()
 }
 
+/// Pure helper used by `reload_runtime_from_env` to detect drift between the
+/// current and freshly-loaded `TelemetryConfig`. Returns the names of cold
+/// fields that differ; the caller decides whether to warn.
+fn compute_cold_drift(current: &TelemetryConfig, fresh: &TelemetryConfig) -> Vec<&'static str> {
+    let mut drifted: Vec<&'static str> = Vec::new();
+    if current.service_name != fresh.service_name {
+        drifted.push("service_name");
+    }
+    if current.environment != fresh.environment {
+        drifted.push("environment");
+    }
+    if current.version != fresh.version {
+        drifted.push("version");
+    }
+    if current.tracing.enabled != fresh.tracing.enabled {
+        drifted.push("tracing.enabled");
+    }
+    if current.metrics.enabled != fresh.metrics.enabled {
+        drifted.push("metrics.enabled");
+    }
+    drifted
+}
+
 fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
     let guard = crate::_lock::rwlock_read(active_config());
     let cfg = guard.clone();
@@ -187,22 +210,7 @@ pub fn reload_runtime_from_env() -> Result<TelemetryConfig, TelemetryError> {
     };
 
     // Warn on cold-field drift (matches Python/TypeScript/Go behavior).
-    let mut drifted: Vec<&str> = Vec::new();
-    if current.service_name != fresh.service_name {
-        drifted.push("service_name");
-    }
-    if current.environment != fresh.environment {
-        drifted.push("environment");
-    }
-    if current.version != fresh.version {
-        drifted.push("version");
-    }
-    if current.tracing.enabled != fresh.tracing.enabled {
-        drifted.push("tracing.enabled");
-    }
-    if current.metrics.enabled != fresh.metrics.enabled {
-        drifted.push("metrics.enabled");
-    }
+    let drifted = compute_cold_drift(&current, &fresh);
     if !drifted.is_empty() {
         eprintln!(
             "[provide-telemetry] runtime.cold_field_drift: {} — restart required to apply",

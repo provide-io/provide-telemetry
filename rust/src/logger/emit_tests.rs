@@ -138,6 +138,31 @@ fn emit_test_iso8601_helper_covers_january_and_april_paths() {
     );
 }
 
+// Kills: `-` -> `+` on `doe / 146_096` in the Howard Hinnant year-of-era
+// formula. The correction term only matters at doe == 146096 (the last day of
+// a 400-year era). ts=951782400 is 2000-02-29 UTC and lands at exactly that
+// boundary; under the mutant the formula yields 2000-03-01 instead.
+//
+// Also kills: `+` -> `-` on `doe / 36_524` and `-` -> `/` on `doe / 146_096`
+// (both at line 70). The 2200-03-01 case (ts=7263216000, doe=73048 in era 5)
+// has doe/36524 == 2 and doe/146096 == 0, so flipping the `+` between the
+// 1460 and 36524 terms shifts yoe from 200 to 199, yielding "2200-02-29"
+// (an invalid date in a non-leap century year) — clearly distinguishable.
+#[test]
+fn emit_test_iso8601_helper_handles_400_year_era_boundary() {
+    let _guard = acquire_test_state_lock();
+    reset_emit_state();
+
+    assert_eq!(
+        iso8601_from_unix_parts(951_782_400, 0),
+        "2000-02-29T00:00:00.000Z"
+    );
+    assert_eq!(
+        iso8601_from_unix_parts(7_263_216_000, 0),
+        "2200-03-01T00:00:00.000Z"
+    );
+}
+
 #[test]
 fn emit_test_emit_json_line_falls_back_to_stderr_without_capture() {
     let _guard = acquire_test_state_lock();

@@ -165,6 +165,12 @@ mod tests {
 
         assert!(kept > 0, "fractional sampling should keep some events");
         assert!(dropped > 0, "fractional sampling should drop some events");
+        assert_eq!(
+            get_health_snapshot().dropped_logs,
+            dropped as u64,
+            "dropped_logs counter must match the number of sampling rejections \
+             (kills `if !keep` -> `if keep` mutation)"
+        );
     }
 
     #[test]

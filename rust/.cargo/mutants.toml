@@ -1,18 +1,43 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 # SPDX-License-Identifier: Apache-2.0
 #
-# cargo-mutants configuration for the Rust library.
-# https://mutants.rs/mutants-toml.html
-
+# Canonical cargo-mutants configuration for the Rust library.
+# cargo-mutants reads `.cargo/mutants.toml` by default from the crate root:
+# https://mutants.rs/config-file.html
+#
 # Equivalent mutations: excluded because the mutated code is
 # behaviourally identical to the original.
 exclude_re = [
     # consent.rs: "TRACE" => 0 and the catch-all `_ => 0` both return 0.
     # Deleting the TRACE arm produces no observable change in behaviour.
     'delete match arm "TRACE" in log_level_order',
+    # setup.rs / testing.rs: OnceLock::get_or_init initializers for static
+    # Mutexes. Replacing them with Box::leak is still a single shared static
+    # allocation and cannot be distinguished in black-box tests.
+    'replace setup_state -> &.* with Box::leak',
+    'replace test_state_lock -> &.* with Box::leak',
     # classification.rs: these constructor rewrites and redundant-star
     # collapse changes are behaviorally identical.
     'default_policy_mutex.*Default::default',
     'empty_rules_mutex.*vec!\\[\\]',
     'src/classification.rs:139:29: replace < with > in match_glob::glob_match',
+    # config.rs: the += -> *= / -= mutants in has_invalid_percent_encoding pin
+    # idx at 0 and hang instead of producing a distinguishable result. The
+    # function is covered; only the infinite-loop arithmetic mutants are
+    # excluded.
+    'replace \+= with \*= in has_invalid_percent_encoding',
+    'replace \+= with -= in has_invalid_percent_encoding',
+    # propagation.rs:96 traceparent length guard: a valid W3C traceparent is exactly
+    # 55 chars, so any string with length > MAX_HEADER_LENGTH (512) cannot be valid.
+    # parse_traceparent flattens every malformed input to (None, None, None), making
+    # the closure's `Some(value)` vs `None` intermediate state observationally
+    # identical for all inputs — no test can distinguish `>` from `>=` here.
+    'src/propagation.rs:96:24: replace > with >= in extract_w3c_context',
+    'src/propagation.rs:96:24: replace > with == in extract_w3c_context',
+    # runtime.rs:214: `if !drifted.is_empty() { eprintln!(...) }`. The `!` flip
+    # only changes whether stderr emits a `runtime.cold_field_drift` warning;
+    # the function's return value and other state are unaffected. Capturing
+    # stderr in tests would require pulling in a new dev-dep (e.g. `gag`) just
+    # for this one boundary, which is not justified for an advisory mutation gate.
+    'src/runtime.rs:214:8: delete ! in reload_runtime_from_env',
 ]

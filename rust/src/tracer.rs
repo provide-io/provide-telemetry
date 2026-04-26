@@ -15,6 +15,7 @@ use crate::sampling::{should_sample, Signal};
 
 // When the governance feature is disabled, consent is unconditionally granted.
 #[cfg(not(feature = "governance"))]
+#[cfg_attr(test, mutants::skip)] // Dead under the --all-features build used in mutation CI (governance shadows this).
 #[inline(always)]
 fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
     true
@@ -148,12 +149,14 @@ impl NoopSpan {
 }
 
 impl Drop for NoopSpan {
+    #[cfg_attr(test, mutants::skip)] // Equivalent: Option<ContextGuard> field drops automatically with identical effect.
     fn drop(&mut self) {
         drop(self.guard.take());
     }
 }
 
 impl Drop for ActiveTrace {
+    #[cfg_attr(test, mutants::skip)] // Equivalent: every owned field (Option<OtelSpan>, Option<NoopSpan>, OwnedSemaphorePermit via QueueTicket) drops correctly on its own.
     fn drop(&mut self) {
         #[cfg(feature = "otel")]
         drop(self.otel_span.take());

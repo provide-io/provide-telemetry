@@ -97,17 +97,25 @@ mod tests {
     #[cfg(feature = "otel")]
     #[test]
     fn setup_otel_surfaces_tracer_exporter_errors() {
+        let _guard = crate::testing::acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
         let mut cfg = TelemetryConfig::default();
         cfg.tracing.otlp_endpoint = Some("ftp://collector:4317".to_string());
         cfg.exporter.traces_fail_open = false;
 
         let err = setup_otel(&cfg).expect_err("invalid tracing endpoint must fail setup");
         assert!(err.message.contains("scheme"));
+
+        crate::testing::reset_telemetry_state();
     }
 
     #[cfg(feature = "otel")]
     #[test]
     fn setup_otel_surfaces_meter_exporter_errors_after_traces_short_circuit() {
+        let _guard = crate::testing::acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
         let mut cfg = TelemetryConfig::default();
         cfg.tracing.enabled = false;
         cfg.metrics.enabled = true;
@@ -116,11 +124,16 @@ mod tests {
 
         let err = setup_otel(&cfg).expect_err("invalid metrics endpoint must fail setup");
         assert!(err.message.contains("scheme"));
+
+        crate::testing::reset_telemetry_state();
     }
 
     #[cfg(feature = "otel")]
     #[test]
     fn setup_otel_surfaces_logger_exporter_errors_after_other_signals_short_circuit() {
+        let _guard = crate::testing::acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
         let mut cfg = TelemetryConfig::default();
         cfg.tracing.enabled = false;
         cfg.metrics.enabled = false;
@@ -129,6 +142,8 @@ mod tests {
 
         let err = setup_otel(&cfg).expect_err("invalid logs endpoint must fail setup");
         assert!(err.message.contains("scheme"));
+
+        crate::testing::reset_telemetry_state();
     }
 
     #[cfg(feature = "otel")]
@@ -137,5 +152,29 @@ mod tests {
         let err = map_exporter_build::<(), _>(Err("boom"), "logs")
             .expect_err("fake exporter error should map");
         assert_eq!(err.message, "OTLP logs exporter build failed: boom");
+    }
+
+    // Kills: `||` -> `&&` in otel_installed. With AND, installing only one of the
+    // three providers makes otel_installed() return false; with OR (the original)
+    // any one provider is sufficient.
+    #[cfg(feature = "otel")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn otel_installed_returns_true_when_only_tracer_provider_is_installed() {
+        let _guard = crate::testing::acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
+        let mut cfg = TelemetryConfig::default();
+        cfg.tracing.otlp_endpoint = Some("http://127.0.0.1:1/never".to_string());
+        cfg.exporter.traces_fail_open = true;
+        let resource = resource::build_resource(&cfg);
+        traces::install_tracer_provider(&cfg, resource)
+            .expect("tracer provider should install under fail_open");
+
+        assert!(traces::tracer_provider_installed());
+        assert!(!metrics::meter_provider_installed());
+        assert!(!logs::logger_provider_installed());
+        assert!(otel_installed());
+
+        crate::testing::reset_telemetry_state();
     }
 }

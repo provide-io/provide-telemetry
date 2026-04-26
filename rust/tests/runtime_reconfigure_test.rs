@@ -4,6 +4,8 @@
 //
 mod runtime_test_support;
 
+#[cfg(feature = "otel")]
+use provide_telemetry::get_runtime_status;
 use provide_telemetry::{reconfigure_telemetry, reload_runtime_from_env, setup_telemetry};
 use runtime_test_support::*;
 
