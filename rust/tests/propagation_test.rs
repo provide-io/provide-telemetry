@@ -49,6 +49,16 @@ fn propagation_test_tracestate_over_32_pairs_is_discarded() {
 }
 
 #[test]
+fn propagation_test_tracestate_at_exact_512_byte_length_is_accepted() {
+    let _guard = acquire_test_state_lock();
+    let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    let tracestate = format!("k={}", "v".repeat(510));
+    assert_eq!(tracestate.len(), 512);
+    let context = extract_w3c_context(Some(traceparent), Some(&tracestate), None);
+    assert_eq!(context.tracestate.as_deref(), Some(tracestate.as_str()));
+}
+
+#[test]
 fn propagation_test_exact_header_limits_are_preserved() {
     let _guard = acquire_test_state_lock();
     let exact_traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
