@@ -74,7 +74,7 @@ jobs:
         with:
           toolchain: stable
           components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
           workspaces: rust
       - name: Install cargo-llvm-cov
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8
         with:
           python-version: "3.11"
       - name: Validate Rust conformance
@@ -161,7 +161,7 @@ jobs:
       # uv provides a consistent Python invocation across OSes for the
       # perf_check.py + parse_criterion.py pipeline. Both scripts use stdlib
       # only, so no `uv sync` here.
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8
         with:
           python-version: "3.11"
       # Run criterion in --quick mode (single-shot timings, no statistical
