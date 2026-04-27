@@ -40,17 +40,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       # Python runtime for the orchestrator and Python parity tests
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8
         with:
           python-version: "3.11"
       # Node.js runtime for TypeScript parity tests
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       # Go runtime for Go parity tests
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
           go-version: "1.25"
       # Rust toolchain for Rust parity tests
@@ -59,7 +59,7 @@ jobs:
         with:
           toolchain: stable
       # Cache Cargo registry and build artifacts to speed up Rust compilation
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
           workspaces: rust
       # Install Python and TypeScript dependencies
@@ -78,17 +78,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       # Python runtime for the orchestrator and Python contract probe
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8
         with:
           python-version: "3.11"
       # Node.js runtime for TypeScript contract probe
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       # Go runtime for Go contract probe
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
           go-version: "1.25"
       # Rust toolchain for Rust contract probe
@@ -97,7 +97,7 @@ jobs:
         with:
           toolchain: stable
       # Cache Cargo registry and build artifacts to speed up Rust compilation
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
           workspaces: rust
       # Install Python and TypeScript dependencies
