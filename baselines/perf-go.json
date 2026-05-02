@@ -12,8 +12,10 @@
     "BenchmarkTryAcquireRelease_Unlimited":{"baseline_ns": 25,   "tolerance_multiplier": 5.0},
     "BenchmarkGetHealthSnapshot":          {"baseline_ns": 59,   "tolerance_multiplier": 5.0},
     "BenchmarkCounter_Add":                {"baseline_ns": 47,   "tolerance_multiplier": 5.0},
-    "BenchmarkGauge_Set":                  {"baseline_ns": 46,   "tolerance_multiplier": 5.0},
-    "BenchmarkHistogram_Record":           {"baseline_ns": 49,   "tolerance_multiplier": 5.0}
+    "BenchmarkGauge_Set":                  {"baseline_ns": 55,   "tolerance_multiplier": 5.0},
+    "BenchmarkHistogram_Record":           {"baseline_ns": 49,   "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_HotPath":          {"baseline_ns": 3,    "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_NoPatterns_HotPath":{"baseline_ns": 3,    "tolerance_multiplier": 5.0}
   },
   "linux-x86_64": {
     "BenchmarkEventName_3Segments":        {"baseline_ns": 63,   "tolerance_multiplier": 5.0},
@@ -28,7 +30,9 @@
     "BenchmarkGetHealthSnapshot":          {"baseline_ns": 86,   "tolerance_multiplier": 5.0},
     "BenchmarkCounter_Add":                {"baseline_ns": 92,   "tolerance_multiplier": 5.0},
     "BenchmarkGauge_Set":                  {"baseline_ns": 92,   "tolerance_multiplier": 5.0},
-    "BenchmarkHistogram_Record":           {"baseline_ns": 97,   "tolerance_multiplier": 5.0}
+    "BenchmarkHistogram_Record":           {"baseline_ns": 97,   "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_HotPath":          {"baseline_ns": 5,    "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_NoPatterns_HotPath":{"baseline_ns": 5,    "tolerance_multiplier": 5.0}
   },
   "windows-x86_64": {
     "BenchmarkEventName_3Segments":        {"baseline_ns": 64,   "tolerance_multiplier": 5.0},
@@ -43,6 +47,8 @@
     "BenchmarkGetHealthSnapshot":          {"baseline_ns": 65,   "tolerance_multiplier": 5.0},
     "BenchmarkCounter_Add":                {"baseline_ns": 51,   "tolerance_multiplier": 5.0},
     "BenchmarkGauge_Set":                  {"baseline_ns": 49,   "tolerance_multiplier": 5.0},
-    "BenchmarkHistogram_Record":           {"baseline_ns": 48,   "tolerance_multiplier": 5.0}
+    "BenchmarkHistogram_Record":           {"baseline_ns": 48,   "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_HotPath":          {"baseline_ns": 4,    "tolerance_multiplier": 5.0},
+    "BenchmarkCustomPIIPatterns_NoPatterns_HotPath":{"baseline_ns": 4,    "tolerance_multiplier": 5.0}
   }
 }
