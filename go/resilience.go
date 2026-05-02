@@ -19,6 +19,11 @@ const (
 	_cbThreshold    = 3
 	_cbBaseCooldown = 30 * time.Second
 	_cbMaxCooldown  = 1024 * time.Second
+
+	// Circuit breaker state strings.
+	_cbStateHalfOpen = "half-open"
+	_cbStateOpen     = "open"
+	_cbStateClosed   = "closed"
 )
 
 // ExporterPolicy defines resilience parameters for a signal's exporter.
@@ -144,7 +149,7 @@ func GetCircuitState(signal string) CircuitState {
 	oc := _openCount[signal]
 
 	if _halfOpenProbing[signal] {
-		return CircuitState{State: "half-open", OpenCount: oc, CooldownRemainingMs: 0}
+		return CircuitState{State: _cbStateHalfOpen, OpenCount: oc, CooldownRemainingMs: 0}
 	}
 
 	if _reachedThreshold(_consecutiveTimeouts[signal], _cbThreshold) {
@@ -152,12 +157,12 @@ func GetCircuitState(signal string) CircuitState {
 		elapsed := time.Since(_circuitTrippedAt[signal])
 		remaining := cooldown - elapsed
 		if _durationPositive(remaining) {
-			return CircuitState{State: "open", OpenCount: oc, CooldownRemainingMs: remaining.Milliseconds()}
+			return CircuitState{State: _cbStateOpen, OpenCount: oc, CooldownRemainingMs: remaining.Milliseconds()}
 		}
-		return CircuitState{State: "half-open", OpenCount: oc, CooldownRemainingMs: 0}
+		return CircuitState{State: _cbStateHalfOpen, OpenCount: oc, CooldownRemainingMs: 0}
 	}
 
-	return CircuitState{State: "closed", OpenCount: oc, CooldownRemainingMs: 0}
+	return CircuitState{State: _cbStateClosed, OpenCount: oc, CooldownRemainingMs: 0}
 }
 
 // RunWithResilience executes fn wrapped in a circuit breaker, retry loop, and timeout.

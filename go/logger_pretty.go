@@ -32,6 +32,13 @@ const (
 
 	// _prettyLevelPad aligns level tokens; "critical" (8) pads to 9 like Python.
 	_prettyLevelPad = 9
+
+	// Named color strings used by _resolveNamedColor.
+	_colorNameBold  = "bold"
+	_colorNameRed   = "red"
+	_colorNameGreen = "green"
+	_colorNameBlue  = "blue"
+	_colorNameCyan  = "cyan"
 )
 
 // _levelColorMap returns the ANSI color for a lowercased level name.
@@ -60,17 +67,17 @@ func _resolveNamedColor(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case _prettyColorDimName:
 		return _ansiDim
-	case "bold":
+	case _colorNameBold:
 		return _ansiBold
-	case "red":
+	case _colorNameRed:
 		return _ansiRed
-	case "green":
+	case _colorNameGreen:
 		return _ansiGreen
 	case "yellow":
 		return _ansiYellow
-	case "blue":
+	case _colorNameBlue:
 		return _ansiBlue
-	case "cyan":
+	case _colorNameCyan:
 		return _ansiCyan
 	case "white":
 		return _ansiWhite

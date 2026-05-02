@@ -9,6 +9,14 @@ import (
 	"os"
 )
 
+// redactConfigKeys are the map keys used by RedactConfig.
+const (
+	_cfgKeyOTLPEndpoint  = "otlp_endpoint"
+	_cfgKeyOTLPHeaders   = "otlp_headers"
+	_cfgKeySignalLogging = "logging"
+	_cfgKeySignalTracing = "tracing"
+)
+
 // Log format constants.
 const (
 	LogFormatConsole = "console"
@@ -215,17 +223,17 @@ func RedactConfig(c *TelemetryConfig) map[string]interface{} {
 		"service_name": c.ServiceName,
 		"environment":  c.Environment,
 		"version":      c.Version,
-		"logging": map[string]interface{}{
-			"otlp_endpoint": maskEndpointURL(c.Logging.OTLPEndpoint),
-			"otlp_headers":  maskHeaders(c.Logging.OTLPHeaders),
+		_cfgKeySignalLogging: map[string]interface{}{
+			_cfgKeyOTLPEndpoint: maskEndpointURL(c.Logging.OTLPEndpoint),
+			_cfgKeyOTLPHeaders:  maskHeaders(c.Logging.OTLPHeaders),
 		},
-		"tracing": map[string]interface{}{
-			"otlp_endpoint": maskEndpointURL(c.Tracing.OTLPEndpoint),
-			"otlp_headers":  maskHeaders(c.Tracing.OTLPHeaders),
+		_cfgKeySignalTracing: map[string]interface{}{
+			_cfgKeyOTLPEndpoint: maskEndpointURL(c.Tracing.OTLPEndpoint),
+			_cfgKeyOTLPHeaders:  maskHeaders(c.Tracing.OTLPHeaders),
 		},
-		"metrics": map[string]interface{}{
-			"otlp_endpoint": maskEndpointURL(c.Metrics.OTLPEndpoint),
-			"otlp_headers":  maskHeaders(c.Metrics.OTLPHeaders),
+		signalMetrics: map[string]interface{}{
+			_cfgKeyOTLPEndpoint: maskEndpointURL(c.Metrics.OTLPEndpoint),
+			_cfgKeyOTLPHeaders:  maskHeaders(c.Metrics.OTLPHeaders),
 		},
 	}
 }

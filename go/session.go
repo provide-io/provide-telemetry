@@ -5,7 +5,10 @@ package telemetry
 
 import "context"
 
-var _sessionKey = contextKey{"session"}
+// _sessionKeyName is the string name for the session context key.
+const _sessionKeyName = "session"
+
+var _sessionKey = contextKey{_sessionKeyName}
 
 // BindSessionContext stores a session ID in the context.
 // Returns a new context — does not mutate the parent.

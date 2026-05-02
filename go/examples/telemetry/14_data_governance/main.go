@@ -43,33 +43,42 @@ func demoConsent() {
 	fmt.Println()
 }
 
+// field key constants used across the data governance demo.
+const (
+	fieldSSN        = "ssn"
+	fieldCardNumber = "card_number"
+	fieldDiagnosis  = "diagnosis"
+	fieldAPIKey     = "api_key" // pragma: allowlist secret
+	fieldUser       = "user"
+)
+
 func demoClassification() {
 	fmt.Println("── 2. Data Classification ─────────────────────────────────")
 	// Register rules: pattern → DataClass label
 	telemetry.RegisterClassificationRules([]telemetry.ClassificationRule{
-		{Pattern: "ssn", Classification: telemetry.DataClassPII},
-		{Pattern: "card_number", Classification: telemetry.DataClassPCI},
-		{Pattern: "diagnosis", Classification: telemetry.DataClassPHI},
+		{Pattern: fieldSSN, Classification: telemetry.DataClassPII},
+		{Pattern: fieldCardNumber, Classification: telemetry.DataClassPCI},
+		{Pattern: fieldDiagnosis, Classification: telemetry.DataClassPHI},
 		{Pattern: "api_*", Classification: telemetry.DataClassSecret},
 	})
 	// Classification adds __key__class labels to sanitized output.
 	// Enforcement (drop, hash, redact) is applied by registering PIIRules per class.
-	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{"ssn"}, Mode: telemetry.PIIModeRedact})
-	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{"card_number"}, Mode: telemetry.PIIModeHash})
-	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{"diagnosis"}, Mode: telemetry.PIIModeDrop})
-	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{"api_key"}, Mode: telemetry.PIIModeDrop})
+	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{fieldSSN}, Mode: telemetry.PIIModeRedact})
+	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{fieldCardNumber}, Mode: telemetry.PIIModeHash})
+	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{fieldDiagnosis}, Mode: telemetry.PIIModeDrop})
+	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{fieldAPIKey}, Mode: telemetry.PIIModeDrop})
 
 	payload := map[string]any{
-		"user":        "alice",
-		"ssn":         "123-45-6789",
-		"card_number": "4111111111111111",
-		"diagnosis":   "hypertension",
-		"api_key":     "sk-prod-abc123", //nolint:gosec // demo only
+		fieldUser:       "alice",
+		fieldSSN:        "123-45-6789",
+		fieldCardNumber: "4111111111111111",
+		fieldDiagnosis:  "hypertension",
+		fieldAPIKey:     "sk-prod-abc123", //nolint:gosec // demo only
 	}
 	cleaned := telemetry.SanitizePayload(payload, true, 0)
 
 	fmt.Println("  Field values after sanitization:")
-	for _, k := range []string{"user", "ssn", "card_number", "diagnosis", "api_key"} {
+	for _, k := range []string{fieldUser, fieldSSN, fieldCardNumber, fieldDiagnosis, fieldAPIKey} {
 		if v, ok := cleaned[k]; ok {
 			fmt.Printf("    %s: %q\n", k, fmt.Sprintf("%v", v))
 		} else {

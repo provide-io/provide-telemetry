@@ -14,6 +14,9 @@ import (
 	"sync"
 )
 
+// signalContext is the signal name used for context/baggage telemetry.
+const signalContext = "context"
+
 // ConsentLevel controls how much telemetry data is collected.
 type ConsentLevel int
 
@@ -25,7 +28,7 @@ const (
 )
 
 var _logLevelOrder = map[string]int{
-	"TRACE": 0, "DEBUG": 1, "INFO": 2, "WARNING": 3, "WARN": 3, "ERROR": 4, "CRITICAL": 5,
+	LogLevelTrace: 0, LogLevelDebug: 1, LogLevelInfo: 2, LogLevelWarning: 3, LogLevelWarn: 3, LogLevelError: 4, LogLevelCritical: 5,
 }
 
 var (
@@ -61,18 +64,18 @@ func ShouldAllow(signal string, logLevel string) bool {
 	case ConsentNone:
 		return false
 	case ConsentFunctional:
-		if signal == "logs" {
+		if signal == signalLogs {
 			order := _logLevelOrder[strings.ToUpper(logLevel)]
-			return order >= _logLevelOrder["WARNING"]
+			return order >= _logLevelOrder[LogLevelWarning]
 		}
-		if signal == "context" {
+		if signal == signalContext {
 			return false
 		}
 		return true
 	case ConsentMinimal:
-		if signal == "logs" {
+		if signal == signalLogs {
 			order := _logLevelOrder[strings.ToUpper(logLevel)]
-			return order >= _logLevelOrder["ERROR"]
+			return order >= _logLevelOrder[LogLevelError]
 		}
 		return false
 	}
