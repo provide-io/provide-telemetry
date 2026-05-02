@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   _resetBackpressureForTests,
   getQueuePolicy,
@@ -9,8 +9,16 @@ import {
   setQueuePolicy,
   tryAcquire,
 } from '../src/backpressure';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
 
-afterEach(() => _resetBackpressureForTests());
+beforeEach(() => {
+  _resetBackpressureForTests();
+  _resetHealthForTests();
+});
+afterEach(() => {
+  _resetBackpressureForTests();
+  _resetHealthForTests();
+});
 
 describe('getQueuePolicy / setQueuePolicy', () => {
   it('defaults to unlimited (0)', () => {
@@ -143,5 +151,62 @@ describe('tryAcquire — signal independence', () => {
     expect(tryAcquire('metrics')).not.toBeNull();
     expect(tryAcquire('metrics')).not.toBeNull();
     expect(tryAcquire('metrics')).toBeNull();
+  });
+});
+
+describe('DEFAULT_POLICY — static-init mutation kill', () => {
+  it('getQueuePolicy returns maxLogs=0 after reset (kills ObjectLiteral on DEFAULT_POLICY)', () => {
+    setQueuePolicy({ maxLogs: 99 });
+    _resetBackpressureForTests();
+    expect(getQueuePolicy().maxLogs).toBe(0);
+  });
+
+  it('getQueuePolicy returns maxTraces=0 after reset', () => {
+    setQueuePolicy({ maxTraces: 99 });
+    _resetBackpressureForTests();
+    expect(getQueuePolicy().maxTraces).toBe(0);
+  });
+
+  it('getQueuePolicy returns maxMetrics=0 after reset', () => {
+    setQueuePolicy({ maxMetrics: 99 });
+    _resetBackpressureForTests();
+    expect(getQueuePolicy().maxMetrics).toBe(0);
+  });
+
+  it('reset policy object has exactly three zero fields', () => {
+    setQueuePolicy({ maxLogs: 1, maxTraces: 2, maxMetrics: 3 });
+    _resetBackpressureForTests();
+    expect(getQueuePolicy()).toEqual({ maxLogs: 0, maxTraces: 0, maxMetrics: 0 });
+  });
+});
+
+describe('tryAcquire — health drop counter on overflow', () => {
+  it('increments logsDropped when logs queue is full', () => {
+    setQueuePolicy({ maxLogs: 1 });
+    tryAcquire('logs');
+    expect(tryAcquire('logs')).toBeNull();
+    expect(getHealthSnapshot().logsDropped).toBe(1);
+  });
+
+  it('increments tracesDropped when traces queue is full', () => {
+    setQueuePolicy({ maxTraces: 1 });
+    tryAcquire('traces');
+    expect(tryAcquire('traces')).toBeNull();
+    expect(getHealthSnapshot().tracesDropped).toBe(1);
+  });
+
+  it('increments metricsDropped when metrics queue is full', () => {
+    setQueuePolicy({ maxMetrics: 1 });
+    tryAcquire('metrics');
+    expect(tryAcquire('metrics')).toBeNull();
+    expect(getHealthSnapshot().metricsDropped).toBe(1);
+  });
+
+  it('increments drop counter on each overflow attempt', () => {
+    setQueuePolicy({ maxLogs: 1 });
+    tryAcquire('logs');
+    tryAcquire('logs');
+    tryAcquire('logs');
+    expect(getHealthSnapshot().logsDropped).toBe(2);
   });
 });

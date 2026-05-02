@@ -16,8 +16,11 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
+import { _getConfigVersion, _resetConfig, setupTelemetry } from '../src/config';
 import { ConfigurationError } from '../src/exceptions';
+import { _resetSamplingForTests } from '../src/sampling';
+import { _resetBackpressureForTests } from '../src/backpressure';
+import { _resetResilienceForTests } from '../src/resilience';
 import {
   _disablePropagationALSForTest,
   _restorePropagationALSForTest,
@@ -27,6 +30,9 @@ import { resetTelemetryState } from '../src/testing';
 
 afterEach(() => {
   _resetConfig();
+  _resetSamplingForTests();
+  _resetBackpressureForTests();
+  _resetResilienceForTests();
   resetTelemetryState();
 });
 
@@ -70,5 +76,78 @@ describe('setupTelemetry — isNodeLike guard (process.versions.node check)', ()
       _setPropagationInitDoneForTest(savedDone);
       _restorePropagationALSForTest(savedAls);
     }
+  });
+});
+
+describe('_configVersion increments on each setupTelemetry call (kills UpdateOperator)', () => {
+  it('increments by at least 1 after first call', () => {
+    _resetConfig();
+    const v0 = _getConfigVersion();
+    setupTelemetry();
+    expect(_getConfigVersion()).toBeGreaterThan(v0);
+  });
+
+  it('increments again on a second call', () => {
+    _resetConfig();
+    setupTelemetry();
+    const v1 = _getConfigVersion();
+    setupTelemetry();
+    expect(_getConfigVersion()).toBeGreaterThan(v1);
+  });
+});
+
+describe('_validateConfig — error messages include field names (kills StringLiteral on name args)', () => {
+  it('samplingLogsRate error names the field', () => {
+    expect(() => setupTelemetry({ samplingLogsRate: 2 })).toThrow(/samplingLogsRate/);
+  });
+  it('samplingTracesRate error names the field', () => {
+    expect(() => setupTelemetry({ samplingTracesRate: -0.1 })).toThrow(/samplingTracesRate/);
+  });
+  it('samplingMetricsRate error names the field', () => {
+    expect(() => setupTelemetry({ samplingMetricsRate: 1.5 })).toThrow(/samplingMetricsRate/);
+  });
+  it('traceSampleRate error names the field', () => {
+    expect(() => setupTelemetry({ traceSampleRate: 2 })).toThrow(/traceSampleRate/);
+  });
+  it('backpressureLogsMaxsize error names the field', () => {
+    expect(() => setupTelemetry({ backpressureLogsMaxsize: -1 })).toThrow(
+      /backpressureLogsMaxsize/,
+    );
+  });
+  it('backpressureTracesMaxsize error names the field', () => {
+    expect(() => setupTelemetry({ backpressureTracesMaxsize: -1 })).toThrow(
+      /backpressureTracesMaxsize/,
+    );
+  });
+  it('backpressureMetricsMaxsize error names the field', () => {
+    expect(() => setupTelemetry({ backpressureMetricsMaxsize: -1 })).toThrow(
+      /backpressureMetricsMaxsize/,
+    );
+  });
+  it('exporterLogsRetries error names the field', () => {
+    expect(() => setupTelemetry({ exporterLogsRetries: -1 })).toThrow(/exporterLogsRetries/);
+  });
+  it('exporterTracesRetries error names the field', () => {
+    expect(() => setupTelemetry({ exporterTracesRetries: -1 })).toThrow(/exporterTracesRetries/);
+  });
+  it('exporterMetricsRetries error names the field', () => {
+    expect(() => setupTelemetry({ exporterMetricsRetries: -1 })).toThrow(/exporterMetricsRetries/);
+  });
+  it('securityMaxAttrValueLength error names the field', () => {
+    expect(() => setupTelemetry({ securityMaxAttrValueLength: -1 })).toThrow(
+      /securityMaxAttrValueLength/,
+    );
+  });
+  it('securityMaxAttrCount error names the field', () => {
+    expect(() => setupTelemetry({ securityMaxAttrCount: -1 })).toThrow(/securityMaxAttrCount/);
+  });
+  it('piiMaxDepth error names the field', () => {
+    expect(() => setupTelemetry({ piiMaxDepth: -1 })).toThrow(/piiMaxDepth/);
+  });
+  it('requireRate message says "must be in [0, 1]" (kills StringLiteral on error template)', () => {
+    expect(() => setupTelemetry({ samplingLogsRate: 2 })).toThrow(/must be in \[0, 1\]/);
+  });
+  it('requireNonNegInt message says "non-negative integer" (kills StringLiteral on error template)', () => {
+    expect(() => setupTelemetry({ backpressureLogsMaxsize: -1 })).toThrow(/non-negative integer/);
   });
 });

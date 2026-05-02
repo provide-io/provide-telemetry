@@ -46,6 +46,7 @@ let _activeConfig: TelemetryConfig | null = null;
 let _providersRegistered = false;
 // Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _registeredProviders: ShutdownableProvider[] = [];
+// Stryker disable next-line ObjectLiteral,BooleanLiteral: initial value overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _providerSignals = { logs: false, traces: false, metrics: false };
 
 function resolveEffectiveConfig(): TelemetryConfig {

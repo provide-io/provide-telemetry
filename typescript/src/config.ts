@@ -429,7 +429,7 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
       const val = decodeURIComponent(rawVal);
       result[key] = val;
     } catch {
-      // Skip pairs with invalid URL encoding
+      // Stryker disable next-line BlockStatement: `continue` in for..of catch is equivalent to an empty body — next iteration starts either way
       continue;
     }
   }
