@@ -10,11 +10,13 @@ import (
 	"strings"
 )
 
-// strTrue and strFalse are the canonical string representations of boolean values
-// used when parsing environment variables.
+// strTrue, strFalse, strYes, and strNo are canonical string representations of
+// boolean values used when parsing environment variables.
 const (
 	strTrue  = "true"
 	strFalse = "false"
+	strYes   = "yes"
+	strNo    = "no"
 )
 
 // validateRate returns a ConfigurationError if v is not in [0.0, 1.0].
@@ -47,9 +49,9 @@ func parseEnvBool(value string, defaultVal bool, field string) (bool, error) {
 		return defaultVal, nil
 	}
 	switch strings.ToLower(trimmed) {
-	case "1", strTrue, "yes", "on":
+	case "1", strTrue, strYes, "on":
 		return true, nil
-	case "0", strFalse, "no", "off":
+	case "0", strFalse, strNo, "off":
 		return false, nil
 	default:
 		return false, NewConfigurationError(
