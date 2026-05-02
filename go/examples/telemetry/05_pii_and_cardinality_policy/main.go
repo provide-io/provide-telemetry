@@ -21,7 +21,12 @@ import (
 
 // overflowValue is the sentinel returned by GuardAttributes when a cardinality
 // limit is exceeded. It matches the Python OVERFLOW_VALUE constant.
-const overflowValue = "__overflow__"
+const (
+	overflowValue = "__overflow__"
+	// piiKeySecret and piiKeyPassword are field names used in PII demos.
+	piiKeySecret   = "secret"   // pragma: allowlist secret
+	piiKeyPassword = "password" // pragma: allowlist secret
+)
 
 func main() {
 	fmt.Println("PII & Cardinality Policy Demo")
@@ -64,19 +69,19 @@ func main() {
 	// Wildcard path matching for nested list items
 	fmt.Println("\nWildcard path matching on list items...")
 	telemetry.ReplacePIIRules([]telemetry.PIIRule{
-		{Path: []string{"players", "*", "secret"}, Mode: telemetry.PIIModeRedact},
+		{Path: []string{"players", "*", piiKeySecret}, Mode: telemetry.PIIModeRedact},
 	})
 	payload := map[string]any{
 		"players": []any{
-			map[string]any{"secret": "key-aaa", "name": "Alice"},
-			map[string]any{"secret": "key-bbb", "name": "Bob"},
+			map[string]any{piiKeySecret: "key-aaa", "name": "Alice"},
+			map[string]any{piiKeySecret: "key-bbb", "name": "Bob"},
 		},
 	}
 	cleaned := telemetry.SanitizePayload(payload, true, 0)
 	if players, ok := cleaned["players"].([]any); ok {
 		for _, p := range players {
 			if player, ok := p.(map[string]any); ok {
-				fmt.Printf("  %s: secret=%v\n", player["name"], player["secret"])
+				fmt.Printf("  %s: secret=%v\n", player["name"], player[piiKeySecret])
 			}
 		}
 	}
@@ -85,13 +90,13 @@ func main() {
 	// Custom rule precedence over default redaction
 	fmt.Println("\nCustom rule vs. default 'password' redaction...")
 	telemetry.ReplacePIIRules([]telemetry.PIIRule{
-		{Path: []string{"password"}, Mode: telemetry.PIIModeTruncate, TruncateTo: 4},
+		{Path: []string{piiKeyPassword}, Mode: telemetry.PIIModeTruncate, TruncateTo: 4},
 	})
-	result := telemetry.SanitizePayload(map[string]any{"password": "hunter2"}, true, 0)
-	fmt.Printf("  password -> %v  (custom truncate, not '***')\n", result["password"])
+	result := telemetry.SanitizePayload(map[string]any{piiKeyPassword: "hunter2"}, true, 0)
+	fmt.Printf("  password -> %v  (custom truncate, not '***')\n", result[piiKeyPassword])
 
-	resultShort := telemetry.SanitizePayload(map[string]any{"password": "ab"}, true, 0)
-	fmt.Printf("  short password -> %v  (no-op truncate preserved)\n", resultShort["password"])
+	resultShort := telemetry.SanitizePayload(map[string]any{piiKeyPassword: "ab"}, true, 0)
+	fmt.Printf("  short password -> %v  (no-op truncate preserved)\n", resultShort[piiKeyPassword])
 
 	// Cardinality limits with overflow
 	fmt.Println("\nCardinality guard (max_values=2)...")

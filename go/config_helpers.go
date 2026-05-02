@@ -10,6 +10,13 @@ import (
 	"strings"
 )
 
+// strTrue and strFalse are the canonical string representations of boolean values
+// used when parsing environment variables.
+const (
+	strTrue  = "true"
+	strFalse = "false"
+)
+
 // validateRate returns a ConfigurationError if v is not in [0.0, 1.0].
 func validateRate(v float64, field string) error {
 	if v < 0.0 || v > 1.0 {
@@ -40,9 +47,9 @@ func parseEnvBool(value string, defaultVal bool, field string) (bool, error) {
 		return defaultVal, nil
 	}
 	switch strings.ToLower(trimmed) {
-	case "1", "true", "yes", "on":
+	case "1", strTrue, "yes", "on":
 		return true, nil
-	case "0", "false", "no", "off":
+	case "0", strFalse, "no", "off":
 		return false, nil
 	default:
 		return false, NewConfigurationError(

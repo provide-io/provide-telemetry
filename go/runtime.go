@@ -244,11 +244,18 @@ func _validateSecurityOverride(s SecurityConfig) error {
 	return validateNonNegative(s.MaxNestingDepth, "RuntimeOverrides.Security.MaxNestingDepth")
 }
 
+// exporterPolicyFieldNames are the string keys used for exporter policy validation messages.
+const (
+	_fieldLogsRetries    = "LogsRetries"
+	_fieldTracesRetries  = "TracesRetries"
+	_fieldMetricsRetries = "MetricsRetries"
+)
+
 func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
 	ints := map[string]int{
-		"LogsRetries":    policy.LogsRetries,
-		"TracesRetries":  policy.TracesRetries,
-		"MetricsRetries": policy.MetricsRetries,
+		_fieldLogsRetries:    policy.LogsRetries,
+		_fieldTracesRetries:  policy.TracesRetries,
+		_fieldMetricsRetries: policy.MetricsRetries,
 	}
 	for field, value := range ints {
 		if err := validateNonNegative(value, "RuntimeOverrides.Exporter."+field); err != nil {

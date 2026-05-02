@@ -49,10 +49,10 @@ func defaultClassificationPolicy() ClassificationPolicy {
 	return ClassificationPolicy{
 		Public:   piicore.PIIModePass,
 		Internal: piicore.PIIModePass,
-		PII:      "redact",
-		PHI:      "drop",
-		PCI:      "hash",
-		Secret:   "drop",
+		PII:      piicore.PIIModeRedact,
+		PHI:      piicore.PIIModeDrop,
+		PCI:      piicore.PIIModeHash,
+		Secret:   piicore.PIIModeDrop,
 	}
 }
 
