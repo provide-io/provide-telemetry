@@ -326,3 +326,7 @@ export function _resetRuntimeForTests(): void {
   _registeredProviders = [];
   _providerSignals = { logs: false, traces: false, metrics: false };
 }
+
+export const _coldFieldsForTest: readonly (keyof TelemetryConfig)[] = _COLD_FIELDS;
+export const _providerChangingFieldsForTest: readonly (keyof TelemetryConfig)[] =
+  PROVIDER_CHANGING_FIELDS;
