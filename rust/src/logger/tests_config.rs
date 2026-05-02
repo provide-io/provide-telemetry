@@ -133,6 +133,7 @@ fn get_logger_before_setup_applies_env_log_sampling_policy() {
 
     assert!(Logger::drain_events_for_tests().is_empty());
     assert_eq!(crate::health::get_health_snapshot().dropped_logs, 1);
+    std::env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
 }
 
 #[test]
@@ -147,4 +148,5 @@ fn get_logger_before_setup_ignores_invalid_env_log_sampling_policy() {
     let events = Logger::drain_events_for_tests();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].message, "invalid.sampling.env");
+    std::env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
 }
