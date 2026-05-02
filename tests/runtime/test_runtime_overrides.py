@@ -441,11 +441,12 @@ def test_get_strict_schema_reads_from_env_when_no_config() -> None:
     assert isinstance(result, bool)
 
 
-def test_update_runtime_config_rebuilds_logging_on_change() -> None:
+def test_update_runtime_config_rebuilds_logging_on_change(monkeypatch: pytest.MonkeyPatch) -> None:
     """When logging config changes via RuntimeOverrides, the structlog
     pipeline is rebuilt via configure_logging(force=True)."""
     from provide.telemetry.config import LoggingConfig, RuntimeOverrides
 
+    monkeypatch.delenv("PROVIDE_LOG_LEVEL", raising=False)
     runtime_mod.reset_runtime_for_tests()
     runtime_mod.apply_runtime_config(TelemetryConfig.from_env())
     before = runtime_mod.get_runtime_config()

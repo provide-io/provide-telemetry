@@ -20,6 +20,7 @@ func resetSetupState(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
 	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
 	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "")
+	t.Setenv("PROVIDE_LOG_LEVEL", "")
 	_resetSetup()
 	_resetSamplingPolicies()
 	_resetQueuePolicy()

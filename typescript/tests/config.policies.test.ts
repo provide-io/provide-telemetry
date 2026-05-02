@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULTS,
   _resetConfig,
   applyConfigPolicies,
   configFromEnv,
@@ -375,5 +376,123 @@ describe('setupTelemetry — emergency fallback', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('string-failure'));
     warnSpy.mockRestore();
     vi.restoreAllMocks();
+  });
+});
+
+describe('DEFAULTS — remaining field values kill static-init mutations', () => {
+  it('DEFAULTS.environment is "dev"', () => {
+    expect(DEFAULTS.environment).toBe('dev');
+    _resetConfig();
+    expect(getConfig().environment).toBe('dev');
+  });
+  it('DEFAULTS.version is "0.0.0"', () => {
+    expect(DEFAULTS.version).toBe('0.0.0');
+    _resetConfig();
+    expect(getConfig().version).toBe('0.0.0');
+  });
+  it('DEFAULTS.logFormat is "console"', () => {
+    expect(DEFAULTS.logFormat).toBe('console');
+    _resetConfig();
+    expect(getConfig().logFormat).toBe('console');
+  });
+  it('DEFAULTS.sanitizeFields is empty array', () => {
+    expect(DEFAULTS.sanitizeFields).toEqual([]);
+    _resetConfig();
+    expect(getConfig().sanitizeFields).toEqual([]);
+  });
+  it('DEFAULTS.strictEventName is false', () => {
+    expect(DEFAULTS.strictEventName).toBe(false);
+    _resetConfig();
+    expect(getConfig().strictEventName).toBe(false);
+  });
+  it('DEFAULTS.logModuleLevels is empty object', () => {
+    expect(DEFAULTS.logModuleLevels).toEqual({});
+    _resetConfig();
+    expect(getConfig().logModuleLevels).toEqual({});
+  });
+  it('DEFAULTS.logPrettyKeyColor is "dim"', () => {
+    expect(DEFAULTS.logPrettyKeyColor).toBe('dim');
+    _resetConfig();
+    expect(getConfig().logPrettyKeyColor).toBe('dim');
+  });
+  it('DEFAULTS.logPrettyValueColor is empty string', () => {
+    expect(DEFAULTS.logPrettyValueColor).toBe('');
+    _resetConfig();
+    expect(getConfig().logPrettyValueColor).toBe('');
+  });
+  it('DEFAULTS.logPrettyFields is empty array', () => {
+    expect(DEFAULTS.logPrettyFields).toEqual([]);
+    _resetConfig();
+    expect(getConfig().logPrettyFields).toEqual([]);
+  });
+  it('DEFAULTS.traceSampleRate is 1.0', () => {
+    expect(DEFAULTS.traceSampleRate).toBe(1.0);
+    _resetConfig();
+    expect(getConfig().traceSampleRate).toBe(1.0);
+  });
+  it('DEFAULTS.tracingEnabled is true', () => {
+    expect(DEFAULTS.tracingEnabled).toBe(true);
+    _resetConfig();
+    expect(getConfig().tracingEnabled).toBe(true);
+  });
+  it('DEFAULTS.samplingLogsRate is 1.0', () => {
+    expect(DEFAULTS.samplingLogsRate).toBe(1.0);
+    _resetConfig();
+    expect(getConfig().samplingLogsRate).toBe(1.0);
+  });
+  it('DEFAULTS.samplingTracesRate is 1.0', () => {
+    expect(DEFAULTS.samplingTracesRate).toBe(1.0);
+    _resetConfig();
+    expect(getConfig().samplingTracesRate).toBe(1.0);
+  });
+  it('DEFAULTS.samplingMetricsRate is 1.0', () => {
+    expect(DEFAULTS.samplingMetricsRate).toBe(1.0);
+    _resetConfig();
+    expect(getConfig().samplingMetricsRate).toBe(1.0);
+  });
+  it('DEFAULTS.backpressureTracesMaxsize is 0', () => {
+    expect(DEFAULTS.backpressureTracesMaxsize).toBe(0);
+    _resetConfig();
+    expect(getConfig().backpressureTracesMaxsize).toBe(0);
+  });
+  it('DEFAULTS.backpressureMetricsMaxsize is 0', () => {
+    expect(DEFAULTS.backpressureMetricsMaxsize).toBe(0);
+    _resetConfig();
+    expect(getConfig().backpressureMetricsMaxsize).toBe(0);
+  });
+  it('DEFAULTS.exporterLogsRetries is 0', () => {
+    expect(DEFAULTS.exporterLogsRetries).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterLogsRetries).toBe(0);
+  });
+  it('DEFAULTS.exporterLogsBackoffMs is 0', () => {
+    expect(DEFAULTS.exporterLogsBackoffMs).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterLogsBackoffMs).toBe(0);
+  });
+  it('DEFAULTS.exporterTracesRetries is 0', () => {
+    expect(DEFAULTS.exporterTracesRetries).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterTracesRetries).toBe(0);
+  });
+  it('DEFAULTS.exporterTracesBackoffMs is 0', () => {
+    expect(DEFAULTS.exporterTracesBackoffMs).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterTracesBackoffMs).toBe(0);
+  });
+  it('DEFAULTS.exporterMetricsRetries is 0', () => {
+    expect(DEFAULTS.exporterMetricsRetries).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterMetricsRetries).toBe(0);
+  });
+  it('DEFAULTS.exporterMetricsBackoffMs is 0', () => {
+    expect(DEFAULTS.exporterMetricsBackoffMs).toBe(0);
+    _resetConfig();
+    expect(getConfig().exporterMetricsBackoffMs).toBe(0);
+  });
+  it('DEFAULTS.piiMaxDepth is 8', () => {
+    expect(DEFAULTS.piiMaxDepth).toBe(8);
+    _resetConfig();
+    expect(getConfig().piiMaxDepth).toBe(8);
   });
 });

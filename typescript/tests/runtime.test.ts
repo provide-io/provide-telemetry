@@ -343,4 +343,52 @@ describe('reloadRuntimeFromEnv', () => {
       /provider-changing reconfiguration/,
     );
   });
+
+  it('warns on otlpLogsEndpoint cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpLogsEndpoint: 'http://logs:4318' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpLogsEndpoint'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otlpLogsHeaders cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpLogsHeaders: { 'x-log-key': 'val' } });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpLogsHeaders'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otlpMetricsEndpoint cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpMetricsEndpoint: 'http://metrics:4318' });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpMetricsEndpoint'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns on otlpMetricsHeaders cold-field drift (kills StringLiteral on _COLD_FIELDS entry)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reconfigureTelemetry({ otlpMetricsHeaders: { 'x-metrics-key': 'val' } });
+    reloadRuntimeFromEnv();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      expect.stringContaining('otlpMetricsHeaders'),
+      '— restart required to apply',
+    );
+    warnSpy.mockRestore();
+  });
 });

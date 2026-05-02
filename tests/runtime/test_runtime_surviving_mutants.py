@@ -263,6 +263,7 @@ class TestUpdateRuntimeConfigLoggingChangedFlag:
         """
         import importlib
 
+        monkeypatch.delenv("PROVIDE_LOG_LEVEL", raising=False)
         logger_core = importlib.import_module("provide.telemetry.logger.core")
         calls: list[tuple[object, bool]] = []
         monkeypatch.setattr(logger_core, "configure_logging", lambda cfg, force=False: calls.append((cfg, force)))
