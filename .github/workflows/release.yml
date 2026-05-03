@@ -228,7 +228,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
         with:
           toolchain: stable
+      # Exchange the GitHub OIDC token for a short-lived crates.io API token.
+      # Requires a Trusted Publisher to be configured on crates.io that maps
+      # repo + workflow + environment to this crate.
+      - uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe  # v1.0.4
+        id: crates-auth
       - name: Publish to crates.io via trusted publishing (OIDC)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
         run: cargo publish --locked
 
   sign-and-upload:
