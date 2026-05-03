@@ -6,7 +6,7 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
-## [0.4.3] — 2026-04-24
+## [0.4.3] — 2026-05-03
 
 ### API Alignment
 
