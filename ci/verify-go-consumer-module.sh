@@ -114,6 +114,11 @@ esac
         "v$(cat "${repo_root}/go/VERSION")"
       ;;
   esac
+  # Populate go.sum with hashes for transitive deps imported by the
+  # tagged module's sub-packages (e.g. go/tracer pulls in
+  # go.opentelemetry.io/otel/trace). go get only adds direct deps,
+  # so without this 'go test .' fails with "missing go.sum entry".
+  go mod tidy
   go test .
 )
 
