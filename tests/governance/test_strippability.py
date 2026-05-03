@@ -74,7 +74,7 @@ def _fresh_import_modules() -> set[str]:
                 del sys.modules[k]
         sys.modules.update(saved)
         if old_telemetry_attr is not None:
-            provide.telemetry = old_telemetry_attr
+            setattr(provide, "telemetry", old_telemetry_attr)
 
 
 def test_classification_module_not_auto_imported() -> None:
