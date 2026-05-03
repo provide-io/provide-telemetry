@@ -18,9 +18,9 @@ license = "Apache-2.0"
 license-files = ["LICENSES/*"]
 authors = [
     {name = "Tim Perkins", email = "code@tim.life"},
-    {name = "provide.io llc", email = "code@provide.io"},
+    {name = "provide.io", email = "code@provide.io"},
 ]
-maintainers = [{name = "provide.io llc", email = "code@provide.io"}]
+maintainers = [{name = "provide.io", email = "code@provide.io"}]
 keywords = ["telemetry", "observability", "opentelemetry", "structlog", "otel", "tracing", "metrics", "logging"]
 classifiers = [
   "Development Status :: 4 - Beta",
