@@ -411,6 +411,7 @@ def _find_repo_root_from(start: Path) -> Path:
 def test_parity_fixture_yaml_coverage() -> None:
     """Every top-level category in behavioral_fixtures.yaml must have ≥1 test_parity_{category}* test."""
     import importlib
+    import importlib.util
     import sys
 
     import yaml as _yaml
