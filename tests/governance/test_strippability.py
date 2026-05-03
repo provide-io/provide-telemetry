@@ -74,7 +74,10 @@ def _fresh_import_modules() -> set[str]:
                 del sys.modules[k]
         sys.modules.update(saved)
         if old_telemetry_attr is not None:
-            setattr(provide, "telemetry", old_telemetry_attr)
+            # ty 0.0.34 flags `provide.telemetry = ...` as unresolved-attribute on
+            # the namespace package; setattr satisfies ty but ruff B010 normally
+            # discourages it for constant attr names — accept the trade-off.
+            setattr(provide, "telemetry", old_telemetry_attr)  # noqa: B010
 
 
 def test_classification_module_not_auto_imported() -> None:
