@@ -6,6 +6,30 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.4.4] — 2026-05-03
+
+### Release pipeline fixes
+
+- **TypeScript: realign peer dep ranges with installed versions** — `@opentelemetry/api-logs` and `@opentelemetry/sdk-logs` peerDependencies bumped from `^0.214.0` to `^0.216.0` (was unsatisfiable because for 0.x semver `^0.214.0` excludes 0.215.x and 0.216.x). The mismatch broke `npm ls` which `Generate-TypeScript-SBOM` depends on, blocking the PyPI publish job. All `@opentelemetry/*` deps now align with the latest 0.216.0 / 2.7.1 minors.
+- **crates.io trusted publishing wired correctly** — `release.yml` `publish-rust` now uses `rust-lang/crates-io-auth-action@v1.0.4` to exchange the GitHub OIDC token for a short-lived `CARGO_REGISTRY_TOKEN`. The previous step ran `cargo publish` without any token-exchange step.
+- **Go consumer probe now runs `go mod tidy`** — `ci/verify-go-consumer-module.sh` populates the consumer probe's `go.sum` with transitive deps (e.g., `go.opentelemetry.io/otel/trace` imported by `go/tracer`) before `go test`. Previously failed for `go/v*` tags with "missing go.sum entry".
+
+### Dependency refresh (latest within current ranges)
+
+- **TypeScript**: `@opentelemetry/{api-logs,sdk-logs,exporter-*-otlp-http}` 0.215.0 → 0.216.0; `@opentelemetry/{context-async-hooks,resources,sdk-metrics,sdk-trace-base}` 2.6.1 → 2.7.1; `@types/node` 25.5.2 → 25.6.0; `vitest` 4.1.2 → 4.1.5; `eslint` 10.2.0 → 10.3.0; `typescript` 6.0.2 → 6.0.3.
+- **Python**: `opentelemetry-{api,sdk,exporter-otlp-proto-http,proto}` 1.41.0 → 1.41.1; `opentelemetry-instrumentation-logging` 0.62b0 → 0.62b1; `pre-commit` 4.5.1 → 4.6.0; `ruff` 0.15.11 → 0.15.12; `ty` 0.0.32 → 0.0.34; plus minor updates across `mypy`, `playwright`, `textual`, `virtualenv`, `pip`, `wcwidth`.
+- **Go (otel submodule)**: `otelslog` 0.17.0 → 0.18.0; `otlplog/otlploghttp` 0.18.0 → 0.19.0; `otel/log` 0.18.0 → 0.19.0; `otel/sdk/log` 0.18.0 → 0.19.0; `golang.org/x/{net,sys,text}` 0.52/0.42/0.35 → 0.53/0.43/0.36; `grpc-gateway/v2` 2.28.0 → 2.29.0; `genproto/googleapis/{api,rpc}` advanced.
+- **Rust**: `cargo update` advanced numerous transitive deps to latest semver-compatible (wasm-bindgen 0.2.117 → 0.2.120, web-sys 0.3.94 → 0.3.97, etc.).
+
+### Verification
+
+- TypeScript: 1638 tests pass, 2 skipped, 2 todo
+- Python: 2315 tests pass, 1 skipped, 100% branch coverage
+- Go (root + otel submodule): all packages green
+- Rust: workspace-wide tests green
+
+---
+
 ## [0.4.3] — 2026-05-03
 
 ### API Alignment
