@@ -217,7 +217,9 @@ jobs:
       # Required for crates.io trusted publishing (OIDC — no CARGO_REGISTRY_TOKEN needed)
       id-token: write
     environment:
-      name: crates-io
+      # Must match the environment name configured on the crates.io
+      # Trusted Publisher (project Settings → Trusted Publishers).
+      name: crates
       url: https://crates.io/crates/provide-telemetry
     defaults:
       run:
