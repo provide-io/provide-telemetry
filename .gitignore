@@ -32,8 +32,8 @@ rust/target/
 rust/*.profraw
 *.profraw
 go/coverage.html
-.claude/settings.local.json
-.claude/worktrees/
+# Claude Code local state (settings, worktrees, scheduled tasks, etc.)
+.claude/
 rust/mutants.out/
 # Stray npm/vite artifacts created at repo root by some tooling runs
 node_modules/
