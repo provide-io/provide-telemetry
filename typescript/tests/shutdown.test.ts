@@ -13,7 +13,7 @@ import {
   _storeRegisteredProviders,
   reconfigureTelemetry,
 } from '../src/runtime';
-import { _resetConfig } from '../src/config';
+import { DEFAULTS, _resetConfig, setupTelemetry } from '../src/config';
 import { shutdownTelemetry } from '../src/shutdown';
 import {
   _getOtelLogProvider,
@@ -187,6 +187,125 @@ describe('shutdownTelemetry', () => {
     expect(logs.setGlobalLoggerProvider(replacementLoggerProvider as never)).toBe(
       replacementLoggerProvider,
     );
+  });
+});
+
+describe('shutdownTelemetry — bounded by exporterLogsShutdownTimeoutMs', () => {
+  beforeEach(() => {
+    _resetRuntimeForTests();
+    _resetConfig();
+  });
+  afterEach(() => {
+    _resetRuntimeForTests();
+    _resetConfig();
+  });
+
+  it('returns within the configured deadline when forceFlush never resolves', async () => {
+    setupTelemetry({ ...DEFAULTS, exporterLogsShutdownTimeoutMs: 50 });
+    const provider: ShutdownableProvider = {
+      // Never resolves — simulates OTLP HTTP exporter retry loop against an
+      // unreachable collector.
+      forceFlush: () => new Promise<void>(() => {}),
+      // shutdown should NOT be invoked once forceFlush has timed out, so this
+      // mock should never see a call.
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    _storeRegisteredProviders([provider]);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const started = performance.now();
+    await shutdownTelemetry();
+    const elapsed = performance.now() - started;
+
+    // Generous upper bound: deadline (50ms) + GC/setup noise. Pre-fix this
+    // would never return because Promise.allSettled awaits forever.
+    expect(elapsed).toBeLessThan(500);
+    expect(provider.shutdown).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('forceFlush exceeded 50ms deadline'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('returns within the deadline when shutdown hangs after a fast flush', async () => {
+    setupTelemetry({ ...DEFAULTS, exporterLogsShutdownTimeoutMs: 50 });
+    const provider: ShutdownableProvider = {
+      forceFlush: vi.fn().mockResolvedValue(undefined),
+      shutdown: () => new Promise<void>(() => {}),
+    };
+    _storeRegisteredProviders([provider]);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const started = performance.now();
+    await shutdownTelemetry();
+    const elapsed = performance.now() - started;
+
+    expect(elapsed).toBeLessThan(500);
+    expect(provider.forceFlush).toHaveBeenCalledOnce();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('shutdown exceeded 50ms deadline'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('still invokes shutdown when forceFlush settles within the deadline', async () => {
+    setupTelemetry({ ...DEFAULTS, exporterLogsShutdownTimeoutMs: 200 });
+    const provider: ShutdownableProvider = {
+      forceFlush: vi.fn().mockResolvedValue(undefined),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    _storeRegisteredProviders([provider]);
+    // Spy on console.warn so a regression that always-warns (the `if (!stopped)`
+    // mutation flipped to `if (true)`) is caught: a happy-path shutdown must
+    // produce no abandon warnings.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await shutdownTelemetry();
+    expect(provider.forceFlush).toHaveBeenCalledOnce();
+    expect(provider.shutdown).toHaveBeenCalledOnce();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('does not block shutdown of subsequent providers when one hangs', async () => {
+    setupTelemetry({ ...DEFAULTS, exporterLogsShutdownTimeoutMs: 50 });
+    const hung: ShutdownableProvider = {
+      forceFlush: () => new Promise<void>(() => {}),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    const fast: ShutdownableProvider = {
+      forceFlush: vi.fn().mockResolvedValue(undefined),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    _storeRegisteredProviders([hung, fast]);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const started = performance.now();
+    await shutdownTelemetry();
+    const elapsed = performance.now() - started;
+
+    // Both providers run concurrently under Promise.allSettled, so the fast
+    // one's shutdown still completes despite the hung one.
+    expect(elapsed).toBeLessThan(500);
+    expect(fast.forceFlush).toHaveBeenCalledOnce();
+    expect(fast.shutdown).toHaveBeenCalledOnce();
+    warnSpy.mockRestore();
+  });
+
+  it('returns immediately when forceFlush rejects (the rejection counts as settled)', async () => {
+    setupTelemetry({ ...DEFAULTS, exporterLogsShutdownTimeoutMs: 5000 });
+    const provider: ShutdownableProvider = {
+      forceFlush: vi.fn().mockRejectedValue(new Error('flush failed')),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    _storeRegisteredProviders([provider]);
+
+    const started = performance.now();
+    await shutdownTelemetry();
+    const elapsed = performance.now() - started;
+
+    // Rejection counts as "settled in time" — shutdown still proceeds.
+    expect(elapsed).toBeLessThan(200);
+    expect(provider.shutdown).toHaveBeenCalledOnce();
   });
 });
 
