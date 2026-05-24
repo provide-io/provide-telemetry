@@ -152,6 +152,9 @@ def test_telemetry_from_env_defaults() -> None:
     assert cfg.environment == "dev"
     assert cfg.strict_schema is False
     assert cfg.event_schema.required_keys == ()
+    # Logs OTLP defaults to enabled; shutdown deadline defaults to 5s.
+    assert cfg.logging.otlp_enabled is True
+    assert cfg.exporter.logs_shutdown_timeout_seconds == 5.0
 
 
 def test_telemetry_from_env_values() -> None:
@@ -168,6 +171,7 @@ def test_telemetry_from_env_values() -> None:
             "PROVIDE_LOG_SANITIZE": "false",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs",
             "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "Authorization=Basic%20logs",
+            "PROVIDE_LOG_OTLP_ENABLED": "false",
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_TRACE_SAMPLE_RATE": "0.5",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://trace",
@@ -192,6 +196,7 @@ def test_telemetry_from_env_values() -> None:
             "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS": "5.0",
             "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS": "6.0",
             "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS": "7.0",
+            "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS": "1.5",
             "PROVIDE_EXPORTER_LOGS_FAIL_OPEN": "false",
             "PROVIDE_EXPORTER_TRACES_FAIL_OPEN": "false",
             "PROVIDE_EXPORTER_METRICS_FAIL_OPEN": "false",
@@ -213,6 +218,7 @@ def test_telemetry_from_env_values() -> None:
     assert cfg.logging.include_caller is False
     assert cfg.logging.sanitize is False
     assert cfg.logging.otlp_endpoint == "http://logs"
+    assert cfg.logging.otlp_enabled is False
     assert cfg.logging.otlp_headers == {"Authorization": "Basic logs"}
     assert cfg.logging.log_code_attributes is False
     assert cfg.tracing.enabled is False
@@ -239,6 +245,7 @@ def test_telemetry_from_env_values() -> None:
     assert cfg.exporter.logs_timeout_seconds == 5.0
     assert cfg.exporter.traces_timeout_seconds == 6.0
     assert cfg.exporter.metrics_timeout_seconds == 7.0
+    assert cfg.exporter.logs_shutdown_timeout_seconds == 1.5
     assert cfg.exporter.logs_fail_open is False
     assert cfg.exporter.traces_fail_open is False
     assert cfg.exporter.metrics_fail_open is False

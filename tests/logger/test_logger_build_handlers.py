@@ -32,11 +32,17 @@ def _bypass_resilience(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_handlers_without_otel_endpoint() -> None:
+    import sys
+
     cfg = TelemetryConfig.from_env({})
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
-    assert isinstance(handlers[0], logging.StreamHandler)
-    assert hasattr(handlers[0].stream, "write")
+    handler = handlers[0]
+    assert isinstance(handler, logging.StreamHandler)
+    # Pin the stderr target explicitly. logging.StreamHandler(None) defaults to
+    # sys.stderr, so a `None` mutant would survive a generic write/hasattr
+    # check — assert identity to kill it.
+    assert handler.stream is sys.stderr
     assert core_mod._otel_log_provider is None
 
 
@@ -135,6 +141,26 @@ def test_build_handlers_with_otel_endpoint_when_components_missing(monkeypatch: 
     handlers = core_mod._build_handlers(cfg, logging.INFO)
     assert len(handlers) == 1
     assert isinstance(handlers[0], logging.StreamHandler)
+
+
+def test_build_handlers_skips_otlp_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PROVIDE_LOG_OTLP_ENABLED=false must skip OTLP handler setup even with an endpoint set.
+
+    Components loader must not even be consulted — disabling is a hard short-circuit
+    that prevents the OTel SDK from being touched.
+    """
+    cfg = TelemetryConfig.from_env(
+        {"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs", "PROVIDE_LOG_OTLP_ENABLED": "false"}
+    )
+
+    def _should_not_be_called() -> None:  # pragma: no cover — guard, never invoked
+        raise AssertionError("OTel components must not be loaded when otlp_enabled is False")
+
+    monkeypatch.setattr(core_mod, "_load_otel_logs_components", _should_not_be_called)
+    handlers = core_mod._build_handlers(cfg, logging.INFO)
+    assert len(handlers) == 1
+    assert isinstance(handlers[0], logging.StreamHandler)
+    assert core_mod._otel_log_provider is None
 
 
 @pytest.mark.otel

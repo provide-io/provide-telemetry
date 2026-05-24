@@ -174,9 +174,9 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     global _otel_log_provider, _otel_log_global_set
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stderr)
-    ]  # pragma: no mutate — stderr default is an explicit design choice; target stream asserted by integration tests
+    ]  # pragma: no mutate — StreamHandler(None) defaults to sys.stderr; the None mutant is behaviorally equivalent and cannot be killed
 
-    if not config.logging.otlp_endpoint:
+    if not config.logging.otlp_endpoint or not config.logging.otlp_enabled:
         return handlers
 
     components = _load_otel_logs_components()
@@ -367,21 +367,19 @@ def shutdown_logging() -> None:
     global _configured, _active_config, _otel_log_provider
     with _lock:
         provider = _otel_log_provider
-        if provider is None:
-            _configured = False
-            _active_config = None
-            return
-        try:
-            flush = getattr(provider, "force_flush", None)
-            if callable(flush):
-                flush()
-            shutdown = getattr(provider, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
-        finally:
-            _otel_log_provider = None
-            _active_config = None
-            _configured = False
+        active = _active_config
+        # Clear in-process state before releasing the lock so concurrent
+        # readers (is_debug_enabled, get_logger, configure_logging) see the
+        # torn-down state immediately and don't race the bounded shutdown.
+        _otel_log_provider = None
+        _active_config = None
+        _configured = False
+    if provider is None:
+        return
+    timeout = active.exporter.logs_shutdown_timeout_seconds if active is not None else 5.0
+    from provide.telemetry.resilience import bounded_provider_shutdown
+
+    bounded_provider_shutdown(provider, timeout)
 
 
 def _reset_logging_for_tests() -> None:
