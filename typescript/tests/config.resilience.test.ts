@@ -78,6 +78,35 @@ describe('configFromEnv — exporter resilience (logs)', () => {
       expect(configFromEnv().exporterLogsFailOpen).toBe(false);
     });
   });
+  it('exporterLogsShutdownTimeoutMs defaults to 5000', () => {
+    expect(configFromEnv().exporterLogsShutdownTimeoutMs).toBe(5000);
+  });
+  it('exporterLogsShutdownTimeoutMs converts seconds to ms', () => {
+    withEnv({ PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS: '2.5' }, () => {
+      expect(configFromEnv().exporterLogsShutdownTimeoutMs).toBe(2500);
+    });
+  });
+  it('exporterLogsShutdownTimeoutMs falls back on NaN', () => {
+    withEnv({ PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS: 'bad' }, () => {
+      expect(configFromEnv().exporterLogsShutdownTimeoutMs).toBe(5000);
+    });
+  });
+});
+
+describe('configFromEnv — otlpLogsEnabled', () => {
+  it('defaults to true', () => {
+    expect(configFromEnv().otlpLogsEnabled).toBe(true);
+  });
+  it('is false when PROVIDE_LOG_OTLP_ENABLED=false', () => {
+    withEnv({ PROVIDE_LOG_OTLP_ENABLED: 'false' }, () => {
+      expect(configFromEnv().otlpLogsEnabled).toBe(false);
+    });
+  });
+  it('is true when PROVIDE_LOG_OTLP_ENABLED=true', () => {
+    withEnv({ PROVIDE_LOG_OTLP_ENABLED: 'true' }, () => {
+      expect(configFromEnv().otlpLogsEnabled).toBe(true);
+    });
+  });
 });
 
 describe('configFromEnv — exporter resilience (traces)', () => {

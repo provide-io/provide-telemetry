@@ -197,7 +197,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────────────
-  if (logsEndpoint) {
+  // PROVIDE_LOG_OTLP_ENABLED gates the logs OTLP provider independently of
+  // the trace/metrics flags. When disabled, no OTLP log handler is attached
+  // even if the endpoint is configured — useful to escape shutdown hangs
+  // against unreachable collectors without unsetting OTEL_EXPORTER_OTLP_ENDPOINT.
+  if (logsEndpoint && cfg.otlpLogsEnabled) {
     try {
       registered.push(await setupOtelLogProvider(cfg));
       _setProviderSignalInstalled('logs', true);

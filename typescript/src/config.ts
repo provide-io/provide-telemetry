@@ -44,6 +44,8 @@ export interface TelemetryConfig {
   otlpLogsEndpoint?: string;
   otlpTracesEndpoint?: string;
   otlpMetricsEndpoint?: string;
+  /** Kill switch for OTLP log export, independent of trace/metrics flags. Env: `PROVIDE_LOG_OTLP_ENABLED`. */
+  otlpLogsEnabled: boolean;
   /** Per-signal OTLP headers (override shared otlpHeaders). */
   otlpLogsHeaders?: Record<string, string>;
   otlpTracesHeaders?: Record<string, string>;
@@ -108,6 +110,8 @@ export interface TelemetryConfig {
   exporterLogsBackoffMs: number;
   /** Timeout for log export (ms). */
   exporterLogsTimeoutMs: number;
+  /** Per-provider deadline for shutdownTelemetry's flush+shutdown sequence (ms). Env: `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`. */
+  exporterLogsShutdownTimeoutMs: number;
   /** If true, drop telemetry on export failure instead of crashing. */
   exporterLogsFailOpen: boolean;
   /** Max retries for trace export. */
@@ -208,6 +212,7 @@ export const DEFAULTS: TelemetryConfig = {
   logLevel: 'info',
   logFormat: 'console',
   otelEnabled: true,
+  otlpLogsEnabled: true,
   sanitizeFields: [],
   captureToWindow: true,
   consoleOutput: true,
@@ -234,6 +239,7 @@ export const DEFAULTS: TelemetryConfig = {
   exporterLogsRetries: 0,
   exporterLogsBackoffMs: 0,
   exporterLogsTimeoutMs: 10000,
+  exporterLogsShutdownTimeoutMs: 5000,
   exporterLogsFailOpen: true,
   exporterTracesRetries: 0,
   exporterTracesBackoffMs: 0,
@@ -490,5 +496,5 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.4.4';
+export const version = '0.4.5';
 export const __version__ = version;

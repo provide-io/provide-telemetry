@@ -131,6 +131,7 @@ export function configFromEnv(): TelemetryConfig {
       return DEFAULTS.logFormat;
     })(),
     otelEnabled: DEFAULTS.otelEnabled,
+    otlpLogsEnabled: envBool('PROVIDE_LOG_OTLP_ENABLED', DEFAULTS.otlpLogsEnabled),
     tracingEnabled: envBool('PROVIDE_TRACE_ENABLED', DEFAULTS.tracingEnabled),
     otlpEndpoint: nodeEnv('OTEL_EXPORTER_OTLP_ENDPOINT'),
     otlpHeaders: parsedHeaders,
@@ -235,6 +236,10 @@ export function configFromEnv(): TelemetryConfig {
     exporterLogsTimeoutMs: envNonNegativeMsFromSeconds(
       'PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS',
       DEFAULTS.exporterLogsTimeoutMs,
+    ),
+    exporterLogsShutdownTimeoutMs: envNonNegativeMsFromSeconds(
+      'PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS',
+      DEFAULTS.exporterLogsShutdownTimeoutMs,
     ),
     exporterLogsFailOpen: envBool('PROVIDE_EXPORTER_LOGS_FAIL_OPEN', DEFAULTS.exporterLogsFailOpen),
     exporterTracesRetries: envNonNegativeInt(
