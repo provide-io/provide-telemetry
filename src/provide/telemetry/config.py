@@ -29,27 +29,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
-from provide.telemetry._config_validation import (
-    parse_duration_float as _parse_duration_float,
-)
-from provide.telemetry._config_validation import (
-    resolve_otlp_endpoint as _resolve_otlp_endpoint,
-)
-from provide.telemetry._config_validation import (
-    warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing,
-)
-from provide.telemetry._masking import (
-    _mask_endpoint_url as _mask_endpoint_url,
-)
-from provide.telemetry._masking import (
-    _mask_header_value as _mask_header_value,
-)
-from provide.telemetry._masking import (
-    _mask_headers as _mask_headers,
-)
-from provide.telemetry._masking import (
-    _masked_dataclass_repr as _masked_dataclass_repr,
-)
+from provide.telemetry._config_validation import parse_duration_float as _parse_duration_float
+from provide.telemetry._config_validation import resolve_otlp_endpoint as _resolve_otlp_endpoint
+from provide.telemetry._config_validation import warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing
+from provide.telemetry._masking import _mask_endpoint_url as _mask_endpoint_url
+from provide.telemetry._masking import _mask_header_value as _mask_header_value
+from provide.telemetry._masking import _mask_headers as _mask_headers
+from provide.telemetry._masking import _masked_dataclass_repr as _masked_dataclass_repr
 from provide.telemetry.exceptions import ConfigurationError
 
 _logger = logging.getLogger(__name__)
@@ -78,6 +64,7 @@ class LoggingConfig:
     include_caller: bool = True
     sanitize: bool = True
     otlp_endpoint: str | None = None
+    otlp_enabled: bool = True
     otlp_headers: dict[str, str] = field(default_factory=dict)
     log_code_attributes: bool = False
     pretty_key_color: str = "dim"
@@ -160,6 +147,7 @@ class ExporterPolicyConfig:
     logs_timeout_seconds: float = 10.0
     traces_timeout_seconds: float = 10.0
     metrics_timeout_seconds: float = 10.0
+    logs_shutdown_timeout_seconds: float = 5.0
     logs_fail_open: bool = True
     traces_fail_open: bool = True
     metrics_fail_open: bool = True
@@ -261,6 +249,7 @@ class TelemetryConfig:
                     data.get("PROVIDE_LOG_CODE_ATTRIBUTES"), False, "PROVIDE_LOG_CODE_ATTRIBUTES"
                 ),
                 otlp_endpoint=_resolve_otlp_endpoint(data, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "v1/logs"),
+                otlp_enabled=_parse_env_bool(data.get("PROVIDE_LOG_OTLP_ENABLED"), True, "PROVIDE_LOG_OTLP_ENABLED"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_LOGS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
                 ),
@@ -345,6 +334,10 @@ class TelemetryConfig:
                 metrics_timeout_seconds=_parse_duration_float(
                     data.get("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "10.0"),
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
+                ),
+                logs_shutdown_timeout_seconds=_parse_duration_float(
+                    data.get("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "5.0"),
+                    "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS",
                 ),
                 logs_fail_open=_parse_env_bool(
                     data.get("PROVIDE_EXPORTER_LOGS_FAIL_OPEN"), True, "PROVIDE_EXPORTER_LOGS_FAIL_OPEN"

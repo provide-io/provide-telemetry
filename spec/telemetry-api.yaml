@@ -391,6 +391,10 @@ config_defaults:
       type: str
       default: ""
       description: "Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING)"
+    - env: PROVIDE_LOG_OTLP_ENABLED
+      type: bool
+      default: "true"
+      description: "Enable OTLP log export (independent of PROVIDE_TRACE_ENABLED / PROVIDE_METRICS_ENABLED; set false to skip OTLP handler even when OTEL_EXPORTER_OTLP_ENDPOINT is set)"
 
   tracing:
     - env: PROVIDE_TRACE_ENABLED
@@ -507,6 +511,10 @@ config_defaults:
       type: float
       default: "10.0"
       description: "Per-attempt timeout for metric export"
+    - env: PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS
+      type: float
+      default: "5.0"
+      description: "Hard deadline for shutdown_logging() flush+shutdown — prevents process-exit hangs when the logs OTLP endpoint is unreachable; remaining records are dropped if exceeded"
     - env: PROVIDE_EXPORTER_LOGS_FAIL_OPEN
       type: bool
       default: "true"

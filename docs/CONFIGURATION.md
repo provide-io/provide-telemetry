@@ -38,6 +38,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | str | `""` | ANSI color name for values in pretty format (empty = default) |
 | `PROVIDE_LOG_PRETTY_FIELDS` | str | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_LOG_MODULE_LEVELS` | str | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
+| `PROVIDE_LOG_OTLP_ENABLED` | bool | `true` | Enable OTLP log export (independent of PROVIDE_TRACE_ENABLED / PROVIDE_METRICS_ENABLED; set false to skip OTLP handler even when OTEL_EXPORTER_OTLP_ENDPOINT is set) |
 <!-- END GENERATED CONFIG: logging -->
 
 ## Tracing
@@ -112,6 +113,7 @@ Per-signal retry, backoff, timeout, and failure policy. Each variable is prefixe
 | `PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS` | float | `10.0` | Per-attempt timeout for log export |
 | `PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS` | float | `10.0` | Per-attempt timeout for trace export |
 | `PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS` | float | `10.0` | Per-attempt timeout for metric export |
+| `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS` | float | `5.0` | Hard deadline for shutdown_logging() flush+shutdown — prevents process-exit hangs when the logs OTLP endpoint is unreachable; remaining records are dropped if exceeded |
 | `PROVIDE_EXPORTER_LOGS_FAIL_OPEN` | bool | `true` | On exhausted retries: true = drop silently, false = raise |
 | `PROVIDE_EXPORTER_TRACES_FAIL_OPEN` | bool | `true` | On exhausted retries: true = drop silently, false = raise |
 | `PROVIDE_EXPORTER_METRICS_FAIL_OPEN` | bool | `true` | On exhausted retries: true = drop silently, false = raise |

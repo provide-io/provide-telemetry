@@ -343,7 +343,8 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format (empty = default) |
 | `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_LOG_MODULE_LEVELS` | `""` | Per-module log level overrides (e.g. provide.server=DEBUG,asyncio=WARNING) |
-| `PROVIDE_TRACE_ENABLED` | `true` | Enable the tracing signal and trace-provider setup (logs remain enabled) |
+| `PROVIDE_LOG_OTLP_ENABLED` | `true` | Enable OTLP log export (independent of PROVIDE_TRACE_ENABLED / PROVIDE_METRICS_ENABLED; set false to skip OTLP handler even when OTEL_EXPORTER_OTLP_ENDPOINT is set) |
+| `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing provider (falls back to no-op when false) |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |
