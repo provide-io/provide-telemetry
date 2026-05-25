@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"sync"
 	"time"
@@ -143,6 +144,12 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 // LoggerProvider.Shutdown cannot block indefinitely against an unreachable
 // OTLP endpoint. Callers that want to enforce their own deadline can pass a
 // context.WithTimeout / context.WithDeadline themselves.
+//
+// When the library-applied deadline expires the bounded-shutdown contract is
+// "abandon any pending flush and return cleanly" — matching the Python /
+// TypeScript / Rust behaviour — so a resulting context.DeadlineExceeded from
+// the backend is suppressed. Caller-supplied deadlines are still surfaced as
+// errors because the caller explicitly asked for that bound.
 func ShutdownTelemetry(ctx context.Context) error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
@@ -152,7 +159,8 @@ func ShutdownTelemetry(ctx context.Context) error {
 	}
 
 	timeout := _shutdownDeadlineForLocked(ctx)
-	if timeout > 0 {
+	libraryBounded := timeout > 0
+	if libraryBounded {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -164,6 +172,9 @@ func ShutdownTelemetry(ctx context.Context) error {
 	err := _shutdownBackendLocked(ctx)
 	DefaultTracer = &_noopTracer{}
 	_resetLogger()
+	if libraryBounded && errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
 	return err
 }
 

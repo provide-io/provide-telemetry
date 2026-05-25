@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"testing"
@@ -471,6 +472,87 @@ func TestShutdownTelemetry_DeadlineHelperReturnsZeroWhenNoRuntimeConfig(t *testi
 	_setupMu.Unlock()
 	if d != 0 {
 		t.Errorf("expected 0 when _runtimeCfg is nil, got %v", d)
+	}
+}
+
+// _deadlineExceededBackend synthesises context.DeadlineExceeded on shutdown
+// to exercise the library-bound suppression path. Other Backend methods
+// promote from the embedded _fakeBackend.
+type _deadlineExceededBackend struct{ _fakeBackend }
+
+func (b *_deadlineExceededBackend) Shutdown(context.Context) error {
+	return context.DeadlineExceeded
+}
+
+// _genericErrorBackend returns a non-deadline error to prove the suppression
+// is narrowly scoped to context.DeadlineExceeded.
+type _genericErrorBackend struct{ _fakeBackend }
+
+func (b *_genericErrorBackend) Shutdown(context.Context) error {
+	return errors.New("backend shutdown failed")
+}
+
+func TestShutdownTelemetry_SuppressesDeadlineExceededFromLibraryBound(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// Library-bounded shutdown that abandons a still-pending flush must
+	// return nil — matches the Python / TS / Rust contract that bounded
+	// shutdown "returns cleanly even when records are dropped." Surface a
+	// fake backend that synthesises context.DeadlineExceeded to prove the
+	// suppression is wired without depending on real OTel timing.
+	_, _ = RegisterBackend("deadline-test", &_deadlineExceededBackend{})
+	t.Cleanup(func() { _, _ = UnregisterBackend("deadline-test") })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "0.05")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Errorf("library-bounded shutdown must swallow DeadlineExceeded, got %v", err)
+	}
+}
+
+func TestShutdownTelemetry_SurfacesNonDeadlineErrorsFromBackend(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// A non-deadline backend error must still propagate — the suppression
+	// is narrow (context.DeadlineExceeded only).
+	_, _ = RegisterBackend("backend-error", &_genericErrorBackend{})
+	t.Cleanup(func() { _, _ = UnregisterBackend("backend-error") })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "0.05")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	err := ShutdownTelemetry(context.Background())
+	if err == nil {
+		t.Error("expected non-deadline backend error to propagate")
+	}
+}
+
+func TestShutdownTelemetry_SurfacesCallerDeadlineExceeded(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// When the caller supplies the deadline (not the library), surface
+	// DeadlineExceeded as an error — the caller explicitly asked for that
+	// bound and presumably wants to know it fired.
+	_, _ = RegisterBackend("caller-deadline", &_deadlineExceededBackend{})
+	t.Cleanup(func() { _, _ = UnregisterBackend("caller-deadline") })
+
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := ShutdownTelemetry(ctx)
+	if err == nil {
+		t.Error("caller-supplied deadline must surface DeadlineExceeded")
 	}
 }
 
