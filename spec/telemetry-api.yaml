@@ -673,6 +673,27 @@ behavioral_parity:
       - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
 
+  bounded_shutdown:
+    description: >
+      shutdown_telemetry / ShutdownTelemetry / shutdownTelemetry MUST return
+      within a bounded wall-clock deadline when the OTLP log endpoint is
+      unreachable. The deadline derives from
+      PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS (default 5.0s).
+      Languages with explicit deadline parameters (Go's context.Context)
+      MAY honour a caller-supplied deadline instead of applying their own.
+    rules:
+      - timeout 0 (or negative) disables library-side bounding — caller's
+        own deadline (or the upstream SDK's) governs
+      - on deadline exhaustion the still-pending flush is abandoned;
+        records remaining in the export queue are dropped
+      - "per-language mechanism is idiomatic — daemon thread (Python),
+        Promise.race + unref'd timer (TypeScript), context.WithTimeout (Go),
+        detached worker thread (Rust) — but the user-observable contract is
+        identical: shutdown returns by the deadline"
+      - PROVIDE_LOG_OTLP_ENABLED=false MUST short-circuit OTLP log provider
+        construction entirely, independent of PROVIDE_TRACE_ENABLED and
+        PROVIDE_METRICS_ENABLED, so shutdown has nothing to flush
+
   health_counters:
     description: >
       Health counter increment semantics — when emitted/dropped counters fire.
