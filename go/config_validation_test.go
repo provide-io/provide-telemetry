@@ -93,6 +93,24 @@ func TestConfigFromEnv_InvalidFloat_ExporterMetricsTimeout(t *testing.T) {
 	assertConfigError(t, err)
 }
 
+func TestConfigFromEnv_InvalidFloat_ExporterLogsShutdownTimeout(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "bad")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestConfigFromEnv_NegativeFloat_ExporterLogsShutdownTimeout(t *testing.T) {
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "-1")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
+func TestConfigFromEnv_InvalidBool_LogOTLPEnabled(t *testing.T) {
+	t.Setenv("PROVIDE_LOG_OTLP_ENABLED", "maybe")
+	_, err := ConfigFromEnv()
+	assertConfigError(t, err)
+}
+
 func TestConfigFromEnv_InvalidInt_BackpressureLogs(t *testing.T) {
 	t.Setenv("PROVIDE_BACKPRESSURE_LOGS_MAXSIZE", "not-int")
 	_, err := ConfigFromEnv()
