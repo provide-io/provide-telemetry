@@ -136,7 +136,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
-          node-version: '22'
+          # Kept in sync with publish-npm which needs Node 24 for npm 11+
+          # OIDC trusted-publishing support.
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       # Install deps and run tests before packing
       - name: Install dependencies
@@ -183,20 +185,30 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      # OIDC token required for npm Trusted Publishing. The workflow exchanges
+      # this short-lived GitHub-issued token for an npm publish credential —
+      # no long-lived NPM_TOKEN secret needed. Must match the trusted publisher
+      # configured on npmjs.com under @provide-io/telemetry → Settings →
+      # Trusted publishers: org=provide-io, repo=provide-telemetry,
+      # workflow=release.yml, environment=npm.
+      id-token: write
     environment:
       name: npm
       url: https://www.npmjs.com/package/@provide-io/telemetry
     steps:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
-          node-version: '22'
+          # Node 24 ships npm 11+ which supports Trusted Publishing OIDC.
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       # Download the pre-built tarball from the build job
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           name: npm-pack
           path: npm-pack
-      # Publish the packed tarball — NPM_TOKEN must be set as a repo secret
+      # Publish via OIDC trusted publishing. --provenance records a signed
+      # attestation linking the tarball to this exact workflow run, surfaced
+      # as the "verified" badge on npmjs.com.
       - name: Publish to npm
         run: |
           ls -la npm-pack/
@@ -204,9 +216,7 @@ jobs:
           tar xzf *.tgz
           cd package
           cat package.json | head -5
-          npm publish --access public --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public --provenance --ignore-scripts
 
   publish-rust:
     needs: build-rust
