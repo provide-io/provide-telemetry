@@ -350,3 +350,115 @@ fn shutdown_logger_provider_clears_provider_even_when_processor_shutdown_errors(
 
     assert!(!logger_provider_installed());
 }
+
+#[test]
+fn install_skipped_when_otlp_enabled_false_even_with_endpoint() {
+    let _guard = reset_logs_test_state();
+    let mut cfg = test_config();
+    cfg.logging.otlp_endpoint = Some("http://127.0.0.1:1/never".to_string());
+    cfg.logging.otlp_enabled = false;
+    let resource = super::super::resource::build_resource(&cfg);
+
+    let installed =
+        install_logger_provider(&cfg, resource).expect("otlp_enabled=false must not error");
+    assert!(!installed);
+    assert!(!logger_provider_installed());
+}
+
+#[test]
+fn shutdown_with_zero_timeout_runs_synchronously() {
+    // logs_shutdown_timeout_seconds <= 0 opts out of bounding — the worker
+    // thread is never spawned and shutdown runs on the caller's thread.
+    let _guard = reset_logs_test_state();
+    shutdown_logger_provider();
+
+    let mut cfg = test_config();
+    cfg.exporter.logs_shutdown_timeout_seconds = 0.0;
+    crate::runtime::set_active_config(Some(cfg.clone()));
+
+    let provider = SdkLoggerProvider::builder()
+        .with_resource(super::super::resource::build_resource(&cfg))
+        .build();
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
+        provider: Arc::new(provider),
+        runtime: ProvideTokioRuntime::test(),
+    });
+
+    shutdown_logger_provider();
+
+    assert!(!logger_provider_installed());
+    crate::runtime::set_active_config(None);
+}
+
+#[test]
+fn shutdown_falls_back_to_default_timeout_when_no_active_config() {
+    // get_runtime_config() returns None — shutdown_logger_provider must
+    // fall back to the 5.0s default rather than crashing.
+    let _guard = reset_logs_test_state();
+    shutdown_logger_provider();
+    crate::runtime::set_active_config(None);
+
+    let provider = SdkLoggerProvider::builder()
+        .with_resource(super::super::resource::build_resource(&test_config()))
+        .build();
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
+        provider: Arc::new(provider),
+        runtime: ProvideTokioRuntime::test(),
+    });
+
+    shutdown_logger_provider();
+    assert!(!logger_provider_installed());
+}
+
+/// Log processor whose `shutdown` blocks forever, so the bounded shutdown
+/// must abandon it once the deadline expires.
+#[derive(Debug)]
+struct HangingShutdownProcessor;
+
+impl LogProcessor for HangingShutdownProcessor {
+    fn emit(&self, _record: &mut SdkLogRecord, _scope: &InstrumentationScope) {}
+
+    fn force_flush(&self) -> OTelSdkResult {
+        Ok(())
+    }
+
+    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
+        // Block until the process exits. The bounded shutdown abandons us.
+        std::thread::sleep(Duration::from_secs(3600));
+        Err(OTelSdkError::InternalFailure(
+            "unreachable: would hang forever".into(),
+        ))
+    }
+}
+
+#[test]
+fn shutdown_abandons_worker_when_deadline_exceeded() {
+    let _guard = reset_logs_test_state();
+    shutdown_logger_provider();
+
+    let mut cfg = test_config();
+    // 50ms deadline so the test wall time stays well under a second.
+    cfg.exporter.logs_shutdown_timeout_seconds = 0.05;
+    crate::runtime::set_active_config(Some(cfg.clone()));
+
+    let provider = SdkLoggerProvider::builder()
+        .with_resource(super::super::resource::build_resource(&cfg))
+        .with_log_processor(HangingShutdownProcessor)
+        .build();
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
+        provider: Arc::new(provider),
+        runtime: ProvideTokioRuntime::test(),
+    });
+
+    let started = std::time::Instant::now();
+    shutdown_logger_provider();
+    let elapsed = started.elapsed();
+
+    // Slot must be cleared even though the worker thread is still hung.
+    assert!(!logger_provider_installed());
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "shutdown took {elapsed:?} despite bounded deadline",
+    );
+    crate::runtime::set_active_config(None);
+}
