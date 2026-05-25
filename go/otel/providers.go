@@ -122,7 +122,11 @@ func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.Telem
 
 func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
 	provider := state.LoggerProvider()
-	if provider == nil && cfg.Logging.OTLPEndpoint != "" {
+	// cfg.Logging.OTLPEnabled gates default-provider construction independent
+	// of the trace/metrics enable flags. When false, we still honour a caller-
+	// supplied LoggerProvider injected via WithLoggerProvider — that's an
+	// explicit override and shouldn't be silently ignored.
+	if provider == nil && cfg.Logging.OTLPEnabled && cfg.Logging.OTLPEndpoint != "" {
 		lp, err := _buildDefaultLoggerProvider(cfg)
 		if err != nil {
 			if telemetry.Logger != nil {

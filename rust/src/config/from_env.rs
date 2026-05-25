@@ -77,6 +77,11 @@ impl TelemetryConfig {
                 otlp_endpoint: nonempty_env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"])
                     .map(str::to_string)
                     .or_else(|| with_signal_path("v1/logs")),
+                otlp_enabled: parse_bool(
+                    env_value(env, &["PROVIDE_LOG_OTLP_ENABLED"]),
+                    true,
+                    "PROVIDE_LOG_OTLP_ENABLED",
+                )?,
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
@@ -223,6 +228,11 @@ impl TelemetryConfig {
                     env_value(env, &["PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"]),
                     10.0,
                     "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS",
+                )?,
+                logs_shutdown_timeout_seconds: parse_non_negative_float(
+                    env_value(env, &["PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"]),
+                    5.0,
+                    "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS",
                 )?,
                 logs_fail_open: parse_bool(
                     env_value(env, &["PROVIDE_EXPORTER_LOGS_FAIL_OPEN"]),

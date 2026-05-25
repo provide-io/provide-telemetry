@@ -32,6 +32,7 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
                 logs_retries: 2,
                 logs_backoff_seconds: 1.5,
                 logs_timeout_seconds: 22.0,
+                logs_shutdown_timeout_seconds: 5.0,
                 logs_fail_open: false,
                 traces_retries: 0,
                 traces_backoff_seconds: 0.0,

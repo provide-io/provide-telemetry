@@ -60,6 +60,7 @@ func TestConfigFromEnv_LoggingGroup(t *testing.T) {
 	t.Setenv("PROVIDE_LOG_INCLUDE_CALLER", "false")
 	t.Setenv("PROVIDE_LOG_SANITIZE", "false")
 	t.Setenv("PROVIDE_LOG_CODE_ATTRIBUTES", "true")
+	t.Setenv("PROVIDE_LOG_OTLP_ENABLED", "false")
 	t.Setenv("PROVIDE_LOG_PRETTY_KEY_COLOR", "bold")
 	t.Setenv("PROVIDE_LOG_PRETTY_VALUE_COLOR", "red")
 	t.Setenv("PROVIDE_LOG_PRETTY_FIELDS", "field1, field2")
@@ -86,6 +87,9 @@ func TestConfigFromEnv_LoggingGroup(t *testing.T) {
 	}
 	if !l.LogCodeAttributes {
 		t.Error("LogCodeAttributes should be true")
+	}
+	if l.OTLPEnabled {
+		t.Error("OTLPEnabled should be false")
 	}
 	if l.PrettyKeyColor != "bold" {
 		t.Errorf("PrettyKeyColor: got %q", l.PrettyKeyColor)
@@ -189,6 +193,7 @@ func TestConfigFromEnv_ExporterGroup(t *testing.T) {
 	t.Setenv("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "30.0")
 	t.Setenv("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "31.0")
 	t.Setenv("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "32.0")
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "2.5")
 	t.Setenv("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "false")
 	t.Setenv("PROVIDE_EXPORTER_TRACES_FAIL_OPEN", "false")
 	t.Setenv("PROVIDE_EXPORTER_METRICS_FAIL_OPEN", "false")
@@ -226,6 +231,9 @@ func TestConfigFromEnv_ExporterGroup(t *testing.T) {
 	}
 	if e.MetricsTimeoutSeconds != 32.0 {
 		t.Errorf("MetricsTimeoutSeconds: got %f", e.MetricsTimeoutSeconds)
+	}
+	if e.LogsShutdownTimeoutSeconds != 2.5 {
+		t.Errorf("LogsShutdownTimeoutSeconds: got %f", e.LogsShutdownTimeoutSeconds)
 	}
 	if e.LogsFailOpen {
 		t.Error("LogsFailOpen should be false")

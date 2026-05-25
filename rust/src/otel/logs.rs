@@ -102,7 +102,12 @@ pub(super) fn install_logger_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
-    if cfg.logging.otlp_endpoint.is_none() {
+    // PROVIDE_LOG_OTLP_ENABLED gates the OTLP log provider independently
+    // of trace/metrics flags. When disabled we tear down any previously
+    // installed provider — mirrors the Python/TS/Go behaviour and gives
+    // callers an explicit escape hatch from shutdown hangs against
+    // unreachable collectors.
+    if cfg.logging.otlp_endpoint.is_none() || !cfg.logging.otlp_enabled {
         shutdown_logger_provider();
         return Ok(false);
     }
@@ -139,14 +144,54 @@ pub(super) fn install_logger_provider(
 }
 
 /// Shut down the installed `LoggerProvider`.
+///
+/// When the active config defines `exporter.logs_shutdown_timeout_seconds > 0`,
+/// the flush+shutdown sequence runs on a detached worker thread and the
+/// caller's wait is bounded by that deadline. If the deadline expires the
+/// worker is abandoned: the OTel SDK's `force_flush`/`shutdown` may still
+/// be sitting in a retry loop against an unreachable collector, but the
+/// caller is no longer blocked waiting for it.
 pub(super) fn shutdown_logger_provider() {
-    let mut guard = crate::_lock::lock(logger_provider_slot());
-    let provider = guard.take();
-    drop(guard);
-    if provider.is_none() {
+    let installed = {
+        let mut guard = crate::_lock::lock(logger_provider_slot());
+        guard.take()
+    };
+    let Some(installed) = installed else { return };
+
+    let timeout_secs = crate::runtime::get_runtime_config()
+        .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
+        .unwrap_or(5.0);
+
+    if timeout_secs <= 0.0 {
+        // Caller opted out of bounding — do the synchronous drain.
+        do_shutdown_logger_provider(installed);
         return;
     }
-    let installed = provider.expect("logger provider must exist after none guard");
+
+    let timeout = Duration::from_secs_f64(timeout_secs);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _worker = std::thread::Builder::new()
+        .name("provide-logger-shutdown".to_string())
+        .spawn(move || {
+            do_shutdown_logger_provider(installed);
+            let _ = tx.send(());
+        })
+        .expect("OS must allow spawning a shutdown worker thread");
+
+    if rx.recv_timeout(timeout).is_err() {
+        // Abandon: the JoinHandle drops out of scope, the worker stays
+        // running in the background. When `main` returns the process
+        // teardown reaps it; for library callers the abandoned thread
+        // may briefly hold network resources but no longer blocks the
+        // caller's control flow.
+        eprintln!(
+            "provide_telemetry: logs shutdown exceeded {:.3}s deadline; abandoning background flush",
+            timeout.as_secs_f64(),
+        );
+    }
+}
+
+fn do_shutdown_logger_provider(installed: InstalledLoggerProvider) {
     installed.runtime.quiesce();
     let _ = installed.provider.force_flush();
     if let Err(err) = installed.provider.shutdown() {
