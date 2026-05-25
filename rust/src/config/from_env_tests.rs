@@ -252,6 +252,8 @@ fn from_map_test_invalid_scalar_env_values_fail_on_their_own_fields() {
         ("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "-1"),
         ("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "-1"),
         ("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "-1"),
+        ("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "-1"),
+        ("PROVIDE_LOG_OTLP_ENABLED", "maybe"),
         ("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "maybe"),
         ("PROVIDE_EXPORTER_TRACES_FAIL_OPEN", "maybe"),
         ("PROVIDE_EXPORTER_METRICS_FAIL_OPEN", "maybe"),
