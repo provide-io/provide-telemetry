@@ -19,6 +19,7 @@ fn trace_json_config() -> LoggingConfig {
         include_timestamp: false,
         otlp_headers: HashMap::new(),
         otlp_endpoint: None,
+        otlp_enabled: true,
         otlp_protocol: String::new(),
         module_levels: HashMap::new(),
     }

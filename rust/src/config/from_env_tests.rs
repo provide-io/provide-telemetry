@@ -86,6 +86,8 @@ fn from_map_test_parses_signal_specific_and_policy_fields() {
         ("PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS", "4.5"),
         ("PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS", "5.5"),
         ("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "6.5"),
+        ("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "2.25"),
+        ("PROVIDE_LOG_OTLP_ENABLED", "false"),
         ("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", "false"),
         ("PROVIDE_EXPORTER_TRACES_FAIL_OPEN", "off"),
         ("PROVIDE_EXPORTER_METRICS_FAIL_OPEN", "no"),
@@ -167,6 +169,8 @@ fn from_map_test_parses_signal_specific_and_policy_fields() {
     assert!((cfg.exporter.logs_timeout_seconds - 4.5).abs() < f64::EPSILON);
     assert!((cfg.exporter.traces_timeout_seconds - 5.5).abs() < f64::EPSILON);
     assert!((cfg.exporter.metrics_timeout_seconds - 6.5).abs() < f64::EPSILON);
+    assert!((cfg.exporter.logs_shutdown_timeout_seconds - 2.25).abs() < f64::EPSILON);
+    assert!(!cfg.logging.otlp_enabled);
     assert!(!cfg.exporter.logs_fail_open);
     assert!(!cfg.exporter.traces_fail_open);
     assert!(!cfg.exporter.metrics_fail_open);
@@ -210,6 +214,16 @@ fn from_map_test_shared_otlp_defaults_fill_all_three_signals() {
     assert_eq!(cfg.logging.otlp_protocol, "http/protobuf");
     assert_eq!(cfg.tracing.otlp_protocol, "http/protobuf");
     assert_eq!(cfg.metrics.otlp_protocol, "http/protobuf");
+}
+
+#[test]
+fn from_map_test_defaults_for_shutdown_timeout_and_otlp_enabled() {
+    // With no env vars, the bounded-shutdown deadline and the OTLP-enabled
+    // gate must take their documented defaults (5.0s, true). Mirrors the
+    // Python/TS/Go defaults pinned in their own test suites.
+    let cfg = TelemetryConfig::from_map(&env_map(&[])).expect("empty env should parse");
+    assert!((cfg.exporter.logs_shutdown_timeout_seconds - 5.0).abs() < f64::EPSILON);
+    assert!(cfg.logging.otlp_enabled);
 }
 
 #[test]

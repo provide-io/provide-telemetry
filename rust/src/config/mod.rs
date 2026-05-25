@@ -43,6 +43,12 @@ pub struct LoggingConfig {
     /// `OTEL_EXPORTER_OTLP_ENDPOINT` when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
     /// is unset. `None` means no endpoint configured.
     pub otlp_endpoint: Option<String>,
+    /// Per-signal kill switch for the OTLP log provider. When false, the
+    /// logger provider is skipped even if `otlp_endpoint` is set — useful
+    /// to escape shutdown hangs against unreachable collectors without
+    /// unsetting `OTEL_EXPORTER_OTLP_ENDPOINT`. Controlled by
+    /// `PROVIDE_LOG_OTLP_ENABLED` (default: true).
+    pub otlp_enabled: bool,
     /// OTLP transport protocol for logs. Empty string means default
     /// (resolved at exporter-build time to `http/protobuf`). Values:
     /// `http/protobuf`, `http/json`, `grpc` (the latter requires the
@@ -62,6 +68,7 @@ impl Default for LoggingConfig {
             include_timestamp: true,
             otlp_headers: HashMap::new(),
             otlp_endpoint: None,
+            otlp_enabled: true,
             otlp_protocol: String::new(),
             module_levels: HashMap::new(),
         }
@@ -174,6 +181,12 @@ pub struct ExporterPolicyConfig {
     pub logs_timeout_seconds: f64,
     pub traces_timeout_seconds: f64,
     pub metrics_timeout_seconds: f64,
+    /// Hard deadline for `shutdown_telemetry()`'s flush+shutdown sequence
+    /// per signal (seconds). When the OTLP endpoint is unreachable the OTel
+    /// SDK's `force_flush()`/`shutdown()` can sit in its internal retry
+    /// loop; this deadline forces `shutdown_telemetry()` to return. Mirrors
+    /// `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`. Default 5.0.
+    pub logs_shutdown_timeout_seconds: f64,
     pub logs_fail_open: bool,
     pub traces_fail_open: bool,
     pub metrics_fail_open: bool,
@@ -191,6 +204,7 @@ impl Default for ExporterPolicyConfig {
             logs_timeout_seconds: 10.0,
             traces_timeout_seconds: 10.0,
             metrics_timeout_seconds: 10.0,
+            logs_shutdown_timeout_seconds: 5.0,
             logs_fail_open: true,
             traces_fail_open: true,
             metrics_fail_open: true,

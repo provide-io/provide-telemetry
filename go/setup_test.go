@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 )
 
 // resetSetupState clears all setup state and related subsystems between tests.
@@ -396,5 +397,97 @@ func TestSetupTelemetry_AllowBlockingInEventLoopRoundTrip(t *testing.T) {
 	metrics := GetExporterPolicy(signalMetrics)
 	if !metrics.AllowBlockingInEventLoop {
 		t.Error("expected metrics AllowBlockingInEventLoop=true")
+	}
+}
+
+func TestShutdownTelemetry_AppliesBoundedDeadlineWhenCtxHasNone(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "0.05")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	// Background context has no deadline; ShutdownTelemetry must add one
+	// derived from PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS so a
+	// slow OTLP backend cannot block shutdown indefinitely.
+	start := time.Now()
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+	elapsed := time.Since(start)
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("shutdown took %v, expected fast return under bounded deadline", elapsed)
+	}
+}
+
+func TestShutdownTelemetry_HonoursCallerDeadline(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// Caller supplies a context with a deadline — the library MUST NOT
+	// overwrite it with its own. Tested via the internal helper to keep
+	// the assertion deterministic (no real OTel I/O).
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_setupMu.Lock()
+	d := _shutdownDeadlineForLocked(ctx)
+	_setupMu.Unlock()
+	if d != 0 {
+		t.Errorf("expected _shutdownDeadlineForLocked=0 when caller has deadline, got %v", d)
+	}
+}
+
+func TestShutdownTelemetry_DisableBoundingWithZeroTimeout(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// LogsShutdownTimeoutSeconds=0 means "no bound from the library" —
+	// callers can opt out and rely on the OTel SDK / their own ctx.
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "0")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	_setupMu.Lock()
+	d := _shutdownDeadlineForLocked(context.Background())
+	_setupMu.Unlock()
+	if d != 0 {
+		t.Errorf("expected no bounding when LogsShutdownTimeoutSeconds=0, got %v", d)
+	}
+}
+
+func TestShutdownTelemetry_DeadlineHelperReturnsZeroWhenNoRuntimeConfig(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// After resetSetupState _runtimeCfg is nil — the helper must return 0
+	// rather than crashing on a nil dereference.
+	_setupMu.Lock()
+	d := _shutdownDeadlineForLocked(context.Background())
+	_setupMu.Unlock()
+	if d != 0 {
+		t.Errorf("expected 0 when _runtimeCfg is nil, got %v", d)
+	}
+}
+
+func TestShutdownTelemetry_DeadlineHelperReadsConfiguredTimeout(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	t.Setenv("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS", "2.5")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	_setupMu.Lock()
+	d := _shutdownDeadlineForLocked(context.Background())
+	_setupMu.Unlock()
+	want := 2500 * time.Millisecond
+	if d != want {
+		t.Errorf("expected %v from 2.5s config, got %v", want, d)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"maps"
 	"sync"
+	"time"
 )
 
 // SetupOption configures optional setup-time state (e.g. injected OTel providers).
@@ -136,12 +137,25 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 
 // ShutdownTelemetry tears down all telemetry subsystems and resets the setup sentinel.
 // It is safe to call on an already-shutdown system (no-op).
+//
+// When ctx has no deadline, ShutdownTelemetry applies one derived from
+// cfg.Exporter.LogsShutdownTimeoutSeconds (default 5s) so the OTel SDK's
+// LoggerProvider.Shutdown cannot block indefinitely against an unreachable
+// OTLP endpoint. Callers that want to enforce their own deadline can pass a
+// context.WithTimeout / context.WithDeadline themselves.
 func ShutdownTelemetry(ctx context.Context) error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
 
 	if !_setupDone {
 		return nil
+	}
+
+	timeout := _shutdownDeadlineForLocked(ctx)
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	_setupDone = false
@@ -151,6 +165,26 @@ func ShutdownTelemetry(ctx context.Context) error {
 	DefaultTracer = &_noopTracer{}
 	_resetLogger()
 	return err
+}
+
+// _shutdownDeadlineForLocked returns the bounded-shutdown timeout to apply
+// when ctx has no deadline of its own. Returns 0 when the caller already
+// supplied a deadline (we honour the caller's choice) or when the active
+// config disables bounding (LogsShutdownTimeoutSeconds <= 0).
+//
+// Must be called with _setupMu held — it reads _runtimeCfg.
+func _shutdownDeadlineForLocked(ctx context.Context) time.Duration {
+	if _, ok := ctx.Deadline(); ok {
+		return 0
+	}
+	if _runtimeCfg == nil {
+		return 0
+	}
+	secs := _runtimeCfg.Exporter.LogsShutdownTimeoutSeconds
+	if secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs * float64(time.Second))
 }
 
 // _resetSetup clears setup state unconditionally. For use in tests only.

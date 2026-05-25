@@ -85,6 +85,14 @@ func applyLoggingBoolFlags(cfg *TelemetryConfig, env func(string) string) error 
 	if err != nil {
 		return err
 	}
+	cfg.Logging.OTLPEnabled, err = parseEnvBool(
+		env("PROVIDE_LOG_OTLP_ENABLED"),
+		true,
+		"PROVIDE_LOG_OTLP_ENABLED",
+	)
+	if err != nil {
+		return err
+	}
 	if v := env("PROVIDE_LOG_PII_MAX_DEPTH"); v != "" {
 		n, err := parseEnvInt(v, "PROVIDE_LOG_PII_MAX_DEPTH")
 		if err != nil {

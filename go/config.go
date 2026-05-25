@@ -44,6 +44,7 @@ type LoggingConfig struct {
 	Sanitize          bool              // default true
 	PIIMaxDepth       int               // default 0 (use SanitizePayload default of 8)
 	OTLPEndpoint      string            // optional
+	OTLPEnabled       bool              // default true; env PROVIDE_LOG_OTLP_ENABLED
 	OTLPHeaders       map[string]string // optional
 	LogCodeAttributes bool              // default false
 	PrettyKeyColor    string            // default "dim"
@@ -100,6 +101,11 @@ type ExporterPolicyConfig struct {
 	LogsTimeoutSeconds    float64 // default 10.0
 	TracesTimeoutSeconds  float64 // default 10.0
 	MetricsTimeoutSeconds float64 // default 10.0
+
+	// LogsShutdownTimeoutSeconds bounds ShutdownTelemetry's per-provider
+	// flush+shutdown when the caller's context has no deadline. Mirrors
+	// PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS. Default 5.0.
+	LogsShutdownTimeoutSeconds float64
 
 	LogsFailOpen    bool // default true
 	TracesFailOpen  bool // default true
@@ -250,6 +256,7 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 			IncludeTimestamp: true,
 			IncludeCaller:    true,
 			Sanitize:         true,
+			OTLPEnabled:      true,
 			OTLPHeaders:      map[string]string{},
 			PrettyKeyColor:   _prettyColorDimName,
 			PrettyValueColor: "",
@@ -274,12 +281,13 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 			MetricsRate: 1.0,
 		},
 		Exporter: ExporterPolicyConfig{
-			LogsTimeoutSeconds:    10.0,
-			TracesTimeoutSeconds:  10.0,
-			MetricsTimeoutSeconds: 10.0,
-			LogsFailOpen:          true,
-			TracesFailOpen:        true,
-			MetricsFailOpen:       true,
+			LogsTimeoutSeconds:         10.0,
+			TracesTimeoutSeconds:       10.0,
+			MetricsTimeoutSeconds:      10.0,
+			LogsShutdownTimeoutSeconds: 5.0,
+			LogsFailOpen:               true,
+			TracesFailOpen:             true,
+			MetricsFailOpen:            true,
 		},
 		SLO: SLOConfig{
 			IncludeErrorTaxonomy: true,

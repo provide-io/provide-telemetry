@@ -114,6 +114,7 @@ fn runtime_test_update_runtime_config_applies_hot_fields() {
                 logs_timeout_seconds: 7.5,
                 traces_timeout_seconds: 10.0,
                 metrics_timeout_seconds: 10.0,
+                logs_shutdown_timeout_seconds: 5.0,
                 logs_fail_open: false,
                 traces_fail_open: true,
                 metrics_fail_open: true,
