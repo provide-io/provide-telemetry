@@ -182,15 +182,24 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		}
 		cfg.Exporter.MetricsTimeoutSeconds = f
 	}
-	if v := env("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"); v != "" {
-		f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS")
-		if err != nil {
-			return err
-		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"); err != nil {
-			return err
-		}
-		cfg.Exporter.LogsShutdownTimeoutSeconds = f
+	return applyExporterShutdownTimeout(cfg, env)
+}
+
+// applyExporterShutdownTimeout reads the bounded-shutdown deadline env var.
+// Split out of applyExporterTimeout to keep that function under the gocyclo
+// complexity ceiling (10).
+func applyExporterShutdownTimeout(cfg *TelemetryConfig, env func(string) string) error {
+	v := env("PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS")
+	if v == "" {
+		return nil
 	}
+	f, err := parseEnvFloat(v, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS")
+	if err != nil {
+		return err
+	}
+	if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"); err != nil {
+		return err
+	}
+	cfg.Exporter.LogsShutdownTimeoutSeconds = f
 	return nil
 }
