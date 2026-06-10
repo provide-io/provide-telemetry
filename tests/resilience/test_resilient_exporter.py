@@ -192,9 +192,13 @@ def test_wrap_exporter_helper_uses_real_failure_enum_lookup() -> None:
 @pytest.mark.otel
 def test_wrap_exporter_returns_real_failure_enum_on_drop() -> None:
     pytest.importorskip("opentelemetry")
-    from opentelemetry.sdk._logs.export import LogExportResult
+    from opentelemetry.sdk._logs import export as logs_export
 
+    # OTel 1.42 renamed LogExportResult -> LogRecordExportResult; resolve the
+    # same way the implementation does so this passes across the supported range.
+    _exports = vars(logs_export)
+    result_cls = _exports.get("LogRecordExportResult") or _exports["LogExportResult"]
     set_exporter_policy("logs", ExporterPolicy(retries=0, timeout_seconds=0.0, fail_open=True))
     fake = _FakeExporter(RuntimeError("boom"))
     wrapper = wrap_exporter("logs", fake)
-    assert wrapper.export(["batch"]) is LogExportResult.FAILURE
+    assert wrapper.export(["batch"]) is result_cls.FAILURE
