@@ -139,6 +139,11 @@ addopts = [
 [tool.coverage.run]
 source = ["src/provide/telemetry"]
 branch = true
+# context_runtime.py subclasses a real OpenTelemetry runtime-context class, so it
+# cannot be imported (let alone exercised) without the optional `otel` extra,
+# which the gated coverage run deliberately omits. It is covered by the
+# otel-marked tests/tracing/test_context_runtime.py in the dedicated otel job.
+omit = ["src/provide/telemetry/tracing/context_runtime.py"]
 
 [tool.coverage.report]
 fail_under = 100

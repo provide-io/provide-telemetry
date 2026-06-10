@@ -118,9 +118,15 @@ def setup_tracing(config: TelemetryConfig) -> None:
     # Make OTel's current-span contextvar tolerant of cross-context teardown
     # (async-gen aclose() from another task, cancelled/GC'd coroutines) so spans
     # in async services don't flood logs with "Failed to detach context".
-    from provide.telemetry.tracing.context_runtime import install_safe_runtime_context
+    # OTel-only (context_runtime subclasses a real OTel class) and guarded: a
+    # partial/absent SDK must never raise out of setup. Exercised by the
+    # otel-marked test_context_runtime suite.
+    try:  # pragma: no cover - requires the optional OTel SDK at runtime
+        from provide.telemetry.tracing.context_runtime import install_safe_runtime_context
 
-    install_safe_runtime_context()
+        install_safe_runtime_context()
+    except ImportError:  # pragma: no cover - OTel SDK unavailable
+        pass
 
     with _provider_lock:
         if _provider_configured:
