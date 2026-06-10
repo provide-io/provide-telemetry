@@ -39,9 +39,16 @@ def _load_failure_result(signal: str) -> Any:
     ``otel-extras-validation`` job and live integration tests.
     """
     if signal == "logs":  # pragma: no cover
-        from opentelemetry.sdk._logs.export import LogExportResult
+        from opentelemetry.sdk._logs import export as _logs_export
 
-        return LogExportResult.FAILURE
+        # OTel 1.42 renamed LogExportResult -> LogRecordExportResult (the old
+        # name is deprecated and slated for removal). Resolve via the module
+        # namespace so we work across the supported floor (1.27, old name only)
+        # and current SDKs (new name) without a static reference to the
+        # deprecated symbol.
+        _exports = vars(_logs_export)
+        result_cls = _exports.get("LogRecordExportResult") or _exports["LogExportResult"]
+        return result_cls.FAILURE
     if signal == "traces":  # pragma: no cover
         from opentelemetry.sdk.trace.export import SpanExportResult
 
