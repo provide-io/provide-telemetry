@@ -187,6 +187,16 @@ module = [
 ]
 ignore_missing_imports = true
 
+# context_runtime subclasses a concrete OTel runtime-context class. When the
+# `otel` extra isn't installed (the gated mypy run), that base resolves to Any
+# and strict mode rejects subclassing it; allow it only for this otel-only
+# module (a no-op when otel is installed and the base has a real type).
+[[tool.mypy.overrides]]
+module = [
+  "provide.telemetry.tracing.context_runtime",
+]
+disallow_subclassing_any = false
+
 [[tool.mypy.overrides]]
 module = [
   "tests.parity.test_behavioral_fixtures",
