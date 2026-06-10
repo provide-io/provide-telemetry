@@ -8,6 +8,10 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ## [Unreleased]
 
+### Added
+
+- **`provide.telemetry.span()` — block-level span context manager** — `with span("area.verb", **attrs): ...` opens a span around an arbitrary code block, the counterpart to the `@trace` decorator for code that isn't a whole function. It shares the *exact same* lifecycle as `@trace` via a single internal helper (`_open_span`): consent → sampling → backpressure → health counting → OTel↔contextvars correlation (so logs emitted inside the block carry the span's trace/span IDs) → context restore + ticket release. A plain `with` works inside `async def` — the cross-context detach is handled by the runtime context from setup, not by the context manager's shape. Attributes are coerced (`None` dropped, primitives and sequences of primitives passed through, everything else stringified). Companions **`set_attrs(span, **attrs)`** (set attributes mid-block once values are known) and **`record_exception(span, exc)`** (record a failure and mark the span ERROR without re-raising) are exported alongside it. All three no-op safely when tracing is disabled.
+
 ### Fixed
 
 - **OpenTelemetry "Failed to detach context" storm in async services** — a span whose `start_as_current_span` lifetime straddles an async-context boundary (an async generator `aclose()`d from another task, a cancelled or garbage-collected coroutine) detaches its contextvars Token in a different `Context` than it was created in, so `opentelemetry.context.detach` logged a full traceback *per occurrence* (long-running async servers saw thousands). `setup_tracing()` now installs `_SafeContextVarsRuntimeContext`, a runtime context whose `detach` swallows *only* that benign cross-context `ValueError` (the owning context is already being abandoned, so there is nothing to reset) and behaves identically otherwise. Applies to every span — decorator, manual, or library-created — with no consumer code change.

@@ -22,7 +22,16 @@ from provide.telemetry.logger import bind_context, clear_context, get_logger, lo
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
 from provide.telemetry.schema.events import Event, EventSchemaError, event, event_name
 from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
-from provide.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace, tracer
+from provide.telemetry.tracing import (
+    get_trace_context,
+    get_tracer,
+    record_exception,
+    set_attrs,
+    set_trace_context,
+    span,
+    trace,
+    tracer,
+)
 
 try:
     __version__ = version("provide-telemetry")
@@ -230,6 +239,7 @@ __all__ = [
     "logger",
     "parse_baggage",
     "reconfigure_telemetry",
+    "record_exception",
     "record_red_metrics",
     "record_use_metrics",
     "redact_config",
@@ -240,6 +250,7 @@ __all__ = [
     "register_secret_pattern",
     "reload_runtime_from_env",
     "replace_pii_rules",
+    "set_attrs",
     "set_classification_policy",
     "set_consent_level",
     "set_exporter_policy",
@@ -251,6 +262,7 @@ __all__ = [
     "should_allow",
     "should_sample",
     "shutdown_telemetry",
+    "span",
     "trace",
     "tracer",
     "unbind_context",
