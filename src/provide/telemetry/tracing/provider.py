@@ -115,6 +115,13 @@ def setup_tracing(config: TelemetryConfig) -> None:
     if not _HAS_OTEL:
         return
 
+    # Make OTel's current-span contextvar tolerant of cross-context teardown
+    # (async-gen aclose() from another task, cancelled/GC'd coroutines) so spans
+    # in async services don't flood logs with "Failed to detach context".
+    from provide.telemetry.tracing.context_runtime import install_safe_runtime_context
+
+    install_safe_runtime_context()
+
     with _provider_lock:
         if _provider_configured:
             return

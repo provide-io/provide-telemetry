@@ -6,6 +6,14 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **OpenTelemetry "Failed to detach context" storm in async services** — a span whose `start_as_current_span` lifetime straddles an async-context boundary (an async generator `aclose()`d from another task, a cancelled or garbage-collected coroutine) detaches its contextvars Token in a different `Context` than it was created in, so `opentelemetry.context.detach` logged a full traceback *per occurrence* (long-running async servers saw thousands). `setup_tracing()` now installs `_SafeContextVarsRuntimeContext`, a runtime context whose `detach` swallows *only* that benign cross-context `ValueError` (the owning context is already being abandoned, so there is nothing to reset) and behaves identically otherwise. Applies to every span — decorator, manual, or library-created — with no consumer code change.
+
+---
+
 ## [0.4.4] — 2026-05-03
 
 ### Release pipeline fixes
