@@ -118,7 +118,9 @@ def test_span_noop_when_tracing_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
     """With no real provider, span() yields a NoopSpan and never errors."""
     _reset_tracing_for_tests()
     monkeypatch.setattr(provider_mod, "_HAS_OTEL", False)
-    with span("op.noop", attr="set-on-noop") as sp:
+    # A non-None attr (set path) and a None attr (skip path) exercise both
+    # branches of span()'s attribute loop without a real provider.
+    with span("op.noop", attr="set-on-noop", skipped=None) as sp:
         assert isinstance(sp, _NoopSpan)
 
 
@@ -207,3 +209,60 @@ def test_set_span_attr_swallows_setter_errors() -> None:
             raise RuntimeError("cannot set")
 
     _set_span_attr(_BadSpan(), "k", 1)  # no raise
+
+
+class _RecordingSpan:
+    """A minimal span double that records calls — no OpenTelemetry required.
+
+    Lets the attribute-coercion and record_exception paths be covered without
+    the optional ``otel`` extra (the real-SDK ``captured_spans`` tests above
+    skip when it is absent).
+    """
+
+    def __init__(self) -> None:
+        self.attributes: dict[str, object] = {}
+        self.recorded: list[BaseException] = []
+        self.status: object = None
+
+    def set_attribute(self, key: str, value: object) -> None:
+        self.attributes[key] = value
+
+    def record_exception(self, exc: BaseException) -> None:
+        self.recorded.append(exc)
+
+    def set_status(self, status: object) -> None:  # pragma: no cover - only reached with OTel installed
+        self.status = status
+
+
+def test_set_span_attr_coerces_each_type() -> None:
+    """Primitives pass through; primitive sequences become lists; else stringified."""
+    sp = _RecordingSpan()
+    marker = object()
+    _set_span_attr(sp, "primitive", 7)
+    _set_span_attr(sp, "primitive_list", [1, 2, 3])
+    _set_span_attr(sp, "mixed_list", [1, marker])
+    _set_span_attr(sp, "other", marker)
+    assert sp.attributes["primitive"] == 7
+    assert sp.attributes["primitive_list"] == [1, 2, 3]
+    assert sp.attributes["mixed_list"] == str([1, marker])
+    assert sp.attributes["other"] == str(marker)
+
+
+def test_set_attrs_coerces_on_recording_span() -> None:
+    """set_attrs applies coerced attributes and drops None, on a non-OTel span."""
+    sp = _RecordingSpan()
+    set_attrs(sp, kept=5, dropped=None)
+    assert sp.attributes == {"kept": 5}
+
+
+def test_record_exception_invokes_span_hooks() -> None:
+    """record_exception calls the span's record_exception + set_status hooks.
+
+    The OTel ``Status`` import inside record_exception is suppressed when the
+    SDK is absent, so this asserts the recorded exception (the set_status call
+    itself only fires with OTel installed).
+    """
+    sp = _RecordingSpan()
+    exc = ValueError("noted")
+    record_exception(sp, exc)
+    assert sp.recorded == [exc]

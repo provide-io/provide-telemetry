@@ -27,19 +27,27 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
-from opentelemetry import context as otel_context
-from opentelemetry.context.contextvars_context import ContextVarsRuntimeContext
-
-if TYPE_CHECKING:
-    from opentelemetry.context.context import Context
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.tracing import provider as provider_mod
+from provide.telemetry.tracing.provider import _reset_tracing_for_tests, get_tracer
+
+# Skip the whole module when the optional OTel SDK isn't installed — the release
+# `build` job runs the suite without the `otel` extra, where the module-level
+# OpenTelemetry imports below (and context_runtime, which imports OTel) would
+# otherwise raise a collection error instead of a clean skip.
+pytest.importorskip("opentelemetry.context.contextvars_context")
+
+from opentelemetry import context as otel_context
+from opentelemetry.context.contextvars_context import ContextVarsRuntimeContext
+
 from provide.telemetry.tracing.context_runtime import (
     _SafeContextVarsRuntimeContext,
     install_safe_runtime_context,
 )
-from provide.telemetry.tracing.provider import _reset_tracing_for_tests, get_tracer
+
+if TYPE_CHECKING:
+    from opentelemetry.context.context import Context
 
 pytestmark = pytest.mark.otel
 

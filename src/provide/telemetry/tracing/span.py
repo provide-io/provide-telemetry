@@ -79,7 +79,10 @@ def record_exception(sp: Any, exc: BaseException) -> None:
             # Imported lazily so this module never hard-depends on OTel.
             from opentelemetry.trace import Status, StatusCode
 
-            set_status(Status(StatusCode.ERROR, str(exc)[:200]))
+            # Only reachable with the OTel SDK installed; the import above raises
+            # (and is suppressed) without it, so the gated no-otel run can't hit
+            # this line — exercised by the otel-marked record_exception test.
+            set_status(Status(StatusCode.ERROR, str(exc)[:200]))  # pragma: no cover
 
 
 def _set_span_attr(sp: Any, key: str, value: Any) -> None:
