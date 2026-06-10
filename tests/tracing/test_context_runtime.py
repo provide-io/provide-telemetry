@@ -88,7 +88,8 @@ def test_safe_detach_normal_reset_path() -> None:
     rc.detach(token)
 
 
-def test_install_is_idempotent(restore_runtime_context: None) -> None:
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_install_is_idempotent() -> None:
     """First install swaps in the safe context; a second install is a no-op."""
     otel_context._RUNTIME_CONTEXT = ContextVarsRuntimeContext()
     assert install_safe_runtime_context() is True
@@ -96,7 +97,8 @@ def test_install_is_idempotent(restore_runtime_context: None) -> None:
     assert install_safe_runtime_context() is False
 
 
-def test_install_preserves_current_context(restore_runtime_context: None) -> None:
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_install_preserves_current_context() -> None:
     """Installing mid-flight carries the active Context over, not strands it."""
     otel_context._RUNTIME_CONTEXT = ContextVarsRuntimeContext()
     marker = otel_context.set_value("marker-key", "marker-val")
@@ -153,7 +155,8 @@ def real_tracer(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
         provider.shutdown()
 
 
-def test_safe_runtime_context_silences_cross_context_detach(real_tracer: None, restore_runtime_context: None) -> None:
+@pytest.mark.usefixtures("real_tracer", "restore_runtime_context")
+def test_safe_runtime_context_silences_cross_context_detach() -> None:
     """The guard turns the per-teardown detach storm into silence.
 
     Without the safe context the default runtime context logs at least one
@@ -180,7 +183,8 @@ def test_safe_runtime_context_silences_cross_context_detach(real_tracer: None, r
         otel_logger.setLevel(prev_level)
 
 
-def test_setup_tracing_installs_safe_runtime_context(restore_runtime_context: None) -> None:
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_setup_tracing_installs_safe_runtime_context() -> None:
     """setup_tracing() wires the guard in so every service gets it for free."""
     _reset_tracing_for_tests()
     otel_context._RUNTIME_CONTEXT = ContextVarsRuntimeContext()
