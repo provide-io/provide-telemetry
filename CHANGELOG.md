@@ -6,7 +6,7 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
-## [Unreleased]
+## [0.4.8] — 2026-06-10
 
 ### Added
 
@@ -15,6 +15,11 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 ### Fixed
 
 - **OpenTelemetry "Failed to detach context" storm in async services** — a span whose `start_as_current_span` lifetime straddles an async-context boundary (an async generator `aclose()`d from another task, a cancelled or garbage-collected coroutine) detaches its contextvars Token in a different `Context` than it was created in, so `opentelemetry.context.detach` logged a full traceback *per occurrence* (long-running async servers saw thousands). `setup_tracing()` now installs `_SafeContextVarsRuntimeContext`, a runtime context whose `detach` swallows *only* that benign cross-context `ValueError` (the owning context is already being abandoned, so there is nothing to reset) and behaves identically otherwise. Applies to every span — decorator, manual, or library-created — with no consumer code change.
+- **OTel 1.42 `LogExportResult` deprecation** — the resilient log-exporter wrapper resolved `LogExportResult` by static import; OpenTelemetry 1.42 deprecated it in favour of `LogRecordExportResult`. It is now resolved via the SDK module namespace (new name preferred, old name as fallback), preserving the `opentelemetry-sdk>=1.27` floor while silencing the deprecation on newer SDKs.
+
+### Dependencies
+
+- **Cross-language dependency refresh** — all four language packages updated to the latest versions permitted by their existing constraints. Python (`opentelemetry` 1.41.1 → 1.42.1, `structlog` 25.5 → 26.1, plus tooling); Go (`go.opentelemetry.io/otel` 1.43 → 1.44, `otel/log` 0.19 → 0.20, `grpc`/`golang.org/x/*`); Rust (`tonic`, `tower-http`, `wasm-bindgen`, `serde_json`, et al. via `cargo update`); TypeScript (within-range `npm update`).
 
 ---
 
