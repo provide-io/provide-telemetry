@@ -390,13 +390,13 @@ def test_metric_factories_default_description_and_unit(monkeypatch: pytest.Monke
     assert c.name == "ctr"
     assert g.name == "gg"
     assert h.name == "hh"
+    # The default description/unit ("" when omitted) are asserted behaviorally via
+    # the create_* calls below — not by introspecting __defaults__, which mutmut
+    # 3.6's function trampoline nulls out (it broke the baseline "collect stats").
+    # get_meter()'s name=None default is covered by test_get_meter_caches_by_name.
     mock_meter.create_counter.assert_called_once_with(name="ctr", description="", unit="")
     mock_meter.create_up_down_counter.assert_called_once_with(name="gg", description="", unit="")
     mock_meter.create_histogram.assert_called_once_with(name="hh", description="", unit="")
-    assert provider_mod.get_meter.__defaults__ == (None,)
-    assert instruments_mod.counter.__defaults__ == (None, None)
-    assert instruments_mod.gauge.__defaults__ == (None, None)
-    assert instruments_mod.histogram.__defaults__ == (None, None)
 
 
 def test_metric_exception_fallback_preserves_name() -> None:

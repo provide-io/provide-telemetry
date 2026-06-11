@@ -49,9 +49,10 @@ def test_get_tracer_with_otel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(provider_mod, "_load_otel_trace_api", lambda: mock_api)
     assert cast(Any, get_tracer("x")) == "otel-tracer"
     get_tracer()
+    # name=None resolving to "provide.telemetry" is asserted behaviorally (above);
+    # __defaults__ introspection is unreliable under mutmut 3.6's function trampoline.
     mock_api.get_tracer.assert_any_call("provide.telemetry")
     assert None not in [args[0][0] for args in mock_api.get_tracer.call_args_list]
-    assert provider_mod.get_tracer.__defaults__ == (None,)
 
 
 def test_setup_tracing_branches(monkeypatch: pytest.MonkeyPatch) -> None:
