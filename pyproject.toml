@@ -88,10 +88,7 @@ dev = [
   "hypothesis>=6.130.0",
   "mypy>=1.18.0",
   "types-PyYAML>=6.0.12",
-  # Pinned <3.6: mutmut 3.6's function trampoline clobbers __defaults__ during
-  # baseline "collect stats", breaking tests that assert factory signatures
-  # (e.g. test_metric_factories). Revisit when mutmut restores __defaults__.
-  "mutmut>=3.3.1,<3.6",
+  "mutmut>=3.3.1",
   "pip-audit>=2.7.0",
   "pip-licenses>=5.0.0",
   "playwright>=1.50.0",
@@ -245,7 +242,11 @@ max_average = "A"
 [tool.mutmut]
 paths_to_mutate = ["src/provide/telemetry/"]
 tests_dir = ["tests/"]
-do_not_mutate = []
+# context_runtime.py subclasses a concrete OTel runtime-context class, so it
+# cannot be imported or exercised without the optional otel extra (the gated
+# mutation run omits it) — same rationale as the coverage `omit` above. span.py
+# stays mutated and is covered by tests/tracing/test_span_mutants.py (non-otel).
+do_not_mutate = ["src/provide/telemetry/tracing/context_runtime.py"]
 pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
