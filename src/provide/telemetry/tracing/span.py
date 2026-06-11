@@ -73,16 +73,17 @@ def record_exception(sp: Any, exc: BaseException) -> None:
     if record is not None:
         with contextlib.suppress(Exception):
             record(exc)
-    set_status = getattr(sp, "set_status", None)
-    if set_status is not None:
-        with contextlib.suppress(Exception):
-            # Imported lazily so this module never hard-depends on OTel.
+    # The status-setting path is OTel-only: without the extra, the import below
+    # raises and is suppressed, so the gated no-otel mutation run can neither
+    # reach nor distinguish these lines. They are exercised by the otel-marked
+    # record_exception test; here they are exempt from mutation (no mutate) and
+    # coverage (no cover).
+    set_status = getattr(sp, "set_status", None)  # pragma: no mutate
+    if set_status is not None:  # pragma: no mutate
+        with contextlib.suppress(Exception):  # pragma: no mutate
             from opentelemetry.trace import Status, StatusCode
 
-            # Only reachable with the OTel SDK installed; the import above raises
-            # (and is suppressed) without it, so the gated no-otel run can't hit
-            # this line — exercised by the otel-marked record_exception test.
-            set_status(Status(StatusCode.ERROR, str(exc)[:200]))  # pragma: no cover
+            set_status(Status(StatusCode.ERROR, str(exc)[:200]))  # pragma: no cover  # pragma: no mutate
 
 
 def _set_span_attr(sp: Any, key: str, value: Any) -> None:
