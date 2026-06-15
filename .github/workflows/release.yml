@@ -25,8 +25,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
         with:
           python-version: "3.11"
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
@@ -78,7 +78,7 @@ jobs:
     needs: publish-testpypi
     runs-on: ubuntu-24.04
     steps:
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
         with:
           python-version: "3.11"
           enable-cache: false
@@ -133,7 +133,7 @@ jobs:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           # Kept in sync with publish-npm which needs Node 24 for npm 11+
@@ -163,7 +163,7 @@ jobs:
       run:
         working-directory: rust
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
       # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
         with:
@@ -235,7 +235,7 @@ jobs:
       run:
         working-directory: rust
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
       # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
         with:
@@ -274,7 +274,7 @@ jobs:
         with:
           name: rust-package
           path: rust-dist
-      - uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc  # v3.3.0
+      - uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1  # v3.4.0
         with:
           inputs: dist/*.whl dist/*.tar.gz
       - name: Upload artifacts and signatures to release
@@ -304,7 +304,7 @@ jobs:
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
           go-version: "1.26"
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
       - name: Verify module fetchable directly as a consumer
         run: ./ci/verify-go-consumer-module.sh "${GITHUB_REF_NAME}"
 
@@ -318,7 +318,7 @@ jobs:
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
           go-version: "1.26"
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v4
       - name: Parse tag into module and version
         id: tag
         run: |
