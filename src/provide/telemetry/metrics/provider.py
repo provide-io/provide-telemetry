@@ -13,6 +13,7 @@ from typing import Any
 
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.resilience import run_with_resilience
 from provide.telemetry.resilient_exporter import wrap_exporter
@@ -128,7 +129,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
         # Wrap so every export() call applies retry/timeout/circuit-breaker policy.
         readers.append(reader_cls(wrap_exporter("metrics", raw_exporter)))
 
-    resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
+    resource = build_resource(config, resource_cls)
     provider = provider_cls(resource=resource, metric_readers=readers)
 
     with _meter_lock:
