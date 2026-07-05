@@ -25,6 +25,8 @@ import {
 } from '../src/index';
 import { _resetSamplingForTests } from '../src/sampling';
 import { shortHash12 } from '../src/hash';
+import { DEFAULTS, type TelemetryConfig } from '../src/config';
+import { explicitResourceAttrs } from '../src/otel-resource';
 
 // ── Sampling ────────────────────────────────────────────────────────────────
 
@@ -335,4 +337,28 @@ describe('parity: cardinality_saturation', () => {
     expect(observed).toEqual(['/a', '/b', '/c', OVERFLOW_VALUE]);
     expect(OVERFLOW_VALUE).toBe('__overflow__');
   });
+});
+
+// ── Resource precedence ───────────────────────────────────────────────────────
+// Shared "explicit = differs from framework default" gate. End-to-end env-layer
+// precedence (framework default < OTEL_* env < explicit config) is covered by
+// tests/otel-resource.test.ts.
+describe('parity: resource_precedence', () => {
+  const cfg = (o: Partial<TelemetryConfig>): TelemetryConfig => ({ ...DEFAULTS, ...o });
+  const cases: Array<{ desc: string; config: Partial<TelemetryConfig>; keys: string[] }> = [
+    { desc: 'all defaults → none', config: {}, keys: [] },
+    { desc: 'explicit service name', config: { serviceName: 'checkout' }, keys: ['service.name'] },
+    { desc: 'explicit environment', config: { environment: 'prod' }, keys: ['deployment.environment'] },
+    { desc: 'explicit version', config: { version: '1.2.3' }, keys: ['service.version'] },
+    {
+      desc: 'all three explicit',
+      config: { serviceName: 'checkout', environment: 'prod', version: '1.2.3' },
+      keys: ['service.name', 'deployment.environment', 'service.version'],
+    },
+  ];
+  for (const c of cases) {
+    it(c.desc, () => {
+      expect(new Set(Object.keys(explicitResourceAttrs(cfg(c.config))))).toEqual(new Set(c.keys));
+    });
+  }
 });

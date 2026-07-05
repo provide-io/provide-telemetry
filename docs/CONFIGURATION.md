@@ -153,6 +153,47 @@ These are not parsed by `TelemetryConfig.from_env()` but are used by the example
 | `OPENOBSERVE_PASSWORD` | str | — | OpenObserve basic auth password |
 | `OPENOBSERVE_REQUIRED_SIGNALS` | str | `logs` | Comma-separated signals to verify in E2E tests |
 
+## Resource Attributes
+
+Every emitted trace, metric, and log carries an OTel **Resource** identifying the
+service. Three identity attributes are populated from configuration:
+
+| Resource attribute        | Config field / env var                          | Default           |
+|---------------------------|-------------------------------------------------|-------------------|
+| `service.name`            | `PROVIDE_TELEMETRY_SERVICE_NAME`                | `provide-service` |
+| `deployment.environment`¹ | `PROVIDE_TELEMETRY_ENV`                          | `dev`             |
+| `service.version`         | `PROVIDE_TELEMETRY_VERSION`                      | `0.0.0`           |
+
+The standard OTel resource env vars — `OTEL_SERVICE_NAME` and
+`OTEL_RESOURCE_ATTRIBUTES` (e.g. `host.name=web-1,service.instance.id=abc,k8s.pod.name=…`) —
+are also honored, so deployment/ops can attach attributes without a custom
+provider.
+
+### Precedence
+
+Identity attributes resolve on a single ladder, lowest to highest:
+
+```
+framework default  <  OTEL_* env  <  explicit config
+```
+
+- **Explicit config wins.** An identity attribute is treated as *explicitly set*
+  only when its configured value differs from the framework default. Such a value
+  overrides any `OTEL_*` env value, so an app that names itself `checkout` is
+  never silently renamed by an ambient `OTEL_RESOURCE_ATTRIBUTES` injected by a
+  platform.
+- **Env fills the unset.** If an identity attribute is left at its default,
+  `OTEL_SERVICE_NAME` / `OTEL_RESOURCE_ATTRIBUTES` fills it.
+- **Additive env keys always merge.** Non-identity keys (`host.name`,
+  `service.instance.id`, `k8s.*`, …) are always attached.
+
+This ladder is identical across Python, TypeScript, Go, and Rust; the shared
+`resource_precedence` contract in `spec/behavioral_fixtures.yaml` pins the
+"explicit = differs from default" gate that every implementation applies.
+
+¹ Rust currently emits `deployment.environment.name` (newer semconv spelling)
+rather than `deployment.environment`; the precedence behavior is identical.
+
 ## Parsing Notes
 
 ### Boolean Parsing
