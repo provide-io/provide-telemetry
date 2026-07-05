@@ -16,6 +16,13 @@
 OPENOBSERVE_USER="${OPENOBSERVE_USER:-admin@provide.test}"
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-Complexpass#123}"
 OPENOBSERVE_URL="${OPENOBSERVE_URL:-http://localhost:5080/api/default}"
+# Data is kept in a named Docker volume (not a host bind mount). A host bind mount
+# of "${PWD}/.openobserve-data" fails on Docker Desktop for macOS with
+# "error while creating mount source path ... mkdir <repo>: file exists" — a
+# virtiofs/gRPC-FUSE quirk that leaves the container stuck in "Created". A named
+# volume sidesteps host file-sharing entirely and persists across restarts.
+# Wipe it with: docker volume rm "${OPENOBSERVE_VOLUME:-openobserve-dev-data}"
+OPENOBSERVE_VOLUME="${OPENOBSERVE_VOLUME:-openobserve-dev-data}"
 
 # Stop any container currently bound to port 5080.
 EXISTING=$(docker ps -q --filter "publish=5080")
@@ -30,14 +37,32 @@ fi
 
 docker run --detach \
   --name openobserve-dev \
-  -v "${PWD}/.openobserve-data:/data" \
+  -v "${OPENOBSERVE_VOLUME}:/data" \
   -e ZO_DATA_DIR="/data" \
   -p 5080:5080 \
   -e ZO_ROOT_USER_EMAIL="${OPENOBSERVE_USER}" \
   -e ZO_ROOT_USER_PASSWORD="${OPENOBSERVE_PASSWORD}" \
-  openobserve/openobserve:v0.14.5
+  openobserve/openobserve:v0.91.1 || exit 1
 
-printf '\nOpenObserve starting → http://localhost:5080\n'
+# Wait until the HTTP server actually answers, so callers know it's ready (not
+# just "Created"). OpenObserve boots in ~2-5s; give it up to ~30s.
+printf '\nWaiting for OpenObserve to become ready'
+i=0
+while [ "${i}" -lt 30 ]; do
+  if curl -fsS -o /dev/null "http://localhost:5080/healthz" 2>/dev/null; then
+    printf ' ready\n'
+    break
+  fi
+  printf '.'
+  sleep 1
+  i=$((i + 1))
+done
+if [ "${i}" -ge 30 ]; then
+  printf '\nOpenObserve did not answer /healthz within 30s; check: docker logs openobserve-dev\n'
+  exit 1
+fi
+
+printf '\nOpenObserve running → http://localhost:5080\n'
 printf '  User:     %s\n' "${OPENOBSERVE_USER}"
 printf '  Password: %s\n' "${OPENOBSERVE_PASSWORD}"
 printf '  API URL:  %s\n\n' "${OPENOBSERVE_URL}"

@@ -13,7 +13,7 @@ inputs:
   image:
     description: OpenObserve Docker image
     required: false
-    default: openobserve/openobserve:v0.14.5
+    default: openobserve/openobserve:v0.91.1
   port:
     description: Host port to bind OpenObserve to
     required: false
