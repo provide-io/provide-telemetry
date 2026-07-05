@@ -41,8 +41,13 @@ _ALL_IDENTITY_KEYS = set(_RESOURCE["keys"].values())
     ids=[c["description"] for c in _RESOURCE["cases"]],
 )
 def test_parity_resource_precedence_explicit_keys(case: dict[str, object]) -> None:
-    config_fields = cast("dict[str, str]", case["config"])
-    config = TelemetryConfig(**config_fields)  # type: ignore[arg-type]
+    fields = cast("dict[str, str]", case["config"])
+    # Construct explicitly (not **fields) so both mypy and ty accept the types.
+    config = TelemetryConfig(
+        service_name=fields["service_name"],
+        environment=fields["environment"],
+        version=fields["version"],
+    )
     explicit = _resolve_resource_attrs(config, _ALL_IDENTITY_KEYS)
     expected = cast("list[str]", case["expected_explicit_keys"])
     assert set(explicit) == set(expected)

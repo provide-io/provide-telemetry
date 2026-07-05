@@ -13,6 +13,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from provide.telemetry._resource import (
     _env_identity_keys,
     _resolve_resource_attrs,
@@ -21,8 +23,13 @@ from provide.telemetry._resource import (
 from provide.telemetry.config import TelemetryConfig
 
 
-def _cfg(**overrides: str) -> TelemetryConfig:
-    return TelemetryConfig(**overrides)  # type: ignore[arg-type]
+def _cfg(
+    service_name: str = "provide-service",
+    environment: str = "dev",
+    version: str = "0.0.0",
+) -> TelemetryConfig:
+    # Explicit params (not **overrides) so both mypy and ty accept the types.
+    return TelemetryConfig(service_name=service_name, environment=environment, version=version)
 
 
 class TestEnvIdentityKeys:
@@ -110,10 +117,10 @@ class TestBuildResource:
         # service.name left to the SDK's env detector; floor fills the rest.
         resource_cls.create.assert_called_once_with({"deployment.environment": "dev", "service.version": "0.0.0"})
 
-    def test_defaults_to_process_environment(self, monkeypatch: object) -> None:
+    def test_defaults_to_process_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # environ=None reads os.environ; clear the OTEL_* vars for determinism.
         for var in ("OTEL_SERVICE_NAME", "OTEL_RESOURCE_ATTRIBUTES"):
-            monkeypatch.delenv(var, raising=False)  # type: ignore[attr-defined]
+            monkeypatch.delenv(var, raising=False)
         resource_cls = SimpleNamespace(create=Mock(return_value="RES"))
         build_resource(_cfg(), resource_cls)
         resource_cls.create.assert_called_once_with(
