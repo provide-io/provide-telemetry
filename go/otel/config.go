@@ -86,12 +86,36 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 }
 
 func _buildResource(cfg *telemetry.TelemetryConfig) *sdkresource.Resource {
-	return sdkresource.NewWithAttributes(
+	base := sdkresource.NewWithAttributes(
 		"https://opentelemetry.io/schemas/1.26.0",
 		attribute.String("service.name", cfg.ServiceName),
 		attribute.String("service.version", cfg.Version),
 		attribute.String("deployment.environment", cfg.Environment),
 	)
+	// Honor the OTel-standard OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME so
+	// callers can attach host.name, service.instance.id, k8s.*, etc. without a
+	// per-consumer custom TracerProvider. Env attributes win on key conflict
+	// (standard OTel Merge semantics: the second resource takes precedence).
+	//
+	// A malformed OTEL_RESOURCE_ATTRIBUTES yields a partial resource plus an
+	// error; the error is intentionally ignored so the well-formed entries are
+	// still applied (best-effort). resource.New never returns a nil resource,
+	// and _mergeResources preserves the base identity on any merge failure, so
+	// a bad env value can never drop service.name/version/environment.
+	envRes, _ := sdkresource.New(context.Background(), sdkresource.WithFromEnv())
+	return _mergeResources(base, envRes)
+}
+
+// _mergeResources merges the env-detected resource onto base, with env winning
+// on key conflict. If the two carry conflicting non-empty schema URLs (the only
+// case resource.Merge reports an error for), base is returned unchanged rather
+// than a schemaless blend, keeping the pinned schema URL and service identity.
+func _mergeResources(base, envRes *sdkresource.Resource) *sdkresource.Resource {
+	merged, err := sdkresource.Merge(base, envRes)
+	if err != nil {
+		return base
+	}
+	return merged
 }
 
 func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.TracerProvider, error) {

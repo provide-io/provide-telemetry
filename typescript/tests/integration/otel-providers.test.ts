@@ -25,7 +25,9 @@ vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
   OTLPTraceExporter: vi.fn(),
 }));
 vi.mock('@opentelemetry/resources', () => ({
-  resourceFromAttributes: vi.fn().mockReturnValue({}),
+  resourceFromAttributes: vi.fn().mockReturnValue({ merge: vi.fn().mockReturnValue({}) }),
+  detectResources: vi.fn().mockReturnValue({}),
+  envDetector: {},
 }));
 vi.mock('@opentelemetry/sdk-metrics', () => ({
   MeterProvider: vi.fn(),
@@ -116,6 +118,12 @@ describe('registerOtelProviders', () => {
       return {};
     } as never);
     vi.mocked(logs.getLogger).mockReturnValue({ emit: vi.fn() } as never);
+    // buildOtelResource() merges the config resource with the env-detected one;
+    // reset the return here so a per-test override cannot leak a resource stub
+    // that lacks .merge into a later test (clearAllMocks clears calls, not returns).
+    vi.mocked(resourceFromAttributes).mockReturnValue({
+      merge: vi.fn().mockReturnValue({}),
+    } as never);
   });
 
   afterEach(() => {
@@ -370,7 +378,12 @@ describe('registerOtelProviders', () => {
   });
 
   it('passes service resource attributes to the metrics provider', async () => {
-    vi.mocked(resourceFromAttributes).mockReturnValue({ resource: 'metrics' } as never);
+    // The provider receives the merged resource (config ⊕ env), so stub .merge
+    // to return a sentinel and assert that sentinel reaches MeterProvider.
+    const mergedResource = { resource: 'metrics' };
+    vi.mocked(resourceFromAttributes).mockReturnValue({
+      merge: vi.fn().mockReturnValue(mergedResource),
+    } as never);
     setupTelemetry({
       serviceName: 'metrics-svc',
       environment: 'prod',

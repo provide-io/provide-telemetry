@@ -43,6 +43,7 @@
 
 import type { TelemetryConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
+import { buildOtelResource } from './otel-resource';
 import { setupOtelLogProvider } from './otel-logs';
 import { wrapResilientExporter } from './resilient-exporter';
 
@@ -124,7 +125,6 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
 
       const { BasicTracerProvider, BatchSpanProcessor } = traceBase;
       const { OTLPTraceExporter } = otlpTrace;
-      const { resourceFromAttributes } = res;
 
       if (tracesEndpoint) {
         validateOtlpEndpoint(tracesEndpoint);
@@ -138,11 +138,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
         const provider = new BasicTracerProvider({
-          resource: resourceFromAttributes({
-            'service.name': cfg.serviceName,
-            'deployment.environment': cfg.environment,
-            'service.version': cfg.version,
-          }),
+          resource: buildOtelResource(res, cfg),
           spanProcessors: [new BatchSpanProcessor(traceExporter)],
         });
         trace.setGlobalTracerProvider(provider);
@@ -166,7 +162,6 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const { metrics } = await import('@opentelemetry/api');
       const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
       const { OTLPMetricExporter } = otlpMetrics;
-      const { resourceFromAttributes } = res;
 
       if (metricsEndpoint) {
         validateOtlpEndpoint(metricsEndpoint);
@@ -180,11 +175,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
 
         const meterProvider = new MeterProvider({
-          resource: resourceFromAttributes({
-            'service.name': cfg.serviceName,
-            'deployment.environment': cfg.environment,
-            'service.version': cfg.version,
-          }),
+          resource: buildOtelResource(res, cfg),
           readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
         });
         metrics.setGlobalMeterProvider(meterProvider);

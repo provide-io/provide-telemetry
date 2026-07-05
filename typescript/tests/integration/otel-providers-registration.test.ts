@@ -12,7 +12,9 @@ vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
   OTLPTraceExporter: vi.fn(),
 }));
 vi.mock('@opentelemetry/resources', () => ({
-  resourceFromAttributes: vi.fn().mockReturnValue({}),
+  resourceFromAttributes: vi.fn().mockReturnValue({ merge: vi.fn().mockReturnValue({}) }),
+  detectResources: vi.fn().mockReturnValue({}),
+  envDetector: {},
 }));
 vi.mock('@opentelemetry/sdk-metrics', () => ({
   MeterProvider: vi.fn(),
