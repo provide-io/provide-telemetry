@@ -117,7 +117,9 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(resilient_exporter_mod, "wrap_exporter", lambda _sig, inner: inner)
     cfg = TelemetryConfig.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://trace"})
     provider_mod.setup_tracing(cfg)
-    resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
+    resource_cls.create.assert_called_once_with(
+        {"service.name": "provide-service", "deployment.environment": "dev", "service.version": "0.0.0"}
+    )
     provider_cls.assert_called_once_with(resource="res")
     exporter_cls.assert_called_once_with(endpoint="http://trace/v1/traces", headers={}, timeout=10.0)
     processor_cls.assert_called_once_with("exporter")
@@ -144,7 +146,9 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
     )
     cfg = TelemetryConfig.from_env({})
     provider_mod.setup_tracing(cfg)
-    resource_cls.create.assert_called_once_with({"service.name": "provide-service", "service.version": "0.0.0"})
+    resource_cls.create.assert_called_once_with(
+        {"service.name": "provide-service", "deployment.environment": "dev", "service.version": "0.0.0"}
+    )
     provider_cls.assert_called_once_with(resource="res")
     mock_otel.set_tracer_provider.assert_called_once_with(provider)
     provider.add_span_processor.assert_not_called()
