@@ -13,6 +13,7 @@ checks. End-to-end env-layer precedence is covered by tests/test_resource.py.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -33,6 +34,8 @@ _ALL_IDENTITY_KEYS = set(_RESOURCE["keys"].values())
     ids=[c["description"] for c in _RESOURCE["cases"]],
 )
 def test_parity_resource_precedence_explicit_keys(case: dict[str, object]) -> None:
-    config = TelemetryConfig(**case["config"])  # type: ignore[arg-type]
+    config_fields = cast("dict[str, str]", case["config"])
+    config = TelemetryConfig(**config_fields)  # type: ignore[arg-type]
     explicit = _resolve_resource_attrs(config, _ALL_IDENTITY_KEYS)
-    assert set(explicit) == set(case["expected_explicit_keys"])  # type: ignore[arg-type]
+    expected = cast("list[str]", case["expected_explicit_keys"])
+    assert set(explicit) == set(expected)

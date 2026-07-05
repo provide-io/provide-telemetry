@@ -47,7 +47,10 @@ runs:
         OO_USER="${{ inputs.user }}"
         OO_PASS="${{ inputs.password }}"
         if [ -z "${OO_PASS}" ]; then
-          OO_PASS="$(openssl rand -hex 16)"
+          # OpenObserve >= v0.91 enforces password complexity (>=8 chars with a
+          # lowercase, uppercase, digit, and special char). openssl rand -hex is
+          # lowercase+digits only, so append a fixed complexity suffix.
+          OO_PASS="$(openssl rand -hex 16)Aa1#"
         fi
         echo "user=${OO_USER}" >> "$GITHUB_OUTPUT"
         echo "password=${OO_PASS}" >> "$GITHUB_OUTPUT"
