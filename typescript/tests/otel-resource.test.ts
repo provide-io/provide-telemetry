@@ -74,7 +74,9 @@ describe('explicitResourceAttrs', () => {
 
   it('includes every explicitly-set key together', () => {
     expect(
-      explicitResourceAttrs(config({ serviceName: 'checkout', environment: 'prod', version: '1.2.3' })),
+      explicitResourceAttrs(
+        config({ serviceName: 'checkout', environment: 'prod', version: '1.2.3' }),
+      ),
     ).toEqual({
       'service.name': 'checkout',
       'deployment.environment': 'prod',
@@ -100,7 +102,9 @@ describe('buildOtelResource precedence', () => {
 
   it('lets explicit config override OTEL_SERVICE_NAME (explicit > env)', async () => {
     process.env[SERVICE_NAME_ENV] = 'env-service';
-    const attrs = await attributesOf(buildOtelResource(res, config({ serviceName: 'app-service' })));
+    const attrs = await attributesOf(
+      buildOtelResource(res, config({ serviceName: 'app-service' })),
+    );
     // Explicit identity is never hijacked by ambient env.
     expect(attrs['service.name']).toBe('app-service');
   });

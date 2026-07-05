@@ -348,7 +348,11 @@ describe('parity: resource_precedence', () => {
   const cases: Array<{ desc: string; config: Partial<TelemetryConfig>; keys: string[] }> = [
     { desc: 'all defaults → none', config: {}, keys: [] },
     { desc: 'explicit service name', config: { serviceName: 'checkout' }, keys: ['service.name'] },
-    { desc: 'explicit environment', config: { environment: 'prod' }, keys: ['deployment.environment'] },
+    {
+      desc: 'explicit environment',
+      config: { environment: 'prod' },
+      keys: ['deployment.environment'],
+    },
     { desc: 'explicit version', config: { version: '1.2.3' }, keys: ['service.version'] },
     {
       desc: 'all three explicit',
