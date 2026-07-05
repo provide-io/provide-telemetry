@@ -85,25 +85,53 @@ func _validatedSignalEndpointURL(endpoint, signalPath string) (string, error) {
 	return signalURL, nil
 }
 
+// _resourceSchemaURL is the OTel schema URL stamped on the floor and explicit
+// resource layers. The env layer carries the empty schema URL, so no layer ever
+// triggers a schema-conflict in resource.Merge.
+const _resourceSchemaURL = "https://opentelemetry.io/schemas/1.26.0"
+
+// _explicitResourceAttrs returns the identity attributes the caller explicitly
+// set — those whose config value differs from the framework default. They form
+// the top precedence layer (winning over env); keys left at the default are
+// omitted so an OTEL_* env value can still fill them.
+func _explicitResourceAttrs(cfg *telemetry.TelemetryConfig) []attribute.KeyValue {
+	dflt := telemetry.DefaultTelemetryConfig()
+	attrs := make([]attribute.KeyValue, 0, 3)
+	if cfg.ServiceName != dflt.ServiceName {
+		attrs = append(attrs, attribute.String("service.name", cfg.ServiceName))
+	}
+	if cfg.Environment != dflt.Environment {
+		attrs = append(attrs, attribute.String("deployment.environment", cfg.Environment))
+	}
+	if cfg.Version != dflt.Version {
+		attrs = append(attrs, attribute.String("service.version", cfg.Version))
+	}
+	return attrs
+}
+
+// _buildResource layers the resource as: framework floor < OTEL_* env < explicit
+// config. This honors OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME (callers can
+// attach host.name, service.instance.id, k8s.*, etc. without a custom provider)
+// while an explicitly named service is never hijacked by ambient env, and an
+// unset service name is still filled by OTEL_SERVICE_NAME.
+//
+// A malformed OTEL_RESOURCE_ATTRIBUTES yields a partial resource plus an error;
+// the error is intentionally ignored so the well-formed entries are still
+// applied (best-effort). resource.New never returns a nil resource, and
+// _mergeResources preserves the earlier layer on any merge failure.
 func _buildResource(cfg *telemetry.TelemetryConfig) *sdkresource.Resource {
-	base := sdkresource.NewWithAttributes(
-		"https://opentelemetry.io/schemas/1.26.0",
-		attribute.String("service.name", cfg.ServiceName),
-		attribute.String("service.version", cfg.Version),
-		attribute.String("deployment.environment", cfg.Environment),
+	dflt := telemetry.DefaultTelemetryConfig()
+	floor := sdkresource.NewWithAttributes(
+		_resourceSchemaURL,
+		attribute.String("service.name", dflt.ServiceName),
+		attribute.String("deployment.environment", dflt.Environment),
+		attribute.String("service.version", dflt.Version),
 	)
-	// Honor the OTel-standard OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME so
-	// callers can attach host.name, service.instance.id, k8s.*, etc. without a
-	// per-consumer custom TracerProvider. Env attributes win on key conflict
-	// (standard OTel Merge semantics: the second resource takes precedence).
-	//
-	// A malformed OTEL_RESOURCE_ATTRIBUTES yields a partial resource plus an
-	// error; the error is intentionally ignored so the well-formed entries are
-	// still applied (best-effort). resource.New never returns a nil resource,
-	// and _mergeResources preserves the base identity on any merge failure, so
-	// a bad env value can never drop service.name/version/environment.
 	envRes, _ := sdkresource.New(context.Background(), sdkresource.WithFromEnv())
-	return _mergeResources(base, envRes)
+	explicit := sdkresource.NewWithAttributes(_resourceSchemaURL, _explicitResourceAttrs(cfg)...)
+	// Each _mergeResources call lets the second (argument) resource win, so the
+	// order floor → env → explicit yields ascending precedence.
+	return _mergeResources(_mergeResources(floor, envRes), explicit)
 }
 
 // _mergeResources merges the env-detected resource onto base, with env winning

@@ -11,11 +11,17 @@ vi.mock('@opentelemetry/sdk-trace-base', () => ({
 vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
   OTLPTraceExporter: vi.fn(),
 }));
-vi.mock('@opentelemetry/resources', () => ({
-  resourceFromAttributes: vi.fn().mockReturnValue({ merge: vi.fn().mockReturnValue({}) }),
-  detectResources: vi.fn().mockReturnValue({}),
-  envDetector: {},
-}));
+vi.mock('@opentelemetry/resources', () => {
+  // buildOtelResource chains floor.merge(env).merge(explicit), so every stub
+  // resource must itself be mergeable — return a self-referential stub.
+  const resourceStub: { merge: ReturnType<typeof vi.fn> } = { merge: vi.fn() };
+  resourceStub.merge.mockReturnValue(resourceStub);
+  return {
+    resourceFromAttributes: vi.fn().mockReturnValue(resourceStub),
+    detectResources: vi.fn().mockReturnValue(resourceStub),
+    envDetector: {},
+  };
+});
 vi.mock('@opentelemetry/sdk-metrics', () => ({
   MeterProvider: vi.fn(),
   PeriodicExportingMetricReader: vi.fn(),
