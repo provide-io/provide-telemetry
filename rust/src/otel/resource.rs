@@ -8,10 +8,6 @@
 //! `Resource` is attached to every exporter (traces, metrics, logs) so
 //! each emitted record carries the same service identity.
 
-// Dead-code allowance is lifted once the traces/metrics/logs submodules
-// start calling build_resource in a later checkpoint.
-#![allow(dead_code)]
-
 use std::collections::HashSet;
 
 use opentelemetry::KeyValue;
@@ -33,10 +29,11 @@ use crate::config::TelemetryConfig;
 /// detectors (env, telemetry-sdk, process); `with_attribute` overlays win over
 /// them, so we overlay the explicit config and — only for keys the env layer
 /// does not provide — the framework floor. Matches Go, TypeScript, and Python.
-// `deployment.environment.name` is in the OTel spec but still gated behind
-// the `semconv_experimental` feature in the Rust semantic-conventions crate,
-// so we hand-spell it rather than pulling in the experimental constants.
-const DEPLOYMENT_ENVIRONMENT_NAME: &str = "deployment.environment.name";
+// `deployment.environment` (not the newer, experimental
+// `deployment.environment.name`) is used for cross-language consistency: Go,
+// Python, and TypeScript all emit `deployment.environment`, and querying one key
+// across every language matters more than tracking the latest semconv rename.
+const DEPLOYMENT_ENVIRONMENT: &str = "deployment.environment";
 
 /// Identity keys the OTEL_* env vars supply, parsed from raw values so the
 /// membership check needs no separate resource detection pass.
@@ -79,7 +76,7 @@ pub(crate) fn build_resource(cfg: &TelemetryConfig) -> Resource {
         (sc::SERVICE_NAME, &cfg.service_name, &defaults.service_name),
         (sc::SERVICE_VERSION, &cfg.version, &defaults.version),
         (
-            DEPLOYMENT_ENVIRONMENT_NAME,
+            DEPLOYMENT_ENVIRONMENT,
             &cfg.environment,
             &defaults.environment,
         ),
@@ -127,9 +124,9 @@ mod tests {
             "service.version must come from config"
         );
         assert_eq!(
-            attr_value(&r, DEPLOYMENT_ENVIRONMENT_NAME),
+            attr_value(&r, DEPLOYMENT_ENVIRONMENT),
             Some("staging".to_string()),
-            "deployment.environment.name must come from config"
+            "deployment.environment must come from config"
         );
     }
 
@@ -154,7 +151,7 @@ mod tests {
         );
         assert_eq!(attr_value(&r, sc::SERVICE_VERSION), Some(defaults.version));
         assert_eq!(
-            attr_value(&r, DEPLOYMENT_ENVIRONMENT_NAME),
+            attr_value(&r, DEPLOYMENT_ENVIRONMENT),
             Some(defaults.environment),
         );
     }

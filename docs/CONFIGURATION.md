@@ -161,7 +161,7 @@ service. Three identity attributes are populated from configuration:
 | Resource attribute        | Config field / env var                          | Default           |
 |---------------------------|-------------------------------------------------|-------------------|
 | `service.name`            | `PROVIDE_TELEMETRY_SERVICE_NAME`                | `provide-service` |
-| `deployment.environment`¹ | `PROVIDE_TELEMETRY_ENV`                          | `dev`             |
+| `deployment.environment`  | `PROVIDE_TELEMETRY_ENV`                          | `dev`             |
 | `service.version`         | `PROVIDE_TELEMETRY_VERSION`                      | `0.0.0`           |
 
 The standard OTel resource env vars — `OTEL_SERVICE_NAME` and
@@ -187,12 +187,10 @@ framework default  <  OTEL_* env  <  explicit config
 - **Additive env keys always merge.** Non-identity keys (`host.name`,
   `service.instance.id`, `k8s.*`, …) are always attached.
 
-This ladder is identical across Python, TypeScript, Go, and Rust; the shared
-`resource_precedence` contract in `spec/behavioral_fixtures.yaml` pins the
-"explicit = differs from default" gate that every implementation applies.
-
-¹ Rust currently emits `deployment.environment.name` (newer semconv spelling)
-rather than `deployment.environment`; the precedence behavior is identical.
+This ladder is identical across Python, TypeScript, Go, and Rust — all four emit
+the same attribute keys — and the shared `resource_precedence` contract in
+`spec/behavioral_fixtures.yaml` pins the "explicit = differs from default" gate
+that every implementation applies.
 
 ## Parsing Notes
 
