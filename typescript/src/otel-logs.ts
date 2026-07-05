@@ -42,6 +42,7 @@
 import type { TelemetryConfig } from './config';
 import { getConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
+import { buildOtelResource } from './otel-resource';
 import { wrapResilientExporter } from './resilient-exporter';
 import type { ShutdownableProvider } from './runtime';
 
@@ -104,7 +105,6 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const { LoggerProvider, BatchLogRecordProcessor } = sdkLogs;
   const { OTLPLogExporter } = otlpLogs;
   const { logs } = apiLogs;
-  const { resourceFromAttributes } = res;
 
   const logsEndpoint =
     normalizeEndpoint(cfg.otlpLogsEndpoint) ?? appendSignalPath(endpoint, '/v1/logs');
@@ -122,11 +122,7 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   const logExporter = wrapResilientExporter('logs', rawLogExporter);
   const processor = new BatchLogRecordProcessor(logExporter);
   const provider = new LoggerProvider({
-    resource: resourceFromAttributes({
-      'service.name': cfg.serviceName,
-      'deployment.environment': cfg.environment,
-      'service.version': cfg.version,
-    }),
+    resource: buildOtelResource(res, cfg),
     processors: [processor],
   });
 
