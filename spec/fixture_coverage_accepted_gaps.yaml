@@ -38,11 +38,14 @@ accepted_gaps:
   - lang: rust
     category: resource_precedence
     reason: >
-      build_resource is pub(crate) and behind #![allow(dead_code)] until the Rust
-      exporters are wired to it, so it is unreachable from the external parity
-      corpus (rust/tests/parity_*.rs). The gate is verified by in-crate unit
-      tests in rust/src/otel/resource.rs (env_identity_keys_from,
-      resource_falls_back_to_framework_floor_when_unset). Close this gap when the
-      Rust exporters attach build_resource.
+      build_resource is wired into the Rust providers (setup_otel attaches it to
+      the trace/metric/log exporters) but is intentionally pub(crate) internal
+      API, so it is unreachable from the external parity corpus
+      (rust/tests/parity_*.rs), which sees only the crate's public surface —
+      the same visibility isolation as the Go gap above. The "explicit = differs
+      from default" gate is verified in-crate by rust/src/otel/resource.rs
+      (env_identity_keys_from, resource_falls_back_to_framework_floor_when_unset,
+      resource_carries_service_identity_from_config). Exposing the builder as
+      public API solely to satisfy the corpus check is not worth the surface.
     owner: tim
     expires_on: 2026-12-31
