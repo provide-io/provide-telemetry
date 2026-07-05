@@ -21,7 +21,14 @@ import yaml
 from provide.telemetry._resource import _resolve_resource_attrs
 from provide.telemetry.config import TelemetryConfig
 
-_FIXTURES = yaml.safe_load((Path(__file__).resolve().parents[2] / "spec" / "behavioral_fixtures.yaml").read_text())
+# The mutmut mutation gate runs tests from a `mutants/` sandbox that copies only
+# src + tests, not spec/, so skip the whole module when the fixture is absent
+# (the _resource mutants are killed by tests/test_resource.py regardless).
+_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "spec" / "behavioral_fixtures.yaml"
+if not _FIXTURE_PATH.exists():
+    pytest.skip("behavioral_fixtures.yaml not available (mutmut sandbox)", allow_module_level=True)
+
+_FIXTURES = yaml.safe_load(_FIXTURE_PATH.read_text())
 _RESOURCE = _FIXTURES["resource_precedence"]
 # Passing every identity key as "env-provided" suppresses the floor layer, so
 # _resolve_resource_attrs returns exactly the explicit (non-default) attributes.
