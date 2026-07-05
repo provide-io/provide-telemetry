@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+
+"""Cross-language parity for the ``resource_precedence`` fixture.
+
+Validates the shared "explicit = differs from framework default" gate that every
+language's resource builder applies. Go, TypeScript, and Rust have equivalent
+checks. End-to-end env-layer precedence is covered by tests/test_resource.py.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+from provide.telemetry._resource import _resolve_resource_attrs
+from provide.telemetry.config import TelemetryConfig
+
+_FIXTURES = yaml.safe_load((Path(__file__).resolve().parents[2] / "spec" / "behavioral_fixtures.yaml").read_text())
+_RESOURCE = _FIXTURES["resource_precedence"]
+# Passing every identity key as "env-provided" suppresses the floor layer, so
+# _resolve_resource_attrs returns exactly the explicit (non-default) attributes.
+_ALL_IDENTITY_KEYS = set(_RESOURCE["keys"].values())
+
+
+@pytest.mark.parametrize(
+    "case",
+    _RESOURCE["cases"],
+    ids=[c["description"] for c in _RESOURCE["cases"]],
+)
+def test_parity_resource_precedence_explicit_keys(case: dict[str, object]) -> None:
+    config = TelemetryConfig(**case["config"])  # type: ignore[arg-type]
+    explicit = _resolve_resource_attrs(config, _ALL_IDENTITY_KEYS)
+    assert set(explicit) == set(case["expected_explicit_keys"])  # type: ignore[arg-type]

@@ -556,3 +556,42 @@ cardinality_saturation:
   ttl_seconds: 300.0
   values: ["/a", "/b", "/c", "/d"]
   expected: ["/a", "/b", "/c", "__overflow__"]
+
+resource_precedence:
+  description: >
+    OTel Resource identity attributes follow the precedence ladder
+    "framework default < OTEL_* env < explicit config". The framework defaults
+    are service.name=provide-service, deployment.environment=dev,
+    service.version=0.0.0. An identity attribute is "explicit" (and joins the
+    top precedence layer, overriding any OTEL_* env value) only when its config
+    value differs from the framework default; a value left at the default is
+    omitted so OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES can fill it. This
+    fixture pins the shared "explicit = differs from default" gate that every
+    language's resource builder applies (Go _explicitResourceAttrs, TS
+    explicitResourceAttrs, Python explicit_resource_attrs, Rust build_resource).
+    End-to-end env-layer precedence is verified by each language's own resource
+    tests.
+  default_service_name: "provide-service"
+  default_environment: "dev"
+  default_version: "0.0.0"
+  # resource attribute keys, by config field
+  keys:
+    service_name: "service.name"
+    environment: "deployment.environment"
+    version: "service.version"
+  cases:
+    - description: "all defaults → no explicit identity attributes"
+      config: {service_name: "provide-service", environment: "dev", version: "0.0.0"}
+      expected_explicit_keys: []
+    - description: "explicit service name only"
+      config: {service_name: "checkout", environment: "dev", version: "0.0.0"}
+      expected_explicit_keys: ["service.name"]
+    - description: "explicit environment only"
+      config: {service_name: "provide-service", environment: "prod", version: "0.0.0"}
+      expected_explicit_keys: ["deployment.environment"]
+    - description: "explicit version only"
+      config: {service_name: "provide-service", environment: "dev", version: "1.2.3"}
+      expected_explicit_keys: ["service.version"]
+    - description: "all three explicit"
+      config: {service_name: "checkout", environment: "prod", version: "1.2.3"}
+      expected_explicit_keys: ["service.name", "deployment.environment", "service.version"]
