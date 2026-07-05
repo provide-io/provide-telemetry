@@ -17,47 +17,107 @@ func attrString(r *sdkresource.Resource, key string) (string, bool) {
 	return v.AsString(), ok
 }
 
-// _buildResource must honor OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES (parity
-// with Python, Rust, and the TypeScript buildOtelResource), with env attributes
-// winning on key conflict while config-only keys survive.
-func TestBuildResource_HonorsEnvAttributes(t *testing.T) {
-	t.Setenv("OTEL_SERVICE_NAME", "env-service")
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "host.name=web-1")
-
-	cfg := &telemetry.TelemetryConfig{
-		ServiceName: "cfg-service",
-		Version:     "1.2.3",
-		Environment: "prod",
-	}
-	r := _buildResource(cfg)
-
-	// Additive env-only key proves the env detector ran and merged.
-	if got, ok := attrString(r, "host.name"); !ok || got != "web-1" {
-		t.Fatalf("host.name = %q (ok=%v); want %q", got, ok, "web-1")
-	}
-	// Env wins on conflict: OTEL_SERVICE_NAME overrides the config service.name.
-	if got, _ := attrString(r, "service.name"); got != "env-service" {
-		t.Fatalf("service.name = %q; want env to win with %q", got, "env-service")
-	}
-	// Config-only keys are untouched by env.
-	if got, _ := attrString(r, "service.version"); got != "1.2.3" {
-		t.Fatalf("service.version = %q; want %q", got, "1.2.3")
-	}
-	if got, _ := attrString(r, "deployment.environment"); got != "prod" {
-		t.Fatalf("deployment.environment = %q; want %q", got, "prod")
+// defaultCfg returns a config carrying the framework defaults (nothing set).
+func defaultCfg() *telemetry.TelemetryConfig {
+	d := telemetry.DefaultTelemetryConfig()
+	return &telemetry.TelemetryConfig{
+		ServiceName: d.ServiceName,
+		Environment: d.Environment,
+		Version:     d.Version,
 	}
 }
 
-// _buildResource without any env vars keeps the pure config identity.
-func TestBuildResource_ConfigOnly(t *testing.T) {
-	cfg := &telemetry.TelemetryConfig{ServiceName: "cfg-service", Version: "9.9.9", Environment: "dev"}
+// Precedence contract: framework floor < OTEL_* env < explicit config.
+// With nothing set, all three identity keys fall back to the framework floor.
+func TestBuildResource_FloorWhenUnset(t *testing.T) {
+	d := telemetry.DefaultTelemetryConfig()
+	r := _buildResource(defaultCfg())
+
+	if got, _ := attrString(r, "service.name"); got != d.ServiceName {
+		t.Fatalf("service.name = %q; want floor %q", got, d.ServiceName)
+	}
+	if got, _ := attrString(r, "deployment.environment"); got != d.Environment {
+		t.Fatalf("deployment.environment = %q; want floor %q", got, d.Environment)
+	}
+	if got, _ := attrString(r, "service.version"); got != d.Version {
+		t.Fatalf("service.version = %q; want floor %q", got, d.Version)
+	}
+}
+
+// env > floor: OTEL_SERVICE_NAME fills a service name left at the default.
+func TestBuildResource_EnvFillsUnsetIdentity(t *testing.T) {
+	t.Setenv("OTEL_SERVICE_NAME", "env-service")
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment=env-environment")
+
+	r := _buildResource(defaultCfg())
+
+	if got, _ := attrString(r, "service.name"); got != "env-service" {
+		t.Fatalf("service.name = %q; want env to fill unset with %q", got, "env-service")
+	}
+	if got, _ := attrString(r, "deployment.environment"); got != "env-environment" {
+		t.Fatalf("deployment.environment = %q; want env to fill unset with %q", got, "env-environment")
+	}
+}
+
+// explicit > env: an explicitly named service is never hijacked by ambient env.
+func TestBuildResource_ExplicitBeatsEnv(t *testing.T) {
+	t.Setenv("OTEL_SERVICE_NAME", "env-service")
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment=env-environment,service.version=8.8.8")
+
+	cfg := &telemetry.TelemetryConfig{
+		ServiceName: "app-service",
+		Environment: "app-environment",
+		Version:     "1.2.3",
+	}
 	r := _buildResource(cfg)
 
-	if got, _ := attrString(r, "service.name"); got != "cfg-service" {
-		t.Fatalf("service.name = %q; want %q", got, "cfg-service")
+	if got, _ := attrString(r, "service.name"); got != "app-service" {
+		t.Fatalf("service.name = %q; want explicit %q to beat env", got, "app-service")
+	}
+	if got, _ := attrString(r, "deployment.environment"); got != "app-environment" {
+		t.Fatalf("deployment.environment = %q; want explicit %q to beat env", got, "app-environment")
+	}
+	if got, _ := attrString(r, "service.version"); got != "1.2.3" {
+		t.Fatalf("service.version = %q; want explicit %q to beat env", got, "1.2.3")
+	}
+}
+
+// Additive env keys merge through, and floor identity survives beside them.
+func TestBuildResource_AdditiveEnvKeepsFloor(t *testing.T) {
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "host.name=web-1")
+	d := telemetry.DefaultTelemetryConfig()
+
+	cfg := defaultCfg()
+	cfg.Version = "9.9.9" // explicit
+	r := _buildResource(cfg)
+
+	if got, ok := attrString(r, "host.name"); !ok || got != "web-1" {
+		t.Fatalf("host.name = %q (ok=%v); want additive env %q", got, ok, "web-1")
 	}
 	if got, _ := attrString(r, "service.version"); got != "9.9.9" {
-		t.Fatalf("service.version = %q; want %q", got, "9.9.9")
+		t.Fatalf("service.version = %q; want explicit %q", got, "9.9.9")
+	}
+	if got, _ := attrString(r, "service.name"); got != d.ServiceName {
+		t.Fatalf("service.name = %q; want floor %q", got, d.ServiceName)
+	}
+}
+
+// _explicitResourceAttrs includes only keys whose value differs from the default.
+func TestExplicitResourceAttrs(t *testing.T) {
+	d := telemetry.DefaultTelemetryConfig()
+
+	if got := _explicitResourceAttrs(defaultCfg()); len(got) != 0 {
+		t.Fatalf("all-default config yielded %d explicit attrs; want 0", len(got))
+	}
+
+	cfg := &telemetry.TelemetryConfig{
+		ServiceName: "svc",         // differs
+		Environment: d.Environment, // default → omitted
+		Version:     d.Version,     // default → omitted
+	}
+	attrs := _explicitResourceAttrs(cfg)
+	if len(attrs) != 1 || string(attrs[0].Key) != "service.name" || attrs[0].Value.AsString() != "svc" {
+		t.Fatalf("explicit attrs = %+v; want only service.name=svc", attrs)
 	}
 }
 
@@ -65,7 +125,7 @@ func TestBuildResource_ConfigOnly(t *testing.T) {
 // compatible (env carries the empty schema URL, so no conflict).
 func TestMergeResources_MergesCompatible(t *testing.T) {
 	base := sdkresource.NewWithAttributes(
-		"https://opentelemetry.io/schemas/1.26.0",
+		_resourceSchemaURL,
 		attribute.String("service.name", "svc"),
 	)
 	env := sdkresource.NewSchemaless(attribute.String("extra", "value"))
@@ -85,7 +145,7 @@ func TestMergeResources_MergesCompatible(t *testing.T) {
 // resource.Merge reports an error for.
 func TestMergeResources_SchemaConflictReturnsBase(t *testing.T) {
 	base := sdkresource.NewWithAttributes(
-		"https://opentelemetry.io/schemas/1.26.0",
+		_resourceSchemaURL,
 		attribute.String("service.name", "svc"),
 	)
 	env := sdkresource.NewWithAttributes(

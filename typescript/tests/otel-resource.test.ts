@@ -2,37 +2,40 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Regression + mutation-kill tests for buildOtelResource().
+ * Regression + mutation-kill tests for buildOtelResource() and its helpers.
  *
- * Guards the cross-language parity contract: the trace/metric/log providers
- * must honor OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME (matching Go, Python,
- * Rust) with env attributes winning on key conflict.
+ * Guards the cross-language precedence contract:
+ *   framework default  <  OTEL_* env  <  explicit config
+ * with explicit-vs-default decided by comparing to DEFAULTS.
  *
- * Uses the real @opentelemetry/resources SDK so the merge precedence and env
+ * Uses the real @opentelemetry/resources SDK so merge precedence and env
  * detection are exercised end-to-end, not mocked.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as resources from '@opentelemetry/resources';
-import { buildOtelResource, type OtelResourcesModule } from '../src/otel-resource';
-import type { TelemetryConfig } from '../src/config';
+import {
+  buildOtelResource,
+  explicitResourceAttrs,
+  frameworkFloorAttrs,
+  type OtelResourcesModule,
+} from '../src/otel-resource';
+import { DEFAULTS, type TelemetryConfig } from '../src/config';
 
 const res = resources as unknown as OtelResourcesModule;
 
 const RESOURCE_ATTRS_ENV = 'OTEL_RESOURCE_ATTRIBUTES';
 const SERVICE_NAME_ENV = 'OTEL_SERVICE_NAME';
 
-function makeConfig(): TelemetryConfig {
-  return {
-    serviceName: 'cfg-service',
-    environment: 'cfg-env',
-    version: '9.9.9',
-  } as TelemetryConfig;
+function config(overrides: Partial<TelemetryConfig> = {}): TelemetryConfig {
+  return { ...DEFAULTS, ...overrides };
 }
 
-// Resolve merged attributes, awaiting the env detector's (possibly async) attrs.
 async function attributesOf(resource: unknown): Promise<Record<string, unknown>> {
-  const r = resource as { waitForAsyncAttributes?: () => Promise<void>; attributes: Record<string, unknown> };
+  const r = resource as {
+    waitForAsyncAttributes?: () => Promise<void>;
+    attributes: Record<string, unknown>;
+  };
   await r.waitForAsyncAttributes?.();
   return r.attributes;
 }
@@ -42,32 +45,71 @@ afterEach(() => {
   delete process.env[SERVICE_NAME_ENV];
 });
 
-describe('buildOtelResource', () => {
-  it('carries service identity from config when no env vars are set', async () => {
-    const attrs = await attributesOf(buildOtelResource(res, makeConfig()));
-    // Kills mutants that drop or swap any of the three config attribute mappings.
-    expect(attrs['service.name']).toBe('cfg-service');
-    expect(attrs['deployment.environment']).toBe('cfg-env');
-    expect(attrs['service.version']).toBe('9.9.9');
+describe('frameworkFloorAttrs', () => {
+  it('returns the framework defaults for all three identity keys', () => {
+    expect(frameworkFloorAttrs()).toEqual({
+      'service.name': DEFAULTS.serviceName,
+      'deployment.environment': DEFAULTS.environment,
+      'service.version': DEFAULTS.version,
+    });
+  });
+});
+
+describe('explicitResourceAttrs', () => {
+  it('omits keys left at the framework default', () => {
+    expect(explicitResourceAttrs(config())).toEqual({});
   });
 
-  it('honors OTEL_SERVICE_NAME, with env winning over config service.name', async () => {
+  it('includes only the keys whose config value differs from the default', () => {
+    expect(explicitResourceAttrs(config({ serviceName: 'checkout' }))).toEqual({
+      'service.name': 'checkout',
+    });
+    expect(explicitResourceAttrs(config({ environment: 'prod' }))).toEqual({
+      'deployment.environment': 'prod',
+    });
+    expect(explicitResourceAttrs(config({ version: '1.2.3' }))).toEqual({
+      'service.version': '1.2.3',
+    });
+  });
+
+  it('includes every explicitly-set key together', () => {
+    expect(
+      explicitResourceAttrs(config({ serviceName: 'checkout', environment: 'prod', version: '1.2.3' })),
+    ).toEqual({
+      'service.name': 'checkout',
+      'deployment.environment': 'prod',
+      'service.version': '1.2.3',
+    });
+  });
+});
+
+describe('buildOtelResource precedence', () => {
+  it('falls back to the framework floor when nothing is set', async () => {
+    const attrs = await attributesOf(buildOtelResource(res, config()));
+    expect(attrs['service.name']).toBe(DEFAULTS.serviceName);
+    expect(attrs['deployment.environment']).toBe(DEFAULTS.environment);
+    expect(attrs['service.version']).toBe(DEFAULTS.version);
+  });
+
+  it('lets OTEL_SERVICE_NAME override the floor when config is default (env > floor)', async () => {
     process.env[SERVICE_NAME_ENV] = 'env-service';
-    const attrs = await attributesOf(buildOtelResource(res, makeConfig()));
-    // Kills the `detectors: [envDetector]` → `[]` mutant and the merge-order
-    // mutant: if env were ignored or lost the merge, this would be 'cfg-service'.
+    const attrs = await attributesOf(buildOtelResource(res, config()));
+    // Env fills an unset (default) service name.
     expect(attrs['service.name']).toBe('env-service');
   });
 
-  it('honors OTEL_RESOURCE_ATTRIBUTES for additive keys and env-wins overrides', async () => {
-    process.env[RESOURCE_ATTRS_ENV] = 'host.name=web-1,deployment.environment=prod';
-    const attrs = await attributesOf(buildOtelResource(res, makeConfig()));
-    // Additive key the config never sets — proves the env detector ran.
-    expect(attrs['host.name']).toBe('web-1');
-    // Overlapping key — proves env wins on conflict (merge argument precedence).
-    expect(attrs['deployment.environment']).toBe('prod');
-    // Non-overlapping config keys survive.
-    expect(attrs['service.name']).toBe('cfg-service');
-    expect(attrs['service.version']).toBe('9.9.9');
+  it('lets explicit config override OTEL_SERVICE_NAME (explicit > env)', async () => {
+    process.env[SERVICE_NAME_ENV] = 'env-service';
+    const attrs = await attributesOf(buildOtelResource(res, config({ serviceName: 'app-service' })));
+    // Explicit identity is never hijacked by ambient env.
+    expect(attrs['service.name']).toBe('app-service');
+  });
+
+  it('merges additive OTEL_RESOURCE_ATTRIBUTES keys and keeps floor identity', async () => {
+    process.env[RESOURCE_ATTRS_ENV] = 'host.name=web-1';
+    const attrs = await attributesOf(buildOtelResource(res, config({ version: '9.9.9' })));
+    expect(attrs['host.name']).toBe('web-1'); // additive env key
+    expect(attrs['service.version']).toBe('9.9.9'); // explicit
+    expect(attrs['service.name']).toBe(DEFAULTS.serviceName); // floor
   });
 });

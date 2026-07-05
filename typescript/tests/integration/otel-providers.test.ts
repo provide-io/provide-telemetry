@@ -24,11 +24,17 @@ vi.mock('@opentelemetry/sdk-trace-base', () => ({
 vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
   OTLPTraceExporter: vi.fn(),
 }));
-vi.mock('@opentelemetry/resources', () => ({
-  resourceFromAttributes: vi.fn().mockReturnValue({ merge: vi.fn().mockReturnValue({}) }),
-  detectResources: vi.fn().mockReturnValue({}),
-  envDetector: {},
-}));
+vi.mock('@opentelemetry/resources', () => {
+  // buildOtelResource chains floor.merge(env).merge(explicit), so every stub
+  // resource must itself be mergeable — return a self-referential stub.
+  const resourceStub: { merge: ReturnType<typeof vi.fn> } = { merge: vi.fn() };
+  resourceStub.merge.mockReturnValue(resourceStub);
+  return {
+    resourceFromAttributes: vi.fn().mockReturnValue(resourceStub),
+    detectResources: vi.fn().mockReturnValue(resourceStub),
+    envDetector: {},
+  };
+});
 vi.mock('@opentelemetry/sdk-metrics', () => ({
   MeterProvider: vi.fn(),
   PeriodicExportingMetricReader: vi.fn(),
@@ -118,12 +124,13 @@ describe('registerOtelProviders', () => {
       return {};
     } as never);
     vi.mocked(logs.getLogger).mockReturnValue({ emit: vi.fn() } as never);
-    // buildOtelResource() merges the config resource with the env-detected one;
-    // reset the return here so a per-test override cannot leak a resource stub
-    // that lacks .merge into a later test (clearAllMocks clears calls, not returns).
-    vi.mocked(resourceFromAttributes).mockReturnValue({
-      merge: vi.fn().mockReturnValue({}),
-    } as never);
+    // buildOtelResource() chains floor.merge(env).merge(explicit); reset the
+    // return to a self-referential mergeable stub so a per-test override cannot
+    // leak a non-mergeable resource into a later test (clearAllMocks clears
+    // calls, not returns).
+    const resourceStub: { merge: ReturnType<typeof vi.fn> } = { merge: vi.fn() };
+    resourceStub.merge.mockReturnValue(resourceStub);
+    vi.mocked(resourceFromAttributes).mockReturnValue(resourceStub as never);
   });
 
   afterEach(() => {
@@ -370,20 +377,25 @@ describe('registerOtelProviders', () => {
       otlpEndpoint: 'http://localhost:4318',
     });
     await registerOtelProviders(getConfig());
+    // Floor layer carries the framework defaults for all three identity keys...
     expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
-      'service.name': 'attr-svc',
+      'service.name': 'provide-service',
       'deployment.environment': 'dev',
       'service.version': '0.0.0',
+    });
+    // ...and the explicit layer carries only the overridden key (env/version left
+    // at the default so an OTEL_* env value could still fill them).
+    expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
+      'service.name': 'attr-svc',
     });
   });
 
   it('passes service resource attributes to the metrics provider', async () => {
-    // The provider receives the merged resource (config ⊕ env), so stub .merge
-    // to return a sentinel and assert that sentinel reaches MeterProvider.
-    const mergedResource = { resource: 'metrics' };
-    vi.mocked(resourceFromAttributes).mockReturnValue({
-      merge: vi.fn().mockReturnValue(mergedResource),
-    } as never);
+    // buildOtelResource chains floor.merge(env).merge(explicit); a self-ref stub
+    // survives the chain so we can assert the exact resource reaches MeterProvider.
+    const resourceStub: { merge: ReturnType<typeof vi.fn> } = { merge: vi.fn() };
+    resourceStub.merge.mockReturnValue(resourceStub);
+    vi.mocked(resourceFromAttributes).mockReturnValue(resourceStub as never);
     setupTelemetry({
       serviceName: 'metrics-svc',
       environment: 'prod',
@@ -393,15 +405,15 @@ describe('registerOtelProviders', () => {
       otlpMetricsEndpoint: 'http://metrics-collector:4318',
     });
     await registerOtelProviders(getConfig());
+    // All three identity keys differ from the defaults, so the explicit layer
+    // carries them verbatim.
     expect(vi.mocked(resourceFromAttributes)).toHaveBeenCalledWith({
       'service.name': 'metrics-svc',
       'deployment.environment': 'prod',
       'service.version': '1.2.3',
     });
     expect(vi.mocked(MeterProvider)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        resource: { resource: 'metrics' },
-      }),
+      expect.objectContaining({ resource: resourceStub }),
     );
   });
 
