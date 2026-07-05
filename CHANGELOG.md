@@ -6,6 +6,20 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.5.0] — 2026-07-05
+
+### Added
+
+- **OTel `Resource` attribute provenance — `OTEL_RESOURCE_ATTRIBUTES` / `OTEL_SERVICE_NAME` honored across all four languages** — every emitted trace, metric, and log now carries a resource built on a single, cross-language precedence ladder: **framework default < `OTEL_*` env < explicit config**. An identity attribute (`service.name` / `deployment.environment` / `service.version`) joins the top layer only when its configured value differs from the framework default, so an explicitly named service is never hijacked by an ambient `OTEL_RESOURCE_ATTRIBUTES` (e.g. a platform-injected `service.name`), while `OTEL_SERVICE_NAME` still fills an *unset* service name. Additive env keys (`host.name`, `service.instance.id`, `k8s.*`, …) always merge, so callers can attach deployment metadata without a custom provider. Previously Go and TypeScript ignored these env vars entirely (the resource was built from config only); Python and Rust honored env but with different precedence. The shared contract is pinned by the `resource_precedence` fixture in `spec/behavioral_fixtures.yaml`. See `docs/CONFIGURATION.md` → *Resource Attributes*.
+
+### Changed
+
+- **`deployment.environment` resource key unified across languages** — Rust previously emitted the newer, experimental `deployment.environment.name`; it now emits `deployment.environment`, matching Go, Python, and TypeScript. A cross-language query on `deployment.environment` now covers every service. **Dashboards/alerts filtering Rust telemetry on `deployment.environment.name` must switch to `deployment.environment`.**
+- **Python providers now emit `deployment.environment`** — the trace and metric providers previously set only `service.name` and `service.version`; the deployment environment is now included, at parity with the other languages.
+- **OpenObserve dev/E2E image → `v0.91.1`** (from `v0.14.5`) across `docker-compose.yml`, `scripts/start-openobserve.sh`, and the `setup-openobserve` CI action. The start script now uses a named Docker volume (avoids a Docker Desktop for macOS bind-mount failure) and waits on `/healthz`. Note: OpenObserve ≥ v0.91 enforces root-password complexity (lowercase + uppercase + digit + special).
+
+---
+
 ## [0.4.8] — 2026-06-10
 
 ### Added
