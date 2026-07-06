@@ -43,7 +43,7 @@ jobs:
       # uv is needed for the perf-gate comparator (scripts/perf_check.py).
       # Matches the rest of this repo's CI; perf_check uses only stdlib so no
       # additional Python deps are installed (no `uv sync` here).
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8
+      - uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3  # v8
         with:
           python-version: "3.11"
       - name: SPDX header check
