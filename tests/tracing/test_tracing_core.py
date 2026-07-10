@@ -120,7 +120,9 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     resource_cls.create.assert_called_once_with(
         {"service.name": "provide-service", "deployment.environment": "dev", "service.version": "0.0.0"}
     )
-    provider_cls.assert_called_once_with(resource="res")
+    assert provider_cls.call_count == 1
+    assert provider_cls.call_args.kwargs["resource"] == "res"
+    assert "sampler" in provider_cls.call_args.kwargs
     exporter_cls.assert_called_once_with(endpoint="http://trace/v1/traces", headers={}, timeout=10.0)
     processor_cls.assert_called_once_with("exporter")
     provider.add_span_processor.assert_called_once_with("processor")
@@ -149,7 +151,9 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
     resource_cls.create.assert_called_once_with(
         {"service.name": "provide-service", "deployment.environment": "dev", "service.version": "0.0.0"}
     )
-    provider_cls.assert_called_once_with(resource="res")
+    assert provider_cls.call_count == 1
+    assert provider_cls.call_args.kwargs["resource"] == "res"
+    assert "sampler" in provider_cls.call_args.kwargs
     mock_otel.set_tracer_provider.assert_called_once_with(provider)
     provider.add_span_processor.assert_not_called()
 

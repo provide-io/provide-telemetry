@@ -20,9 +20,12 @@ Initialize logging, tracing, and metrics providers. Lock-protected and idempoten
 
 > **Per-language signatures:** Python accepts an optional `TelemetryConfig` object.
 > TypeScript accepts `Partial<TelemetryConfig>` overrides merged over env config.
-> Go reads env vars and accepts functional `SetupOption` arguments.
+> Go reads env vars by default and accepts functional `SetupOption` arguments,
+> including `WithConfig(*TelemetryConfig)` for in-memory config (preferred for
+> hosts that re-exec or fork and must not mutate process environment).
 > Rust reads env vars with no programmatic config argument.
-> All four read `PROVIDE_*` / `OTEL_*` environment variables as the primary config source.
+> Env is the common default; in-memory / override config is preferred when hosts
+> own process lifecycle.
 >
 > Exporter/provider initialization is fail-open by default: if OTLP provider
 > construction fails, setup still succeeds and the affected signals remain on

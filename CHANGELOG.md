@@ -6,6 +6,18 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Go `WithConfig(*TelemetryConfig)`** — `SetupTelemetry(WithConfig(cfg))` accepts an in-memory config instead of reading process environment. Prefer this for hosts that re-exec or fork and must not mutate `os.Environ` to configure telemetry.
+
+### Fixed
+
+- **SDK-level trace sampling is real across all four languages** — the default OTel `TracerProvider` is now built with `ParentBased(TraceIdRatioBased(effective_rate))` where `effective_rate = min(sampling.traces_rate, tracing.sample_rate)`. Previously the rate only gated the library facade (`Trace` / `withTrace` / `should_sample`) while the global tracer and instrumentations (e.g. gRPC) always sampled at 100%. Rate `0` drops root spans; rate `1` samples all. When a live provider is installed the facade skips its probabilistic gate so spans are not double-sampled.
+
+---
+
 ## [0.5.0] — 2026-07-05
 
 ### Added

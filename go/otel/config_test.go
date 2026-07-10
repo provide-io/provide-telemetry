@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type _erroringLogExporter struct {
@@ -80,6 +82,93 @@ func TestOTel_ShutdownOTelProviders_OnlyLoggerProviderError(t *testing.T) {
 	}
 	if _otelLoggerProvider != nil {
 		t.Fatal("expected logger provider pointer to be cleared after shutdown error")
+	}
+}
+
+func TestBuildDefaultTracerProvider_SampleRateZeroExportsNothing(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	exp := tracetest.NewInMemoryExporter()
+	_newOTLPTraceExporter = func(context.Context, ...otlptracehttp.Option) (sdktrace.SpanExporter, error) {
+		return exp, nil
+	}
+	t.Cleanup(func() { _newOTLPTraceExporter = _defaultOTLPTraceExporterFactory })
+
+	cfg := telemetry.DefaultTelemetryConfig()
+	cfg.Tracing.OTLPEndpoint = "http://collector:4318"
+	cfg.Tracing.SampleRate = 0.0
+	cfg.Sampling.TracesRate = 1.0
+
+	tp, err := _buildDefaultTracerProvider(cfg)
+	if err != nil {
+		t.Fatalf("build provider: %v", err)
+	}
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	tr := tp.Tracer("test")
+	for i := 0; i < 20; i++ {
+		_, span := tr.Start(context.Background(), "root.span")
+		span.End()
+	}
+	if err := tp.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if got := len(exp.GetSpans()); got != 0 {
+		t.Fatalf("sample_rate=0: expected 0 exported spans, got %d", got)
+	}
+}
+
+func TestBuildDefaultTracerProvider_SampleRateOneExportsAll(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	exp := tracetest.NewInMemoryExporter()
+	_newOTLPTraceExporter = func(context.Context, ...otlptracehttp.Option) (sdktrace.SpanExporter, error) {
+		return exp, nil
+	}
+	t.Cleanup(func() { _newOTLPTraceExporter = _defaultOTLPTraceExporterFactory })
+
+	cfg := telemetry.DefaultTelemetryConfig()
+	cfg.Tracing.OTLPEndpoint = "http://collector:4318"
+	cfg.Tracing.SampleRate = 1.0
+	cfg.Sampling.TracesRate = 1.0
+
+	tp, err := _buildDefaultTracerProvider(cfg)
+	if err != nil {
+		t.Fatalf("build provider: %v", err)
+	}
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	tr := tp.Tracer("test")
+	const n = 10
+	for i := 0; i < n; i++ {
+		_, span := tr.Start(context.Background(), "root.span")
+		span.End()
+	}
+	if err := tp.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if got := len(exp.GetSpans()); got != n {
+		t.Fatalf("sample_rate=1: expected %d exported spans, got %d", n, got)
+	}
+}
+
+func TestSDKTraceSampler_UsesMinOfRates(t *testing.T) {
+	cfg := telemetry.DefaultTelemetryConfig()
+	cfg.Tracing.SampleRate = 0.5
+	cfg.Sampling.TracesRate = 0.1
+	// Sampler description should embed the lower rate (0.1).
+	s := _sdkTraceSampler(cfg)
+	desc := s.Description()
+	if !strings.Contains(desc, "0.1") && !strings.Contains(desc, "0.10") {
+		// TraceIDRatioBased description format varies; at least ensure ParentBased.
+		if !strings.Contains(desc, "ParentBased") {
+			t.Fatalf("expected ParentBased sampler, got %q", desc)
+		}
+	}
+	if cfg.EffectiveTracesSampleRate() != 0.1 {
+		t.Fatalf("effective rate: got %v want 0.1", cfg.EffectiveTracesSampleRate())
 	}
 }
 

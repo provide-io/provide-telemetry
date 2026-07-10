@@ -123,7 +123,13 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       const res: any = await import('@opentelemetry/resources' as string);
       const { trace } = await import('@opentelemetry/api');
 
-      const { BasicTracerProvider, BatchSpanProcessor } = traceBase;
+      const {
+        BasicTracerProvider,
+        BatchSpanProcessor,
+        ParentBasedSampler,
+        TraceIdRatioBasedSampler,
+        AlwaysOffSampler,
+      } = traceBase;
       const { OTLPTraceExporter } = otlpTrace;
 
       if (tracesEndpoint) {
@@ -137,9 +143,18 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
         const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
+        // SDK sampler is authoritative for live OTel spans (global tracer,
+        // instrumentations, withTrace). Facade shouldSample is skipped when
+        // traces providers are registered to avoid double-sampling.
+        const rate = Math.min(cfg.samplingTracesRate, cfg.traceSampleRate);
+        const rootSampler =
+          rate <= 0 ? new AlwaysOffSampler() : new TraceIdRatioBasedSampler(rate);
+        const sampler = new ParentBasedSampler({ root: rootSampler });
+
         const provider = new BasicTracerProvider({
           resource: buildOtelResource(res, cfg),
           spanProcessors: [new BatchSpanProcessor(traceExporter)],
+          sampler,
         });
         trace.setGlobalTracerProvider(provider);
         registered.push(provider as ShutdownableProvider);

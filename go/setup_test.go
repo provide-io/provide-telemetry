@@ -314,6 +314,71 @@ func TestSetupTelemetryConfigFromEnvError(t *testing.T) {
 	}
 }
 
+func TestSetupTelemetry_WithConfig_IgnoresEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	// Env would set a different service name if ConfigFromEnv were used.
+	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "from-env")
+	t.Setenv("PROVIDE_LOG_SANITIZE", "true")
+
+	mem := DefaultTelemetryConfig()
+	mem.ServiceName = "from-memory"
+	mem.Version = "9.9.9"
+	mem.Logging.Sanitize = false
+	mem.Tracing.SampleRate = 0.25
+
+	cfg, err := SetupTelemetry(WithConfig(mem))
+	if err != nil {
+		t.Fatalf("SetupTelemetry(WithConfig): %v", err)
+	}
+	if cfg.ServiceName != "from-memory" {
+		t.Errorf("ServiceName: got %q want from-memory (env must not win)", cfg.ServiceName)
+	}
+	if cfg.Version != "9.9.9" {
+		t.Errorf("Version: got %q want 9.9.9", cfg.Version)
+	}
+	if cfg.Logging.Sanitize {
+		t.Error("Sanitize: want false from in-memory config")
+	}
+	if cfg.Tracing.SampleRate != 0.25 {
+		t.Errorf("SampleRate: got %v want 0.25", cfg.Tracing.SampleRate)
+	}
+	// Mutating the caller's config after setup must not affect runtime.
+	mem.ServiceName = "mutated-after"
+	live := GetRuntimeConfig()
+	if live == nil || live.ServiceName != "from-memory" {
+		t.Fatalf("runtime config should be a clone, got %v", live)
+	}
+}
+
+func TestSetupTelemetry_WithConfig_InvalidRate(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	mem := DefaultTelemetryConfig()
+	mem.Tracing.SampleRate = 2.0
+	cfg, err := SetupTelemetry(WithConfig(mem))
+	if err == nil {
+		t.Fatal("expected error for invalid SampleRate")
+	}
+	if cfg != nil {
+		t.Error("expected nil config on validation error")
+	}
+}
+
+func TestEffectiveTracesSampleRate(t *testing.T) {
+	cfg := DefaultTelemetryConfig()
+	cfg.Tracing.SampleRate = 0.5
+	cfg.Sampling.TracesRate = 0.2
+	if got := cfg.EffectiveTracesSampleRate(); got != 0.2 {
+		t.Errorf("got %v want 0.2", got)
+	}
+	if got := (*TelemetryConfig)(nil).EffectiveTracesSampleRate(); got != 1.0 {
+		t.Errorf("nil config: got %v want 1.0", got)
+	}
+}
+
 func TestSetupWithProviderOptions(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

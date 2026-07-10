@@ -404,7 +404,7 @@ config_defaults:
     - env: PROVIDE_TRACE_SAMPLE_RATE
       type: float
       default: "1.0"
-      description: "Trace sampling rate (0.0-1.0)"
+      description: "Trace sampling rate (0.0-1.0) applied to the OTel SDK ParentBased(TraceIdRatioBased) sampler (and facade when no live provider); combined via min() with PROVIDE_SAMPLING_TRACES_RATE"
 
   metrics:
     - env: PROVIDE_METRICS_ENABLED
@@ -454,7 +454,7 @@ config_defaults:
     - env: PROVIDE_SAMPLING_TRACES_RATE
       type: float
       default: "1.0"
-      description: "Probability (0.0-1.0) of keeping a trace span"
+      description: "Probability (0.0-1.0) of keeping a trace span; combined via min() with PROVIDE_TRACE_SAMPLE_RATE and applied to the OTel SDK sampler (global tracer, instrumentations, facade)"
     - env: PROVIDE_SAMPLING_METRICS_RATE
       type: float
       default: "1.0"

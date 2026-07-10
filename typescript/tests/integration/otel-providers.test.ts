@@ -20,6 +20,9 @@ import { context, metrics, trace } from '@opentelemetry/api';
 vi.mock('@opentelemetry/sdk-trace-base', () => ({
   BasicTracerProvider: vi.fn(),
   BatchSpanProcessor: vi.fn(),
+  ParentBasedSampler: vi.fn(),
+  TraceIdRatioBasedSampler: vi.fn(),
+  AlwaysOffSampler: vi.fn(),
 }));
 vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
   OTLPTraceExporter: vi.fn(),
@@ -56,7 +59,13 @@ vi.mock('@opentelemetry/api-logs', () => ({
   },
 }));
 
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import {
+  AlwaysOffSampler,
+  BasicTracerProvider,
+  BatchSpanProcessor,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
@@ -101,6 +110,15 @@ describe('registerOtelProviders', () => {
     } as never);
     vi.mocked(BatchSpanProcessor).mockImplementation(function () {
       return {};
+    } as never);
+    vi.mocked(ParentBasedSampler).mockImplementation(function (cfg: { root: unknown }) {
+      return { root: cfg.root };
+    } as never);
+    vi.mocked(TraceIdRatioBasedSampler).mockImplementation(function (rate: number) {
+      return { rate };
+    } as never);
+    vi.mocked(AlwaysOffSampler).mockImplementation(function () {
+      return { alwaysOff: true };
     } as never);
     vi.mocked(OTLPTraceExporter).mockImplementation(function () {
       return {};

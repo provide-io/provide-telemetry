@@ -54,7 +54,13 @@ def _open_span(name: str, scope: str | None = None) -> Iterator[Any]:
     if not should_allow("traces"):
         yield _NoopSpan(name)
         return
-    if not should_sample("traces", name):
+    # When a live OTel tracer provider is installed the SDK ParentBased
+    # TraceIdRatioBased sampler is authoritative — skip facade should_sample
+    # so we do not double-sample. Without a live provider, should_sample remains
+    # the only probabilistic gate (noop path).
+    from provide.telemetry.tracing.provider import _has_live_tracing_provider
+
+    if not _has_live_tracing_provider() and not should_sample("traces", name):
         yield _NoopSpan(name)
         return
     ticket = try_acquire("traces")

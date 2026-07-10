@@ -9,6 +9,7 @@ from __future__ import annotations
 
 __all__ = [
     "attach_w3c_context",
+    "build_otel_trace_sampler",
     "detach_w3c_context",
     "has_otel",
     "load_otel_logs_components",
@@ -76,6 +77,17 @@ def load_otel_tracing_components() -> tuple[Any, Any, Any, Any] | None:
         _logger.debug(
             "otel.trace.sdk_unavailable"
         )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
+        return None
+
+
+def build_otel_trace_sampler(rate: float) -> Any | None:
+    """Return ParentBased(TraceIdRatioBased(rate)) or None if the SDK is unavailable."""
+    try:
+        sampling_mod = _import_module("opentelemetry.sdk.trace.sampling")
+        clamped = max(0.0, min(1.0, rate))
+        return sampling_mod.ParentBased(root=sampling_mod.TraceIdRatioBased(clamped))
+    except ImportError:
+        _logger.debug("otel.trace.sampler_unavailable")  # pragma: no mutate — debug log string is non-semantic
         return None
 
 

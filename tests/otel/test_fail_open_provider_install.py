@@ -19,8 +19,9 @@ class _FakeResource:
 
 
 class _FakeTracerProvider:
-    def __init__(self, resource: object) -> None:
+    def __init__(self, resource: object, sampler: object | None = None) -> None:
         self.resource = resource
+        self.sampler = sampler
         self.processors: list[object] = []
 
     def add_span_processor(self, processor: object) -> None:
@@ -126,7 +127,7 @@ def test_setup_tracing_fail_open_shuts_down_provider_when_callable(monkeypatch: 
     class _TrackingProvider:
         shutdown_called = False
 
-        def __init__(self, resource: object = None) -> None:
+        def __init__(self, resource: object = None, **_kwargs: object) -> None:
             pass
 
         def add_span_processor(self, _p: object) -> None:
@@ -157,7 +158,7 @@ def test_setup_tracing_fail_open_no_shutdown_method(monkeypatch: pytest.MonkeyPa
     fake_api = _FakeTracerApi()
 
     class _NoShutdownProvider:
-        def __init__(self, resource: object = None) -> None:
+        def __init__(self, resource: object = None, **_kwargs: object) -> None:
             pass
 
         def add_span_processor(self, _p: object) -> None:

@@ -146,6 +146,13 @@ func _mergeResources(base, envRes *sdkresource.Resource) *sdkresource.Resource {
 	return merged
 }
 
+// _sdkTraceSampler builds ParentBased(TraceIDRatioBased(rate)) from the
+// effective traces sample rate. Rate 0 drops all root spans; rate 1 samples all.
+func _sdkTraceSampler(cfg *telemetry.TelemetryConfig) sdktrace.Sampler {
+	rate := cfg.EffectiveTracesSampleRate()
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(rate))
+}
+
 func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.TracerProvider, error) {
 	traceURL, err := _validatedSignalEndpointURL(cfg.Tracing.OTLPEndpoint, "/v1/traces")
 	if err != nil {
@@ -161,6 +168,7 @@ func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.Trac
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(_wrapSpanExporter(exporter)),
 		sdktrace.WithResource(_buildResource(cfg)),
+		sdktrace.WithSampler(_sdkTraceSampler(cfg)),
 	), nil
 }
 

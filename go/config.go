@@ -56,9 +56,19 @@ type LoggingConfig struct {
 // TracingConfig holds all tracing-related configuration.
 type TracingConfig struct {
 	Enabled      bool    // default true
-	SampleRate   float64 // default 1.0
+	SampleRate   float64 // default 1.0 — combined with Sampling.TracesRate for the SDK sampler
 	OTLPEndpoint string
 	OTLPHeaders  map[string]string
+}
+
+// EffectiveTracesSampleRate returns min(Sampling.TracesRate, Tracing.SampleRate).
+// This is the rate applied to the OTel SDK ParentBased(TraceIDRatioBased) sampler
+// and (when no live OTel tracer provider is installed) the facade ShouldSample gate.
+func (c *TelemetryConfig) EffectiveTracesSampleRate() float64 {
+	if c == nil {
+		return 1.0
+	}
+	return min(c.Sampling.TracesRate, c.Tracing.SampleRate)
 }
 
 // MetricsConfig holds all metrics-related configuration.

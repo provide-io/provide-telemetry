@@ -73,6 +73,11 @@ func GetTracer(name string) Tracer {
 // If fn returns an error, the error is recorded on the span before it ends.
 // Consent, sampling, and backpressure are applied before starting the span;
 // fn is still invoked (without a span) when any gate rejects.
+//
+// When a live OTel tracer provider is installed, probabilistic sampling is
+// delegated to the SDK ParentBased(TraceIDRatioBased) sampler so instrumented
+// and facade spans share one sampling authority (no double-sampling).
+// Without a live provider, ShouldSample(traces) applies as before.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
 	if !_runtimeTracingEnabled() {
 		return fn(ctx)
@@ -80,8 +85,10 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 	if !ShouldAllow(signalTraces, "") {
 		return fn(ctx)
 	}
-	if sampled := _shouldSampleFailOpen(signalTraces, name); !sampled {
-		return fn(ctx)
+	if !_hasLiveTraceProvider() {
+		if sampled := _shouldSampleFailOpen(signalTraces, name); !sampled {
+			return fn(ctx)
+		}
 	}
 	ticket := TryAcquire(signalTraces)
 	if ticket == nil {
@@ -98,6 +105,16 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 		span.RecordError(err)
 	}
 	return err
+}
+
+// _hasLiveTraceProvider reports whether the active optional backend has a live
+// tracer provider (OTel SDK sampling is then authoritative).
+func _hasLiveTraceProvider() bool {
+	backend := _activeBackend()
+	if backend == nil {
+		return false
+	}
+	return backend.Providers().Traces
 }
 
 // GetTraceContext returns the trace and span IDs bound to ctx.

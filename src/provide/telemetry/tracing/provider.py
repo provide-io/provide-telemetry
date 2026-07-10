@@ -155,7 +155,14 @@ def setup_tracing(config: TelemetryConfig) -> None:
 
     resource_cls, provider_cls, processor_cls, exporter_cls = components
     resource = build_resource(config, resource_cls)
-    provider = provider_cls(resource=resource)
+    # SDK sampler is the single sampling authority for live OTel spans (global
+    # tracer, instrumentations, facade). Facade should_sample is skipped when a
+    # live provider is installed to avoid double-sampling.
+    effective_rate = min(config.sampling.traces_rate, config.tracing.sample_rate)
+    sampler = _otel.build_otel_trace_sampler(effective_rate)
+    provider = (
+        provider_cls(resource=resource, sampler=sampler) if sampler is not None else provider_cls(resource=resource)
+    )
     if config.tracing.otlp_endpoint:
         from provide.telemetry.resilience import run_with_resilience
         from provide.telemetry.resilient_exporter import wrap_exporter

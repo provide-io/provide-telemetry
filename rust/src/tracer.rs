@@ -96,7 +96,13 @@ fn begin_trace(name: &str) -> Option<ActiveTrace> {
     if !should_allow("traces", None) {
         return None;
     }
-    if !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
+    // Live OTel provider: SDK ParentBased(TraceIdRatioBased) is authoritative —
+    // skip facade should_sample to avoid double-sampling. Noop path still gates.
+    #[cfg(feature = "otel")]
+    let otel_live = crate::otel::traces::tracer_provider_installed();
+    #[cfg(not(feature = "otel"))]
+    let otel_live = false;
+    if !otel_live && !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {
         return None;
     }
     let ticket = try_acquire(Signal::Traces)?;
@@ -107,7 +113,7 @@ fn begin_trace(name: &str) -> Option<ActiveTrace> {
     // populates the trace_id / span_id contextvars from synthetic ids).
     #[cfg(feature = "otel")]
     {
-        if crate::otel::traces::tracer_provider_installed() {
+        if otel_live {
             increment_emitted(Signal::Traces, 1);
             return Some(ActiveTrace {
                 ticket: Some(ticket),

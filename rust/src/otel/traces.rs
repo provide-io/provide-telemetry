@@ -127,10 +127,25 @@ pub(super) fn install_tracer_provider(
     let runtime = ProvideTokioRuntime::traces();
     let processor =
         BatchSpanProcessor::builder(ResilientSpanExporter::new(exporter), runtime).build();
+    // SDK sampler is the single sampling authority for live OTel spans.
+    // Facade tracer::trace() skips ShouldSample when a provider is installed.
+    let rate = cfg
+        .sampling
+        .traces_rate
+        .min(cfg.tracing.sample_rate)
+        .clamp(0.0, 1.0);
+    let root = if rate <= 0.0 {
+        Sampler::AlwaysOff
+    } else if rate >= 1.0 {
+        Sampler::AlwaysOn
+    } else {
+        Sampler::TraceIdRatioBased(rate)
+    };
+    let sampler = Sampler::ParentBased(Box::new(root));
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
         .with_span_processor(processor)
-        .with_sampler(Sampler::AlwaysOn)
+        .with_sampler(sampler)
         .build();
 
     let arc = Arc::new(provider);
@@ -328,6 +343,26 @@ mod tests {
         assert!(guard.trace_id.chars().all(|c| c.is_ascii_hexdigit()));
         assert!(guard.span_id.chars().all(|c| c.is_ascii_hexdigit()));
         // Drop guard ends the span; shutdown flushes the batch processor.
+        drop(guard);
+        shutdown_tracer_provider();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn install_with_sample_rate_zero_still_installs_provider() {
+        let _guard = reset_traces_test_state();
+        let mut cfg = test_config();
+        cfg.tracing.otlp_endpoint = Some("http://127.0.0.1:1/never".to_string());
+        cfg.tracing.sample_rate = 0.0;
+        cfg.sampling.traces_rate = 1.0;
+        cfg.exporter.traces_fail_open = true;
+        let resource = super::super::resource::build_resource(&cfg);
+        let installed =
+            install_tracer_provider(&cfg, resource).expect("rate-0 install must succeed");
+        assert!(installed);
+        assert!(tracer_provider_installed());
+        // Spans still get IDs from the SDK even when not sampled for export.
+        let guard = start_span("dropped.span");
+        assert_eq!(guard.trace_id.len(), 32);
         drop(guard);
         shutdown_tracer_provider();
     }

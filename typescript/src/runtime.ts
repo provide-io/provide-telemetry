@@ -80,6 +80,11 @@ export function _setProviderSignalInstalled(
   _providerSignals[signal] = installed;
 }
 
+/** True when a live OTel tracer provider is installed (SDK sampling is authoritative). */
+export function _isTraceProviderInstalled(): boolean {
+  return _providerSignals.traces;
+}
+
 export function getRuntimeStatus(): RuntimeStatus {
   const cfg = resolveEffectiveConfig();
   return {

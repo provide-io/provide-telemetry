@@ -22,6 +22,7 @@ import { shouldAllow } from './consent';
 import { shouldSample } from './sampling';
 import { tryAcquire, release } from './backpressure';
 import { getConfig } from './config';
+import { _isTraceProviderInstalled } from './runtime';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';
@@ -237,7 +238,10 @@ export function withTrace<T>(name: string, fn: () => T): T {
   if (!getConfig().tracingEnabled) return fn();
   // Stryker disable next-line StringLiteral: 'traces' vs '' is equivalent — shouldAllow treats any non-'logs'/non-'context' signal identically across all consent levels
   if (!shouldAllow('traces')) return fn();
-  if (!shouldSample('traces', name)) return fn();
+  // Live OTel tracer provider: SDK ParentBased(TraceIdRatioBased) is the
+  // sampling authority — skip facade shouldSample to avoid double-sampling.
+  // Stryker disable next-line ConditionalExpression: provider-installed branch only differs when OTel peers are registered
+  if (!_isTraceProviderInstalled() && !shouldSample('traces', name)) return fn();
   // Stryker disable next-line StringLiteral: 'traces' vs '' — both return a ticket when all queues are unbounded (default); differentiating requires a bounded-only-traces test that checks tracesEmitted
   const ticket = tryAcquire('traces');
   if (!ticket) return fn();

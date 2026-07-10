@@ -1,6 +1,9 @@
 # Configuration Reference
 
-All runtime configuration is driven by environment variables, parsed via `TelemetryConfig.from_env()`.
+Runtime configuration is typically driven by environment variables, parsed via
+`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Python and TypeScript also accept
+in-memory config at setup; Go accepts `WithConfig(*TelemetryConfig)` so hosts that
+re-exec or fork need not mutate process environment to configure telemetry.
 
 ## Core
 
@@ -47,7 +50,7 @@ All runtime configuration is driven by environment variables, parsed via `Teleme
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PROVIDE_TRACE_ENABLED` | bool | `true` | Enable OTel tracing provider (falls back to no-op when false) |
-| `PROVIDE_TRACE_SAMPLE_RATE` | float | `1.0` | Trace sampling rate (0.0-1.0) |
+| `PROVIDE_TRACE_SAMPLE_RATE` | float | `1.0` | Trace sampling rate (0.0-1.0) applied to the OTel SDK ParentBased(TraceIdRatioBased) sampler (and facade when no live provider); combined via min() with PROVIDE_SAMPLING_TRACES_RATE |
 <!-- END GENERATED CONFIG: tracing -->
 
 ## Metrics
@@ -83,9 +86,22 @@ These follow the [OpenTelemetry specification](https://opentelemetry.io/docs/spe
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PROVIDE_SAMPLING_LOGS_RATE` | float | `1.0` | Probability (0.0-1.0) of keeping a log event |
-| `PROVIDE_SAMPLING_TRACES_RATE` | float | `1.0` | Probability (0.0-1.0) of keeping a trace span |
+| `PROVIDE_SAMPLING_TRACES_RATE` | float | `1.0` | Probability (0.0-1.0) of keeping a trace span; combined via min() with PROVIDE_TRACE_SAMPLE_RATE and applied to the OTel SDK sampler (global tracer, instrumentations, facade) |
 | `PROVIDE_SAMPLING_METRICS_RATE` | float | `1.0` | Probability (0.0-1.0) of keeping a metric observation |
 <!-- END GENERATED CONFIG: sampling -->
+
+### Trace sampling semantics
+
+The effective traces rate is `min(PROVIDE_SAMPLING_TRACES_RATE, PROVIDE_TRACE_SAMPLE_RATE)`.
+When a live OTel `TracerProvider` is installed, that rate is applied as
+`ParentBased(TraceIdRatioBased(rate))` on the SDK provider — so the global
+tracer, auto-instrumentation (e.g. gRPC), and the library facade share one
+sampling authority. Rate `0` drops root spans; rate `1` samples all.
+
+When no live provider is installed (noop path), the same rate gates the facade
+`should_sample` / `ShouldSample` path only. Changing the sample rate after a
+real provider is installed requires process restart (OTel global provider
+limits), not in-process hot-reload.
 
 ## Backpressure
 

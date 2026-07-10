@@ -75,7 +75,8 @@ func main() {
 
 | Export | Description |
 |--------|-------------|
-| `SetupTelemetry(opts...)` | Idempotent init from environment variables. Returns `*TelemetryConfig`. |
+| `SetupTelemetry(opts...)` | Idempotent init from env (default) or `WithConfig(cfg)`. Returns `*TelemetryConfig`. |
+| `WithConfig(cfg)` | In-memory config; prefer over mutating `os.Environ` for re-exec/fork hosts. |
 | `ShutdownTelemetry(ctx)` | Flush and shut down all OTel providers. |
 | `ConfigFromEnv()` | Parse environment variables into a `*TelemetryConfig`. |
 | `DefaultTelemetryConfig()` | Return a config with all defaults applied. |
@@ -249,7 +250,7 @@ All options can be set via environment variables:
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format |
 | `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
-| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
+| `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` applied to the OTel SDK sampler (min with `PROVIDE_SAMPLING_TRACES_RATE`) |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |

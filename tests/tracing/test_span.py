@@ -126,6 +126,7 @@ def test_span_noop_when_tracing_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_span_bypasses_span_when_not_sampled(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not sampled -> body runs untraced, no span emitted, NoopSpan yielded."""
+    _reset_tracing_for_tests()  # no live provider → facade should_sample applies
     reset_health_for_tests()
     monkeypatch.setattr("provide.telemetry.sampling.should_sample", lambda _s, _n: False)
     entered = []
