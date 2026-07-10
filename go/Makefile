@@ -1,4 +1,4 @@
-.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress check
+.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress fuzz check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -44,5 +44,15 @@ bench: ## Run benchmarks
 
 stress: ## Run stress tests
 	go run ./scripts/stress
+
+# Coverage-guided fuzz of config parsing / redaction (OSS-Fuzz-class local run).
+# Override duration: make fuzz FUZZTIME=5m
+FUZZTIME ?= 30s
+fuzz: ## Run config/endpoint/header fuzz targets
+	go test . -run='^$$' -fuzz='^FuzzParseOTLPHeaders$$' -fuzztime=$(FUZZTIME)
+	go test . -run='^$$' -fuzz='^FuzzMaskEndpointURL$$' -fuzztime=$(FUZZTIME)
+	go test . -run='^$$' -fuzz='^FuzzValidateRate$$' -fuzztime=$(FUZZTIME)
+	go test . -run='^$$' -fuzz='^FuzzValidatedSignalEndpointURL$$' -fuzztime=$(FUZZTIME)
+	go test . -run='^$$' -fuzz='^FuzzParseEnvFloatThenValidateRate$$' -fuzztime=$(FUZZTIME)
 
 check: fmt-check vet lint security test coverage ## Run all quality gates
