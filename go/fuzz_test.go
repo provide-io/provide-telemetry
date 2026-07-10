@@ -91,16 +91,27 @@ func FuzzMaskEndpointURL(f *testing.F) {
 			}
 			return
 		}
-		// Password-bearing URL must change, and user:pass@ must not survive.
-		// (Do not use strings.Contains(got, pass): password "*" matches "****".)
+		// Password-bearing URL must change; output userinfo password must be masked.
+		// (Do not scan the whole string for pass: paths/fragments can repeat it;
+		// password "*" would also false-positive against "****".)
 		if got == raw {
 			t.Fatalf("password-bearing URL left unmasked: %q", raw)
 		}
-		name := u.User.Username()
-		if strings.Contains(got, name+":"+pass+"@") {
-			t.Fatalf("user:pass@ leaked: in=%q out=%q", raw, got)
+		outU, err := url.Parse(got)
+		if err != nil {
+			// maskEndpointURL rebuilds with **** which is not always re-parseable
+			// the same way; require the **** token instead.
+			if !strings.Contains(got, "****") {
+				t.Fatalf("expected **** mask: in=%q out=%q", raw, got)
+			}
+			return
 		}
-		if !strings.Contains(got, ":****@") && !strings.Contains(got, "****") {
+		if outU.User != nil {
+			if p, ok := outU.User.Password(); ok && p != "" && p != "****" {
+				t.Fatalf("output userinfo password not masked: in=%q out=%q pass=%q", raw, got, p)
+			}
+		}
+		if !strings.Contains(got, "****") {
 			t.Fatalf("expected **** mask: in=%q out=%q", raw, got)
 		}
 	})
