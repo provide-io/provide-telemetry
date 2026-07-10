@@ -1,10 +1,18 @@
+# Dependabot version updates — manual-only.
+# open-pull-requests-limit: 0 suppresses automatic PRs. schedule.interval is
+# still required by GitHub's schema but produces no PRs while the limit is 0.
+#
+# When you want updates:
+#   1. Insights → Dependency graph → Dependabot → "Check for updates", or
+#   2. Temporarily raise open-pull-requests-limit (e.g. 10), commit, then set
+#      it back to 0 after PRs land.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -13,8 +21,8 @@ updates:
   - package-ecosystem: npm
     directory: /typescript
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -23,8 +31,8 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    open-pull-requests-limit: 0
     groups:
       actions:
         patterns: ["*"]
