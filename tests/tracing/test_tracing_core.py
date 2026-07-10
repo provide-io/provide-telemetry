@@ -112,6 +112,9 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
         "_load_otel_tracing_components",
         lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
     )
+    # Quality CI installs without the otel extra; pin a sentinel sampler so this
+    # test exercises the provider_cls(sampler=...) path without requiring the SDK.
+    monkeypatch.setattr(provider_mod._otel, "build_otel_trace_sampler", lambda _rate: "sampler")
     # Bypass the resilient-export wrapper so processor_cls sees the raw exporter —
     # wrapping behavior is covered by tests/resilience/test_resilient_exporter.py.
     monkeypatch.setattr(resilient_exporter_mod, "wrap_exporter", lambda _sig, inner: inner)
@@ -122,7 +125,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     )
     assert provider_cls.call_count == 1
     assert provider_cls.call_args.kwargs["resource"] == "res"
-    assert "sampler" in provider_cls.call_args.kwargs
+    assert provider_cls.call_args.kwargs["sampler"] == "sampler"
     exporter_cls.assert_called_once_with(endpoint="http://trace/v1/traces", headers={}, timeout=10.0)
     processor_cls.assert_called_once_with("exporter")
     provider.add_span_processor.assert_called_once_with("processor")
@@ -146,6 +149,7 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
         "_load_otel_tracing_components",
         lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
     )
+    monkeypatch.setattr(provider_mod._otel, "build_otel_trace_sampler", lambda _rate: "sampler")
     cfg = TelemetryConfig.from_env({})
     provider_mod.setup_tracing(cfg)
     resource_cls.create.assert_called_once_with(
@@ -153,7 +157,7 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
     )
     assert provider_cls.call_count == 1
     assert provider_cls.call_args.kwargs["resource"] == "res"
-    assert "sampler" in provider_cls.call_args.kwargs
+    assert provider_cls.call_args.kwargs["sampler"] == "sampler"
     mock_otel.set_tracer_provider.assert_called_once_with(provider)
     provider.add_span_processor.assert_not_called()
 

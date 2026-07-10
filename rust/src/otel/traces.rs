@@ -91,6 +91,19 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
     }
 }
 
+/// Build the ParentBased(TraceIdRatioBased) sampler for the effective rate.
+pub(crate) fn sdk_trace_sampler(rate: f64) -> Sampler {
+    let rate = rate.clamp(0.0, 1.0);
+    let root = if rate <= 0.0 {
+        Sampler::AlwaysOff
+    } else if rate >= 1.0 {
+        Sampler::AlwaysOn
+    } else {
+        Sampler::TraceIdRatioBased(rate)
+    };
+    Sampler::ParentBased(Box::new(root))
+}
+
 /// Build and register the SDK `TracerProvider`. After this returns
 /// `Ok`, [`start_span`] produces real OTel spans backed by the
 /// installed batch processor.
@@ -129,19 +142,11 @@ pub(super) fn install_tracer_provider(
         BatchSpanProcessor::builder(ResilientSpanExporter::new(exporter), runtime).build();
     // SDK sampler is the single sampling authority for live OTel spans.
     // Facade tracer::trace() skips ShouldSample when a provider is installed.
-    let rate = cfg
-        .sampling
-        .traces_rate
-        .min(cfg.tracing.sample_rate)
-        .clamp(0.0, 1.0);
-    let root = if rate <= 0.0 {
-        Sampler::AlwaysOff
-    } else if rate >= 1.0 {
-        Sampler::AlwaysOn
-    } else {
-        Sampler::TraceIdRatioBased(rate)
-    };
-    let sampler = Sampler::ParentBased(Box::new(root));
+    let sampler = sdk_trace_sampler(
+        cfg.sampling
+            .traces_rate
+            .min(cfg.tracing.sample_rate),
+    );
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
         .with_span_processor(processor)
@@ -237,6 +242,26 @@ mod tests {
         reset_telemetry_state();
         shutdown_tracer_provider();
         guard
+    }
+
+    #[test]
+    fn sdk_trace_sampler_branches_cover_rate_bounds() {
+        // AlwaysOff / AlwaysOn / ratio — Debug fmt distinguishes the variants.
+        let off = format!("{:?}", sdk_trace_sampler(0.0));
+        let on = format!("{:?}", sdk_trace_sampler(1.0));
+        let mid = format!("{:?}", sdk_trace_sampler(0.25));
+        let clamped_high = format!("{:?}", sdk_trace_sampler(2.0));
+        let clamped_low = format!("{:?}", sdk_trace_sampler(-1.0));
+        assert!(off.contains("AlwaysOff") || off.contains("ParentBased"));
+        assert!(on.contains("AlwaysOn") || on.contains("ParentBased"));
+        assert!(mid.contains("TraceIdRatioBased") || mid.contains("ParentBased"));
+        assert!(clamped_high.contains("AlwaysOn") || clamped_high.contains("ParentBased"));
+        assert!(clamped_low.contains("AlwaysOff") || clamped_low.contains("ParentBased"));
+        // Mid rate must differ from the extremes so all three roots are used.
+        assert_ne!(off, mid);
+        assert_ne!(on, mid);
+        assert_eq!(on, clamped_high);
+        assert_eq!(off, clamped_low);
     }
 
     #[test]

@@ -104,8 +104,20 @@ def test_setup_tracing_sample_rate_one_exports_spans(monkeypatch: pytest.MonkeyP
 
 
 def test_build_otel_trace_sampler_parent_based() -> None:
+    pytest.importorskip("opentelemetry.sdk.trace.sampling")
     from provide.telemetry._otel import build_otel_trace_sampler
 
     sampler = build_otel_trace_sampler(0.1)
     assert sampler is not None
     assert "ParentBased" in type(sampler).__name__ or "ParentBased" in repr(sampler)
+
+
+def test_build_otel_trace_sampler_returns_none_without_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the OTel SDK is unavailable, sampler construction degrades to None."""
+    from provide.telemetry import _otel
+
+    def _boom(_name: str) -> object:
+        raise ImportError("no sdk")
+
+    monkeypatch.setattr(_otel, "_import_module", _boom)
+    assert _otel.build_otel_trace_sampler(0.5) is None
