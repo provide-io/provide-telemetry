@@ -147,8 +147,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         // instrumentations, withTrace). Facade shouldSample is skipped when
         // traces providers are registered to avoid double-sampling.
         const rate = Math.min(cfg.samplingTracesRate, cfg.traceSampleRate);
-        const rootSampler =
-          rate <= 0 ? new AlwaysOffSampler() : new TraceIdRatioBasedSampler(rate);
+        const rootSampler = rate <= 0 ? new AlwaysOffSampler() : new TraceIdRatioBasedSampler(rate);
         const sampler = new ParentBasedSampler({ root: rootSampler });
 
         const provider = new BasicTracerProvider({

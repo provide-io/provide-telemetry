@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 
@@ -27,7 +28,7 @@ def _clean_tracing() -> Generator[None]:
     _reset_tracing_for_tests()
 
 
-def _install_memory_exporter(monkeypatch: pytest.MonkeyPatch) -> object:
+def _install_memory_exporter(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Wire setup_tracing to export into an InMemorySpanExporter via SimpleSpanProcessor."""
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -47,8 +48,8 @@ def _install_memory_exporter(monkeypatch: pytest.MonkeyPatch) -> object:
             def __init__(self, **_kwargs: object) -> None:
                 pass
 
-            def export(self, spans: object) -> object:
-                return memory.export(spans)  # type: ignore[arg-type]
+            def export(self, spans: Any) -> Any:
+                return memory.export(spans)
 
             def shutdown(self) -> None:
                 memory.shutdown()

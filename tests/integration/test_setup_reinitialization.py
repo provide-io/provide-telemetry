@@ -72,8 +72,9 @@ class _FakeSpanProcessor:
 
 
 class _FakeTracerProvider:
-    def __init__(self, *, resource: dict[str, str]) -> None:
+    def __init__(self, *, resource: dict[str, str], sampler: object | None = None) -> None:
         self.resource = resource
+        self.sampler = sampler
         self.processors: list[object] = []
         self.shutdown_calls = 0
 

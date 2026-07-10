@@ -367,6 +367,34 @@ func TestSetupTelemetry_WithConfig_InvalidRate(t *testing.T) {
 	}
 }
 
+func TestSetupTelemetry_WithConfig_InvalidSamplingAndFormat(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(*TelemetryConfig)
+	}{
+		{"logs_rate", func(c *TelemetryConfig) { c.Sampling.LogsRate = -0.1 }},
+		{"traces_rate", func(c *TelemetryConfig) { c.Sampling.TracesRate = 1.5 }},
+		{"metrics_rate", func(c *TelemetryConfig) { c.Sampling.MetricsRate = -1 }},
+		{"format", func(c *TelemetryConfig) { c.Logging.Format = "xml" }},
+		{"level", func(c *TelemetryConfig) { c.Logging.Level = "LOUD" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetSetupState(t)
+			t.Cleanup(func() { resetSetupState(t) })
+			mem := DefaultTelemetryConfig()
+			tc.mut(mem)
+			cfg, err := SetupTelemetry(WithConfig(mem))
+			if err == nil {
+				t.Fatalf("expected validation error for %s", tc.name)
+			}
+			if cfg != nil {
+				t.Error("expected nil config on validation error")
+			}
+		})
+	}
+}
+
 func TestEffectiveTracesSampleRate(t *testing.T) {
 	cfg := DefaultTelemetryConfig()
 	cfg.Tracing.SampleRate = 0.5

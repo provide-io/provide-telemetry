@@ -92,13 +92,7 @@ pub fn extract_w3c_context(
     tracestate: Option<&str>,
     baggage: Option<&str>,
 ) -> PropagationContext {
-    let traceparent = traceparent.and_then(|value| {
-        if value.len() > MAX_HEADER_LENGTH {
-            None
-        } else {
-            Some(value)
-        }
-    });
+    let traceparent = traceparent.filter(|value| value.len() <= MAX_HEADER_LENGTH);
     let tracestate = tracestate.and_then(|value| {
         if value.len() > MAX_HEADER_LENGTH || value.split(',').count() > MAX_TRACESTATE_PAIRS {
             None

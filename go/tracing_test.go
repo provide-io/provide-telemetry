@@ -18,6 +18,43 @@ func TestGetTracer_NotNil(t *testing.T) {
 	}
 }
 
+func TestHasLiveTraceProvider_NoBackend(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	if _hasLiveTraceProvider() {
+		t.Fatal("expected false with no backend")
+	}
+}
+
+func TestHasLiveTraceProvider_WithBackendTraces(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	backend := &_fakeBackend{}
+	RegisterBackend("fake-live-trace", backend)
+	t.Cleanup(func() { UnregisterBackend("fake-live-trace") })
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Tracing.OTLPEndpoint = "http://collector:4318"
+	if _, err := SetupTelemetry(WithConfig(cfg)); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if !_hasLiveTraceProvider() {
+		t.Fatal("expected true when backend reports Traces")
+	}
+	// With a live provider, Trace must still invoke fn (sampling is SDK-owned).
+	called := false
+	if err := Trace(context.Background(), "live.span", func(context.Context) error {
+		called = true
+		return nil
+	}); err != nil {
+		t.Fatalf("Trace: %v", err)
+	}
+	if !called {
+		t.Fatal("expected Trace callback to run with live provider")
+	}
+}
+
 // ── 2. DefaultTracer is the no-op by default ─────────────────────────────────
 
 func TestDefaultTracer_IsNoop(t *testing.T) {
