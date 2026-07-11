@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.5.1] — 2026-07-10
+
+### Added
+
+- Coverage-guided fuzz targets for `parseOTLPHeaders`, `maskEndpointURL`, `validateRate`, `_validatedSignalEndpointURL`, and env-float→rate validation (`go test -fuzz` / `make fuzz`).
+- Local OSS-Fuzz helper recipe under `infra/oss-fuzz/` + `scripts/oss-fuzz-local.sh` (local Docker only).
+
+### Fixed
+
+- `validateRate` now rejects NaN and Inf (not only out-of-range finite values).
+
 ## [0.4.3] — 2026-04-24
 
 ### API Alignment

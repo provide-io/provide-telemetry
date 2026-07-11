@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
 # Local OSS-Fuzz recipe (not cloud)
 
 Build and run libFuzzer binaries with Google’s **local** OSS-Fuzz helper.

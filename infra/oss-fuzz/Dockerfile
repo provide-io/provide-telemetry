@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

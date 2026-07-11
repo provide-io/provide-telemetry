@@ -18,6 +18,16 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [0.5.1] — 2026-07-10
+
+### Added
+
+- **Go coverage-guided fuzz targets** — `go/fuzz_test.go` fuzzes OTLP header parsing, endpoint URL masking, sample-rate validation (including NaN/Inf rejection), and signal endpoint URL validation. Local continuous fuzz via `make -C go fuzz` and GitHub Actions `ci-go-fuzz.yml`. Local OSS-Fuzz libFuzzer builds via `./scripts/oss-fuzz-local.sh` (Google cloud onboarding shelved).
+
+### Fixed
+
+- **Go `validateRate` rejects NaN and Inf** — previously a bare range check accepted NaN (`NaN < 0` and `NaN > 1` are both false), so a `PROVIDE_*_SAMPLE_RATE=NaN` env value could pass config load. Matches the library's cross-language "rate in [0,1]" contract.
+
 ## [0.5.0] — 2026-07-05
 
 ### Added
