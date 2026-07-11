@@ -1,9 +1,8 @@
-# Copy to google/oss-fuzz/projects/provide-telemetry/project.yaml
 homepage: "https://github.com/provide-io/provide-telemetry"
 language: go
 primary_contact: "code@provide.io"
 auto_ccs:
-  - "code@provide.io"
+  - "code@tim.life"
 main_repo: "https://github.com/provide-io/provide-telemetry.git"
 fuzzing_engines:
   - libfuzzer

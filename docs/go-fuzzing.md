@@ -66,14 +66,33 @@ corpus storage. It uses the same build integration style as OSS-Fuzz
 above is usually simpler; ClusterFuzzLite pays off when you want OSS-Fuzz-style
 artifacts, SARIF, and corpus repos without joining OSS-Fuzz.
 
-## Applying to OSS-Fuzz (when ready)
+## Applying to OSS-Fuzz (Google fleet)
 
-Scaffold lives in [`infra/oss-fuzz/`](../infra/oss-fuzz/README.md). Steps:
+Scaffold lives in [`infra/oss-fuzz/`](../infra/oss-fuzz/README.md).
 
-1. Open a PR against **google/oss-fuzz** adding `projects/provide-telemetry/`
-   from that scaffold (adjust contact emails, repo URL).
-2. Wait for OSS-Fuzz onboarding review.
-3. After merge, ClusterFuzz builds and runs continuously; watch
-   [OSS-Fuzz issues](https://bugs.chromium.org/p/oss-fuzz/issues/list) for reports.
+### Smoke (prove the recipe on linux/amd64)
 
-Projects must be open source and widely used; acceptance is not automatic.
+Workflow [`.github/workflows/oss-fuzz-smoke.yml`](../.github/workflows/oss-fuzz-smoke.yml)
+clones `google/oss-fuzz`, installs our project files, runs:
+
+```text
+python3 infra/helper.py build_fuzzers provide-telemetry <this-repo>
+python3 infra/helper.py run_fuzzer provide-telemetry FuzzValidateRate -- -max_total_time=30
+```
+
+on **GitHub-hosted ubuntu-latest** (native amd64 — not Mac/qemu). That is the
+same builder image and `compile_native_go_fuzzer` path ClusterFuzz uses.
+
+### Onboard to Google continuous fuzzing
+
+1. Ensure `go/fuzz_test.go` is on the default branch of
+   `github.com/provide-io/provide-telemetry` (this PR).
+2. Open a PR against **google/oss-fuzz** adding
+   `projects/provide-telemetry/{project.yaml,Dockerfile,build.sh}` from
+   `infra/oss-fuzz/`.
+3. OSS-Fuzz maintainers review; after merge, ClusterFuzz builds on every
+   relevant change and runs fuzzers **continuously**, keeping a permanent corpus.
+4. Crashes appear in the [OSS-Fuzz issue tracker](https://bugs.chromium.org/p/oss-fuzz/issues/list)
+   (private until fixed / disclosure window for security bugs).
+
+Projects must be open source; acceptance is not automatic (usage/popularity bar).
