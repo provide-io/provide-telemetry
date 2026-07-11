@@ -4,8 +4,33 @@
 package telemetry
 
 import (
+	"math"
 	"testing"
 )
+
+// ---- Rate validation ----
+
+func TestValidateRate_RejectsNaNAndInf(t *testing.T) {
+	for _, v := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if err := validateRate(v, "rate"); err == nil {
+			t.Errorf("validateRate(%v) = nil; want error (NaN/Inf must not pass range check)", v)
+		}
+	}
+	for _, v := range []float64{0, 0.5, 1} {
+		if err := validateRate(v, "rate"); err != nil {
+			t.Errorf("validateRate(%v) = %v; want nil", v, err)
+		}
+	}
+}
+
+func TestConfigFromEnv_NaNSampleRateErrors(t *testing.T) {
+	t.Setenv("PROVIDE_SAMPLING_TRACES_RATE", "NaN")
+	_, err := ConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected NaN sample rate to fail config load")
+	}
+	assertConfigError(t, err)
+}
 
 // ---- Bool parsing ----
 

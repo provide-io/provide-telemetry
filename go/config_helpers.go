@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -19,9 +20,11 @@ const (
 	strNo    = "no"
 )
 
-// validateRate returns a ConfigurationError if v is not in [0.0, 1.0].
+// validateRate returns a ConfigurationError if v is not a finite value in [0.0, 1.0].
+// NaN/Inf must be rejected explicitly: NaN comparisons are always false, so a
+// bare range check would accept NaN (and TraceIDRatioBased would mis-handle it).
 func validateRate(v float64, field string) error {
-	if v < 0.0 || v > 1.0 {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0.0 || v > 1.0 {
 		return NewConfigurationError(fmt.Sprintf("%s must be in [0.0, 1.0], got %g", field, v))
 	}
 	return nil

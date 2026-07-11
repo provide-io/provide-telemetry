@@ -142,11 +142,7 @@ pub(super) fn install_tracer_provider(
         BatchSpanProcessor::builder(ResilientSpanExporter::new(exporter), runtime).build();
     // SDK sampler is the single sampling authority for live OTel spans.
     // Facade tracer::trace() skips ShouldSample when a provider is installed.
-    let sampler = sdk_trace_sampler(
-        cfg.sampling
-            .traces_rate
-            .min(cfg.tracing.sample_rate),
-    );
+    let sampler = sdk_trace_sampler(cfg.sampling.traces_rate.min(cfg.tracing.sample_rate));
     let provider = SdkTracerProvider::builder()
         .with_resource(resource)
         .with_span_processor(processor)

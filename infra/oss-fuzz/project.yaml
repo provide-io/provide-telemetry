@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+homepage: "https://github.com/provide-io/provide-telemetry"
+language: go
+primary_contact: "code@provide.io"
+auto_ccs:
+  - "code@tim.life"
+main_repo: "https://github.com/provide-io/provide-telemetry.git"
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address

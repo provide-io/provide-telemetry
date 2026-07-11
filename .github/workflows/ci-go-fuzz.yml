@@ -1,0 +1,59 @@
+# Continuous coverage-guided fuzz of go/ config parsing and redaction.
+# GitHub-hosted runners = continuous cloud at CI scale (same engine family
+# as OSS-Fuzz native Go targets; see docs/go-fuzzing.md for OSS-Fuzz fleet).
+name: 🐹 CI — Go fuzz
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  pull_request:
+    paths:
+      - "go/**"
+      - ".github/workflows/ci-go-fuzz.yml"
+  push:
+    paths:
+      - "go/fuzz_test.go"
+      - "go/config_helpers.go"
+      - "go/endpoint_validation.go"
+      - "go/Makefile"
+      - ".github/workflows/ci-go-fuzz.yml"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "go test -fuzztime duration"
+        required: false
+        default: "10m"
+
+permissions:
+  contents: read
+
+env:
+  GOWORK: off
+
+jobs:
+  fuzz:
+    name: go test -fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version: "1.26"
+
+      - name: Generate temporary go.work
+        shell: bash
+        run: |
+          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
+          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
+          export GOWORK="${WORKFILE}"
+          go env GOWORK
+
+      - name: Fuzz config/endpoint/header targets
+        env:
+          FUZZTIME: ${{ github.event_name == 'pull_request' && '2m' || github.event.inputs.fuzztime || '15m' }}
+        run: make fuzz FUZZTIME="${FUZZTIME}"

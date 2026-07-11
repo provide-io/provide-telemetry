@@ -42,7 +42,7 @@ def _clean_tracing() -> Generator[None]:
 
 def test_real_otel_tracer_creates_span_with_valid_ids() -> None:
     """A real OTel tracer produces spans with valid trace/span IDs."""
-    otel_trace = pytest.importorskip("opentelemetry.trace")
+    pytest.importorskip("opentelemetry.trace")
     sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
     sdk_resources = pytest.importorskip("opentelemetry.sdk.resources")
     export_module = pytest.importorskip("opentelemetry.sdk.trace.export")
@@ -51,10 +51,10 @@ def test_real_otel_tracer_creates_span_with_valid_ids() -> None:
     provider = sdk_trace.TracerProvider(resource=resource)
     exporter = export_module.SimpleSpanProcessor(export_module.ConsoleSpanExporter())
     provider.add_span_processor(exporter)
-    otel_trace.set_tracer_provider(provider)
-
+    # Use the local provider — process-global set_tracer_provider is once-only
+    # under xdist and prior tests may already own it (see test_sdk_sampler).
     try:
-        tracer = otel_trace.get_tracer("test.real.spans")
+        tracer = provider.get_tracer("test.real.spans")
         with tracer.start_as_current_span("test-operation") as span:
             ctx = span.get_span_context()
             assert ctx.trace_id != 0
@@ -65,12 +65,11 @@ def test_real_otel_tracer_creates_span_with_valid_ids() -> None:
             assert len(span_id_hex) == 16
     finally:
         provider.shutdown()
-        otel_trace.set_tracer_provider(otel_trace.NoOpTracerProvider())
 
 
 def test_real_otel_nested_spans_share_trace_id() -> None:
     """Nested spans share the same trace_id but have distinct span_ids."""
-    otel_trace = pytest.importorskip("opentelemetry.trace")
+    pytest.importorskip("opentelemetry.trace")
     sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
     sdk_resources = pytest.importorskip("opentelemetry.sdk.resources")
     export_module = pytest.importorskip("opentelemetry.sdk.trace.export")
@@ -79,10 +78,8 @@ def test_real_otel_nested_spans_share_trace_id() -> None:
     provider = sdk_trace.TracerProvider(resource=resource)
     memory = export_module.SimpleSpanProcessor(export_module.ConsoleSpanExporter())
     provider.add_span_processor(memory)
-    otel_trace.set_tracer_provider(provider)
-
     try:
-        tracer = otel_trace.get_tracer("test.nested")
+        tracer = provider.get_tracer("test.nested")
         with tracer.start_as_current_span("parent") as parent_span:
             parent_ctx = parent_span.get_span_context()
             with tracer.start_as_current_span("child") as child_span:
@@ -91,7 +88,6 @@ def test_real_otel_nested_spans_share_trace_id() -> None:
                 assert child_ctx.span_id != parent_ctx.span_id
     finally:
         provider.shutdown()
-        otel_trace.set_tracer_provider(otel_trace.NoOpTracerProvider())
 
 
 def test_real_otel_span_attributes_and_status() -> None:
@@ -102,10 +98,8 @@ def test_real_otel_span_attributes_and_status() -> None:
 
     resource = sdk_resources.Resource.create({"service.name": "test-attrs"})
     provider = sdk_trace.TracerProvider(resource=resource)
-    otel_trace.set_tracer_provider(provider)
-
     try:
-        tracer = otel_trace.get_tracer("test.attrs")
+        tracer = provider.get_tracer("test.attrs")
         with tracer.start_as_current_span("attr-op") as span:
             span.set_attribute("http.method", "GET")
             span.set_attribute("http.status_code", 200)
@@ -116,7 +110,6 @@ def test_real_otel_span_attributes_and_status() -> None:
             assert ctx.is_valid
     finally:
         provider.shutdown()
-        otel_trace.set_tracer_provider(otel_trace.NoOpTracerProvider())
 
 
 def test_real_otel_span_records_exception() -> None:
@@ -127,10 +120,8 @@ def test_real_otel_span_records_exception() -> None:
 
     resource = sdk_resources.Resource.create({"service.name": "test-exception"})
     provider = sdk_trace.TracerProvider(resource=resource)
-    otel_trace.set_tracer_provider(provider)
-
     try:
-        tracer = otel_trace.get_tracer("test.exception")
+        tracer = provider.get_tracer("test.exception")
         with pytest.raises(ValueError, match="test error"), tracer.start_as_current_span("error-op") as span:
             span.record_exception(ValueError("test error"))
             span.set_status(otel_trace.StatusCode.ERROR, "test error")
@@ -139,7 +130,6 @@ def test_real_otel_span_records_exception() -> None:
             raise ValueError("test error")
     finally:
         provider.shutdown()
-        otel_trace.set_tracer_provider(otel_trace.NoOpTracerProvider())
 
 
 def test_noop_tracer_produces_deterministic_ids() -> None:
