@@ -162,7 +162,7 @@ func FuzzValidatedSignalEndpointURL(f *testing.F) {
 		}
 		u, perr := url.Parse(got)
 		if perr != nil {
-			t.Fatalf("accepted unparseable result %q from %q: %v", got, endpoint, perr)
+			t.Fatalf("accepted unparsable result %q from %q: %v", got, endpoint, perr)
 		}
 		if u.Scheme != "http" && u.Scheme != "https" {
 			t.Fatalf("accepted non-http(s) result %q", got)

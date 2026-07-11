@@ -13,6 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from provide.telemetry import _otel as otel_mod
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.tracing import get_trace_context, get_tracer, set_trace_context, trace
 from provide.telemetry.tracing import provider as provider_mod
@@ -114,7 +115,7 @@ def test_setup_tracing_with_otel_and_exporter(monkeypatch: pytest.MonkeyPatch) -
     )
     # Quality CI installs without the otel extra; pin a sentinel sampler so this
     # test exercises the provider_cls(sampler=...) path without requiring the SDK.
-    monkeypatch.setattr(provider_mod._otel, "build_otel_trace_sampler", lambda _rate: "sampler")
+    monkeypatch.setattr(otel_mod, "build_otel_trace_sampler", lambda _rate: "sampler")
     # Bypass the resilient-export wrapper so processor_cls sees the raw exporter —
     # wrapping behavior is covered by tests/resilience/test_resilient_exporter.py.
     monkeypatch.setattr(resilient_exporter_mod, "wrap_exporter", lambda _sig, inner: inner)
@@ -149,7 +150,7 @@ def test_setup_tracing_with_otel_without_exporter(monkeypatch: pytest.MonkeyPatc
         "_load_otel_tracing_components",
         lambda: (resource_cls, provider_cls, processor_cls, exporter_cls),
     )
-    monkeypatch.setattr(provider_mod._otel, "build_otel_trace_sampler", lambda _rate: "sampler")
+    monkeypatch.setattr(otel_mod, "build_otel_trace_sampler", lambda _rate: "sampler")
     cfg = TelemetryConfig.from_env({})
     provider_mod.setup_tracing(cfg)
     resource_cls.create.assert_called_once_with(
