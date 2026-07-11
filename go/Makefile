@@ -56,3 +56,8 @@ fuzz: ## Run config/endpoint/header fuzz targets
 	go test . -run='^$$' -fuzz='^FuzzParseEnvFloatThenValidateRate$$' -fuzztime=$(FUZZTIME)
 
 check: fmt-check vet lint security test coverage ## Run all quality gates
+
+# Local OSS-Fuzz (Docker libFuzzer build). Not Google cloud onboarding.
+# From repo root: make -C go oss-fuzz-local  OR  ../scripts/oss-fuzz-local.sh build
+oss-fuzz-local: ## Build libFuzzer binaries via local OSS-Fuzz helper
+	cd .. && ./scripts/oss-fuzz-local.sh build
