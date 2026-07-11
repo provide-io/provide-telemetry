@@ -1,4 +1,4 @@
-.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress fuzz check
+.PHONY: help lint vet test coverage mutation security fmt fmt-check bench stress fuzz oss-fuzz-local check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
