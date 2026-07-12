@@ -2,8 +2,12 @@
 
 ## Versioning
 
-- Tag format: `vX.Y.Z`
-- Keep `VERSION`, language manifests, exported runtime version constants, and the Go module `VERSION` files (`go/VERSION`, `go/otel/VERSION`) aligned with the release tag.
+- Tag format is per-language: `vX.Y.Z` (Python, root), `typescript/vX.Y.Z`, `rust/vX.Y.Z`,
+  `go/vX.Y.Z`, `go/otel/vX.Y.Z`. See "Publish Path" below for what triggers off each.
+- `scripts/check_version_sync.py` requires every language's version to share root `VERSION`'s
+  major.minor; patch numbers are independent per language and legitimately drift.
+- Whichever language you're releasing, its own version file(s) must match the tag you push —
+  see the per-language "Release steps" below.
 
 ## Release Notes Checklist
 
@@ -28,13 +32,29 @@ uv run twine check dist/*
 - `.github/workflows/ci-spec.yml`, `ci-contracts.yml`, and `ci-surface.yml`: parity, contract, and release-surface gates.
 - `.github/workflows/ci-shared.yml`: docs-quality, release-readiness, and optional OpenObserve end-to-end validation.
 - `.github/workflows/ci-mutation.yml` and `ci-strip-governance.yml`: mutation and stripped-build safety nets.
-- `.github/workflows/release.yml`: build on tags and publish to PyPI on GitHub release publish; also verifies Go consumer resolution after Go tags exist.
+- `.github/workflows/release.yml`: publishes each language independently — see "Publish Path" below.
 
-Go CI is intentionally split:
+Release publishing is language-scoped, not one joint event. `scripts/check_version_sync.py` only
+requires each language's version to share root `VERSION`'s major.minor — patch numbers legitimately
+drift per language, so each language publishes off its own trigger:
+
+| Language | Trigger | Requires a GitHub Release? |
+|----------|---------|------------------------|
+| Python (PyPI) | GitHub Release published (or `workflow_dispatch`) on the root `vX.Y.Z` tag | Yes — root `VERSION` is Python's version |
+| TypeScript (npm) | push of a `typescript/vX.Y.Z` tag | No |
+| Rust (crates.io) | push of a `rust/vX.Y.Z` tag | No |
+| Go (pkg.go.dev) | push of `go/vX.Y.Z` / `go/otel/vX.Y.Z` tags | No |
+
+Cutting a release for one language never touches the others — pushing `typescript/v0.5.2` publishes
+npm only; it does not build, test, or publish Python/Rust/Go, and does not require or create a
+GitHub Release. Tag only the languages that actually changed.
+
+Go CI is intentionally split the same way:
 - `ci-go.yml` uses an ephemeral `go.work` for pre-release integration of the local `go` and `go/otel` modules.
 - `release.yml` runs `GOWORK=off` consumer-mode fetch/build checks after Go tags are pushed, first with `GOPROXY=direct` and then through `proxy.golang.org`.
 - Those release checks use generated probe modules that import the tagged Go module like a downstream consumer, instead of trying to run the tagged dependency module's own test suite.
 - Go module versions are effectively immutable once `proxy.golang.org` indexes them. If a pushed `go/.../vX.Y.Z` tag points at the wrong commit, force-moving the tag does not repair the proxy view; cut a new Go module version instead.
+- The same immutability caveat applies to `typescript/vX.Y.Z` and `rust/vX.Y.Z` tags: npm and crates.io both reject republishing an already-used version number, so a wrong tag means cutting a new patch version, not force-moving the tag.
 
 ## Local Act Validation
 
@@ -83,21 +103,57 @@ Document any socket/mount issues and rerun once host access is restored.
 
 ### Python (PyPI)
 
-1. Push tag `vX.Y.Z`.
-2. Create GitHub release from tag.
-3. `release.yml` runs build and `twine check`.
-4. `publish-pypi` job uploads to PyPI via trusted publisher (OIDC — no token required).
+Only language released via a GitHub Release object — root `VERSION` is Python's version.
+
+Prerequisites (one-time setup):
+- Create `testpypi` and `pypi` environments in GitHub repo Settings → Environments.
+- Configure PyPI/TestPyPI Trusted Publishers mapping to this repo + `release.yml` (OIDC — no token needed).
+
+Release steps:
+1. Bump root `VERSION` (and `pyproject.toml`'s dynamic pointer stays in sync automatically).
+2. Push tag `vX.Y.Z` matching `VERSION`, then create a GitHub Release from it (or use `workflow_dispatch`).
+3. `build` job runs `uv build` + `twine check`; `publish-testpypi` uploads to TestPyPI.
+4. `verify-testpypi` installs from TestPyPI and asserts `__version__` matches the tag — a mismatch
+   between the tag and `VERSION` fails here before anything reaches real PyPI.
+5. `publish-pypi` uploads to PyPI via trusted publisher (OIDC).
+6. `sign-and-upload` sigstore-signs the wheel/sdist and attaches them + the SBOM to the GitHub Release.
 
 ### TypeScript (npm)
 
+Decoupled from Python — no GitHub Release involved, tag push publishes directly.
+
 Prerequisites (one-time setup):
 - Create an `npm` environment in GitHub repo Settings → Environments.
-- Add `NPM_TOKEN` as a repository secret (generate at npmjs.com → Access Tokens → Granular).
+- Configure an npm Trusted Publisher on npmjs.com under `@provide-io/telemetry` → Settings →
+  Trusted publishers: org=provide-io, repo=provide-telemetry, workflow=release.yml,
+  environment=npm (OIDC — no `NPM_TOKEN` secret needed).
 
 Release steps:
-1. Same tag/release as Python — both publish jobs fire from the same `release.yml`.
-2. `build-typescript` job runs `npm ci`, `test:coverage`, and `tsc`; uploads `dist/` artifact.
-3. `publish-npm` job downloads the artifact and runs `npm publish --provenance --access public`.
+1. Bump `typescript/package.json` version, `typescript/src/config.ts`'s `version` export, and
+   `typescript/package-lock.json` (run `npm install` in `typescript/` to sync the lockfile) —
+   `scripts/check_version_sync.py` checks these three stay in exact 3-way sync with each other,
+   and that they share root `VERSION`'s major.minor.
+2. Push tag `typescript/vX.Y.Z` matching the bumped `package.json` version.
+3. `build-npm` job runs `npm ci`, `vitest run`, `npm run build`, `npm pack`; uploads the tarball
+   and a generated SBOM as workflow artifacts.
+4. `publish-npm` job downloads the tarball and runs `npm publish --provenance --access public`.
+
+### Rust (crates.io)
+
+Decoupled from Python — no GitHub Release involved, tag push publishes directly.
+
+Prerequisites (one-time setup):
+- Create a `crates` environment in GitHub repo Settings → Environments.
+- Configure a crates.io Trusted Publisher mapping to this repo + `release.yml` + the `crates`
+  environment (OIDC — no `CARGO_REGISTRY_TOKEN` secret needed).
+
+Release steps:
+1. Bump `rust/Cargo.toml`'s version to share root `VERSION`'s major.minor.
+2. Push tag `rust/vX.Y.Z` matching the bumped `Cargo.toml` version.
+3. `build-rust` job runs `cargo test` and `cargo package`; uploads the crate as a workflow artifact.
+4. `publish-rust` job runs `cargo publish` via trusted publishing.
+5. `cargo publish` has no skip-existing behavior — republishing an already-used version hard-fails
+   the job, so `Cargo.toml` must actually change before tagging.
 
 ### Go (pkg.go.dev)
 

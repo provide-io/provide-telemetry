@@ -2,11 +2,18 @@ name: 🚀 Release
 
 on:
   push:
-    # Go module tags trigger consumer-resolution verification on push.
-    # Main release builds/publishes are gated on GitHub Release creation below.
+    # Language-scoped tags publish that language independently of the others —
+    # patch versions legitimately drift per scripts/check_version_sync.py (only
+    # major.minor is required to match root VERSION). Go module tags trigger
+    # consumer-resolution verification; typescript/rust tags publish directly
+    # to their registries. None of these require a GitHub Release object.
+    # Python remains the one language released via GitHub Release creation
+    # below (root VERSION is Python's version, read directly by pyproject.toml).
     tags:
       - 'go/v*'
       - 'go/otel/v*'
+      - 'typescript/v*'
+      - 'rust/v*'
   release:
     types: [published]
   workflow_dispatch:
@@ -39,21 +46,10 @@ jobs:
           path: dist/*
       - name: Generate Python SBOM
         run: uvx cyclonedx-py environment --output-format json -o sbom-python.cdx.json
-      - name: Generate TypeScript SBOM
-        # Install deps first — cyclonedx-npm requires node_modules for npm-ls
-        run: |
-          npm install -g @cyclonedx/cyclonedx-npm
-          cd typescript
-          npm ci
-          cyclonedx-npm --output-file ../sbom-typescript.cdx.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: sbom-python
           path: sbom-python.cdx.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          name: sbom-typescript
-          path: sbom-typescript.cdx.json
 
   publish-testpypi:
     needs: build
@@ -124,8 +120,9 @@ jobs:
           skip-existing: true
 
   build-npm:
-    # Run on GitHub Release creation or manual dispatch only
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # Run only on a typescript/vX.Y.Z tag push — decoupled from the Python
+    # GitHub Release so the TS patch version can drift independently.
+    if: startsWith(github.ref, 'refs/tags/typescript/')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -152,10 +149,20 @@ jobs:
         with:
           name: npm-pack
           path: typescript/*.tgz
+      - name: Generate TypeScript SBOM
+        # Kept as a build artifact for audit purposes — no GH Release exists
+        # for a bare tag push to attach it to (npm's own --provenance
+        # attestation is the trust signal consumers see on npmjs.com).
+        run: npx @cyclonedx/cyclonedx-npm --output-file ../sbom-typescript.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: sbom-typescript
+          path: sbom-typescript.cdx.json
 
   build-rust:
-    # Run on GitHub Release creation or manual dispatch only
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # Run only on a rust/vX.Y.Z tag push — decoupled from the Python
+    # GitHub Release so the Rust patch version can drift independently.
+    if: startsWith(github.ref, 'refs/tags/rust/')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -179,7 +186,7 @@ jobs:
 
   publish-npm:
     needs: build-npm
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/typescript/')
     # continue-on-error: safe to retrigger — npm will fail with 403 if version already published
     continue-on-error: true
     runs-on: ubuntu-24.04
@@ -220,7 +227,7 @@ jobs:
 
   publish-rust:
     needs: build-rust
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/rust/')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -251,7 +258,12 @@ jobs:
         run: cargo publish --locked
 
   sign-and-upload:
-    needs: [build, build-rust]
+    # Python-only: signs and attaches the wheel/sdist to the GitHub Release.
+    # npm and Rust publish off their own decoupled tags (see build-npm /
+    # build-rust) and have no GitHub Release object to attach assets to —
+    # npm's --provenance attestation and crates.io's own registry serve as
+    # the equivalent trust signal for those two.
+    needs: build
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
@@ -266,14 +278,6 @@ jobs:
         with:
           name: sbom-python
           path: sbom
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: sbom-typescript
-          path: sbom
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
-        with:
-          name: rust-package
-          path: rust-dist
       - uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1  # v3.4.0
         with:
           inputs: dist/*.whl dist/*.tar.gz
@@ -285,9 +289,7 @@ jobs:
         run: |
           gh release upload "${RELEASE_TAG}" \
             dist/*.whl dist/*.tar.gz dist/*.sigstore.json \
-            rust-dist/*.crate \
             sbom/sbom-python.cdx.json \
-            sbom/sbom-typescript.cdx.json \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 
