@@ -22,13 +22,14 @@ import { getConfig } from './config';
 import { _clearProviderState, _getRegisteredProviders, type ShutdownableProvider } from './runtime';
 import { _resetRootLogger } from './logger';
 import { _resetOtelLogProviderForTests } from './otel-logs';
+import { dynImportOtel } from './otel-dynimport';
 
 async function disableInstalledOtelGlobals(): Promise<void> {
   trace.disable();
   metrics.disable();
   context.disable();
   try {
-    const { logs } = await import('@opentelemetry/api-logs' as string);
+    const { logs } = await dynImportOtel('@opentelemetry/api-logs');
     logs.disable();
   } catch {
     // Optional peer dep not installed.

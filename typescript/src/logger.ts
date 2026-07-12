@@ -139,8 +139,7 @@ export function makeWriteHook() {
       // Error fingerprinting — stable hash from error name + stack.
       const errObj = o['err'] as Record<string, unknown> | undefined;
       const excName = (o['exc_name'] ?? o['exception'] ?? errObj?.['type'] ?? errObj?.['name']) as
-        | string
-        | undefined;
+        string | undefined;
       if (excName) {
         const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
         o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);

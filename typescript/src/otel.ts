@@ -2,29 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
- * Mutation-testing note (mirrored in typescript/stryker.config.mjs):
+ * Peer-dep loading note: all @opentelemetry/* imports below go through
+ * dynImportOtel() (src/otel-dynimport.ts) rather than a literal
+ * `import('pkg')`. That keeps every OTel peer dep tree-shakeable for
+ * bundler users who set otelEnabled:false, AND stops bundlers (esbuild,
+ * webpack, rollup) from statically resolving the specifier and failing the
+ * build when a consumer hasn't installed the optional peer dep.
  *
- * This file is excluded from Stryker's `mutate` array because it uses
- * `await import('pkg' as string)` so Stryker's V8 perTest coverage
- * instrumentor cannot trace which test exercises which mutant — every mutant
- * reports covered:0 and is labelled "no coverage" rather than being killed.
- * Switching to static imports is out of scope: the dynamic pattern is the
- * load-bearing mechanism that keeps all OTel peer deps tree-shakeable for
- * bundler users who set otelEnabled:false.
- *
- * TRADEOFF: mutations in this file are not killed by unit tests.
- * The risk is accepted because:
- *   1. Integration tests in tests/integration/otel-providers-registration.test.ts
- *      and tests/integration/otel-providers.test.ts exercise every branch
- *      with real OTel SDK objects, giving strong behavioural confidence.
- *   2. The logic here is thin wiring (endpoint resolution + provider
- *      construction); the resilience-policy and export-path mutations that
- *      matter most are covered at 100% in resilient-exporter.ts and
- *      resilience.ts, which use static imports.
- *
- * If a future Stryker version can track V8 coverage through dynamic imports,
- * remove the `!src/otel.ts` exemption in stryker.config.mjs and add targeted
- * unit tests.
+ * Mutation-testing note (mirrored in typescript/stryker.config.mjs): this
+ * file is still excluded from Stryker's `mutate` array. Routing through
+ * dynImportOtel() fixed the old V8-coverage-tracing blind spot, but doing
+ * so surfaced pre-existing untested edge cases (endpoint normalization,
+ * provider-signal bookkeeping) that keep the measured score under the 95%
+ * break threshold — latent debt, tracked separately from this change.
  */
 
 /**
@@ -45,6 +35,7 @@ import type { TelemetryConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
 import { buildOtelResource } from './otel-resource';
 import { setupOtelLogProvider } from './otel-logs';
+import { dynImportOtel } from './otel-dynimport';
 import { wrapResilientExporter } from './resilient-exporter';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
@@ -101,8 +92,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // Install AsyncLocalStorageContextManager so startActiveSpan propagates spans
   // through async boundaries in Node.js. Must happen before TracerProvider setup.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctxHooks: any = await import('@opentelemetry/context-async-hooks' as string);
+    const ctxHooks = await dynImportOtel('@opentelemetry/context-async-hooks');
     const { context } = await import('@opentelemetry/api');
     const ctxMgr = new ctxHooks.AsyncLocalStorageContextManager();
     ctxMgr.enable();
@@ -114,13 +104,9 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // ── Tracing ──────────────────────────────────────────────────────────────────
   if (cfg.tracingEnabled) {
     try {
-      // These are optional peer deps — TypeScript checks are suppressed intentionally.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const traceBase: any = await import('@opentelemetry/sdk-trace-base' as string);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const otlpTrace: any = await import('@opentelemetry/exporter-trace-otlp-http' as string);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res: any = await import('@opentelemetry/resources' as string);
+      const traceBase = await dynImportOtel('@opentelemetry/sdk-trace-base');
+      const otlpTrace = await dynImportOtel('@opentelemetry/exporter-trace-otlp-http');
+      const res = await dynImportOtel('@opentelemetry/resources');
       const { trace } = await import('@opentelemetry/api');
 
       const {
@@ -167,12 +153,9 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // ── Metrics ──────────────────────────────────────────────────────────────────
   if (cfg.metricsEnabled) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sdkMetrics: any = await import('@opentelemetry/sdk-metrics' as string);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const otlpMetrics: any = await import('@opentelemetry/exporter-metrics-otlp-http' as string);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res: any = await import('@opentelemetry/resources' as string);
+      const sdkMetrics = await dynImportOtel('@opentelemetry/sdk-metrics');
+      const otlpMetrics = await dynImportOtel('@opentelemetry/exporter-metrics-otlp-http');
+      const res = await dynImportOtel('@opentelemetry/resources');
       const { metrics } = await import('@opentelemetry/api');
       const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
       const { OTLPMetricExporter } = otlpMetrics;

@@ -141,8 +141,7 @@ const _rules: PIIRule[] = [];
 // null = feature not loaded (zero overhead).
 export let _classificationHook: ((key: string, value: unknown) => string | null) | null = null;
 export let _receiptHook:
-  | ((fieldPath: string, action: string, originalValue: unknown) => void)
-  | null = null;
+  ((fieldPath: string, action: string, originalValue: unknown) => void) | null = null;
 /** Policy hook — returns the action ('drop'|'redact'|'hash'|'truncate'|'pass') for a label. */
 export let _policyHook: ((label: string) => string) | null = null;
 

@@ -5,10 +5,9 @@
  * OTel `Resource` construction shared by the trace, metric, and log providers.
  *
  * The three provider builders in otel.ts / otel-logs.ts each dynamically import
- * `@opentelemetry/resources` (an optional peer dep) and hand the module here.
- * Keeping the logic in this statically-imported module means it is unit-tested
- * and mutation-tested (otel.ts / otel-logs.ts are Stryker-exempt because their
- * `await import('pkg' as string)` pattern defeats V8 per-test coverage).
+ * `@opentelemetry/resources` (an optional peer dep, via dynImportOtel() in
+ * otel-dynimport.ts) and hand the module here. Keeping the logic in this
+ * statically-imported module means it is unit-tested and mutation-tested.
  *
  * Precedence (cross-language contract, see spec/behavioral_fixtures.yaml):
  *

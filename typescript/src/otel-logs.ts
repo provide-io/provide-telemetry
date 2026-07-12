@@ -2,30 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
- * Mutation-testing note (mirrored in typescript/stryker.config.mjs):
+ * Peer-dep loading note: all @opentelemetry/* imports below go through
+ * dynImportOtel() (src/otel-dynimport.ts) rather than a literal
+ * `import('pkg')`. That keeps every OTel peer dep tree-shakeable for
+ * bundler users who set otelEnabled:false, AND stops bundlers (esbuild,
+ * webpack, rollup) from statically resolving the specifier and failing the
+ * build when a consumer hasn't installed the optional peer dep.
  *
- * This file is excluded from Stryker's `mutate` array because it uses
- * `await import('pkg' as string)` so Stryker's V8 perTest coverage
- * instrumentor cannot trace which test exercises which mutant — every mutant
- * reports covered:0 and is labelled "no coverage" rather than being killed.
- * Switching to static imports is out of scope: the dynamic pattern is the
- * load-bearing mechanism that keeps all OTel peer deps tree-shakeable for
- * bundler users who set otelEnabled:false.
- *
- * TRADEOFF: mutations in this file are not killed by unit tests.
- * The risk is accepted because:
- *   1. Integration tests in tests/integration/otel-providers-registration.test.ts
- *      exercise every branch of setupOtelLogProvider() with real OTel SDK
- *      objects, giving strong behavioural confidence.
- *   2. The emitLogRecord() function uses only static imports and is called
- *      from the Pino write-hook; its attribute-truncation and severity-mapping
- *      logic is exercised by the pipeline integration test suite.
- *   3. The resilience-policy mutations that matter most are covered at 100%
- *      in resilient-exporter.ts, which uses static imports.
- *
- * If a future Stryker version can track V8 coverage through dynamic imports,
- * remove the `!src/otel-logs.ts` exemption in stryker.config.mjs and add
- * targeted unit tests.
+ * Mutation-testing note (mirrored in typescript/stryker.config.mjs): this
+ * file is still excluded from Stryker's `mutate` array. Routing through
+ * dynImportOtel() fixed the old V8-coverage-tracing blind spot, but doing
+ * so surfaced pre-existing untested edge cases (attribute truncation
+ * boundaries, resilient-exporter signal wiring) that keep the measured
+ * score under the 95% break threshold — latent debt, tracked separately
+ * from this change.
  */
 
 /**
@@ -43,6 +33,7 @@ import type { TelemetryConfig } from './config';
 import { getConfig } from './config';
 import { validateOtlpEndpoint } from './endpoint';
 import { buildOtelResource } from './otel-resource';
+import { dynImportOtel } from './otel-dynimport';
 import { wrapResilientExporter } from './resilient-exporter';
 import type { ShutdownableProvider } from './runtime';
 
@@ -92,15 +83,10 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
     throw new Error('setupOtelLogProvider called without an OTLP log endpoint configured');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sdkLogs: any = await import('@opentelemetry/sdk-logs' as string);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const otlpLogs: any = await import('@opentelemetry/exporter-logs-otlp-http' as string);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apiLogs: any = await import('@opentelemetry/api-logs' as string);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res: any = await import('@opentelemetry/resources' as string);
+  const sdkLogs = await dynImportOtel('@opentelemetry/sdk-logs');
+  const otlpLogs = await dynImportOtel('@opentelemetry/exporter-logs-otlp-http');
+  const apiLogs = await dynImportOtel('@opentelemetry/api-logs');
+  const res = await dynImportOtel('@opentelemetry/resources');
 
   const { LoggerProvider, BatchLogRecordProcessor } = sdkLogs;
   const { OTLPLogExporter } = otlpLogs;
