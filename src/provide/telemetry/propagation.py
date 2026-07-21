@@ -12,21 +12,31 @@ __all__ = [
     "bind_propagation_context",
     "clear_propagation_context",
     "extract_w3c_context",
+    "inject_traceparent",
     "parse_baggage",
 ]
 
 import contextvars
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-from provide.telemetry._otel import attach_w3c_context, detach_w3c_context
+from provide.telemetry._otel import attach_w3c_context, detach_w3c_context, inject_w3c_context
 from provide.telemetry.headers import get_header
 from provide.telemetry.logger.context import bind_context, get_context, unbind_context
-from provide.telemetry.tracing.context import get_trace_context, set_trace_context
+from provide.telemetry.tracing.context import (
+    get_span_id,
+    get_trace_context,
+    get_trace_id,
+    set_trace_context,
+)
 
 _MAX_HEADER_LENGTH = 512
 _MAX_TRACESTATE_PAIRS = 32
 _MAX_BAGGAGE_LENGTH = 8192
+_TRACE_ID_LENGTH = 32
+_SPAN_ID_LENGTH = 16
+_HEX_DIGITS = frozenset("0123456789abcdef")
 
 _MISSING = object()
 _restore_stack: contextvars.ContextVar[tuple[dict[str, object], ...]] = contextvars.ContextVar(
@@ -124,6 +134,44 @@ def parse_baggage(raw: str) -> dict[str, str]:
         if key:
             result[key] = value.strip()
     return result
+
+
+def _is_injectable_id(value: str | None, length: int) -> bool:
+    """Validate a trace/span ID for outbound injection.
+
+    W3C trace-context requires lowercase hex of the exact field width and
+    rejects the all-zero value; anything else must not be emitted.
+    """
+    if value is None or len(value) != length:
+        return False
+    if value == "0" * length:
+        return False
+    return all(c in _HEX_DIGITS for c in value)
+
+
+def inject_traceparent(headers: MutableMapping[str, str]) -> MutableMapping[str, str]:
+    """Write the current trace context into ``headers`` for an outbound call.
+
+    Prefers the live OTel span context (full ``traceparent``/``tracestate``
+    injection via the SDK propagator). Without OTel, falls back to the facade
+    contextvars mirrored by ``@trace``/``span()`` and inbound extraction,
+    emitting a version-00 ``traceparent`` with the sampled flag and forwarding
+    any bound ``tracestate``. When no valid context is current, ``headers`` is
+    returned unchanged. Returns the same mapping for call-site chaining::
+
+        httpx.post(url, headers=inject_traceparent({"authorization": token}))
+    """
+    if inject_w3c_context(headers):
+        return headers
+    trace_id = get_trace_id()
+    span_id = get_span_id()
+    if not _is_injectable_id(trace_id, _TRACE_ID_LENGTH) or not _is_injectable_id(span_id, _SPAN_ID_LENGTH):
+        return headers
+    headers["traceparent"] = f"00-{trace_id}-{span_id}-01"
+    tracestate = get_context().get("tracestate")
+    if isinstance(tracestate, str) and tracestate:
+        headers["tracestate"] = tracestate
+    return headers
 
 
 def bind_propagation_context(context: PropagationContext) -> None:
