@@ -105,6 +105,10 @@ api:
     - name: bind_propagation_context
       kind: function
       required: true
+    - name: inject_traceparent
+      kind: function
+      required: false
+      note: "Outbound W3C trace-context injection into a headers mapping. Prefers live OTel span context; falls back to facade contextvars. Python-first; other languages owed."
 
   sampling:
     - name: get_sampling_policy

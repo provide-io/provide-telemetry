@@ -232,6 +232,14 @@ Parse `traceparent`, `tracestate`, and `baggage` headers from an ASGI scope. Ret
 
 Push propagation fields into structlog context and trace context. Stackable — supports nested bind/clear pairs.
 
+### `inject_traceparent(headers: MutableMapping[str, str]) -> MutableMapping[str, str]`
+
+Write the current trace context into an outbound headers mapping as W3C `traceparent`/`tracestate`. Prefers the live OTel span context (SDK propagator injection); without OTel it falls back to the facade contextvars mirrored by `@trace`/`span()` and inbound extraction, emitting a version-00 header with the sampled flag. No-ops (returns `headers` unchanged) when no valid context is current. Returns the same mapping so it composes at call sites:
+
+```python
+await client.post(url, json=payload, headers=inject_traceparent({"authorization": token}))
+```
+
 ## Sampling Policies
 
 ### `SamplingPolicy`

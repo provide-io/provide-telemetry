@@ -12,6 +12,7 @@ __all__ = [
     "build_otel_trace_sampler",
     "detach_w3c_context",
     "has_otel",
+    "inject_w3c_context",
     "load_otel_logs_components",
     "load_otel_metrics_api",
     "load_otel_metrics_components",
@@ -21,6 +22,7 @@ __all__ = [
 
 import importlib
 import logging
+from collections.abc import MutableMapping
 from typing import Any, Protocol, cast
 
 _logger = logging.getLogger(__name__)
@@ -158,6 +160,25 @@ def attach_w3c_context(traceparent: str, tracestate: str | None) -> object | Non
     ctx = propagator.extract(carrier=carrier)
     token: object = context_mod.attach(ctx)
     return token
+
+
+def inject_w3c_context(carrier: MutableMapping[str, str]) -> bool:
+    """Inject the current OTel span context into ``carrier`` as W3C headers.
+
+    Returns ``True`` when the SDK propagator wrote a ``traceparent`` header
+    (a valid span context is current); ``False`` when OTel is unavailable or
+    there is no current span context to propagate.
+    """
+    try:
+        propagator_mod = _import_module("opentelemetry.trace.propagation.tracecontext")
+    except ImportError:
+        _logger.debug(
+            "otel.propagation.inject_skipped"
+        )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
+        return False
+    propagator = propagator_mod.TraceContextTextMapPropagator()
+    propagator.inject(carrier=carrier)
+    return "traceparent" in carrier
 
 
 def detach_w3c_context(token: object | None) -> None:
