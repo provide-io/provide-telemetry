@@ -1,12 +1,18 @@
 # Changelog
 
-> This file has not been kept current, and does not match what npm actually
-> serves. Nine published versions are missing from it — 0.2.2, 0.2.6, 0.3.0,
-> 0.4.4, 0.4.7, 0.4.8, 0.5.0, 0.5.1, 0.5.2 — while the 0.4.0, 0.4.1 and 0.4.2
-> entries below were never published to npm at all (they are shared-changelog
-> releases of the Python/Go packages). Entries are also not in version order.
-> The root `CHANGELOG.md` is the maintained one — prefer it, noting that it too
-> omits 0.2.6 and 0.4.7.
+Releases of the npm package `@provide-io/telemetry`. The root `CHANGELOG.md`
+covers all four languages; this file covers only what shipped to npm.
+
+Two things to know when reading it:
+
+- Entries marked _(reconstructed)_ were written after the fact from git history,
+  by diffing each version-bump commit against the previous one. They describe
+  what changed, not what the author would have chosen to highlight.
+- **0.4.0, 0.4.1 and 0.4.2 were never published to npm.** They predate 0.2.2 in
+  time — the project rewound its version number in April 2026 — and are kept
+  here in version order, out of chronological order, because that is what a
+  changelog is read in. `npm view @provide-io/telemetry versions` is the
+  authority on what a consumer can actually install.
 
 ## [0.5.3] — 2026-07-28
 
@@ -17,6 +23,73 @@
 ### Added
 
 - **`ci/verify-npm-consumer-package.sh`** — imports the packed tarball from a real Node process, in both CI and the release path. Lint, typecheck and the full vitest suite resolve like a bundler and cannot catch this class of break.
+
+---
+
+## [0.5.2] — 2026-07-12 _(reconstructed)_
+
+### Fixed
+
+- **Optional OTel imports are no longer statically resolved by bundlers** — the dynamic imports guarding optional OpenTelemetry packages were being followed at build time, so a consumer that had not installed them got a resolution failure instead of the no-op path.
+
+---
+
+## [0.5.1] — 2026-07-10 _(reconstructed)_
+
+### Fixed
+
+- **SDK-level trace sampling is real** — the default `TracerProvider` is built with `ParentBased(TraceIdRatioBased(effective_rate))`. Previously the configured rate gated only the library facade (`withTrace` / `shouldSample`) while the global tracer and any instrumentation sampled at 100%.
+
+### Changed
+
+- React dev stack moved to 19 (`react`, `react-dom`, `@types/react`).
+- `vite` pinned below 8.1 — its decorator-transform regression broke the build.
+
+---
+
+## [0.5.0] — 2026-07-05 _(reconstructed)_
+
+### Added
+
+- **`OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME` are honored** when building the OTel resource, matching the Go implementation.
+- **Provenance-layered resource precedence** — resource attributes carry where they came from, and later layers override earlier ones by a documented ladder rather than by merge order.
+
+### Tests
+
+- A cross-language parity test locks the resource-precedence ladder so the layering cannot drift between Go and TypeScript.
+
+---
+
+## [0.4.8] — 2026-06-10 _(reconstructed)_
+
+### Changed
+
+- Version bump and a wholesale dependency refresh (`package-lock.json` regenerated). No source change beyond the exported version constant.
+
+---
+
+## [0.4.7] — 2026-05-24 _(reconstructed)_
+
+### Changed
+
+- Version-parity release for TypeScript: the fix in this version was in the Go package (swallowing a library-applied `DeadlineExceeded` on shutdown). The npm package changed only its version constant and lockfile.
+
+---
+
+## [0.4.4] — 2026-05-03 _(reconstructed)_
+
+### Fixed
+
+- **`npm ci` is reproducible again** — `package-lock.json` had been dropped from the package and was restored.
+- Three publish-pipeline fixes landed in the same release.
+
+### Quality
+
+- Coverage gate restored in the TypeScript CI job.
+- Stryker survivors killed in `runtime.ts` and elsewhere, via direct array assertions rather than pragmas.
+- Dev-dependency refresh across all four languages.
+
+---
 
 ## [0.4.3] — 2026-04-24
 
@@ -36,28 +109,7 @@
 
 ---
 
-## [0.2.4] — 2026-04-08
-
-### Features
-
-- **`registerSecretPattern`** — register custom secret detection patterns with name-based deduplication
-- **Benchmark suite** — `tests/performance/benchmark.test.ts` with 12 vitest performance tests; `npm run test:bench`
-- **Stress tests** — 3 new scripts (sampling, PII, tracing); `npm run stress` runs all 6
-
-### Bug Fixes
-
-- **`emitted_*`/`dropped_*` always 0** — added health counter calls to `shouldSample` and `tryAcquire`
-- **Browser crash on import** — `receipts.ts` replaced Node.js `crypto` with pure-JS `hash.ts` (SHA-256, randomHex)
-- **macOS v8 coverage** — removed stale `v8 ignore` directives, added test for receipts production-mode path
-
-### Quality
-
-- **100% Stryker mutation kill** (1762 mutants, 0 survivors — was 93.81%)
-- 1232 tests, 100% coverage (lines, branches, functions, statements)
-
----
-
-## [0.4.2] — 2026-03-29
+## [0.4.2] — 2026-03-29 — never published to npm
 
 ### Tests
 
@@ -68,7 +120,7 @@
 
 ---
 
-## [0.4.1] — 2026-03-28
+## [0.4.1] — 2026-03-28 — never published to npm
 
 ### Features
 
@@ -87,7 +139,7 @@
 
 ---
 
-## [0.4.0](https://github.com/provide-io/provide-telemetry/compare/telemetry-v0.3.0...telemetry-v0.4.0) (2026-03-28)
+## [0.4.0](https://github.com/provide-io/provide-telemetry/compare/telemetry-v0.3.0...telemetry-v0.4.0) (2026-03-28) — never published to npm
 
 
 ### Features
@@ -118,3 +170,67 @@
 * **ts:** kill window typeof-check mutation survivors in node env ([125f561](https://github.com/provide-io/provide-telemetry/commit/125f561fab0099fdf33e69959fa04c3fde0a69ee))
 * **typescript:** kill config.ts logFormat string mutation with empty-string test ([4a765cf](https://github.com/provide-io/provide-telemetry/commit/4a765cf83c798fe10835ec21826e657c95734d6f))
 * **typescript:** kill surviving mutants in backpressure, cardinality, resilience ([eb8ee9b](https://github.com/provide-io/provide-telemetry/commit/eb8ee9ba6ecb7557c5276f5ca677e07214c7c536))
+
+---
+
+## [0.3.0] — 2026-04-12 _(reconstructed)_
+
+### Added
+
+- **`guardAttributes` and strict-schema accessors** — `setStrictSchema` / `getStrictSchema`, added to the spec and to all four languages.
+- **Strippable governance modules** — the governance layer can be excluded from a build, across all four languages.
+
+### Quality
+
+- Emitted-counter assertions added to the TypeScript CI job.
+- Mutation survivors killed and a branch-coverage gap closed.
+
+---
+
+## [0.2.6] — 2026-04-10 _(reconstructed)_
+
+### Changed
+
+- Version-parity release for TypeScript: the fix in this version was in the Go package (an `RWMutex` around logger global state, to eliminate a data race). The npm package changed only its version constant.
+
+---
+
+## [0.2.4] — 2026-04-08
+
+### Features
+
+- **`registerSecretPattern`** — register custom secret detection patterns with name-based deduplication
+- **Benchmark suite** — `tests/performance/benchmark.test.ts` with 12 vitest performance tests; `npm run test:bench`
+- **Stress tests** — 3 new scripts (sampling, PII, tracing); `npm run stress` runs all 6
+
+### Bug Fixes
+
+- **`emitted_*`/`dropped_*` always 0** — added health counter calls to `shouldSample` and `tryAcquire`
+- **Browser crash on import** — `receipts.ts` replaced Node.js `crypto` with pure-JS `hash.ts` (SHA-256, randomHex)
+- **macOS v8 coverage** — removed stale `v8 ignore` directives, added test for receipts production-mode path
+
+### Quality
+
+- **100% Stryker mutation kill** (1762 mutants, 0 survivors — was 93.81%)
+- 1232 tests, 100% coverage (lines, branches, functions, statements)
+
+---
+
+## [0.2.2] — 2026-04-06 _(reconstructed)_
+
+First version of this package published to npm.
+
+### Added
+
+- **Data governance modules** — classification, consent, receipts, and config masking.
+- **`RuntimeOverrides` type**, and config getters that return frozen objects.
+- **`randomHex` utility**, plus synthetic trace-ID injection for no-op spans.
+
+### Fixed
+
+- **PII default sensitive keys** aligned to the canonical 17-key list shared with Python.
+- AsyncLocalStorage test isolation, and branch-coverage gaps in `tracing`, `config`, `receipts` and `pii`.
+
+### Quality
+
+- 100% Stryker mutation score, with all surviving mutants killed.

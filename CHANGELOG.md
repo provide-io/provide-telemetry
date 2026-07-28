@@ -82,6 +82,18 @@ TypeScript only.
 
 ---
 
+## [0.4.7] — 2026-05-24
+
+_Reconstructed from git history — this release shipped without a changelog entry._
+
+### Fixed
+
+- **Go: a library-applied `DeadlineExceeded` is swallowed on shutdown** — the bounded shutdown path treated its own deadline as a caller-visible error.
+
+The TypeScript and Rust packages moved for version parity only.
+
+---
+
 ## [0.4.4] — 2026-05-03
 
 ### Release pipeline fixes
@@ -126,6 +138,36 @@ TypeScript only.
 
 - **Cross-language tests** — added focused regression tests for sampling, OTLP endpoint resolution, disabled-signal gates, lazy logging, backpressure release, tracing cleanup, and PII rule specificity.
 - **End-state cleanup** — removed duplicate sanitizer and backpressure surfaces so the public API matches the canonical implementation from the start.
+
+---
+
+## [0.3.0] — 2026-04-12
+
+_Reconstructed from git history — this release shipped without a changelog entry.
+Note this is the April 0.3.0, after the version rewind; it is unrelated to the
+March 0.3.x line covered by "0.3.16 and earlier" below._
+
+### Added
+
+- **`guard_attributes`, `set_strict_schema` / `get_strict_schema`** — added to the spec and implemented in all four languages.
+- **Strippable governance modules** — the governance layer can be excluded from a build, in all four languages.
+- **Rust: SLO metrics and a secret-pattern API**, plus examples rewritten onto the public `setup_telemetry()` surface.
+
+### Fixed
+
+- **Go: PII engines unified**, the slice drop mode corrected, and a backpressure TOCTOU closed.
+
+---
+
+## [0.2.6] — 2026-04-10
+
+_Reconstructed from git history — this release shipped without a changelog entry._
+
+### Fixed
+
+- **Go: logger global state is guarded by an `RWMutex`** — concurrent reconfiguration and logging raced on the same globals.
+
+The TypeScript package moved for version parity only.
 
 ---
 
