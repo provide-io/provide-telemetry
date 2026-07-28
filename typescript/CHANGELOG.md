@@ -1,7 +1,12 @@
 # Changelog
 
-> This file has not been kept current: 0.4.4 through 0.5.2 are absent. The root
-> `CHANGELOG.md` is the maintained one — prefer it.
+> This file has not been kept current, and does not match what npm actually
+> serves. Nine published versions are missing from it — 0.2.2, 0.2.6, 0.3.0,
+> 0.4.4, 0.4.7, 0.4.8, 0.5.0, 0.5.1, 0.5.2 — while the 0.4.0, 0.4.1 and 0.4.2
+> entries below were never published to npm at all (they are shared-changelog
+> releases of the Python/Go packages). Entries are also not in version order.
+> The root `CHANGELOG.md` is the maintained one — prefer it, noting that it too
+> omits 0.2.6 and 0.4.7.
 
 ## [0.5.3] — 2026-07-28
 
