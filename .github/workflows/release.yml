@@ -145,6 +145,13 @@ jobs:
       # Build and pack the distributable tarball
       - name: Build and pack
         run: npm run build && npm pack
+      # Import the packed tarball from a real Node process before it can be
+      # uploaded or published. vitest above resolves specifiers like a bundler,
+      # so it stays green on a dist Node cannot load — which is how 0.5.2
+      # shipped unloadable. This gate is the only thing on the release path
+      # that reads the artifact the way a consumer does.
+      - name: Verify npm consumer package
+        run: bash ../ci/verify-npm-consumer-package.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: npm-pack
