@@ -8,12 +8,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CounterInstrument, GaugeInstrument, HistogramInstrument } from '../src/metrics';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
-import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
-import { _resetBackpressureForTests } from '../src/backpressure';
-import { setupTelemetry, _resetConfig } from '../src/config';
-import { setConsentLevel, resetConsentForTests } from '../src/consent';
+import { CounterInstrument, GaugeInstrument, HistogramInstrument } from '../src/metrics.js';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
+import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling.js';
+import { _resetBackpressureForTests } from '../src/backpressure.js';
+import { setupTelemetry, _resetConfig } from '../src/config.js';
+import { setConsentLevel, resetConsentForTests } from '../src/consent.js';
 
 describe('metrics instruments — metricsEmitted health counter', () => {
   beforeEach(() => {

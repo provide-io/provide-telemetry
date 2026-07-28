@@ -17,7 +17,7 @@ describe('_COLD_FIELDS direct content assertions (kills L191–206 mutants)', ()
 
   it('contains all 14 expected cold fields and no others', async () => {
     vi.resetModules();
-    const { _coldFieldsForTest } = await import('../src/runtime');
+    const { _coldFieldsForTest } = await import('../src/runtime.js');
     expect(_coldFieldsForTest).toHaveLength(14);
     expect(_coldFieldsForTest).toContain('serviceName');
     expect(_coldFieldsForTest).toContain('environment');
@@ -43,7 +43,7 @@ describe('PROVIDER_CHANGING_FIELDS direct content assertions (kills L269–284 m
 
   it('contains all 14 expected provider-changing fields and no others', async () => {
     vi.resetModules();
-    const { _providerChangingFieldsForTest } = await import('../src/runtime');
+    const { _providerChangingFieldsForTest } = await import('../src/runtime.js');
     expect(_providerChangingFieldsForTest).toHaveLength(14);
     expect(_providerChangingFieldsForTest).toContain('serviceName');
     expect(_providerChangingFieldsForTest).toContain('environment');

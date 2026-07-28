@@ -9,10 +9,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import type { RuntimeOverrides } from '../src/config';
-import { _resetContext } from '../src/context';
-import { _resetRootLogger, getLogger } from '../src/logger';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import type { RuntimeOverrides } from '../src/config.js';
+import { _resetContext } from '../src/context.js';
+import { _resetRootLogger, getLogger } from '../src/logger.js';
 import {
   _markProvidersRegistered,
   _resetRuntimeForTests,
@@ -20,7 +20,7 @@ import {
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
   updateRuntimeConfig,
-} from '../src/runtime';
+} from '../src/runtime.js';
 
 // Pull a fresh window.__pinoLogs per test to isolate captured output.
 function resetCapture(): Record<string, unknown>[] {

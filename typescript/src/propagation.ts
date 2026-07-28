@@ -6,8 +6,8 @@
  * Mirrors Python provide.telemetry.propagation.
  */
 
-import { bindContext, getContext, unbindContext } from './context';
-import { getTraceContext, setTraceContext } from './tracing';
+import { bindContext, getContext, unbindContext } from './context.js';
+import { getTraceContext, setTraceContext } from './tracing.js';
 
 export interface PropagationContext {
   traceparent?: string;

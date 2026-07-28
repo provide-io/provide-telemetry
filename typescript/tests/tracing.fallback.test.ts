@@ -13,7 +13,7 @@ describe('withTrace AsyncLocalStorage fallback', () => {
     vi.resetModules();
     vi.doMock('node:async_hooks', () => ({ AsyncLocalStorage: undefined }));
 
-    const tracing = await import('../src/tracing');
+    const tracing = await import('../src/tracing.js');
 
     let capturedCtx: { trace_id?: string; span_id?: string } = {};
     const result = tracing.withTrace('fallback.trace', () => {

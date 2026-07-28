@@ -11,7 +11,7 @@ import {
   resetPiiRulesForTests,
   sanitize,
   sanitizePayload,
-} from '../src/pii';
+} from '../src/pii.js';
 
 afterEach(() => resetPiiRulesForTests());
 

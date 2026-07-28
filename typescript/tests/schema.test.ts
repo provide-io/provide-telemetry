@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { setupTelemetry, _resetConfig } from '../src/config';
+import { setupTelemetry, _resetConfig } from '../src/config.js';
 import {
   EventSchemaError,
   event,
@@ -12,8 +12,8 @@ import {
   validateEventName,
   validateRequiredKeys,
   _resetStrictSchemaForTests,
-} from '../src/schema';
-import { TelemetryError } from '../src/exceptions';
+} from '../src/schema.js';
+import { TelemetryError } from '../src/exceptions.js';
 
 describe('setStrictSchema / getStrictSchema', () => {
   afterEach(() => {

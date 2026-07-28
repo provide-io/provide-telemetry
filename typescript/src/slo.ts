@@ -13,8 +13,8 @@ import {
   counter,
   gauge,
   histogram,
-} from './metrics';
-import { getConfig } from './config';
+} from './metrics.js';
+import { getConfig } from './config.js';
 
 const _counters = new Map<string, CounterInstrument>();
 const _histograms = new Map<string, HistogramInstrument>();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as tracing from '../src/tracing';
+import * as tracing from '../src/tracing.js';
 import {
   CounterInstrument,
   GaugeInstrument,
@@ -11,10 +11,10 @@ import {
   gauge,
   getMeter,
   histogram,
-} from '../src/metrics';
-import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
-import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
-import { _resetConfig } from '../src/config';
+} from '../src/metrics.js';
+import { setSamplingPolicy, _resetSamplingForTests } from '../src/sampling.js';
+import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure.js';
+import { _resetConfig } from '../src/config.js';
 
 afterEach(() => {
   _resetSamplingForTests();

@@ -6,9 +6,9 @@
  * Split from config.ts to stay under 500 LOC per file.
  */
 
-import type { TelemetryConfig } from './config';
-import { DEFAULTS, parseOtlpHeaders } from './config';
-import { ConfigurationError } from './exceptions';
+import type { TelemetryConfig } from './config.js';
+import { DEFAULTS, parseOtlpHeaders } from './config.js';
+import { ConfigurationError } from './exceptions.js';
 
 /** Read a string from Node process.env. Silently returns undefined in non-Node environments. */
 // Stryker disable BlockStatement

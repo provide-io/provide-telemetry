@@ -3,7 +3,7 @@
 
 import * as fc from 'fast-check';
 import { afterEach, describe, it } from 'vitest';
-import { _resetSamplingForTests, setSamplingPolicy, shouldSample } from '../../src/sampling';
+import { _resetSamplingForTests, setSamplingPolicy, shouldSample } from '../../src/sampling.js';
 
 afterEach(() => _resetSamplingForTests());
 

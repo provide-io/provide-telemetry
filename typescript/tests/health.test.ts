@@ -14,7 +14,7 @@ import {
   _retriesField,
   getHealthSnapshot,
   setSetupError,
-} from '../src/health';
+} from '../src/health.js';
 
 afterEach(() => _resetHealthForTests());
 

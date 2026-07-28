@@ -10,7 +10,7 @@ import {
   resetConsentForTests,
   setConsentLevel,
   shouldAllow,
-} from '../src/consent';
+} from '../src/consent.js';
 
 beforeEach(() => {
   resetConsentForTests();

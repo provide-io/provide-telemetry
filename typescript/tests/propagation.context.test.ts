@@ -11,9 +11,9 @@ import {
   extractW3cContext,
   getActivePropagationContext,
   isFallbackMode,
-} from '../src/propagation';
-import { _resetContext, getContext } from '../src/context';
-import { getTraceContext, _resetTraceContext } from '../src/tracing';
+} from '../src/propagation.js';
+import { _resetContext, getContext } from '../src/context.js';
+import { getTraceContext, _resetTraceContext } from '../src/tracing.js';
 
 afterEach(() => _resetPropagationForTests());
 

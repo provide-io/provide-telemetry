@@ -8,8 +8,8 @@ import {
   getExporterPolicy,
   runWithResilience,
   setExporterPolicy,
-} from '../src/resilience';
-import { _resetHealthForTests } from '../src/health';
+} from '../src/resilience.js';
+import { _resetHealthForTests } from '../src/health.js';
 
 beforeEach(() => {
   _resetResilienceForTests();
@@ -269,14 +269,14 @@ describe('TelemetryTimeoutError — class properties', () => {
 describe('runWithResilience — retriesLogs health counter', () => {
   it('increments retriesLogs exactly once when retries=1 and both attempts fail', async () => {
     // Need to import health snapshot
-    const { getHealthSnapshot } = await import('../src/health');
+    const { getHealthSnapshot } = await import('../src/health.js');
     setExporterPolicy('logs', { retries: 1, backoffMs: 0, timeoutMs: 0, failOpen: true });
     await runWithResilience('logs', () => Promise.reject(new Error('always fails')));
     expect(getHealthSnapshot().retriesLogs).toBe(1);
   });
 
   it('does NOT increment retriesLogs when retries=0', async () => {
-    const { getHealthSnapshot } = await import('../src/health');
+    const { getHealthSnapshot } = await import('../src/health.js');
     setExporterPolicy('logs', { retries: 0, backoffMs: 0, timeoutMs: 0, failOpen: true });
     await runWithResilience('logs', () => Promise.reject(new Error('fail')));
     expect(getHealthSnapshot().retriesLogs).toBe(0);

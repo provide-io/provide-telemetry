@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatPretty, supportsColor } from '../src/pretty';
+import { formatPretty, supportsColor } from '../src/pretty.js';
 
 describe('formatPretty', () => {
   it('includes timestamp, level, and event', () => {

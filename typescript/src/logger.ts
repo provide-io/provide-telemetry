@@ -14,18 +14,18 @@
  */
 
 import pino from 'pino';
-import { configFromEnv, getConfig, _getConfigVersion } from './config';
-import { getContext } from './context';
-import { shouldAllow } from './consent';
-import { computeErrorFingerprint } from './fingerprint';
-import { formatPretty, supportsColor } from './pretty';
-import { _emittedField, _incrementHealth } from './health';
-import { emitLogRecord } from './otel-logs';
-import { sanitize, sanitizePayload } from './pii';
-import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema';
-import { tryAcquire, release } from './backpressure';
-import { setSamplingPolicy, shouldSample } from './sampling';
-import { getTraceContext } from './tracing';
+import { configFromEnv, getConfig, _getConfigVersion } from './config.js';
+import { getContext } from './context.js';
+import { shouldAllow } from './consent.js';
+import { computeErrorFingerprint } from './fingerprint.js';
+import { formatPretty, supportsColor } from './pretty.js';
+import { _emittedField, _incrementHealth } from './health.js';
+import { emitLogRecord } from './otel-logs.js';
+import { sanitize, sanitizePayload } from './pii.js';
+import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema.js';
+import { tryAcquire, release } from './backpressure.js';
+import { setSamplingPolicy, shouldSample } from './sampling.js';
+import { getTraceContext } from './tracing.js';
 
 /** Pino level number → console method name. */
 const LEVEL_MAP: Record<number, string> = {

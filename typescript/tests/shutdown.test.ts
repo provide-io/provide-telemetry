@@ -12,14 +12,14 @@ import {
   _resetRuntimeForTests,
   _storeRegisteredProviders,
   reconfigureTelemetry,
-} from '../src/runtime';
-import { DEFAULTS, _resetConfig, setupTelemetry } from '../src/config';
-import { shutdownTelemetry } from '../src/shutdown';
+} from '../src/runtime.js';
+import { DEFAULTS, _resetConfig, setupTelemetry } from '../src/config.js';
+import { shutdownTelemetry } from '../src/shutdown.js';
 import {
   _getOtelLogProvider,
   _resetOtelLogProviderForTests,
   setupOtelLogProvider,
-} from '../src/otel-logs';
+} from '../src/otel-logs.js';
 
 beforeEach(() => _resetRuntimeForTests());
 afterEach(() => {

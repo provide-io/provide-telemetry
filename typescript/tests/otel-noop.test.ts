@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { registerOtelProviders } from '../src/otel-noop';
-import { configFromEnv } from '../src/config';
+import { registerOtelProviders } from '../src/otel-noop.js';
+import { configFromEnv } from '../src/config.js';
 
 describe('otel-noop', () => {
   it('registerOtelProviders resolves without error', async () => {

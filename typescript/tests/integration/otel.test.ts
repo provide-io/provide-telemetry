@@ -20,11 +20,11 @@ import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetConfig, getConfig, setupTelemetry } from '../../src/config';
-import { _resetContext } from '../../src/context';
-import { _resetRootLogger, makeWriteHook } from '../../src/logger';
-import { counter, gauge, histogram } from '../../src/metrics';
-import { getActiveTraceIds, withTrace } from '../../src/tracing';
+import { _resetConfig, getConfig, setupTelemetry } from '../../src/config.js';
+import { _resetContext } from '../../src/context.js';
+import { _resetRootLogger, makeWriteHook } from '../../src/logger.js';
+import { counter, gauge, histogram } from '../../src/metrics.js';
+import { getActiveTraceIds, withTrace } from '../../src/tracing.js';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // ── Shared provider setup ──────────────────────────────────────────────────────

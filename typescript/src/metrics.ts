@@ -19,12 +19,12 @@ import {
   type UpDownCounter,
   metrics,
 } from '@opentelemetry/api';
-import { _emittedField, _incrementHealth } from './health';
-import { shouldSample } from './sampling';
-import { tryAcquire, release } from './backpressure';
-import { getActiveTraceIds } from './tracing';
-import { getConfig } from './config';
-import { shouldAllow } from './consent';
+import { _emittedField, _incrementHealth } from './health.js';
+import { shouldSample } from './sampling.js';
+import { tryAcquire, release } from './backpressure.js';
+import { getActiveTraceIds } from './tracing.js';
+import { getConfig } from './config.js';
+import { shouldAllow } from './consent.js';
 
 export type { Counter, Histogram, Meter, UpDownCounter };
 

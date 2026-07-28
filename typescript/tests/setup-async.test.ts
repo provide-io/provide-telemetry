@@ -16,9 +16,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _resetConfig, setupTelemetryAsync } from '../src/config';
-import { ConfigurationError } from '../src/exceptions';
-import { _resetHealthForTests } from '../src/health';
+import { _resetConfig, setupTelemetryAsync } from '../src/config.js';
+import { ConfigurationError } from '../src/exceptions.js';
+import { _resetHealthForTests } from '../src/health.js';
 import {
   _disablePropagationALSForTest,
   _resetPropagationForTests,
@@ -29,8 +29,8 @@ import {
   isFallbackMode,
   isPropagationInitDone,
   type PropagationALS,
-} from '../src/propagation';
-import { _resetRuntimeForTests } from '../src/runtime';
+} from '../src/propagation.js';
+import { _resetRuntimeForTests } from '../src/runtime.js';
 
 beforeEach(() => {
   _resetConfig();
@@ -83,7 +83,7 @@ describe('setupTelemetryAsync', () => {
   it('applies overrides before the ALS check (config is set even on resolve)', async () => {
     await setupTelemetryAsync({ serviceName: 'applied-async', logLevel: 'debug' });
     // Dynamic import so we read the state after the awaited setup.
-    const { getConfig } = await import('../src/config');
+    const { getConfig } = await import('../src/config.js');
     expect(getConfig().serviceName).toBe('applied-async');
     expect(getConfig().logLevel).toBe('debug');
   });
@@ -97,7 +97,7 @@ describe('setupTelemetryAsync', () => {
 
     await expect(setupTelemetryAsync({ serviceName: 'edge-like' })).resolves.toBeUndefined();
 
-    const { getConfig } = await import('../src/config');
+    const { getConfig } = await import('../src/config.js');
     expect(getConfig().serviceName).toBe('edge-like');
   });
 

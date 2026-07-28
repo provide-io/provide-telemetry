@@ -15,14 +15,14 @@ import {
   trace,
   context as otelContext,
 } from '@opentelemetry/api';
-import { _emittedField, _incrementHealth } from './health';
-import { getActiveOtelContext } from './propagation';
-import { randomHex } from './hash';
-import { shouldAllow } from './consent';
-import { shouldSample } from './sampling';
-import { tryAcquire, release } from './backpressure';
-import { getConfig } from './config';
-import { _isTraceProviderInstalled } from './runtime';
+import { _emittedField, _incrementHealth } from './health.js';
+import { getActiveOtelContext } from './propagation.js';
+import { randomHex } from './hash.js';
+import { shouldAllow } from './consent.js';
+import { shouldSample } from './sampling.js';
+import { tryAcquire, release } from './backpressure.js';
+import { getConfig } from './config.js';
+import { _isTraceProviderInstalled } from './runtime.js';
 
 // Stryker disable next-line StringLiteral: tracer name is not observable without a real SDK
 const TRACER_NAME = '@provide-io/telemetry';

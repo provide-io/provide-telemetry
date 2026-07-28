@@ -13,7 +13,7 @@ import {
   MAX_HEADER_LENGTH,
   MAX_TRACESTATE_PAIRS,
   MAX_BAGGAGE_LENGTH,
-} from '../src/propagation';
+} from '../src/propagation.js';
 
 afterEach(() => _resetPropagationForTests());
 

@@ -8,11 +8,11 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { _resetConfig, configFromEnv } from '../src/config';
-import { _resetSamplingForTests } from '../src/sampling';
-import { _resetBackpressureForTests } from '../src/backpressure';
-import { _resetResilienceForTests } from '../src/resilience';
-import { ConfigurationError } from '../src/exceptions';
+import { _resetConfig, configFromEnv } from '../src/config.js';
+import { _resetSamplingForTests } from '../src/sampling.js';
+import { _resetBackpressureForTests } from '../src/backpressure.js';
+import { _resetResilienceForTests } from '../src/resilience.js';
+import { ConfigurationError } from '../src/exceptions.js';
 
 afterEach(() => {
   _resetConfig();

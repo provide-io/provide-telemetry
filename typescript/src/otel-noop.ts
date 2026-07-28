@@ -12,7 +12,7 @@
  * should use the default export, not this stub.
  */
 
-import type { TelemetryConfig } from './config';
+import type { TelemetryConfig } from './config.js';
 
 export async function registerOtelProviders(_cfg: TelemetryConfig): Promise<void> {
   // No-op in browser/edge environments.

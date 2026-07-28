@@ -28,7 +28,7 @@ import {
   setSamplingPolicy,
   setupTelemetry,
   shutdownTelemetry,
-} from '../src/index';
+} from '../src/index.js';
 
 beforeEach(() => {
   resetTelemetryState();
@@ -108,10 +108,10 @@ describe('governance module isolation', () => {
     // Governance must be in isolated modules, not bundled into core.
     // We verify this by importing them separately — if they were in the core
     // bundle, tree-shaking would not work.
-    const { setConsentLevel, getConsentLevel } = await import('../src/consent');
+    const { setConsentLevel, getConsentLevel } = await import('../src/consent.js');
     const { registerClassificationRules, getClassificationPolicy } =
-      await import('../src/classification');
-    const { enableReceipts } = await import('../src/receipts');
+      await import('../src/classification.js');
+    const { enableReceipts } = await import('../src/receipts.js');
 
     expect(typeof setConsentLevel).toBe('function');
     expect(typeof getConsentLevel).toBe('function');
@@ -122,7 +122,7 @@ describe('governance module isolation', () => {
 
   it('pii module does not statically require classification', async () => {
     // The PII sanitizer must work even when no classification rules are registered.
-    const { sanitizePayload, replacePiiRules } = await import('../src/pii');
+    const { sanitizePayload, replacePiiRules } = await import('../src/pii.js');
 
     replacePiiRules([]);
     const payload: Record<string, unknown> = {

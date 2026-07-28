@@ -22,8 +22,8 @@
  * Matches Go (_buildResource), Python (build_resource), and Rust (build_resource).
  */
 
-import type { TelemetryConfig } from './config';
-import { DEFAULTS } from './config';
+import type { TelemetryConfig } from './config.js';
+import { DEFAULTS } from './config.js';
 
 /** Minimal structural view of the parts of `@opentelemetry/resources` we use. */
 export interface OtelResourcesModule {

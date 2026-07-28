@@ -25,9 +25,9 @@ import {
   eventName,
   EventSchemaError,
   validateRequiredKeys,
-} from '../src/index';
-import { _resetHealthForTests } from '../src/health';
-import { _resetResilienceForTests } from '../src/resilience';
+} from '../src/index.js';
+import { _resetHealthForTests } from '../src/health.js';
+import { _resetResilienceForTests } from '../src/resilience.js';
 
 // ── Default sensitive keys ──────────────────────────────────────────────────
 

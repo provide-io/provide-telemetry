@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import pkg from '../package.json';
+import pkg from '../package.json' with { type: 'json' };
 
 describe('tree-shaking support', () => {
   it('package.json has sideEffects: false', () => {

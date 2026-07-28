@@ -8,8 +8,8 @@ import {
   release,
   setQueuePolicy,
   tryAcquire,
-} from '../src/backpressure';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
+} from '../src/backpressure.js';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
 
 beforeEach(() => {
   _resetBackpressureForTests();

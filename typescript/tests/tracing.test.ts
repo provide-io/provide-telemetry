@@ -3,7 +3,7 @@
 
 import { trace } from '@opentelemetry/api';
 import { describe, expect, it, vi } from 'vitest';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
 import {
   _resetTraceContext,
   getActiveTraceIds,
@@ -13,8 +13,8 @@ import {
   tracer,
   traceDecorator,
   withTrace,
-} from '../src/tracing';
-import { _resetConfig, setupTelemetry } from '../src/config';
+} from '../src/tracing.js';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
 
 describe('getActiveTraceIds', () => {
   it('returns empty object when no active span', () => {

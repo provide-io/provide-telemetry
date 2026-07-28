@@ -9,18 +9,18 @@
 
 import { trace, propagation } from '@opentelemetry/api';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
-import { _resetTraceContext, getTraceContext, setTraceContext, withTrace } from '../src/tracing';
-import { _resetPropagationForTests, bindPropagationContext } from '../src/propagation';
-import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
+import { _resetTraceContext, getTraceContext, setTraceContext, withTrace } from '../src/tracing.js';
+import { _resetPropagationForTests, bindPropagationContext } from '../src/propagation.js';
+import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling.js';
 import {
   _resetBackpressureForTests,
   setQueuePolicy,
   tryAcquire,
   release,
-} from '../src/backpressure';
-import { resetConsentForTests, setConsentLevel } from '../src/consent';
-import { _resetConfig, setupTelemetry } from '../src/config';
+} from '../src/backpressure.js';
+import { resetConsentForTests, setConsentLevel } from '../src/consent.js';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
 
 describe('withTrace — span.setStatus called on error', () => {
   it('calls span.setStatus with ERROR code and message on sync throw', () => {

@@ -12,15 +12,15 @@
  *   OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS
  */
 
-import { setSamplingPolicy } from './sampling';
-import { setQueuePolicy } from './backpressure';
-import { setExporterPolicy } from './resilience';
-import { ConfigurationError } from './exceptions';
-import { setSetupError } from './health';
-import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation';
-import { _setActiveConfig } from './runtime';
-import { configFromEnv } from './config-env';
-export { configFromEnv } from './config-env';
+import { setSamplingPolicy } from './sampling.js';
+import { setQueuePolicy } from './backpressure.js';
+import { setExporterPolicy } from './resilience.js';
+import { ConfigurationError } from './exceptions.js';
+import { setSetupError } from './health.js';
+import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation.js';
+import { _setActiveConfig } from './runtime.js';
+import { configFromEnv } from './config-env.js';
+export { configFromEnv } from './config-env.js';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;

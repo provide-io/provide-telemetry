@@ -3,7 +3,7 @@
 
 import * as fc from 'fast-check';
 import { afterEach, describe, it } from 'vitest';
-import { _resetConfig, configFromEnv } from '../../src/config';
+import { _resetConfig, configFromEnv } from '../../src/config.js';
 
 afterEach(() => _resetConfig());
 

@@ -12,8 +12,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { validateOtlpEndpoint } from '../src/endpoint';
-import { ConfigurationError } from '../src/exceptions';
+import { validateOtlpEndpoint } from '../src/endpoint.js';
+import { ConfigurationError } from '../src/exceptions.js';
 
 describe('validateOtlpEndpoint — function body must execute (L15 BlockStatement)', () => {
   it('returns the input string unchanged when valid', () => {

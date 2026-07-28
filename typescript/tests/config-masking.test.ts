@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { redactConfig } from '../src/config';
-import type { TelemetryConfig } from '../src/config';
+import { redactConfig } from '../src/config.js';
+import type { TelemetryConfig } from '../src/config.js';
 
 describe('redactConfig', () => {
   it('masks OTLP header values (long value)', () => {

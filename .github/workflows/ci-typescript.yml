@@ -64,6 +64,16 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run test:coverage
+      # Pack the package and import every entry point from a real Node
+      # consumer. lint, typecheck and vitest all resolve specifiers the way a
+      # bundler does, and stayed green while the published ESM was unloadable
+      # by Node, so this is the only step that can catch a bad emitted
+      # specifier or a packaging gap. Bash-only: the probe is not portable to
+      # the Windows runner's default shell.
+      - name: Verify npm consumer package
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash ../ci/verify-npm-consumer-package.sh
       # Pipe perf-smoke output through perf_check.py — compares each measurement
       # against baselines/perf-typescript.json for this runner's OS bucket. Missing
       # buckets exit 0 with a hint so seeding via CI is straightforward.

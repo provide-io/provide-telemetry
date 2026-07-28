@@ -8,15 +8,15 @@ import {
   registerClassificationRules,
   resetClassificationForTests,
   setClassificationPolicy,
-} from '../src/classification';
-import type { ClassificationPolicy, ClassificationRule, DataClass } from '../src/classification';
-import { classifyKey, registerClassificationRule } from '../src/index';
+} from '../src/classification.js';
+import type { ClassificationPolicy, ClassificationRule, DataClass } from '../src/classification.js';
+import { classifyKey, registerClassificationRule } from '../src/index.js';
 import {
   resetPiiRulesForTests,
   sanitizePayload,
   _classificationHook,
   _policyHook,
-} from '../src/pii';
+} from '../src/pii.js';
 
 afterEach(() => {
   resetClassificationForTests();

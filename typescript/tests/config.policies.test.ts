@@ -9,11 +9,11 @@ import {
   configFromEnv,
   getConfig,
   setupTelemetry,
-} from '../src/config';
-import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
-import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure';
-import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience';
-import { ConfigurationError } from '../src/exceptions';
+} from '../src/config.js';
+import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling.js';
+import { getQueuePolicy, _resetBackpressureForTests } from '../src/backpressure.js';
+import { getExporterPolicy, _resetResilienceForTests } from '../src/resilience.js';
+import { ConfigurationError } from '../src/exceptions.js';
 import {
   awaitPropagationInit,
   isFallbackMode,
@@ -21,9 +21,9 @@ import {
   _disablePropagationALSForTest,
   _restorePropagationALSForTest,
   _setPropagationInitDoneForTest,
-} from '../src/propagation';
-import { getHealthSnapshot, setSetupError } from '../src/health';
-import { resetTelemetryState } from '../src/testing';
+} from '../src/propagation.js';
+import { getHealthSnapshot, setSetupError } from '../src/health.js';
+import { resetTelemetryState } from '../src/testing.js';
 
 afterEach(() => {
   _resetConfig();
@@ -355,7 +355,7 @@ describe('_validateConfig — requireRate throws on out-of-range values', () => 
 
 describe('setupTelemetry — emergency fallback', () => {
   it('does not throw when applyConfigPolicies fails with Error', async () => {
-    const samplingModule = await import('../src/sampling');
+    const samplingModule = await import('../src/sampling.js');
     vi.spyOn(samplingModule, 'setSamplingPolicy').mockImplementation(() => {
       throw new Error('policy explosion');
     });
@@ -367,7 +367,7 @@ describe('setupTelemetry — emergency fallback', () => {
   });
 
   it('does not throw when applyConfigPolicies fails with non-Error', async () => {
-    const samplingModule = await import('../src/sampling');
+    const samplingModule = await import('../src/sampling.js');
     vi.spyOn(samplingModule, 'setSamplingPolicy').mockImplementation(() => {
       throw 'string-failure';
     });

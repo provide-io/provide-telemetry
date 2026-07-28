@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetSloForTests, classifyError, recordRedMetrics, recordUseMetrics } from '../src/slo';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import * as metricsModule from '../src/metrics';
+import {
+  _resetSloForTests,
+  classifyError,
+  recordRedMetrics,
+  recordUseMetrics,
+} from '../src/slo.js';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import * as metricsModule from '../src/metrics.js';
 
 beforeEach(() => {
   _resetConfig();

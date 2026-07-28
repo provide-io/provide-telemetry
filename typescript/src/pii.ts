@@ -8,11 +8,11 @@
  * Canonical home for sanitize() / DEFAULT_SANITIZE_FIELDS.
  */
 
-import { shortHash12 } from './hash';
+import { shortHash12 } from './hash.js';
 import {
   PATTERNS as _GENERATED_PATTERNS,
   MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH,
-} from './secret-patterns-generated';
+} from './secret-patterns-generated.js';
 
 /**
  * Default fields redacted from log records. Canonical 17-key list shared across

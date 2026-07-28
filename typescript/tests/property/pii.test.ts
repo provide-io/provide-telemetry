@@ -3,7 +3,7 @@
 
 import * as fc from 'fast-check';
 import { afterEach, describe, it } from 'vitest';
-import { registerPiiRule, resetPiiRulesForTests, sanitizePayload } from '../../src/pii';
+import { registerPiiRule, resetPiiRulesForTests, sanitizePayload } from '../../src/pii.js';
 
 afterEach(() => resetPiiRulesForTests());
 

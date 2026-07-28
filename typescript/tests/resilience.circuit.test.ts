@@ -18,8 +18,8 @@ import {
   getCircuitState,
   runWithResilience,
   setExporterPolicy,
-} from '../src/resilience';
-import { _resetHealthForTests } from '../src/health';
+} from '../src/resilience.js';
+import { _resetHealthForTests } from '../src/health.js';
 
 beforeEach(() => {
   _resetResilienceForTests();

@@ -8,7 +8,7 @@
  * If this file is deleted, the PII engine runs unchanged (hook stays null).
  */
 
-import { setClassificationHook, setPolicyHook } from './pii';
+import { setClassificationHook, setPolicyHook } from './pii.js';
 
 /** Data classification labels. */
 export type DataClass = 'PUBLIC' | 'INTERNAL' | 'PII' | 'PHI' | 'PCI' | 'SECRET';

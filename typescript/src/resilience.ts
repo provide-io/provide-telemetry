@@ -12,7 +12,7 @@ import {
   _recordExportLatency,
   _registerCircuitStateFn,
   _retriesField,
-} from './health';
+} from './health.js';
 
 export class TelemetryTimeoutError extends Error {
   constructor(message: string) {

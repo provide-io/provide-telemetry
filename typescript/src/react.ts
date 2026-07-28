@@ -10,8 +10,8 @@
 
 import { Component, useEffect } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { bindContext, unbindContext } from './context';
-import { getLogger } from './logger';
+import { bindContext, unbindContext } from './context.js';
+import { getLogger } from './logger.js';
 
 // ── useTelemetryContext ──────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { _resetConfig, configFromEnv } from '../src/config';
+import { _resetConfig, configFromEnv } from '../src/config.js';
 
 const TRACES_ENV = 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT';
 const METRICS_ENV = 'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT';

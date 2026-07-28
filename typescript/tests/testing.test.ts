@@ -3,10 +3,10 @@
 
 import { context, metrics, trace } from '@opentelemetry/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bindContext, getContext } from '../src/context';
-import { _incrementHealth, getHealthSnapshot } from '../src/health';
-import { setTraceContext, getTraceContext } from '../src/tracing';
-import { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from '../src/testing';
+import { bindContext, getContext } from '../src/context.js';
+import { _incrementHealth, getHealthSnapshot } from '../src/health.js';
+import { setTraceContext, getTraceContext } from '../src/tracing.js';
+import { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from '../src/testing.js';
 
 afterEach(() => {
   trace.disable();

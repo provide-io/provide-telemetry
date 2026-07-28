@@ -20,11 +20,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import { _resetContext } from '../src/context';
-import { _resetRootLogger, makeWriteHook } from '../src/logger';
-import * as otelLogs from '../src/otel-logs';
-import { registerSecretPattern, resetPiiRulesForTests } from '../src/pii';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import { _resetContext } from '../src/context.js';
+import { _resetRootLogger, makeWriteHook } from '../src/logger.js';
+import * as otelLogs from '../src/otel-logs.js';
+import { registerSecretPattern, resetPiiRulesForTests } from '../src/pii.js';
 
 beforeEach(() => {
   _resetConfig();

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import { _resetContext, bindContext, clearContext } from '../src/context';
-import { _resetRootLogger, getLogger, makeWriteHook, logger } from '../src/logger';
-import * as otelLogs from '../src/otel-logs';
-import * as tracing from '../src/tracing';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import { _resetContext, bindContext, clearContext } from '../src/context.js';
+import { _resetRootLogger, getLogger, makeWriteHook, logger } from '../src/logger.js';
+import * as otelLogs from '../src/otel-logs.js';
+import * as tracing from '../src/tracing.js';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();
@@ -464,7 +464,7 @@ describe('write hook — OTLP log export', () => {
   });
 
   it('applies custom PII rules via sanitizePayload in write hook', async () => {
-    const { registerPiiRule, resetPiiRulesForTests } = await import('../src/pii');
+    const { registerPiiRule, resetPiiRulesForTests } = await import('../src/pii.js');
     registerPiiRule({ path: 'user.email', mode: 'hash' });
     makeCfg({});
     const captured: Record<string, unknown>[] = [];

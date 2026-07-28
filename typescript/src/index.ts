@@ -25,12 +25,12 @@ export {
   redactConfig,
   version,
   __version__,
-} from './config';
-export type { TelemetryConfig, LoggingOverrides, RuntimeOverrides } from './config';
+} from './config.js';
+export type { TelemetryConfig, LoggingOverrides, RuntimeOverrides } from './config.js';
 
 // Logger
-export { getLogger, logger } from './logger';
-export type { Logger } from './logger';
+export { getLogger, logger } from './logger.js';
+export type { Logger } from './logger.js';
 
 // Context binding (mirrors Python bind_context / unbind_context / clear_context)
 export {
@@ -42,13 +42,13 @@ export {
   bindSessionContext,
   getSessionId,
   clearSessionContext,
-} from './context';
+} from './context.js';
 
 // Error fingerprinting (mirrors Python add_error_fingerprint processor)
-export { computeErrorFingerprint } from './fingerprint';
+export { computeErrorFingerprint } from './fingerprint.js';
 
 // Pretty ANSI renderer (mirrors Python PrettyRenderer)
-export { formatPretty, supportsColor } from './pretty';
+export { formatPretty, supportsColor } from './pretty.js';
 
 // Metrics (mirrors Python counter / gauge / histogram)
 export {
@@ -59,8 +59,8 @@ export {
   CounterInstrument,
   GaugeInstrument,
   HistogramInstrument,
-} from './metrics';
-export type { Counter, Histogram, Meter, MetricOptions, UpDownCounter } from './metrics';
+} from './metrics.js';
+export type { Counter, Histogram, Meter, MetricOptions, UpDownCounter } from './metrics.js';
 
 // Tracing (mirrors Python @trace decorator)
 export {
@@ -71,10 +71,10 @@ export {
   tracer,
   setTraceContext,
   getTraceContext,
-} from './tracing';
+} from './tracing.js';
 
 // Optional OTEL SDK wiring (call after setupTelemetry to activate exporters)
-export { registerOtelProviders } from './otel';
+export { registerOtelProviders } from './otel.js';
 
 // PII sanitization utilities
 export {
@@ -88,19 +88,19 @@ export {
   registerSecretPattern,
   getSecretPatterns,
   resetSecretPatternsForTests,
-} from './pii';
-export type { MaskMode, PIIRule, SanitizePayloadOptions, SecretPattern } from './pii';
+} from './pii.js';
+export type { MaskMode, PIIRule, SanitizePayloadOptions, SecretPattern } from './pii.js';
 
 // Exceptions
-export { TelemetryError, ConfigurationError } from './exceptions';
+export { TelemetryError, ConfigurationError } from './exceptions.js';
 
 // Health
-export { getHealthSnapshot, setSetupError } from './health';
-export type { HealthSnapshot } from './health';
+export { getHealthSnapshot, setSetupError } from './health.js';
+export type { HealthSnapshot } from './health.js';
 
 // Backpressure
-export { setQueuePolicy, getQueuePolicy, tryAcquire, release } from './backpressure';
-export type { QueuePolicy, QueueTicket } from './backpressure';
+export { setQueuePolicy, getQueuePolicy, tryAcquire, release } from './backpressure.js';
+export type { QueuePolicy, QueueTicket } from './backpressure.js';
 
 // Cardinality
 export {
@@ -109,12 +109,12 @@ export {
   getCardinalityLimits,
   clearCardinalityLimits,
   guardAttributes,
-} from './cardinality';
-export type { CardinalityLimit } from './cardinality';
+} from './cardinality.js';
+export type { CardinalityLimit } from './cardinality.js';
 
 // Sampling
-export { setSamplingPolicy, getSamplingPolicy, shouldSample } from './sampling';
-export type { SamplingPolicy } from './sampling';
+export { setSamplingPolicy, getSamplingPolicy, shouldSample } from './sampling.js';
+export type { SamplingPolicy } from './sampling.js';
 
 // Resilience
 export {
@@ -123,8 +123,8 @@ export {
   runWithResilience,
   getCircuitState,
   TelemetryTimeoutError,
-} from './resilience';
-export type { ExporterPolicy, CircuitState } from './resilience';
+} from './resilience.js';
+export type { ExporterPolicy, CircuitState } from './resilience.js';
 
 // Schema
 export {
@@ -135,12 +135,12 @@ export {
   setStrictSchema,
   validateEventName,
   validateRequiredKeys,
-} from './schema';
-export type { EventRecord } from './schema';
+} from './schema.js';
+export type { EventRecord } from './schema.js';
 
 // SLO
-export { recordRedMetrics, recordUseMetrics, classifyError } from './slo';
-export type { ErrorClassification } from './slo';
+export { recordRedMetrics, recordUseMetrics, classifyError } from './slo.js';
+export type { ErrorClassification } from './slo.js';
 
 // Propagation
 export {
@@ -152,8 +152,8 @@ export {
   awaitPropagationInit,
   isPropagationInitDone,
   isFallbackMode,
-} from './propagation';
-export type { PropagationContext } from './propagation';
+} from './propagation.js';
+export type { PropagationContext } from './propagation.js';
 
 // Runtime reconfiguration
 export {
@@ -162,24 +162,24 @@ export {
   updateRuntimeConfig,
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
-} from './runtime';
-export type { RuntimeStatus } from './runtime';
+} from './runtime.js';
+export type { RuntimeStatus } from './runtime.js';
 
 // Test utilities
-export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing';
+export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing.js';
 
 // Optional governance module — strippable: consent
-export type { ConsentLevel } from './consent';
+export type { ConsentLevel } from './consent.js';
 export {
   setConsentLevel,
   getConsentLevel,
   shouldAllow,
   loadConsentFromEnv,
   resetConsentForTests,
-} from './consent';
+} from './consent.js';
 
 // Optional governance module — strippable
-export type { DataClass, ClassificationRule, ClassificationPolicy } from './classification';
+export type { DataClass, ClassificationRule, ClassificationPolicy } from './classification.js';
 export {
   classifyKey,
   registerClassificationRule,
@@ -187,11 +187,11 @@ export {
   setClassificationPolicy,
   getClassificationPolicy,
   resetClassificationForTests,
-} from './classification';
+} from './classification.js';
 
 // Optional governance module — strippable: receipts
-export type { RedactionReceipt } from './receipts';
-export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts';
+export type { RedactionReceipt } from './receipts.js';
+export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts.js';
 
 // Shutdown
-export { shutdownTelemetry } from './shutdown';
+export { shutdownTelemetry } from './shutdown.js';

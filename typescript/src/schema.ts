@@ -5,8 +5,8 @@
  * Event schema validation — mirrors Python provide.telemetry.schema.events.
  */
 
-import { getConfig } from './config';
-import { TelemetryError } from './exceptions';
+import { getConfig } from './config.js';
+import { TelemetryError } from './exceptions.js';
 
 // Module-level strict-schema override.
 // null = not set; use getConfig().strictSchema / strictEventName.

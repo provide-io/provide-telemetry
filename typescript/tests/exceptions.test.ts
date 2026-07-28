@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { ConfigurationError, TelemetryError } from '../src/exceptions';
+import { ConfigurationError, TelemetryError } from '../src/exceptions.js';
 
 describe('TelemetryError', () => {
   it('is an instance of Error', () => {

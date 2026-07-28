@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { formatPretty } from '../src/pretty';
+import { formatPretty } from '../src/pretty.js';
 
 describe('formatPretty — event falls back to obj["message"] specifically', () => {
   it('uses obj.message when event is absent (kills StringLiteral "" mutant)', () => {

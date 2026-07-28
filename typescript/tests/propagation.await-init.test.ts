@@ -29,7 +29,7 @@ import {
   isFallbackMode,
   isPropagationInitDone,
   type PropagationALS,
-} from '../src/propagation';
+} from '../src/propagation.js';
 
 afterEach(() => _resetPropagationForTests());
 

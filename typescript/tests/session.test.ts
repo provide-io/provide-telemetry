@@ -9,7 +9,7 @@ import {
   getContext,
   getSessionId,
   runWithContext,
-} from '../src/context';
+} from '../src/context.js';
 
 describe('Session Correlation', () => {
   afterEach(() => {

@@ -7,20 +7,20 @@
  */
 
 import { context, metrics, trace } from '@opentelemetry/api';
-import { _resetConfig } from './config';
-import { _resetContext } from './context';
-import { _resetHealthForTests } from './health';
-import { _resetBackpressureForTests } from './backpressure';
-import { _resetCardinalityForTests } from './cardinality';
-import { _resetSamplingForTests } from './sampling';
-import { _resetResilienceForTests } from './resilience';
-import { resetPiiRulesForTests } from './pii';
-import { _resetSloForTests } from './slo';
-import { _resetPropagationForTests } from './propagation';
-import { _resetRootLogger } from './logger';
-import { _resetOtelLogProviderForTests } from './otel-logs';
-import { _resetTraceContext } from './tracing';
-import { _resetRuntimeForTests } from './runtime';
+import { _resetConfig } from './config.js';
+import { _resetContext } from './context.js';
+import { _resetHealthForTests } from './health.js';
+import { _resetBackpressureForTests } from './backpressure.js';
+import { _resetCardinalityForTests } from './cardinality.js';
+import { _resetSamplingForTests } from './sampling.js';
+import { _resetResilienceForTests } from './resilience.js';
+import { resetPiiRulesForTests } from './pii.js';
+import { _resetSloForTests } from './slo.js';
+import { _resetPropagationForTests } from './propagation.js';
+import { _resetRootLogger } from './logger.js';
+import { _resetOtelLogProviderForTests } from './otel-logs.js';
+import { _resetTraceContext } from './tracing.js';
+import { _resetRuntimeForTests } from './runtime.js';
 
 function resetInstalledOtelGlobalsForTests(): void {
   trace.disable();

@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import YAML from 'yaml';
-import { validateOtlpEndpoint } from '../src/endpoint';
-import { ConfigurationError } from '../src/exceptions';
+import { validateOtlpEndpoint } from '../src/endpoint.js';
+import { ConfigurationError } from '../src/exceptions.js';
 
 describe('validateOtlpEndpoint', () => {
   it('accepts valid http endpoint', () => {

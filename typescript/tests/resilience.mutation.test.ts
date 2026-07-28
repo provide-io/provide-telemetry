@@ -14,8 +14,8 @@ import {
   getExporterPolicy,
   runWithResilience,
   setExporterPolicy,
-} from '../src/resilience';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
+} from '../src/resilience.js';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
 
 beforeEach(() => {
   _resetResilienceForTests();
@@ -222,7 +222,7 @@ describe('resilience — export latency recorded (kills ArithmeticOperator - →
     _resetResilienceForTests();
     _resetHealthForTests();
     setExporterPolicy('logs', { timeoutMs: 1000 });
-    const { getHealthSnapshot: snap } = await import('../src/health');
+    const { getHealthSnapshot: snap } = await import('../src/health.js');
     await runWithResilience('logs', async () => 'ok');
     expect(snap().exportLatencyMsLogs).toBeGreaterThanOrEqual(0);
     expect(snap().exportLatencyMsLogs).toBeLessThan(1000);

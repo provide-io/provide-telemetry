@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import type { RuntimeOverrides } from '../src/config';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import type { RuntimeOverrides } from '../src/config.js';
 import {
   _markProvidersRegistered,
   _resetRuntimeForTests,
@@ -13,7 +13,7 @@ import {
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
   updateRuntimeConfig,
-} from '../src/runtime';
+} from '../src/runtime.js';
 
 beforeEach(() => {
   _resetRuntimeForTests();

@@ -27,12 +27,12 @@ vi.mock('@opentelemetry/api-logs', () => ({
 import { LoggerProvider, BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { logs } from '@opentelemetry/api-logs';
-import { _resetConfig, setupTelemetry } from '../src/config';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
 import {
   _resetOtelLogProviderForTests,
   emitLogRecord,
   setupOtelLogProvider,
-} from '../src/otel-logs';
+} from '../src/otel-logs.js';
 
 const makeProviderStub = () => ({
   shutdown: vi.fn().mockResolvedValue(undefined),

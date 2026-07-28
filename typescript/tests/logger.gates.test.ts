@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import { _resetContext } from '../src/context';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
-import { _resetRootLogger, makeWriteHook } from '../src/logger';
-import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
-import { setConsentLevel, resetConsentForTests } from '../src/consent';
-import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import { _resetContext } from '../src/context.js';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
+import { _resetRootLogger, makeWriteHook } from '../src/logger.js';
+import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling.js';
+import { setConsentLevel, resetConsentForTests } from '../src/consent.js';
+import { setQueuePolicy, tryAcquire, _resetBackpressureForTests } from '../src/backpressure.js';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();

@@ -9,7 +9,7 @@
  * the same fingerprint when the call path is equivalent.
  */
 
-import { shortHash12 } from './hash';
+import { shortHash12 } from './hash.js';
 
 /**
  * Parse an Error stack trace into normalized frames: `basename:function`.

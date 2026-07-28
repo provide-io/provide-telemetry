@@ -10,12 +10,12 @@
 
 import { performance } from 'node:perf_hooks';
 
-import { tryAcquire, release, setQueuePolicy } from '../src/backpressure';
-import { guardAttributes, registerCardinalityLimit, clearCardinalityLimits } from '../src/cardinality';
-import { getHealthSnapshot } from '../src/health';
-import { sanitize } from '../src/pii';
-import { shouldSample } from '../src/sampling';
-import { eventName } from '../src/schema';
+import { tryAcquire, release, setQueuePolicy } from '../src/backpressure.js';
+import { guardAttributes, registerCardinalityLimit, clearCardinalityLimits } from '../src/cardinality.js';
+import { getHealthSnapshot } from '../src/health.js';
+import { sanitize } from '../src/pii.js';
+import { shouldSample } from '../src/sampling.js';
+import { eventName } from '../src/schema.js';
 
 const MAX_NS_PER_OP = 1000;
 const MAX_RSS_DELTA_MB = 50;

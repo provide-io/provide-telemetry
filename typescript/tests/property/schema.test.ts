@@ -3,8 +3,8 @@
 
 import * as fc from 'fast-check';
 import { afterEach, beforeEach, describe, it } from 'vitest';
-import { setupTelemetry, _resetConfig } from '../../src/config';
-import { EventSchemaError, eventName, validateEventName } from '../../src/schema';
+import { setupTelemetry, _resetConfig } from '../../src/config.js';
+import { EventSchemaError, eventName, validateEventName } from '../../src/schema.js';
 
 const validSegment = fc
   .tuple(

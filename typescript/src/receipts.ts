@@ -8,8 +8,8 @@
  * If this file is deleted, the PII engine runs unchanged (hook stays null).
  */
 
-import { randomHex, sha256Hex } from './hash';
-import { setReceiptHook } from './pii';
+import { randomHex, sha256Hex } from './hash.js';
+import { setReceiptHook } from './pii.js';
 
 /** An immutable audit record for a single PII redaction event. */
 export interface RedactionReceipt {

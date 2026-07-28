@@ -19,8 +19,8 @@ import {
   explicitResourceAttrs,
   frameworkFloorAttrs,
   type OtelResourcesModule,
-} from '../src/otel-resource';
-import { DEFAULTS, type TelemetryConfig } from '../src/config';
+} from '../src/otel-resource.js';
+import { DEFAULTS, type TelemetryConfig } from '../src/config.js';
 
 const res = resources as unknown as OtelResourcesModule;
 

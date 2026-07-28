@@ -6,14 +6,14 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sha256Hex } from '../src/hash';
-import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii';
+import { sha256Hex } from '../src/hash.js';
+import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii.js';
 import {
   enableReceipts,
   getEmittedReceiptsForTests,
   resetReceiptsForTests,
   _setTestModeForTests,
-} from '../src/receipts';
+} from '../src/receipts.js';
 
 beforeEach(() => {
   resetPiiRulesForTests();

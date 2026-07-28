@@ -16,17 +16,17 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { _getConfigVersion, _resetConfig, setupTelemetry } from '../src/config';
-import { ConfigurationError } from '../src/exceptions';
-import { _resetSamplingForTests } from '../src/sampling';
-import { _resetBackpressureForTests } from '../src/backpressure';
-import { _resetResilienceForTests } from '../src/resilience';
+import { _getConfigVersion, _resetConfig, setupTelemetry } from '../src/config.js';
+import { ConfigurationError } from '../src/exceptions.js';
+import { _resetSamplingForTests } from '../src/sampling.js';
+import { _resetBackpressureForTests } from '../src/backpressure.js';
+import { _resetResilienceForTests } from '../src/resilience.js';
 import {
   _disablePropagationALSForTest,
   _restorePropagationALSForTest,
   _setPropagationInitDoneForTest,
-} from '../src/propagation';
-import { resetTelemetryState } from '../src/testing';
+} from '../src/propagation.js';
+import { resetTelemetryState } from '../src/testing.js';
 
 afterEach(() => {
   _resetConfig();

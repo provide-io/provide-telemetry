@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig } from '../src/config';
-import { _resetRootLogger, getLogger } from '../src/logger';
-import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling';
+import { _resetConfig } from '../src/config.js';
+import { _resetRootLogger, getLogger } from '../src/logger.js';
+import { getSamplingPolicy, _resetSamplingForTests } from '../src/sampling.js';
 
 describe('lazy logger env policy', () => {
   afterEach(() => {

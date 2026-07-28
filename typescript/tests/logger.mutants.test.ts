@@ -13,12 +13,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import { _resetContext } from '../src/context';
-import * as consent from '../src/consent';
-import { resetConsentForTests, setConsentLevel } from '../src/consent';
-import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
-import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import { _resetContext } from '../src/context.js';
+import * as consent from '../src/consent.js';
+import { resetConsentForTests, setConsentLevel } from '../src/consent.js';
+import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger.js';
+import { _resetSamplingForTests, setSamplingPolicy } from '../src/sampling.js';
 
 function freshCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();

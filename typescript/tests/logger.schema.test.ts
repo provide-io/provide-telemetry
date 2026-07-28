@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../src/config';
-import { _resetContext } from '../src/context';
-import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger';
-import * as otelLogs from '../src/otel-logs';
-import * as schema from '../src/schema';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
+import { _resetContext } from '../src/context.js';
+import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger.js';
+import * as otelLogs from '../src/otel-logs.js';
+import * as schema from '../src/schema.js';
 
 function makeCfg(overrides?: Parameters<typeof setupTelemetry>[0]) {
   _resetConfig();

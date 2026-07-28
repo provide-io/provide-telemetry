@@ -11,9 +11,9 @@ import {
   type TelemetryConfig,
   configFromEnv,
   setupTelemetry,
-} from './config';
-import { ConfigurationError } from './exceptions';
-import { getHealthSnapshot } from './health';
+} from './config.js';
+import { ConfigurationError } from './exceptions.js';
+import { getHealthSnapshot } from './health.js';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {

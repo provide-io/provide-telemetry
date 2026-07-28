@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { randomHex, sha256Hex, shortHash12 } from '../src/hash';
+import { randomHex, sha256Hex, shortHash12 } from '../src/hash.js';
 
 describe('hash helpers', () => {
   it('computes the standard SHA-256 digest for ascii input', () => {

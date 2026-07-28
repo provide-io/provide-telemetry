@@ -6,7 +6,7 @@
  * Mirrors Python provide.telemetry.backpressure.
  */
 
-import { _droppedField, _incrementHealth } from './health';
+import { _droppedField, _incrementHealth } from './health.js';
 
 export interface QueuePolicy {
   maxLogs: number;

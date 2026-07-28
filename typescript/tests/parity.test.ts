@@ -22,11 +22,11 @@ import {
   clearCardinalityLimits,
   guardAttributes,
   OVERFLOW_VALUE,
-} from '../src/index';
-import { _resetSamplingForTests } from '../src/sampling';
-import { shortHash12 } from '../src/hash';
-import { DEFAULTS, type TelemetryConfig } from '../src/config';
-import { explicitResourceAttrs } from '../src/otel-resource';
+} from '../src/index.js';
+import { _resetSamplingForTests } from '../src/sampling.js';
+import { shortHash12 } from '../src/hash.js';
+import { DEFAULTS, type TelemetryConfig } from '../src/config.js';
+import { explicitResourceAttrs } from '../src/otel-resource.js';
 
 // ── Sampling ────────────────────────────────────────────────────────────────
 

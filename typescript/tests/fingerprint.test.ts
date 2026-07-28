@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { computeErrorFingerprint } from '../src/fingerprint';
+import { computeErrorFingerprint } from '../src/fingerprint.js';
 
 describe('computeErrorFingerprint', () => {
   it('produces a 12-char hex string', () => {

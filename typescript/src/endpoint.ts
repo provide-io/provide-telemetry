@@ -5,7 +5,7 @@
  * OTLP endpoint validation — fail fast at setup instead of silent async failure.
  */
 
-import { ConfigurationError } from './exceptions';
+import { ConfigurationError } from './exceptions.js';
 
 /**
  * Validate that an endpoint is a valid HTTP(S) URL with optional valid port.

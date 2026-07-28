@@ -8,7 +8,7 @@ import {
   _resetCardinalityForTests,
   guardAttributes,
   registerCardinalityLimit,
-} from '../../src/cardinality';
+} from '../../src/cardinality.js';
 
 afterEach(() => _resetCardinalityForTests());
 

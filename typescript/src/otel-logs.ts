@@ -29,13 +29,13 @@
  * Mirrors Python provide.telemetry.logger.core OTLPLogExporter wiring.
  */
 
-import type { TelemetryConfig } from './config';
-import { getConfig } from './config';
-import { validateOtlpEndpoint } from './endpoint';
-import { buildOtelResource } from './otel-resource';
-import { dynImportOtel } from './otel-dynimport';
-import { wrapResilientExporter } from './resilient-exporter';
-import type { ShutdownableProvider } from './runtime';
+import type { TelemetryConfig } from './config.js';
+import { getConfig } from './config.js';
+import { validateOtlpEndpoint } from './endpoint.js';
+import { buildOtelResource } from './otel-resource.js';
+import { dynImportOtel } from './otel-dynimport.js';
+import { wrapResilientExporter } from './resilient-exporter.js';
+import type { ShutdownableProvider } from './runtime.js';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
 const SEVERITY_MAP: Record<number, number> = {

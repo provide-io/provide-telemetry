@@ -4,8 +4,8 @@
 import React, { type ErrorInfo } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, renderHook } from '@testing-library/react';
-import { _resetContext, getContext } from '../src/context';
-import { useTelemetryContext } from '../src/react';
+import { _resetContext, getContext } from '../src/context.js';
+import { useTelemetryContext } from '../src/react.js';
 
 afterEach(() => {
   _resetContext();
@@ -55,7 +55,7 @@ describe('useTelemetryContext', () => {
   it('does not re-bind when reference changes but content is equal', async () => {
     // ESM-spy test: spies on a named export via dynamic import. Works in Vitest today,
     // but may need updating if Vitest's module interop or ESM handling changes.
-    const contextModule = await import('../src/context');
+    const contextModule = await import('../src/context.js');
     const spy = vi.spyOn(contextModule, 'bindContext');
 
     const { rerender } = renderHook(
@@ -72,9 +72,9 @@ describe('useTelemetryContext', () => {
 
 // ── TelemetryErrorBoundary ───────────────────────────────────────────────────
 
-import * as loggerModule from '../src/logger';
-import type { Logger } from '../src/logger';
-import { TelemetryErrorBoundary } from '../src/react';
+import * as loggerModule from '../src/logger.js';
+import type { Logger } from '../src/logger.js';
+import { TelemetryErrorBoundary } from '../src/react.js';
 
 /** A component that throws when shouldThrow is true. */
 function Bomb({ shouldThrow }: { shouldThrow: boolean }): React.ReactElement {

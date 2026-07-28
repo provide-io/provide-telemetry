@@ -23,7 +23,7 @@ import {
   setupTelemetry,
   withTrace,
   getActiveTraceIds,
-} from '../src/index';
+} from '../src/index.js';
 
 async function main(): Promise<void> {
   const backendUrl = process.env['E2E_BACKEND_URL'];

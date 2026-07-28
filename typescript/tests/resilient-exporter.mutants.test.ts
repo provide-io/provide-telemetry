@@ -11,8 +11,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetResilienceForTests, setExporterPolicy } from '../src/resilience';
-import { type ExportResultLike, wrapResilientExporter } from '../src/resilient-exporter';
+import { _resetResilienceForTests, setExporterPolicy } from '../src/resilience.js';
+import { type ExportResultLike, wrapResilientExporter } from '../src/resilient-exporter.js';
 
 const EXPORT_RESULT_FAILED = 1;
 

@@ -12,7 +12,7 @@
  * real transport traffic — not just to the one-shot construction probe.
  */
 
-import { runWithResilience } from './resilience';
+import { runWithResilience } from './resilience.js';
 
 /** Shape of an OTel exporter result. */
 export interface ExportResultLike {

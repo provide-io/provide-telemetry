@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { _resetConfig, getConfig, setupTelemetry, version } from '../src/config';
-import { _resetSamplingForTests } from '../src/sampling';
-import { _resetBackpressureForTests } from '../src/backpressure';
-import { _resetResilienceForTests } from '../src/resilience';
-import pkg from '../package.json';
+import { _resetConfig, getConfig, setupTelemetry, version } from '../src/config.js';
+import { _resetSamplingForTests } from '../src/sampling.js';
+import { _resetBackpressureForTests } from '../src/backpressure.js';
+import { _resetResilienceForTests } from '../src/resilience.js';
+import pkg from '../package.json' with { type: 'json' };
 
 afterEach(() => {
   _resetConfig();

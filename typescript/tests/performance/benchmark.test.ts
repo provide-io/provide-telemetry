@@ -20,14 +20,14 @@ import {
   release,
   setQueuePolicy,
   _resetBackpressureForTests,
-} from '../../src/backpressure';
-import { _resetConfig, setupTelemetry } from '../../src/config';
-import { getHealthSnapshot, _resetHealthForTests } from '../../src/health';
-import { _resetRootLogger } from '../../src/logger';
-import { counter, gauge, histogram } from '../../src/metrics';
-import { sanitize, resetPiiRulesForTests } from '../../src/pii';
-import { setSamplingPolicy, shouldSample, _resetSamplingForTests } from '../../src/sampling';
-import { eventName } from '../../src/schema';
+} from '../../src/backpressure.js';
+import { _resetConfig, setupTelemetry } from '../../src/config.js';
+import { getHealthSnapshot, _resetHealthForTests } from '../../src/health.js';
+import { _resetRootLogger } from '../../src/logger.js';
+import { counter, gauge, histogram } from '../../src/metrics.js';
+import { sanitize, resetPiiRulesForTests } from '../../src/pii.js';
+import { setSamplingPolicy, shouldSample, _resetSamplingForTests } from '../../src/sampling.js';
+import { eventName } from '../../src/schema.js';
 
 const ITERATIONS = 50_000;
 // Budget: generous thresholds (10x slower than typical) to avoid CI flakes.

@@ -11,7 +11,7 @@ import {
   getContext,
   runWithContext,
   unbindContext,
-} from '../src/context';
+} from '../src/context.js';
 
 afterEach(() => {
   _resetContext();

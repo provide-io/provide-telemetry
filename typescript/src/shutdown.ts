@@ -18,11 +18,15 @@
  */
 
 import { context, metrics, trace } from '@opentelemetry/api';
-import { getConfig } from './config';
-import { _clearProviderState, _getRegisteredProviders, type ShutdownableProvider } from './runtime';
-import { _resetRootLogger } from './logger';
-import { _resetOtelLogProviderForTests } from './otel-logs';
-import { dynImportOtel } from './otel-dynimport';
+import { getConfig } from './config.js';
+import {
+  _clearProviderState,
+  _getRegisteredProviders,
+  type ShutdownableProvider,
+} from './runtime.js';
+import { _resetRootLogger } from './logger.js';
+import { _resetOtelLogProviderForTests } from './otel-logs.js';
+import { dynImportOtel } from './otel-dynimport.js';
 
 async function disableInstalledOtelGlobals(): Promise<void> {
   trace.disable();

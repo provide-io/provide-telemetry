@@ -73,13 +73,13 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { LoggerProvider, BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { logs } from '@opentelemetry/api-logs';
-import { _resetConfig, getConfig, setupTelemetry } from '../../src/config';
+import { _resetConfig, getConfig, setupTelemetry } from '../../src/config.js';
 import {
   _areProvidersRegistered,
   _getRegisteredProviders,
   _resetRuntimeForTests,
-} from '../../src/runtime';
-import { _resetOtelLogProviderForTests } from '../../src/otel-logs';
+} from '../../src/runtime.js';
+import { _resetOtelLogProviderForTests } from '../../src/otel-logs.js';
 import { registerOtelProviders } from '../../src/otel.js';
 
 // Minimal stubs that satisfy OTel API interface checks for provider registration.

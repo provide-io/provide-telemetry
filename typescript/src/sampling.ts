@@ -5,8 +5,8 @@
  * Runtime sampling policy — mirrors Python provide.telemetry.sampling.
  */
 
-import { ConfigurationError } from './exceptions';
-import { _droppedField, _incrementHealth } from './health';
+import { ConfigurationError } from './exceptions.js';
+import { _droppedField, _incrementHealth } from './health.js';
 
 export interface SamplingPolicy {
   defaultRate: number;

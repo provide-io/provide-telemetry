@@ -31,12 +31,12 @@
  * Mirrors Python provide.telemetry _otel.py lazy-load approach.
  */
 
-import type { TelemetryConfig } from './config';
-import { validateOtlpEndpoint } from './endpoint';
-import { buildOtelResource } from './otel-resource';
-import { setupOtelLogProvider } from './otel-logs';
-import { dynImportOtel } from './otel-dynimport';
-import { wrapResilientExporter } from './resilient-exporter';
+import type { TelemetryConfig } from './config.js';
+import { validateOtlpEndpoint } from './endpoint.js';
+import { buildOtelResource } from './otel-resource.js';
+import { setupOtelLogProvider } from './otel-logs.js';
+import { dynImportOtel } from './otel-dynimport.js';
+import { wrapResilientExporter } from './resilient-exporter.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
 // entirely (safe no-export path per docs/ARCHITECTURE.md).
@@ -46,7 +46,7 @@ import {
   _markProvidersRegistered,
   _setProviderSignalInstalled,
   _storeRegisteredProviders,
-} from './runtime';
+} from './runtime.js';
 
 function normalizeEndpoint(endpoint: string | undefined): string | undefined {
   const trimmed = endpoint?.trim();

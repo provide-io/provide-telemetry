@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetConfig, setupTelemetry } from '../../src/config';
+import { _resetConfig, setupTelemetry } from '../../src/config.js';
 import {
   _resetContext,
   bindContext,
@@ -23,11 +23,11 @@ import {
   getContext,
   runWithContext,
   unbindContext,
-} from '../../src/context';
-import { _resetRootLogger, getLogger } from '../../src/logger';
-import { sanitize } from '../../src/pii';
-import { withTrace } from '../../src/tracing';
-import { counter, gauge, histogram } from '../../src/metrics';
+} from '../../src/context.js';
+import { _resetRootLogger, getLogger } from '../../src/logger.js';
+import { sanitize } from '../../src/pii.js';
+import { withTrace } from '../../src/tracing.js';
+import { counter, gauge, histogram } from '../../src/metrics.js';
 
 beforeEach(() => {
   _resetConfig();

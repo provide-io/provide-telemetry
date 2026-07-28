@@ -7,8 +7,8 @@ import {
   getSamplingPolicy,
   setSamplingPolicy,
   shouldSample,
-} from '../src/sampling';
-import { _resetHealthForTests, getHealthSnapshot } from '../src/health';
+} from '../src/sampling.js';
+import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
 
 afterEach(() => {
   _resetSamplingForTests();
