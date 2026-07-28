@@ -1,5 +1,18 @@
 # Changelog
 
+> This file has not been kept current: 0.4.4 through 0.5.2 are absent. The root
+> `CHANGELOG.md` is the maintained one — prefer it.
+
+## [0.5.3] — 2026-07-28
+
+### Fixed
+
+- **The published package is loadable from Node** — `dist` was emitted with `moduleResolution: "bundler"` into a package declaring `"type": "module"`, so it shipped extensionless relative specifiers and every Node consumer failed at the first import with `ERR_MODULE_NOT_FOUND`. Now compiled with `nodenext`, with explicit `.js` on all 137 relative specifiers in `src`.
+
+### Added
+
+- **`ci/verify-npm-consumer-package.sh`** — imports the packed tarball from a real Node process, in both CI and the release path. Lint, typecheck and the full vitest suite resolve like a bundler and cannot catch this class of break.
+
 ## [0.4.3] — 2026-04-24
 
 ### API Alignment

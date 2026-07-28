@@ -18,6 +18,29 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [typescript/0.5.3] — 2026-07-28
+
+TypeScript only. Python, Go and Rust remain on 0.5.1 — language patch versions
+drift independently (see `release.yml`; only major.minor must match `VERSION`).
+
+### Fixed
+
+- **The published package is loadable from Node** — `dist` was emitted with `moduleResolution: "bundler"` into a package declaring `"type": "module"`, and `tsc` never rewrites specifiers on emit, so it shipped `import './config'` with no extension. Every Node consumer failed at the first import with `ERR_MODULE_NOT_FOUND`; only bundlers could resolve it. The compiler is now `nodenext` and all 137 relative specifiers in `src` carry an explicit `.js`.
+
+### Added
+
+- **`ci/verify-npm-consumer-package.sh`** — packs the tarball, installs it into a throwaway project and imports every entry point from a real Node process. Nothing already in the pipeline could catch the above: lint, typecheck and the 1666-test vitest suite all resolve like a bundler and were green throughout. Runs in `ci-typescript.yml` and in `release.yml`'s `build-npm`, before the tarball can be uploaded.
+
+## [typescript/0.5.2] — 2026-07-12
+
+TypeScript only.
+
+### Fixed
+
+- **Optional OTel dynamic imports resolve for bundler consumers.**
+
+---
+
 ## [0.5.1] — 2026-07-10
 
 ### Added
