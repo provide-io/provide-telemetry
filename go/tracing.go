@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"sync"
 )
 
 // Span represents an active trace span.
@@ -54,7 +55,30 @@ func _randomHex(n int) string {
 }
 
 // DefaultTracer is the package-level tracer, defaults to no-op.
+//
+// Library code must go through _loadDefaultTracer / _storeDefaultTracer rather
+// than touching it directly: it is written during SetupTelemetry and
+// ShutdownTelemetry and read from every traced call, which does not hold
+// _setupMu, and a two-word interface value read while it is being written can
+// tear into a stale itab paired with a new data pointer.
 var DefaultTracer Tracer = &_noopTracer{} //nolint:gochecknoglobals
+
+// _defaultTracerMu guards DefaultTracer. A RWMutex rather than an atomic
+// because DefaultTracer is exported and must stay a plain Tracer variable — the
+// spec names it as the package's tracer instance.
+var _defaultTracerMu sync.RWMutex //nolint:gochecknoglobals
+
+func _loadDefaultTracer() Tracer {
+	_defaultTracerMu.RLock()
+	defer _defaultTracerMu.RUnlock()
+	return DefaultTracer
+}
+
+func _storeDefaultTracer(t Tracer) {
+	_defaultTracerMu.Lock()
+	defer _defaultTracerMu.Unlock()
+	DefaultTracer = t
+}
 
 // _traceIDKey and _spanIDKey are context keys for trace/span propagation.
 var (
@@ -65,7 +89,7 @@ var (
 // GetTracer returns a named Tracer. Currently returns DefaultTracer.
 func GetTracer(name string) Tracer {
 	_ = name
-	return DefaultTracer
+	return _loadDefaultTracer()
 }
 
 // Trace wraps fn in a span using DefaultTracer.
@@ -157,5 +181,5 @@ func _getTraceSpanFromContext(ctx context.Context) (traceID, spanID string) {
 
 // _setDefaultTracer replaces DefaultTracer (called by OTel integration in Task 14).
 func _setDefaultTracer(t Tracer) {
-	DefaultTracer = t
+	_storeDefaultTracer(t)
 }

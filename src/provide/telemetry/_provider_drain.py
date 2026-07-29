@@ -26,16 +26,26 @@ import warnings
 # Ceiling on drain workers abandoned at their deadline and still running. Small
 # on purpose: past a handful of stuck workers the exporter is not coming back,
 # and spawning more only costs threads.
-_MAX_PENDING_WORKERS = 8
-_pending_lock = threading.Lock()
-_pending_workers = 0
+#
+# Counts *abandoned* workers only — a worker still inside its deadline is
+# running normally and will give its slot back. Counting those instead would
+# make concurrent healthy drains (an ASGI app flushing per request against a
+# collector that takes 200ms) decline each other and report a failure that did
+# not happen.
+_MAX_ABANDONED_WORKERS = 8
+_abandoned_lock = threading.Lock()
+_abandoned_workers = 0
 
 
-def _reset_pending_workers_for_tests() -> None:
-    """Restore the worker budget (tests that deliberately strand workers)."""
-    global _pending_workers
-    with _pending_lock:
-        _pending_workers = 0
+def _reset_abandoned_workers_for_tests() -> None:
+    """Restore the worker budget (tests that deliberately strand workers).
+
+    Only sound once the stranded workers have actually exited: each decrements
+    on its way out, so resetting underneath them drives the counter negative.
+    """
+    global _abandoned_workers
+    with _abandoned_lock:
+        _abandoned_workers = 0
 
 
 def _bounded_provider_call(
@@ -44,6 +54,8 @@ def _bounded_provider_call(
     methods: tuple[str, ...],
     thread_name: str,
     action: str,
+    *,
+    decline_when_saturated: bool,
 ) -> bool:
     """Call each of *methods* on *provider*, in order, under a hard deadline.
 
@@ -55,55 +67,87 @@ def _bounded_provider_call(
     bounded semantics: if the thread exceeds *timeout_seconds*, it is abandoned
     (daemon threads are reclaimed by interpreter exit).
 
-    Abandoned workers are capped. shutdown runs once, but flush is documented for
-    repeated use (a request boundary, a checkpoint), so against an unreachable
-    endpoint every call would otherwise strand another thread in the exporter's
-    retry loop until interpreter exit — thousands within minutes at a few
-    requests per second, ending in "can't start new thread" raised from
-    unrelated code. Past _MAX_PENDING_WORKERS still-running workers we decline to
+    Abandoned workers are capped when *decline_when_saturated* is set. flush is
+    documented for repeated use (a request boundary, a checkpoint), so against
+    an unreachable endpoint every call would otherwise strand another thread in
+    the exporter's retry loop until interpreter exit — thousands within minutes
+    at a few requests per second, ending in "can't start new thread" raised from
+    unrelated code. Past _MAX_ABANDONED_WORKERS stranded workers we decline to
     start another and report the drain as failed, which is what it is.
 
+    Shutdown passes *decline_when_saturated* False: it is the last chance to get
+    queued records out, it runs at exit rather than per request, and declining
+    it because earlier flushes stranded workers would silently drop the whole
+    export queue. Its abandoned workers still count toward the budget — they sit
+    in the same exporter — they just never close the gate on themselves.
+
     Missing or non-callable attributes are skipped. Returns True if every call
-    completed in time, False if abandoned or declined. Re-raises the first
-    exception raised by a call that completed.
+    completed in time and none of them reported failure — OTel's ``force_flush``
+    returns False for an incomplete drain — and False if abandoned, declined, or
+    reported incomplete. Re-raises the first exception raised by a call that
+    completed.
     """
-    global _pending_workers
-    with _pending_lock:
-        at_capacity = _pending_workers >= _MAX_PENDING_WORKERS
-        if not at_capacity:
-            _pending_workers += 1
-    if at_capacity:
-        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-            f"provider {action} skipped: {_MAX_PENDING_WORKERS} earlier drain workers "  # pragma: no mutate — warning message string is non-semantic
-            "are still pending against an unresponsive exporter.",  # pragma: no mutate — warning message string is non-semantic
-            RuntimeWarning,
-            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
-        )
-        return False
+    global _abandoned_workers
+    if decline_when_saturated:
+        with _abandoned_lock:
+            saturated = _abandoned_workers >= _MAX_ABANDONED_WORKERS
+        if saturated:
+            warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+                f"provider {action} skipped: {_MAX_ABANDONED_WORKERS} earlier drain workers "  # pragma: no mutate — warning message string is non-semantic
+                "are still pending against an unresponsive exporter.",  # pragma: no mutate — warning message string is non-semantic
+                RuntimeWarning,
+                stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+            )
+            return False
 
     error: list[BaseException] = []
+    incomplete: list[str] = []
     completed = threading.Event()
+    # Both guarded by _abandoned_lock: the worker may finish in the same instant
+    # the deadline expires, and only one of the two may account for the slot.
+    finished = False  # pragma: no mutate — falsy initialiser
+    counted = False  # pragma: no mutate — falsy initialiser
 
     def _runner() -> None:
-        global _pending_workers
+        global _abandoned_workers
+        nonlocal finished
         try:
             for method in methods:
                 call = getattr(provider, method, None)
-                if callable(call):
-                    call()
+                if callable(call) and call() is False:
+                    # force_flush(timeout_millis) returns False when it gave up
+                    # with records still queued. Dropping that on the floor
+                    # would report a lossy drain as a clean one — the exact
+                    # failure a caller flushing before a serverless freeze is
+                    # asking about.
+                    incomplete.append(method)
         except BaseException as exc:
             error.append(exc)
         finally:
             completed.set()
-            # Decremented only when the worker actually finishes, so an
-            # abandoned one keeps holding its slot — that is the accounting we
-            # want.
-            with _pending_lock:
-                _pending_workers -= 1
+            with _abandoned_lock:
+                finished = True
+                if counted:
+                    _abandoned_workers -= 1
 
     worker = threading.Thread(target=_runner, name=thread_name, daemon=True)
-    worker.start()
+    try:
+        worker.start()
+    except RuntimeError:
+        # "can't start new thread" — the process is at its thread limit. Nothing
+        # was drained and nothing was stranded; say so rather than raising out
+        # of a bool-returning drain.
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            f"provider {action} skipped: could not start a drain worker.",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )
+        return False
     if not completed.wait(timeout_seconds):
+        with _abandoned_lock:
+            if not finished:
+                counted = True
+                _abandoned_workers += 1
         warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
             f"provider {action} exceeded {timeout_seconds}s deadline; "  # pragma: no mutate — warning message string is non-semantic
             "abandoning background flush. Records still in the export queue "  # pragma: no mutate — warning message string is non-semantic
@@ -114,13 +158,23 @@ def _bounded_provider_call(
         return False
     if error:
         raise error[0]
+    if incomplete:
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            f"provider {action} reported an incomplete drain from {', '.join(incomplete)}; "  # pragma: no mutate — warning message string is non-semantic
+            "records may still be queued.",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )
+        return False
     return True
 
 
 def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
     """Run ``provider.force_flush()`` then ``provider.shutdown()`` under a hard deadline.
 
-    Returns True if both calls completed in time, False if abandoned.
+    Returns True if both calls completed in time and the flush reported success,
+    False if abandoned or the flush reported an incomplete drain. Never declines
+    for want of budget: this is the last chance to get queued records out.
     Re-raises any exception raised by force_flush/shutdown when completed.
     """
     return _bounded_provider_call(
@@ -130,6 +184,7 @@ def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
         # Operator-visible thread name; asserted by test_thread_is_named_for_operator_visibility.
         "provide-provider-shutdown",
         "shutdown",
+        decline_when_saturated=False,  # pragma: no mutate — falsy argument
     )
 
 
@@ -141,7 +196,8 @@ def bounded_provider_flush(provider: object, timeout_seconds: float) -> bool:
     are out (before returning a response, before a serverless freeze) does not
     have to tear telemetry down to get that guarantee.
 
-    Returns True if the flush completed in time, False if abandoned.
+    Returns True if the flush completed in time and reported success, False if
+    abandoned, declined for want of budget, or reported an incomplete drain.
     Re-raises any exception raised by force_flush when completed.
     """
     return _bounded_provider_call(
@@ -151,6 +207,7 @@ def bounded_provider_flush(provider: object, timeout_seconds: float) -> bool:
         # Operator-visible thread name; asserted by test_flush_thread_is_named_for_operator_visibility.
         "provide-provider-flush",
         "flush",
+        decline_when_saturated=True,
     )
 
 

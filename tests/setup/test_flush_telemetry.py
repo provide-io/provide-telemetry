@@ -225,6 +225,7 @@ def test_declines_to_strand_more_workers_than_the_budget(monkeypatch: pytest.Mon
     until interpreter exit.
     """
     import threading
+    import time
 
     from provide.telemetry import _provider_drain
 
@@ -239,20 +240,41 @@ def test_declines_to_strand_more_workers_than_the_budget(monkeypatch: pytest.Mon
 
     # Start from a full budget, and measure the delta: earlier tests in this
     # process may have stranded workers of their own.
-    _provider_drain._reset_pending_workers_for_tests()
+    _provider_drain._reset_abandoned_workers_for_tests()
     before = _stuck()
     try:
-        attempts = _provider_drain._MAX_PENDING_WORKERS + 3
+        attempts = _provider_drain._MAX_ABANDONED_WORKERS + 3
         results = [_provider_drain.bounded_provider_flush(_Hanging(), timeout_seconds=0.01) for _ in range(attempts)]
         assert all(r is False for r in results)
         # Past the budget we decline rather than spawn: at most the budget's
         # worth of new workers, not one per call.
         spawned = _stuck() - before
-        assert spawned <= _provider_drain._MAX_PENDING_WORKERS
+        assert spawned <= _provider_drain._MAX_ABANDONED_WORKERS
         assert spawned < attempts
+
+        # Shutdown is the last chance to get queued records out, so a budget
+        # spent by flushes must not disarm it.
+        drained: list[str] = []
+
+        class _Recording:
+            def force_flush(self) -> None:
+                drained.append("force_flush")
+
+            def shutdown(self) -> None:
+                drained.append("shutdown")
+
+        assert _provider_drain.bounded_provider_shutdown(_Recording(), timeout_seconds=5.0) is True
+        assert drained == ["force_flush", "shutdown"]
     finally:
+        # Release first, then wait for every stranded worker to unwind before
+        # zeroing the counter: they each decrement on the way out, so resetting
+        # underneath them would drive the shared budget negative for the rest
+        # of the session and silently disable the cap for later tests.
         release.set()
-        _provider_drain._reset_pending_workers_for_tests()
+        deadline = time.monotonic() + 10.0
+        while _stuck() > before and time.monotonic() < deadline:
+            time.sleep(0.01)
+        _provider_drain._reset_abandoned_workers_for_tests()
 
 
 @pytest.mark.parametrize(
@@ -280,5 +302,6 @@ def test_a_failed_signal_is_reported_to_operators_with_its_name(
 
     records = [r for r in caplog.records if r.getMessage() == "telemetry.flush.signal_failed"]
     assert len(records) == 1
-    assert records[0].signal == signal
-    assert "exporter exploded" in records[0].error
+    # extra= fields land as dynamic LogRecord attributes, which mypy cannot see.
+    assert getattr(records[0], "signal", None) == signal
+    assert "exporter exploded" in getattr(records[0], "error", "")

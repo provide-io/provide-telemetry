@@ -10,6 +10,7 @@ import {
   type RuntimeOverrides,
   type TelemetryConfig,
   configFromEnv,
+  getConfig,
   setupTelemetry,
 } from './config.js';
 import { ConfigurationError } from './exceptions.js';
@@ -94,8 +95,17 @@ export function getRuntimeStatus(): RuntimeStatus {
   // first (withTrace checks tracingEnabled, the instruments check
   // metricsEnabled). Reporting a provider for a signal the caller switched off
   // would claim an export path that nothing can reach.
-  const tracesInstalled = cfg.tracingEnabled && _isLiveTracerProviderInstalled();
-  const metricsInstalled = cfg.metricsEnabled && _isLiveMeterProviderInstalled();
+  //
+  // Deliberately getConfig() and not cfg: the emit paths read getConfig(),
+  // which is the DEFAULTS until setupTelemetry() loads the environment, while
+  // cfg falls back to configFromEnv() so `signals` can report configured
+  // intent. Gating on cfg would make providers.traces claim a signal is dead
+  // before setup while withTrace still exports through a host application's
+  // provider — and would disagree with Python and Go, which both default a
+  // signal on until a loaded config switches it off.
+  const emitCfg = getConfig();
+  const tracesInstalled = emitCfg.tracingEnabled && _isLiveTracerProviderInstalled();
+  const metricsInstalled = emitCfg.metricsEnabled && _isLiveMeterProviderInstalled();
   return {
     setupDone: _activeConfig !== null,
     signals: {

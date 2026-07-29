@@ -122,8 +122,11 @@ var _backendTracerName atomic.Pointer[string] //nolint:gochecknoglobals
 // so when the binding is still our no-op we ask the backend again on each span.
 // A non-no-op binding always wins, so an explicit override keeps control.
 func _effectiveTracer() Tracer {
-	if _, isNoop := DefaultTracer.(*_noopTracer); !isNoop {
-		return DefaultTracer
+	// One read, then reuse: two separate reads could straddle a setup and
+	// return a different tracer than the one the type switch approved.
+	bound := _loadDefaultTracer()
+	if _, isNoop := bound.(*_noopTracer); !isNoop {
+		return bound
 	}
 	if backend := _activeBackend(); backend != nil {
 		name := ""
@@ -134,11 +137,11 @@ func _effectiveTracer() Tracer {
 			return tracer
 		}
 	}
-	return DefaultTracer
+	return bound
 }
 
 func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
-	DefaultTracer = &_noopTracer{}
+	_storeDefaultTracer(&_noopTracer{})
 	serviceName := cfg.ServiceName
 	_backendTracerName.Store(&serviceName)
 	if Logger == nil {
@@ -152,7 +155,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	providers := backend.Providers()
 	if providers.Traces {
 		if tracer := backend.Tracer(cfg.ServiceName); tracer != nil {
-			DefaultTracer = tracer
+			_storeDefaultTracer(tracer)
 		}
 	}
 	if providers.Logs {
