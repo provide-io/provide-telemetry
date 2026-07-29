@@ -14,6 +14,7 @@ import {
 } from './config.js';
 import { ConfigurationError } from './exceptions.js';
 import { getHealthSnapshot } from './health.js';
+import { _isLiveMeterProviderInstalled, _isLiveTracerProviderInstalled } from './otel-probe.js';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -46,8 +47,13 @@ let _activeConfig: TelemetryConfig | null = null;
 let _providersRegistered = false;
 // Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
 let _registeredProviders: ShutdownableProvider[] = [];
-// Stryker disable next-line ObjectLiteral,BooleanLiteral: initial value overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
-let _providerSignals = { logs: false, traces: false, metrics: false };
+// Logs is the one signal whose provider state is bookkept at install time:
+// traces and metrics are probed against the OTel globals instead (see
+// getRuntimeStatus), so a host application's own SDK counts as installed. The
+// logs API lives in the optional @opentelemetry/api-logs peer, which cannot be
+// imported synchronously here, so there is nothing to probe against.
+// Stryker disable next-line BooleanLiteral: initial value overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
+let _logsProviderInstalled = false;
 
 function resolveEffectiveConfig(): TelemetryConfig {
   return _activeConfig ?? configFromEnv();
@@ -73,20 +79,18 @@ export function _areProvidersRegistered(): boolean {
   return _providersRegistered;
 }
 
-export function _setProviderSignalInstalled(
-  signal: 'logs' | 'traces' | 'metrics',
-  installed: boolean,
-): void {
-  _providerSignals[signal] = installed;
-}
-
-/** True when a live OTel tracer provider is installed (SDK sampling is authoritative). */
-export function _isTraceProviderInstalled(): boolean {
-  return _providerSignals.traces;
+/** Called by registerOtelProviders once the OTLP log provider is live. */
+export function _setLogsProviderInstalled(installed: boolean): void {
+  _logsProviderInstalled = installed;
 }
 
 export function getRuntimeStatus(): RuntimeStatus {
   const cfg = resolveEffectiveConfig();
+  // traces and metrics are probed live rather than read from install flags, so
+  // a provider a host application installed itself reports as installed (and
+  // not as fallback) instead of being invisible to us.
+  const tracesInstalled = _isLiveTracerProviderInstalled();
+  const metricsInstalled = _isLiveMeterProviderInstalled();
   return {
     setupDone: _activeConfig !== null,
     signals: {
@@ -94,11 +98,15 @@ export function getRuntimeStatus(): RuntimeStatus {
       traces: cfg.tracingEnabled,
       metrics: cfg.metricsEnabled,
     },
-    providers: { ..._providerSignals },
+    providers: {
+      logs: _logsProviderInstalled,
+      traces: tracesInstalled,
+      metrics: metricsInstalled,
+    },
     fallback: {
-      logs: !_providerSignals.logs,
-      traces: !_providerSignals.traces,
-      metrics: !_providerSignals.metrics,
+      logs: !_logsProviderInstalled,
+      traces: !tracesInstalled,
+      metrics: !metricsInstalled,
     },
     setupError: getHealthSnapshot().setupError,
   };
@@ -316,7 +324,7 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 export function _clearProviderState(): void {
   _providersRegistered = false;
   _registeredProviders = [];
-  _providerSignals = { logs: false, traces: false, metrics: false };
+  _logsProviderInstalled = false;
   _activeConfig = null;
 }
 
@@ -329,7 +337,7 @@ export function _resetRuntimeForTests(): void {
   _activeConfig = null;
   _providersRegistered = false;
   _registeredProviders = [];
-  _providerSignals = { logs: false, traces: false, metrics: false };
+  _logsProviderInstalled = false;
 }
 
 export const _coldFieldsForTest: readonly (keyof TelemetryConfig)[] = _COLD_FIELDS;

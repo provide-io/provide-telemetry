@@ -66,6 +66,27 @@ def _has_live_meter_provider() -> bool:
         return _meter_provider is not None
 
 
+def _has_effective_meter_provider() -> bool:
+    """Return True if an instrument created now would reach a real meter provider.
+
+    Distinct from :func:`_has_live_meter_provider`, which answers "did *we*
+    install one" — the question reconfiguration safety turns on. This answers
+    "is one in play", which includes a provider a host application installed
+    itself: such a provider owns the OTel global, so ``get_meter()`` resolves it
+    and measurements are recorded through it.
+
+    Delegates to the same predicate ``get_meter()`` gates on, so runtime status
+    and the meter can never disagree about which provider is in play.
+    """
+    if _has_live_meter_provider():
+        return True
+    otel_metrics = _load_otel_metrics_api()
+    if otel_metrics is None:
+        return False
+    with _meter_lock:
+        return _has_real_meter_provider(otel_metrics)
+
+
 def setup_metrics(config: TelemetryConfig) -> None:
     global _meter_provider, _meter_global_set
     global _baseline_meter_provider, _baseline_captured

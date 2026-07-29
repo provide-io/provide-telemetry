@@ -93,6 +93,28 @@ def _has_live_tracing_provider() -> bool:
         return _provider_ref is not None
 
 
+def _has_effective_tracing_provider() -> bool:
+    """Return True if a span started now would reach a real tracer provider.
+
+    Distinct from :func:`_has_live_tracing_provider`, which answers "did *we*
+    install one" — the question reconfiguration safety turns on. This answers
+    "is one in play", which includes a provider a host application installed
+    itself: such a provider owns the OTel global, so ``get_tracer()`` resolves
+    it and spans export, and the facade must not apply its own probabilistic
+    sampling on top of the SDK's sampler.
+
+    Delegates to the same predicate ``get_tracer()`` gates on, so the sampling
+    bypass and the tracer can never disagree about which provider is in play.
+    """
+    if _has_live_tracing_provider():
+        return True
+    otel_trace = _load_otel_trace_api()
+    if otel_trace is None:
+        return False
+    with _provider_lock:
+        return _has_real_tracer_provider(otel_trace)
+
+
 def setup_tracing(config: TelemetryConfig) -> None:
     global _provider_configured, _provider_ref, _otel_global_set
     global _baseline_tracer_provider, _baseline_captured

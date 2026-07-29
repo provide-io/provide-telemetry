@@ -9,7 +9,7 @@ import {
   _getRegisteredProviders,
   _markProvidersRegistered,
   _resetRuntimeForTests,
-  _setProviderSignalInstalled,
+  _setLogsProviderInstalled,
   _storeRegisteredProviders,
   getRuntimeConfig,
   getRuntimeStatus,
@@ -292,30 +292,17 @@ describe('_clearProviderState — resets all provider state', () => {
   });
 
   it('resets logs provider signal to false', () => {
-    _setProviderSignalInstalled('logs', true);
+    _setLogsProviderInstalled(true);
     _clearProviderState();
     expect(getRuntimeStatus().providers.logs).toBe(false);
     expect(getRuntimeStatus().fallback.logs).toBe(true);
   });
 
-  it('resets traces provider signal to false', () => {
-    _setProviderSignalInstalled('traces', true);
-    _clearProviderState();
-    expect(getRuntimeStatus().providers.traces).toBe(false);
-    expect(getRuntimeStatus().fallback.traces).toBe(true);
-  });
-
-  it('resets metrics provider signal to false', () => {
-    _setProviderSignalInstalled('metrics', true);
-    _clearProviderState();
-    expect(getRuntimeStatus().providers.metrics).toBe(false);
-    expect(getRuntimeStatus().fallback.metrics).toBe(true);
-  });
-
-  it('resets all three signals and registered flag simultaneously', () => {
-    _setProviderSignalInstalled('logs', true);
-    _setProviderSignalInstalled('traces', true);
-    _setProviderSignalInstalled('metrics', true);
+  // traces and metrics are absent here on purpose: they are not bookkept state
+  // to reset, they are probed off the OTel globals (which shutdownTelemetry
+  // disables separately). Logs is the only install flag left.
+  it('resets the logs signal and registered flag simultaneously', () => {
+    _setLogsProviderInstalled(true);
     _markProvidersRegistered();
     _storeRegisteredProviders([{ forceFlush: vi.fn().mockResolvedValue(undefined) }]);
     _clearProviderState();
