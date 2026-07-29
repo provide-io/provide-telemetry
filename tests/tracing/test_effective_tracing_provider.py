@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -25,6 +26,16 @@ from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 from provide.telemetry.tracing import provider as pmod
 from provide.telemetry.tracing.decorators import trace
+
+
+def _signal(status: dict[str, object], section: str, signal: str) -> object:
+    """Read status[section][signal].
+
+    get_runtime_status() is typed dict[str, object] for cross-language shape
+    parity, so the nested read needs narrowing rather than a type: ignore —
+    mypy accepts the ignore, ty does not.
+    """
+    return cast("dict[str, object]", status[section])[signal]
 
 
 class _FakeTracer:
@@ -129,8 +140,8 @@ class TestRuntimeStatusReportsHostProvider:
 
         _install_trace_global(monkeypatch, _ExternalProvider())
         status = get_runtime_status()
-        assert status["providers"]["traces"] is True  # type: ignore[index]
-        assert status["fallback"]["traces"] is False  # type: ignore[index]
+        assert _signal(status, "providers", "traces") is True
+        assert _signal(status, "fallback", "traces") is False
 
     def test_status_reports_fallback_when_only_the_placeholder_is_installed(
         self, monkeypatch: pytest.MonkeyPatch
@@ -139,8 +150,8 @@ class TestRuntimeStatusReportsHostProvider:
 
         _install_trace_global(monkeypatch, _ProxyTracerProvider())
         status = get_runtime_status()
-        assert status["providers"]["traces"] is False  # type: ignore[index]
-        assert status["fallback"]["traces"] is True  # type: ignore[index]
+        assert _signal(status, "providers", "traces") is False
+        assert _signal(status, "fallback", "traces") is True
 
 
 def test_false_when_tracing_is_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
