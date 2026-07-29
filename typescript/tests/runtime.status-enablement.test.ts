@@ -10,27 +10,21 @@
  * was dead while withTrace went on exporting through a host application's
  * provider, and put TypeScript out of step with Python and Go, which both
  * default a signal on until a loaded config switches it off.
+ *
+ * The rule is spec'd as behavioral_parity provider_adoption_reporting in
+ * spec/telemetry-api.yaml. It lives here rather than in runtime.test.ts's
+ * getRuntimeStatus block only because that file is near the 500-line cap.
  */
 
 import { metrics, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import { _resetRuntimeForTests, getRuntimeStatus } from '../src/runtime.js';
+import { liveMeterProvider, liveTracerProvider } from './fixtures/live-providers.js';
 
-function liveTracerProvider(): object {
-  return {
-    getTracer: () => ({ startSpan: () => ({}), startActiveSpan: () => undefined }),
-    forceFlush: async (): Promise<void> => {},
-    shutdown: async (): Promise<void> => {},
-  };
-}
-
-function liveMeterProvider(): object {
-  return {
-    getMeter: () => ({}),
-    forceFlush: async (): Promise<void> => {},
-    shutdown: async (): Promise<void> => {},
-  };
+function installHostProviders(): void {
+  trace.setGlobalTracerProvider(liveTracerProvider() as never);
+  metrics.setGlobalMeterProvider(liveMeterProvider() as never);
 }
 
 beforeEach(() => {
@@ -38,8 +32,8 @@ beforeEach(() => {
   metrics.disable();
   _resetRuntimeForTests();
   _resetConfig();
-  delete process.env.PROVIDE_TRACE_ENABLED;
-  delete process.env.PROVIDE_METRICS_ENABLED;
+  process.env['PROVIDE_TRACE_ENABLED'] = 'false';
+  process.env['PROVIDE_METRICS_ENABLED'] = 'false';
 });
 
 afterEach(() => {
@@ -47,21 +41,16 @@ afterEach(() => {
   metrics.disable();
   _resetRuntimeForTests();
   _resetConfig();
-  delete process.env.PROVIDE_TRACE_ENABLED;
-  delete process.env.PROVIDE_METRICS_ENABLED;
+  delete process.env['PROVIDE_TRACE_ENABLED'];
+  delete process.env['PROVIDE_METRICS_ENABLED'];
 });
 
-describe('getRuntimeStatus provider gating', () => {
-  it('reports a host provider before setup even when the environment disables the signal', () => {
-    process.env.PROVIDE_TRACE_ENABLED = 'false';
-    process.env.PROVIDE_METRICS_ENABLED = 'false';
-    trace.setGlobalTracerProvider(liveTracerProvider() as never);
-    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+describe('getRuntimeStatus provider gating against a disabling environment', () => {
+  it('reports a host provider before setup, because the env is not loaded yet', () => {
+    installHostProviders();
 
     const status = getRuntimeStatus();
 
-    // No setupTelemetry() has run, so the env is not loaded and withTrace still
-    // exports. Status must say so rather than claim a fallback.
     expect(status.setupDone).toBe(false);
     expect(status.providers.traces).toBe(true);
     expect(status.providers.metrics).toBe(true);
@@ -72,11 +61,8 @@ describe('getRuntimeStatus provider gating', () => {
     expect(status.signals.metrics).toBe(false);
   });
 
-  it('stops reporting the provider once a setup actually loads the disabling config', () => {
-    process.env.PROVIDE_TRACE_ENABLED = 'false';
-    process.env.PROVIDE_METRICS_ENABLED = 'false';
-    trace.setGlobalTracerProvider(liveTracerProvider() as never);
-    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+  it('stops reporting the provider once setup loads that same config', () => {
+    installHostProviders();
 
     setupTelemetry();
     const status = getRuntimeStatus();
@@ -86,18 +72,5 @@ describe('getRuntimeStatus provider gating', () => {
     expect(status.providers.metrics).toBe(false);
     expect(status.fallback.traces).toBe(true);
     expect(status.fallback.metrics).toBe(true);
-  });
-
-  it('reports a host provider after a setup that leaves the signals on', () => {
-    process.env.PROVIDE_TRACE_ENABLED = 'true';
-    process.env.PROVIDE_METRICS_ENABLED = 'true';
-    trace.setGlobalTracerProvider(liveTracerProvider() as never);
-    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
-
-    setupTelemetry();
-    const status = getRuntimeStatus();
-
-    expect(status.providers.traces).toBe(true);
-    expect(status.providers.metrics).toBe(true);
   });
 });

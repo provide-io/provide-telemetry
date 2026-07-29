@@ -246,17 +246,17 @@ func TestTrace_PropagatesError(t *testing.T) {
 	}
 }
 
-// ── 11. _setDefaultTracer replaces DefaultTracer ──────────────────────────────
+// ── 11. _storeDefaultTracer replaces DefaultTracer ────────────────────────────
 
-func TestSetDefaultTracer_Replaces(t *testing.T) {
+func TestStoreDefaultTracer_Replaces(t *testing.T) {
 	orig := DefaultTracer
 	t.Cleanup(func() { DefaultTracer = orig })
 
 	custom := &_noopTracer{}
-	_setDefaultTracer(custom)
+	_storeDefaultTracer(custom)
 
 	if DefaultTracer != custom {
-		t.Error("_setDefaultTracer did not replace DefaultTracer")
+		t.Error("_storeDefaultTracer did not replace DefaultTracer")
 	}
 }
 
@@ -267,7 +267,7 @@ func TestGetTracer_ReturnsDefaultTracer(t *testing.T) {
 	t.Cleanup(func() { DefaultTracer = orig })
 
 	custom := &_noopTracer{}
-	_setDefaultTracer(custom)
+	_storeDefaultTracer(custom)
 
 	if GetTracer("any") != custom {
 		t.Error("GetTracer did not return updated DefaultTracer")

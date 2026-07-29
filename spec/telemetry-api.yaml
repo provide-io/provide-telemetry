@@ -681,6 +681,37 @@ behavioral_parity:
       - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
 
+  provider_adoption_reporting:
+    description: >
+      get_runtime_status / GetRuntimeStatus / getRuntimeStatus report providers
+      and signals from two different sources, and MUST NOT conflate them.
+      providers.* answers "would a record emitted right now reach a real SDK
+      provider" — the same question the emit paths ask — and so counts a
+      provider a host application installed on the OTel globals itself, not
+      only one this library installed. signals.* answers "what did the operator
+      configure", read from the effective config (the active config once setup
+      has run, the environment before that).
+    rules:
+      - a signal reads as fallback only once a *loaded* config switches it off;
+        before setup nothing has read the environment, so an env var alone MUST
+        NOT make providers.* report fallback while the emit path still exports
+      - the same rule governs whether the optional OTel backend adopts a
+        host-installed provider — status and adoption read one predicate, so
+        they cannot disagree
+      - "per-language mechanism is idiomatic — _tracing_explicitly_disabled
+        module flag (Python), _signalGate atomic (Go), getConfig() vs the
+        env-resolved config (TypeScript) — but the observable contract is
+        identical"
+      - "providers.logs stays install-scoped in every language: records reach
+        OTel through the handler this library attaches, so a foreign logger
+        provider is genuinely not in the path"
+      - "not covered by the contract DSL — installing a third-party SDK provider
+        on the globals is beyond the step vocabulary, and the contract probes
+        deliberately carry no SDK dependency. Pinned per-language:
+        tests/tracing/test_effective_tracing_provider.py,
+        typescript/tests/runtime.status-enablement.test.ts,
+        go/otel/adopt_test.go, go/runtime_gates_test.go"
+
   bounded_shutdown:
     description: >
       shutdown_telemetry / ShutdownTelemetry / shutdownTelemetry MUST return

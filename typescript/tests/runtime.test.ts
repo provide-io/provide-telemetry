@@ -15,15 +15,7 @@ import {
   reconfigureTelemetry,
   updateRuntimeConfig,
 } from '../src/runtime.js';
-
-/** A provider shaped like an SDK one: hands out meters, flushes, shuts down. */
-function liveMeterProvider(): object {
-  return {
-    getMeter: () => ({}),
-    forceFlush: async (): Promise<void> => {},
-    shutdown: async (): Promise<void> => {},
-  };
-}
+import { liveMeterProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
   trace.disable();
