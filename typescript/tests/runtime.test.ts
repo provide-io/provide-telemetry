@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { metrics, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import type { RuntimeOverrides } from '../src/config.js';
 import {
   _markProvidersRegistered,
   _resetRuntimeForTests,
-  _setProviderSignalInstalled,
+  _setLogsProviderInstalled,
   getRuntimeConfig,
   getRuntimeStatus,
   reloadRuntimeFromEnv,
@@ -15,11 +16,24 @@ import {
   updateRuntimeConfig,
 } from '../src/runtime.js';
 
+/** A provider shaped like an SDK one: hands out meters, flushes, shuts down. */
+function liveMeterProvider(): object {
+  return {
+    getMeter: () => ({}),
+    forceFlush: async (): Promise<void> => {},
+    shutdown: async (): Promise<void> => {},
+  };
+}
+
 beforeEach(() => {
+  trace.disable();
+  metrics.disable();
   _resetRuntimeForTests();
   _resetConfig();
 });
 afterEach(() => {
+  trace.disable();
+  metrics.disable();
   _resetRuntimeForTests();
   _resetConfig();
 });
@@ -91,15 +105,53 @@ describe('getRuntimeStatus', () => {
 
   it('reports per-signal provider installation state', () => {
     setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: true });
-    _setProviderSignalInstalled('logs', true);
-    _setProviderSignalInstalled('traces', false);
-    _setProviderSignalInstalled('metrics', true);
+    _setLogsProviderInstalled(true);
+    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
 
     const status = getRuntimeStatus();
     expect(status.setupDone).toBe(true);
     expect(status.signals).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.providers).toEqual({ logs: true, traces: false, metrics: true });
     expect(status.fallback).toEqual({ logs: false, traces: true, metrics: false });
+  });
+
+  it('reports traces installed for a provider registered outside registerOtelProviders', () => {
+    setupTelemetry({ otelEnabled: true, tracingEnabled: true });
+    trace.setGlobalTracerProvider({
+      getTracer: () => ({}),
+      forceFlush: async () => {},
+      shutdown: async () => {},
+    } as never);
+
+    const status = getRuntimeStatus();
+    expect(status.providers.traces).toBe(true);
+    expect(status.fallback.traces).toBe(false);
+  });
+
+  it('reports metrics installed for a provider registered outside registerOtelProviders', () => {
+    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
+    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+
+    const status = getRuntimeStatus();
+    expect(status.providers.metrics).toBe(true);
+    expect(status.fallback.metrics).toBe(false);
+  });
+
+  it('reports metrics in fallback for a meter provider with no lifecycle methods', () => {
+    setupTelemetry({ otelEnabled: true, metricsEnabled: true });
+    metrics.setGlobalMeterProvider({ getMeter: () => ({}) } as never);
+
+    const status = getRuntimeStatus();
+    expect(status.providers.metrics).toBe(false);
+    expect(status.fallback.metrics).toBe(true);
+  });
+
+  it('reports metrics in fallback again once the meter global is disabled', () => {
+    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+    metrics.disable();
+
+    expect(getRuntimeStatus().providers.metrics).toBe(false);
+    expect(getRuntimeStatus().fallback.metrics).toBe(true);
   });
 });
 

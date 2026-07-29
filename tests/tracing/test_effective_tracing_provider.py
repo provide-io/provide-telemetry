@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+
+"""_has_effective_tracing_provider — "is a provider in play", not "did we install one".
+
+A host application running its own OTel SDK owns the tracer global without ever
+calling setup_telemetry(); get_tracer() already resolves that provider, so spans
+export through it and its sampler is the sampling authority. The facade must not
+apply its own probabilistic gate on top.
+
+No OTel extra required: the trace API is monkeypatched throughout, which also
+keeps these tests inside the mutation gate's non-otel selection.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from types import SimpleNamespace
+
+import pytest
+
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
+from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
+from provide.telemetry.tracing import provider as pmod
+from provide.telemetry.tracing.decorators import trace
+
+
+class _FakeTracer:
+    def start_as_current_span(self, name: str, **kw: object) -> object:
+        return contextlib.nullcontext()
+
+
+class _ExternalProvider:  # name carries neither "Proxy" nor "NoOp"
+    pass
+
+
+class _ProxyTracerProvider:
+    pass
+
+
+def _fake_trace_api(provider: object) -> SimpleNamespace:
+    """A fake OTel trace API whose global tracer provider is ``provider``."""
+    return SimpleNamespace(
+        get_tracer_provider=lambda: provider,
+        get_tracer=lambda _name: _FakeTracer(),
+        get_current_span=lambda: SimpleNamespace(get_span_context=lambda: SimpleNamespace(trace_id=0, span_id=0)),
+    )
+
+
+def _install_trace_global(monkeypatch: pytest.MonkeyPatch, provider: object) -> None:
+    """Put ``provider`` on the trace global with no setup_tracing() history of our own."""
+    monkeypatch.setattr(pmod, "_provider_configured", False)
+    monkeypatch.setattr(pmod, "_provider_ref", None)
+    monkeypatch.setattr(pmod, "_otel_global_set", False)
+    monkeypatch.setattr(pmod, "_baseline_captured", False)
+    monkeypatch.setattr(pmod, "_tracing_explicitly_disabled", False)
+    monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: _fake_trace_api(provider))
+
+
+class TestEffectiveTracingProviderProbe:
+    def test_true_for_our_own_provider_without_consulting_the_global(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Our own provider ref answers on its own — no OTel API resolution required."""
+        monkeypatch.setattr(pmod, "_provider_ref", object())
+        monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: None)
+        assert pmod._has_effective_tracing_provider() is True
+
+    def test_false_when_the_otel_api_is_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(pmod, "_provider_ref", None)
+        monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: None)
+        assert pmod._has_effective_tracing_provider() is False
+
+    def test_true_for_a_provider_a_host_installed_itself(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _install_trace_global(monkeypatch, _ExternalProvider())
+        # We installed nothing, so the install-scoped predicate still says no.
+        assert pmod._has_live_tracing_provider() is False
+        assert pmod._has_effective_tracing_provider() is True
+
+    def test_false_when_the_global_is_the_api_placeholder(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _install_trace_global(monkeypatch, _ProxyTracerProvider())
+        assert pmod._has_effective_tracing_provider() is False
+
+    def test_false_after_our_own_provider_was_shut_down(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _install_trace_global(monkeypatch, _ExternalProvider())
+        monkeypatch.setattr(pmod, "_otel_global_set", True)
+        assert pmod._has_effective_tracing_provider() is False
+
+
+class TestExternalProviderOwnsSampling:
+    def test_facade_sampling_is_skipped_when_a_host_provider_owns_the_global(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rate 0 must not drop the span: the host SDK's sampler is authoritative."""
+        _install_trace_global(monkeypatch, _ExternalProvider())
+        set_sampling_policy("traces", SamplingPolicy(default_rate=0.0))
+        reset_health_for_tests()
+
+        @trace("external.owned.span")
+        def work() -> str:
+            return "ok"
+
+        assert work() == "ok"
+        snapshot = get_health_snapshot()
+        assert snapshot.emitted_traces == 1
+        assert snapshot.dropped_traces == 0
+
+    def test_facade_sampling_applies_when_no_provider_owns_the_global(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _install_trace_global(monkeypatch, _ProxyTracerProvider())
+        set_sampling_policy("traces", SamplingPolicy(default_rate=0.0))
+        reset_health_for_tests()
+
+        @trace("facade.only.span")
+        def work() -> str:
+            return "ok"
+
+        assert work() == "ok"
+        snapshot = get_health_snapshot()
+        assert snapshot.emitted_traces == 0
+        assert snapshot.dropped_traces == 1
+
+
+class TestRuntimeStatusReportsHostProvider:
+    def test_status_reports_a_host_tracer_provider_as_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from provide.telemetry.runtime import get_runtime_status
+
+        _install_trace_global(monkeypatch, _ExternalProvider())
+        status = get_runtime_status()
+        assert status["providers"]["traces"] is True  # type: ignore[index]
+        assert status["fallback"]["traces"] is False  # type: ignore[index]
+
+    def test_status_reports_fallback_when_only_the_placeholder_is_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from provide.telemetry.runtime import get_runtime_status
+
+        _install_trace_global(monkeypatch, _ProxyTracerProvider())
+        status = get_runtime_status()
+        assert status["providers"]["traces"] is False  # type: ignore[index]
+        assert status["fallback"]["traces"] is True  # type: ignore[index]

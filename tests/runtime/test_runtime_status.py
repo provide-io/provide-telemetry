@@ -21,6 +21,21 @@ def reset_full_setup_state() -> None:
     _reset_all_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def no_foreign_otel_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the premise these tests are written against: nobody else's provider.
+
+    ``providers.traces`` / ``providers.metrics`` report what is in play, which
+    includes a provider a host application installed on the OTel global. A test
+    process is such a host — the OTel SDK honours set_tracer_provider once per
+    process and offers no way to undo it, so a provider another test installed
+    would otherwise leak in here. Tests that want a provider install one of
+    *ours* (``_provider_ref`` / ``_meter_provider``), which is read directly.
+    """
+    monkeypatch.setattr(tracing_provider, "_load_otel_trace_api", lambda: None)
+    monkeypatch.setattr(metrics_provider, "_load_otel_metrics_api", lambda: None)
+
+
 def test_get_runtime_status_defaults_to_fallback_before_setup() -> None:
     status = get_runtime_status()
 
