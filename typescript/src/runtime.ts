@@ -89,8 +89,13 @@ export function getRuntimeStatus(): RuntimeStatus {
   // traces and metrics are probed live rather than read from install flags, so
   // a provider a host application installed itself reports as installed (and
   // not as fallback) instead of being invisible to us.
-  const tracesInstalled = _isLiveTracerProviderInstalled();
-  const metricsInstalled = _isLiveMeterProviderInstalled();
+  //
+  // Gated on the signal being enabled, because that is what the emit paths do
+  // first (withTrace checks tracingEnabled, the instruments check
+  // metricsEnabled). Reporting a provider for a signal the caller switched off
+  // would claim an export path that nothing can reach.
+  const tracesInstalled = cfg.tracingEnabled && _isLiveTracerProviderInstalled();
+  const metricsInstalled = cfg.metricsEnabled && _isLiveMeterProviderInstalled();
   return {
     setupDone: _activeConfig !== null,
     signals: {

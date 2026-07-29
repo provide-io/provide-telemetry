@@ -98,9 +98,14 @@ def _has_effective_tracing_provider() -> bool:
     it and spans export, and the facade must not apply its own probabilistic
     sampling on top of the SDK's sampler.
 
-    Delegates to the same predicate ``get_tracer()`` gates on, so the sampling
-    bypass and the tracer can never disagree about which provider is in play.
+    Gates on ``_tracing_explicitly_disabled`` first and then delegates to the
+    same predicate ``get_tracer()`` gates on — in that order, because that is
+    the order ``get_tracer()`` uses. Skipping the disablement check would let
+    the sampling bypass fire for spans that ``get_tracer()`` then serves from a
+    ``_NoopTracer``: no export, but counted as emitted and holding a queue slot.
     """
+    if _tracing_explicitly_disabled:
+        return False
     if _has_live_tracing_provider():
         return True
     otel_trace = _load_otel_trace_api()

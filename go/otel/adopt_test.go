@@ -12,11 +12,16 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func adoptConfig() *telemetry.TelemetryConfig {
-	cfg := telemetry.DefaultTelemetryConfig()
-	cfg.Tracing.Enabled = true
-	cfg.Metrics.Enabled = true
-	return cfg
+// setupForAdoption runs the real public setup path with no OTLP endpoints —
+// the pure-adoption case, where _setupBackendLocked skips backend.Setup.
+func setupForAdoption(t *testing.T) {
+	t.Helper()
+	t.Setenv("PROVIDE_TRACE_ENABLED", "true")
+	t.Setenv("PROVIDE_METRICS_ENABLED", "true")
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	t.Cleanup(func() { _ = telemetry.ShutdownTelemetry(context.Background()) })
 }
 
 // A host application's SDK owning the globals must be emitted through, not
@@ -29,10 +34,8 @@ func TestAdopt_UsesAHostInstalledTracerProvider(t *testing.T) {
 	hostTP, exp := newInMemoryTP()
 	otel.SetTracerProvider(hostTP)
 
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
 
 	if !backend.Providers().Traces {
 		t.Fatal("providers.traces is false while a host provider owns the global")
@@ -56,10 +59,8 @@ func TestAdopt_UsesAHostInstalledMeterProvider(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
 
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
 
 	if !backend.Providers().Metrics {
 		t.Fatal("providers.metrics is false while a host provider owns the global")
@@ -81,10 +82,8 @@ func TestAdopt_OurOwnProviderTakesPrecedence(t *testing.T) {
 	otel.SetTracerProvider(hostTP)
 
 	ourTP, ourExp := newInMemoryTP()
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
 	// Simulate our own install winning the signal while the host's still owns
 	// the global — ours must be preferred.
 	_otelTracerProvider = ourTP
@@ -106,11 +105,9 @@ func TestAdopt_ShutdownLeavesTheHostProviderAlive(t *testing.T) {
 	hostTP, exp := newInMemoryTP()
 	otel.SetTracerProvider(hostTP)
 
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	if err := backend.Shutdown(context.Background()); err != nil {
+	if err := telemetry.ShutdownTelemetry(context.Background()); err != nil {
 		t.Fatalf("shutdown failed: %v", err)
 	}
 
@@ -121,7 +118,7 @@ func TestAdopt_ShutdownLeavesTheHostProviderAlive(t *testing.T) {
 		t.Fatalf("host provider recorded %d spans after our shutdown, want 1 — we tore down someone else's SDK", got)
 	}
 	if backend.Providers().Traces {
-		t.Error("providers.traces still true after shutdown; the adopted provider was not released")
+		t.Error("providers.traces still true after shutdown; the facade must stop claiming a provider it no longer uses")
 	}
 }
 
@@ -131,10 +128,8 @@ func TestAdopt_IgnoresTheDelegatingGlobalPlaceholder(t *testing.T) {
 
 	// resetSetupState leaves the API's no-op providers on the globals; those
 	// carry no ForceFlush/Shutdown pair and must not be adopted.
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
 	if backend.Providers().Traces || backend.Providers().Metrics {
 		t.Error("adopted a placeholder provider; only live SDK providers may be adopted")
 	}
@@ -147,16 +142,48 @@ func TestAdopt_SkipsDisabledSignals(t *testing.T) {
 	hostTP, _ := newInMemoryTP()
 	otel.SetTracerProvider(hostTP)
 
-	cfg := adoptConfig()
-	cfg.Tracing.Enabled = false
-	cfg.Metrics.Enabled = false
-
-	backend := &_backend{}
-	if err := backend.Setup(cfg, telemetry.BackendSetupState{}); err != nil {
+	t.Setenv("PROVIDE_TRACE_ENABLED", "false")
+	t.Setenv("PROVIDE_METRICS_ENABLED", "false")
+	if _, err := telemetry.SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	if backend.Providers().Traces {
-		t.Error("adopted a tracer provider for a disabled signal")
+	t.Cleanup(func() { _ = telemetry.ShutdownTelemetry(context.Background()) })
+
+	backend := &_backend{}
+	if backend.Providers().Traces || backend.Providers().Metrics {
+		t.Error("adopted a provider for a signal the caller disabled")
+	}
+}
+
+// Adoption must survive a shutdown/re-setup cycle. The enablement flags this
+// replaced were latched off by Shutdown with no path back on the endpoint-less
+// setup path, so adoption worked once and then silently stopped.
+func TestAdopt_SurvivesAShutdownAndResetupCycle(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	hostTP, exp := newInMemoryTP()
+	otel.SetTracerProvider(hostTP)
+
+	backend := &_backend{}
+	setupForAdoption(t)
+	if !backend.Providers().Traces {
+		t.Fatal("first setup did not adopt the host provider")
+	}
+	if err := telemetry.ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("re-setup failed: %v", err)
+	}
+	if !backend.Providers().Traces {
+		t.Fatal("adoption did not survive the shutdown/re-setup cycle")
+	}
+	_, span := backend.Tracer("recycled").Start(context.Background(), "after.resetup")
+	span.End()
+	if got := len(exp.GetSpans()); got != 1 {
+		t.Fatalf("host exporter received %d spans after re-setup, want 1", got)
 	}
 }
 
@@ -198,10 +225,8 @@ func TestAdopt_PicksUpAProviderRegisteredAfterSetup(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
+	setupForAdoption(t)
 	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
 	if backend.Providers().Traces {
 		t.Fatal("nothing is installed yet; traces must not report a provider")
 	}
@@ -229,11 +254,8 @@ func TestShutdown_LeavesAHostsGlobalRegistrationIntact(t *testing.T) {
 	hostTP, exp := newInMemoryTP()
 	otel.SetTracerProvider(hostTP)
 
-	backend := &_backend{}
-	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	if err := backend.Shutdown(context.Background()); err != nil {
+	setupForAdoption(t)
+	if err := telemetry.ShutdownTelemetry(context.Background()); err != nil {
 		t.Fatalf("shutdown failed: %v", err)
 	}
 

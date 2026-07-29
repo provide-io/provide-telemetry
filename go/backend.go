@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // InstrumentOptions is a backend-facing snapshot of optional instrument metadata.
@@ -108,8 +109,10 @@ func _backendConfigured(cfg *TelemetryConfig) bool {
 }
 
 // _backendTracerName is the instrumentation name handed to the backend when the
-// tracer is resolved late (see _effectiveTracer).
-var _backendTracerName string //nolint:gochecknoglobals
+// tracer is resolved late (see _effectiveTracer). Atomic because it is written
+// under _setupMu during setup and read from every traced call, which does not
+// hold that lock — a plain string read there can tear.
+var _backendTracerName atomic.Pointer[string] //nolint:gochecknoglobals
 
 // _effectiveTracer returns the tracer a facade span should start on.
 //
@@ -123,7 +126,11 @@ func _effectiveTracer() Tracer {
 		return DefaultTracer
 	}
 	if backend := _activeBackend(); backend != nil {
-		if tracer := backend.Tracer(_backendTracerName); tracer != nil {
+		name := ""
+		if stored := _backendTracerName.Load(); stored != nil {
+			name = *stored
+		}
+		if tracer := backend.Tracer(name); tracer != nil {
 			return tracer
 		}
 	}
@@ -132,7 +139,8 @@ func _effectiveTracer() Tracer {
 
 func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	DefaultTracer = &_noopTracer{}
-	_backendTracerName = cfg.ServiceName
+	serviceName := cfg.ServiceName
+	_backendTracerName.Store(&serviceName)
 	if Logger == nil {
 		return
 	}
@@ -187,7 +195,7 @@ type FlushableBackend interface {
 	ForceFlush(ctx context.Context) error
 }
 
-func _flushBackendLocked(ctx context.Context) error {
+func _flushBackend(ctx context.Context) error {
 	backend := _activeBackend()
 	if backend == nil {
 		return nil

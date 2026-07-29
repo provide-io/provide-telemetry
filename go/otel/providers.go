@@ -77,6 +77,9 @@ func _warnIfLoggerProviderConflict() {
 }
 
 func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
+	_providersMu.Lock()
+	defer _providersMu.Unlock()
+
 	if !cfg.Tracing.Enabled {
 		return
 	}
@@ -100,6 +103,9 @@ func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 }
 
 func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
+	_providersMu.Lock()
+	defer _providersMu.Unlock()
+
 	if !cfg.Metrics.Enabled {
 		return
 	}
@@ -123,6 +129,9 @@ func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.Telem
 }
 
 func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
+	_providersMu.Lock()
+	defer _providersMu.Unlock()
+
 	provider := state.LoggerProvider()
 	// cfg.Logging.OTLPEnabled gates default-provider construction independent
 	// of the trace/metrics enable flags. When false, we still honour a caller-
