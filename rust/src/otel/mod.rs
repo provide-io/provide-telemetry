@@ -119,15 +119,22 @@ pub(crate) fn flush_otel() -> bool {
 
 /// True when facade spans should route through the global tracer provider:
 /// either we installed one, or the host asserted that it did.
+///
+/// Gated on the signal not having been switched off by a loaded config, because
+/// that is what the emit path checks first. Reporting or using a provider for a
+/// disabled signal would claim an export path nothing is meant to reach, and
+/// would put Rust out of step with the other three facades.
 #[cfg(feature = "otel")]
 pub(crate) fn traces_provider_effective() -> bool {
-    traces::tracer_provider_installed() || adopt::traces_adopted()
+    crate::runtime::tracing_enabled_by_loaded_config()
+        && (traces::tracer_provider_installed() || adopt::traces_adopted())
 }
 
 /// Metrics counterpart of [`traces_provider_effective`].
 #[cfg(feature = "otel")]
 pub(crate) fn metrics_provider_effective() -> bool {
-    metrics::meter_provider_installed() || adopt::metrics_adopted()
+    crate::runtime::metrics_enabled_by_loaded_config()
+        && (metrics::meter_provider_installed() || adopt::metrics_adopted())
 }
 
 pub(crate) fn shutdown_otel() {

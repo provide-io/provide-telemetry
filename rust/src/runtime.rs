@@ -124,6 +124,32 @@ fn compute_cold_drift(current: &TelemetryConfig, fresh: &TelemetryConfig) -> Vec
     drifted
 }
 
+/// True unless a *loaded* config switched this signal off.
+///
+/// Only the OTel backend asks, so this is gated with it.
+///
+/// Before `setup_telemetry` nothing has read the environment, so the signal
+/// defaults on — a host that installs its own SDK and never calls setup must
+/// still be reported as exporting. Matches the Python, Go and TypeScript rule
+/// (see `behavioral_parity.provider_adoption_reporting` in the spec).
+#[cfg(feature = "otel")]
+pub(crate) fn tracing_enabled_by_loaded_config() -> bool {
+    // match, not is_none_or: that is stable since 1.82 and the crate's MSRV is 1.81.
+    match crate::_lock::rwlock_read(active_config()).as_ref() {
+        Some(cfg) => cfg.tracing.enabled,
+        None => true,
+    }
+}
+
+/// Metrics counterpart of [`tracing_enabled_by_loaded_config`].
+#[cfg(feature = "otel")]
+pub(crate) fn metrics_enabled_by_loaded_config() -> bool {
+    match crate::_lock::rwlock_read(active_config()).as_ref() {
+        Some(cfg) => cfg.metrics.enabled,
+        None => true,
+    }
+}
+
 fn runtime_config_snapshot() -> (Option<TelemetryConfig>, bool) {
     let guard = crate::_lock::rwlock_read(active_config());
     let cfg = guard.clone();

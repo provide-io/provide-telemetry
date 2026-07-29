@@ -706,10 +706,12 @@ behavioral_parity:
       - "providers.logs stays install-scoped in every language: records reach
         OTel through the handler this library attaches, so a foreign logger
         provider is genuinely not in the path"
-      - "not covered by the contract DSL — installing a third-party SDK provider
-        on the globals is beyond the step vocabulary, and the contract probes
-        deliberately carry no SDK dependency. Pinned per-language:
-        tests/tracing/test_effective_tracing_provider.py,
+      - "enforced cross-language by the host_provider_adoption runtime-probe
+        case (spec/runtime_probe_fixtures.yaml), which is OTel-gated because it
+        installs a real SDK provider. Not expressible in the contract DSL — a
+        third-party provider on the globals is beyond the step vocabulary, and
+        the contract probes deliberately carry no SDK dependency. Additionally
+        pinned per-language: tests/tracing/test_effective_tracing_provider.py,
         typescript/tests/runtime.status-enablement.test.ts,
         go/otel/adopt_test.go, go/runtime_gates_test.go"
 
