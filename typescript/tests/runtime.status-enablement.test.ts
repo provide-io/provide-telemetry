@@ -27,13 +27,19 @@ function installHostProviders(): void {
   metrics.setGlobalMeterProvider(liveMeterProvider() as never);
 }
 
+/** Only the cases that need a disabling environment opt into one. */
+function disableSignalsViaEnv(): void {
+  process.env['PROVIDE_TRACE_ENABLED'] = 'false';
+  process.env['PROVIDE_METRICS_ENABLED'] = 'false';
+}
+
 beforeEach(() => {
   trace.disable();
   metrics.disable();
   _resetRuntimeForTests();
   _resetConfig();
-  process.env['PROVIDE_TRACE_ENABLED'] = 'false';
-  process.env['PROVIDE_METRICS_ENABLED'] = 'false';
+  delete process.env['PROVIDE_TRACE_ENABLED'];
+  delete process.env['PROVIDE_METRICS_ENABLED'];
 });
 
 afterEach(() => {
@@ -46,7 +52,27 @@ afterEach(() => {
 });
 
 describe('getRuntimeStatus provider gating against a disabling environment', () => {
+  it('reports a host provider after a setup that leaves the signals on', () => {
+    // The positive case, and the one the behavioral_parity spec entry is
+    // actually about: an app installs its own SDK provider, calls setup with
+    // tracing and metrics enabled, and status must report the provider it is
+    // genuinely exporting through rather than claiming the no-op fallback.
+    installHostProviders();
+
+    setupTelemetry();
+    const status = getRuntimeStatus();
+
+    expect(status.setupDone).toBe(true);
+    expect(status.signals.traces).toBe(true);
+    expect(status.signals.metrics).toBe(true);
+    expect(status.providers.traces).toBe(true);
+    expect(status.providers.metrics).toBe(true);
+    expect(status.fallback.traces).toBe(false);
+    expect(status.fallback.metrics).toBe(false);
+  });
+
   it('reports a host provider before setup, because the env is not loaded yet', () => {
+    disableSignalsViaEnv();
     installHostProviders();
 
     const status = getRuntimeStatus();
@@ -62,6 +88,7 @@ describe('getRuntimeStatus provider gating against a disabling environment', () 
   });
 
   it('stops reporting the provider once setup loads that same config', () => {
+    disableSignalsViaEnv();
     installHostProviders();
 
     setupTelemetry();
