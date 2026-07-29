@@ -7,7 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
-use crate::otel::{setup_otel, shutdown_otel};
+use crate::otel::{flush_otel, setup_otel, shutdown_otel};
 use crate::policies::apply_policies;
 use crate::runtime::{get_runtime_config, set_active_config};
 
@@ -42,6 +42,27 @@ pub fn setup_telemetry() -> Result<TelemetryConfig, TelemetryError> {
     Ok(config)
 }
 
+/// Force-flush installed providers without tearing them down.
+///
+/// The drain half of [`shutdown_telemetry`]: every provider we installed is
+/// force-flushed under the bounded-shutdown deadline
+/// (`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`) and stays installed and
+/// usable. Use it where records must be out before control returns — a request
+/// boundary, a checkpoint, a serverless freeze — rather than shutting telemetry
+/// down and paying to set it up again.
+///
+/// Returns `Ok(())` when every signal drained within the deadline (including
+/// when nothing is installed) and `Err` when any was abandoned, so a caller
+/// flushing to be sure its records are out learns when they are not.
+pub fn flush_telemetry() -> Result<(), TelemetryError> {
+    if flush_otel() {
+        return Ok(());
+    }
+    Err(TelemetryError::new(
+        "telemetry flush exceeded its deadline; records may not have been exported",
+    ))
+}
+
 pub fn shutdown_telemetry() -> Result<(), TelemetryError> {
     {
         let mut state = crate::_lock::lock(setup_state());
@@ -57,6 +78,33 @@ mod tests {
     use super::*;
 
     use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn flush_is_ok_when_nothing_is_installed() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry().expect("pre-test shutdown should succeed");
+
+        // Nothing installed means nothing to drain — a successful no-op, not
+        // an error, so callers can flush unconditionally.
+        flush_telemetry().expect("flush with no providers should succeed");
+    }
+
+    #[test]
+    fn flush_leaves_telemetry_set_up_and_repeatable() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry().expect("pre-test shutdown should succeed");
+        let config = setup_telemetry().expect("setup should succeed");
+
+        flush_telemetry().expect("first flush should succeed");
+        flush_telemetry().expect("second flush should succeed");
+
+        // Unlike shutdown, flush must leave the active runtime config in place.
+        assert_eq!(
+            get_runtime_config().expect("runtime config should survive a flush"),
+            config
+        );
+        shutdown_telemetry().expect("shutdown should succeed");
+    }
 
     #[test]
     fn setup_test_round_trip_sets_and_clears_runtime_state() {

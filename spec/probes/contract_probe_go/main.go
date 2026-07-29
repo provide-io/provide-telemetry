@@ -141,6 +141,12 @@ func opShutdown(_ step, _ map[string]any) {
 	_ = telemetry.ShutdownTelemetry(context.Background())
 }
 
+// opFlush drains installed providers without tearing them down.
+func opFlush(s step, vars map[string]any) {
+	err := telemetry.FlushTelemetry(context.Background())
+	vars[s.Into] = map[string]any{"ok": err == nil}
+}
+
 // opBindPropagation extracts W3C context from headers and binds it.
 func opBindPropagation(s step, _ map[string]any) {
 	headers := http.Header{}
@@ -288,6 +294,7 @@ var dispatch = map[string]func(step, map[string]any){
 	"setup":                   opSetup,
 	"setup_invalid":           opSetupInvalid,
 	"shutdown":                opShutdown,
+	"flush":                   opFlush,
 	"bind_propagation":        opBindPropagation,
 	"clear_propagation":       opClearPropagation,
 	"get_trace_context":       opGetTraceContext,

@@ -10,6 +10,8 @@ use crate::errors::TelemetryError;
 mod async_runtime;
 #[cfg(feature = "otel")]
 mod endpoint;
+#[cfg(feature = "otel")]
+mod flush;
 #[cfg(feature = "otel-grpc")]
 mod grpc;
 #[cfg(feature = "otel")]
@@ -45,6 +47,64 @@ fn map_exporter_build<T, E: std::fmt::Display>(
 #[cfg(not(feature = "otel"))]
 pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError> {
     Ok(())
+}
+
+/// Run `flush` under the bounded-shutdown deadline, on a detached worker when
+/// one applies. Returns false when the deadline expired and the worker was
+/// abandoned — records may still be sitting in the exporter's queue.
+#[cfg(feature = "otel")]
+fn bounded_flush<F>(signal: &str, flush: F) -> bool
+where
+    F: FnOnce() + Send + 'static,
+{
+    let timeout_secs = crate::runtime::get_runtime_config()
+        .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
+        .unwrap_or(5.0);
+
+    if timeout_secs <= 0.0 {
+        // Caller opted out of bounding — do the synchronous drain.
+        flush();
+        return true;
+    }
+
+    let timeout = std::time::Duration::from_secs_f64(timeout_secs);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _worker = std::thread::Builder::new()
+        .name(format!("provide-{signal}-flush"))
+        .spawn(move || {
+            flush();
+            let _ = tx.send(());
+        })
+        .expect("OS must allow spawning a flush worker thread");
+
+    if rx.recv_timeout(timeout).is_err() {
+        eprintln!(
+            "provide_telemetry: {signal} flush exceeded {:.3}s deadline; abandoning background flush",
+            timeout.as_secs_f64(),
+        );
+        return false;
+    }
+    true
+}
+
+/// Force-flush every installed provider, leaving them installed.
+///
+/// Returns false when any signal was abandoned at the deadline. Every signal
+/// gets its attempt regardless — one stalled exporter must not deny the others
+/// their drain.
+pub(crate) fn flush_otel() -> bool {
+    #[cfg(feature = "otel")]
+    {
+        let logs = flush::flush_logger_provider();
+        let traces = flush::flush_tracer_provider();
+        let metrics = flush::flush_meter_provider();
+        logs && traces && metrics
+    }
+
+    #[cfg(not(feature = "otel"))]
+    {
+        true
+    }
 }
 
 pub(crate) fn shutdown_otel() {

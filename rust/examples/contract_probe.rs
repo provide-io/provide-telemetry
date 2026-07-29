@@ -136,6 +136,15 @@ fn exec_get_trace_context(step: &Value, variables: &mut BTreeMap<String, Value>)
     );
 }
 
+fn exec_flush(step: &Value, variables: &mut BTreeMap<String, Value>) {
+    let into = as_str(step, "into");
+    if into.is_empty() {
+        return;
+    }
+    let ok = provide_telemetry::flush_telemetry().is_ok();
+    variables.insert(into.to_string(), json!({ "ok": ok }));
+}
+
 fn exec_bind_context(step: &Value, guards: &mut Guards) {
     let fields = as_object(step, "fields");
     let pairs: Vec<(String, Value)> = fields.into_iter().collect();
@@ -257,6 +266,7 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "shutdown" => {
                 provide_telemetry::shutdown_telemetry().ok();
             }
+            "flush" => exec_flush(step, &mut variables),
             "bind_propagation" => exec_bind_propagation(step, &mut guards),
             "clear_propagation" => exec_clear_propagation(&mut guards),
             "get_trace_context" => exec_get_trace_context(step, &mut variables),

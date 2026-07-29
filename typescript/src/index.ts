@@ -194,4 +194,4 @@ export type { RedactionReceipt } from './receipts.js';
 export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts.js';
 
 // Shutdown
-export { shutdownTelemetry } from './shutdown.js';
+export { flushTelemetry, shutdownTelemetry } from './shutdown.js';
