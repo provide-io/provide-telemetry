@@ -30,11 +30,14 @@ class _RecordingProvider:
         self.calls.append("shutdown")
 
 
-def _hanging_provider(release: threading.Event, wait: float = 10.0) -> object:
+def _hanging_provider(release: threading.Event, wait: float = 5.0) -> object:
     """A provider whose force_flush blocks until *release* is set.
 
     The wait ceiling is a backstop so a failing test cannot wedge the worker
     forever; every caller is expected to set *release* in its own teardown.
+    Kept short on purpose — a wedged worker holds a slot in the process-wide
+    _abandoned_workers budget for the whole ceiling, and a later test asserting
+    the budget is clear would fail for an unrelated reason.
     """
 
     class _Hanging:
@@ -166,7 +169,7 @@ def test_an_abandoned_worker_gives_its_slot_back_when_it_finally_finishes() -> N
     release = threading.Event()
 
     with pytest.warns(RuntimeWarning, match="flush exceeded"):
-        assert bounded_provider_flush(_hanging_provider(release), timeout_seconds=0.01) is False
+        assert bounded_provider_flush(_hanging_provider(release, wait=10.0), timeout_seconds=0.01) is False
     assert _provider_drain._abandoned_workers == 1
 
     release.set()
@@ -245,8 +248,14 @@ def test_a_worker_that_finishes_in_the_deadline_race_does_not_consume_budget(
 
     monkeypatch.setattr(_provider_drain, "_abandoned_lock", _RacingLock())
 
-    with pytest.warns(RuntimeWarning, match="flush exceeded"):
-        assert bounded_provider_flush(_hanging_provider(release), timeout_seconds=0.01) is False
+    try:
+        with pytest.warns(RuntimeWarning, match="flush exceeded"):
+            assert bounded_provider_flush(_hanging_provider(release), timeout_seconds=0.01) is False
+    finally:
+        # _RacingLock releases the worker only when the race trips; if it did
+        # not, the worker would sit on a budget slot until its wait ceiling and
+        # fail an unrelated later test.
+        release.set()
 
     assert tripped.is_set(), "the race was never exercised"
     assert _provider_drain._abandoned_workers == 0

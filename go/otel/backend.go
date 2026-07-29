@@ -55,30 +55,61 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 // signal fails the errors are joined and only errors.Is can match. A provider
 // adopted from the OTel globals is not ours to drain and is skipped.
 func (b *_backend) ForceFlush(ctx context.Context) error {
-	// Concurrently, so each signal gets the caller's full budget. Run in
-	// sequence they share one deadline, and a stalled traces exporter consumes
-	// it entirely: metrics and logs then return DeadlineExceeded without
-	// exporting anything, which is the opposite of what this promises. Python,
-	// Rust and TypeScript all give each signal its own budget.
-	flushes := []func(context.Context) error{}
-	if tp := _loadTracerProvider(); tp != nil {
-		flushes = append(flushes, tp.ForceFlush)
-	}
-	if mp := _loadMeterProvider(); mp != nil {
-		flushes = append(flushes, mp.ForceFlush)
-	}
-	if lp := _loadLoggerProvider(); lp != nil {
-		flushes = append(flushes, lp.ForceFlush)
-	}
+	_providersMu.RLock()
+	providers := _installedProvidersLocked()
+	_providersMu.RUnlock()
 
-	errs := make([]error, len(flushes))
+	return _drainConcurrently(ctx, providers, _drainable.ForceFlush)
+}
+
+// _drainable is the lifecycle pair every SDK provider carries. Declared so the
+// two drains can share one collection and one runner: they differ only in which
+// method they bind.
+type _drainable interface {
+	ForceFlush(context.Context) error
+	Shutdown(context.Context) error
+}
+
+// _installedProvidersLocked returns the providers this backend installed, in
+// signal order. A provider adopted from the OTel globals is not ours to drain
+// and is never in here. Must be called with _providersMu held.
+func _installedProvidersLocked() []_drainable {
+	providers := []_drainable{}
+	// Each concrete pointer is nil-checked before it is boxed — a typed nil in
+	// an interface would compare non-nil and panic on call.
+	if _otelTracerProvider != nil {
+		providers = append(providers, _otelTracerProvider)
+	}
+	if _otelMeterProvider != nil {
+		providers = append(providers, _otelMeterProvider)
+	}
+	if _otelLoggerProvider != nil {
+		providers = append(providers, _otelLoggerProvider)
+	}
+	return providers
+}
+
+// _drainConcurrently runs drain against every provider at once, so each signal
+// gets the caller's full budget.
+//
+// Run in sequence they share one deadline, and a stalled traces exporter
+// consumes it entirely: metrics and logs then return DeadlineExceeded without
+// exporting anything. That is wrong for both drains — a flush that promises
+// every signal an attempt, and a shutdown that is the last chance to get queued
+// records out. Python, Rust and TypeScript all give each signal its own budget.
+func _drainConcurrently(
+	ctx context.Context,
+	providers []_drainable,
+	drain func(_drainable, context.Context) error,
+) error {
+	errs := make([]error, len(providers))
 	var wg sync.WaitGroup
-	for i, flush := range flushes {
+	for i, provider := range providers {
 		wg.Add(1)
-		go func(i int, flush func(context.Context) error) {
+		go func(i int, provider _drainable) {
 			defer wg.Done()
-			errs[i] = flush(ctx)
-		}(i, flush)
+			errs[i] = drain(provider, ctx)
+		}(i, provider)
 	}
 	wg.Wait()
 
@@ -108,6 +139,10 @@ func _joinFlushErrors(errs []error) error {
 	return errors.Join(errs...)
 }
 
+// Shutdown tears down every provider we installed. Like ForceFlush, the signals
+// drain concurrently on the caller's full budget rather than sharing it in
+// sequence — shutdown is the last chance to get queued records out, so a
+// stalled traces exporter must not cost metrics and logs their drain.
 func (b *_backend) Shutdown(ctx context.Context) error {
 	// Detach the providers under the lock, then drain them outside it. Holding
 	// the write lock across the drain would block every RLock reader — a
@@ -116,33 +151,15 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	// hang for the full shutdown against an unreachable collector. Resetting
 	// the globals here too means new spans land on the no-op immediately rather
 	// than in a provider being torn down.
-	// Bind the method values under the lock, run them outside it — the same
-	// shape ForceFlush uses above, so first-error-wins is stated once instead of
-	// per signal.
 	_providersMu.Lock()
-	shutdowns := []func(context.Context) error{}
-	if _otelTracerProvider != nil {
-		shutdowns = append(shutdowns, _otelTracerProvider.Shutdown)
-	}
-	if _otelMeterProvider != nil {
-		shutdowns = append(shutdowns, _otelMeterProvider.Shutdown)
-	}
-	if _otelLoggerProvider != nil {
-		shutdowns = append(shutdowns, _otelLoggerProvider.Shutdown)
-	}
+	providers := _installedProvidersLocked()
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
 	_resetGlobalsWeSet()
 	_providersMu.Unlock()
 
-	var first error
-	for _, shutdown := range shutdowns {
-		if err := shutdown(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
+	return _drainConcurrently(ctx, providers, _drainable.Shutdown)
 }
 
 // _resetGlobalsWeSet returns to the API no-ops only for the globals this
