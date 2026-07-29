@@ -167,8 +167,8 @@ func TestSetupTelemetryWithoutRegisteredBackendStaysInFallback(t *testing.T) {
 	if !status.Fallback.Logs || !status.Fallback.Traces || !status.Fallback.Metrics {
 		t.Fatalf("expected fallback mode without optional backend, got %+v", status.Fallback)
 	}
-	if _, ok := DefaultTracer.(*_noopTracer); !ok {
-		t.Fatalf("expected noop tracer without optional backend, got %T", DefaultTracer)
+	if _, ok := GetTracer("").(*_noopTracer); !ok {
+		t.Fatalf("expected noop tracer without optional backend, got %T", GetTracer(""))
 	}
 	if got := GetMeter("core.only"); got != nil {
 		t.Fatalf("expected nil meter without optional backend, got %v", got)

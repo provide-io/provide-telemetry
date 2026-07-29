@@ -45,8 +45,8 @@ func TestEffectiveTracer_ResolvesABackendTracerRegisteredAfterSetup(t *testing.T
 		t.Fatalf("setup failed: %v", err)
 	}
 	// Nothing to bind at setup: the binding stays our no-op.
-	if _, isNoop := DefaultTracer.(*_noopTracer); !isNoop {
-		t.Fatalf("expected the no-op binding at setup, got %T", DefaultTracer)
+	if _, isNoop := GetTracer("").(*_noopTracer); !isNoop {
+		t.Fatalf("expected the no-op binding at setup, got %T", GetTracer(""))
 	}
 
 	// The host's SDK shows up now.
@@ -61,9 +61,9 @@ func TestEffectiveTracer_PrefersANonNoopBinding(t *testing.T) {
 	t.Cleanup(func() { resetSetupState(t) })
 
 	bound := &_recordingTracer{}
-	previous := DefaultTracer
-	DefaultTracer = bound
-	t.Cleanup(func() { DefaultTracer = previous })
+	previous := GetTracer("")
+	SetDefaultTracer(bound)
+	t.Cleanup(func() { SetDefaultTracer(previous) })
 
 	backend := &_lateTracerBackend{tracer: &_recordingTracer{}, armed: true}
 	RegisterBackend("test-late-tracer", backend)
@@ -78,7 +78,7 @@ func TestEffectiveTracer_FallsBackToTheBindingWithoutABackend(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	if got := _effectiveTracer(); got != DefaultTracer {
-		t.Fatalf("_effectiveTracer resolved %T, want the DefaultTracer binding", got)
+	if got := _effectiveTracer(); got != GetTracer("") {
+		t.Fatalf("_effectiveTracer resolved %T, want the package tracer binding", got)
 	}
 }
