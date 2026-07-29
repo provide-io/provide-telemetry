@@ -77,6 +77,7 @@ func main() {
 |--------|-------------|
 | `SetupTelemetry(opts...)` | Idempotent init from env (default) or `WithConfig(cfg)`. Returns `*TelemetryConfig`. |
 | `WithConfig(cfg)` | In-memory config; prefer over mutating `os.Environ` for re-exec/fork hosts. |
+| `FlushTelemetry(ctx)` | Drain every installed provider and leave them installed. Returns the drain error; an expired deadline is not suppressed. |
 | `ShutdownTelemetry(ctx)` | Flush and shut down all OTel providers. |
 | `ConfigFromEnv()` | Parse environment variables into a `*TelemetryConfig`. |
 | `DefaultTelemetryConfig()` | Return a config with all defaults applied. |

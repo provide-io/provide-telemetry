@@ -14,7 +14,7 @@ Two things to know when reading it:
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
 
-## [Unreleased]
+## [0.6.0] — 2026-07-29
 
 ### Added
 
@@ -22,6 +22,7 @@ Two things to know when reading it:
 
 ### Fixed
 
+- **`getRuntimeStatus()` reports providers from the config the emit paths read** — it gated the provider probes on the env-resolved config while `withTrace` reads `getConfig()`, which is still the built-in defaults until `setupTelemetry()` loads the environment. With `PROVIDE_TRACE_ENABLED=false` set but no setup call, status claimed traces were in fallback while `withTrace` went on exporting through a host application's provider. `providers.*` now answers "what would the emit path do" and `signals.*` answers "what was configured" — the same split Python and Go use, spec'd as `behavioral_parity.provider_adoption_reporting`.
 - **Trace sampling defers to any live provider, not only ours** — `withTrace` skipped its own probabilistic gate when a "traces provider installed" flag was set, but the flag was set in exactly one place: `registerOtelProviders()`. It therefore meant "we installed a provider", not "a provider is installed". A host application running its own NodeSDK owns the OTel globals without ever calling `registerOtelProviders()`, so `trace.getTracer()` resolved that foreign provider and exported spans while the flag stayed `false` — the facade's sampler then stacked on top of the SDK's, giving `facadeRate x sdkRate` instead of the configured rate, with nothing to indicate it. Latent at the default rate of `1.0`; it dropped spans as soon as `PROVIDE_TRACE_SAMPLE_RATE` was lowered. `withTrace` now probes the global tracer provider (`src/otel-probe.ts`), so a provider anyone installed counts.
 - **`getRuntimeStatus()` reports traces and metrics from the globals, not from install flags** — same root cause on both signals: with a host-owned provider, health output reported the signal as running in fallback while it was exporting. Metrics never had a sampling consequence (OTel metrics carry no SDK-side sampler, and `counter()`/`histogram()` already resolved their meter off the global API), so this was a pure misreport there. `providers.logs` remains install-flag-derived: the logs API lives in the optional `@opentelemetry/api-logs` peer, which cannot be imported synchronously to probe.
 

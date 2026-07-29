@@ -113,6 +113,25 @@ cannot be safely swapped after spans are in flight.
   own lock internally and release it before returning. State is never
   shared across locks held simultaneously — every cross-subsystem value
   is passed as a primitive copy.
+- **Hot-path state is atomic, not mutex-guarded.** Anything read once per span
+  or per metric call does not take a lock: the per-signal enablement gates
+  (`_signalGate`, stored inverted so the zero value reads as enabled), the
+  package tracer binding (`atomic.Pointer[Tracer]`, reached through
+  `GetTracer` and replaced through `SetDefaultTracer`), and the backend
+  instrumentation-scope name. These were all written under `_setupMu` during
+  setup and read without it afterwards; a two-word interface value read while
+  it is being written can tear into a stale itab paired with a new data
+  pointer, so the binding is atomic rather than exported and assignable.
+- **The optional OTel backend owns a second lock.** `go/otel` guards its
+  installed-provider globals with its own `RWMutex`, because providers are now
+  resolved per span rather than only during setup. It is never held across a
+  provider drain: `Shutdown` detaches the providers under the write lock and
+  drains them outside it, so a concurrent `FlushTelemetry` cannot block on a
+  mutex that its context deadline has no power over.
+- **Drains run concurrently, one deadline each.** Both `ForceFlush` and
+  `Shutdown` fan the three signals out over goroutines. Run in sequence they
+  share the caller's single deadline, and a stalled traces exporter consumes it
+  entirely — metrics and logs then return `DeadlineExceeded` without exporting.
 - Per-request context flows through Go's standard `context.Context`. There
   is no ambient goroutine-local storage; every function that needs trace
   or session state receives a `context.Context` parameter. The ASGI /
@@ -131,6 +150,10 @@ cannot be safely swapped after spans are in flight.
   inner value via `PoisonError::into_inner()` so the telemetry layer
   continues to function in degraded mode rather than aborting the host
   process (post-P0 fix).
+- Host-provider adoption is a pair of `AtomicBool`s (`adopt_global_providers`),
+  not a detected fact — see the Capability Matrix for why Rust asserts rather
+  than detects. They are read on the emit path and written by the host, so
+  atomics rather than the `OnceLock<Mutex<T>>` pattern above.
 - Context propagation is guard-based: `bind_context()`, `bind_session_context()`,
   `set_trace_context()`, and `bind_propagation_context()` all return RAII
   guards that restore the previous snapshot on `Drop`. This gives the same

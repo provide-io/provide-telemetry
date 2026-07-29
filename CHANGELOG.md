@@ -6,7 +6,7 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
-## [Unreleased]
+## [0.6.0] — 2026-07-29
 
 ### Added
 
@@ -39,6 +39,37 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 ### Changed
 
 - **Go: `DefaultTracer` is no longer an exported variable** — the binding is read from every traced call and written during setup and shutdown, and a two-word interface value read while it is being written can tear. It is now an atomic behind `GetTracer(name)` (read) and the new exported `SetDefaultTracer(t)` (replace), which is both race-free and ~20ns/span cheaper than the mutex that guarding an assignable exported var would have required. The spec's "tracer instance" symbol is satisfied by the exported `Tracer` type, as before.
+
+### Dependencies
+
+All four languages moved to the latest versions their constraints allow, plus
+these direct-dependency majors: Rust `thiserror` 1→2, `base64` 0.22→0.23,
+`criterion` 0.5→0.8, `rstest` 0.25→0.26; TypeScript `@types/node` 25→26 and the
+OTLP exporters 0.220→0.221; Go module dependencies refreshed (`go get -u` +
+`go mod tidy`, which also dropped `go.opentelemetry.io/otel/trace` from the root
+module — its only importer was the deleted `go/tracer`).
+
+Four upgrades were attempted and deliberately held back, each a real migration
+rather than a version bump:
+
+- **Rust `opentelemetry` 0.31 → 0.32** (and the `-otlp` / `_sdk` /
+  `-semantic-conventions` / `tracing-opentelemetry` family that must move with
+  it). The processor traits changed the signatures of `shutdown`,
+  `shutdown_with_timeout` and `force_flush`, and `Protocol::HttpJson` no longer
+  exists. Six compile errors; needs a migration, not a bump.
+- **Rust `hmac` 0.13 / `sha2` 0.11.** The RustCrypto next-generation release
+  swaps `generic-array` for `hybrid-array`, so `Hmac::new_from_slice` is gone
+  and the digest output no longer implements `LowerHex`.
+- **TypeScript 7.** The native compiler port relocates the compiler API that
+  `tests/propagation.module-scope-await.test.ts` uses to assert no module-scope
+  `await`; every `ts.*` AST helper resolves to the wrong module.
+- **Vite 8.1.** Fails to transform `tests/tracing.test.ts` with a bare
+  `SyntaxError: Invalid or unexpected token`, while `tsc` and ESLint both accept
+  the file. Pinned to `~8.0.16`.
+
+One known advisory remains: `qs` (moderate, DoS) reaches the tree through
+`@stryker-mutator/core` → `typed-rest-client`. Dev-only, never shipped, and not
+resolvable by `npm audit fix` — it needs an upstream Stryker release.
 
 
 ---

@@ -31,6 +31,42 @@ Initialize logging, tracing, and metrics providers. Lock-protected and idempoten
 > construction fails, setup still succeeds and the affected signals remain on
 > the local fallback path.
 
+### `flush_telemetry(timeout_seconds: float | None = None) -> bool`
+
+Drain without teardown: force-flush every provider *we* installed and leave them
+installed and usable. Use it where records must be out before control returns —
+a request boundary, a checkpoint, a serverless freeze — rather than shutting
+telemetry down and paying to set it up again.
+
+The deadline defaults to the bounded-shutdown one
+(`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`, 5.0s). Unlike
+`shutdown_telemetry`, an expired deadline is **reported, not swallowed** — a
+caller flushing to be sure its records are out needs to learn when they were
+not. Every signal gets its attempt even when an earlier one is abandoned or
+fails.
+
+Signature and return shape are idiomatic per language:
+
+| Language | Signature | Per-call deadline |
+| --- | --- | --- |
+| Python | `flush_telemetry(timeout_seconds: float \| None = None) -> bool` | `timeout_seconds` |
+| TypeScript | `flushTelemetry(timeoutMs?: number): Promise<boolean>` | `timeoutMs` |
+| Go | `FlushTelemetry(ctx context.Context) error` | via `ctx` deadline |
+| Rust | `flush_telemetry() -> Result<(), TelemetryError>` | config only |
+
+Where the SDK reports a drain as incomplete rather than raising — OTel Python's
+`force_flush()` returning `False` is the case that exists today — that counts as
+a failure, not a success.
+
+Calling it before setup, or after shutdown, is a successful no-op: there is
+nothing installed to drain.
+
+> Repeated use is the designed case, so a drain abandoned at its deadline leaves
+> a worker running in the exporter's retry loop. Those are capped: past 8 still
+> stranded, a further *flush* declines immediately and reports failure rather
+> than adding to the pile. `shutdown_telemetry` is never declined — it runs once
+> at exit and is the last chance to get queued records out.
+
 ### `shutdown_telemetry() -> None`
 
 Flush and tear down all providers and clear local runtime state. A later
@@ -190,18 +226,18 @@ Requires exactly 3 or 4 segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVEN
 
 ```python
 # 3-segment DAS (domain.action.status)
-e = event("auth", "login", "success")    # -> "auth.login.success"
-e.domain   # "auth"
-e.action   # "login"
-e.status   # "success"
-e.resource # None
+e = event("auth", "login", "success")  # -> "auth.login.success"
+e.domain  # "auth"
+e.action  # "login"
+e.status  # "success"
+e.resource  # None
 
 # 4-segment DARS (domain.action.resource.status)
 e = event("payment", "subscription", "renewal", "success")
-e.domain   # "payment"
-e.action   # "subscription"
-e.resource # "renewal"
-e.status   # "success"
+e.domain  # "payment"
+e.action  # "subscription"
+e.resource  # "renewal"
+e.status  # "success"
 ```
 
 ### `EventRecord` (TypeScript)
@@ -343,7 +379,7 @@ Return the current exporter policy for a signal.
 @dataclass(frozen=True, slots=True)
 class PIIRule:
     path: tuple[str, ...]
-    mode: MaskMode = "redact"    # "drop" | "redact" | "hash" | "truncate"
+    mode: MaskMode = "redact"  # "drop" | "redact" | "hash" | "truncate"
     truncate_to: int = 8
 ```
 

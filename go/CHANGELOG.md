@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.0] — 2026-07-29
+
+### Added
+
+- **`FlushTelemetry(ctx)`** — drain without teardown. `ShutdownTelemetry` was the only way to force records out and it tears the providers down; flush force-flushes every provider we installed and leaves them installed and usable. Deadline handling matches shutdown (`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS` when `ctx` carries none), with one deliberate difference: an expired deadline is returned, not suppressed, because a caller flushing to be sure its records are out needs to learn when they were not. A lone failure is returned unwrapped, so `err == context.DeadlineExceeded` matches.
+- **Adoption of a host application's OTel providers** — the facade used a provider only when one was handed in via `BackendSetupState`. It now adopts `otel.GetTracerProvider()` / `GetMeterProvider()` for any signal where it installed nothing itself, duck-typed on the `ForceFlush`/`Shutdown` pair so the API's delegating placeholder is not mistaken for a live SDK provider. Adoption never implies ownership: `ShutdownTelemetry` drops the reference without tearing the host's SDK down, and `FlushTelemetry` does not drain it. The global is probed per span rather than snapshotted at setup, so an auto-instrumentation agent or lazily-initialised vendor distro that registers later is picked up.
+- **`WithConfig(*TelemetryConfig)`** — `SetupTelemetry(WithConfig(cfg))` takes an in-memory config instead of reading the process environment. For hosts that re-exec or fork and must not mutate `os.Environ`.
+- **`SetDefaultTracer(t Tracer)`** — replaces the package-level tracer. See the removal note below.
+
+### Changed
+
+- **`DefaultTracer` is no longer an exported variable.** It is read from every traced call and written during setup and shutdown, and a two-word interface value read while it is being written can tear into a stale itab paired with a new data pointer. The binding is now an atomic reached through `GetTracer(name)` and replaced through the new `SetDefaultTracer(t)`. Migration: read `GetTracer("")`, write `SetDefaultTracer(t)`.
+- **`ShutdownTelemetry` no longer switches off a host's instrumentation.** It reset the OTel globals to no-ops unconditionally, so tearing our telemetry down also unregistered a provider the host had installed. Only globals this module registered are reset.
+- **Signal enablement is read live, not snapshotted.** `TracingEnabled()` / `MetricsEnabled()` are exported for the OTel backend and answer from an atomic gate published whenever the runtime config changes. They default to enabled before `SetupTelemetry` and after `ShutdownTelemetry`, matching what `Trace()` has always done — so a host that installs its own SDK and never calls setup still has its provider adopted.
+- **`GetRuntimeStatus().Providers` reports what the emit path would do**, which now includes a host-installed provider, while `Signals` continues to report configured intent. A signal reads as fallback only once a *loaded* config switches it off.
+
+### Fixed
+
+- **Shutdown drains the three signals concurrently.** They shared one context deadline in sequence, so a stalled traces exporter consumed the whole budget and queued metrics and log records were dropped without an export attempt. Same fix `FlushTelemetry` already had; both now run through one drain path.
+- **No lock is held across a drain.** `FlushTelemetry` held `_setupMu` for its whole duration and every `Trace()` and metric call takes that same mutex, so a slow collector stalled the process for the deadline. It snapshots under the lock and drains outside it. Separately, the OTel backend's `Shutdown` no longer holds its provider lock across the drain, which would otherwise block a concurrent flush on a mutex no context deadline can bound.
+- **No data race on the per-span provider lookup.** Resolving the tracer per span moved reads of setup-time globals onto the hot path while setup and shutdown wrote them. The instrumentation-scope name and the tracer binding are atomic; the backend's provider globals have their own `RWMutex`.
+- **`FlushTelemetry`'s godoc is its own.** The declaration sat directly under `ShutdownTelemetry`'s comment block with no blank line, so `go doc` attributed shutdown's contract to flush and left `ShutdownTelemetry` undocumented.
+- **SDK-level trace sampling is real.** The default `TracerProvider` is built with `ParentBased(TraceIDRatioBased(min(sampling.TracesRate, Tracing.SampleRate)))`. Previously the rate gated only the facade while the global tracer and instrumentations sampled everything.
+
+### Removed
+
+- **The `go/tracer` package.** A standalone parallel copy of the tracer machinery that nothing imported, carrying its own unsynchronized exported global. Its CI test and mutation steps were guarded on `hashFiles('go/tracer/go.mod')` and that module file never existed, so they had never run. Use the root `telemetry` package: `GetTracer`, `SetDefaultTracer`, `Trace`.
+
 ## [0.5.1] — 2026-07-10
 
 ### Added
