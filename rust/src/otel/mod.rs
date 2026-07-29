@@ -51,12 +51,15 @@ pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError
 }
 
 /// Run `flush` under the bounded-shutdown deadline, on a detached worker when
-/// one applies. Returns false when the deadline expired and the worker was
-/// abandoned — records may still be sitting in the exporter's queue.
+/// one applies. `flush` reports whether the export succeeded.
+///
+/// Returns false when the deadline expired and the worker was abandoned, and
+/// also when the drain finished but failed — both mean records may still be
+/// sitting in the exporter's queue, which is what the caller needs to know.
 #[cfg(feature = "otel")]
 fn bounded_flush<F>(signal: &str, flush: F) -> bool
 where
-    F: FnOnce() + Send + 'static,
+    F: FnOnce() -> bool + Send + 'static,
 {
     let timeout_secs = crate::runtime::get_runtime_config()
         .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
@@ -64,8 +67,7 @@ where
 
     if timeout_secs <= 0.0 {
         // Caller opted out of bounding — do the synchronous drain.
-        flush();
-        return true;
+        return flush();
     }
 
     let timeout = std::time::Duration::from_secs_f64(timeout_secs);
@@ -73,19 +75,26 @@ where
     let _worker = std::thread::Builder::new()
         .name(format!("provide-{signal}-flush"))
         .spawn(move || {
-            flush();
-            let _ = tx.send(());
+            let _ = tx.send(flush());
         })
         .expect("OS must allow spawning a flush worker thread");
 
-    if rx.recv_timeout(timeout).is_err() {
-        eprintln!(
-            "provide_telemetry: {signal} flush exceeded {:.3}s deadline; abandoning background flush",
-            timeout.as_secs_f64(),
-        );
-        return false;
+    match rx.recv_timeout(timeout) {
+        Ok(true) => true,
+        // The drain finished in time but the exporter rejected it: reporting Ok
+        // here would tell a caller its records are out when they are not.
+        Ok(false) => {
+            eprintln!("provide_telemetry: {signal} flush failed");
+            false
+        }
+        Err(_) => {
+            eprintln!(
+                "provide_telemetry: {signal} flush exceeded {:.3}s deadline; abandoning background flush",
+                timeout.as_secs_f64(),
+            );
+            false
+        }
     }
-    true
 }
 
 /// Force-flush every installed provider, leaving them installed.
@@ -252,5 +261,39 @@ mod tests {
         assert!(otel_installed());
 
         crate::testing::reset_telemetry_state();
+    }
+}
+
+#[cfg(all(test, feature = "otel"))]
+mod bounded_flush_tests {
+    use super::*;
+
+    /// A drain that finished in time but failed must not report success — the
+    /// caller is deciding whether its records are safely out.
+    #[test]
+    fn a_failed_drain_is_reported_as_failure() {
+        assert!(!bounded_flush("traces", || false));
+    }
+
+    #[test]
+    fn a_successful_drain_is_reported_as_success() {
+        assert!(bounded_flush("traces", || true));
+    }
+
+    /// With bounding switched off the drain runs inline; its result still counts.
+    #[test]
+    fn unbounded_drain_still_reports_its_result() {
+        use crate::config::TelemetryConfig;
+        use crate::testing::acquire_test_state_lock;
+
+        let _guard = acquire_test_state_lock();
+        let mut cfg = TelemetryConfig::default();
+        cfg.exporter.logs_shutdown_timeout_seconds = 0.0;
+        crate::runtime::set_active_config(Some(cfg));
+
+        assert!(!bounded_flush("logs", || false));
+        assert!(bounded_flush("logs", || true));
+
+        crate::runtime::set_active_config(None);
     }
 }

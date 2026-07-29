@@ -17,7 +17,8 @@ use super::{logs, metrics, traces};
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline.
+/// the flush was abandoned at the bounded-shutdown deadline or the exporter
+/// rejected it.
 pub(crate) fn flush_logger_provider() -> bool {
     let provider = {
         let guard = crate::_lock::lock(logs::logger_provider_slot());
@@ -29,16 +30,15 @@ pub(crate) fn flush_logger_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("logs", move || {
-        let _ = provider.force_flush();
-    })
+    super::bounded_flush("logs", move || provider.force_flush().is_ok())
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline.
+/// the flush was abandoned at the bounded-shutdown deadline or the exporter
+/// rejected it.
 pub(crate) fn flush_tracer_provider() -> bool {
     let provider = {
         let guard = crate::_lock::lock(traces::tracer_provider_slot());
@@ -50,16 +50,15 @@ pub(crate) fn flush_tracer_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("traces", move || {
-        let _ = provider.force_flush();
-    })
+    super::bounded_flush("traces", move || provider.force_flush().is_ok())
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline.
+/// the flush was abandoned at the bounded-shutdown deadline or the exporter
+/// rejected it.
 pub(crate) fn flush_meter_provider() -> bool {
     let provider = {
         let guard = crate::_lock::lock(metrics::meter_provider_slot());
@@ -71,7 +70,5 @@ pub(crate) fn flush_meter_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("metrics", move || {
-        let _ = provider.force_flush();
-    })
+    super::bounded_flush("metrics", move || provider.force_flush().is_ok())
 }

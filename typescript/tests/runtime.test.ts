@@ -146,6 +146,23 @@ describe('getRuntimeStatus', () => {
     expect(status.fallback.metrics).toBe(true);
   });
 
+  it('reports fallback for a disabled signal even with a live global provider', () => {
+    // The emit paths check the enabled flag first (withTrace on tracingEnabled,
+    // the instruments on metricsEnabled), so claiming a provider here would
+    // advertise an export path nothing can reach.
+    setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: false });
+    trace.setGlobalTracerProvider({
+      getTracer: () => ({}),
+      forceFlush: async () => {},
+      shutdown: async () => {},
+    } as never);
+    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+
+    const status = getRuntimeStatus();
+    expect(status.providers).toEqual({ logs: false, traces: false, metrics: false });
+    expect(status.fallback).toEqual({ logs: true, traces: true, metrics: true });
+  });
+
   it('reports metrics in fallback again once the meter global is disabled', () => {
     metrics.setGlobalMeterProvider(liveMeterProvider() as never);
     metrics.disable();

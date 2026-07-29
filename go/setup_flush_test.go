@@ -34,14 +34,14 @@ func (b *_stubBackend) NewHistogram(string, InstrumentOptions) (Histogram, bool)
 	return nil, false
 }
 
-// _flushBackend records ForceFlush calls and can fail on demand.
-type _flushBackend struct {
+// _flushRecordingBackend records ForceFlush calls and can fail on demand.
+type _flushRecordingBackend struct {
 	_stubBackend
 	flushes int
 	err     error
 }
 
-func (b *_flushBackend) ForceFlush(context.Context) error {
+func (b *_flushRecordingBackend) ForceFlush(context.Context) error {
 	b.flushes++
 	return b.err
 }
@@ -62,7 +62,7 @@ func TestFlushTelemetry_IsANoopBeforeSetup(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	backend := &_flushBackend{}
+	backend := &_flushRecordingBackend{}
 	registerFlushBackend(t, backend)
 
 	if err := FlushTelemetry(context.Background()); err != nil {
@@ -77,7 +77,7 @@ func TestFlushTelemetry_DrainsTheBackendAndLeavesItInstalled(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	backend := &_flushBackend{}
+	backend := &_flushRecordingBackend{}
 	registerFlushBackend(t, backend)
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
@@ -103,7 +103,7 @@ func TestFlushTelemetry_SurfacesBackendError(t *testing.T) {
 	t.Cleanup(func() { resetSetupState(t) })
 
 	want := errors.New("exporter down")
-	registerFlushBackend(t, &_flushBackend{err: want})
+	registerFlushBackend(t, &_flushRecordingBackend{err: want})
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestFlushTelemetry_DoesNotSuppressAnExpiredDeadline(t *testing.T) {
 
 	// Unlike ShutdownTelemetry, a caller flushing to be sure its records are
 	// out must learn when they are not.
-	registerFlushBackend(t, &_flushBackend{err: context.DeadlineExceeded})
+	registerFlushBackend(t, &_flushRecordingBackend{err: context.DeadlineExceeded})
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}

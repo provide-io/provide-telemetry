@@ -92,6 +92,24 @@ contract_cases:
       last_log.message: "test.flush.after"
       status_after_flush.active: true
 
+  # Failure reporting — a flush that could not drain must not report success —
+  # is NOT covered here: exercising it needs a deliberately broken exporter,
+  # which the step DSL cannot express (no endpoint overrides) and which would
+  # make a cross-language gate timing-dependent. Each language pins it directly:
+  # tests/setup/test_flush_telemetry.py, typescript/tests/shutdown.flush.test.ts,
+  # go/setup_flush_test.go, rust/src/otel/mod.rs::bounded_flush_tests.
+  flush_after_shutdown_reports_success:
+    description: "flush_telemetry with nothing installed is a successful no-op, not a failure"
+    steps:
+      - op: setup
+      - op: shutdown
+      - op: flush
+        into: post_shutdown_flush
+    expect:
+      # Nothing to drain is a drained state. A language reporting failure here
+      # would make the API unusable in cleanup paths that run after shutdown.
+      post_shutdown_flush.ok: true
+
   shutdown_re_setup:
     description: "After shutdown, re-setup with different config produces fresh state"
     steps:

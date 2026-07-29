@@ -5,12 +5,32 @@ package otel
 
 import (
 	"context"
+	"sync"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
+
+// _providersMu guards the installed-provider globals and the ownership flags.
+//
+// Provider resolution happens per span now, so these are read from every traced
+// call while Setup and Shutdown write them from another goroutine. The pre-diff
+// code only read them during Setup, under the root package's _setupMu, and so
+// needed no lock of its own.
+var _providersMu sync.RWMutex //nolint:gochecknoglobals
+
+// Signal enablement is deliberately NOT cached in this package. It lived as a
+// pair of flags captured during Setup, which was wrong twice over:
+// _setupBackendLocked skips Setup entirely when no provider options and no OTLP
+// endpoint are configured (the pure-adoption path), leaving the flags stale;
+// and Shutdown latched them off with no path back, so adoption died after one
+// shutdown/setup cycle. The root package owns the runtime config, so the gate
+// lives there — one source of truth, nothing to go stale.
 
 // _isLiveProvider reports whether p is a real SDK provider rather than the API's
 // delegating placeholder.
@@ -33,22 +53,27 @@ func _isLiveProvider(p any) bool {
 	return ok
 }
 
-// Signal enablement captured at Setup. A disabled signal never reports or uses
-// a provider, however live the global is — Trace()/metrics gate on the same
-// config upstream, and status must not claim a signal the caller switched off.
-// Default to on so a direct provider install (tests, embedders wiring the
-// backend by hand) works without a Setup call; Setup narrows them to the
-// caller's config and Shutdown clears them.
-var (
-	_tracingEnabled = true //nolint:gochecknoglobals
-	_metricsEnabled = true //nolint:gochecknoglobals
-)
+// ── guarded reads of the installed providers ──────────────────────────
 
-// _captureSignalEnablement records which signals this config leaves on.
-func _captureSignalEnablement(cfg *telemetry.TelemetryConfig) {
-	_tracingEnabled = cfg.Tracing.Enabled
-	_metricsEnabled = cfg.Metrics.Enabled
+func _loadTracerProvider() *sdktrace.TracerProvider {
+	_providersMu.RLock()
+	defer _providersMu.RUnlock()
+	return _otelTracerProvider
 }
+
+func _loadMeterProvider() *sdkmetric.MeterProvider {
+	_providersMu.RLock()
+	defer _providersMu.RUnlock()
+	return _otelMeterProvider
+}
+
+func _loadLoggerProvider() *sdklog.LoggerProvider {
+	_providersMu.RLock()
+	defer _providersMu.RUnlock()
+	return _otelLoggerProvider
+}
+
+// ── effective providers ───────────────────────────────────────────────
 
 // _effectiveTracerProvider returns the provider facade spans go through: ours
 // when we installed one, otherwise a host application's if one owns the global,
@@ -59,12 +84,16 @@ func _captureSignalEnablement(cfg *telemetry.TelemetryConfig) {
 // setup runs — a lazily-initialised SDK, a framework hook, an agent loaded on a
 // later import — and a snapshot would miss it forever. This matches the
 // TypeScript facade, which resolves the provider per call for the same reason.
+//
+// Gated on the signal being enabled, because that is what the emit paths check
+// first: reporting or using a provider for a signal the caller switched off
+// would claim an export path nothing is meant to reach.
 func _effectiveTracerProvider() oteltrace.TracerProvider {
-	if !_tracingEnabled {
+	if !telemetry.TracingEnabled() {
 		return nil
 	}
-	if _otelTracerProvider != nil {
-		return _otelTracerProvider
+	if tp := _loadTracerProvider(); tp != nil {
+		return tp
 	}
 	if tp := otel.GetTracerProvider(); _isLiveProvider(tp) {
 		return tp
@@ -74,11 +103,11 @@ func _effectiveTracerProvider() oteltrace.TracerProvider {
 
 // _effectiveMeterProvider is the metrics counterpart of _effectiveTracerProvider.
 func _effectiveMeterProvider() otelmetric.MeterProvider {
-	if !_metricsEnabled {
+	if !telemetry.MetricsEnabled() {
 		return nil
 	}
-	if _otelMeterProvider != nil {
-		return _otelMeterProvider
+	if mp := _loadMeterProvider(); mp != nil {
+		return mp
 	}
 	if mp := otel.GetMeterProvider(); _isLiveProvider(mp) {
 		return mp

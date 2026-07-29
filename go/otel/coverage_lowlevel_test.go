@@ -50,6 +50,14 @@ func TestCoverageLowLevel_BackendAdaptersAndMetricWrappers(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
+	// The backend gates on telemetry.TracingEnabled()/MetricsEnabled(), which
+	// mean "set up and this signal is on" — so drive the real setup path before
+	// poking the provider globals directly.
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	t.Cleanup(func() { _ = telemetry.ShutdownTelemetry(context.Background()) })
+
 	tp, exp := newInMemoryTP()
 	reader := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))

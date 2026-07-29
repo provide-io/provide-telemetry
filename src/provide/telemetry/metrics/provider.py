@@ -70,9 +70,14 @@ def _has_effective_meter_provider() -> bool:
     itself: such a provider owns the OTel global, so ``get_meter()`` resolves it
     and measurements are recorded through it.
 
-    Delegates to the same predicate ``get_meter()`` gates on, so runtime status
-    and the meter can never disagree about which provider is in play.
+    Gates on ``_metrics_explicitly_disabled`` first and then delegates to the
+    same predicate ``get_meter()`` gates on — in that order, because that is the
+    order ``get_meter()`` uses. Skipping the disablement check would report a
+    provider for a signal the caller switched off, and ``get_meter()`` would
+    then hand back nothing.
     """
+    if _metrics_explicitly_disabled:
+        return False
     if _has_live_meter_provider():
         return True
     otel_metrics = _load_otel_metrics_api()
