@@ -63,9 +63,17 @@ func _randomHex(n int) string {
 // tear into a stale itab paired with a new data pointer.
 var DefaultTracer Tracer = &_noopTracer{} //nolint:gochecknoglobals
 
-// _defaultTracerMu guards DefaultTracer. A RWMutex rather than an atomic
-// because DefaultTracer is exported and must stay a plain Tracer variable — the
-// spec names it as the package's tracer instance.
+// _defaultTracerMu guards DefaultTracer.
+//
+// A RWMutex and not an atomic, unlike the signal gates in runtime.go which are
+// on the same per-span path. An atomic.Pointer mirror beside the variable would
+// read in ~1ns instead of ~20ns, but it can only see writes that went through
+// _storeDefaultTracer: assigning DefaultTracer directly is how a consumer
+// overrides the tracer (this package exports no setter) and how several tests
+// here work, and those writes would silently stop taking effect. The variable
+// itself has to stay the source of truth while it is exported and assignable,
+// and the spec names it as the package's tracer instance — so the cost stands
+// until that API changes.
 var _defaultTracerMu sync.RWMutex //nolint:gochecknoglobals
 
 func _loadDefaultTracer() Tracer {
@@ -103,7 +111,7 @@ func GetTracer(name string) Tracer {
 // and facade spans share one sampling authority (no double-sampling).
 // Without a live provider, ShouldSample(traces) applies as before.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
-	if !_runtimeTracingEnabled() {
+	if !TracingEnabled() {
 		return fn(ctx)
 	}
 	if !ShouldAllow(signalTraces, "") {
@@ -177,9 +185,4 @@ func SetTraceContext(ctx context.Context, traceID, spanID string) context.Contex
 // _getTraceSpanFromContext extracts trace/span IDs from context.
 func _getTraceSpanFromContext(ctx context.Context) (traceID, spanID string) {
 	return GetTraceContext(ctx)
-}
-
-// _setDefaultTracer replaces DefaultTracer (called by OTel integration in Task 14).
-func _setDefaultTracer(t Tracer) {
-	_storeDefaultTracer(t)
 }

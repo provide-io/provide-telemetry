@@ -73,11 +73,6 @@ func TestRuntimeGates_DefaultOpenBeforeSetup(t *testing.T) {
 	if !TracingEnabled() || !MetricsEnabled() {
 		t.Fatal("gates shut before setup; a host-installed provider would be ignored")
 	}
-	// The emit path's own enablement check must agree, or status and behaviour
-	// diverge for exactly this pre-setup window.
-	if !_runtimeTracingEnabled() || !_runtimeMetricsEnabled() {
-		t.Fatal("emit-path enablement disagrees with the published gates")
-	}
 }
 
 func TestRuntimeGates_FollowPerSignalDisablement(t *testing.T) {

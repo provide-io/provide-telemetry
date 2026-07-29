@@ -129,6 +129,26 @@ func TestFlushTelemetry_DoesNotSuppressAnExpiredDeadline(t *testing.T) {
 	}
 }
 
+// The godoc promises context.DeadlineExceeded is returned, which invites
+// `err == context.DeadlineExceeded`. Asserted here at the facade rather than
+// only on go/otel's _joinFlushErrors, because every layer between the exporter
+// and the caller has to keep the identity — a fmt.Errorf("%w") in _flushBackend
+// or FlushTelemetry would void the promise while the helper's own tests still
+// passed.
+func TestFlushTelemetry_ReturnsAnExpiredDeadlineByIdentity(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	registerFlushBackend(t, &_flushRecordingBackend{err: context.DeadlineExceeded})
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	if err := FlushTelemetry(context.Background()); err != context.DeadlineExceeded { //nolint:errorlint // identity is the contract under test
+		t.Fatalf("flush returned %#v, want the context.DeadlineExceeded value itself", err)
+	}
+}
+
 func TestFlushTelemetry_AppliesBoundedDeadlineWhenCtxHasNone(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
