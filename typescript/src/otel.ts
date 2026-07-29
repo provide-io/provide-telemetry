@@ -44,7 +44,7 @@ import {
   type ShutdownableProvider,
   _areProvidersRegistered,
   _markProvidersRegistered,
-  _setProviderSignalInstalled,
+  _setLogsProviderInstalled,
   _storeRegisteredProviders,
 } from './runtime.js';
 
@@ -130,8 +130,9 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         const traceExporter = wrapResilientExporter('traces', rawTraceExporter);
 
         // SDK sampler is authoritative for live OTel spans (global tracer,
-        // instrumentations, withTrace). Facade shouldSample is skipped when
-        // traces providers are registered to avoid double-sampling.
+        // instrumentations, withTrace). withTrace probes the global tracer
+        // provider and skips facade shouldSample once this is installed, so the
+        // rate is applied here exactly once.
         const rate = Math.min(cfg.samplingTracesRate, cfg.traceSampleRate);
         const rootSampler = rate <= 0 ? new AlwaysOffSampler() : new TraceIdRatioBasedSampler(rate);
         const sampler = new ParentBasedSampler({ root: rootSampler });
@@ -143,7 +144,6 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         });
         trace.setGlobalTracerProvider(provider);
         registered.push(provider as ShutdownableProvider);
-        _setProviderSignalInstalled('traces', true);
       }
     } catch (err) {
       console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
@@ -177,7 +177,6 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         });
         metrics.setGlobalMeterProvider(meterProvider);
         registered.push(meterProvider as ShutdownableProvider);
-        _setProviderSignalInstalled('metrics', true);
       }
     } catch (err) {
       console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
@@ -192,7 +191,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   if (logsEndpoint && cfg.otlpLogsEnabled) {
     try {
       registered.push(await setupOtelLogProvider(cfg));
-      _setProviderSignalInstalled('logs', true);
+      _setLogsProviderInstalled(true);
     } catch (err) {
       console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
     }

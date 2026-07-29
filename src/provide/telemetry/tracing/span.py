@@ -78,12 +78,12 @@ def record_exception(sp: Any, exc: BaseException) -> None:
     # reach nor distinguish these lines. They are exercised by the otel-marked
     # record_exception test; here they are exempt from mutation (no mutate) and
     # coverage (no cover).
-    set_status = getattr(sp, "set_status", None)  # pragma: no mutate
-    if set_status is not None:  # pragma: no mutate
-        with contextlib.suppress(Exception):  # pragma: no mutate
+    set_status = getattr(sp, "set_status", None)  # pragma: no mutate — otel-only path, see comment above
+    if set_status is not None:  # pragma: no mutate — otel-only path, see comment above
+        with contextlib.suppress(Exception):  # pragma: no mutate — otel-only path, see comment above
             from opentelemetry.trace import Status, StatusCode
 
-            set_status(Status(StatusCode.ERROR, str(exc)[:200]))  # pragma: no cover  # pragma: no mutate
+            set_status(Status(StatusCode.ERROR, str(exc)[:200]))  # pragma: no cover  # pragma: no mutate — see above
 
 
 def _set_span_attr(sp: Any, key: str, value: Any) -> None:

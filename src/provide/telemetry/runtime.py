@@ -260,10 +260,15 @@ def get_runtime_status() -> dict[str, object]:
     cfg = get_runtime_config()
     with setup_mod._lock:
         setup_done = setup_mod._setup_done
+    # traces and metrics report what is in play, not what we installed: a host
+    # application's own provider owns the OTel global, and get_tracer() /
+    # get_meter() resolve it, so reporting it as fallback would be a lie. Logs
+    # stays install-scoped — our records reach OTel through the handler *we*
+    # attach, so a foreign logger provider is genuinely not in our path.
     providers = {
         "logs": bool(logger_core._has_real_otel_log_provider()),
-        "traces": bool(tracing_provider._has_live_tracing_provider()),
-        "metrics": bool(metrics_provider._has_live_meter_provider()),
+        "traces": bool(tracing_provider._has_effective_tracing_provider()),
+        "metrics": bool(metrics_provider._has_effective_meter_provider()),
     }
     return {
         "setup_done": setup_done,

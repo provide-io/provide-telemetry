@@ -109,6 +109,17 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 
 // _hasLiveTraceProvider reports whether the active optional backend has a live
 // tracer provider (OTel SDK sampling is then authoritative).
+//
+// Unlike the Python and TypeScript facades, this deliberately does NOT probe
+// otel.GetTracerProvider(). Those facades resolve their tracer off the OTel
+// global, so a provider a host application installed there is the one their
+// spans flow through, and asking "did we install one" gives the wrong answer.
+// Here DefaultTracer is only replaced with a real tracer when this same
+// Providers().Traces is true (see _wireBackendBindingsLocked), and the backend
+// builds tracers from its own provider — a host provider we were not handed
+// via BackendSetupState is never used to start facade spans. Probing the global
+// would therefore report a provider we do not emit through and would wrongly
+// disable facade sampling.
 func _hasLiveTraceProvider() bool {
 	backend := _activeBackend()
 	if backend == nil {
