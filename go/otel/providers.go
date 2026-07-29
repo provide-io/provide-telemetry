@@ -95,6 +95,7 @@ func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 		_warnIfTracerProviderConflict()
 		_otelTracerProvider = tp
 		otel.SetTracerProvider(tp)
+		_weSetTracerGlobal = true
 	}
 }
 
@@ -117,6 +118,7 @@ func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.Telem
 		_warnIfMeterProviderConflict()
 		_otelMeterProvider = mp
 		otel.SetMeterProvider(mp)
+		_weSetMeterGlobal = true
 	}
 }
 
@@ -140,5 +142,6 @@ func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 		_warnIfLoggerProviderConflict()
 		_otelLoggerProvider = lp
 		logglobal.SetLoggerProvider(lp)
+		_weSetLoggerGlobal = true
 	}
 }
