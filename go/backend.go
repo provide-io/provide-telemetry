@@ -154,6 +154,27 @@ func _setupBackendLocked(state *_setupState, cfg *TelemetryConfig) error {
 	return nil
 }
 
+// FlushableBackend is the optional drain half of Backend: a backend that can
+// force-flush its providers without tearing them down implements it. It is a
+// separate interface rather than a Backend method so adding it does not break
+// third-party Backend implementations; FlushTelemetry is a no-op for a backend
+// that does not implement it.
+type FlushableBackend interface {
+	ForceFlush(ctx context.Context) error
+}
+
+func _flushBackendLocked(ctx context.Context) error {
+	backend := _activeBackend()
+	if backend == nil {
+		return nil
+	}
+	flushable, ok := backend.(FlushableBackend)
+	if !ok {
+		return nil
+	}
+	return flushable.ForceFlush(ctx)
+}
+
 func _shutdownBackendLocked(ctx context.Context) error {
 	if backend := _activeBackend(); backend != nil {
 		return backend.Shutdown(ctx)

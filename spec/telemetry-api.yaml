@@ -37,6 +37,10 @@ api:
     - name: shutdown_telemetry
       kind: function
       required: true
+    - name: flush_telemetry
+      kind: function
+      required: true
+      note: "drain without teardown — force-flush installed providers, leave them installed"
 
   logging:
     - name: get_logger

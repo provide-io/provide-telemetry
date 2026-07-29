@@ -21,7 +21,7 @@ from provide.telemetry.exceptions import ConfigurationError, TelemetryError
 from provide.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
 from provide.telemetry.schema.events import Event, EventSchemaError, event, event_name
-from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
+from provide.telemetry.setup import flush_telemetry, setup_telemetry, shutdown_telemetry
 from provide.telemetry.tracing import (
     get_trace_context,
     get_tracer,
@@ -226,6 +226,7 @@ __all__ = [
     "event",
     "event_name",
     "extract_w3c_context",
+    "flush_telemetry",
     "gauge",
     "get_cardinality_limits",
     "get_classification_policy",

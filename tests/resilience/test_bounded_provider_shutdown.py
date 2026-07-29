@@ -86,7 +86,7 @@ def test_bounded_provider_shutdown_abandons_and_warns_on_timeout() -> None:
 
     provider = _SlowProvider()
     try:
-        with pytest.warns(RuntimeWarning, match="exceeded .* deadline"):
+        with pytest.warns(RuntimeWarning, match="provider shutdown exceeded .* deadline"):
             completed = bounded_provider_shutdown(provider, timeout_seconds=0.1)
         assert completed is False
     finally:

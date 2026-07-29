@@ -374,6 +374,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
         "propagation_to_logger_correlation",
         "trace_field_precedence",
         "setup_invalid_overrides",
+        "flush_drains_without_teardown",
         "shutdown_re_setup",
         "custom_secret_pattern_redacts_message",
         "baggage_auto_injection",

@@ -66,6 +66,32 @@ contract_cases:
     expect:
       result.raised: true
 
+  flush_drains_without_teardown:
+    description: "flush_telemetry drains installed providers and leaves telemetry usable"
+    steps:
+      - op: setup
+      - op: flush
+        into: first_flush
+      - op: emit_log
+        message: "test.flush.after"
+        fields:
+          event: "test.flush.after"
+      - op: capture_log
+        into: last_log
+      - op: get_runtime_status
+        into: status_after_flush
+      - op: flush
+        into: second_flush
+      - op: shutdown
+    expect:
+      first_flush.ok: true
+      # Repeatable: unlike shutdown, flush leaves the providers installed, so a
+      # second call must succeed rather than become a no-op on a torn-down stack.
+      second_flush.ok: true
+      # Telemetry still works after the drain.
+      last_log.message: "test.flush.after"
+      status_after_flush.active: true
+
   shutdown_re_setup:
     description: "After shutdown, re-setup with different config produces fresh state"
     steps:

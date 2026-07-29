@@ -9,6 +9,7 @@ from __future__ import annotations
 
 __all__ = [
     "ExporterPolicy",
+    "bounded_provider_flush",
     "bounded_provider_shutdown",
     "get_circuit_state",
     "get_exporter_policy",
@@ -26,6 +27,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
+# Re-exported so `provide.telemetry.resilience.bounded_provider_*` stays the
+# public spelling — the deadline machinery lives in _provider_drain alongside
+# the per-signal drains it serves.
+from provide.telemetry._provider_drain import bounded_provider_flush, bounded_provider_shutdown
 from provide.telemetry.health import (
     increment_async_blocking_risk,
     increment_retries,
@@ -346,57 +351,6 @@ def get_circuit_state(signal: Signal) -> tuple[str, int, float]:
                 return ("open", _open_count[sig], remaining)
             return ("half-open", _open_count[sig], 0.0)
         return ("closed", _open_count[sig], 0.0)
-
-
-def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
-    """Run ``provider.force_flush()`` then ``provider.shutdown()`` under a hard deadline.
-
-    OTel SDK's ``BatchLogRecordProcessor.force_flush(timeout_millis)`` silently
-    ignores its ``timeout_millis`` parameter, and ``LoggerProvider.shutdown()``
-    has no timeout parameter at all — its worker-thread join defaults to 30
-    seconds. When the OTLP endpoint is unreachable, that makes process
-    shutdown feel like a hang. Running the flush+shutdown in a daemon thread
-    with our own deadline restores bounded shutdown semantics: if the thread
-    exceeds *timeout_seconds*, it is abandoned (daemon threads are reclaimed
-    by interpreter exit).
-
-    Returns True if both calls completed in time, False if abandoned.
-    Re-raises any exception raised by force_flush/shutdown when completed.
-    """
-    error: list[BaseException] = []
-    completed = threading.Event()
-
-    def _runner() -> None:
-        try:
-            flush = getattr(provider, "force_flush", None)
-            if callable(flush):
-                flush()
-            shutdown = getattr(provider, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
-        except BaseException as exc:
-            error.append(exc)
-        finally:
-            completed.set()
-
-    worker = threading.Thread(
-        target=_runner,
-        name="provide-provider-shutdown",  # operator-visible thread name; asserted by test_thread_is_named_for_operator_visibility
-        daemon=True,
-    )
-    worker.start()
-    if not completed.wait(timeout_seconds):
-        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-            f"provider shutdown exceeded {timeout_seconds}s deadline; "  # pragma: no mutate — warning message string is non-semantic
-            "abandoning background flush. Records still in the export queue "  # pragma: no mutate — warning message string is non-semantic
-            "will be dropped.",  # pragma: no mutate — warning message string is non-semantic
-            RuntimeWarning,
-            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
-        )
-        return False
-    if error:
-        raise error[0]
-    return True
 
 
 def shutdown_timeout_executors() -> None:

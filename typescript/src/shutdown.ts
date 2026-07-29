@@ -115,6 +115,53 @@ async function flushAndShutdownProvider(
   }
 }
 
+/**
+ * Force-flush one provider, leaving it installed. Resolves to false when the
+ * flush was abandoned at the deadline; rethrows a forceFlush rejection that
+ * arrived in time, so a broken exporter is not silently reported as drained.
+ */
+async function flushProvider(provider: ShutdownableProvider, timeoutMs: number): Promise<boolean> {
+  if (!provider.forceFlush) return true;
+  const flush = provider.forceFlush();
+  const flushed = await raceWithDeadline(flush, timeoutMs);
+  if (!flushed) {
+    console.warn(
+      `[provide/telemetry] provider forceFlush exceeded ${timeoutMs}ms deadline; abandoning background flush`,
+    );
+    return false;
+  }
+  // raceWithDeadline maps a rejection to "settled"; re-await the already-settled
+  // promise so the error surfaces instead of counting as a successful drain.
+  await flush;
+  return true;
+}
+
+/**
+ * Force-flush installed providers without tearing them down.
+ *
+ * The drain half of {@link shutdownTelemetry}: every provider we installed is
+ * force-flushed under a bounded deadline and stays installed and usable. Use it
+ * where records must be out before control returns — a request boundary, a
+ * checkpoint, a serverless freeze — rather than shutting telemetry down and
+ * paying to set it up again.
+ *
+ * `timeoutMs` defaults to the bounded-shutdown deadline
+ * (`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_MS`) and is applied per provider.
+ * Resolves true when every provider flushed within the deadline, false when any
+ * was abandoned; with nothing installed there is nothing to flush, so true.
+ *
+ * A provider a host application installed on the OTel globals is not ours to
+ * drain and is left alone.
+ */
+export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
+  const providers = _getRegisteredProviders();
+  const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
+  // Map eagerly so every provider's flush is in flight before the first await:
+  // one slow exporter must not delay the others' drain.
+  const results = await Promise.all(providers.map((p) => flushProvider(p, deadlineMs)));
+  return results.every((ok) => ok);
+}
+
 export async function shutdownTelemetry(): Promise<void> {
   const providers = _getRegisteredProviders();
   const timeoutMs = getConfig().exporterLogsShutdownTimeoutMs;

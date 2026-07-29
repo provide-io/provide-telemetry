@@ -39,6 +39,33 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 	return nil
 }
 
+// ForceFlush drains every installed provider, leaving them installed. Returns
+// the first error encountered, after attempting all three signals — one stalled
+// exporter must not deny the others their drain.
+func (b *_backend) ForceFlush(ctx context.Context) error {
+	var first error
+
+	if _otelTracerProvider != nil {
+		if err := _otelTracerProvider.ForceFlush(ctx); err != nil {
+			first = err
+		}
+	}
+
+	if _otelMeterProvider != nil {
+		if err := _otelMeterProvider.ForceFlush(ctx); err != nil && first == nil {
+			first = err
+		}
+	}
+
+	if _otelLoggerProvider != nil {
+		if err := _otelLoggerProvider.ForceFlush(ctx); err != nil && first == nil {
+			first = err
+		}
+	}
+
+	return first
+}
+
 func (b *_backend) Shutdown(ctx context.Context) error {
 	var first error
 

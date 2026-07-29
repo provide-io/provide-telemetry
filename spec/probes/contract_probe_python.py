@@ -114,6 +114,12 @@ def _op_shutdown(_step: dict[str, Any], _variables: dict[str, object]) -> None:
     shutdown_telemetry()
 
 
+def _op_flush(step: dict[str, Any], variables: dict[str, object]) -> None:
+    from provide.telemetry import flush_telemetry
+
+    variables[step["into"]] = {"ok": bool(flush_telemetry())}
+
+
 def _op_bind_propagation(step: dict[str, Any], _variables: dict[str, object]) -> None:
     traceparent = step.get("traceparent", "")
     baggage = step.get("baggage")
@@ -197,6 +203,7 @@ _DISPATCH: dict[str, Any] = {
     "setup": _op_setup,
     "setup_invalid": _op_setup_invalid,
     "shutdown": _op_shutdown,
+    "flush": _op_flush,
     "bind_propagation": _op_bind_propagation,
     "clear_propagation": _op_clear_propagation,
     "get_trace_context": _op_get_trace_context,

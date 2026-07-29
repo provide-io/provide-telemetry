@@ -35,8 +35,8 @@ use super::map_exporter_build;
 use super::resilient::ResilientSpanExporter;
 
 #[derive(Clone)]
-struct InstalledTracerProvider {
-    provider: Arc<SdkTracerProvider>,
+pub(super) struct InstalledTracerProvider {
+    pub(super) provider: Arc<SdkTracerProvider>,
     runtime: ProvideTokioRuntime,
 }
 
@@ -47,7 +47,7 @@ fn empty_tracer_provider_mutex() -> Mutex<Option<InstalledTracerProvider>> {
     Mutex::new(None)
 }
 
-fn tracer_provider_slot() -> &'static Mutex<Option<InstalledTracerProvider>> {
+pub(super) fn tracer_provider_slot() -> &'static Mutex<Option<InstalledTracerProvider>> {
     TRACER_PROVIDER.get_or_init(empty_tracer_provider_mutex)
 }
 

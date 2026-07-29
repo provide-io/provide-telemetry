@@ -100,7 +100,7 @@ pub use sampling::{
 pub use schema::{
     event, event_name, get_strict_schema, set_strict_schema, validate_required_keys, Event,
 };
-pub use setup::{setup_telemetry, shutdown_telemetry};
+pub use setup::{flush_telemetry, setup_telemetry, shutdown_telemetry};
 pub use slo::{
     classify_error, get_error_count_for_tests, get_request_count_for_tests, record_red_metrics,
     record_use_metrics, reset_slo_for_tests, slo_initialized_for_tests,

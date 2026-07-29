@@ -208,6 +208,39 @@ func validateTelemetryConfig(cfg *TelemetryConfig) error {
 // TypeScript / Rust behaviour — so a resulting context.DeadlineExceeded from
 // the backend is suppressed. Caller-supplied deadlines are still surfaced as
 // errors because the caller explicitly asked for that bound.
+// FlushTelemetry force-flushes installed providers without tearing them down.
+//
+// The drain half of ShutdownTelemetry: every provider the active backend
+// installed is force-flushed and stays installed and usable. Use it where
+// records must be out before control returns — a request boundary, a
+// checkpoint, a serverless freeze — rather than shutting telemetry down and
+// paying to set it up again.
+//
+// Deadline handling matches ShutdownTelemetry: when ctx carries no deadline,
+// one derived from cfg.Exporter.LogsShutdownTimeoutSeconds is applied. Unlike
+// shutdown, an expired deadline is NOT suppressed — a caller flushing to make
+// sure its records are out needs to know when they were not, so
+// context.DeadlineExceeded is returned.
+//
+// Returns nil when telemetry was never set up or the active backend cannot
+// flush: there is nothing installed to drain.
+func FlushTelemetry(ctx context.Context) error {
+	_setupMu.Lock()
+	defer _setupMu.Unlock()
+
+	if !_setupDone {
+		return nil
+	}
+
+	if timeout := _shutdownDeadlineForLocked(ctx); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	return _flushBackendLocked(ctx)
+}
+
 func ShutdownTelemetry(ctx context.Context) error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
