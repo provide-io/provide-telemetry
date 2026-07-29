@@ -111,14 +111,23 @@ def _bounded_provider_call(
 
     error: list[BaseException] = []
     incomplete: list[str] = []
-    # Set under _abandoned_lock, so it doubles as the "worker is done" flag the
-    # deadline path tests: the worker may finish in the same instant the wait
-    # expires, and only one of the two may account for the slot.
     completed = threading.Event()
+    # `finished` deliberately duplicates what `completed` already carries.
+    #
+    # It looks redundant, and collapsing the two by publishing `completed` under
+    # _abandoned_lock instead costs a real regression: the worker would then have
+    # to win a process-wide lock — contended by every concurrent drain's
+    # saturation check and every other worker's exit — before it could signal
+    # completion. A flush that finished at 49.9ms of a 50ms budget could be
+    # reported as abandoned, warn about dropped records that were exported, and
+    # charge a slot. `completed` is therefore set the instant the provider calls
+    # return, and `finished` is the lock-guarded flag the two sides arbitrate on.
+    finished = False  # pragma: no mutate — falsy initialiser
     counted = False  # pragma: no mutate — falsy initialiser
 
     def _runner() -> None:
         global _abandoned_workers
+        nonlocal finished
         try:
             for method in methods:
                 call = getattr(provider, method, None)
@@ -132,10 +141,13 @@ def _bounded_provider_call(
         except BaseException as exc:
             error.append(exc)
         finally:
+            # Signalled before the lock, so a caller waiting on its deadline is
+            # never held up by lock contention. See `finished` above.
+            completed.set()
             with _abandoned_lock:
+                finished = True
                 if counted:
                     _abandoned_workers -= 1
-                completed.set()
 
     worker = threading.Thread(target=_runner, name=thread_name, daemon=True)
     try:
@@ -150,7 +162,7 @@ def _bounded_provider_call(
         return False
     if not completed.wait(timeout_seconds):
         with _abandoned_lock:
-            if not completed.is_set():
+            if not finished:
                 counted = True
                 _abandoned_workers += 1
         _warn_drain(  # pragma: no mutate — warning message string is non-semantic

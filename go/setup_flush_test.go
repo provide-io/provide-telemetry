@@ -113,28 +113,16 @@ func TestFlushTelemetry_SurfacesBackendError(t *testing.T) {
 	}
 }
 
-func TestFlushTelemetry_DoesNotSuppressAnExpiredDeadline(t *testing.T) {
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-
-	// Unlike ShutdownTelemetry, a caller flushing to be sure its records are
-	// out must learn when they are not.
-	registerFlushBackend(t, &_flushRecordingBackend{err: context.DeadlineExceeded})
-	if _, err := SetupTelemetry(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-
-	if err := FlushTelemetry(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("flush returned %v, want context.DeadlineExceeded", err)
-	}
-}
-
-// The godoc promises context.DeadlineExceeded is returned, which invites
-// `err == context.DeadlineExceeded`. Asserted here at the facade rather than
-// only on go/otel's _joinFlushErrors, because every layer between the exporter
-// and the caller has to keep the identity — a fmt.Errorf("%w") in _flushBackend
-// or FlushTelemetry would void the promise while the helper's own tests still
-// passed.
+// Unlike ShutdownTelemetry, a caller flushing to be sure its records are out
+// must learn when they are not — and the godoc promises the expired deadline
+// arrives as context.DeadlineExceeded itself, which invites
+// `err == context.DeadlineExceeded`. Asserted by identity rather than
+// errors.Is, since identity is the stronger claim and the one documented.
+//
+// Scope: this covers the facade layers only — _flushBackend and FlushTelemetry
+// — because the stub backend is registered directly on the facade and go/otel
+// is never in the path. go/otel's own join is covered by
+// TestJoinFlushErrors_ReturnsALoneErrorUnwrapped.
 func TestFlushTelemetry_ReturnsAnExpiredDeadlineByIdentity(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })

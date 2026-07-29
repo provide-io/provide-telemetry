@@ -345,6 +345,34 @@ def _check_language(
     return errors, kind_notes
 
 
+# Repo-relative path references inside behavioral_parity rules — "pinned
+# per-language: tests/foo.py, go/bar_test.go". They are the only enforcement a
+# behavioural rule has, so a moved or renamed test must not leave the spec
+# pointing at nothing.
+_PATH_REF_RE = re.compile(r"\b((?:src|tests|go|rust|typescript|spec|scripts)/[\w./-]+\.(?:py|go|rs|ts|yaml))")
+
+
+def _check_behavioral_parity_refs(spec: dict[str, object], root: Path) -> list[str]:
+    """Verify every file path named in a behavioral_parity rule exists."""
+    parity = spec.get("behavioral_parity")
+    if not isinstance(parity, dict):
+        return []
+
+    errors: list[str] = []
+    for entry_name, entry in parity.items():
+        if not isinstance(entry, dict):
+            continue
+        prose = [entry.get("description", "")]
+        rules = entry.get("rules")
+        if isinstance(rules, list):
+            prose.extend(str(rule) for rule in rules)
+        for text in prose:
+            for ref in _PATH_REF_RE.findall(str(text)):
+                if not (root / ref).exists():
+                    errors.append(f"  behavioral_parity.{entry_name}: references missing path {ref}")
+    return errors
+
+
 def main() -> int:
     """Run conformance checks. Returns 0 on success, 1 on failure."""
     parser = argparse.ArgumentParser(description="Validate API conformance against spec.")
@@ -370,6 +398,11 @@ def main() -> int:
             print("  KIND NOTES (idiomatic deviations, not errors):")
             for note in kind_notes:
                 print(note)
+
+    parity_errors = _check_behavioral_parity_refs(spec, Path(__file__).resolve().parent.parent)
+    if parity_errors:
+        all_errors.extend(parity_errors)
+        print(f"\nbehavioral_parity: {len(parity_errors)} stale path reference(s)")
 
     if all_errors:
         print(f"\nFAILED — {len(all_errors)} conformance errors:")

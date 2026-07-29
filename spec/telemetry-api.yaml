@@ -698,10 +698,11 @@ behavioral_parity:
       - the same rule governs whether the optional OTel backend adopts a
         host-installed provider — status and adoption read one predicate, so
         they cannot disagree
-      - "per-language mechanism is idiomatic — _tracing_explicitly_disabled
-        module flag (Python), _signalGate atomic (Go), getConfig() vs the
-        env-resolved config (TypeScript) — but the observable contract is
-        identical"
+      - "per-language mechanism is idiomatic — a module-level disabled flag
+        (Python), an atomic signal gate (Go), the emit-path config rather than
+        the env-resolved one (TypeScript) — but the observable contract is
+        identical. Private identifiers are deliberately not named here: they
+        are refactored freely and nothing validates them"
       - "providers.logs stays install-scoped in every language: records reach
         OTel through the handler this library attaches, so a foreign logger
         provider is genuinely not in the path"

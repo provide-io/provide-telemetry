@@ -68,3 +68,31 @@ func TestForceFlush_SignalsDrainConcurrently(t *testing.T) {
 			elapsed, _stallPerSignal)
 	}
 }
+
+// Shutdown shares the same budget problem and the same fix: it runs once at
+// exit and is the last chance to get queued records out, so a stalled traces
+// exporter must not consume the deadline that metrics and logs need.
+func TestShutdown_SignalsDrainConcurrently(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(_slowSpanExporter{}))
+	lp := sdklog.NewLoggerProvider(sdklog.WithProcessor(sdklog.NewBatchProcessor(_slowLogExporter{})))
+	_otelTracerProvider = tp
+	_otelLoggerProvider = lp
+
+	_, span := tp.Tracer("shutdown.concurrent").Start(context.Background(), "queued")
+	span.End()
+	lp.Logger("shutdown.concurrent").Emit(context.Background(), otellog.Record{})
+
+	start := time.Now()
+	if err := (&_backend{}).Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown returned %v, want nil", err)
+	}
+	elapsed := time.Since(start)
+
+	if elapsed >= 2*_stallPerSignal {
+		t.Errorf("Shutdown took %v for two %v signals — they drained in sequence, not concurrently",
+			elapsed, _stallPerSignal)
+	}
+}

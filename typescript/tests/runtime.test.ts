@@ -15,7 +15,7 @@ import {
   reconfigureTelemetry,
   updateRuntimeConfig,
 } from '../src/runtime.js';
-import { liveMeterProvider } from './fixtures/live-providers.js';
+import { liveMeterProvider, liveTracerProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
   trace.disable();
@@ -109,11 +109,7 @@ describe('getRuntimeStatus', () => {
 
   it('reports traces installed for a provider registered outside registerOtelProviders', () => {
     setupTelemetry({ otelEnabled: true, tracingEnabled: true });
-    trace.setGlobalTracerProvider({
-      getTracer: () => ({}),
-      forceFlush: async () => {},
-      shutdown: async () => {},
-    } as never);
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
 
     const status = getRuntimeStatus();
     expect(status.providers.traces).toBe(true);
@@ -143,11 +139,7 @@ describe('getRuntimeStatus', () => {
     // the instruments on metricsEnabled), so claiming a provider here would
     // advertise an export path nothing can reach.
     setupTelemetry({ otelEnabled: true, tracingEnabled: false, metricsEnabled: false });
-    trace.setGlobalTracerProvider({
-      getTracer: () => ({}),
-      forceFlush: async () => {},
-      shutdown: async () => {},
-    } as never);
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
     metrics.setGlobalMeterProvider(liveMeterProvider() as never);
 
     const status = getRuntimeStatus();
