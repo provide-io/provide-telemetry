@@ -48,10 +48,12 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 	return nil
 }
 
-// ForceFlush drains every provider we installed, leaving them installed. Returns
-// the first error encountered, after attempting all three signals — one stalled
-// exporter must not deny the others their drain. A provider adopted from the
-// OTel globals is not ours to drain and is skipped.
+// ForceFlush drains every provider we installed, leaving them installed. Every
+// signal is attempted — one stalled exporter must not deny the others their
+// drain. A lone failure is returned as-is so FlushTelemetry's documented
+// context.DeadlineExceeded survives an `==` comparison; when more than one
+// signal fails the errors are joined and only errors.Is can match. A provider
+// adopted from the OTel globals is not ours to drain and is skipped.
 func (b *_backend) ForceFlush(ctx context.Context) error {
 	// Concurrently, so each signal gets the caller's full budget. Run in
 	// sequence they share one deadline, and a stalled traces exporter consumes
@@ -80,36 +82,69 @@ func (b *_backend) ForceFlush(ctx context.Context) error {
 	}
 	wg.Wait()
 
+	return _joinFlushErrors(errs)
+}
+
+// _joinFlushErrors joins the per-signal drain errors, but hands a lone error
+// back untouched.
+//
+// errors.Join wraps even a single error in a *joinError. FlushTelemetry's godoc
+// promises that an expired deadline reaches the caller as
+// context.DeadlineExceeded, which invites `err == context.DeadlineExceeded`;
+// wrapping the one-failure case — by far the common one — would silently break
+// every such caller the moment the OTel backend is the one flushing.
+func _joinFlushErrors(errs []error) error {
+	var lone error
+	failed := 0
+	for _, err := range errs {
+		if err != nil {
+			failed++
+			lone = err
+		}
+	}
+	if failed == 1 {
+		return lone
+	}
 	return errors.Join(errs...)
 }
 
 func (b *_backend) Shutdown(ctx context.Context) error {
+	// Detach the providers under the lock, then drain them outside it. Holding
+	// the write lock across the drain would block every RLock reader — a
+	// concurrent FlushTelemetry resolving providers, Providers(), LoggerHandler
+	// — on a mutex no context deadline can bound, so an in-flight request would
+	// hang for the full shutdown against an unreachable collector. Resetting
+	// the globals here too means new spans land on the no-op immediately rather
+	// than in a provider being torn down.
 	_providersMu.Lock()
-	defer _providersMu.Unlock()
+	tracerProvider := _otelTracerProvider
+	meterProvider := _otelMeterProvider
+	loggerProvider := _otelLoggerProvider
+	_otelTracerProvider = nil
+	_otelMeterProvider = nil
+	_otelLoggerProvider = nil
+	_resetGlobalsWeSet()
+	_providersMu.Unlock()
 
 	var first error
 
-	if _otelTracerProvider != nil {
-		if err := _otelTracerProvider.Shutdown(ctx); err != nil {
+	if tracerProvider != nil {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
 			first = err
 		}
-		_otelTracerProvider = nil
 	}
 
-	if _otelMeterProvider != nil {
-		if err := _otelMeterProvider.Shutdown(ctx); err != nil && first == nil {
+	if meterProvider != nil {
+		if err := meterProvider.Shutdown(ctx); err != nil && first == nil {
 			first = err
 		}
-		_otelMeterProvider = nil
 	}
 
-	if _otelLoggerProvider != nil {
-		if err := _otelLoggerProvider.Shutdown(ctx); err != nil && first == nil {
+	if loggerProvider != nil {
+		if err := loggerProvider.Shutdown(ctx); err != nil && first == nil {
 			first = err
 		}
-		_otelLoggerProvider = nil
 	}
-	_resetGlobalsWeSet()
 
 	return first
 }

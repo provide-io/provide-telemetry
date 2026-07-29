@@ -117,8 +117,23 @@ func TestAdopt_ShutdownLeavesTheHostProviderAlive(t *testing.T) {
 	if got := len(exp.GetSpans()); got != 1 {
 		t.Fatalf("host provider recorded %d spans after our shutdown, want 1 — we tore down someone else's SDK", got)
 	}
-	if backend.Providers().Traces {
-		t.Error("providers.traces still true after shutdown; the facade must stop claiming a provider it no longer uses")
+
+	// And still adopted. Shutdown unloads *our* config; it does not uninstall
+	// the host's provider, and Trace() has no setup check, so a facade span
+	// after shutdown still reaches it. Reporting traces:false here would be the
+	// pre-setup bug in mirror image — status claiming a fallback that the emit
+	// path does not take.
+	if !backend.Providers().Traces {
+		t.Error("providers.traces false while a live host provider is still being emitted through")
+	}
+	tracer := backend.Tracer("after.shutdown")
+	if tracer == nil {
+		t.Fatal("Tracer() returned nil while the host provider still owns the global")
+	}
+	_, facadeSpan := tracer.Start(context.Background(), "facade.after.our.shutdown")
+	facadeSpan.End()
+	if got := len(exp.GetSpans()); got != 2 {
+		t.Fatalf("host exporter received %d spans, want 2 — the facade stopped using an adopted provider it still resolves", got)
 	}
 }
 

@@ -98,6 +98,20 @@ contract_cases:
   # make a cross-language gate timing-dependent. Each language pins it directly:
   # tests/setup/test_flush_telemetry.py, typescript/tests/shutdown.flush.test.ts,
   # go/setup_flush_test.go, rust/src/otel/mod.rs::bounded_flush_tests.
+  #
+  # Provider adoption — get_runtime_status().providers reporting an SDK provider
+  # a *host application* installed on the OTel globals, and the emit path using
+  # it — is likewise NOT covered here. It needs a live third-party SDK provider
+  # registered on the globals before the probe runs, which the step DSL cannot
+  # express and which would drag every language's optional OTel extra into the
+  # parity gate. The rule the four languages share is that providers.* reports
+  # what the emit path would do (so a signal only reads as fallback once a
+  # *loaded* config switches it off — env alone does not, because before setup
+  # nothing has read the env yet), while signals.* reports configured intent
+  # from the env-resolved config. Pinned per-language:
+  # tests/tracing/test_effective_tracing_provider.py,
+  # typescript/tests/runtime.status-enablement.test.ts,
+  # go/otel/adopt_test.go, go/runtime_gates_test.go.
   flush_after_shutdown_reports_success:
     description: "flush_telemetry with nothing installed is a successful no-op, not a failure"
     steps:
