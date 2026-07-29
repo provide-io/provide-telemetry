@@ -55,14 +55,14 @@ func TestHasLiveTraceProvider_WithBackendTraces(t *testing.T) {
 	}
 }
 
-// ── 2. DefaultTracer is the no-op by default ─────────────────────────────────
+// ── 2. GetTracer("") is the no-op by default ─────────────────────────────────
 
 func TestDefaultTracer_IsNoop(t *testing.T) {
-	if DefaultTracer == nil {
-		t.Fatal("DefaultTracer is nil")
+	if GetTracer("") == nil {
+		t.Fatal("GetTracer(\"\") is nil")
 	}
-	if _, ok := DefaultTracer.(*_noopTracer); !ok {
-		t.Errorf("expected *_noopTracer, got %T", DefaultTracer)
+	if _, ok := GetTracer("").(*_noopTracer); !ok {
+		t.Errorf("expected *_noopTracer, got %T", GetTracer(""))
 	}
 }
 
@@ -246,30 +246,30 @@ func TestTrace_PropagatesError(t *testing.T) {
 	}
 }
 
-// ── 11. _storeDefaultTracer replaces DefaultTracer ────────────────────────────
+// ── 11. _storeDefaultTracer replaces GetTracer("") ────────────────────────────
 
 func TestStoreDefaultTracer_Replaces(t *testing.T) {
-	orig := DefaultTracer
-	t.Cleanup(func() { DefaultTracer = orig })
+	orig := GetTracer("")
+	t.Cleanup(func() { SetDefaultTracer(orig) })
 
 	custom := &_noopTracer{}
-	_storeDefaultTracer(custom)
+	SetDefaultTracer(custom)
 
-	if DefaultTracer != custom {
-		t.Error("_storeDefaultTracer did not replace DefaultTracer")
+	if GetTracer("") != custom {
+		t.Error("SetDefaultTracer did not replace the package tracer")
 	}
 }
 
-// ── 12. GetTracer returns DefaultTracer after replacement ─────────────────────
+// ── 12. GetTracer returns GetTracer("") after replacement ─────────────────────
 
 func TestGetTracer_ReturnsDefaultTracer(t *testing.T) {
-	orig := DefaultTracer
-	t.Cleanup(func() { DefaultTracer = orig })
+	orig := GetTracer("")
+	t.Cleanup(func() { SetDefaultTracer(orig) })
 
 	custom := &_noopTracer{}
-	_storeDefaultTracer(custom)
+	SetDefaultTracer(custom)
 
 	if GetTracer("any") != custom {
-		t.Error("GetTracer did not return updated DefaultTracer")
+		t.Error("GetTracer did not return the updated tracer")
 	}
 }

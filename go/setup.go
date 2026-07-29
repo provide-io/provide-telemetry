@@ -276,7 +276,7 @@ func ShutdownTelemetry(ctx context.Context) error {
 	_publishRuntimeGatesLocked()
 
 	err := _shutdownBackendLocked(ctx)
-	_storeDefaultTracer(&_noopTracer{})
+	SetDefaultTracer(&_noopTracer{})
 	_resetLogger()
 	if libraryBounded && errors.Is(err, context.DeadlineExceeded) {
 		return nil
@@ -312,6 +312,6 @@ func _resetSetup() {
 	_runtimeCfg = nil
 	_publishRuntimeGatesLocked()
 	_resetBackendsLocked()
-	_storeDefaultTracer(&_noopTracer{})
+	SetDefaultTracer(&_noopTracer{})
 	_resetLogger()
 }

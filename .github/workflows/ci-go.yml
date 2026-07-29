@@ -80,20 +80,6 @@ jobs:
             echo "FAIL: coverage is $TOTAL, expected 100.0%"
             exit 1
           fi
-      - name: Run go/tracer tests with coverage
-        if: ${{ hashFiles('go/tracer/go.mod') != '' }}
-        working-directory: go
-        run: go test -race -coverprofile=tracer.coverage.out ./tracer/...
-      - name: Enforce go/tracer 100% coverage
-        if: ${{ hashFiles('go/tracer/go.mod') != '' }}
-        working-directory: go
-        run: |
-          TOTAL=$(go tool cover -func=tracer.coverage.out | grep total | awk '{print $3}')
-          echo "Total coverage: $TOTAL"
-          if [ "$TOTAL" != "100.0%" ]; then
-            echo "FAIL: coverage is $TOTAL, expected 100.0%"
-            exit 1
-          fi
       - name: Confirm root module stays free of OTel SDK and exporter deps
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go

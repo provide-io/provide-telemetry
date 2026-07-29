@@ -37,7 +37,7 @@
 //
 // ## Tracing
 //   - [GetTracer] — return the package-level Tracer (OTel or no-op)
-//   - [DefaultTracer] — package-level Tracer instance (the "tracer" instance in spec)
+//   - [GetTracer] / [SetDefaultTracer] — package-level Tracer instance (the "tracer" instance in spec)
 //   - [Trace] — run fn inside a span (the idiomatic Go equivalent of the trace decorator)
 //   - [GetTraceContext] / [SetTraceContext]
 //

@@ -141,7 +141,7 @@ func _effectiveTracer() Tracer {
 }
 
 func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
-	_storeDefaultTracer(&_noopTracer{})
+	SetDefaultTracer(&_noopTracer{})
 	serviceName := cfg.ServiceName
 	_backendTracerName.Store(&serviceName)
 	if Logger == nil {
@@ -155,7 +155,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	providers := backend.Providers()
 	if providers.Traces {
 		if tracer := backend.Tracer(cfg.ServiceName); tracer != nil {
-			_storeDefaultTracer(tracer)
+			SetDefaultTracer(tracer)
 		}
 	}
 	if providers.Logs {

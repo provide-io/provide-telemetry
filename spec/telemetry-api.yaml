@@ -811,7 +811,7 @@ language_overrides:
   go:
     - spec_name: tracer
       accepted_kinds: [type]
-      note: "Go exports Tracer as interface type; DefaultTracer var is the instance — both are idiomatic"
+      note: "Go exports Tracer as interface type; the instance is reached through GetTracer() and replaced through SetDefaultTracer() — the binding itself is an atomic, not an exported var, because it is read from every traced call"
     - spec_name: trace
       accepted_kinds: [function]
       note: "Go uses Trace() function as decorator"
