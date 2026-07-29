@@ -116,10 +116,20 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	// hang for the full shutdown against an unreachable collector. Resetting
 	// the globals here too means new spans land on the no-op immediately rather
 	// than in a provider being torn down.
+	// Bind the method values under the lock, run them outside it — the same
+	// shape ForceFlush uses above, so first-error-wins is stated once instead of
+	// per signal.
 	_providersMu.Lock()
-	tracerProvider := _otelTracerProvider
-	meterProvider := _otelMeterProvider
-	loggerProvider := _otelLoggerProvider
+	shutdowns := []func(context.Context) error{}
+	if _otelTracerProvider != nil {
+		shutdowns = append(shutdowns, _otelTracerProvider.Shutdown)
+	}
+	if _otelMeterProvider != nil {
+		shutdowns = append(shutdowns, _otelMeterProvider.Shutdown)
+	}
+	if _otelLoggerProvider != nil {
+		shutdowns = append(shutdowns, _otelLoggerProvider.Shutdown)
+	}
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
@@ -127,25 +137,11 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	_providersMu.Unlock()
 
 	var first error
-
-	if tracerProvider != nil {
-		if err := tracerProvider.Shutdown(ctx); err != nil {
+	for _, shutdown := range shutdowns {
+		if err := shutdown(ctx); err != nil && first == nil {
 			first = err
 		}
 	}
-
-	if meterProvider != nil {
-		if err := meterProvider.Shutdown(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-
-	if loggerProvider != nil {
-		if err := loggerProvider.Shutdown(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-
 	return first
 }
 

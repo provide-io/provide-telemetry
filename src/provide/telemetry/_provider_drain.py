@@ -32,9 +32,20 @@ import warnings
 # make concurrent healthy drains (an ASGI app flushing per request against a
 # collector that takes 200ms) decline each other and report a failure that did
 # not happen.
+#
+# One budget across all three signals, because what it bounds is threads, and
+# those are a process-wide resource. It is deliberately not a health signal for
+# any one exporter: the signals can have three different endpoints, and a dead
+# logs exporter really can spend the budget that a healthy traces drain would
+# otherwise have used.
 _MAX_ABANDONED_WORKERS = 8
 _abandoned_lock = threading.Lock()
 _abandoned_workers = 0
+
+
+def _warn_drain(message: str) -> None:  # pragma: no mutate — best-effort warning emission
+    """Emit an operator-facing drain warning from the caller's frame."""
+    warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
 def _reset_abandoned_workers_for_tests() -> None:
@@ -92,25 +103,22 @@ def _bounded_provider_call(
         with _abandoned_lock:
             saturated = _abandoned_workers >= _MAX_ABANDONED_WORKERS
         if saturated:
-            warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-                f"provider {action} skipped: {_MAX_ABANDONED_WORKERS} earlier drain workers "  # pragma: no mutate — warning message string is non-semantic
-                "are still pending against an unresponsive exporter.",  # pragma: no mutate — warning message string is non-semantic
-                RuntimeWarning,
-                stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+            _warn_drain(  # pragma: no mutate — warning message string is non-semantic
+                f"provider {action} skipped: {_MAX_ABANDONED_WORKERS} earlier drain "
+                "workers are still pending against an unresponsive exporter."
             )
             return False
 
     error: list[BaseException] = []
     incomplete: list[str] = []
+    # Set under _abandoned_lock, so it doubles as the "worker is done" flag the
+    # deadline path tests: the worker may finish in the same instant the wait
+    # expires, and only one of the two may account for the slot.
     completed = threading.Event()
-    # Both guarded by _abandoned_lock: the worker may finish in the same instant
-    # the deadline expires, and only one of the two may account for the slot.
-    finished = False  # pragma: no mutate — falsy initialiser
     counted = False  # pragma: no mutate — falsy initialiser
 
     def _runner() -> None:
         global _abandoned_workers
-        nonlocal finished
         try:
             for method in methods:
                 call = getattr(provider, method, None)
@@ -124,11 +132,10 @@ def _bounded_provider_call(
         except BaseException as exc:
             error.append(exc)
         finally:
-            completed.set()
             with _abandoned_lock:
-                finished = True
                 if counted:
                     _abandoned_workers -= 1
+                completed.set()
 
     worker = threading.Thread(target=_runner, name=thread_name, daemon=True)
     try:
@@ -137,33 +144,25 @@ def _bounded_provider_call(
         # "can't start new thread" — the process is at its thread limit. Nothing
         # was drained and nothing was stranded; say so rather than raising out
         # of a bool-returning drain.
-        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-            f"provider {action} skipped: could not start a drain worker.",  # pragma: no mutate — warning message string is non-semantic
-            RuntimeWarning,
-            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        _warn_drain(  # pragma: no mutate — warning message string is non-semantic
+            f"provider {action} skipped: could not start a drain worker."
         )
         return False
     if not completed.wait(timeout_seconds):
         with _abandoned_lock:
-            if not finished:
+            if not completed.is_set():
                 counted = True
                 _abandoned_workers += 1
-        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-            f"provider {action} exceeded {timeout_seconds}s deadline; "  # pragma: no mutate — warning message string is non-semantic
-            "abandoning background flush. Records still in the export queue "  # pragma: no mutate — warning message string is non-semantic
-            "will be dropped.",  # pragma: no mutate — warning message string is non-semantic
-            RuntimeWarning,
-            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        _warn_drain(  # pragma: no mutate — warning message string is non-semantic
+            f"provider {action} exceeded {timeout_seconds}s deadline; abandoning "
+            "background flush. Records still in the export queue will be dropped."
         )
         return False
     if error:
         raise error[0]
     if incomplete:
-        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-            f"provider {action} reported an incomplete drain from {', '.join(incomplete)}; "  # pragma: no mutate — warning message string is non-semantic
-            "records may still be queued.",  # pragma: no mutate — warning message string is non-semantic
-            RuntimeWarning,
-            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        _warn_drain(  # pragma: no mutate — warning message string is non-semantic
+            f"provider {action} reported an incomplete drain from {', '.join(incomplete)}; records may still be queued."
         )
         return False
     return True
@@ -184,7 +183,7 @@ def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
         # Operator-visible thread name; asserted by test_thread_is_named_for_operator_visibility.
         "provide-provider-shutdown",
         "shutdown",
-        decline_when_saturated=False,  # pragma: no mutate — falsy argument
+        decline_when_saturated=False,
     )
 
 

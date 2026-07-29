@@ -8,24 +8,7 @@ import {
   _isLiveTracerProvider,
   _isLiveTracerProviderInstalled,
 } from '../src/otel-probe.js';
-
-/** A provider shaped like an SDK one: hands out tracers, flushes, shuts down. */
-function liveProvider(): object {
-  return {
-    getTracer: () => ({ startSpan: () => ({}), startActiveSpan: () => undefined }),
-    forceFlush: async (): Promise<void> => {},
-    shutdown: async (): Promise<void> => {},
-  };
-}
-
-/** The meter-side equivalent. */
-function liveMeterProvider(): object {
-  return {
-    getMeter: () => ({}),
-    forceFlush: async (): Promise<void> => {},
-    shutdown: async (): Promise<void> => {},
-  };
-}
+import { liveMeterProvider, liveTracerProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
   trace.disable();
@@ -38,7 +21,7 @@ afterEach(() => {
 
 describe('_isLiveTracerProvider', () => {
   it('accepts a provider carrying the full flush/shutdown lifecycle', () => {
-    expect(_isLiveTracerProvider(liveProvider() as never)).toBe(true);
+    expect(_isLiveTracerProvider(liveTracerProvider() as never)).toBe(true);
   });
 
   it('rejects a bare TracerProvider with neither lifecycle method', () => {
@@ -64,7 +47,7 @@ describe('_isLiveTracerProvider', () => {
   });
 
   it('unwraps a proxy provider and judges its delegate', () => {
-    const delegate = liveProvider();
+    const delegate = liveTracerProvider();
     expect(
       _isLiveTracerProvider({ getTracer: () => ({}), getDelegate: () => delegate } as never),
     ).toBe(true);
@@ -84,12 +67,12 @@ describe('_isLiveTracerProviderInstalled', () => {
   });
 
   it('is true for a provider registered by anyone — not only by registerOtelProviders', () => {
-    expect(trace.setGlobalTracerProvider(liveProvider() as never)).toBe(true);
+    expect(trace.setGlobalTracerProvider(liveTracerProvider() as never)).toBe(true);
     expect(_isLiveTracerProviderInstalled()).toBe(true);
   });
 
   it('is false again once the global is disabled', () => {
-    trace.setGlobalTracerProvider(liveProvider() as never);
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
     trace.disable();
     expect(_isLiveTracerProviderInstalled()).toBe(false);
   });

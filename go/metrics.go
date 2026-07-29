@@ -87,7 +87,7 @@ type _atomicCounter struct {
 func (c *_atomicCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
@@ -118,7 +118,7 @@ type _atomicGauge struct {
 func (g *_atomicGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
@@ -150,7 +150,7 @@ type _atomicHistogram struct {
 func (h *_atomicHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
 	_ = ctx
 	_ = attrs
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
@@ -227,7 +227,7 @@ func GetMeter(name string) any {
 }
 
 func (c *_backendCounter) Add(ctx context.Context, value int64, attrs ...slog.Attr) {
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
@@ -246,7 +246,7 @@ func (c *_backendCounter) Add(ctx context.Context, value int64, attrs ...slog.At
 }
 
 func (g *_backendGauge) Set(ctx context.Context, value float64, attrs ...slog.Attr) {
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
@@ -265,7 +265,7 @@ func (g *_backendGauge) Set(ctx context.Context, value float64, attrs ...slog.At
 }
 
 func (h *_backendHistogram) Record(ctx context.Context, value float64, attrs ...slog.Attr) {
-	if !_runtimeMetricsEnabled() {
+	if !MetricsEnabled() {
 		return
 	}
 	if !ShouldAllow(signalMetrics, "") {
