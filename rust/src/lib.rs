@@ -73,6 +73,7 @@ pub use logger::{
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
+pub use otel::adopt::{adopt_global_providers, adopted_global_providers, AdoptedProviders};
 pub use otel::{_reset_otel_for_tests, otel_installed_for_tests};
 pub use pii::{
     get_pii_rules, get_secret_patterns, register_pii_rule, register_secret_pattern,

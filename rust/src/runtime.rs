@@ -137,8 +137,8 @@ pub fn get_runtime_status() -> RuntimeStatus {
     #[cfg(feature = "otel")]
     let providers = SignalStatus {
         logs: crate::otel::logs::logger_provider_installed(),
-        traces: crate::otel::traces::tracer_provider_installed(),
-        metrics: crate::otel::metrics::meter_provider_installed(),
+        traces: crate::otel::traces_provider_effective(),
+        metrics: crate::otel::metrics_provider_effective(),
     };
 
     #[cfg(not(feature = "otel"))]
