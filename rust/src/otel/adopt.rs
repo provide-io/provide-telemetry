@@ -126,6 +126,11 @@ mod tests {
     #[test]
     fn adoption_makes_the_traces_provider_effective() {
         let _guard = acquire_test_state_lock();
+        // Establish the premise. Both predicates are gated on the signal not
+        // having been switched off by a *loaded* config, and other tests
+        // (metrics_tests.rs) install a config with metrics disabled and leave
+        // it there, so this must start from no config rather than inherit one.
+        crate::testing::reset_telemetry_state();
         release_adopted_providers();
         assert!(!crate::otel::traces_provider_effective());
 

@@ -59,7 +59,7 @@ def _get_level(level: str) -> int:
     return logging.INFO
 
 
-def _make_filtering_bound_logger(level: int) -> type:
+def _make_filtering_bound_logger(level: int) -> type[structlog.typing.BindableLogger]:
     """Create a FilteringBoundLogger with zero-cost level guards and .trace().
 
     Extends structlog's FilteringBoundLogger with:

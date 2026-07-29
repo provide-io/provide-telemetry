@@ -287,6 +287,36 @@ mod bounded_flush_tests {
         assert!(bounded_flush("traces", || true));
     }
 
+    /// A drain still running at the deadline is abandoned and reported as a
+    /// failure — the records are still in the exporter's queue, which is exactly
+    /// what the caller is asking about. This is the path that separates flush
+    /// from shutdown: shutdown suppresses its library-applied deadline, flush
+    /// must not.
+    #[test]
+    fn a_drain_abandoned_at_the_deadline_is_reported_as_failure() {
+        use crate::config::TelemetryConfig;
+        use crate::testing::acquire_test_state_lock;
+
+        let _guard = acquire_test_state_lock();
+        let mut cfg = TelemetryConfig::default();
+        cfg.exporter.logs_shutdown_timeout_seconds = 0.05;
+        crate::runtime::set_active_config(Some(cfg));
+
+        let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_released = std::sync::Arc::clone(&released);
+        assert!(!bounded_flush("metrics", move || {
+            // Outlive the deadline, then exit so the thread is not left running
+            // for the rest of the suite.
+            while !worker_released.load(std::sync::atomic::Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            true
+        }));
+        released.store(true, std::sync::atomic::Ordering::Release);
+
+        crate::runtime::set_active_config(None);
+    }
+
     /// With bounding switched off the drain runs inline; its result still counts.
     #[test]
     fn unbounded_drain_still_reports_its_result() {
