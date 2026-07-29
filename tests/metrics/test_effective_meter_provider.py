@@ -23,8 +23,12 @@ from provide.telemetry.metrics import provider as mpmod
 from provide.telemetry.runtime import get_runtime_status
 
 
-class _ExternalProvider:  # name carries neither "Proxy" nor "NoOp"
-    pass
+class _ExternalProvider:
+    """Shaped like an SDK provider: carries the force_flush/shutdown pair."""
+
+    def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+    def shutdown(self, *_a: object, **_k: object) -> None: ...
 
 
 class _ProxyMeterProvider:
@@ -35,7 +39,6 @@ def _install_meter_global(monkeypatch: pytest.MonkeyPatch, provider: object) -> 
     """Put ``provider`` on the meter global with no setup_metrics() history of our own."""
     monkeypatch.setattr(mpmod, "_meter_provider", None)
     monkeypatch.setattr(mpmod, "_meter_global_set", False)
-    monkeypatch.setattr(mpmod, "_baseline_captured", False)
     monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: SimpleNamespace(get_meter_provider=lambda: provider))
 
 

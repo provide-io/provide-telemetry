@@ -32,8 +32,12 @@ class _FakeTracer:
         return contextlib.nullcontext()
 
 
-class _ExternalProvider:  # name carries neither "Proxy" nor "NoOp"
-    pass
+class _ExternalProvider:
+    """Shaped like an SDK provider: carries the force_flush/shutdown pair."""
+
+    def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+    def shutdown(self, *_a: object, **_k: object) -> None: ...
 
 
 class _ProxyTracerProvider:
@@ -54,7 +58,6 @@ def _install_trace_global(monkeypatch: pytest.MonkeyPatch, provider: object) -> 
     monkeypatch.setattr(pmod, "_provider_configured", False)
     monkeypatch.setattr(pmod, "_provider_ref", None)
     monkeypatch.setattr(pmod, "_otel_global_set", False)
-    monkeypatch.setattr(pmod, "_baseline_captured", False)
     monkeypatch.setattr(pmod, "_tracing_explicitly_disabled", False)
     monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: _fake_trace_api(provider))
 

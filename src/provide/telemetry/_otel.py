@@ -209,3 +209,20 @@ def load_instrumentation_logging_handler() -> InstrumentationLoggingHandlerFacto
             "otel.instrumentation.handler_unavailable"
         )  # pragma: no mutate — debug log string is non-semantic; fallback path exercised by otel-off tests
         return None
+
+
+def is_live_provider(provider: object) -> bool:
+    """Return True when *provider* is a real SDK provider, not an API placeholder.
+
+    Duck-typed on the ``force_flush``/``shutdown`` lifecycle pair that every OTel
+    SDK provider implements and that neither ``ProxyTracerProvider`` nor the
+    no-op providers do.
+
+    Deliberately not an identity check against a baseline captured at setup: a
+    host application's auto-instrumentation agent or vendor distro usually
+    installs its provider *before* our setup runs, so it would be the baseline
+    and would then be mistaken for the placeholder. Deliberately not an
+    ``isinstance`` check either — the provider may come from a different
+    ``opentelemetry`` distribution than the one we imported.
+    """
+    return callable(getattr(provider, "force_flush", None)) and callable(getattr(provider, "shutdown", None))

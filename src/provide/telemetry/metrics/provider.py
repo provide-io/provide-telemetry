@@ -31,11 +31,6 @@ _meter_global_set: bool = False  # True once we called set_meter_provider()
 _setup_generation: int = 0
 _metrics_explicitly_disabled: bool = False
 
-# Baseline captured inside setup_metrics() (not at module load) so that
-# external providers installed before import are not mistaken for the default.
-_baseline_meter_provider: Any | None = None
-_baseline_captured: bool = False
-
 
 def _load_otel_metrics_api() -> Any | None:
     if not _HAS_OTEL_METRICS:
@@ -89,7 +84,6 @@ def _has_effective_meter_provider() -> bool:
 
 def setup_metrics(config: TelemetryConfig) -> None:
     global _meter_provider, _meter_global_set
-    global _baseline_meter_provider, _baseline_captured
     global _metrics_explicitly_disabled
     if not config.metrics.enabled:
         _metrics_explicitly_disabled = True
@@ -113,18 +107,6 @@ def setup_metrics(config: TelemetryConfig) -> None:
     with _meter_lock:
         if _meter_provider is not None:
             return
-        # Capture the baseline provider before we install ours so that
-        # _has_real_meter_provider() can distinguish external providers
-        # regardless of import order.
-        if (
-            not _baseline_captured
-        ):  # pragma: no mutate — latch guard; second call is the equivalent branch exercised by idempotent-setup tests
-            otel_metrics_api = (
-                _load_otel_metrics_api()
-            )  # pragma: no mutate — cached module resolution; import-fallback branch exercised by otel-off tests
-            if otel_metrics_api is not None:
-                _baseline_meter_provider = otel_metrics_api.get_meter_provider()  # pragma: no mutate — baseline snapshot; identity comparison asserted by later _has_real_meter_provider tests
-            _baseline_captured = True  # pragma: no mutate — latched True after baseline capture; boolean toggle asserted by idempotent-setup tests
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build exporter outside the lock to avoid blocking concurrent
@@ -176,18 +158,10 @@ def _has_real_meter_provider(otel_metrics: Any) -> bool:
     if _meter_global_set:
         # We installed a provider but it was shut down; don't use the stale global.
         return False
-    provider = otel_metrics.get_meter_provider()
-    if (
-        not _baseline_captured
-    ):  # pragma: no mutate — pre-setup heuristic branch; exercised by "first get_meter() before setup" tests
-        # setup_metrics() hasn't been called yet — no baseline to compare against.
-        # Use class-name heuristic: the OTel API default is ProxyMeterProvider.
-        return (
-            "Proxy" not in type(provider).__name__
-        )  # pragma: no mutate — substring heuristic for the OTel proxy provider; exact wording pinned by API
-    # Identity comparison against the baseline captured inside setup_metrics().
-    return (
-        provider is not _baseline_meter_provider
+    # Whatever owns the global now — ours is gone, so a live provider here is a
+    # host application's, whether it was installed before or after our setup.
+    return _otel.is_live_provider(
+        otel_metrics.get_meter_provider()
     )  # pragma: no mutate — identity check against captured baseline; asserted by provider-swap tests
 
 
@@ -214,7 +188,6 @@ def get_meter(name: str | None = None) -> Any | None:
 
 def _set_meter_for_test(meter: Any | None) -> None:
     global _meter_provider, _meter_global_set, _setup_generation
-    global _baseline_meter_provider, _baseline_captured
     global _metrics_explicitly_disabled
     _meters.clear()
     if meter is not None:
@@ -222,8 +195,6 @@ def _set_meter_for_test(meter: Any | None) -> None:
     _meter_provider = None
     _meter_global_set = False
     _setup_generation = 0
-    _baseline_meter_provider = None
-    _baseline_captured = False
     _metrics_explicitly_disabled = False
 
 
