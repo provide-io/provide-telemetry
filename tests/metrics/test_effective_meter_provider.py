@@ -16,11 +16,22 @@ keeps these tests inside the mutation gate's non-otel selection.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from provide.telemetry.metrics import provider as mpmod
 from provide.telemetry.runtime import get_runtime_status
+
+
+def _signal(status: dict[str, object], section: str, signal: str) -> object:
+    """Read status[section][signal].
+
+    get_runtime_status() is typed dict[str, object] for cross-language shape
+    parity, so the nested read needs narrowing rather than a type: ignore —
+    mypy accepts the ignore, ty does not.
+    """
+    return cast("dict[str, object]", status[section])[signal]
 
 
 class _ExternalProvider:
@@ -74,16 +85,16 @@ class TestRuntimeStatusReportsHostMeterProvider:
     def test_status_reports_a_host_meter_provider_as_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _install_meter_global(monkeypatch, _ExternalProvider())
         status = get_runtime_status()
-        assert status["providers"]["metrics"] is True  # type: ignore[index]
-        assert status["fallback"]["metrics"] is False  # type: ignore[index]
+        assert _signal(status, "providers", "metrics") is True
+        assert _signal(status, "fallback", "metrics") is False
 
     def test_status_reports_fallback_when_only_the_placeholder_is_installed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _install_meter_global(monkeypatch, _ProxyMeterProvider())
         status = get_runtime_status()
-        assert status["providers"]["metrics"] is False  # type: ignore[index]
-        assert status["fallback"]["metrics"] is True  # type: ignore[index]
+        assert _signal(status, "providers", "metrics") is False
+        assert _signal(status, "fallback", "metrics") is True
 
 
 def test_false_when_metrics_are_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
