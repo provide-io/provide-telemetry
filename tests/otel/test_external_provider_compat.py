@@ -34,8 +34,10 @@ class TestExternalTracerProvider:
             def start_as_current_span(self, name: str, **kw: object) -> object:
                 return contextlib.nullcontext()
 
-        class FakeSDKProvider:  # name has neither "Proxy" nor "NoOp"
-            pass
+        class FakeSDKProvider:  # carries the SDK lifecycle pair
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_tracer_provider=lambda: FakeSDKProvider(),
@@ -43,31 +45,30 @@ class TestExternalTracerProvider:
         )
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
-        monkeypatch.setattr(pmod, "_baseline_captured", False)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer("external.test")
         assert not isinstance(tracer, pmod._NoopTracer)
 
-    def test_get_tracer_noop_when_global_is_default_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When the OTel global is the same object as the captured baseline (identity match),
-        get_tracer() returns NoopTracer — nobody has installed a real provider."""
+    def test_get_tracer_noop_when_the_global_holds_a_placeholder(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A provider with no force_flush/shutdown pair is the API placeholder —
+        nobody has installed a real provider, so get_tracer() stays no-op."""
         from provide.telemetry.tracing import provider as pmod
 
-        sentinel = object()  # simulates the default placeholder provider
-        fake_api = SimpleNamespace(get_tracer_provider=lambda: sentinel)
+        placeholder = object()
+        fake_api = SimpleNamespace(get_tracer_provider=lambda: placeholder)
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
-        monkeypatch.setattr(pmod, "_baseline_captured", True)
-        monkeypatch.setattr(pmod, "_baseline_tracer_provider", sentinel)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer()
         assert isinstance(tracer, pmod._NoopTracer)
 
-    def test_get_tracer_noop_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Before setup_tracing() captures a baseline, a ProxyTracerProvider
-        should be treated as a placeholder (returns NoopTracer)."""
+    def test_get_tracer_noop_when_proxy_provider_regardless_of_install_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ProxyTracerProvider on the global is a placeholder whenever it is seen
+        — install order does not matter (returns NoopTracer)."""
         from provide.telemetry.tracing import provider as pmod
 
         class ProxyTracerProvider:
@@ -76,23 +77,26 @@ class TestExternalTracerProvider:
         fake_api = SimpleNamespace(get_tracer_provider=lambda: ProxyTracerProvider())
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
-        monkeypatch.setattr(pmod, "_baseline_captured", False)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer()
         assert isinstance(tracer, pmod._NoopTracer)
 
-    def test_get_tracer_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Before setup_tracing() is called, if an external caller installed a real
-        (non-Proxy) provider, get_tracer() returns a real tracer."""
+    def test_get_tracer_real_when_external_provider_regardless_of_install_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A real provider a host installed is honoured whether it arrived before or
+        after our setup — the ordering the old baseline-identity check got wrong."""
         from provide.telemetry.tracing import provider as pmod
 
         class FakeTracer:
             def start_as_current_span(self, name: str, **kw: object) -> object:
                 return contextlib.nullcontext()
 
-        class RealTracerProvider:  # no "Proxy" in name
-            pass
+        class RealTracerProvider:  # carries the SDK lifecycle pair
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_tracer_provider=lambda: RealTracerProvider(),
@@ -100,7 +104,6 @@ class TestExternalTracerProvider:
         )
         monkeypatch.setattr(pmod, "_provider_configured", False)
         monkeypatch.setattr(pmod, "_otel_global_set", False)
-        monkeypatch.setattr(pmod, "_baseline_captured", False)
         monkeypatch.setattr(pmod, "_load_otel_trace_api", lambda: fake_api)
 
         tracer = pmod.get_tracer("ext")
@@ -112,7 +115,9 @@ class TestExternalTracerProvider:
         from provide.telemetry.tracing import provider as pmod
 
         class FakeSDKProvider:
-            pass
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_tracer_provider=lambda: FakeSDKProvider(),
@@ -138,8 +143,10 @@ class TestExternalMeterProvider:
         class FakeMeter:
             pass
 
-        class FakeSDKMeterProvider:  # neither "Proxy" nor "NoOp"
-            pass
+        class FakeSDKMeterProvider:  # carries the SDK lifecycle pair
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_meter_provider=lambda: FakeSDKMeterProvider(),
@@ -147,31 +154,30 @@ class TestExternalMeterProvider:
         )
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
-        monkeypatch.setattr(mpmod, "_baseline_captured", False)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter("external.test")
         assert type(meter).__name__ == "FakeMeter"
 
-    def test_get_meter_none_when_global_is_default_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When the OTel global is the same object as the captured baseline (identity match),
-        get_meter() returns None — nobody has installed a real provider."""
+    def test_get_meter_none_when_the_global_holds_a_placeholder(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A provider with no force_flush/shutdown pair is the API placeholder —
+        nobody has installed a real provider, so get_meter() returns None."""
         from provide.telemetry.metrics import provider as mpmod
 
-        sentinel = object()  # simulates the default placeholder provider
-        fake_api = SimpleNamespace(get_meter_provider=lambda: sentinel)
+        placeholder = object()
+        fake_api = SimpleNamespace(get_meter_provider=lambda: placeholder)
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
-        monkeypatch.setattr(mpmod, "_baseline_captured", True)
-        monkeypatch.setattr(mpmod, "_baseline_meter_provider", sentinel)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter()
         assert meter is None
 
-    def test_get_meter_none_when_proxy_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Before setup_metrics() captures a baseline, a ProxyMeterProvider
-        should be treated as a placeholder (returns None)."""
+    def test_get_meter_none_when_proxy_provider_regardless_of_install_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ProxyMeterProvider on the global is a placeholder whenever it is seen
+        — install order does not matter (returns None)."""
         from provide.telemetry.metrics import provider as mpmod
 
         class ProxyMeterProvider:
@@ -180,19 +186,22 @@ class TestExternalMeterProvider:
         fake_api = SimpleNamespace(get_meter_provider=lambda: ProxyMeterProvider())
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
-        monkeypatch.setattr(mpmod, "_baseline_captured", False)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter()
         assert meter is None
 
-    def test_get_meter_real_when_external_provider_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Before setup_metrics() is called, if an external caller installed a real
-        (non-Proxy) provider, get_meter() returns a real meter."""
+    def test_get_meter_real_when_external_provider_regardless_of_install_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A real provider a host installed is honoured whether it arrived before or
+        after our setup — the ordering the old baseline-identity check got wrong."""
         from provide.telemetry.metrics import provider as mpmod
 
-        class RealMeterProvider:  # no "Proxy" in name
-            pass
+        class RealMeterProvider:  # carries the SDK lifecycle pair
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_meter_provider=lambda: RealMeterProvider(),
@@ -200,7 +209,6 @@ class TestExternalMeterProvider:
         )
         monkeypatch.setattr(mpmod, "_meter_provider", None)
         monkeypatch.setattr(mpmod, "_meter_global_set", False)
-        monkeypatch.setattr(mpmod, "_baseline_captured", False)
         monkeypatch.setattr(mpmod, "_load_otel_metrics_api", lambda: fake_api)
 
         meter = mpmod.get_meter("ext")
@@ -212,7 +220,9 @@ class TestExternalMeterProvider:
         from provide.telemetry.metrics import provider as mpmod
 
         class FakeSDKMeterProvider:
-            pass
+            def force_flush(self, *_a: object, **_k: object) -> None: ...
+
+            def shutdown(self, *_a: object, **_k: object) -> None: ...
 
         fake_api = SimpleNamespace(
             get_meter_provider=lambda: FakeSDKMeterProvider(),

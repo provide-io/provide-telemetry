@@ -85,9 +85,9 @@ func TestAdopt_OurOwnProviderTakesPrecedence(t *testing.T) {
 	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	// Simulate our own install winning the signal.
+	// Simulate our own install winning the signal while the host's still owns
+	// the global — ours must be preferred.
 	_otelTracerProvider = ourTP
-	_releaseAdoptedProviders()
 
 	_, span := backend.Tracer("precedence").Start(context.Background(), "ours")
 	span.End()
@@ -121,7 +121,7 @@ func TestAdopt_ShutdownLeavesTheHostProviderAlive(t *testing.T) {
 		t.Fatalf("host provider recorded %d spans after our shutdown, want 1 — we tore down someone else's SDK", got)
 	}
 	if backend.Providers().Traces {
-		t.Error("providers.traces still true after shutdown released the adopted provider")
+		t.Error("providers.traces still true after shutdown; the adopted provider was not released")
 	}
 }
 
@@ -190,3 +190,57 @@ type _lifecycleProvider struct{}
 
 func (_lifecycleProvider) ForceFlush(context.Context) error { return nil }
 func (_lifecycleProvider) Shutdown(context.Context) error   { return nil }
+
+// A host that registers its SDK *after* our setup — an auto-instrumentation
+// agent, a lazily-initialised vendor distro — must still be honoured. A
+// setup-time snapshot would miss it forever.
+func TestAdopt_PicksUpAProviderRegisteredAfterSetup(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	backend := &_backend{}
+	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if backend.Providers().Traces {
+		t.Fatal("nothing is installed yet; traces must not report a provider")
+	}
+
+	// The host boots its SDK now, after we are already set up.
+	hostTP, exp := newInMemoryTP()
+	otel.SetTracerProvider(hostTP)
+
+	if !backend.Providers().Traces {
+		t.Fatal("a provider registered after setup was not picked up")
+	}
+	_, span := backend.Tracer("late").Start(context.Background(), "late.span")
+	span.End()
+	if got := len(exp.GetSpans()); got != 1 {
+		t.Fatalf("host exporter received %d spans, want 1", got)
+	}
+}
+
+// Our shutdown must not switch off a host's instrumentation by clobbering the
+// global registration it depends on.
+func TestShutdown_LeavesAHostsGlobalRegistrationIntact(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	hostTP, exp := newInMemoryTP()
+	otel.SetTracerProvider(hostTP)
+
+	backend := &_backend{}
+	if err := backend.Setup(adoptConfig(), telemetry.BackendSetupState{}); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if err := backend.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	// The host's own instrumentation reaches for the global, not its handle.
+	_, span := otel.GetTracerProvider().Tracer("host").Start(context.Background(), "after.our.shutdown")
+	span.End()
+	if got := len(exp.GetSpans()); got != 1 {
+		t.Fatalf("host recorded %d spans through the global after our shutdown, want 1", got)
+	}
+}

@@ -97,7 +97,7 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 	defer Release(ticket)
 	_incSpansStarted()
 
-	spanCtx, span := DefaultTracer.Start(ctx, name)
+	spanCtx, span := _effectiveTracer().Start(ctx, name)
 	defer span.End()
 	err := fn(spanCtx)
 	if err != nil {
@@ -107,19 +107,15 @@ func Trace(ctx context.Context, name string, fn func(context.Context) error) err
 	return err
 }
 
-// _hasLiveTraceProvider reports whether the active optional backend has a live
-// tracer provider (OTel SDK sampling is then authoritative).
+// _hasLiveTraceProvider reports whether a live tracer provider is in play — ours
+// or a host application's — in which case the SDK's sampler is authoritative and
+// the facade must not stack its own rate on top.
 //
-// Unlike the Python and TypeScript facades, this deliberately does NOT probe
-// otel.GetTracerProvider(). Those facades resolve their tracer off the OTel
-// global, so a provider a host application installed there is the one their
-// spans flow through, and asking "did we install one" gives the wrong answer.
-// Here DefaultTracer is only replaced with a real tracer when this same
-// Providers().Traces is true (see _wireBackendBindingsLocked), and the backend
-// builds tracers from its own provider — a host provider we were not handed
-// via BackendSetupState is never used to start facade spans. Probing the global
-// would therefore report a provider we do not emit through and would wrongly
-// disable facade sampling.
+// Answered by the backend, which reports both what it installed and what it
+// found on the OTel globals, and re-asked per span so a provider registered
+// after setup counts (see _effectiveTracer and go/otel/adopt.go). The gate and
+// the emit path therefore read the same state: a span is never sampled by the
+// facade and then handed to an SDK sampler, nor vice versa.
 func _hasLiveTraceProvider() bool {
 	backend := _activeBackend()
 	if backend == nil {

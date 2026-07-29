@@ -107,8 +107,32 @@ func _backendConfigured(cfg *TelemetryConfig) bool {
 	return cfg.Tracing.OTLPEndpoint != "" || cfg.Metrics.OTLPEndpoint != "" || cfg.Logging.OTLPEndpoint != ""
 }
 
+// _backendTracerName is the instrumentation name handed to the backend when the
+// tracer is resolved late (see _effectiveTracer).
+var _backendTracerName string //nolint:gochecknoglobals
+
+// _effectiveTracer returns the tracer a facade span should start on.
+//
+// The DefaultTracer binding is taken once, during setup. That is too early to
+// see a provider a host application registers afterwards — an auto-
+// instrumentation agent, a lazily-initialised vendor distro, a framework hook —
+// so when the binding is still our no-op we ask the backend again on each span.
+// A non-no-op binding always wins, so an explicit override keeps control.
+func _effectiveTracer() Tracer {
+	if _, isNoop := DefaultTracer.(*_noopTracer); !isNoop {
+		return DefaultTracer
+	}
+	if backend := _activeBackend(); backend != nil {
+		if tracer := backend.Tracer(_backendTracerName); tracer != nil {
+			return tracer
+		}
+	}
+	return DefaultTracer
+}
+
 func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	DefaultTracer = &_noopTracer{}
+	_backendTracerName = cfg.ServiceName
 	if Logger == nil {
 		return
 	}

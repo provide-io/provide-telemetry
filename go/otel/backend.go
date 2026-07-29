@@ -24,6 +24,13 @@ var (
 	_otelTracerProvider *sdktrace.TracerProvider //nolint:gochecknoglobals
 	_otelMeterProvider  *sdkmetric.MeterProvider //nolint:gochecknoglobals
 	_otelLoggerProvider *sdklog.LoggerProvider   //nolint:gochecknoglobals
+
+	// Whether *we* registered each global. Shutdown resets only what we set:
+	// clobbering a host application's registration would silently stop its own
+	// instrumentation, which is not ours to switch off.
+	_weSetTracerGlobal bool //nolint:gochecknoglobals
+	_weSetMeterGlobal  bool //nolint:gochecknoglobals
+	_weSetLoggerGlobal bool //nolint:gochecknoglobals
 )
 
 func init() {
@@ -33,11 +40,10 @@ func init() {
 type _backend struct{}
 
 func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.BackendSetupState) error {
+	_captureSignalEnablement(cfg)
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
-	// Last, so our own providers always take precedence over a host's.
-	_adoptForeignProviders(cfg)
 	return nil
 }
 
@@ -92,13 +98,30 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 		}
 		_otelLoggerProvider = nil
 	}
-	// Adopted providers belong to the host: drop the reference, do not shut down.
-	_releaseAdoptedProviders()
-	otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
-	otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
-	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+	_resetGlobalsWeSet()
+	// Our participation is over: stop reporting and using any provider, including
+	// a host's that is still (rightly) on the global.
+	_tracingEnabled = false
+	_metricsEnabled = false
 
 	return first
+}
+
+// _resetGlobalsWeSet returns to the API no-ops only for the globals this
+// backend registered, leaving a host application's registration intact.
+func _resetGlobalsWeSet() {
+	if _weSetTracerGlobal {
+		otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
+		_weSetTracerGlobal = false
+	}
+	if _weSetMeterGlobal {
+		otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
+		_weSetMeterGlobal = false
+	}
+	if _weSetLoggerGlobal {
+		logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+		_weSetLoggerGlobal = false
+	}
 }
 
 func _shutdownOTelProviders(ctx context.Context) error {
@@ -109,7 +132,11 @@ func (b *_backend) ResetForTests() {
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
-	_releaseAdoptedProviders()
+	_weSetTracerGlobal = false
+	_weSetMeterGlobal = false
+	_weSetLoggerGlobal = false
+	_tracingEnabled = true
+	_metricsEnabled = true
 	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
 	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory

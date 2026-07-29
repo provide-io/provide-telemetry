@@ -17,9 +17,9 @@ from collections.abc import Callable
 
 import pytest
 
+from provide.telemetry import _provider_drain as drain
 from provide.telemetry import flush_telemetry
 from provide.telemetry.config import ExporterPolicyConfig, TelemetryConfig
-from provide.telemetry import _provider_drain as drain
 from provide.telemetry.logger import core as logger_core
 from provide.telemetry.metrics import provider as metrics_provider
 from provide.telemetry.setup import setup_telemetry

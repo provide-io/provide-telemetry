@@ -31,11 +31,6 @@ _otel_global_set: bool = False  # True once we called set_tracer_provider()
 _setup_generation: int = 0
 _tracing_explicitly_disabled: bool = False
 
-# Baseline captured inside setup_tracing() (not at module load) so that
-# external providers installed before import are not mistaken for the default.
-_baseline_tracer_provider: Any | None = None
-_baseline_captured: bool = False
-
 
 class _NoopSpan(AbstractContextManager["_NoopSpan"]):
     NOOP_TRACE_ID = "0" * 32
@@ -117,7 +112,6 @@ def _has_effective_tracing_provider() -> bool:
 
 def setup_tracing(config: TelemetryConfig) -> None:
     global _provider_configured, _provider_ref, _otel_global_set
-    global _baseline_tracer_provider, _baseline_captured
     global _tracing_explicitly_disabled
     if not config.tracing.enabled:
         _tracing_explicitly_disabled = True
@@ -154,18 +148,6 @@ def setup_tracing(config: TelemetryConfig) -> None:
     with _provider_lock:
         if _provider_configured:
             return
-        # Capture the baseline provider before we install ours so that
-        # _has_real_tracer_provider() can distinguish external providers
-        # regardless of import order.
-        if (
-            not _baseline_captured
-        ):  # pragma: no mutate — latch guard; second call is the equivalent branch exercised by idempotent-setup tests
-            otel_trace_api = (
-                _load_otel_trace_api()
-            )  # pragma: no mutate — cached module resolution; import-fallback branch exercised by otel-off tests
-            if otel_trace_api is not None:
-                _baseline_tracer_provider = otel_trace_api.get_tracer_provider()  # pragma: no mutate — baseline snapshot; identity comparison asserted by _has_real_tracer_provider tests
-            _baseline_captured = True  # pragma: no mutate — latched True after baseline capture; boolean toggle asserted by idempotent-setup tests
         gen = _setup_generation  # snapshot before releasing the lock
 
     # Build provider/exporter outside the lock to avoid blocking
@@ -237,14 +219,11 @@ def shutdown_tracing() -> None:
 
 def _reset_tracing_for_tests() -> None:
     global _provider_configured, _provider_ref, _otel_global_set, _setup_generation
-    global _baseline_tracer_provider, _baseline_captured
     global _tracing_explicitly_disabled
     _provider_configured = False
     _provider_ref = None
     _otel_global_set = False
     _setup_generation = 0
-    _baseline_tracer_provider = None
-    _baseline_captured = False
     _tracing_explicitly_disabled = False
 
 
@@ -259,13 +238,9 @@ def _has_real_tracer_provider(otel_trace: Any) -> bool:
     if _otel_global_set:
         # We installed a provider but it was shut down; don't use the stale global.
         return False
-    provider = otel_trace.get_tracer_provider()
-    if not _baseline_captured:
-        # setup_tracing() hasn't been called yet — no baseline to compare against.
-        # Use class-name heuristic: the OTel API default is ProxyTracerProvider.
-        return "Proxy" not in type(provider).__name__
-    # Identity comparison against the baseline captured inside setup_tracing().
-    return provider is not _baseline_tracer_provider
+    # Whatever owns the global now — ours is gone, so a live provider here is a
+    # host application's, whether it was installed before or after our setup.
+    return _otel.is_live_provider(otel_trace.get_tracer_provider())
 
 
 def get_tracer(name: str | None = None) -> _TracerLike:
