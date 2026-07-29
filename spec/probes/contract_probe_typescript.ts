@@ -22,6 +22,7 @@ const YAML: { parse: (s: string) => unknown } = tsRequire('yaml');
 import {
   setupTelemetry,
   shutdownTelemetry,
+  flushTelemetry,
   resetTelemetryState,
   getLogger,
   bindContext,
@@ -117,6 +118,10 @@ async function execShutdown(): Promise<void> {
   await shutdownTelemetry();
 }
 
+async function execFlush(): Promise<{ ok: boolean }> {
+  return { ok: await flushTelemetry() };
+}
+
 function execBindPropagation(step: Step): void {
   const headers: Record<string, string> = {};
   if (step.traceparent) headers['traceparent'] = step.traceparent;
@@ -206,6 +211,11 @@ async function main(): Promise<void> {
         case 'shutdown':
           await execShutdown();
           break;
+        case 'flush': {
+          const flushed = await execFlush();
+          if (step.into) variables[step.into] = flushed;
+          break;
+        }
         case 'bind_propagation':
           execBindPropagation(step);
           break;

@@ -48,8 +48,8 @@ use super::map_exporter_build;
 use super::resilient::ResilientMetricExporter;
 
 #[derive(Clone)]
-struct InstalledMeterProvider {
-    provider: Arc<SdkMeterProvider>,
+pub(super) struct InstalledMeterProvider {
+    pub(super) provider: Arc<SdkMeterProvider>,
     runtime: ProvideTokioRuntime,
 }
 
@@ -65,7 +65,7 @@ fn empty_meter_provider_mutex() -> Mutex<Option<InstalledMeterProvider>> {
     Mutex::new(None)
 }
 
-fn meter_provider_slot() -> &'static Mutex<Option<InstalledMeterProvider>> {
+pub(super) fn meter_provider_slot() -> &'static Mutex<Option<InstalledMeterProvider>> {
     METER_PROVIDER.get_or_init(empty_meter_provider_mutex)
 }
 

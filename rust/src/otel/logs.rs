@@ -39,8 +39,8 @@ use super::map_exporter_build;
 use super::resilient::ResilientLogExporter;
 
 #[derive(Clone)]
-struct InstalledLoggerProvider {
-    provider: Arc<SdkLoggerProvider>,
+pub(super) struct InstalledLoggerProvider {
+    pub(super) provider: Arc<SdkLoggerProvider>,
     runtime: ProvideTokioRuntime,
 }
 
@@ -53,7 +53,7 @@ fn empty_logger_provider_mutex() -> Mutex<Option<InstalledLoggerProvider>> {
     Mutex::new(None)
 }
 
-fn logger_provider_slot() -> &'static Mutex<Option<InstalledLoggerProvider>> {
+pub(super) fn logger_provider_slot() -> &'static Mutex<Option<InstalledLoggerProvider>> {
     LOGGER_PROVIDER.get_or_init(empty_logger_provider_mutex)
 }
 

@@ -10,6 +10,7 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ### Added
 
+- **`flush_telemetry` / `flushTelemetry` / `FlushTelemetry` / `flush_telemetry`** — drain without teardown, in all four languages. Until now the only way to be sure records were out was `shutdown_telemetry`, which tears the providers down (and, in Python, resets sampling, backpressure, resilience and runtime policy), so a caller that just wanted a drain at a request boundary, a checkpoint or a serverless freeze had to pay for a full re-setup. Flush force-flushes every provider *we* installed and leaves them installed and usable. The deadline is the existing bounded-shutdown one (`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`, 5.0s default) and can be overridden per call; unlike shutdown, an expired deadline is reported rather than swallowed — a caller flushing to be sure its records are out needs to learn when they were not. Python/TypeScript return a boolean, Go returns `error`, Rust returns `Result`. Every signal gets its attempt even when an earlier one is abandoned. Covered by the cross-language contract harness (`flush_drains_without_teardown` in `spec/contract_fixtures.yaml`), which asserts all four agree that flush succeeds, is repeatable, and leaves telemetry working.
 - **Go `WithConfig(*TelemetryConfig)`** — `SetupTelemetry(WithConfig(cfg))` accepts an in-memory config instead of reading process environment. Prefer this for hosts that re-exec or fork and must not mutate `os.Environ` to configure telemetry.
 
 ### Fixed

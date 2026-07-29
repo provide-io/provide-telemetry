@@ -16,6 +16,10 @@ Two things to know when reading it:
 
 ## [Unreleased]
 
+### Added
+
+- **`flushTelemetry(timeoutMs?)`** — drain without teardown. `shutdownTelemetry()` was the only way to force records out, and it disables the OTel globals and clears provider state on the way. `flushTelemetry` force-flushes each registered provider under the same bounded deadline (`exporterLogsShutdownTimeoutMs`, overridable per call) and leaves everything installed, so it is safe to call at a request boundary or before a serverless freeze. Resolves `false` when any provider missed the deadline; rejects if a `forceFlush` that arrived in time rejected, rather than reporting a broken exporter as drained.
+
 ### Fixed
 
 - **Trace sampling defers to any live provider, not only ours** — `withTrace` skipped its own probabilistic gate when a "traces provider installed" flag was set, but the flag was set in exactly one place: `registerOtelProviders()`. It therefore meant "we installed a provider", not "a provider is installed". A host application running its own NodeSDK owns the OTel globals without ever calling `registerOtelProviders()`, so `trace.getTracer()` resolved that foreign provider and exported spans while the flag stayed `false` — the facade's sampler then stacked on top of the SDK's, giving `facadeRate x sdkRate` instead of the configured rate, with nothing to indicate it. Latent at the default rate of `1.0`; it dropped spans as soon as `PROVIDE_TRACE_SAMPLE_RATE` was lowered. `withTrace` now probes the global tracer provider (`src/otel-probe.ts`), so a provider anyone installed counts.

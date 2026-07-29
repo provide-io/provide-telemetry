@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "flush_telemetry",
     "setup_telemetry",
     "shutdown_telemetry",
 ]
@@ -130,6 +131,37 @@ def _reset_all_for_tests() -> None:
     _reset_cardinality()
     _reset_sampling()
     _reset_runtime()
+
+
+def flush_telemetry(timeout_seconds: float | None = None) -> bool:
+    """Force-flush installed providers without tearing them down.
+
+    The drain half of :func:`shutdown_telemetry`: every provider *we* installed
+    (logs, traces, metrics) is force-flushed under a bounded deadline and stays
+    installed and usable afterwards. Use it where records must be out before
+    control returns — a request boundary, a checkpoint, a serverless freeze —
+    rather than shutting telemetry down and paying to set it up again.
+
+    *timeout_seconds* defaults to the bounded-shutdown deadline
+    (``PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS``, 5.0s) and is applied
+    per signal. Returns True when every signal flushed within the deadline,
+    False when any was abandoned; a signal whose provider we never installed
+    counts as nothing to flush.
+
+    A provider a host application installed on the OTel globals is not ours to
+    drain and is left alone.
+    """
+    from provide.telemetry._provider_drain import flush_logging, flush_metrics, flush_tracing
+    from provide.telemetry.runtime import get_runtime_config
+
+    deadline = (
+        get_runtime_config().exporter.logs_shutdown_timeout_seconds if timeout_seconds is None else timeout_seconds
+    )
+    # Materialise before reducing: every signal must get its drain attempt even
+    # when an earlier one is abandoned at the deadline. `all()` over a generator
+    # would let a slow logs endpoint deny traces and metrics theirs.
+    results = [flush_logging(deadline), flush_tracing(deadline), flush_metrics(deadline)]
+    return all(results)
 
 
 def shutdown_telemetry() -> None:
