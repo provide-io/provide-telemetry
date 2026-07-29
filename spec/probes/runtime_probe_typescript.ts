@@ -197,6 +197,43 @@ async function caseProviderIdentityReconfigure(): Promise<Record<string, unknown
   };
 }
 
+/**
+ * A host application's own SDK provider must be adopted, and gated on enablement.
+ *
+ * TypeScript detects this for itself: installing the provider on the OTel
+ * global is enough, because getRuntimeStatus probes the global for the
+ * forceFlush/shutdown lifecycle pair.
+ */
+async function caseHostProviderAdoption(): Promise<Record<string, unknown>> {
+  // Resolved against the facade's own package rather than this file: the probe
+  // lives outside typescript/, so a bare specifier here would not resolve — and
+  // resolving it to a *second* copy of @opentelemetry/api would silently defeat
+  // the test, since the global we set would not be the global the facade reads.
+  const { createRequire } = await import('node:module');
+  const facadeRequire = createRequire(new URL('../../typescript/package.json', import.meta.url));
+  const api = facadeRequire('@opentelemetry/api') as typeof import('@opentelemetry/api');
+  const sdk = facadeRequire('@opentelemetry/sdk-trace-base') as typeof import('@opentelemetry/sdk-trace-base');
+
+  api.trace.setGlobalTracerProvider(new sdk.BasicTracerProvider() as never);
+
+  const before = getRuntimeStatus();
+
+  setupTelemetry({ tracingEnabled: true });
+  const enabled = getRuntimeStatus();
+  await shutdownTelemetry();
+
+  setupTelemetry({ tracingEnabled: false });
+  const disabled = getRuntimeStatus();
+  await shutdownTelemetry();
+
+  return {
+    case: 'host_provider_adoption',
+    adopted_before_setup: before.providers.traces,
+    adopted_after_enabled_setup: enabled.providers.traces,
+    fallback_after_disabled_setup: disabled.fallback.traces,
+  };
+}
+
 function captureEmit(name: string, level: 'debug' | 'info', message: string): Record<string, unknown>[] {
   const windowRef = ensureWindow();
   const restore = { log: console.log, warn: console.warn, error: console.error };
@@ -347,6 +384,7 @@ async function main(): Promise<void> {
     signal_enablement: caseSignalEnablement,
     per_signal_logs_endpoint: casePerSignalLogsEndpoint,
     provider_identity_reconfigure: caseProviderIdentityReconfigure,
+    host_provider_adoption: caseHostProviderAdoption,
     shutdown_re_setup: caseShutdownReSetup,
     hot_reload_log_level: caseHotReloadLogLevel,
     hot_reload_log_format: caseHotReloadLogFormat,

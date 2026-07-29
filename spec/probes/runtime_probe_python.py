@@ -182,6 +182,38 @@ def _case_provider_identity_reconfigure() -> dict[str, object]:
     }
 
 
+def _case_host_provider_adoption() -> dict[str, object]:
+    """A host application's own SDK provider must be adopted, and gated on enablement.
+
+    Python detects this for itself: setting the provider on the OTel global is
+    enough, because get_tracer() resolves it and the facade probes whether what
+    it got carries the force_flush/shutdown lifecycle pair.
+    """
+    from opentelemetry import trace as otel_trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from provide.telemetry.config import TelemetryConfig, TracingConfig
+
+    otel_trace.set_tracer_provider(TracerProvider())
+
+    before = get_runtime_status()
+
+    setup_telemetry(TelemetryConfig(tracing=TracingConfig(enabled=True)))
+    enabled = get_runtime_status()
+    shutdown_telemetry()
+
+    setup_telemetry(TelemetryConfig(tracing=TracingConfig(enabled=False)))
+    disabled = get_runtime_status()
+    shutdown_telemetry()
+
+    return {
+        "case": "host_provider_adoption",
+        "adopted_before_setup": bool(before["providers"]["traces"]),
+        "adopted_after_enabled_setup": bool(enabled["providers"]["traces"]),
+        "fallback_after_disabled_setup": bool(disabled["fallback"]["traces"]),
+    }
+
+
 def _json_records(output: str) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for line in output.splitlines():
@@ -316,6 +348,7 @@ def main() -> int:
         "signal_enablement": _case_signal_enablement,
         "per_signal_logs_endpoint": _case_per_signal_logs_endpoint,
         "provider_identity_reconfigure": _case_provider_identity_reconfigure,
+        "host_provider_adoption": _case_host_provider_adoption,
         "shutdown_re_setup": _case_shutdown_re_setup,
         "hot_reload_log_level": _case_hot_reload_log_level,
         "hot_reload_log_format": _case_hot_reload_log_format,

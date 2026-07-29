@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"sync"
 
 	"github.com/provide-io/provide-telemetry/go/logger"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -57,25 +58,47 @@ func _randomHex(n int) string {
 }
 
 // DefaultTracer is the package-level tracer, defaults to no-op.
+//
+// Library code must go through _loadDefaultTracer / SetDefaultTracer rather
+// than touching it directly: it is a two-word interface value read from every
+// traced call, and an unsynchronized read while it is being written can tear
+// into a stale itab paired with a new data pointer. Mirrors the same treatment
+// in the root telemetry package, which has its own independent DefaultTracer —
+// this package is a standalone tracer for consumers who want it without the
+// rest of the facade, and nothing in the root package wires into it.
 var DefaultTracer Tracer = &_noopTracer{} //nolint:gochecknoglobals
 
-// SetDefaultTracer replaces DefaultTracer. Called by the main telemetry package
-// during OTel setup to wire in a real exporting tracer.
+// _defaultTracerMu guards DefaultTracer. A RWMutex and not an atomic because
+// DefaultTracer stays an exported, directly-assignable variable: an atomic
+// mirror could not see a bare assignment, which is part of this package's API.
+var _defaultTracerMu sync.RWMutex //nolint:gochecknoglobals
+
+func _loadDefaultTracer() Tracer {
+	_defaultTracerMu.RLock()
+	defer _defaultTracerMu.RUnlock()
+	return DefaultTracer
+}
+
+// SetDefaultTracer replaces DefaultTracer, e.g. to wire in a real exporting
+// tracer. Prefer it over assigning the variable: a bare assignment races with
+// concurrent Trace/GetTracer calls.
 func SetDefaultTracer(t Tracer) {
+	_defaultTracerMu.Lock()
+	defer _defaultTracerMu.Unlock()
 	DefaultTracer = t
 }
 
 // GetTracer returns a named Tracer. Currently returns DefaultTracer.
 func GetTracer(name string) Tracer {
 	_ = name
-	return DefaultTracer
+	return _loadDefaultTracer()
 }
 
 // Trace wraps fn in a span using DefaultTracer.
 // fn receives the context enriched with trace/span IDs.
 // If fn returns an error the error is recorded on the span before it ends.
 func Trace(ctx context.Context, name string, fn func(context.Context) error) error {
-	spanCtx, span := DefaultTracer.Start(ctx, name)
+	spanCtx, span := _loadDefaultTracer().Start(ctx, name)
 	defer span.End()
 	err := fn(spanCtx)
 	if err != nil {

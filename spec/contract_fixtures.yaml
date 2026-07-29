@@ -101,11 +101,12 @@ contract_cases:
   #
   # Provider adoption — get_runtime_status().providers reporting an SDK provider
   # a *host application* installed on the OTel globals, and the emit path using
-  # it — is likewise NOT covered here: it needs a live third-party SDK provider
-  # registered on the globals before the probe runs, which the step DSL cannot
-  # express. The rule itself lives in the spec, as behavioral_parity
-  # provider_adoption_reporting in spec/telemetry-api.yaml, which also names the
-  # per-language tests that pin it.
+  # it — is NOT covered here: it needs a live third-party SDK provider on the
+  # globals, which the step DSL cannot express and which the contract probes
+  # deliberately have no dependency on. It is covered cross-language by the
+  # host_provider_adoption case in spec/runtime_probe_fixtures.yaml, whose
+  # probes do carry the SDK; the rule itself is behavioral_parity
+  # provider_adoption_reporting in spec/telemetry-api.yaml.
   flush_after_shutdown_reports_success:
     description: "flush_telemetry with nothing installed is a successful no-op, not a failure"
     steps:
