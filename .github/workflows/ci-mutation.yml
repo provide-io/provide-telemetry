@@ -243,15 +243,6 @@ jobs:
             --timeout-coefficient=30 \
             --threshold-efficacy=100 \
             ./logger
-      - name: Run gremlins mutation tests for go/tracer (100% kill rate required)
-        if: ${{ hashFiles('go/tracer/go.mod') != '' }}
-        run: |
-          gremlins unleash \
-            --workers=1 \
-            --test-cpu=1 \
-            --timeout-coefficient=30 \
-            --threshold-efficacy=100 \
-            ./tracer
       - name: Run gremlins mutation tests for go/otel (100% kill rate required)
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel

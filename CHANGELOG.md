@@ -32,6 +32,14 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 - **Python reports an incomplete flush as a failure** — OTel's `force_flush()` returns `False` when it gave up with records still queued, and the return value was discarded, so `flush_telemetry()` reported success for a lossy drain. That is the exact failure a caller flushing before a serverless freeze is asking about, and it disagreed with Rust, where the same drain already returned false.
 - **Go: an expired flush deadline survives an `==` comparison** — `FlushTelemetry`'s godoc promises `context.DeadlineExceeded`, but the OTel backend joined its per-signal errors unconditionally and `errors.Join` wraps even a single error, so `err == context.DeadlineExceeded` silently stopped matching. A lone failure is now returned untouched; only genuinely multiple failures are joined.
 
+### Removed
+
+- **`go/tracer`** — a standalone parallel copy of the tracer machinery (`DefaultTracer`, `GetTracer`, `Trace`, a no-op tracer) that nothing imported, carrying its own unsynchronized exported global. Its CI test and mutation steps were guarded on `hashFiles('go/tracer/go.mod')` and that module file never existed, so they had never run; `check_version_sync` likewise read a `go/tracer/VERSION` that was not there. Use the root `telemetry` package.
+
+### Changed
+
+- **Go: `DefaultTracer` is no longer an exported variable** — the binding is read from every traced call and written during setup and shutdown, and a two-word interface value read while it is being written can tear. It is now an atomic behind `GetTracer(name)` (read) and the new exported `SetDefaultTracer(t)` (replace), which is both race-free and ~20ns/span cheaper than the mutex that guarding an assignable exported var would have required. The spec's "tracer instance" symbol is satisfied by the exported `Tracer` type, as before.
+
 
 ---
 

@@ -26,8 +26,8 @@ func TestOTel_WithTracerProvider_WiresRealTracer(t *testing.T) {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
-	if _, ok := telemetry.DefaultTracer.(_otelTracerAdapter); !ok {
-		t.Fatalf("expected OTel tracer adapter, got %T", telemetry.DefaultTracer)
+	if _, ok := telemetry.GetTracer("").(_otelTracerAdapter); !ok {
+		t.Fatalf("expected OTel tracer adapter, got %T", telemetry.GetTracer(""))
 	}
 	if _otelTracerProvider == nil {
 		t.Fatal("expected OTel tracer provider to be installed")
@@ -80,8 +80,8 @@ func TestOTel_NoProvidersKeepsFallbackRuntime(t *testing.T) {
 	if !status.Fallback.Logs || !status.Fallback.Traces || !status.Fallback.Metrics {
 		t.Fatalf("expected fallback mode without OTel config, got %+v", status.Fallback)
 	}
-	if _, ok := telemetry.DefaultTracer.(_otelTracerAdapter); ok {
-		t.Fatalf("expected fallback tracer without OTel config, got %T", telemetry.DefaultTracer)
+	if _, ok := telemetry.GetTracer("").(_otelTracerAdapter); ok {
+		t.Fatalf("expected fallback tracer without OTel config, got %T", telemetry.GetTracer(""))
 	}
 }
 
@@ -95,8 +95,8 @@ func TestOTel_TraceEndpointAutoWiresTracerProvider(t *testing.T) {
 		t.Fatalf("SetupTelemetry failed: %v", err)
 	}
 
-	if _, ok := telemetry.DefaultTracer.(_otelTracerAdapter); !ok {
-		t.Fatalf("expected env-configured traces endpoint to install OTel tracer, got %T", telemetry.DefaultTracer)
+	if _, ok := telemetry.GetTracer("").(_otelTracerAdapter); !ok {
+		t.Fatalf("expected env-configured traces endpoint to install OTel tracer, got %T", telemetry.GetTracer(""))
 	}
 	if _otelTracerProvider == nil {
 		t.Fatal("expected env-configured traces endpoint to install tracer provider")
@@ -117,8 +117,8 @@ func TestOTel_TraceEndpointDoesNotInstallWhenTracingDisabled(t *testing.T) {
 	if _otelTracerProvider != nil {
 		t.Fatal("expected tracing disabled to skip OTel tracer provider installation")
 	}
-	if _, ok := telemetry.DefaultTracer.(_otelTracerAdapter); ok {
-		t.Fatalf("expected fallback tracer when tracing disabled, got %T", telemetry.DefaultTracer)
+	if _, ok := telemetry.GetTracer("").(_otelTracerAdapter); ok {
+		t.Fatalf("expected fallback tracer when tracing disabled, got %T", telemetry.GetTracer(""))
 	}
 }
 

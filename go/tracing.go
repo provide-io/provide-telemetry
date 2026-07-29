@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"sync"
+	"sync/atomic"
 )
 
 // Span represents an active trace span.
@@ -54,38 +54,35 @@ func _randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// DefaultTracer is the package-level tracer, defaults to no-op.
+// _defaultTracer is the package-level tracer binding, defaulting to no-op.
 //
-// Library code must go through _loadDefaultTracer / _storeDefaultTracer rather
-// than touching it directly: it is written during SetupTelemetry and
-// ShutdownTelemetry and read from every traced call, which does not hold
-// _setupMu, and a two-word interface value read while it is being written can
-// tear into a stale itab paired with a new data pointer.
-var DefaultTracer Tracer = &_noopTracer{} //nolint:gochecknoglobals
-
-// _defaultTracerMu guards DefaultTracer.
+// An atomic rather than an exported variable: it is read from every traced call
+// and written during SetupTelemetry and ShutdownTelemetry, and a two-word
+// interface value read while it is being written can tear into a stale itab
+// paired with a new data pointer. An atomic load is ~1ns against the ~20ns a
+// RWMutex costs on that path, and the same reasoning already applies to the
+// signal gates in runtime.go.
 //
-// A RWMutex and not an atomic, unlike the signal gates in runtime.go which are
-// on the same per-span path. An atomic.Pointer mirror beside the variable would
-// read in ~1ns instead of ~20ns, but it can only see writes that went through
-// _storeDefaultTracer: assigning DefaultTracer directly is how a consumer
-// overrides the tracer (this package exports no setter) and how several tests
-// here work, and those writes would silently stop taking effect. The variable
-// itself has to stay the source of truth while it is exported and assignable,
-// and the spec names it as the package's tracer instance — so the cost stands
-// until that API changes.
-var _defaultTracerMu sync.RWMutex //nolint:gochecknoglobals
+// Reachable through [GetTracer] and replaceable through [SetDefaultTracer]; the
+// spec's "tracer instance" symbol is satisfied by the exported [Tracer] type.
+var _defaultTracer atomic.Pointer[Tracer] //nolint:gochecknoglobals
 
 func _loadDefaultTracer() Tracer {
-	_defaultTracerMu.RLock()
-	defer _defaultTracerMu.RUnlock()
-	return DefaultTracer
+	if bound := _defaultTracer.Load(); bound != nil {
+		return *bound
+	}
+	return _noopTracerSingleton
 }
 
-func _storeDefaultTracer(t Tracer) {
-	_defaultTracerMu.Lock()
-	defer _defaultTracerMu.Unlock()
-	DefaultTracer = t
+// _noopTracerSingleton is the binding before any setup, and after teardown.
+var _noopTracerSingleton Tracer = &_noopTracer{} //nolint:gochecknoglobals
+
+// SetDefaultTracer replaces the package-level tracer.
+//
+// Exported so a host can install its own implementation; SetupTelemetry and
+// ShutdownTelemetry use it too. Safe to call concurrently with in-flight spans.
+func SetDefaultTracer(t Tracer) {
+	_defaultTracer.Store(&t)
 }
 
 // _traceIDKey and _spanIDKey are context keys for trace/span propagation.
@@ -94,13 +91,13 @@ var (
 	_spanIDKey  = contextKey{"span.id"}  //nolint:gochecknoglobals
 )
 
-// GetTracer returns a named Tracer. Currently returns DefaultTracer.
+// GetTracer returns a named Tracer. Currently returns the package-level tracer.
 func GetTracer(name string) Tracer {
 	_ = name
 	return _loadDefaultTracer()
 }
 
-// Trace wraps fn in a span using DefaultTracer.
+// Trace wraps fn in a span using the package-level tracer.
 // fn receives the context enriched with trace/span IDs.
 // If fn returns an error, the error is recorded on the span before it ends.
 // Consent, sampling, and backpressure are applied before starting the span;

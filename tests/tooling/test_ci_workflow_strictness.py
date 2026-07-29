@@ -101,7 +101,6 @@ def test_go_ci_runs_real_otlp_collector_gate() -> None:
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
     assert "run: ../ci/wait-for-collector.sh" in workflow
     assert "hashFiles('go/logger/go.mod')" in workflow
-    assert "hashFiles('go/tracer/go.mod')" in workflow
     assert "hashFiles('go/otel/go.mod')" in workflow
 
 
@@ -132,7 +131,6 @@ def test_mutation_workflow_keeps_rust_nightly_advisory() -> None:
     assert "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in workflow
     assert "continue-on-error: ${{ github.event_name == 'schedule' }}" in workflow
     assert "hashFiles('go/logger/go.mod')" in workflow
-    assert "hashFiles('go/tracer/go.mod')" in workflow
     assert "hashFiles('go/otel/go.mod')" in workflow
 
 
