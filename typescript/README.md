@@ -64,6 +64,7 @@ await shutdownTelemetry();
 | `getConfig()` | Return the current `TelemetryConfig`. |
 | `configFromEnv()` | Build config from environment variables (see [Configuration](#configuration)). |
 | `registerOtelProviders(cfg)` | Wire OTLP log, trace, and metric exporters for the signals enabled in config. Call after `setupTelemetry`. |
+| `flushTelemetry(timeoutMs?)` | Drain every registered provider and leave them installed. Resolves `false` if any missed the deadline. |
 | `shutdownTelemetry()` | Flush and shut down all registered OTel providers. |
 
 ### Logging

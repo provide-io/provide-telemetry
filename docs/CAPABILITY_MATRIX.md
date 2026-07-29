@@ -21,6 +21,8 @@ Legend:
 | Shutdown followed by setup restores the same runtime-status shape | core | core | core | core | core guaranteed |
 | `get_runtime_config()` returns effective config after setup (Python/TS also return env fallback before setup; Go/Rust return nil/None) | core | core | core | core | core guaranteed after setup; pre-setup behavior varies |
 | `get_runtime_status()` exposes `setup_done`, `signals`, `providers`, `fallback`, and `setup_error` | core | core | core | core | core guaranteed |
+| `flush_telemetry()` drains installed providers without tearing them down, and reports a drain it could not complete | core | core | core | core | core guaranteed |
+| A tracer/meter provider a *host application* installed on the OTel globals is emitted through and reported as installed | auto-detected | auto-detected | auto-detected | host-asserted | core guaranteed; detection mechanism is idiomatic |
 | Real OTLP traces export | core | core | core | feature-gated | feature/dependency gated |
 | Real OTLP metrics export | core | core | core | feature-gated | feature/dependency gated |
 | Real OTLP logs export | core | core | core | feature-gated | feature/dependency gated |
@@ -33,6 +35,12 @@ Legend:
 
 Notes:
 
+- Rust cannot auto-detect a host-installed provider: `opentelemetry`'s
+  `global::tracer_provider()` returns an opaque `GlobalTracerProvider` with no
+  downcast and no `is_noop`. The host asserts it instead, via
+  `adopt_global_providers(AdoptedProviders { traces, metrics })`. The observable
+  contract is identical across all four and is pinned by the
+  `host_provider_adoption` runtime-probe case.
 - Rust OTLP export requires the `otel` cargo feature.
 - TypeScript OTLP export requires the optional OpenTelemetry peer dependencies.
 - Python OTLP export requires the `otel` extras.
