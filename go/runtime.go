@@ -25,50 +25,51 @@ func GetRuntimeConfig() *TelemetryConfig {
 }
 
 // TracingEnabled reports whether the facade should be using a tracer provider
-// right now: telemetry is set up and tracing is left on by the active config.
+// right now: no loaded config has switched tracing off.
 //
 // Exported for the optional OTel backend, which gates provider adoption on it.
 // Read live rather than snapshotted during backend Setup, because Setup does
 // not always run — _setupBackendLocked skips it on the endpoint-less path,
 // which is exactly the pure-adoption case — and because a snapshot cleared by
 // Shutdown had no way back.
-func TracingEnabled() bool { return _tracingGate.Load() }
+//
+// Defaults to true before SetupTelemetry and after ShutdownTelemetry, matching
+// the emit path: Trace() runs without a config, so a host application that
+// installs its own SDK on the OTel globals and never calls SetupTelemetry must
+// still have that provider adopted. Requiring _setupDone here instead would
+// start those spans on the no-op tracer and drop them silently.
+func TracingEnabled() bool { return !_tracingOff.Load() }
 
 // MetricsEnabled is the metrics counterpart of TracingEnabled.
-func MetricsEnabled() bool { return _metricsGate.Load() }
+func MetricsEnabled() bool { return !_metricsOff.Load() }
 
-// _tracingGate / _metricsGate mirror "set up and this signal is on" for readers
-// that must not take _setupMu: the OTel backend is asked for Providers() from
-// inside _wireBackendBindingsLocked, which already holds it, and from the
-// per-span path, which must not contend on it. Published under the lock by
-// _publishRuntimeGatesLocked at every point _setupDone or _runtimeCfg changes.
+// _tracingOff / _metricsOff mirror "a loaded config switched this signal off"
+// for readers that must not take _setupMu: the OTel backend is asked for
+// Providers() from inside _wireBackendBindingsLocked, which already holds it,
+// and from the per-span path, which must not contend on it. Published under the
+// lock by _publishRuntimeGatesLocked at every point _runtimeCfg changes.
+//
+// Stored inverted so the zero value — no SetupTelemetry yet — reads as on, with
+// no init() to keep in step.
 var (
-	_tracingGate atomic.Bool //nolint:gochecknoglobals
-	_metricsGate atomic.Bool //nolint:gochecknoglobals
+	_tracingOff atomic.Bool //nolint:gochecknoglobals
+	_metricsOff atomic.Bool //nolint:gochecknoglobals
 )
 
 func _publishRuntimeGatesLocked() {
-	active := _setupDone && _runtimeCfg != nil
-	_tracingGate.Store(active && _runtimeCfg.Tracing.Enabled)
-	_metricsGate.Store(active && _runtimeCfg.Metrics.Enabled)
+	_tracingOff.Store(_runtimeCfg != nil && !_runtimeCfg.Tracing.Enabled)
+	_metricsOff.Store(_runtimeCfg != nil && !_runtimeCfg.Metrics.Enabled)
 }
 
+// _runtimeTracingEnabled is the per-span reader. It answers from the published
+// gate rather than taking _setupMu: every span and every metric call goes
+// through here, and the mutex is held across backend setup and shutdown.
 func _runtimeTracingEnabled() bool {
-	_setupMu.Lock()
-	defer _setupMu.Unlock()
-	if _runtimeCfg == nil {
-		return true
-	}
-	return _runtimeCfg.Tracing.Enabled
+	return TracingEnabled()
 }
 
 func _runtimeMetricsEnabled() bool {
-	_setupMu.Lock()
-	defer _setupMu.Unlock()
-	if _runtimeCfg == nil {
-		return true
-	}
-	return _runtimeCfg.Metrics.Enabled
+	return MetricsEnabled()
 }
 
 func _runtimeSetupDone() bool {
