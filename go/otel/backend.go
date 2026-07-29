@@ -36,12 +36,15 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
+	// Last, so our own providers always take precedence over a host's.
+	_adoptForeignProviders(cfg)
 	return nil
 }
 
-// ForceFlush drains every installed provider, leaving them installed. Returns
+// ForceFlush drains every provider we installed, leaving them installed. Returns
 // the first error encountered, after attempting all three signals — one stalled
-// exporter must not deny the others their drain.
+// exporter must not deny the others their drain. A provider adopted from the
+// OTel globals is not ours to drain and is skipped.
 func (b *_backend) ForceFlush(ctx context.Context) error {
 	var first error
 
@@ -89,6 +92,8 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 		}
 		_otelLoggerProvider = nil
 	}
+	// Adopted providers belong to the host: drop the reference, do not shut down.
+	_releaseAdoptedProviders()
 	otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
 	otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
 	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
@@ -104,6 +109,7 @@ func (b *_backend) ResetForTests() {
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
+	_releaseAdoptedProviders()
 	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
 	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
@@ -119,16 +125,17 @@ func _resetOTelProviders() {
 func (b *_backend) Providers() telemetry.SignalStatus {
 	return telemetry.SignalStatus{
 		Logs:    _otelLoggerProvider != nil,
-		Traces:  _otelTracerProvider != nil,
-		Metrics: _otelMeterProvider != nil,
+		Traces:  _effectiveTracerProvider() != nil,
+		Metrics: _effectiveMeterProvider() != nil,
 	}
 }
 
 func (b *_backend) Tracer(name string) telemetry.Tracer {
-	if _otelTracerProvider == nil {
+	provider := _effectiveTracerProvider()
+	if provider == nil {
 		return nil
 	}
-	return _otelTracerAdapter{inner: _otelTracerProvider.Tracer(name)}
+	return _otelTracerAdapter{inner: provider.Tracer(name)}
 }
 
 func (b *_backend) TraceContext(ctx context.Context) (traceID, spanID string, ok bool) {
@@ -147,17 +154,19 @@ func (b *_backend) LoggerHandler(name string) slog.Handler {
 }
 
 func (b *_backend) Meter(name string) any {
-	if _otelMeterProvider == nil {
+	provider := _effectiveMeterProvider()
+	if provider == nil {
 		return nil
 	}
-	return _otelMeterProvider.Meter(name)
+	return provider.Meter(name)
 }
 
 func (b *_backend) NewCounter(name string, opts telemetry.InstrumentOptions) (telemetry.Counter, bool) {
-	if _otelMeterProvider == nil {
+	provider := _effectiveMeterProvider()
+	if provider == nil {
 		return nil, false
 	}
-	meter := _otelMeterProvider.Meter("provide.telemetry")
+	meter := provider.Meter("provide.telemetry")
 	counter, err := meter.Int64Counter(name, _counterOptions(opts)...)
 	if err != nil {
 		return nil, false
@@ -166,10 +175,11 @@ func (b *_backend) NewCounter(name string, opts telemetry.InstrumentOptions) (te
 }
 
 func (b *_backend) NewGauge(name string, opts telemetry.InstrumentOptions) (telemetry.Gauge, bool) {
-	if _otelMeterProvider == nil {
+	provider := _effectiveMeterProvider()
+	if provider == nil {
 		return nil, false
 	}
-	meter := _otelMeterProvider.Meter("provide.telemetry")
+	meter := provider.Meter("provide.telemetry")
 	gauge, err := meter.Float64Gauge(name, _gaugeOptions(opts)...)
 	if err != nil {
 		return nil, false
@@ -178,10 +188,11 @@ func (b *_backend) NewGauge(name string, opts telemetry.InstrumentOptions) (tele
 }
 
 func (b *_backend) NewHistogram(name string, opts telemetry.InstrumentOptions) (telemetry.Histogram, bool) {
-	if _otelMeterProvider == nil {
+	provider := _effectiveMeterProvider()
+	if provider == nil {
 		return nil, false
 	}
-	meter := _otelMeterProvider.Meter("provide.telemetry")
+	meter := provider.Meter("provide.telemetry")
 	histogram, err := meter.Float64Histogram(name, _histogramOptions(opts)...)
 	if err != nil {
 		return nil, false
