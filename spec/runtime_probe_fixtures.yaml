@@ -78,6 +78,24 @@ cases:
       raised: true
       config_preserved: true
 
+  # A host application's own SDK provider, adopted by the facade. The mechanism
+  # is per-language on purpose — Python, TypeScript and Go detect a live
+  # provider on the OTel globals for themselves, while Rust cannot (its
+  # GlobalTracerProvider is opaque, with no downcast and no is_noop) and so
+  # takes an explicit assertion from the host. The observable contract below is
+  # identical for all four. See behavioral_parity.provider_adoption_reporting.
+  - id: host_provider_adoption
+    kind: flags
+    expected:
+      # Before setup nothing has read the environment, so the signal defaults
+      # on and the host's provider is reported.
+      adopted_before_setup: true
+      # A setup that leaves the signal on must not drop the adoption.
+      adopted_after_enabled_setup: true
+      # A *loaded* config that switches the signal off must: status has to
+      # match the emit path, which checks enablement first.
+      fallback_after_disabled_setup: true
+
   - id: shutdown_re_setup
     kind: flags
     expected:

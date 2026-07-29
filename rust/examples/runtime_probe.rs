@@ -142,6 +142,70 @@ fn main() {
                 "metrics_provider": status.providers.metrics,
             })
         }
+        // A host application's own SDK provider must be adopted, and adoption
+        // must be gated on the signal being enabled.
+        //
+        // Rust is the one facade that cannot detect this for itself:
+        // opentelemetry::global::tracer_provider() returns an opaque
+        // GlobalTracerProvider with no downcast and no is_noop, so the host
+        // asserts it via adopt_global_providers instead. The observable flags
+        // below are identical to the other three facades — that is the point of
+        // the case. shutdown_telemetry releases the assertion (it never owned
+        // the host's providers), so the second leg re-asserts it.
+        // A host application's own SDK provider must be adopted, and adoption
+        // must be gated on the signal being enabled.
+        //
+        // Rust is the one facade that cannot detect this for itself:
+        // opentelemetry::global::tracer_provider() returns an opaque
+        // GlobalTracerProvider with no downcast and no is_noop, so the host
+        // asserts it via adopt_global_providers instead. The observable flags
+        // below are identical to the other three facades — that is the point of
+        // the case. shutdown_telemetry releases the assertion (it never owned
+        // the host's providers), so the second leg re-asserts it.
+        //
+        // Gated on the otel feature because the SDK crates it installs are
+        // optional deps; the harness lists this case as OTel-required and runs
+        // the probe with --features otel.
+        "host_provider_adoption" => {
+            #[cfg(not(feature = "otel"))]
+            {
+                panic!("host_provider_adoption requires --features otel");
+            }
+            #[cfg(feature = "otel")]
+            {
+                let install_host_provider = || {
+                    opentelemetry::global::set_tracer_provider(
+                        opentelemetry_sdk::trace::SdkTracerProvider::builder().build(),
+                    );
+                    provide_telemetry::adopt_global_providers(
+                        provide_telemetry::AdoptedProviders::all(),
+                    );
+                };
+
+                install_host_provider();
+                let before = provide_telemetry::get_runtime_status();
+
+                // setup_telemetry() reads the environment, so enablement is set there.
+                std::env::set_var("PROVIDE_TRACE_ENABLED", "true");
+                provide_telemetry::setup_telemetry().expect("setup enabled");
+                let enabled = provide_telemetry::get_runtime_status();
+                provide_telemetry::shutdown_telemetry().expect("shutdown");
+
+                install_host_provider();
+                std::env::set_var("PROVIDE_TRACE_ENABLED", "false");
+                provide_telemetry::setup_telemetry().expect("setup disabled");
+                let disabled = provide_telemetry::get_runtime_status();
+                provide_telemetry::shutdown_telemetry().expect("shutdown");
+                std::env::remove_var("PROVIDE_TRACE_ENABLED");
+
+                json!({
+                    "case": case,
+                    "adopted_before_setup": before.providers.traces,
+                    "adopted_after_enabled_setup": enabled.providers.traces,
+                    "fallback_after_disabled_setup": disabled.fallback.traces,
+                })
+            }
+        }
         "provider_identity_reconfigure" => {
             provide_telemetry::setup_telemetry().expect("setup");
             let before = provide_telemetry::get_runtime_status();

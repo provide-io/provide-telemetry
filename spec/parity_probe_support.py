@@ -52,7 +52,9 @@ _PROBE_ENV_DEFAULTS: dict[str, str] = {
 }
 
 # Case IDs whose Python probe subprocess requires the OTel extras to be installed.
-_OTEL_REQUIRED_CASE_IDS: frozenset[str] = frozenset({"per_signal_logs_endpoint", "provider_identity_reconfigure"})
+_OTEL_REQUIRED_CASE_IDS: frozenset[str] = frozenset(
+    {"per_signal_logs_endpoint", "provider_identity_reconfigure", "host_provider_adoption"}
+)
 
 
 def _has_otel_stack() -> bool:

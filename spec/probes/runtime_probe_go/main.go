@@ -13,6 +13,8 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	_ "github.com/provide-io/provide-telemetry/go/otel"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const (
@@ -186,6 +188,36 @@ func caseProviderIdentityReconfigure() map[string]any {
 	}
 }
 
+// caseHostProviderAdoption pins that a host application's own SDK provider is
+// adopted, and that adoption is gated on the signal being enabled.
+//
+// Go detects this for itself: installing the provider on the OTel global is
+// enough, because the backend duck-types the global's ForceFlush/Shutdown pair.
+func caseHostProviderAdoption() map[string]any {
+	telemetry.ResetForTests()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider())
+
+	before := telemetry.GetRuntimeStatus()
+
+	_ = os.Setenv("PROVIDE_TRACE_ENABLED", "true")
+	_, _ = telemetry.SetupTelemetry()
+	enabled := telemetry.GetRuntimeStatus()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+
+	_ = os.Setenv("PROVIDE_TRACE_ENABLED", "false")
+	_, _ = telemetry.SetupTelemetry()
+	disabled := telemetry.GetRuntimeStatus()
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	_ = os.Unsetenv("PROVIDE_TRACE_ENABLED")
+
+	return map[string]any{
+		"case":                          "host_provider_adoption",
+		"adopted_before_setup":          before.Providers.Traces,
+		"adopted_after_enabled_setup":   enabled.Providers.Traces,
+		"fallback_after_disabled_setup": disabled.Fallback.Traces,
+	}
+}
+
 func captureEmit(name string, level string, message string) []map[string]any {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -277,10 +309,10 @@ func caseHotReloadLogFormat() map[string]any {
 	statusAfter := telemetry.GetRuntimeStatus()
 	_ = telemetry.ShutdownTelemetry(context.Background())
 	return map[string]any{
-		"case":                   "hot_reload_log_format",
-		"format_config_updated":  strings.EqualFold(cfg.Logging.Format, "console"),
-		"service_preserved":      cfg.ServiceName == serviceBefore,
-		"providers_unchanged":    statusBefore.Providers == statusAfter.Providers,
+		"case":                  "hot_reload_log_format",
+		"format_config_updated": strings.EqualFold(cfg.Logging.Format, "console"),
+		"service_preserved":     cfg.ServiceName == serviceBefore,
+		"providers_unchanged":   statusBefore.Providers == statusAfter.Providers,
 	}
 }
 
@@ -362,6 +394,8 @@ func main() {
 		result = caseSignalEnablement()
 	case "per_signal_logs_endpoint":
 		result = casePerSignalLogsEndpoint()
+	case "host_provider_adoption":
+		result = caseHostProviderAdoption()
 	case "provider_identity_reconfigure":
 		result = caseProviderIdentityReconfigure()
 	case "shutdown_re_setup":
