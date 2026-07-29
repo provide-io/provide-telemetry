@@ -84,3 +84,15 @@ class TestRuntimeStatusReportsHostMeterProvider:
         status = get_runtime_status()
         assert status["providers"]["metrics"] is False  # type: ignore[index]
         assert status["fallback"]["metrics"] is True  # type: ignore[index]
+
+
+def test_false_when_metrics_are_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A disabled signal has no provider in play, however live the global is.
+
+    get_meter() checks _metrics_explicitly_disabled before anything else, so the
+    probe must too — otherwise status claims an export path that get_meter()
+    then refuses to hand back.
+    """
+    _install_meter_global(monkeypatch, _ExternalProvider())
+    monkeypatch.setattr(mpmod, "_metrics_explicitly_disabled", True)
+    assert mpmod._has_effective_meter_provider() is False

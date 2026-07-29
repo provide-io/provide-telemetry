@@ -16,6 +16,7 @@ __all__ = [
 import logging
 import threading
 import warnings
+from collections.abc import Callable
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
@@ -133,6 +134,20 @@ def _reset_all_for_tests() -> None:
     _reset_runtime()
 
 
+def _drain_signal(signal: str, drain: Callable[[float], bool], deadline: float) -> bool:
+    """Run one signal's drain, reporting a raised exporter error as a failed drain.
+
+    ``bounded_provider_flush`` re-raises what ``force_flush`` raised — the right
+    contract for the primitive, the wrong one for a bool-returning public API
+    called at a request boundary.
+    """
+    try:
+        return drain(deadline)
+    except Exception as exc:
+        _logger.warning("telemetry.flush.signal_failed", extra={"signal": signal, "error": str(exc)})
+        return False
+
+
 def flush_telemetry(timeout_seconds: float | None = None) -> bool:
     """Force-flush installed providers without tearing them down.
 
@@ -157,10 +172,16 @@ def flush_telemetry(timeout_seconds: float | None = None) -> bool:
     deadline = (
         get_runtime_config().exporter.logs_shutdown_timeout_seconds if timeout_seconds is None else timeout_seconds
     )
-    # Materialise before reducing: every signal must get its drain attempt even
-    # when an earlier one is abandoned at the deadline. `all()` over a generator
-    # would let a slow logs endpoint deny traces and metrics theirs.
-    results = [flush_logging(deadline), flush_tracing(deadline), flush_metrics(deadline)]
+    # Materialise before reducing, and route each through _drain_signal: every
+    # signal must get its drain attempt even when an earlier one is abandoned at
+    # the deadline *or* raises. `all()` over a generator would let a slow logs
+    # endpoint deny traces and metrics theirs, and an exception escaping here
+    # would break the documented bool contract inside a caller's request handler.
+    results = [
+        _drain_signal("logs", flush_logging, deadline),
+        _drain_signal("traces", flush_tracing, deadline),
+        _drain_signal("metrics", flush_metrics, deadline),
+    ]
     return all(results)
 
 

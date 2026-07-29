@@ -10,6 +10,7 @@ import (
 	"maps"
 	"math"
 	"strings"
+	"sync/atomic"
 )
 
 // GetRuntimeConfig returns the active TelemetryConfig, or nil if SetupTelemetry has not
@@ -21,6 +22,35 @@ func GetRuntimeConfig() *TelemetryConfig {
 		return nil
 	}
 	return cloneTelemetryConfig(_runtimeCfg)
+}
+
+// TracingEnabled reports whether the facade should be using a tracer provider
+// right now: telemetry is set up and tracing is left on by the active config.
+//
+// Exported for the optional OTel backend, which gates provider adoption on it.
+// Read live rather than snapshotted during backend Setup, because Setup does
+// not always run — _setupBackendLocked skips it on the endpoint-less path,
+// which is exactly the pure-adoption case — and because a snapshot cleared by
+// Shutdown had no way back.
+func TracingEnabled() bool { return _tracingGate.Load() }
+
+// MetricsEnabled is the metrics counterpart of TracingEnabled.
+func MetricsEnabled() bool { return _metricsGate.Load() }
+
+// _tracingGate / _metricsGate mirror "set up and this signal is on" for readers
+// that must not take _setupMu: the OTel backend is asked for Providers() from
+// inside _wireBackendBindingsLocked, which already holds it, and from the
+// per-span path, which must not contend on it. Published under the lock by
+// _publishRuntimeGatesLocked at every point _setupDone or _runtimeCfg changes.
+var (
+	_tracingGate atomic.Bool //nolint:gochecknoglobals
+	_metricsGate atomic.Bool //nolint:gochecknoglobals
+)
+
+func _publishRuntimeGatesLocked() {
+	active := _setupDone && _runtimeCfg != nil
+	_tracingGate.Store(active && _runtimeCfg.Tracing.Enabled)
+	_metricsGate.Store(active && _runtimeCfg.Metrics.Enabled)
 }
 
 func _runtimeTracingEnabled() bool {
@@ -65,6 +95,7 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 	applyRuntimeOverrides(next, overrides)
 	_applyRuntimePolicies(next)
 	_runtimeCfg = next
+	_publishRuntimeGatesLocked()
 	return nil
 }
 
@@ -94,6 +125,7 @@ func ReloadRuntimeFromEnv() error {
 	applyRuntimeOverrides(next, overrides)
 	_applyRuntimePolicies(next)
 	_runtimeCfg = next
+	_publishRuntimeGatesLocked()
 	return nil
 }
 

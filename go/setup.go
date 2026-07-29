@@ -159,13 +159,20 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	// Wire per-signal sampling from config.
 	_applyRuntimePolicies(cfg)
 
-	// Wire any registered optional backend (for example go/otel).
-	if err := _setupBackendLocked(state, cfg); err != nil {
-		return nil, err
-	}
-
+	// Publish the signal gates before wiring: _setupBackendLocked asks the
+	// backend for Providers(), and the OTel backend gates provider adoption on
+	// them, so they must already reflect this config.
 	_runtimeCfg = cfg
 	_setupDone = true
+	_publishRuntimeGatesLocked()
+
+	// Wire any registered optional backend (for example go/otel).
+	if err := _setupBackendLocked(state, cfg); err != nil {
+		_runtimeCfg = nil
+		_setupDone = false
+		_publishRuntimeGatesLocked()
+		return nil, err
+	}
 
 	return cloneTelemetryConfig(cfg), nil
 }
@@ -208,6 +215,7 @@ func validateTelemetryConfig(cfg *TelemetryConfig) error {
 // TypeScript / Rust behaviour — so a resulting context.DeadlineExceeded from
 // the backend is suppressed. Caller-supplied deadlines are still surfaced as
 // errors because the caller explicitly asked for that bound.
+
 // FlushTelemetry force-flushes installed providers without tearing them down.
 //
 // The drain half of ShutdownTelemetry: every provider the active backend
@@ -225,20 +233,26 @@ func validateTelemetryConfig(cfg *TelemetryConfig) error {
 // Returns nil when telemetry was never set up or the active backend cannot
 // flush: there is nothing installed to drain.
 func FlushTelemetry(ctx context.Context) error {
+	// Snapshot under the lock, drain outside it. ShutdownTelemetry can hold
+	// _setupMu for its whole deadline because it runs once at exit; flush is
+	// documented for repeated use at a request boundary, and every Trace() and
+	// metric call takes this same mutex to read its enablement — holding it for
+	// a 5s drain against a slow collector would stall the entire process.
 	_setupMu.Lock()
-	defer _setupMu.Unlock()
-
 	if !_setupDone {
+		_setupMu.Unlock()
 		return nil
 	}
+	timeout := _shutdownDeadlineForLocked(ctx)
+	_setupMu.Unlock()
 
-	if timeout := _shutdownDeadlineForLocked(ctx); timeout > 0 {
+	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 
-	return _flushBackendLocked(ctx)
+	return _flushBackend(ctx)
 }
 
 func ShutdownTelemetry(ctx context.Context) error {
@@ -259,6 +273,7 @@ func ShutdownTelemetry(ctx context.Context) error {
 
 	_setupDone = false
 	_runtimeCfg = nil
+	_publishRuntimeGatesLocked()
 
 	err := _shutdownBackendLocked(ctx)
 	DefaultTracer = &_noopTracer{}
@@ -295,6 +310,7 @@ func _resetSetup() {
 	defer _setupMu.Unlock()
 	_setupDone = false
 	_runtimeCfg = nil
+	_publishRuntimeGatesLocked()
 	_resetBackendsLocked()
 	DefaultTracer = &_noopTracer{}
 	_resetLogger()

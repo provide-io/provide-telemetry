@@ -23,6 +23,20 @@ __all__ = [
 import threading
 import warnings
 
+# Ceiling on drain workers abandoned at their deadline and still running. Small
+# on purpose: past a handful of stuck workers the exporter is not coming back,
+# and spawning more only costs threads.
+_MAX_PENDING_WORKERS = 8
+_pending_lock = threading.Lock()
+_pending_workers = 0
+
+
+def _reset_pending_workers_for_tests() -> None:
+    """Restore the worker budget (tests that deliberately strand workers)."""
+    global _pending_workers
+    with _pending_lock:
+        _pending_workers = 0
+
 
 def _bounded_provider_call(
     provider: object,
@@ -41,14 +55,37 @@ def _bounded_provider_call(
     bounded semantics: if the thread exceeds *timeout_seconds*, it is abandoned
     (daemon threads are reclaimed by interpreter exit).
 
+    Abandoned workers are capped. shutdown runs once, but flush is documented for
+    repeated use (a request boundary, a checkpoint), so against an unreachable
+    endpoint every call would otherwise strand another thread in the exporter's
+    retry loop until interpreter exit — thousands within minutes at a few
+    requests per second, ending in "can't start new thread" raised from
+    unrelated code. Past _MAX_PENDING_WORKERS still-running workers we decline to
+    start another and report the drain as failed, which is what it is.
+
     Missing or non-callable attributes are skipped. Returns True if every call
-    completed in time, False if abandoned. Re-raises the first exception raised
-    by a call that completed.
+    completed in time, False if abandoned or declined. Re-raises the first
+    exception raised by a call that completed.
     """
+    global _pending_workers
+    with _pending_lock:
+        at_capacity = _pending_workers >= _MAX_PENDING_WORKERS
+        if not at_capacity:
+            _pending_workers += 1
+    if at_capacity:
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            f"provider {action} skipped: {_MAX_PENDING_WORKERS} earlier drain workers "  # pragma: no mutate — warning message string is non-semantic
+            "are still pending against an unresponsive exporter.",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )
+        return False
+
     error: list[BaseException] = []
     completed = threading.Event()
 
     def _runner() -> None:
+        global _pending_workers
         try:
             for method in methods:
                 call = getattr(provider, method, None)
@@ -58,6 +95,11 @@ def _bounded_provider_call(
             error.append(exc)
         finally:
             completed.set()
+            # Decremented only when the worker actually finishes, so an
+            # abandoned one keeps holding its slot — that is the accounting we
+            # want.
+            with _pending_lock:
+                _pending_workers -= 1
 
     worker = threading.Thread(target=_runner, name=thread_name, daemon=True)
     worker.start()

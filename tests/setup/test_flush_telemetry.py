@@ -13,6 +13,7 @@ made the deadline.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import pytest
@@ -181,3 +182,103 @@ def test_a_signal_abandoned_at_the_deadline_does_not_deny_the_others_theirs(
     seen = _spy_signals(monkeypatch, {"logs": False, "traces": True, "metrics": True})
     assert flush_telemetry(timeout_seconds=1.0) is False
     assert [signal for signal, _ in seen] == ["logs", "traces", "metrics"]
+
+
+# ── failure handling ───────────────────────────────────────────────────
+
+
+def test_a_raising_signal_does_not_abort_the_others_or_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """bounded_provider_flush re-raises; flush_telemetry must not.
+
+    The primitive's re-raise is right for a primitive and wrong for a public
+    bool API called at a request boundary — the caller would get an unhandled
+    exception in its handler and lose the two drains that never ran.
+    """
+    seen: list[str] = []
+
+    def _boom(_timeout: float) -> bool:
+        seen.append("logs")
+        raise RuntimeError("exporter exploded")
+
+    def _ok(signal: str) -> Callable[[float], bool]:
+        def _spy(_timeout: float) -> bool:
+            seen.append(signal)
+            return True
+
+        return _spy
+
+    monkeypatch.setattr(drain, "flush_logging", _boom)
+    monkeypatch.setattr(drain, "flush_tracing", _ok("traces"))
+    monkeypatch.setattr(drain, "flush_metrics", _ok("metrics"))
+
+    assert flush_telemetry(timeout_seconds=1.0) is False
+    assert seen == ["logs", "traces", "metrics"]
+
+
+def test_declines_to_strand_more_workers_than_the_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated flushes against a dead exporter must not accumulate threads.
+
+    flush_telemetry is documented for per-request use; without a cap each
+    timed-out call strands another daemon thread in the exporter's retry loop
+    until interpreter exit.
+    """
+    import threading
+
+    from provide.telemetry import _provider_drain
+
+    release = threading.Event()
+
+    class _Hanging:
+        def force_flush(self) -> None:
+            release.wait(10.0)
+
+    def _stuck() -> int:
+        return len([t for t in threading.enumerate() if t.name == "provide-provider-flush"])
+
+    # Start from a full budget, and measure the delta: earlier tests in this
+    # process may have stranded workers of their own.
+    _provider_drain._reset_pending_workers_for_tests()
+    before = _stuck()
+    try:
+        attempts = _provider_drain._MAX_PENDING_WORKERS + 3
+        results = [_provider_drain.bounded_provider_flush(_Hanging(), timeout_seconds=0.01) for _ in range(attempts)]
+        assert all(r is False for r in results)
+        # Past the budget we decline rather than spawn: at most the budget's
+        # worth of new workers, not one per call.
+        spawned = _stuck() - before
+        assert spawned <= _provider_drain._MAX_PENDING_WORKERS
+        assert spawned < attempts
+    finally:
+        release.set()
+        _provider_drain._reset_pending_workers_for_tests()
+
+
+@pytest.mark.parametrize(
+    ("signal", "attr"),
+    [("logs", "flush_logging"), ("traces", "flush_tracing"), ("metrics", "flush_metrics")],
+)
+def test_a_failed_signal_is_reported_to_operators_with_its_name(
+    signal: str, attr: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The swallowed exception must still be visible, and say which signal failed.
+
+    Reporting False without naming the signal would turn an exporter fault into
+    an unexplained boolean. Parametrised across all three because each carries
+    its own label into the log record.
+    """
+
+    def _boom(_timeout: float) -> bool:
+        raise RuntimeError("exporter exploded")
+
+    for name in ("flush_logging", "flush_tracing", "flush_metrics"):
+        monkeypatch.setattr(drain, name, _boom if name == attr else (lambda _t: True))
+
+    with caplog.at_level(logging.WARNING, logger="provide.telemetry.setup"):
+        assert flush_telemetry(timeout_seconds=1.0) is False
+
+    records = [r for r in caplog.records if r.getMessage() == "telemetry.flush.signal_failed"]
+    assert len(records) == 1
+    assert records[0].signal == signal
+    assert "exporter exploded" in records[0].error

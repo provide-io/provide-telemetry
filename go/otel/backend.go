@@ -5,7 +5,9 @@ package otel
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -40,7 +42,6 @@ func init() {
 type _backend struct{}
 
 func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.BackendSetupState) error {
-	_captureSignalEnablement(cfg)
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
@@ -52,30 +53,40 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 // exporter must not deny the others their drain. A provider adopted from the
 // OTel globals is not ours to drain and is skipped.
 func (b *_backend) ForceFlush(ctx context.Context) error {
-	var first error
-
-	if _otelTracerProvider != nil {
-		if err := _otelTracerProvider.ForceFlush(ctx); err != nil {
-			first = err
-		}
+	// Concurrently, so each signal gets the caller's full budget. Run in
+	// sequence they share one deadline, and a stalled traces exporter consumes
+	// it entirely: metrics and logs then return DeadlineExceeded without
+	// exporting anything, which is the opposite of what this promises. Python,
+	// Rust and TypeScript all give each signal its own budget.
+	flushes := []func(context.Context) error{}
+	if tp := _loadTracerProvider(); tp != nil {
+		flushes = append(flushes, tp.ForceFlush)
+	}
+	if mp := _loadMeterProvider(); mp != nil {
+		flushes = append(flushes, mp.ForceFlush)
+	}
+	if lp := _loadLoggerProvider(); lp != nil {
+		flushes = append(flushes, lp.ForceFlush)
 	}
 
-	if _otelMeterProvider != nil {
-		if err := _otelMeterProvider.ForceFlush(ctx); err != nil && first == nil {
-			first = err
-		}
+	errs := make([]error, len(flushes))
+	var wg sync.WaitGroup
+	for i, flush := range flushes {
+		wg.Add(1)
+		go func(i int, flush func(context.Context) error) {
+			defer wg.Done()
+			errs[i] = flush(ctx)
+		}(i, flush)
 	}
+	wg.Wait()
 
-	if _otelLoggerProvider != nil {
-		if err := _otelLoggerProvider.ForceFlush(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-
-	return first
+	return errors.Join(errs...)
 }
 
 func (b *_backend) Shutdown(ctx context.Context) error {
+	_providersMu.Lock()
+	defer _providersMu.Unlock()
+
 	var first error
 
 	if _otelTracerProvider != nil {
@@ -99,10 +110,6 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 		_otelLoggerProvider = nil
 	}
 	_resetGlobalsWeSet()
-	// Our participation is over: stop reporting and using any provider, including
-	// a host's that is still (rightly) on the global.
-	_tracingEnabled = false
-	_metricsEnabled = false
 
 	return first
 }
@@ -129,14 +136,15 @@ func _shutdownOTelProviders(ctx context.Context) error {
 }
 
 func (b *_backend) ResetForTests() {
+	_providersMu.Lock()
+	defer _providersMu.Unlock()
+
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
 	_weSetTracerGlobal = false
 	_weSetMeterGlobal = false
 	_weSetLoggerGlobal = false
-	_tracingEnabled = true
-	_metricsEnabled = true
 	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
 	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
@@ -151,7 +159,7 @@ func _resetOTelProviders() {
 
 func (b *_backend) Providers() telemetry.SignalStatus {
 	return telemetry.SignalStatus{
-		Logs:    _otelLoggerProvider != nil,
+		Logs:    _loadLoggerProvider() != nil,
 		Traces:  _effectiveTracerProvider() != nil,
 		Metrics: _effectiveMeterProvider() != nil,
 	}
@@ -174,10 +182,11 @@ func (b *_backend) TraceContext(ctx context.Context) (traceID, spanID string, ok
 }
 
 func (b *_backend) LoggerHandler(name string) slog.Handler {
-	if _otelLoggerProvider == nil {
+	provider := _loadLoggerProvider()
+	if provider == nil {
 		return nil
 	}
-	return otelslog.NewHandler(name, otelslog.WithLoggerProvider(_otelLoggerProvider))
+	return otelslog.NewHandler(name, otelslog.WithLoggerProvider(provider))
 }
 
 func (b *_backend) Meter(name string) any {

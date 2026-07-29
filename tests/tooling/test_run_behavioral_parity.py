@@ -375,6 +375,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
         "trace_field_precedence",
         "setup_invalid_overrides",
         "flush_drains_without_teardown",
+        "flush_after_shutdown_reports_success",
         "shutdown_re_setup",
         "custom_secret_pattern_redacts_message",
         "baggage_auto_injection",

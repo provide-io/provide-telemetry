@@ -101,3 +101,26 @@ def test_flush_thread_is_named_for_operator_visibility() -> None:
 
     bounded_provider_flush(_Recorder(), timeout_seconds=1.0)
     assert observed == ["provide-provider-flush"]
+
+
+def test_worker_budget_returns_to_zero_after_drains_finish() -> None:
+    """The budget must be given back, exactly once, by every worker that finishes.
+
+    Leaking a slot per drain would silently retire the budget after eight calls;
+    giving back too many would let unbounded workers accumulate again.
+    """
+    import time
+
+    from provide.telemetry import _provider_drain
+
+    _provider_drain._reset_pending_workers_for_tests()
+    assert _provider_drain._pending_workers == 0
+
+    for _ in range(3):
+        assert bounded_provider_flush(_RecordingProvider(), timeout_seconds=1.0) is True
+
+    # The decrement lands in the worker's finally, just after the wait returns.
+    deadline = time.monotonic() + 2.0
+    while _provider_drain._pending_workers != 0 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert _provider_drain._pending_workers == 0

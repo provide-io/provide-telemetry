@@ -141,3 +141,32 @@ class TestRuntimeStatusReportsHostProvider:
         status = get_runtime_status()
         assert status["providers"]["traces"] is False  # type: ignore[index]
         assert status["fallback"]["traces"] is True  # type: ignore[index]
+
+
+def test_false_when_tracing_is_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A disabled signal has no provider in play, however live the global is.
+
+    get_tracer() checks _tracing_explicitly_disabled before anything else. When
+    the probe skipped it, @trace bypassed facade sampling for spans get_tracer()
+    then served from a _NoopTracer: nothing exported, but counted as emitted and
+    holding a backpressure ticket.
+    """
+    _install_trace_global(monkeypatch, _ExternalProvider())
+    monkeypatch.setattr(pmod, "_tracing_explicitly_disabled", True)
+    assert pmod._has_effective_tracing_provider() is False
+
+
+def test_disabled_tracing_still_applies_facade_sampling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The user-visible half: rate 0 must still drop when tracing is disabled."""
+    _install_trace_global(monkeypatch, _ExternalProvider())
+    monkeypatch.setattr(pmod, "_tracing_explicitly_disabled", True)
+    set_sampling_policy("traces", SamplingPolicy(default_rate=0.0))
+    reset_health_for_tests()
+
+    @trace("disabled.signal.span")
+    def work() -> str:
+        return "ok"
+
+    assert work() == "ok"
+    assert get_health_snapshot().emitted_traces == 0
+    assert get_health_snapshot().dropped_traces == 1
