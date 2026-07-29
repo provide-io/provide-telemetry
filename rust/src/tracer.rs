@@ -99,18 +99,14 @@ fn begin_trace(name: &str) -> Option<ActiveTrace> {
     // Live OTel provider: SDK ParentBased(TraceIdRatioBased) is authoritative —
     // skip facade should_sample to avoid double-sampling. Noop path still gates.
     //
-    // Unlike the Python and TypeScript facades, this deliberately does NOT probe
-    // the OTel global. Those facades resolve their tracer off the global, so a
-    // provider a host application installed there is the one their spans flow
-    // through, and asking "did we install one" gives the wrong answer. Here the
-    // same flag also selects the emit path below: without our own provider we
-    // take the noop-span branch and never reach global::tracer(), so the flag
-    // cannot be false while a real span is exported. A host provider we did not
-    // install is simply not used — and could not be detected anyway, since
-    // opentelemetry 0.31's global::tracer_provider() returns an opaque
-    // GlobalTracerProvider with no way to tell a real provider from the noop.
+    // "Effective" covers both our own installed provider and one the host asked
+    // us to adopt via adopt_global_providers(). Python and TypeScript detect a
+    // host's provider by probing the global; Rust cannot — opentelemetry 0.31's
+    // global::tracer_provider() returns an opaque GlobalTracerProvider with no
+    // way to tell a live provider from the no-op — so the host asserts it and
+    // we honour the assertion here and in the emit path below.
     #[cfg(feature = "otel")]
-    let otel_live = crate::otel::traces::tracer_provider_installed();
+    let otel_live = crate::otel::traces_provider_effective();
     #[cfg(not(feature = "otel"))]
     let otel_live = false;
     if !otel_live && !should_sample(Signal::Traces, Some(name)).unwrap_or(true) {

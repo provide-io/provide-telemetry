@@ -6,6 +6,7 @@
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 
+pub(crate) mod adopt;
 #[cfg(feature = "otel")]
 mod async_runtime;
 #[cfg(feature = "otel")]
@@ -107,7 +108,22 @@ pub(crate) fn flush_otel() -> bool {
     }
 }
 
+/// True when facade spans should route through the global tracer provider:
+/// either we installed one, or the host asserted that it did.
+#[cfg(feature = "otel")]
+pub(crate) fn traces_provider_effective() -> bool {
+    traces::tracer_provider_installed() || adopt::traces_adopted()
+}
+
+/// Metrics counterpart of [`traces_provider_effective`].
+#[cfg(feature = "otel")]
+pub(crate) fn metrics_provider_effective() -> bool {
+    metrics::meter_provider_installed() || adopt::metrics_adopted()
+}
+
 pub(crate) fn shutdown_otel() {
+    // Adopted providers belong to the host: drop the assertion, shut nothing down.
+    adopt::release_adopted_providers();
     #[cfg(feature = "otel")]
     {
         logs::shutdown_logger_provider();
