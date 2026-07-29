@@ -4,7 +4,7 @@
 #
 [package]
 name = "provide-telemetry"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.81"
 description = "Cross-language telemetry helpers with privacy, resilience, and OTLP support."
@@ -35,7 +35,7 @@ otel = [
 otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic", "dep:http"]
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 hmac = "0.12"
 http = { version = "1.1", optional = true, default-features = false, features = ["std"] }
 log = "0.4"
@@ -51,7 +51,7 @@ regex = "1.11.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tracing-opentelemetry = { version = "0.32", optional = true }
@@ -59,9 +59,9 @@ url = { version = "2", optional = true }
 uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 proptest = "1"
-rstest = "0.25"
+rstest = "0.26"
 serde_yaml = "0.9"
 tokio = { version = "1.44", features = ["macros"] }
 

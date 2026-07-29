@@ -73,7 +73,9 @@ mutant is equivalent — not describing what the line does.
 Good:
 
 ```python
-_logger.debug("otel.import.not_installed")  # pragma: no mutate — debug log string is non-semantic; behaviour lives in the return below
+_logger.debug(
+    "otel.import.not_installed"
+)  # pragma: no mutate — debug log string is non-semantic; behaviour lives in the return below
 ```
 
 Bad (describes the line, not the exemption):

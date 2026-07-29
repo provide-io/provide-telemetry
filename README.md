@@ -106,7 +106,7 @@ All implementations export equivalent APIs (signatures vary per language idiom):
 
 | Category | Functions |
 |----------|-----------|
-| Lifecycle | `setup_telemetry()`, `shutdown_telemetry()` |
+| Lifecycle | `setup_telemetry()`, `flush_telemetry()`, `shutdown_telemetry()` |
 | Logging | `get_logger()`, `bind_context()`, `clear_context()` |
 | Tracing | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()` |
 | Metrics | `counter()`, `gauge()`, `histogram()` |

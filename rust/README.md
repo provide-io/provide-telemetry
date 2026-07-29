@@ -48,6 +48,8 @@ fn main() {
 |--------|-------------|
 | `setup_telemetry()` | Idempotent init from environment variables. |
 | `reconfigure_telemetry(overrides)` | Hot-reload sampling / backpressure / exporter policy. |
+| `flush_telemetry()` | Drain every installed provider and leave them installed. |
+| `adopt_global_providers(AdoptedProviders)` | Tell the facade the host installed live providers on the OTel globals, so emission routes through them. Rust cannot detect this for itself. |
 | `shutdown_telemetry()` | Flush and shut down all providers. |
 | `get_runtime_config()` | Inspect the applied config snapshot. |
 | `get_runtime_status()` | Inspect provider state, fallback mode, last error. |
