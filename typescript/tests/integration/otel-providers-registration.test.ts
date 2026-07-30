@@ -174,10 +174,11 @@ describe('registerOtelProviders registration paths', () => {
       return fakeExporter;
     } as never);
     await registerOtelProviders(getConfig());
+    // Options object, not a positional exporter — see otel-logs.test.ts.
     // Exporter is wrapped in a resilient-export proxy; identity is lost.
-    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(
-      expect.objectContaining({ fake: 'log-exporter' }),
-    );
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith({
+      exporter: expect.objectContaining({ fake: 'log-exporter' }),
+    });
   });
 
   it('registers all three providers (trace + metrics + logs)', async () => {
