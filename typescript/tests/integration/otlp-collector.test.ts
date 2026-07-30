@@ -45,9 +45,14 @@ describe('OTLP collector integration', () => {
       requests.add(1, { suite: 'integration' });
     });
 
-    // Verify providers were successfully registered before shutdown.
+    // Verify providers were successfully registered before shutdown. All three,
+    // not just traces: OTLP log export was silently dead for as long as this
+    // asserted traces alone — the logs provider reported installed while its
+    // processor had no exporter and discarded every record.
     const status = getRuntimeStatus();
     expect(status.providers.traces).toBe(true);
+    expect(status.providers.metrics).toBe(true);
+    expect(status.providers.logs).toBe(true);
 
     await shutdownTelemetry();
   });

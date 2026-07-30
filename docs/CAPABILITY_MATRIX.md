@@ -35,6 +35,16 @@ Legend:
 
 Notes:
 
+- The `Real OTLP * export` rows are only as good as what verifies them. Each
+  language has a collector-backed integration job that asserts the named signal
+  reaches a real OTel collector; the cross-language parity harness does not
+  cover them, because its contract probes carry no SDK dependency by design and
+  so verify facade behaviour rather than bytes on the wire. TypeScript's logs
+  row was wrong for a period — the row said `core` while the log processor had
+  no exporter and dropped every record — and the integration test did not catch
+  it because it asserted only `providers.traces`. If you add a signal or a
+  language, the collector job is the row's evidence: make it assert every signal
+  it claims.
 - Rust cannot auto-detect a host-installed provider: `opentelemetry`'s
   `global::tracer_provider()` returns an opaque `GlobalTracerProvider` with no
   downcast and no `is_noop`. The host asserts it instead, via
