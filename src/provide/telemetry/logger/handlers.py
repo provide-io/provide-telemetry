@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import logging
-from contextlib import suppress
 
 from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
 
@@ -34,7 +33,13 @@ class _BackpressureFanoutHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         from provide.telemetry.backpressure import release
 
-        ticket = getattr(record, _BACKPRESSURE_TICKET_KEY, None)
+        # Popped, not read: the ticket is ours, and OTel's LoggingHandler turns
+        # whatever is left on the record into OTLP attributes. Reading it with
+        # getattr left it in place for the duration of the fan-out, which
+        # exported __provide_telemetry_backpressure_ticket__ on every record
+        # that reached a collector. Lifting it here keeps it alive for the
+        # release below while hiding it from every child handler at once.
+        ticket = record.__dict__.pop(_BACKPRESSURE_TICKET_KEY, None)
         try:
             for handler in self._handlers:
                 if record.levelno >= handler.level:
@@ -42,8 +47,6 @@ class _BackpressureFanoutHandler(logging.Handler):
         finally:
             if ticket is not None:
                 release(ticket)
-                with suppress(AttributeError):
-                    delattr(record, _BACKPRESSURE_TICKET_KEY)
 
     def flush(self) -> None:
         for handler in self._handlers:

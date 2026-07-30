@@ -183,6 +183,11 @@ jobs:
         env:
           OTELCOL_CONTAINER: otelcol
         run: ./ci/verify-collector-signals.sh tests/integration/otel-output-python/collector.log
+      # Names alone prove only that something arrived. This asserts the payload:
+      # the right service resource, native trace/span correlation on log records,
+      # and no internal library state exported as an attribute.
+      - name: Verify collector content
+        run: uv run --no-project python ./ci/verify-collector-content.py tests/integration/otel-output-python/collector.log provide-telemetry-integration
       - name: Stop collector
         if: always()
         run: |
