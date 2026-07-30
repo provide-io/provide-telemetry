@@ -39,7 +39,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	logger "github.com/provide-io/provide-telemetry/go/logger"
-	tracer "github.com/provide-io/provide-telemetry/go/tracer"
 )
 
 func TestTaggedModuleConsumerProbe(t *testing.T) {
@@ -50,9 +49,12 @@ func TestTaggedModuleConsumerProbe(t *testing.T) {
 	if logger.GetLogger(context.Background(), "release.probe") == nil {
 		t.Fatal("expected logger package to be importable from the root module")
 	}
-	ctx, span := tracer.GetTracer("release.probe").Start(context.Background(), "release.probe")
+	// The tracer lives in the root package: go/tracer was a standalone parallel
+	// copy that nothing imported, and it was removed in 0.6.0. Reach it through
+	// GetTracer / SetDefaultTracer, which is what a consumer now does.
+	ctx, span := telemetry.GetTracer("release.probe").Start(context.Background(), "release.probe")
 	if ctx == nil || span == nil || span.TraceID() == "" {
-		t.Fatal("expected tracer package to be importable from the root module")
+		t.Fatal("expected the root package tracer to be usable")
 	}
 	span.End()
 }
@@ -115,7 +117,7 @@ esac
       ;;
   esac
   # Populate go.sum with hashes for transitive deps imported by the
-  # tagged module's sub-packages (e.g. go/tracer pulls in
+  # tagged module's sub-packages (e.g. go/logger pulls in
   # go.opentelemetry.io/otel/trace). go get only adds direct deps,
   # so without this 'go test .' fails with "missing go.sum entry".
   go mod tidy
