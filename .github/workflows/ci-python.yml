@@ -165,6 +165,13 @@ jobs:
         env:
           PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
           PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-python"
+      # Flush must put records on the wire without tearing providers down. Run
+      # as a separate process that never calls shutdown_telemetry(), so anything
+      # it lands in the collector can only have got there via flush.
+      - name: Run collector-backed flush probe
+        run: uv run python scripts/flush_collector_probe.py
+        env:
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
       - name: Collector logs
         if: always()
         run: docker logs otelcol || true
@@ -175,7 +182,7 @@ jobs:
       - name: Verify collector exported all signals
         env:
           OTELCOL_CONTAINER: otelcol
-        run: ./ci/verify-collector-signals.sh tests/integration/otel-output-python/collector.log integration.otlp.smoke integration.requests integration.otlp.log
+        run: ./ci/verify-collector-signals.sh tests/integration/otel-output-python/collector.log integration.otlp.smoke integration.requests integration.otlp.log integration.flush.span integration.flush.requests integration.flush.log integration.flush.after.span integration.flush.after.log
       - name: Stop collector
         if: always()
         run: |
