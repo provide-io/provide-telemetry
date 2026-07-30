@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.1] — 2026-07-30
+
+No functional change. `go` and `go/otel` are identical to 0.6.0 apart from the
+version files and the `go/otel` requirement below.
+
+### Fixed
+
+- **Re-tagged so a direct-VCS fetch resolves.** The repository's history was
+  rewritten to strip commit trailers, which moved the commits that `go/v0.6.0`
+  and `go/otel/v0.6.0` pointed at. `sum.golang.org` is append-only, so it still
+  holds the hashes built from the original commits: fetching `v0.6.0` through
+  the module proxy keeps working from its cache, but a fetch that bypasses the
+  proxy (`GOPROXY=direct`) rebuilds the zip from the new commit and fails
+  verification. 0.6.1 is tagged on the rewritten history and hashes cleanly by
+  either route. Use it instead of 0.6.0.
+
+### Changed
+
+- `go/otel` now requires `github.com/provide-io/provide-telemetry/go v0.6.1`.
+
+---
+
 ## [0.6.0] — 2026-07-29
 
 ### Added
