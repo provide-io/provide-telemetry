@@ -141,6 +141,59 @@ mod tests {
         release_adopted_providers();
     }
 
+    /// Status is not export.
+    ///
+    /// The tests above prove the facade *reports* an adopted provider, and the
+    /// cross-language host_provider_adoption case proves all four agree on that
+    /// reporting. Neither shows a span leaving through it — this one does, by
+    /// recording what the host provider's exporter actually received. Go had
+    /// this covered; Rust asserted only the emitted-traces health counter, which
+    /// a provider that accepts spans and drops them would satisfy just as well.
+    #[cfg(feature = "otel")]
+    #[test]
+    fn an_adopted_provider_actually_receives_the_span() {
+        use opentelemetry_sdk::error::OTelSdkResult;
+        use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Debug, Clone)]
+        struct RecordingExporter {
+            names: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl SpanExporter for RecordingExporter {
+            async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
+                let mut names = self.names.lock().expect("exporter mutex");
+                names.extend(batch.iter().map(|span| span.name.to_string()));
+                Ok(())
+            }
+        }
+
+        let _guard = acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
+        let names = Arc::new(Mutex::new(Vec::new()));
+        let host_provider = SdkTracerProvider::builder()
+            .with_simple_exporter(RecordingExporter {
+                names: Arc::clone(&names),
+            })
+            .build();
+        opentelemetry::global::set_tracer_provider(host_provider.clone());
+        adopt_global_providers(AdoptedProviders::all());
+
+        crate::trace("adopted.export.span", || {});
+
+        host_provider.force_flush().expect("flush host provider");
+        let recorded = names.lock().expect("exporter mutex").clone();
+        assert!(
+            recorded.iter().any(|name| name == "adopted.export.span"),
+            "facade reported the host provider as in play but no span reached its exporter; got {recorded:?}"
+        );
+
+        release_adopted_providers();
+        crate::testing::reset_telemetry_state();
+    }
+
     #[test]
     fn shutdown_releases_the_assertion_without_owning_the_providers() {
         let _guard = acquire_test_state_lock();

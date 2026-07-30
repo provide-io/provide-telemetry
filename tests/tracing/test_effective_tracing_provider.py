@@ -181,3 +181,59 @@ def test_disabled_tracing_still_applies_facade_sampling(monkeypatch: pytest.Monk
     assert work() == "ok"
     assert get_health_snapshot().emitted_traces == 0
     assert get_health_snapshot().dropped_traces == 1
+
+
+@pytest.mark.otel
+class TestAdoptedProviderActuallyExports:
+    """Status is not export. These assert a span reaches the host's exporter.
+
+    The probe tests above prove the facade *reports* a host-installed provider,
+    and the cross-language ``host_provider_adoption`` case proves all four agree
+    on that reporting. Neither shows a span leaving through it. Go had this
+    covered (``TestAdopt_UsesAHostInstalledTracerProvider``); Python, TypeScript
+    and Rust asserted status or sampling only, so a regression that reported
+    adoption while emitting nowhere would have gone unnoticed.
+    """
+
+    def test_a_span_reaches_a_host_installed_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pytest.importorskip("opentelemetry.sdk.trace")
+        from opentelemetry import trace as otel_trace_api
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+        from provide.telemetry.tracing.decorators import trace
+
+        exporter = InMemorySpanExporter()
+        host_provider = TracerProvider()
+        host_provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+        # A provider the host installed; we install nothing of our own. The
+        # fake API delegates get_tracer to the real provider rather than
+        # returning a stub, so the span genuinely travels the host's pipeline —
+        # a stub tracer would make this test pass while exporting nothing, which
+        # is the exact failure it exists to catch.
+        monkeypatch.setattr(pmod, "_provider_configured", False)
+        monkeypatch.setattr(pmod, "_provider_ref", None)
+        monkeypatch.setattr(pmod, "_otel_global_set", False)
+        monkeypatch.setattr(pmod, "_tracing_explicitly_disabled", False)
+        monkeypatch.setattr(
+            pmod,
+            "_load_otel_trace_api",
+            lambda: SimpleNamespace(
+                get_tracer_provider=lambda: host_provider,
+                get_tracer=host_provider.get_tracer,
+                get_current_span=otel_trace_api.get_current_span,
+            ),
+        )
+
+        @trace("adopted.export.span")
+        def _work() -> int:
+            return 7
+
+        assert _work() == 7
+
+        spans = exporter.get_finished_spans()
+        assert [span.name for span in spans] == ["adopted.export.span"], (
+            "the facade reported the host provider as in play but no span reached its exporter"
+        )
