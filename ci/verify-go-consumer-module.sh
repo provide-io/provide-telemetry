@@ -120,8 +120,16 @@ esac
   # tagged module's sub-packages (e.g. go/logger pulls in
   # go.opentelemetry.io/otel/trace). go get only adds direct deps,
   # so without this 'go test .' fails with "missing go.sum entry".
-  go mod tidy
-  go test .
+  #
+  # The proxy is used from here on, deliberately. GOPROXY=direct is the point
+  # of this job for the *tagged module* — the go get above proves a consumer
+  # can resolve it straight from VCS. It is not the point for the rest of the
+  # graph: go mod tidy resolves the test dependencies of every dependency, so
+  # with direct it fetches each from its own origin host. That reached
+  # gonum.org via grpc's internal test utils and timed out after sixteen
+  # minutes, failing a release for a host that has nothing to do with us.
+  GOPROXY="https://proxy.golang.org,direct" go mod tidy
+  GOPROXY="https://proxy.golang.org,direct" go test .
 )
 
 printf 'OK: consumer probe succeeded for %s@%s\n' "${module}" "${version}"
