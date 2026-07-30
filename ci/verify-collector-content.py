@@ -55,9 +55,7 @@ def check(log_text: str, service: str) -> list[str]:
     problems: list[str] = []
 
     if f"service.name: Str({service})" not in log_text:
-        problems.append(
-            f"no resource carries service.name={service!r}; records would be attributed to an SDK default"
-        )
+        problems.append(f"no resource carries service.name={service!r}; records would be attributed to an SDK default")
 
     leaked = sorted(
         {
