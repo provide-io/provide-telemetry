@@ -49,11 +49,11 @@ def test_otlp_collector_smoke() -> None:
     )
     setup_telemetry(cfg)
 
-    @trace("integration.otlp.smoke")
+    @trace("integration.collector.span")
     def _work() -> dict[str, str | None]:
         otel_trace = pytest.importorskip("opentelemetry.trace")
-        get_logger("integration.otlp").info("integration.otlp.log", suite="integration")
-        counter("integration.requests").add(1, {"suite": "integration"})
+        get_logger("integration.collector").info("integration.collector.log", suite="integration")
+        counter("integration.collector.requests").add(1, {"suite": "integration"})
         context = otel_trace.get_current_span().get_span_context()
         trace_id = f"{context.trace_id:032x}" if context.trace_id else None
         span_id = f"{context.span_id:016x}" if context.span_id else None
