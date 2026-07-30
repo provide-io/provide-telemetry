@@ -294,6 +294,14 @@ jobs:
         env:
           PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
           PROVIDE_TEST_OTLP_OUTPUT_DIR: "${{ github.workspace }}/tests/integration/otel-output-go"
+      # Flush must put records on the wire without tearing providers down. Run
+      # as a separate process that never calls ShutdownTelemetry, so anything it
+      # lands in the collector can only have got there via flush.
+      - name: Run collector-backed flush probe
+        working-directory: go/otel
+        run: go run ./cmd/flush_collector_probe
+        env:
+          PROVIDE_TEST_OTLP_ENDPOINT: "http://127.0.0.1:4318"
       - name: Collector logs
         if: always()
         run: docker logs otelcol-go || true
@@ -304,7 +312,7 @@ jobs:
       - name: Verify collector exported all signals
         env:
           OTELCOL_CONTAINER: otelcol-go
-        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-go/collector.log integration.collector.span integration.collector.requests integration.collector.log
+        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-go/collector.log integration.collector.span integration.collector.requests integration.collector.log integration.flush.span integration.flush.requests integration.flush.log integration.flush.after.span integration.flush.after.log
       - name: Stop collector
         if: always()
         run: |
