@@ -187,7 +187,7 @@ jobs:
       # the right service resource, native trace/span correlation on log records,
       # and no internal library state exported as an attribute.
       - name: Verify collector content
-        run: uv run --no-project python ./ci/verify-collector-content.py tests/integration/otel-output-python/collector.log provide-telemetry-integration
+        run: python3 ./ci/verify-collector-content.py tests/integration/otel-output-python/collector.log provide-telemetry-integration
       - name: Stop collector
         if: always()
         run: |
