@@ -96,6 +96,30 @@ cases:
       # match the emit path, which checks enablement first.
       fallback_after_disabled_setup: true
 
+  # Metric output, compared across all four languages. Until this case existed
+  # nothing anywhere asserted a counter, gauge or histogram value — only
+  # providers.metrics / metrics_enabled flags — so metrics were the one signal
+  # with zero cross-language verification of what they actually produce.
+  #
+  # Values are reported as strings on purpose. The native types differ by
+  # language and that is idiomatic, not a defect: Python's Counter.add takes an
+  # int and Gauge.set an int, Go's Counter.Add takes int64 and Gauge.Set
+  # float64, Rust takes f64 throughout. Comparing raw JSON numbers would fail on
+  # 7 vs 7.0 and say nothing about correctness. The values chosen are exact in
+  # every representation, so the strings compare cleanly.
+  - id: metric_instrument_values
+    kind: flags
+    expected:
+      # counter: add 1, 2, 4
+      counter_value: "7"
+      # gauge: set 42 (single attribute set — Gauge.value aggregates across
+      # attribute sets in Python and returns last-reading elsewhere, a
+      # documented capability difference; one set is where they agree)
+      gauge_value: "42"
+      # histogram: record 1, 2, 3
+      histogram_count: "3"
+      histogram_total: "6"
+
   - id: shutdown_re_setup
     kind: flags
     expected:

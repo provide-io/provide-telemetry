@@ -204,6 +204,34 @@ async function caseProviderIdentityReconfigure(): Promise<Record<string, unknown
  * global is enough, because getRuntimeStatus probes the global for the
  * forceFlush/shutdown lifecycle pair.
  */
+/** Counter, gauge and histogram output — the values, not just the flags. */
+async function caseMetricInstrumentValues(): Promise<Record<string, unknown>> {
+  const { counter, gauge, histogram } = await import('../../typescript/src/index.js');
+
+  setupTelemetry({ metricsEnabled: true });
+
+  const c = counter('probe.metric.counter');
+  c.add(1);
+  c.add(2);
+  c.add(4);
+
+  const g = gauge('probe.metric.gauge');
+  g.set(42);
+
+  const h = histogram('probe.metric.histogram');
+  for (const value of [1, 2, 3]) h.record(value);
+
+  const result = {
+    case: 'metric_instrument_values',
+    counter_value: String(c.value),
+    gauge_value: String(g.value),
+    histogram_count: String(h.count),
+    histogram_total: String(h.total),
+  };
+  await shutdownTelemetry();
+  return result;
+}
+
 async function caseHostProviderAdoption(): Promise<Record<string, unknown>> {
   // Resolved against the facade's own package rather than this file: the probe
   // lives outside typescript/, so a bare specifier here would not resolve — and
@@ -385,6 +413,7 @@ async function main(): Promise<void> {
     per_signal_logs_endpoint: casePerSignalLogsEndpoint,
     provider_identity_reconfigure: caseProviderIdentityReconfigure,
     host_provider_adoption: caseHostProviderAdoption,
+    metric_instrument_values: caseMetricInstrumentValues,
     shutdown_re_setup: caseShutdownReSetup,
     hot_reload_log_level: caseHotReloadLogLevel,
     hot_reload_log_format: caseHotReloadLogFormat,

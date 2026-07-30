@@ -182,6 +182,35 @@ def _case_provider_identity_reconfigure() -> dict[str, object]:
     }
 
 
+def _case_metric_instrument_values() -> dict[str, object]:
+    """Counter, gauge and histogram output — the values, not just the flags."""
+    from provide.telemetry import counter, gauge, histogram
+
+    setup_telemetry()
+
+    c = counter("probe.metric.counter")
+    c.add(1)
+    c.add(2)
+    c.add(4)
+
+    g = gauge("probe.metric.gauge")
+    g.set(42)
+
+    h = histogram("probe.metric.histogram")
+    for value in (1, 2, 3):
+        h.record(value)
+
+    result = {
+        "case": "metric_instrument_values",
+        "counter_value": f"{int(c.value)}",
+        "gauge_value": f"{int(g.value)}",
+        "histogram_count": f"{int(h.count)}",
+        "histogram_total": f"{int(h.total)}",
+    }
+    shutdown_telemetry()
+    return result
+
+
 def _case_host_provider_adoption() -> dict[str, object]:
     """A host application's own SDK provider must be adopted, and gated on enablement.
 
@@ -349,6 +378,7 @@ def main() -> int:
         "per_signal_logs_endpoint": _case_per_signal_logs_endpoint,
         "provider_identity_reconfigure": _case_provider_identity_reconfigure,
         "host_provider_adoption": _case_host_provider_adoption,
+        "metric_instrument_values": _case_metric_instrument_values,
         "shutdown_re_setup": _case_shutdown_re_setup,
         "hot_reload_log_level": _case_hot_reload_log_level,
         "hot_reload_log_format": _case_hot_reload_log_format,
