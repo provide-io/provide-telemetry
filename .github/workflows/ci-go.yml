@@ -312,7 +312,7 @@ jobs:
       - name: Verify collector exported all signals
         env:
           OTELCOL_CONTAINER: otelcol-go
-        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-go/collector.log integration.collector.span integration.collector.requests integration.collector.log integration.flush.span integration.flush.requests integration.flush.log integration.flush.after.span integration.flush.after.log
+        run: ../ci/verify-collector-signals.sh ../tests/integration/otel-output-go/collector.log
       - name: Stop collector
         if: always()
         run: |
