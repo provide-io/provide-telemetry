@@ -130,11 +130,15 @@ describe('setupOtelLogProvider', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
+    // Options object, not a positional exporter — sdk-logs reads
+    // `options.exporter`, and passing it positionally leaves the processor with
+    // no exporter and silently discards every record. This assertion previously
+    // accepted the positional form and so pinned that bug in place.
     // Exporter is wrapped in a resilient-export proxy, so assert on the
     // preserved underlying field rather than identity.
-    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith(
-      expect.objectContaining({ fake: 'log-exporter' }),
-    );
+    expect(vi.mocked(BatchLogRecordProcessor)).toHaveBeenCalledWith({
+      exporter: expect.objectContaining({ fake: 'log-exporter' }),
+    });
   });
 
   it('constructs LoggerProvider with processors array containing the BatchLogRecordProcessor', async () => {

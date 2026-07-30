@@ -106,7 +106,12 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
   });
   // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
   const logExporter = wrapResilientExporter('logs', rawLogExporter);
-  const processor = new BatchLogRecordProcessor(logExporter);
+  // Options object, not a positional exporter: @opentelemetry/sdk-logs takes
+  // `{ exporter }` here. Passing it positionally leaves `options.exporter`
+  // undefined, and the processor then discards every record in silence — no
+  // throw, no warning, and `providers.logs` still reports installed. That is
+  // exactly how OTLP log export was dead while every other check stayed green.
+  const processor = new BatchLogRecordProcessor({ exporter: logExporter });
   const provider = new LoggerProvider({
     resource: buildOtelResource(res, cfg),
     processors: [processor],
