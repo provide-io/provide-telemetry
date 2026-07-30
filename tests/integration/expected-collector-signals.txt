@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# Signal names every language's OTLP integration job must land in the collector.
+#
+# One list, four languages. Each language's integration test and flush probe
+# emit exactly these names, and ci/verify-collector-signals.sh reads this file
+# when no names are passed on the command line — so adding a signal here is the
+# only edit needed to require it everywhere, and a language that stops emitting
+# one fails rather than quietly asserting a shorter list than its siblings.
+#
+# Python used to emit integration.otlp.smoke / integration.requests /
+# integration.otlp.log instead, which meant no shared list was possible and its
+# job could drift from the other three unnoticed.
+#
+# Blank lines and #-comments are ignored.
+
+# Emitted by the per-language OTLP integration test, drained by shutdown.
+integration.collector.span
+integration.collector.requests
+integration.collector.log
+
+# Emitted by the per-language flush probe, drained by flush_telemetry() alone —
+# the probe never calls shutdown, so arrival proves flush put them on the wire.
+integration.flush.span
+integration.flush.requests
+integration.flush.log
+
+# Emitted after that flush and drained by a second one: flush leaves the
+# providers installed and is repeatable.
+integration.flush.after.span
+integration.flush.after.log

@@ -8,15 +8,32 @@
 # to its log file after the producing test has exited (race observed on
 # GitHub Actions ubuntu-latest runners).
 #
-# Usage: ci/verify-collector-signals.sh <log_path> <signal1> [signal2 ...]
+# Usage: ci/verify-collector-signals.sh <log_path> [signal1 signal2 ...]
+#        With no signal names, reads the canonical list from
+#        tests/integration/expected-collector-signals.txt — one list shared by
+#        all four languages, so a signal added there is required everywhere and
+#        no language can quietly assert a shorter set than its siblings.
 #        Optional: SIGNAL_WAIT_SECONDS env var (default 30) sets the deadline.
 
 set -euo pipefail
 
-LOG_PATH="${1:?usage: verify-collector-signals.sh <log_path> <signal>...}"
+LOG_PATH="${1:?usage: verify-collector-signals.sh <log_path> [signal]...}"
 shift
 SIGNALS=("$@")
 DEADLINE_SECONDS="${SIGNAL_WAIT_SECONDS:-30}"
+
+if [ ${#SIGNALS[@]} -eq 0 ]; then
+  expected_file="$(dirname "${BASH_SOURCE[0]}")/../tests/integration/expected-collector-signals.txt"
+  if [ ! -f "$expected_file" ]; then
+    echo "verify-collector-signals: no signal names supplied and $expected_file is missing" >&2
+    exit 2
+  fi
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | tr -d '[:space:]')"
+    [ -n "$line" ] && SIGNALS+=("$line")
+  done < "$expected_file"
+fi
 
 if [ ${#SIGNALS[@]} -eq 0 ]; then
   echo "verify-collector-signals: no signal names supplied" >&2
