@@ -142,6 +142,33 @@ fn main() {
                 "metrics_provider": status.providers.metrics,
             })
         }
+        // Counter, gauge and histogram output — the values, not just the flags.
+        "metric_instrument_values" => {
+            provide_telemetry::setup_telemetry().expect("setup");
+
+            let c = provide_telemetry::counter("probe.metric.counter", None, None);
+            c.add(1.0, None);
+            c.add(2.0, None);
+            c.add(4.0, None);
+
+            let g = provide_telemetry::gauge("probe.metric.gauge", None, None);
+            g.set(42.0, None);
+
+            let h = provide_telemetry::histogram("probe.metric.histogram", None, None);
+            for value in [1.0_f64, 2.0, 3.0] {
+                h.record(value, None);
+            }
+
+            let result = json!({
+                "case": case,
+                "counter_value": format!("{}", c.value() as i64),
+                "gauge_value": format!("{}", g.value() as i64),
+                "histogram_count": format!("{}", h.count()),
+                "histogram_total": format!("{}", h.total() as i64),
+            });
+            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            result
+        }
         // A host application's own SDK provider must be adopted, and adoption
         // must be gated on the signal being enabled.
         //

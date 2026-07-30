@@ -29,12 +29,22 @@ Legend:
 | Guard-based context restoration | idiomatic | no | no | idiomatic | idiomatic language difference |
 | Browser log capture / React helpers | no | idiomatic | no | no | idiomatic language difference |
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | capability difference — see notes |
+| Counter / gauge / histogram values readable from the instrument | core | core | concrete type only | core | core guaranteed; Go's exported `Histogram` interface declares only `Record` |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | core | core | missing | known gap |
 | `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | core guaranteed across all four languages |
 | Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | capability difference — see notes |
 
 Notes:
 
+- Instrument value readback is pinned cross-language by the
+  `metric_instrument_values` runtime-probe case, which compares counter, gauge
+  and histogram output across all four. Go is the outlier: its exported
+  `Counter`/`Gauge`/`Histogram` interfaces declare only the write method, so a
+  consumer holding the interface cannot read a value back — the concrete
+  fallback types have `Value()`, `Count()` and `Sum()`, and the probe reaches
+  them by type assertion. Note also that Go names the histogram sum `Sum` where
+  the other three say `total`. Neither is fixed here; changing an exported
+  interface is a separate decision.
 - The `Real OTLP * export` rows are only as good as what verifies them. Each
   language has a collector-backed integration job that asserts the named signal
   reaches a real OTel collector; the cross-language parity harness does not

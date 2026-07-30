@@ -188,6 +188,62 @@ func caseProviderIdentityReconfigure() map[string]any {
 	}
 }
 
+// caseMetricInstrumentValues reports counter, gauge and histogram output — the
+// values, not just the flags.
+//
+// The histogram readback needs a type assertion: Go's exported Histogram
+// interface declares only Record, where Python, TypeScript and Rust expose
+// count/total on the instrument itself. The concrete fallback has Count/Sum, so
+// the values are reachable, but a consumer holding the interface cannot read
+// them. Noted rather than worked around — changing the exported interface is a
+// separate decision.
+func caseMetricInstrumentValues() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+
+	c := telemetry.NewCounter("probe.metric.counter")
+	ctx := context.Background()
+	c.Add(ctx, 1)
+	c.Add(ctx, 2)
+	c.Add(ctx, 4)
+
+	g := telemetry.NewGauge("probe.metric.gauge")
+	g.Set(ctx, 42)
+
+	h := telemetry.NewHistogram("probe.metric.histogram")
+	for _, value := range []float64{1, 2, 3} {
+		h.Record(ctx, value)
+	}
+
+	counterValue := int64(-1)
+	if readable, ok := c.(interface{ Value() int64 }); ok {
+		counterValue = readable.Value()
+	}
+	gaugeValue := float64(-1)
+	if readable, ok := g.(interface{ Value() float64 }); ok {
+		gaugeValue = readable.Value()
+	}
+	histCount := int64(-1)
+	histSum := float64(-1)
+	if readable, ok := h.(interface {
+		Count() int64
+		Sum() float64
+	}); ok {
+		histCount = readable.Count()
+		histSum = readable.Sum()
+	}
+
+	result := map[string]any{
+		"case":            "metric_instrument_values",
+		"counter_value":   fmt.Sprintf("%d", counterValue),
+		"gauge_value":     fmt.Sprintf("%d", int64(gaugeValue)),
+		"histogram_count": fmt.Sprintf("%d", histCount),
+		"histogram_total": fmt.Sprintf("%d", int64(histSum)),
+	}
+	_ = telemetry.ShutdownTelemetry(ctx)
+	return result
+}
+
 // caseHostProviderAdoption pins that a host application's own SDK provider is
 // adopted, and that adoption is gated on the signal being enabled.
 //
@@ -396,6 +452,8 @@ func main() {
 		result = casePerSignalLogsEndpoint()
 	case "host_provider_adoption":
 		result = caseHostProviderAdoption()
+	case "metric_instrument_values":
+		result = caseMetricInstrumentValues()
 	case "provider_identity_reconfigure":
 		result = caseProviderIdentityReconfigure()
 	case "shutdown_re_setup":
