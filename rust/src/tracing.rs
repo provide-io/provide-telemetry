@@ -41,6 +41,13 @@ mod tests {
 
     #[test]
     fn tracing_test_trace_invokes_callback() {
+        // The lock is required even though this test asserts nothing about
+        // counters: trace() bumps the shared emitted_traces health counter, and
+        // tracer_tests::tracer_test_trace_sets_context_inside_callback_and_emits
+        // asserts an exact before+1. Emitting outside the lock makes that test
+        // fail with left: 2, right: 1 — roughly two runs in three at
+        // RUST_TEST_THREADS=4.
+        let _guard = acquire_test_state_lock();
         let result = trace("test.span", || 42_i32);
         assert_eq!(result, 42);
     }
