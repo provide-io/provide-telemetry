@@ -409,11 +409,24 @@ func FuzzParseBaggage(f *testing.F) {
 	f.Add("=nokey")
 	f.Add("k1=v1,k2=v2,k3=v3")
 	f.Add(strings.Repeat("x=y,", 100))
+	f.Add("ev\nil=x")
+	f.Add("a\tb=c")
 	f.Fuzz(func(t *testing.T, input string) {
 		result := ParseBaggage(input)
-		for k := range result {
+		for k, v := range result {
 			if k == "" {
 				t.Error("empty key in ParseBaggage result")
+			}
+			// A baggage key becomes a log-attribute key, and the console
+			// renderer emits keys bare, so a non-token key would forge a
+			// log record.
+			if !_baggageTokenRe.MatchString(k) {
+				t.Errorf("non-token key survived: %q", k)
+			}
+			for _, r := range v {
+				if r != '\t' && (r < 0x20 || r == 0x7f) {
+					t.Errorf("control character %q survived in value %q", r, v)
+				}
 			}
 		}
 	})
@@ -442,12 +455,31 @@ func FuzzExtractW3CContext(f *testing.F) {
 		headers := http.Header{}
 		headers.Set("Traceparent", traceparent)
 		ctx := ExtractW3CContext(headers)
-		// If parsed successfully, IDs must have correct lengths.
-		if ctx.TraceID != "" && len(ctx.TraceID) != 32 {
-			t.Errorf("TraceID length = %d, want 32", len(ctx.TraceID))
+		// If parsed successfully, IDs must be well-formed hex of the right
+		// length — a malformed inbound header must never yield an id we
+		// would propagate onward.
+		if ctx.TraceID != "" {
+			if len(ctx.TraceID) != 32 {
+				t.Errorf("TraceID length = %d, want 32", len(ctx.TraceID))
+			}
+			if strings.Trim(ctx.TraceID, "0123456789abcdef") != "" {
+				t.Errorf("non-hex TraceID survived: %q", ctx.TraceID)
+			}
+			if ctx.TraceID == strings.Repeat("0", 32) {
+				t.Error("all-zero TraceID survived")
+			}
 		}
-		if ctx.SpanID != "" && len(ctx.SpanID) != 16 {
-			t.Errorf("SpanID length = %d, want 16", len(ctx.SpanID))
+		if ctx.SpanID != "" {
+			if len(ctx.SpanID) != 16 {
+				t.Errorf("SpanID length = %d, want 16", len(ctx.SpanID))
+			}
+			if strings.Trim(ctx.SpanID, "0123456789abcdef") != "" {
+				t.Errorf("non-hex SpanID survived: %q", ctx.SpanID)
+			}
+		}
+		// All-or-nothing: a half-parsed header must not be forwarded.
+		if (ctx.TraceID == "") != (ctx.SpanID == "") {
+			t.Errorf("half-parsed traceparent: trace=%q span=%q", ctx.TraceID, ctx.SpanID)
 		}
 	})
 }
