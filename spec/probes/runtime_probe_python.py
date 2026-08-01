@@ -73,10 +73,10 @@ def _case_lazy_logger_shutdown_re_setup() -> dict[str, object]:
     return {
         "case": "lazy_logger_shutdown_re_setup",
         "first_logger_emitted": first.get("message") == "log.output.parity",
-        "shutdown_cleared_setup": not bool(second["setup_done"]),
-        "shutdown_cleared_providers": not any(second["providers"].values()),
-        "shutdown_fallback_all": all(second["fallback"].values()),
-        "re_setup_done": bool(third["setup_done"]),
+        "shutdown_cleared_setup": not bool(second.setup_done),
+        "shutdown_cleared_providers": not any(second.providers.values()),
+        "shutdown_fallback_all": all(second.fallback.values()),
+        "re_setup_done": bool(third.setup_done),
         "second_logger_uses_fresh_config": restarted.get("service") == "probe-restarted"
         and restarted.get("env") == "parity-restarted"
         and restarted.get("version") == "9.9.9",
@@ -127,9 +127,9 @@ def _case_fail_open_exporter_init() -> dict[str, object]:
     shutdown_telemetry()
     return {
         "case": "fail_open_exporter_init",
-        "setup_done": bool(status["setup_done"]),
-        "providers_cleared": not any(status["providers"].values()),
-        "fallback_all": all(status["fallback"].values()),
+        "setup_done": bool(status.setup_done),
+        "providers_cleared": not any(status.providers.values()),
+        "fallback_all": all(status.fallback.values()),
     }
 
 
@@ -137,10 +137,10 @@ def _case_signal_enablement() -> dict[str, object]:
     setup_telemetry()
     status = get_runtime_status()
     shutdown_telemetry()
-    signals = status["signals"]
+    signals = status.signals
     return {
         "case": "signal_enablement",
-        "setup_done": bool(status["setup_done"]),
+        "setup_done": bool(status.setup_done),
         "logs_enabled": bool(signals["logs"]),
         "traces_enabled": bool(signals["traces"]),
         "metrics_enabled": bool(signals["metrics"]),
@@ -151,10 +151,10 @@ def _case_per_signal_logs_endpoint() -> dict[str, object]:
     setup_telemetry()
     status = get_runtime_status()
     shutdown_telemetry()
-    providers = status["providers"]
+    providers = status.providers
     return {
         "case": "per_signal_logs_endpoint",
-        "setup_done": bool(status["setup_done"]),
+        "setup_done": bool(status.setup_done),
         "logs_provider": bool(providers["logs"]),
         "traces_provider": bool(providers["traces"]),
         "metrics_provider": bool(providers["metrics"]),
@@ -176,7 +176,7 @@ def _case_provider_identity_reconfigure() -> dict[str, object]:
     shutdown_telemetry()
     return {
         "case": "provider_identity_reconfigure",
-        "providers_active": any(before["providers"].values()),
+        "providers_active": any(before.providers.values()),
         "raised": raised,
         "config_preserved": config_preserved,
     }
@@ -237,9 +237,9 @@ def _case_host_provider_adoption() -> dict[str, object]:
 
     return {
         "case": "host_provider_adoption",
-        "adopted_before_setup": bool(before["providers"]["traces"]),
-        "adopted_after_enabled_setup": bool(enabled["providers"]["traces"]),
-        "fallback_after_disabled_setup": bool(disabled["fallback"]["traces"]),
+        "adopted_before_setup": bool(before.providers["traces"]),
+        "adopted_after_enabled_setup": bool(enabled.providers["traces"]),
+        "fallback_after_disabled_setup": bool(disabled.fallback["traces"]),
     }
 
 
@@ -302,7 +302,7 @@ def _case_hot_reload_log_format() -> dict[str, object]:
         "case": "hot_reload_log_format",
         "format_config_updated": cfg.logging.fmt == "console",
         "service_preserved": cfg.service_name == service_before,
-        "providers_unchanged": status_before["providers"] == status_after["providers"],
+        "providers_unchanged": status_before.providers == status_after.providers,
     }
 
 
@@ -354,13 +354,13 @@ def _case_shutdown_re_setup() -> dict[str, object]:
     shutdown_telemetry()
     return {
         "case": "shutdown_re_setup",
-        "first_setup_done": bool(first["setup_done"]),
-        "shutdown_cleared_setup": not bool(second["setup_done"]),
-        "shutdown_cleared_providers": not any(second["providers"].values()),
-        "shutdown_fallback_all": all(second["fallback"].values()),
-        "re_setup_done": bool(third["setup_done"]),
-        "signals_match": first["signals"] == third["signals"],
-        "providers_match": first["providers"] == third["providers"],
+        "first_setup_done": bool(first.setup_done),
+        "shutdown_cleared_setup": not bool(second.setup_done),
+        "shutdown_cleared_providers": not any(second.providers.values()),
+        "shutdown_fallback_all": all(second.fallback.values()),
+        "re_setup_done": bool(third.setup_done),
+        "signals_match": first.signals == third.signals,
+        "providers_match": first.providers == third.providers,
     }
 
 

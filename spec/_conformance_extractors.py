@@ -26,6 +26,12 @@ def _python_module_kinds(src_root: Path) -> dict[str, str]:
     and returns a mapping from symbol name to its kind string.
     """
     kind_map: dict[str, str] = {}
+    # `alias = Original` re-exports whatever kind Original has. Collected here and
+    # resolved after the walk, because the alias may be read before the module
+    # that defines Original is parsed. Without this, a type alias would be
+    # misreported as an instance and force callers to subclass instead — which
+    # breaks dataclass __eq__ against the canonical type.
+    aliases: dict[str, str] = {}
     if not src_root.is_dir():
         return kind_map
     for py_file in sorted(src_root.rglob("*.py")):
@@ -41,14 +47,29 @@ def _python_module_kinds(src_root: Path) -> dict[str, str]:
             elif isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name) and not target.id.startswith("_"):
-                        kind_map[target.id] = "instance"
+                        if isinstance(node.value, ast.Name):
+                            aliases[target.id] = node.value.id
+                        else:
+                            kind_map[target.id] = "instance"
             elif (
                 isinstance(node, ast.AnnAssign)
                 and isinstance(node.target, ast.Name)
                 and not node.target.id.startswith("_")
             ):
                 kind_map[node.target.id] = "instance"
+    for alias in aliases:
+        kind_map[alias] = _resolve_alias_kind(alias, aliases, kind_map)
     return kind_map
+
+
+def _resolve_alias_kind(alias: str, aliases: dict[str, str], kind_map: dict[str, str]) -> str:
+    """Follow an alias chain to the kind of the symbol it ultimately names."""
+    seen: set[str] = {alias}
+    name = aliases[alias]
+    while name not in kind_map and name in aliases and name not in seen:
+        seen.add(name)
+        name = aliases[name]
+    return kind_map.get(name, "instance")
 
 
 def get_python_exports(repo_root: Path | None = None) -> dict[str, str]:

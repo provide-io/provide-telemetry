@@ -182,7 +182,7 @@ def _op_capture_log(step: dict[str, Any], variables: dict[str, object]) -> None:
 def _op_get_runtime_status(step: dict[str, Any], variables: dict[str, object]) -> None:
     status = get_runtime_status()
     variables[step["into"]] = {
-        "active": bool(status["setup_done"]),
+        "active": bool(status.setup_done),
         "service_name": _get_service_name(),
     }
 

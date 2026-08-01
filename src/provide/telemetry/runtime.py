@@ -13,8 +13,6 @@ OpenTelemetry providers are installed require a full process restart.
 
 from __future__ import annotations
 
-from enum import StrEnum
-
 __all__ = [
     "FlushResult",
     "ProviderMode",
@@ -69,44 +67,17 @@ from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 _logger = logging.getLogger(__name__)
 
 
-class provider_mode(StrEnum):
-    """Snake-case canonical alias for conformance checks."""
-
-    OWNED = ProviderMode.OWNED.value
-    HOST = ProviderMode.HOST.value
-    LOCAL = ProviderMode.LOCAL.value
-
-
-class runtime_state(StrEnum):
-    """Snake-case canonical alias for conformance checks."""
-
-    LOCAL = RuntimeState.LOCAL.value
-    STARTING = RuntimeState.STARTING.value
-    READY = RuntimeState.READY.value
-    DEGRADED = RuntimeState.DEGRADED.value
-    RECONFIGURING = RuntimeState.RECONFIGURING.value
-    STOPPING = RuntimeState.STOPPING.value
-    STOPPED = RuntimeState.STOPPED.value
-
-
-class signal_flush_result(SignalFlushResult):
-    """Snake-case canonical alias for conformance checks."""
-
-
-class flush_result(FlushResult):
-    """Snake-case canonical alias for conformance checks."""
-
-
-class reconfigure_result(ReconfigureResult):
-    """Snake-case canonical alias for conformance checks."""
-
-
-class telemetry_config(TelemetryConfig):
-    """Snake-case canonical alias for conformance checks."""
-
-
-class provider_immutable_error(ProviderImmutableError):
-    """Snake-case canonical alias for conformance checks."""
+# Snake-case canonical names required by spec/telemetry-api.yaml. These are true
+# aliases, not subclasses: a subclass of a frozen dataclass compares unequal to
+# the canonical type (dataclass __eq__ returns NotImplemented across classes),
+# and a redeclared enum drifts from the original the moment a member is added.
+provider_mode = ProviderMode
+runtime_state = RuntimeState
+signal_flush_result = SignalFlushResult
+flush_result = FlushResult
+reconfigure_result = ReconfigureResult
+telemetry_config = TelemetryConfig
+provider_immutable_error = ProviderImmutableError
 
 
 class TelemetryRuntime:
@@ -126,25 +97,33 @@ class TelemetryRuntime:
     def shutdown(self, timeout: float | None = None) -> None:
         from provide.telemetry.setup import shutdown_telemetry
 
-        shutdown_telemetry()
-        self._state = RuntimeState.STOPPED if timeout is None else RuntimeState.STOPPING
+        # timeout bounds the drain; teardown is local work that always completes,
+        # so the terminal state is STOPPED either way (matches Go/Rust/TypeScript).
+        shutdown_telemetry(timeout_seconds=timeout)
+        self._state = RuntimeState.STOPPED
 
-    def flush(self, timeout: float | None = None) -> bool:
+    def flush(self, timeout: float | None = None) -> FlushResult:
         from provide.telemetry.setup import flush_telemetry
 
-        return flush_telemetry(timeout_seconds=timeout)
+        installed = get_runtime_status().providers
+        ok = flush_telemetry(timeout_seconds=timeout)
+        return FlushResult(
+            logs=_signal_flush_result(installed["logs"], ok),
+            traces=_signal_flush_result(installed["traces"], ok),
+            metrics=_signal_flush_result(installed["metrics"], ok),
+        )
 
-    def get_logger(self, name: str) -> Any:
+    def get_logger(self, name: str | None = None) -> Any:
         from provide.telemetry.logger import get_logger
 
         return get_logger(name)
 
-    def get_tracer(self, name: str) -> Any:
+    def get_tracer(self, name: str | None = None) -> Any:
         from provide.telemetry.tracing import get_tracer
 
         return get_tracer(name)
 
-    def get_meter(self, name: str) -> Any:
+    def get_meter(self, name: str | None = None) -> Any:
         from provide.telemetry.metrics import get_meter
 
         return get_meter(name)
@@ -152,36 +131,26 @@ class TelemetryRuntime:
     def get_runtime_config(self) -> TelemetryConfig:
         return get_runtime_config()
 
-    def get_runtime_status(self) -> dict[str, object]:
+    def get_runtime_status(self) -> RuntimeStatus:
         return get_runtime_status()
 
     def update_config(self, cfg: TelemetryConfig | RuntimeOverrides) -> ReconfigureResult:
-        if isinstance(cfg, RuntimeOverrides):
-            previous = get_runtime_config()
-            result = update_runtime_config(cfg)
-            return ReconfigureResult(
-                applied=True,
-                config=result,
-                previous=previous,
-                state=self._state,
-                status=self._state,
-            )
         previous = get_runtime_config()
-        return ReconfigureResult(
-            applied=True,
-            config=reconfigure_telemetry(cfg),
-            previous=previous,
-            state=self._state,
-            status=self._state,
-        )
+        current = update_runtime_config(cfg) if isinstance(cfg, RuntimeOverrides) else reconfigure_telemetry(cfg)
+        return ReconfigureResult(applied=True, current=current, previous=previous, state=self._state)
 
 
-class runtime_status(RuntimeStatus):
-    """Snake-case canonical alias for conformance checks."""
+runtime_status = RuntimeStatus
+telemetry_runtime = TelemetryRuntime
 
 
-class telemetry_runtime(TelemetryRuntime):
-    """Snake-case canonical alias for conformance checks."""
+def _signal_flush_result(installed: bool, drained: bool) -> SignalFlushResult:
+    """Per-signal flush outcome. A signal with no provider has nothing to drain."""
+    return SignalFlushResult(
+        flushed=installed and drained,
+        not_installed=not installed,
+        timed_out=installed and not drained,
+    )
 
 
 _lock = threading.Lock()
@@ -205,22 +174,22 @@ def shutdown(timeout: float | None = None) -> None:
     _runtime.shutdown(timeout)
 
 
-def flush(timeout: float | None = None) -> bool:
+def flush(timeout: float | None = None) -> FlushResult:
     """Flush runtime through the canonical facade."""
     return _runtime.flush(timeout)
 
 
-def get_logger(name: str) -> Any:
+def get_logger(name: str | None = None) -> Any:
     """Return a logger from the canonical runtime facade."""
     return _runtime.get_logger(name)
 
 
-def get_tracer(name: str) -> Any:
+def get_tracer(name: str | None = None) -> Any:
     """Return a tracer from the canonical runtime facade."""
     return _runtime.get_tracer(name)
 
 
-def get_meter(name: str) -> Any:
+def get_meter(name: str | None = None) -> Any:
     """Return a meter from the canonical runtime facade."""
     return _runtime.get_meter(name)
 
@@ -431,7 +400,7 @@ def get_runtime_config() -> TelemetryConfig:
         return copy.deepcopy(_active_config)
 
 
-def get_runtime_status() -> dict[str, object]:
+def get_runtime_status() -> RuntimeStatus:
     """Return runtime/provider status using the shared cross-language shape."""
     from provide.telemetry import setup as setup_mod
     from provide.telemetry.health import get_health_snapshot
@@ -452,17 +421,17 @@ def get_runtime_status() -> dict[str, object]:
         "traces": bool(tracing_provider._has_effective_tracing_provider()),
         "metrics": bool(metrics_provider._has_effective_meter_provider()),
     }
-    return {
-        "setup_done": setup_done,
-        "signals": {
+    return RuntimeStatus(
+        setup_done=setup_done,
+        signals={
             "logs": True,
             "traces": cfg.tracing.enabled,
             "metrics": cfg.metrics.enabled,
         },
-        "providers": providers,
-        "fallback": {signal: not installed for signal, installed in providers.items()},
-        "setup_error": get_health_snapshot().setup_error,
-    }
+        providers=providers,
+        fallback={signal: not installed for signal, installed in providers.items()},
+        setup_error=get_health_snapshot().setup_error,
+    )
 
 
 def _is_strict_event_name() -> bool:

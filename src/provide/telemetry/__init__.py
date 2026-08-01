@@ -14,6 +14,8 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
+from provide.telemetry import _lazy
+
 # ── Eager: core symbols needed by every consumer ────────────────────────────
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig, redact_config
 from provide.telemetry.exceptions import ConfigurationError, ProviderImmutableError, TelemetryError
@@ -111,120 +113,9 @@ if TYPE_CHECKING:
     from provide.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
     from provide.telemetry.slo import classify_error, record_red_metrics, record_use_metrics
 
-# Maps symbol name → (module_path, attribute_name).
-_LAZY_REGISTRY: dict[str, tuple[str, str]] = {}
-
-
-def _register(
-    module: str, *names: str
-) -> None:  # pragma: no mutate — pure registry population; covered via __getattr__ exports
-    for name in names:
-        _LAZY_REGISTRY[name] = (
-            module,
-            name,
-        )  # pragma: no mutate — symmetric tuple assignment; asserted through public re-exports
-
-
-_register("provide.telemetry.asgi", "TelemetryMiddleware", "bind_websocket_context", "clear_websocket_context")
-_register("provide.telemetry.backpressure", "QueuePolicy", "get_queue_policy", "set_queue_policy")
-_register(
-    "provide.telemetry.cardinality",
-    "CardinalityLimit",
-    "clear_cardinality_limits",
-    "get_cardinality_limits",
-    "guard_attributes",
-    "register_cardinality_limit",
-)
-_register(
-    "provide.telemetry.classification",
-    "ClassificationPolicy",
-    "ClassificationRule",
-    "DataClass",
-    "classify_key",
-    "get_classification_policy",
-    "register_classification_rule",
-    "register_classification_rules",
-    "set_classification_policy",
-)
-_register(
-    "provide.telemetry.consent",
-    "ConsentLevel",
-    "get_consent_level",
-    "set_consent_level",
-    "should_allow",
-)
-_register("provide.telemetry.health", "HealthSnapshot", "get_health_snapshot")
-_register("provide.telemetry.metrics", "counter", "gauge", "get_meter", "histogram")
-_register(
-    "provide.telemetry.pii",
-    "PIIRule",
-    "get_pii_rules",
-    "get_secret_patterns",
-    "register_pii_rule",
-    "register_secret_pattern",
-    "replace_pii_rules",
-)
-_register(
-    "provide.telemetry.propagation",
-    "bind_propagation_context",
-    "extract_w3c_context",
-    "inject_traceparent",
-    "parse_baggage",
-)
-_register("provide.telemetry.resilience", "ExporterPolicy", "get_exporter_policy", "set_exporter_policy")
-_register(
-    "provide.telemetry.runtime",
-    "get_runtime_config",
-    "get_runtime_status",
-    "get_strict_schema",
-    "reconfigure_telemetry",
-    "reload_runtime_from_env",
-    "set_strict_schema",
-    "update_runtime_config",
-    "start",
-    "shutdown",
-    "flush",
-    "get_logger",
-    "get_tracer",
-    "get_meter",
-    "ProviderMode",
-    "provider_mode",
-    "RuntimeState",
-    "runtime_state",
-    "RuntimeStatus",
-    "runtime_status",
-    "SignalFlushResult",
-    "signal_flush_result",
-    "ReconfigureResult",
-    "reconfigure_result",
-    "FlushResult",
-    "flush_result",
-    "TelemetryRuntime",
-    "telemetry_runtime",
-    "telemetry_config",
-    "provider_immutable_error",
-)
-_register("provide.telemetry.sampling", "SamplingPolicy", "get_sampling_policy", "set_sampling_policy", "should_sample")
-_register("provide.telemetry.slo", "classify_error", "record_red_metrics", "record_use_metrics")
-_register("provide.telemetry.receipts", "RedactionReceipt", "enable_receipts", "get_emitted_receipts_for_tests")
-
 
 def __getattr__(name: str) -> object:
-    entry = _LAZY_REGISTRY.get(name)
-    if entry is not None:
-        module_path, attr_name = entry
-        import importlib
-
-        mod = importlib.import_module(module_path)
-        return getattr(mod, attr_name)
-    # Support subpackage access (e.g., provide.telemetry.asgi)
-    import importlib
-
-    try:
-        return importlib.import_module(f"{__name__}.{name}")
-    except ImportError:
-        pass
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return _lazy.resolve(__name__, name)
 
 
 __all__ = [

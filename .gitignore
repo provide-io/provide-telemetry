@@ -12,8 +12,6 @@ build/
 *.egg-info/
 mutants/
 .mutmut-cache
-.pymutant-state/
-.pymutant-ledger.json
 bf-*.txt
 .provide/
 otel_stderr.txt

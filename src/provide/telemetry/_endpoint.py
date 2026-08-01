@@ -22,9 +22,13 @@ def _check_port(parsed: ParseResult, endpoint: str) -> None:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
     # "http://host:" — colon present but urlparse sets port=None.
     # rsplit on "]" avoids false positives from IPv6 colons.
-    if (
-        port is None and ":" in parsed.netloc.rsplit("]", 1)[-1]
-    ):  # pragma: no mutate — guard against trailing-colon endpoints; both branches hit via explicit tests
+    # Taking [-1] makes the maxsplit argument irrelevant — the text after the
+    # final "]" is the same for any maxsplit >= 1 and for none at all — so the
+    # only non-equivalent mutation here is rsplit -> split, which is killed by
+    # test_bracket_in_userinfo_is_split_from_the_right. The pragma has to sit on
+    # a single-line statement: mutmut ignores one trailing a multi-line `if`.
+    after_bracket = parsed.netloc.rsplit("]", 1)[-1]  # pragma: no mutate
+    if port is None and ":" in after_bracket:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
 
 

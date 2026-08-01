@@ -92,8 +92,6 @@ path = [
   "dist/**",
   "uv.lock",
   "VERSION",
-  ".pymutant-ledger.json",
-  ".pymutant-state/**",
   "typescript/package-lock.json",
   "tests/memray/baselines.json",
   "baselines/**",

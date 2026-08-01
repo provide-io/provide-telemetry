@@ -42,12 +42,19 @@ type FlushResult struct {
 	Metrics SignalFlushResult
 }
 
+// ReconfigureResult is the outcome of an attempted runtime reconfiguration.
+//
+// Field names are the cross-language canonical set — Previous/Current name the
+// configs on either side of the attempt, and State is the runtime state after it.
+// The json tags matter: Rust serializes this type with serde's snake_case field
+// names, so without them a Go-marshalled result would emit PascalCase keys and
+// fail to deserialize on the other side.
 type ReconfigureResult struct {
-	Applied  bool
-	Previous *TelemetryConfig
-	Current  *TelemetryConfig
-	Error    string
-	State    RuntimeState
+	Applied  bool             `json:"applied"`
+	Previous *TelemetryConfig `json:"previous"`
+	Current  *TelemetryConfig `json:"current"`
+	Error    string           `json:"error"`
+	State    RuntimeState     `json:"state"`
 }
 
 // TelemetryRuntime is the canonical Go façade entrypoint.
@@ -55,15 +62,20 @@ type ReconfigureResult struct {
 type TelemetryRuntime struct {
 	providerMode ProviderMode
 	state        RuntimeState
+	opts         []SetupOption
 }
 
-func NewTelemetryRuntime(_ context.Context, _opts ...SetupOption) *TelemetryRuntime {
-	return &TelemetryRuntime{providerMode: ProviderModeOwned, state: RuntimeStateReady}
+// NewTelemetryRuntime records opts for the eventual Start call. Construction does
+// not install providers — setup can fail, and only Start can report that error.
+func NewTelemetryRuntime(_ context.Context, opts ...SetupOption) *TelemetryRuntime {
+	return &TelemetryRuntime{providerMode: ProviderModeOwned, state: RuntimeStateReady, opts: opts}
 }
 
+// Start installs providers using the constructor's options followed by opts, so a
+// per-call option overrides the same option supplied at construction.
 func (rt *TelemetryRuntime) Start(ctx context.Context, opts ...SetupOption) (*TelemetryConfig, error) {
 	rt.state = RuntimeStateStarting
-	cfg, err := SetupTelemetry(opts...)
+	cfg, err := SetupTelemetry(append(append([]SetupOption{}, rt.opts...), opts...)...)
 	if err == nil {
 		rt.state = RuntimeStateReady
 	}
@@ -90,36 +102,48 @@ func (rt *TelemetryRuntime) GetRuntimeStatus() RuntimeStatus {
 	return GetRuntimeStatus()
 }
 
+// UpdateConfig applies the hot-reloadable fields of cfg and returns the resulting
+// runtime config. Provider-changing fields (endpoints, headers) are rejected by
+// UpdateRuntimeConfig — use Reconfigure for those.
 func (rt *TelemetryRuntime) UpdateConfig(ctx context.Context, cfg *TelemetryConfig) (*TelemetryConfig, error) {
 	_ = ctx
-	return nil, UpdateRuntimeConfig(RuntimeOverrides{})
-}
-
-func (rt *TelemetryRuntime) Reconfigure(ctx context.Context, cfg *TelemetryConfig, opts ...SetupOption) (*TelemetryConfig, error) {
-	_ = ctx
-	_ = opts
 	if cfg == nil {
-		return ReconfigureTelemetry(context.Background())
+		return nil, NewConfigurationError("UpdateConfig requires a non-nil config")
 	}
-	_set := RuntimeOverrides{}
-	_ = _set
-	return ReconfigureTelemetry(context.Background())
+	if err := UpdateRuntimeConfig(runtimeOverridesFromConfig(cfg)); err != nil {
+		return nil, err
+	}
+	return GetRuntimeConfig(), nil
 }
 
+// Reconfigure applies cfg as the reconfiguration target. A nil cfg falls back to
+// the process environment. Explicit opts are applied after cfg, so a caller-supplied
+// WithConfig takes precedence.
+func (rt *TelemetryRuntime) Reconfigure(ctx context.Context, cfg *TelemetryConfig, opts ...SetupOption) (*TelemetryConfig, error) {
+	if cfg != nil {
+		opts = append([]SetupOption{WithConfig(cfg)}, opts...)
+	}
+	return ReconfigureTelemetry(ctx, opts...)
+}
+
+// Flush drains installed providers and reports per-signal outcomes. A signal with
+// no provider installed reports NotInstalled rather than Flushed — matching the
+// Rust facade, which reads the same per-signal provider status.
 func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
+	providers := GetRuntimeStatus().Providers
 	err := FlushTelemetry(ctx)
-	result := &FlushResult{
-		Logs:    SignalFlushResult{Flushed: err == nil},
-		Traces:  SignalFlushResult{Flushed: err == nil},
-		Metrics: SignalFlushResult{Flushed: err == nil},
+	signal := func(installed bool) SignalFlushResult {
+		return SignalFlushResult{
+			Flushed:      installed && err == nil,
+			NotInstalled: !installed,
+			Failed:       installed && err != nil,
+		}
 	}
-	if err != nil {
-		result.Logs.Failed = true
-		result.Traces.Failed = true
-		result.Metrics.Failed = true
-		return result, err
-	}
-	return result, nil
+	return &FlushResult{
+		Logs:    signal(providers.Logs),
+		Traces:  signal(providers.Traces),
+		Metrics: signal(providers.Metrics),
+	}, err
 }
 
 func (rt *TelemetryRuntime) Shutdown(ctx context.Context) error {

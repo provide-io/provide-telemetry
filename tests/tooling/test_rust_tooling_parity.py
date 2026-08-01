@@ -60,7 +60,9 @@ def test_mutation_policy_changes_trigger_their_language_gate() -> None:
     workflow = (_REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml").read_text(encoding="utf-8")
 
     for policy_path in (
-        ".ci/pymutant-profiles.json",
+        # Python's mutation roots live in [tool.mutmut] here — this is what
+        # scripts/run_mutation_gate.py actually reads.
+        "pyproject.toml",
         "rust/.cargo/mutants.toml",
         "typescript/stryker.config.mjs",
         "typescript/stryker.otel.config.mjs",

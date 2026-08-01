@@ -5,6 +5,7 @@ import { metrics, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig } from '../src/config.js';
 import { _resetRuntimeForTests, RuntimeState, TelemetryRuntime } from '../src/runtime.js';
+import { liveTracerProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
   trace.disable();
@@ -43,9 +44,8 @@ describe('TelemetryRuntime facade', () => {
     const runtime = new TelemetryRuntime();
     const result = runtime.updateConfig({ samplingLogsRate: 0.5 });
     expect(result.applied).toBe(true);
-    expect(result.config?.samplingLogsRate).toBe(0.5);
+    expect(result.current?.samplingLogsRate).toBe(0.5);
     expect(result.state).toBe(RuntimeState.READY);
-    expect(result.status).toBe(RuntimeState.READY);
     expect(result.previous).toBeDefined();
   });
 
@@ -55,20 +55,40 @@ describe('TelemetryRuntime facade', () => {
     expect(runtime.getRuntimeConfig().tracingEnabled).toBe(false);
   });
 
-  it('flushes and reports per-signal status', async () => {
+  it('reports notInstalled per signal when no provider is registered', async () => {
+    // flushTelemetry() returns [].every() === true with an empty provider list;
+    // the facade must not turn that vacuous truth into "flushed".
     const result = await new TelemetryRuntime().flush(100);
-    expect(result.logs.flushed).toBe(true);
-    expect(result.traces.flushed).toBe(true);
-    expect(result.metrics.flushed).toBe(true);
-    expect(result.logs.timedOut).toBe(false);
-    expect(result.logs.notInstalled).toBe(false);
-    expect(result.logs.notOwned).toBe(false);
-    expect(result.logs.failed).toBe(false);
+    for (const signal of [result.logs, result.traces, result.metrics]) {
+      expect(signal.notInstalled).toBe(true);
+      expect(signal.flushed).toBe(false);
+      expect(signal.timedOut).toBe(false);
+      expect(signal.notOwned).toBe(false);
+      expect(signal.failed).toBe(false);
+    }
   });
 
-  it('encodes stop state from timeout vs no-timeout shutdown calls', async () => {
+  it('reports flushed for a signal whose provider is live', async () => {
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    const result = await new TelemetryRuntime().flush(100);
+    expect(result.traces.flushed).toBe(true);
+    expect(result.traces.notInstalled).toBe(false);
+  });
+
+  it('settles in STOPPED after shutdown, with or without a timeout', async () => {
+    const withTimeout = new TelemetryRuntime();
+    await withTimeout.shutdown(100);
+    expect(withTimeout.getRuntimeStatus).toBeDefined();
+    expect(withTimeout.updateConfig({}).state).toBe(RuntimeState.STOPPED);
+
+    const withoutTimeout = new TelemetryRuntime();
+    expect(await withoutTimeout.shutdown()).toBeUndefined();
+    expect(withoutTimeout.updateConfig({}).state).toBe(RuntimeState.STOPPED);
+  });
+
+  it('forwards the requested name to getTracer', () => {
     const runtime = new TelemetryRuntime();
-    await runtime.shutdown(100);
-    expect(await runtime.shutdown()).toBeUndefined();
+    // Distinct names must not collapse into one instrumentation scope.
+    expect(runtime.getTracer('payments.worker')).not.toBe(runtime.getTracer('billing.worker'));
   });
 });

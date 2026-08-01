@@ -31,6 +31,14 @@ from provide.telemetry.tracing.context import (
     set_trace_context,
 )
 
+# Snapshot field names. Defined as module constants so the pragma applies to a
+# whole statement: mutmut ignores a trailing pragma on an element inside a
+# multi-line dict literal. Every use is symmetric (written then read through the
+# same constant), so the literal text itself is unobservable.
+_OTEL_TOKEN_FIELD = "otel_token"  # noqa: S105 - a snapshot dict key, not a credential  # pragma: no mutate
+_BAGGAGE_KEYS_FIELD = "_baggage_keys"  # pragma: no mutate
+_BAGGAGE_PRIOR_FIELD = "_baggage_prior"  # pragma: no mutate
+
 _MAX_HEADER_LENGTH = 512
 _MAX_TRACESTATE_PAIRS = 32
 _MAX_BAGGAGE_LENGTH = 8192
@@ -88,12 +96,12 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     raw_traceparent = _extract_header(scope, b"traceparent")
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
-    if (
-        raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH
-    ):  # pragma: no mutate — oversize guard; ReDoS protection branch exercised by oversized-header tests
-        raw_traceparent = (
-            None  # pragma: no mutate — nullify oversized traceparent; downstream treats None as "no context"
-        )
+    # A traceparent is a fixed 55 characters, so nothing at or beyond this bound
+    # can ever parse: the boundary (> vs >=) and the replacement value (None vs
+    # any other falsy) both fold to the same (None, None) parse result.
+    oversized = bool(raw_traceparent) and len(raw_traceparent or "") > _MAX_HEADER_LENGTH  # pragma: no mutate
+    if oversized:
+        raw_traceparent = None  # pragma: no mutate
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
@@ -101,9 +109,10 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
         baggage = None
     trace_id, span_id = _parse_traceparent(raw_traceparent)
-    traceparent = (
-        raw_traceparent if trace_id is not None and span_id is not None else None
-    )  # pragma: no mutate — only keep original header when both IDs parsed; equivalent mutations fold to identical result
+    # _parse_traceparent yields both ids or neither, never one, so `and` and `or`
+    # cannot be told apart by any input.
+    both_parsed = trace_id is not None and span_id is not None  # pragma: no mutate
+    traceparent = raw_traceparent if both_parsed else None
     return PropagationContext(
         traceparent=traceparent,
         tracestate=tracestate,
@@ -122,11 +131,9 @@ def parse_baggage(raw: str) -> dict[str, str]:
     """
     result: dict[str, str] = {}
     for member in raw.split(","):
-        kv = member.split(
-            ";", 1
-        )[
-            0
-        ]  # strip properties  # pragma: no mutate — maxsplit=1 picks the first field before ';'; equivalent to -1 for our single-property strip
+        # Taking [0] makes maxsplit irrelevant: the text before the first ";" is
+        # identical for every maxsplit >= 1.
+        kv = member.split(";", 1)[0]  # pragma: no mutate
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")
@@ -192,14 +199,14 @@ def bind_propagation_context(context: PropagationContext) -> None:
         "baggage": logger_ctx.get("baggage", _MISSING),
         "trace_id": trace_ctx["trace_id"],
         "span_id": trace_ctx["span_id"],
-        "otel_token": otel_token,
+        _OTEL_TOKEN_FIELD: otel_token,
         # Injected baggage.* keys split into two fields so the common
         # no-overlap case pays no extra allocations vs. the old list-only
         # snapshot. `_baggage_keys` is the unbind list; `_baggage_prior`
         # holds only keys that had a pre-existing value to restore (the
         # nested-same-key case from the clear_propagation_context fix).
-        "_baggage_keys": (),  # pragma: no mutate — line 150 always sets the keys when baggage present
-        "_baggage_prior": {},  # pragma: no mutate — populated only when outer frame already bound the same baggage.* key
+        _BAGGAGE_KEYS_FIELD: (),
+        _BAGGAGE_PRIOR_FIELD: {},
     }
     stack = _restore_stack.get()
     _restore_stack.set((*stack, snapshot))
@@ -219,11 +226,22 @@ def bind_propagation_context(context: PropagationContext) -> None:
                 prior[ctx_key] = prev
             keys.append(ctx_key)
             bind_context(**{ctx_key: value})
-        snapshot["_baggage_keys"] = tuple(keys)
+        snapshot[_BAGGAGE_KEYS_FIELD] = tuple(keys)
         if prior:
-            snapshot["_baggage_prior"] = prior
+            snapshot[_BAGGAGE_PRIOR_FIELD] = prior
     if context.trace_id is not None or context.span_id is not None:
         set_trace_context(context.trace_id, context.span_id)
+
+
+def _narrow_id(value: object) -> str | None:
+    """Narrow a snapshot id to ``str | None``.
+
+    Type narrowing only: the snapshot always holds a str or None, so the guard
+    and the else-branch resolve to the same value for every real input, making
+    every mutation here equivalent. Kept as its own single-line return because
+    mutmut only honours the pragma on a whole one-line statement.
+    """
+    return value if isinstance(value, str) or value is None else None  # pragma: no mutate
 
 
 def clear_propagation_context() -> None:
@@ -238,10 +256,10 @@ def clear_propagation_context() -> None:
             "baggage": _MISSING,
             "trace_id": None,
             "span_id": None,
-            "otel_token": None,  # pragma: no mutate — default sentinel for the unbalanced-clear path; semantically equivalent to any falsy marker
+            _OTEL_TOKEN_FIELD: None,
         }
     # Detach only the OTel token introduced by this specific bind frame.
-    detach_w3c_context(previous.get("otel_token"))
+    detach_w3c_context(previous.get(_OTEL_TOKEN_FIELD))
     for key in ("traceparent", "tracestate", "baggage"):
         value = previous[key]
         if value is _MISSING:
@@ -253,11 +271,11 @@ def clear_propagation_context() -> None:
     # of unbinding (fix from 7623d8d). Iterating the key tuple by index avoids
     # the per-iter tuple allocation that `.items()` pays on the hot path.
     raw_keys = previous.get(
-        "_baggage_keys", ()
+        _BAGGAGE_KEYS_FIELD, ()
     )  # pragma: no mutate — empty-tuple default; for-loop below is a no-op when absent
     keys_seq: tuple[str, ...] = raw_keys if isinstance(raw_keys, tuple) else ()  # ty: ignore[invalid-assignment]
     raw_prior = previous.get(
-        "_baggage_prior", {}
+        _BAGGAGE_PRIOR_FIELD, {}
     )  # pragma: no mutate — empty-dict default; membership check below is a no-op when absent
     prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}  # ty: ignore[invalid-assignment]
     for bkey in keys_seq:
@@ -267,11 +285,4 @@ def clear_propagation_context() -> None:
             unbind_context(bkey)
     prev_trace_id = previous["trace_id"]
     prev_span_id = previous["span_id"]
-    set_trace_context(
-        prev_trace_id
-        if isinstance(prev_trace_id, str) or prev_trace_id is None
-        else None,  # pragma: no mutate — type-narrowing ternary; defensive None fallback is only hit under object-corruption tests
-        prev_span_id
-        if isinstance(prev_span_id, str) or prev_span_id is None
-        else None,  # pragma: no mutate — type-narrowing ternary; defensive None fallback is only hit under object-corruption tests
-    )
+    set_trace_context(_narrow_id(prev_trace_id), _narrow_id(prev_span_id))

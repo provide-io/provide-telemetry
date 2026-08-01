@@ -18,24 +18,20 @@ from __future__ import annotations
 
 import contextlib
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
 from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
+from provide.telemetry.runtime import RuntimeStatus
 from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 from provide.telemetry.tracing import provider as pmod
 from provide.telemetry.tracing.decorators import trace
 
 
-def _signal(status: dict[str, object], section: str, signal: str) -> object:
-    """Read status[section][signal].
-
-    get_runtime_status() is typed dict[str, object] for cross-language shape
-    parity, so the nested read needs narrowing rather than a type: ignore —
-    mypy accepts the ignore, ty does not.
-    """
-    return cast("dict[str, object]", status[section])[signal]
+def _signal(status: RuntimeStatus, section: str, signal: str) -> bool:
+    """Read status.<section>[signal]."""
+    section_map: dict[str, bool] = getattr(status, section)
+    return section_map[signal]
 
 
 class _FakeTracer:

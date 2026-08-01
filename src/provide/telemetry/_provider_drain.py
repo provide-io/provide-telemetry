@@ -39,6 +39,12 @@ import warnings
 # logs exporter really can spend the budget that a healthy traces drain would
 # otherwise have used.
 _MAX_ABANDONED_WORKERS = 8
+# Shutdown is the last chance to drain, so it never declines for want of budget.
+# The flag is only ever tested for truthiness, so False and the None mutmut
+# substitutes are provably equivalent. Held in a module-level mapping because the
+# pragma only applies to a whole single-line statement, and the formatter wraps
+# the call site across lines where it would be ignored.
+_SHUTDOWN_DRAIN_OPTS: dict[str, bool] = {"decline_when_saturated": False}  # pragma: no mutate
 _abandoned_lock = threading.Lock()
 _abandoned_workers = 0
 
@@ -188,15 +194,17 @@ def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
     for want of budget: this is the last chance to get queued records out.
     Re-raises any exception raised by force_flush/shutdown when completed.
     """
+    # Operator-visible thread name; asserted by
+    # test_thread_is_named_for_operator_visibility.
+    methods = ("force_flush", "shutdown")
     return _bounded_provider_call(
         provider,
         timeout_seconds,
-        ("force_flush", "shutdown"),
-        # Operator-visible thread name; asserted by test_thread_is_named_for_operator_visibility.
+        methods,
         "provide-provider-shutdown",
         "shutdown",
-        decline_when_saturated=False,
-    )
+        **_SHUTDOWN_DRAIN_OPTS,
+    )  # pragma: no mutate
 
 
 def bounded_provider_flush(provider: object, timeout_seconds: float) -> bool:

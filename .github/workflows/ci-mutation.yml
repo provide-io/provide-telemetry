@@ -7,7 +7,6 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
-      - ".ci/pymutant-profiles.json"
       - "scripts/run_mutation_gate.py"
       - "scripts/_mutmut_shims/**"
       - "rust/src/**"
@@ -29,7 +28,6 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
-      - ".ci/pymutant-profiles.json"
       - "scripts/run_mutation_gate.py"
       - "scripts/_mutmut_shims/**"
       - "rust/src/**"
@@ -109,7 +107,7 @@ jobs:
               [[ -z "${changed_file}" ]] && continue
 
               case "${changed_file}" in
-                src/*|tests/*|pyproject.toml|.ci/pymutant-profiles.json|scripts/run_mutation_gate.py|scripts/_mutmut_shims/*)
+                src/*|tests/*|pyproject.toml|scripts/run_mutation_gate.py|scripts/_mutmut_shims/*)
                   case "${changed_file}" in
                     tests/tooling/test_rust_*.py) ;;
                     *) python=true ;;
@@ -265,8 +263,9 @@ jobs:
             --exclude-files="otel/" \
             --exclude-files="scripts/stress/" \
             .
+      # No hashFiles() gate here: go/logger is a package of the root module, not
+      # its own module, so gating on go/logger/go.mod would skip this step forever.
       - name: Run gremlins mutation tests for go/logger (100% kill rate required)
-        if: ${{ hashFiles('go/logger/go.mod') != '' }}
         run: |
           gremlins unleash \
             --workers=1 \

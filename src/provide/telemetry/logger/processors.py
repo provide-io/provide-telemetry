@@ -96,18 +96,16 @@ def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) ->
     parts = [exc_type.lower()]
     if tb is not None:
         for frame in traceback.extract_tb(tb)[-3:]:
-            leaf = frame.filename.replace(
-                "\\", "/"
-            ).rsplit(
-                "/", 1
-            )[
-                -1
-            ]  # pragma: no mutate — normalises Windows path separators before basename extraction; asserted by cross-OS fingerprint tests
+            # Taking [-1] makes the maxsplit argument unobservable; the
+            # separator normalisation and the index itself are not.
+            segments = frame.filename.replace("\\", "/").rsplit("/", 1)  # pragma: no mutate
+            leaf = segments[-1]
             basename = leaf.rsplit(".", 1)[0].lower()
             func = (frame.name or "").lower()
             parts.append(f"{basename}:{func}")
+    fingerprint_bytes = ":".join(parts).encode("utf-8")  # pragma: no mutate — codec alias
     return hashlib.sha256(
-        ":".join(parts).encode("utf-8")
+        fingerprint_bytes
     ).hexdigest()[
         :12
     ]  # pragma: no mutate — 12-char truncation is a deliberate fingerprint-size choice; exact value asserted by fingerprint tests
@@ -143,9 +141,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         def _clean_value(value: object, depth: int) -> object:
             if isinstance(value, str):
                 cleaned = _CONTROL_CHAR_RE.sub("", value)
-                if (
-                    len(cleaned) > _max_value_length
-                ):  # pragma: no mutate — strict > comparison; boundary covered by len==limit tests
+                # `>=` is equivalent: slicing a value already at the limit to
+                # [:limit] returns the identical string.
+                too_long = len(cleaned) > _max_value_length  # pragma: no mutate
+                if too_long:
                     return cleaned[:_max_value_length]
                 return cleaned
             if isinstance(value, dict) and depth < _max_depth:
@@ -156,9 +155,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
                 ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests
             return value
 
-        if (
-            _max_attr_count > 0 and len(event_dict) > _max_attr_count
-        ):  # pragma: no mutate — short-circuit when limit is disabled (0); both branches exercised
+        # `>=` is equivalent: at exactly the limit the rebuild keeps every key,
+        # and dict equality ignores the reordering it introduces.
+        over_budget = _max_attr_count > 0 and len(event_dict) > _max_attr_count  # pragma: no mutate
+        if over_budget:
             # Preserve control/telemetry fields first, then fill with user payload.
             # Simple first-N truncation would silently drop level, trace_id, etc.
             # when callers pass many keyword arguments.

@@ -121,8 +121,8 @@ export function _resetTraceContext(): void {
 }
 
 /** Return the tracer for the telemetry library. Noop when no SDK is registered. */
-export function getTracer(): Tracer {
-  return trace.getTracer(TRACER_NAME);
+export function getTracer(name?: string): Tracer {
+  return trace.getTracer(name ?? TRACER_NAME);
 }
 
 /** Module-level lazy singleton tracer — resolves provider at call time. */

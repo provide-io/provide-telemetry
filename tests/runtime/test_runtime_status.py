@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from provide.telemetry import get_logger
@@ -39,9 +41,9 @@ def no_foreign_otel_providers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_runtime_status_defaults_to_fallback_before_setup() -> None:
     status = get_runtime_status()
 
-    assert status["setup_done"] is False
-    assert status["providers"] == {"logs": False, "traces": False, "metrics": False}
-    assert status["fallback"] == {"logs": True, "traces": True, "metrics": True}
+    assert status.setup_done is False
+    assert status.providers == {"logs": False, "traces": False, "metrics": False}
+    assert status.fallback == {"logs": True, "traces": True, "metrics": True}
 
 
 def test_get_runtime_status_reports_provider_and_signal_state(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,10 +60,10 @@ def test_get_runtime_status_reports_provider_and_signal_state(monkeypatch: pytes
 
     status = get_runtime_status()
 
-    assert status["setup_done"] is True
-    assert status["signals"] == {"logs": True, "traces": True, "metrics": True}
-    assert status["providers"] == {"logs": True, "traces": False, "metrics": True}
-    assert status["fallback"] == {"logs": False, "traces": True, "metrics": False}
+    assert status.setup_done is True
+    assert status.signals == {"logs": True, "traces": True, "metrics": True}
+    assert status.providers == {"logs": True, "traces": False, "metrics": True}
+    assert status.fallback == {"logs": False, "traces": True, "metrics": False}
 
 
 def test_get_runtime_status_clears_provider_state_after_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,8 +95,8 @@ def test_get_runtime_status_clears_provider_state_after_shutdown(monkeypatch: py
 
     status = get_runtime_status()
 
-    assert status["providers"] == {"logs": False, "traces": False, "metrics": False}
-    assert status["fallback"] == {"logs": True, "traces": True, "metrics": True}
+    assert status.providers == {"logs": False, "traces": False, "metrics": False}
+    assert status.fallback == {"logs": True, "traces": True, "metrics": True}
 
 
 def test_get_runtime_status_lazy_logger_does_not_mark_setup_done() -> None:
@@ -102,7 +104,7 @@ def test_get_runtime_status_lazy_logger_does_not_mark_setup_done() -> None:
 
     status = get_runtime_status()
 
-    assert status["setup_done"] is False
+    assert status.setup_done is False
 
 
 def test_get_runtime_status_traces_provider_true(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,8 +122,8 @@ def test_get_runtime_status_traces_provider_true(monkeypatch: pytest.MonkeyPatch
 
     status = get_runtime_status()
 
-    assert status["providers"]["traces"] is True  # type: ignore
-    assert status["fallback"]["traces"] is False  # type: ignore
+    assert status.providers["traces"] is True
+    assert status.fallback["traces"] is False
 
 
 def test_get_runtime_status_setup_error_key_name() -> None:
@@ -132,6 +134,7 @@ def test_get_runtime_status_setup_error_key_name() -> None:
     """
     status = get_runtime_status()
 
-    assert "setup_error" in status, f"Expected 'setup_error' key, got keys: {list(status.keys())}"
-    assert "XXsetup_errorXX" not in status
-    assert "SETUP_ERROR" not in status
+    fields = {f.name for f in dataclasses.fields(status)}
+    assert "setup_error" in fields, f"Expected 'setup_error' field, got: {sorted(fields)}"
+    assert "XXsetup_errorXX" not in fields
+    assert "SETUP_ERROR" not in fields

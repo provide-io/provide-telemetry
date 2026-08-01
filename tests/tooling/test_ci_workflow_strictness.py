@@ -135,8 +135,12 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert workflow.count("--threshold-efficacy=100") == 3
     assert workflow.count("--threshold-mcover=100") == 3
     assert '--exclude-files="mutation_constants.go"' in workflow
-    assert "hashFiles('go/logger/go.mod')" in workflow
+    # go/otel is a separate module, so its step is legitimately conditional.
+    # go/logger is a package of the root module and must NOT be gated on a
+    # go.mod that will never exist — that gate silently skipped the step.
     assert "hashFiles('go/otel/go.mod')" in workflow
+    assert "hashFiles('go/logger/go.mod')" not in workflow
+    assert "Run gremlins mutation tests for go/logger" in workflow
 
 
 def test_rust_mutation_workflow_bounds_compiler_and_test_parallelism() -> None:

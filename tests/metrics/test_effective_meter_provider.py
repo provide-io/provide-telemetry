@@ -16,22 +16,17 @@ keeps these tests inside the mutation gate's non-otel selection.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
 from provide.telemetry.metrics import provider as mpmod
-from provide.telemetry.runtime import get_runtime_status
+from provide.telemetry.runtime import RuntimeStatus, get_runtime_status
 
 
-def _signal(status: dict[str, object], section: str, signal: str) -> object:
-    """Read status[section][signal].
-
-    get_runtime_status() is typed dict[str, object] for cross-language shape
-    parity, so the nested read needs narrowing rather than a type: ignore —
-    mypy accepts the ignore, ty does not.
-    """
-    return cast("dict[str, object]", status[section])[signal]
+def _signal(status: RuntimeStatus, section: str, signal: str) -> bool:
+    """Read status.<section>[signal]."""
+    section_map: dict[str, bool] = getattr(status, section)
+    return section_map[signal]
 
 
 class _ExternalProvider:

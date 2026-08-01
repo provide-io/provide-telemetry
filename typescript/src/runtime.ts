@@ -76,12 +76,19 @@ export interface FlushResult {
   metrics: SignalFlushResult;
 }
 
+/**
+ * Outcome of an attempted runtime reconfiguration.
+ *
+ * Field names are the cross-language canonical set — `previous`/`current` name the
+ * configs on either side of the attempt, and `state` is the runtime state after it.
+ * Python, Go and Rust declare the same five fields under the same names so a result
+ * serialized by one runtime deserializes in another.
+ */
 export interface ReconfigureResult {
   applied: boolean;
-  config?: TelemetryConfig;
+  current?: TelemetryConfig;
   previous?: TelemetryConfig;
   state: RuntimeState;
-  status: RuntimeState;
   error?: string;
 }
 
@@ -99,25 +106,31 @@ export class TelemetryRuntime {
 
   async shutdown(timeout?: number): Promise<void> {
     const { shutdownTelemetry } = await import('./shutdown.js');
-    await shutdownTelemetry();
-    this.state = timeout === undefined ? RuntimeState.STOPPING : RuntimeState.STOPPED;
+    await shutdownTelemetry(timeout);
+    // The drain has completed by here, so the terminal state is STOPPED
+    // regardless of how it was requested — matching Python, Go and Rust.
+    this.state = RuntimeState.STOPPED;
     return Promise.resolve();
   }
 
   async flush(timeoutMs?: number): Promise<FlushResult> {
     const { flushTelemetry } = await import('./shutdown.js');
+    // Read provider status before draining: a signal with no provider installed
+    // must report notInstalled rather than riding on flushTelemetry's vacuously
+    // true [].every(). Mirrors the Rust facade.
+    const providers = getRuntimeStatus().providers;
     const ok = await flushTelemetry(timeoutMs);
-    const result: SignalFlushResult = {
-      flushed: ok,
-      notInstalled: false,
+    const resultFor = (installed: boolean): SignalFlushResult => ({
+      flushed: installed && ok,
+      notInstalled: !installed,
       notOwned: false,
-      timedOut: !ok,
+      timedOut: installed && !ok,
       failed: false,
-    };
+    });
     return {
-      logs: result,
-      traces: { ...result },
-      metrics: { ...result },
+      logs: resultFor(providers.logs),
+      traces: resultFor(providers.traces),
+      metrics: resultFor(providers.metrics),
     };
   }
 
@@ -125,9 +138,8 @@ export class TelemetryRuntime {
     return getLogger(name);
   }
 
-  getTracer(_name?: string): ReturnType<typeof getTracer> {
-    void _name;
-    return getTracer();
+  getTracer(name?: string): ReturnType<typeof getTracer> {
+    return getTracer(name);
   }
 
   getMeter(name: string): ReturnType<typeof getMeter> {
@@ -147,10 +159,9 @@ export class TelemetryRuntime {
     updateRuntimeConfig(cfg);
     return {
       applied: true,
-      config: getRuntimeConfig(),
+      current: getRuntimeConfig(),
       previous,
       state: this.state,
-      status: this.state,
     };
   }
 

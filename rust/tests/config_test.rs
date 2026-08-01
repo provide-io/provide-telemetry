@@ -123,3 +123,17 @@ fn config_test_exported_types_are_distinct_and_constructible() {
     assert!(overrides.strict_schema.is_none());
     assert!(overrides.event_schema.is_none());
 }
+
+#[test]
+fn config_test_provider_immutable_error_converts_into_a_detectable_telemetry_error() {
+    // The rejection path returns TelemetryError, so the ProviderImmutable kind is
+    // what lets a caller act on "restart required" without matching message text.
+    let immutable = provide_telemetry::ProviderImmutableError::new("providers already installed");
+    let err: TelemetryError = immutable.into();
+
+    assert!(err.is_provider_immutable());
+    assert_eq!(err.message, "providers already installed");
+
+    // An ordinary error must not satisfy the same check.
+    assert!(!TelemetryError::new("sample rate out of range").is_provider_immutable());
+}

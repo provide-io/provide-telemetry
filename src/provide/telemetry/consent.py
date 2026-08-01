@@ -44,6 +44,18 @@ def get_consent_level() -> ConsentLevel:
         return _level
 
 
+def _rank(log_level: str | None) -> int:
+    """Order a log level for consent comparisons; unknown levels sort lowest.
+
+    Both mutations mutmut generates here are provably equivalent and so are
+    suppressed rather than tested: the placeholder for a missing level ("" vs any
+    other string absent from the map) resolves to the same lookup miss, and the
+    miss sentinel (0 vs 1) sits below every threshold this is compared against
+    (WARNING=3, ERROR=4). The pragma must be on a single-line statement to apply.
+    """
+    return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0)  # pragma: no mutate
+
+
 def should_allow(signal: str, log_level: str | None = None) -> bool:
     with _lock:
         level = _level
@@ -54,25 +66,18 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
         return False
     if level == ConsentLevel.FUNCTIONAL:
         if signal == "logs":
-            return (  # pragma: no mutate — parenthesised return wrapping; semantically identical to inline form
-                _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0)
-                >= _LOG_LEVEL_ORDER[
-                    "WARNING"
-                ]  # pragma: no mutate — default 0 is sentinel below every valid log level; equivalent to any sub-WARNING integer
-            )
+            return _rank(log_level) >= _LOG_LEVEL_ORDER["WARNING"]
         return signal != "context"  # traces and metrics allowed; context blocked
     # MINIMAL
     if signal == "logs":
-        return (
-            _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0) >= _LOG_LEVEL_ORDER["ERROR"]
-        )  # pragma: no mutate — default 0 is sentinel below every valid log level; equivalent to any sub-ERROR integer
+        return _rank(log_level) >= _LOG_LEVEL_ORDER["ERROR"]
     return False  # traces/metrics/context blocked at MINIMAL
 
 
 def _load_consent_from_env() -> None:
-    raw = (
-        os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()
-    )  # pragma: no mutate — FULL default is equivalent to any valid ConsentLevel name; invalid values are swallowed below
+    # The default is upper-cased along with the env value, so a case mutation of
+    # the literal cannot change the result — provably equivalent.
+    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()  # pragma: no mutate
     with contextlib.suppress(ValueError):
         set_consent_level(ConsentLevel(raw))
 

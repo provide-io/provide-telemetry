@@ -298,9 +298,13 @@ def _run_attempt_with_timeout(
     if timeout_seconds <= 0 or skip_executor:
         return operation()
     sem = _get_executor_semaphore(signal)
-    if not sem.acquire(
-        blocking=False  # pragma: no mutate — mutating to blocking=True deadlocks on saturation; behavior is asserted by test_run_attempt_drops_when_semaphore_full_does_not_block
-    ):
+    # The only mutation generated here is blocking=False -> blocking=None, and
+    # Semaphore.acquire tests the argument for truthiness ("if not blocking"), so
+    # None and False take the identical non-blocking path — provably equivalent.
+    # The pragma must sit on a single-line statement to take effect: mutmut
+    # ignores a trailing pragma on a continuation line of a multi-line call.
+    acquired = sem.acquire(blocking=False)  # pragma: no mutate
+    if not acquired:
         # Pending queue is full — raise so the retry loop treats this as a
         # failure and honors policy.fail_open rather than returning a silent
         # None that masquerades as success.

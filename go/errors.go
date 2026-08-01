@@ -74,12 +74,30 @@ func NewEventSchemaError(msg string, cause ...error) *EventSchemaError {
 	return &EventSchemaError{TelemetryError: &TelemetryError{msg: msg, cause: c}}
 }
 
-// ProviderImmutableError mirrors the spec's host-provider-change rejection error.
-// It is type-aliasing ConfigurationError so legacy `errors.As(err, &ConfigurationError)`
-// checks continue to match.
-type ProviderImmutableError = ConfigurationError
+// ProviderImmutableError reports a host-provider-changing update that was rejected
+// because real providers are already installed. It is a distinct type, not an alias
+// for ConfigurationError: a caller acting on "this needs a process restart" must not
+// also match an ordinary bad-endpoint or not-set-up configuration error. Its As
+// method keeps legacy errors.As(err, &cfgErr) checks matching.
+type ProviderImmutableError struct {
+	*ConfigurationError
+}
+
+// As implements the errors.As interface so that both errors.As(pie, &cfgErrPtr) and
+// errors.As(pie, &telemetryErrPtr) match.
+func (e *ProviderImmutableError) As(target interface{}) bool {
+	switch t := target.(type) {
+	case **ConfigurationError:
+		*t = e.ConfigurationError
+		return true
+	case **TelemetryError:
+		*t = e.TelemetryError
+		return true
+	}
+	return false
+}
 
 // NewProviderImmutableError creates a new ProviderImmutableError with an optional cause.
 func NewProviderImmutableError(msg string, cause ...error) *ProviderImmutableError {
-	return NewConfigurationError(msg, cause...)
+	return &ProviderImmutableError{ConfigurationError: NewConfigurationError(msg, cause...)}
 }

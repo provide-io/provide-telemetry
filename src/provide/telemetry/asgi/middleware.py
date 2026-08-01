@@ -75,9 +75,10 @@ class TelemetryMiddleware:
             await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
         except Exception as exc:
             if self.auto_slo and self._logger is not None:
-                scope_type = str(
-                    scope.get("type", "http")
-                )  # pragma: no mutate — "http" default is only hit for unknown ASGI types we explicitly allow through
+                # __call__ returns early for any scope whose type is not
+                # "http"/"websocket", so the key is always present here — a
+                # default would be dead code.
+                scope_type = str(scope["type"])
                 self._logger.error(
                     event_name(scope_type, "request", "unhandled_exception"),
                     exc_info=True,

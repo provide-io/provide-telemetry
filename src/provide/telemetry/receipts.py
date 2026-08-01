@@ -65,9 +65,9 @@ def enable_receipts(
 def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
     receipt_id = str(uuid.uuid4())
     timestamp = datetime.now(tz=UTC).isoformat()
-    original_hash = (
-        hashlib.sha256(str(original_value).encode("utf-8")).hexdigest()
-    )  # pragma: no mutate — sha256 hex digest is the receipt contract; exact value asserted in receipt tests
+    # Codec lookup is case-insensitive, so an "UTF-8" mutation selects the same
+    # codec and produces an identical digest.
+    original_hash = hashlib.sha256(str(original_value).encode("utf-8")).hexdigest()  # pragma: no mutate
 
     with _lock:
         key = _signing_key
@@ -77,11 +77,9 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
     hmac_value = ""
     if key:
         payload = f"{receipt_id}|{timestamp}|{field_path}|{action}|{original_hash}"
-        hmac_value = hmac_mod.new(
-            key.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
-            payload.encode("utf-8"),  # pragma: no mutate — encoding alias equivalent
-            hashlib.sha256,
-        ).hexdigest()  # pragma: no mutate — hex digest finaliser; exact output asserted in HMAC receipt tests
+        key_bytes = key.encode("utf-8")  # pragma: no mutate — codec alias equivalent
+        payload_bytes = payload.encode("utf-8")  # pragma: no mutate — codec alias equivalent
+        hmac_value = hmac_mod.new(key_bytes, payload_bytes, hashlib.sha256).hexdigest()
 
     receipt = RedactionReceipt(
         receipt_id=receipt_id,

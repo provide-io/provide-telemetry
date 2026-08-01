@@ -16,6 +16,7 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from provide.telemetry import runtime as runtime_mod
+from provide.telemetry._runtime_types import FlushResult, RuntimeStatus, SignalFlushResult
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 
 
@@ -46,8 +47,8 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
         got.append(("setup", cfg))
         return TelemetryConfig(service_name="runtime-test")
 
-    def fake_shutdown() -> None:
-        got.append(("shutdown",))
+    def fake_shutdown(timeout_seconds: float | None = None) -> None:
+        got.append(("shutdown", timeout_seconds))
 
     def fake_flush(timeout_seconds: float | None = None) -> bool:
         got.append(("flush", timeout_seconds))
@@ -67,17 +68,28 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
     monkeypatch.setitem(sys.modules, "provide.telemetry.metrics", fake_metrics_module)
     runtime_config = TelemetryConfig(service_name="runtime")
     monkeypatch.setattr("provide.telemetry.runtime.get_runtime_config", lambda: runtime_config)
-    monkeypatch.setattr("provide.telemetry.runtime.get_runtime_status", lambda: {"status": "ok"})
+    status = RuntimeStatus(
+        setup_done=True,
+        signals={"logs": True, "traces": True, "metrics": True},
+        providers={"logs": True, "traces": False, "metrics": True},
+        fallback={"logs": False, "traces": True, "metrics": False},
+        setup_error=None,
+    )
+    monkeypatch.setattr("provide.telemetry.runtime.get_runtime_status", lambda: status)
 
     cfg = TelemetryConfig(service_name="configured")
     assert runtime.start(cfg) == TelemetryConfig(service_name="runtime-test")
     runtime.shutdown()
-    assert runtime.flush(0.1) is True
+    flushed = runtime.flush(0.1)
+    # providers reports traces uninstalled, so only traces is not_installed.
+    assert flushed.logs == SignalFlushResult(flushed=True)
+    assert flushed.traces == SignalFlushResult(not_installed=True)
+    assert flushed.metrics == SignalFlushResult(flushed=True)
     assert runtime.get_logger("svc") == ("logger", "svc")
     assert runtime.get_tracer("svc") == ("tracer", "svc")
     assert runtime.get_meter("svc") == ("meter", "svc")
     assert runtime.get_runtime_config() == runtime_config
-    assert runtime.get_runtime_status() == {"status": "ok"}
+    assert runtime.get_runtime_status() == status
 
     previous_config = TelemetryConfig(service_name="previous")
     updated_config = TelemetryConfig(service_name="updated")
@@ -93,7 +105,7 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
     monkeypatch.setattr("provide.telemetry.runtime.update_runtime_config", fake_update)
     result = runtime.update_config(RuntimeOverrides())
     assert result.applied is True
-    assert result.config == updated_config
+    assert result.current == updated_config
     assert result.previous == previous_config
 
     def fake_get_cfg() -> TelemetryConfig:
@@ -120,9 +132,11 @@ def test_runtime_module_facade_delegates_to_runtime_instance(monkeypatch: Any) -
     def fake_shutdown(timeout: float | None = None) -> None:
         got.append(("shutdown", timeout))
 
-    def fake_flush(timeout: float | None = None) -> bool:
+    sentinel = FlushResult(logs=SignalFlushResult(flushed=True))
+
+    def fake_flush(timeout: float | None = None) -> FlushResult:
         got.append(("flush", timeout))
-        return True
+        return sentinel
 
     stub = SimpleNamespace(
         start=fake_start,
@@ -138,7 +152,7 @@ def test_runtime_module_facade_delegates_to_runtime_instance(monkeypatch: Any) -
     assert ("start", wrapped_config) in got
     runtime_mod.shutdown(0.5)
     assert ("shutdown", 0.5) in got
-    assert runtime_mod.flush(0.25) is True
+    assert runtime_mod.flush(0.25) is sentinel
     assert ("flush", 0.25) in got
     assert runtime_mod.get_logger("svc") == ("logger", "svc")
     assert runtime_mod.get_tracer("svc") == ("tracer", "svc")

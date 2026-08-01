@@ -36,12 +36,10 @@ def _decode_header_value(value: object) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, bytes):
+        # Codec names are looked up case-insensitively, so the only mutations
+        # generated here ("UTF-8" / "LATIN-1") select the identical codec.
         try:
-            return value.decode(
-                "utf-8"
-            )  # pragma: no mutate — encoding alias "utf_8" is equivalent; decode target is asserted by round-trip tests
+            return value.decode("utf-8")  # pragma: no mutate
         except UnicodeDecodeError:
-            return value.decode(
-                "latin-1"
-            )  # pragma: no mutate — single-byte fallback; any Latin-N codec is byte-equivalent for <0x80 bytes
+            return value.decode("latin-1")  # pragma: no mutate
     return None

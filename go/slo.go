@@ -40,6 +40,13 @@ func ClassifyError(excName string, statusCode int) map[string]string {
 
 	isTimeout := statusCode == 0 || strings.Contains(strings.ToLower(excName), "timeout")
 
+	// Deliberately an if/else ladder rather than the idiomatic `switch { case … }`.
+	// Go's coverage profile attributes a switch case to its *body* (the column
+	// after the colon), while gremlins places CONDITIONALS_* mutants on the case
+	// *expression*. The mutant column then falls outside every covered block, so
+	// fully exercised code reports as "not covered" and fails the
+	// --threshold-mcover=100 gate in .github/workflows/ci-mutation.yml.
+	// Rewriting this to a switch drops go/logger's mutator coverage to 88.41%.
 	if isTimeout {
 		result["error.category"] = _errCatTimeout
 		result["error.severity"] = _severityInfo

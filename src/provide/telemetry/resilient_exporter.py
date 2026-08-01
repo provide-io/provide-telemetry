@@ -19,9 +19,26 @@ from __future__ import annotations
 
 __all__ = ["ResilientExporter", "wrap_exporter"]
 
+from collections.abc import Mapping
 from typing import Any
 
 from provide.telemetry.resilience import run_with_resilience
+
+
+def _resolve_log_export_result(exports: Mapping[str, Any]) -> Any:
+    """Pick the log export-result enum across OTel versions.
+
+    OTel 1.42 renamed ``LogExportResult`` to ``LogRecordExportResult`` (the old
+    name is deprecated and slated for removal). Resolving through the module
+    namespace keeps us working on the supported floor (1.27, old name only) and
+    on current SDKs (new name) without a static reference to the deprecated
+    symbol.
+
+    Split out of :func:`_load_failure_result` so the version shim is testable
+    without the optional OTel extras installed — the caller's per-signal import
+    branches cannot run in the default environment.
+    """
+    return exports.get("LogRecordExportResult") or exports["LogExportResult"]
 
 
 def _load_failure_result(signal: str) -> Any:
@@ -46,9 +63,7 @@ def _load_failure_result(signal: str) -> Any:
         # namespace so we work across the supported floor (1.27, old name only)
         # and current SDKs (new name) without a static reference to the
         # deprecated symbol.
-        _exports = vars(_logs_export)
-        result_cls = _exports.get("LogRecordExportResult") or _exports["LogExportResult"]
-        return result_cls.FAILURE
+        return _resolve_log_export_result(vars(_logs_export)).FAILURE
     if signal == "traces":  # pragma: no cover
         from opentelemetry.sdk.trace.export import SpanExportResult
 

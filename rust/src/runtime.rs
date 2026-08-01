@@ -347,7 +347,11 @@ pub fn reconfigure_telemetry(
                 || (traces_live && tracing_provider_config_changed(&current, &target))
                 || (metrics_live && metrics_provider_config_changed(&current, &target));
             if reject {
-                Err(TelemetryError::new(PROVIDER_CHANGE_RESTART_MESSAGE))
+                // Produced as ProviderImmutableError so the caller can branch on
+                // is_provider_immutable() rather than matching the message text.
+                Err(TelemetryError::from(
+                    crate::errors::ProviderImmutableError::new(PROVIDER_CHANGE_RESTART_MESSAGE),
+                ))
             } else {
                 Ok(())
             }?;

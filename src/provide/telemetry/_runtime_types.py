@@ -51,11 +51,18 @@ class FlushResult:
 
 @dataclass(frozen=True)
 class ReconfigureResult:
+    """Outcome of an attempted runtime reconfiguration.
+
+    Field names are the cross-language canonical set — ``previous``/``current``
+    name the configs on either side of the attempt, and ``state`` is the runtime
+    state after it. Go, Rust and TypeScript declare the same five fields under the
+    same names so a result serialized by one runtime deserializes in another.
+    """
+
     applied: bool
-    config: TelemetryConfig | None = None
+    current: TelemetryConfig | None = None
     previous: TelemetryConfig | None = None
     state: RuntimeState = RuntimeState.READY
-    status: RuntimeState = RuntimeState.READY
     error: str | None = None
 
 

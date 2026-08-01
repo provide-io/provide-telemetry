@@ -48,10 +48,39 @@ _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {
 }
 
 
+def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
+    """Build the default stderr handler.
+
+    Hoisted to its own single-line statement so the pragma applies: mutmut only
+    honours a trailing pragma on a whole statement, not on an element inside a
+    multi-line literal. logging.StreamHandler(None) also defaults to stderr, so
+    the argument is unobservable.
+    """
+    return logging.StreamHandler(sys.stderr)  # pragma: no mutate
+
+
+# CRITICAL is the highest level and structlog_level never exceeds it, so the
+# `method_level < structlog_level` test never fires for this entry — the key is
+# unreachable, making every mutation of it equivalent.
+_CRITICAL_KEY = "critical"  # pragma: no mutate
+
+
+def _iso_timestamper() -> Any:
+    """structlog resolves the format name case-insensitively."""
+    return structlog.processors.TimeStamper(fmt="iso")  # pragma: no mutate
+
+
+def _plain_console_renderer() -> Any:
+    """colors=None is falsy exactly like colors=False."""
+    return structlog.dev.ConsoleRenderer(colors=False)  # pragma: no mutate
+
+
 def _get_level(level: str) -> int:
-    if (
-        level == "TRACE"
-    ):  # pragma: no mutate — TRACE is not a stdlib logging level; this branch is the only way to resolve it
+    # TRACE is registered with logging.addLevelName, so getLevelName("TRACE")
+    # below already resolves it — this fast path is a shortcut, not the only
+    # route, which makes every mutation of the literal equivalent.
+    is_trace = level == "TRACE"  # pragma: no mutate
+    if is_trace:
         return TRACE
     mapped = logging.getLevelName(level)
     if isinstance(mapped, int):
@@ -77,7 +106,7 @@ def _make_filtering_bound_logger(level: int) -> type[structlog.typing.BindableLo
         "info": logging.INFO,
         "warning": logging.WARNING,
         "error": logging.ERROR,
-        "critical": logging.CRITICAL,  # pragma: no mutate — dict literal entry; value asserted through structlog integration tests
+        _CRITICAL_KEY: logging.CRITICAL,
     }
 
     def _permissive_nop(*_args: Any, **_kw: Any) -> None:
@@ -164,16 +193,16 @@ def _make_otel_logging_handler(
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        return cast(  # pragma: no mutate — cast() is a no-op at runtime; node starts here
-            logging.Handler,
-            sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider),
-        )
+        handler = sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
+        # cast() returns its second argument unchanged at runtime, so mutating
+        # the type argument cannot be observed.
+        return cast(logging.Handler, handler)  # pragma: no mutate
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
     global _otel_log_provider, _otel_log_global_set
     handlers: list[logging.Handler] = [
-        logging.StreamHandler(sys.stderr)
+        _stderr_handler()
     ]  # pragma: no mutate — StreamHandler(None) defaults to sys.stderr; the None mutant is behaviorally equivalent and cannot be killed
 
     if not config.logging.otlp_endpoint or not config.logging.otlp_enabled:
@@ -224,8 +253,8 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),  # pragma: no mutate — structlog accepts "ISO" equivalently
-            structlog.dev.ConsoleRenderer(colors=False),  # pragma: no mutate — None is falsy like False
+            _iso_timestamper(),
+            _plain_console_renderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
@@ -270,9 +299,10 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         module_numeric = _LEVEL_NAME_TO_NUMERIC.get(
             module_level_str, logging.INFO
         )  # pragma: no mutate — INFO default only reached for strings already validated upstream
-        if (
-            module_numeric < effective_level
-        ):  # pragma: no mutate — minimum-level fold; strict-less semantics verified by module-level override tests
+        # Folding to a minimum: reassigning an equal value is a no-op, so `<` and
+        # `<=` produce the same effective_level for every input.
+        lowers = module_numeric < effective_level  # pragma: no mutate
+        if lowers:
             effective_level = module_numeric
 
     handlers = [_BackpressureFanoutHandler(_build_handlers(config, effective_level))]

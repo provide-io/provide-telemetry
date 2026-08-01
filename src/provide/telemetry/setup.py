@@ -185,13 +185,25 @@ def flush_telemetry(timeout_seconds: float | None = None) -> bool:
     return all(results)
 
 
-def shutdown_telemetry() -> None:
-    """Flush and tear down telemetry providers and reset runtime policies."""
+def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
+    """Flush and tear down telemetry providers and reset runtime policies.
+
+    *timeout_seconds* bounds the drain that precedes teardown — the part that can
+    hang on an unreachable collector — and defaults to the configured
+    bounded-shutdown deadline. A caller in a SIGTERM handler passes the time it
+    has left so the drain cannot overrun its termination grace period; teardown
+    itself is local work and always completes.
+    """
     from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
     from provide.telemetry.metrics.provider import shutdown_metrics
     from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
     from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
     from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
+
+    # Drain under the caller's deadline before teardown. Taken outside _lock:
+    # flush_telemetry reads runtime config, and the per-signal shutdowns below
+    # re-flush what this leaves behind.
+    flush_telemetry(timeout_seconds)
 
     global _setup_done
     with _lock:

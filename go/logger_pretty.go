@@ -291,6 +291,10 @@ func _formatValue(v any) string {
 
 // _levelName returns the lowercased canonical name used by the pretty renderer.
 // Recognises LevelTrace plus standard slog levels.
+// Deliberately an if/else ladder, not `switch { case … }`: Go's coverage profile
+// attributes a switch case to its body, while gremlins places CONDITIONALS_*
+// mutants on the case expression, so a switch here reports fully-covered code as
+// "not covered" and fails --threshold-mcover=100. See go/slo.go for the detail.
 func _levelName(lvl slog.Level) string {
 	if lvl <= LevelTrace {
 		return _severityTrace

@@ -162,10 +162,18 @@ export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
   return results.every((ok) => ok);
 }
 
-export async function shutdownTelemetry(): Promise<void> {
+/**
+ * Flush and tear down installed providers.
+ *
+ * `timeoutMs` bounds the drain that precedes teardown — the part that can hang on
+ * an unreachable collector — and defaults to the configured bounded-shutdown
+ * deadline. A caller shutting down against a deadline passes the time it has left
+ * so the drain cannot overrun it; teardown itself is local work and always completes.
+ */
+export async function shutdownTelemetry(timeoutMs?: number): Promise<void> {
   const providers = _getRegisteredProviders();
-  const timeoutMs = getConfig().exporterLogsShutdownTimeoutMs;
-  await Promise.allSettled(providers.map((p) => flushAndShutdownProvider(p, timeoutMs)));
+  const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
+  await Promise.allSettled(providers.map((p) => flushAndShutdownProvider(p, deadlineMs)));
   await disableInstalledOtelGlobals();
   _resetOtelLogProviderForTests();
   _clearProviderState();

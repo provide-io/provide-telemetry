@@ -67,11 +67,17 @@ nothing installed to drain.
 > than adding to the pile. `shutdown_telemetry` is never declined — it runs once
 > at exit and is the last chance to get queued records out.
 
-### `shutdown_telemetry() -> None`
+### `shutdown_telemetry(timeout_seconds: float | None = None) -> None`
 
 Flush and tear down all providers and clear local runtime state. A later
 `setup_telemetry()` call returns the package to the same runtime-status shape as
 the initial setup for the common path, including after lazy logger use.
+
+`timeout_seconds` bounds the drain that precedes teardown — the part that can hang
+on an unreachable collector — and defaults to the configured bounded-shutdown
+deadline. Pass the time remaining in a SIGTERM handler so the drain cannot overrun
+the orchestrator's termination grace period; teardown itself is local work and
+always completes.
 
 Provider-changing `reconfigure_telemetry()` remains intentionally rejected once
 real OpenTelemetry providers are live; restart the process before applying

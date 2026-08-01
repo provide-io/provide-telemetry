@@ -146,8 +146,10 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
     if mode == "redact":
         return _REDACTED
     if mode == "hash":
+        # Codec lookup is case-insensitive, so an "UTF-8" mutation is equivalent.
+        encoded = str(value).encode("utf-8")  # pragma: no mutate
         return hashlib.sha256(
-            str(value).encode("utf-8")
+            encoded
         ).hexdigest()[
             :12
         ]  # pragma: no mutate — 12-char hash prefix is the PII hash-mode contract; exact value asserted in hash-mode tests
@@ -161,9 +163,11 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
 def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     if len(path) != len(target):
         return False
-    return all(
-        part == "*" or part == elem for part, elem in zip(path, target, strict=True)
-    )  # pragma: no mutate — wildcard OR exact-match; both branches covered by PII rule tests
+    # The length guard above means zip can never see a ragged pair, so every
+    # mutation of `strict` here is provably equivalent. Kept as True to document
+    # the invariant. The pragma needs a single-line statement to take effect.
+    pairs = zip(path, target, strict=True)  # pragma: no mutate
+    return all(part == "*" or part == elem for part, elem in pairs)
 
 
 def _apply_rule(
@@ -224,20 +228,18 @@ def _apply_default_sensitive_key_redaction(
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
+                        joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate
                         receipt_hook(
-                            ".".join(
-                                cast(tuple[str, ...], child_path)
-                            ),  # pragma: no mutate — typing-only cast; runtime value is already a str tuple
+                            joined,
                             "redact",
                             orig_value,
                         )
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
+                    joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate
                     receipt_hook(
-                        ".".join(
-                            cast(tuple[str, ...], child_path)
-                        ),  # pragma: no mutate — typing-only cast; runtime value is already a str tuple
+                        joined,
                         "redact",
                         value,
                     )
@@ -313,24 +315,23 @@ def sanitize_payload(
         cleaned, payload, rule_targeted_paths=rule_targeted_paths, max_depth=max_depth, receipt_hook=receipt_hook
     )
     if classification_hook is not None and isinstance(cleaned, dict):
-        for key, value in list(
-            cast(Any, cleaned).items()
-        ):  # pragma: no mutate — typing-only cast and list() snapshot for safe in-place mutation
+        # typing.cast returns its second argument unchanged at runtime, so every
+        # mutation of the type argument is provably equivalent.
+        items = list(cast(Any, cleaned).items())  # pragma: no mutate
+        for key, value in items:
             label = classification_hook(key, value)
             if label is not None:
-                action = (
-                    policy_fn(label)
-                    if policy_fn is not None
-                    else "pass"  # pragma: no mutate — "XXpassXX"/"PASS" behave identically: not drop, not mask
-                )
+                # The fallback is only ever compared against "drop" and the
+                # mask actions, so any other string is provably equivalent.
+                default_action = "pass"  # pragma: no mutate
+                action = policy_fn(label) if policy_fn is not None else default_action
                 if action == "drop":
                     del cleaned[key]
                 else:
                     cleaned[f"__{key}__class"] = label
                     if action in ("redact", "hash", "truncate") and value != _REDACTED:
-                        cleaned[key] = _mask(
-                            value, cast(MaskMode, action), 8
-                        )  # pragma: no mutate — 8-char truncate default here mirrors PIIRule.truncate_to; equivalent to any small positive int for governance action mapping
+                        mask_mode = cast(MaskMode, action)  # pragma: no mutate — runtime no-op
+                        cleaned[key] = _mask(value, mask_mode, 8)
     if isinstance(cleaned, dict):
         return cleaned
     return {}

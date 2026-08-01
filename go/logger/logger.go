@@ -323,6 +323,10 @@ func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
 }
 
 // _slogLevelToString maps a slog.Level to the nearest LogLevel* string constant.
+// Deliberately an if/else ladder, not `switch { case … }`: Go's coverage profile
+// attributes a switch case to its body, while gremlins places CONDITIONALS_*
+// mutants on the case expression, so a switch here reports fully-covered code as
+// "not covered" and fails --threshold-mcover=100. See go/slo.go for the detail.
 func _slogLevelToString(l slog.Level) string {
 	if l <= LevelTrace {
 		return LogLevelTrace

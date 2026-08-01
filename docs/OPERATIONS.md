@@ -67,9 +67,9 @@ Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) 
 
 ## Mutation Policy Files
 
-- `.ci/pymutant-profiles.json` is the source of truth for mutation roots.
+- `pyproject.toml` `[tool.mutmut] source_paths` is the source of truth for Python
+  mutation roots — it is what `scripts/run_mutation_gate.py` actually runs against.
 - Python mutation policy floor is `95.0` (configured in `scripts/run_mutation_gate.py` and `.github/workflows/ci-mutation.yml`).
-- `.ci/pymutant-policy-baseline.json` is historical metadata and is not used by current gates.
 - If mutation roots or test selection changes, rerun the local mutation gate before declaring policy status to avoid stale baseline assumptions.
 
 ## Docs Quality

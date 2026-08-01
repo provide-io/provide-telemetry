@@ -354,7 +354,8 @@ func _checkColdDrift(next *TelemetryConfig) {
 	}
 }
 
-// ReconfigureTelemetry applies hot-reloadable config changes from the current environment.
+// ReconfigureTelemetry applies hot-reloadable config changes from the current
+// environment, or from an explicit config when the caller passes WithConfig.
 // If provider-changing fields (service identity, endpoints, enable flags) differ AND real
 // OTel providers are installed, it returns a ConfigurationError instead of silently
 // restarting — matching the Python/TypeScript/Rust contract.
@@ -368,15 +369,20 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		return nil, NewConfigurationError("telemetry not set up: call SetupTelemetry first")
 	}
 
-	target, err := ConfigFromEnv()
-	if err != nil {
-		return nil, err
-	}
-
-	// Apply functional options to interpret caller intent.
+	// Apply functional options to interpret caller intent. WithConfig supplies an
+	// explicit target and suppresses the environment read, matching SetupTelemetry.
 	state := &_setupState{}
 	for _, fn := range opts {
 		fn(state)
+	}
+
+	target := state.config
+	if target == nil {
+		fromEnv, err := ConfigFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		target = fromEnv
 	}
 
 	providers := _providerStatusLocked()

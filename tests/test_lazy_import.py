@@ -107,15 +107,40 @@ def test_lazy_access_health() -> None:
 
 
 def test_lazy_registry_maps_to_correct_modules() -> None:
-    """Verify _LAZY_REGISTRY entries resolve to the correct module/attr pairs."""
-    from provide.telemetry import _LAZY_REGISTRY
+    """Verify LAZY_REGISTRY entries name the module that owns each symbol."""
+    from provide.telemetry._lazy import LAZY_REGISTRY
 
     # Spot-check several entries across different modules.
-    assert _LAZY_REGISTRY["counter"] == ("provide.telemetry.metrics", "counter")
-    assert _LAZY_REGISTRY["register_pii_rule"] == ("provide.telemetry.pii", "register_pii_rule")
-    assert _LAZY_REGISTRY["get_health_snapshot"] == ("provide.telemetry.health", "get_health_snapshot")
-    assert _LAZY_REGISTRY["TelemetryMiddleware"] == ("provide.telemetry.asgi", "TelemetryMiddleware")
-    assert _LAZY_REGISTRY["should_sample"] == ("provide.telemetry.sampling", "should_sample")
+    assert LAZY_REGISTRY["counter"] == "provide.telemetry.metrics"
+    assert LAZY_REGISTRY["register_pii_rule"] == "provide.telemetry.pii"
+    assert LAZY_REGISTRY["get_health_snapshot"] == "provide.telemetry.health"
+    assert LAZY_REGISTRY["TelemetryMiddleware"] == "provide.telemetry.asgi"
+    assert LAZY_REGISTRY["should_sample"] == "provide.telemetry.sampling"
+
+
+def test_lazy_registry_owns_every_declared_export() -> None:
+    """Every name in MODULE_EXPORTS is reachable and maps back to its module."""
+    from provide.telemetry._lazy import LAZY_REGISTRY, MODULE_EXPORTS
+
+    declared = {name: module for module, names in MODULE_EXPORTS.items() for name in names}
+    assert declared == LAZY_REGISTRY
+
+
+def test_lazy_registry_rejects_duplicate_owners() -> None:
+    """A symbol claimed by two modules fails loudly instead of silently shadowing."""
+    import pytest
+
+    from provide.telemetry._lazy import _build_registry
+
+    with pytest.raises(RuntimeError, match="exported by both"):
+        _build_registry({"mod.a": ("dupe",), "mod.b": ("dupe",)})
+
+
+def test_lazy_registry_has_no_duplicate_declarations() -> None:
+    """The shipped table must not declare the same name under two modules."""
+    from provide.telemetry._lazy import MODULE_EXPORTS, _build_registry
+
+    assert _build_registry(MODULE_EXPORTS)  # raises RuntimeError on a duplicate
 
 
 def test_lazy_access_nonexistent_raises_attribute_error() -> None:
