@@ -36,6 +36,24 @@ uv run python scripts/check_spdx_headers.py              # All source files need
 uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 100% mutation kill required
 ```
 
+> **Run mutation and fuzz gates ONE AT A TIME on a workstation.** Each one
+> saturates every core by default and they are individually memory-hungry:
+> Stryker forks ~20 node workers, `pytest -n 8` forks 8 interpreters, `go test
+> -fuzz` runs GOMAXPROCS workers at ~100k exec/s, and cargo-mutants rebuilds the
+> crate per mutant. Two of these at once will OOM a 26 GB machine. Bound them:
+>
+> ```bash
+> uv run python scripts/run_mutation_gate.py --max-children 2   # not the 1/3-CPU default
+> npx stryker run --concurrency 2
+> go test -p 2 ./...                                            # seeds only; add -fuzz deliberately
+> go test -run FuzzX -fuzz FuzzX -fuzztime 30s -parallel 2 .
+> cargo mutants -j 1 --shard 1/8                                # shard rather than run whole
+> uv run pytest -p no:xdist ...                                 # serial when running alongside anything
+> ```
+>
+> CI runs them as separate jobs on separate runners, which is why the workflow
+> passes no concurrency caps — do not copy those invocations locally verbatim.
+
 **Memory profiling:**
 ```bash
 make memray                                                # Run all memray stress tests
