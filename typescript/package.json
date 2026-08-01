@@ -1,6 +1,6 @@
 {
   "name": "@provide-io/telemetry",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
   "license": "Apache-2.0",
   "author": "provide.io llc",
@@ -58,7 +58,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:mutation": "stryker run",
+    "test:mutation": "stryker run && stryker run stryker.otel.config.mjs",
     "test:memory": "npx tsx scripts/memory-audit.ts",
     "bench": "tsx scripts/perf-smoke.ts",
     "test:bench": "vitest run tests/performance/ --no-coverage",

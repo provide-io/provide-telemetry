@@ -23,29 +23,4 @@
 # NOTE: 2026-07-31 below is a placeholder default expiry — review and set a real
 # date that corresponds to a concrete plan to close the gap.
 
-accepted_gaps:
-  - lang: go
-    category: resource_precedence
-    reason: >
-      The resource builder lives in the separate go/otel module with an
-      unexported _explicitResourceAttrs, unreachable from the root parity corpus
-      (go/parity_*_test.go). The identical "explicit = differs from default" gate
-      is verified in-module by go/otel/config_resource_test.go
-      (TestExplicitResourceAttrs / TestBuildResource_*), at 100% coverage and
-      100% gremlins efficacy.
-    owner: tim
-    expires_on: 2026-12-31
-  - lang: rust
-    category: resource_precedence
-    reason: >
-      build_resource is wired into the Rust providers (setup_otel attaches it to
-      the trace/metric/log exporters) but is intentionally pub(crate) internal
-      API, so it is unreachable from the external parity corpus
-      (rust/tests/parity_*.rs), which sees only the crate's public surface —
-      the same visibility isolation as the Go gap above. The "explicit = differs
-      from default" gate is verified in-crate by rust/src/otel/resource.rs
-      (env_identity_keys_from, resource_falls_back_to_framework_floor_when_unset,
-      resource_carries_service_identity_from_config). Exposing the builder as
-      public API solely to satisfy the corpus check is not worth the surface.
-    owner: tim
-    expires_on: 2026-12-31
+accepted_gaps: []

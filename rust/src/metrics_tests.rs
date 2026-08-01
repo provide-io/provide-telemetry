@@ -11,7 +11,6 @@ use crate::health::get_health_snapshot;
 use crate::runtime::set_active_config;
 use crate::sampling::{set_sampling_policy, SamplingPolicy};
 use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
-#[cfg(feature = "governance")]
 use crate::{reset_consent_for_tests, set_consent_level, ConsentLevel};
 use crate::{MetricsConfig, TelemetryConfig};
 
@@ -43,9 +42,8 @@ fn metrics_test_reset_clears_metrics_initialization_flag() {
     assert!(metrics_initialized_for_tests());
 }
 
-#[cfg(not(feature = "governance"))]
 #[test]
-fn metrics_test_non_governance_fallback_allows_metric_mutation() {
+fn metrics_test_default_consent_allows_metric_mutation() {
     let _guard = acquire_test_state_lock();
     reset_telemetry_state();
 
@@ -309,7 +307,6 @@ fn metrics_test_histogram_guards_cover_disabled_and_sampling_paths() {
     );
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn metrics_test_consent_none_blocks_all_metric_mutations() {
     let _guard = acquire_test_state_lock();

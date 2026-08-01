@@ -3,7 +3,7 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Tests for the strippable data classification module."""
+"""Tests for the mandatory governance data classification module."""
 
 from __future__ import annotations
 

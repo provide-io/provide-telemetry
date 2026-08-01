@@ -19,6 +19,7 @@ pytestmark = pytest.mark.tooling
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _SCRIPT = _REPO_ROOT / "spec" / "check_fixture_coverage.py"
+_TEST_ID_SCRIPT = _REPO_ROOT / "spec" / "check_fixture_test_ids.py"
 
 
 def _load_module() -> ModuleType:
@@ -43,6 +44,17 @@ def test_check_fixture_coverage_exits_zero_with_allowlist() -> None:
         f"stdout: {result.stdout}\nstderr: {result.stderr}\n"
         f"Hint: add new gaps to spec/fixture_coverage_accepted_gaps.yaml with reason+owner+expires_on"
     )
+
+
+def test_fixture_test_ids_resolve_for_every_language() -> None:
+    result = subprocess.run(
+        [sys.executable, str(_TEST_ID_SCRIPT)],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "24 categories x 4 languages" in result.stdout
 
 
 def test_check_fixture_coverage_outputs_all_yaml_categories() -> None:

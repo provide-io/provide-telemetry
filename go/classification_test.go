@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-//go:build !nogovernance
-
 package telemetry
 
 import (
@@ -198,9 +196,9 @@ func TestClassification_DisabledPayload_NoTags(t *testing.T) {
 	}
 }
 
-// ── Strippable governance ─────────────────────────────────────────────────────
+// ── Governance module behavior without explicit rule registration ──────────────
 
-func TestStrippableGovernance_NoClassificationModule_PayloadWorksNormally(t *testing.T) {
+func TestGovernanceDefaults_NoRules_PayloadWorksNormally(t *testing.T) {
 	resetPII(t)
 	// No RegisterClassificationRules call — hooks stay nil.
 	result := SanitizePayload(map[string]any{"email": "alice@example.com", "name": "Alice"}, true, 0)
@@ -212,7 +210,7 @@ func TestStrippableGovernance_NoClassificationModule_PayloadWorksNormally(t *tes
 	}
 }
 
-func TestStrippableGovernance_DefaultRedactionStillWorks(t *testing.T) {
+func TestGovernanceDefaults_DefaultRedactionStillWorks(t *testing.T) {
 	resetPII(t)
 	// password is in DEFAULT_SANITIZE_FIELDS — should be redacted even without classification.
 	result := SanitizePayload(map[string]any{"password": "hunter2", "name": "Alice"}, true, 0)

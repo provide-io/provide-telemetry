@@ -57,17 +57,21 @@ pub(super) fn logger_provider_slot() -> &'static Mutex<Option<InstalledLoggerPro
     LOGGER_PROVIDER.get_or_init(empty_logger_provider_mutex)
 }
 
+#[cfg(test)]
+pub(super) fn install_logger_provider_for_tests(provider: SdkLoggerProvider) {
+    *crate::_lock::lock(logger_provider_slot()) = Some(InstalledLoggerProvider {
+        provider: Arc::new(provider),
+        runtime: ProvideTokioRuntime::test(),
+    });
+}
+
 fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> {
     let protocol = resolve_protocol(&cfg.logging.otlp_protocol)?;
     let timeout = Duration::from_secs_f64(cfg.exporter.logs_timeout_seconds);
 
     match protocol {
         OtlpProtocol::HttpProtobuf | OtlpProtocol::HttpJson => {
-            let http_protocol = if protocol == OtlpProtocol::HttpJson {
-                Protocol::HttpJson
-            } else {
-                Protocol::HttpBinary
-            };
+            let http_protocol = http_protocol_for(protocol);
             let mut builder = LogExporter::builder()
                 .with_http()
                 .with_protocol(http_protocol)
@@ -76,7 +80,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
-            if !cfg.logging.otlp_headers.is_empty() {
+            if log_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.logging.otlp_headers.clone());
             }
             map_exporter_build(builder.build(), "logs")
@@ -88,12 +92,24 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
-            if !cfg.logging.otlp_headers.is_empty() {
+            if log_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.logging.otlp_headers)?);
             }
             map_exporter_build(builder.build(), "logs")
         }
     }
+}
+
+fn http_protocol_for(protocol: OtlpProtocol) -> Protocol {
+    if protocol == OtlpProtocol::HttpJson {
+        Protocol::HttpJson
+    } else {
+        Protocol::HttpBinary
+    }
+}
+
+fn log_headers_configured(cfg: &TelemetryConfig) -> bool {
+    !cfg.logging.otlp_headers.is_empty()
 }
 
 /// Build and register the SDK `LoggerProvider`. Honours
@@ -211,12 +227,12 @@ fn level_to_severity(level: &str) -> (Severity, &'static str) {
     match normalized.as_str() {
         "TRACE" => (Severity::Trace, "TRACE"),
         "DEBUG" => (Severity::Debug, "DEBUG"),
-        "INFO" => (Severity::Info, "INFO"),
         "WARN" => (Severity::Warn, "WARN"),
         "WARNING" => (Severity::Warn, "WARN"),
         "ERROR" => (Severity::Error, "ERROR"),
         "CRITICAL" => (Severity::Fatal, "FATAL"),
         "FATAL" => (Severity::Fatal, "FATAL"),
+        // INFO and unknown values both use the safe INFO fallback.
         _ => (Severity::Info, "INFO"),
     }
 }
@@ -306,6 +322,10 @@ pub(crate) fn emit_log(event: &LogEvent) {
 #[cfg(test)]
 #[path = "logs_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "logs_shutdown_tests.rs"]
+mod shutdown_tests;
 
 #[cfg(test)]
 #[path = "logs_export_test_support.rs"]

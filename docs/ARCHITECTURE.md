@@ -188,20 +188,14 @@ flowchart TD
 | `asgi/middleware.py` | ASGI middleware for request context |
 | `asgi/websocket.py` | WebSocket context helpers |
 
-## Strippable Governance Modules
+## Governance Modules
 
-The three governance modules — `classification`, `consent`, and `receipts` — are **optional** across all four language implementations. Core telemetry (logging, tracing, metrics, PII redaction, schema validation, health) works correctly when they are excluded.
+Governance is part of the mandatory API surface in all four languages:
+`classification`, `consent`, and `receipts` are always linked and loaded by default.
+Core signal paths (logging, tracing, metrics, schema handling, health, resilience)
+still execute when governance policies are permissive.
 
-The integration contract is **hook injection**: the PII engine in each language holds nullable hook variables (`_classificationHook`, `_receiptHook`). Governance modules register themselves into these hooks when present; when absent the hooks stay nil/null and the PII engine runs unchanged.
-
-| Language | How to exclude | CI verification |
-|----------|---------------|-----------------|
-| Rust | `cargo build --no-default-features` (removes `governance` Cargo feature) | `ci-strip-governance.yml` |
-| Go | `go build -tags nogovernance ./...` | `ci-strip-governance.yml` |
-| Python | Files are independently importable; core never imports them | `tests/test_strip_governance.py` |
-| TypeScript | Governance lives in isolated modules; consumers tree-shake unused exports | `tests/strip-governance.test.ts` |
-
-Governance symbols are marked `required: false` in `spec/telemetry-api.yaml`.
+Governance symbols are marked `required: true` in `spec/telemetry-api.yaml`.
 
 ## Testing Strategy
 
@@ -209,4 +203,4 @@ Governance symbols are marked `required: false` in `spec/telemetry-api.yaml`.
 - Optional-extras tests to validate real OTel imports.
 - Integration smoke test with local OTLP collector (manual/nightly CI).
 - Python, TypeScript, Go, and Rust each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`.
-- Strip-governance CI job verifies all four languages compile and pass core tests without governance modules.
+- Strip-governance verification artifacts were removed; this parity slice now validates governance always-on behavior.

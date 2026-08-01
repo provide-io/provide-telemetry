@@ -181,6 +181,29 @@ fn redact_config_masks_otlp_header_values() {
 }
 
 #[test]
+fn redact_config_masks_each_signal_header_map_independently() {
+    let mut cfg = TelemetryConfig::default();
+    cfg.logging
+        .otlp_headers
+        .insert("logs-token".to_string(), "logs-secret".to_string());
+    cfg.tracing
+        .otlp_headers
+        .insert("traces-token".to_string(), "traces-secret".to_string());
+    cfg.metrics
+        .otlp_headers
+        .insert("metrics-token".to_string(), "metrics-secret".to_string());
+
+    let redacted = redact_config(&cfg);
+    for (headers, key) in [
+        (&redacted.logging.otlp_headers, "logs-token"),
+        (&redacted.tracing.otlp_headers, "traces-token"),
+        (&redacted.metrics.otlp_headers, "metrics-token"),
+    ] {
+        assert_eq!(headers.get(key).map(String::as_str), Some("***REDACTED***"));
+    }
+}
+
+#[test]
 fn redact_config_preserves_non_header_fields() {
     // Kills: replacing all fields with defaults.
     let cfg = config_from(&[

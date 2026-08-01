@@ -42,10 +42,14 @@ fn harden_input_truncates_safely_on_multibyte_utf8() {
 }
 
 #[test]
-fn truncate_string_value_handles_first_multibyte_char_exceeding_limit() {
+fn truncate_string_value_handles_mixed_multibyte_boundaries() {
     let mut value = "éé".to_string();
     truncate_string_value(&mut value, 1);
     assert_eq!(value, "...");
+
+    let mut value = "aéz".to_string();
+    truncate_string_value(&mut value, 2);
+    assert_eq!(value, "a...");
 }
 
 #[test]

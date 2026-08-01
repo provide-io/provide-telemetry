@@ -16,9 +16,7 @@ const (
 	_defaultTimeoutSeconds = 10.0
 	_defaultFailOpen       = true
 
-	_cbThreshold    = 3
-	_cbBaseCooldown = 30 * time.Second
-	_cbMaxCooldown  = 1024 * time.Second
+	_cbThreshold = 3
 
 	// Circuit breaker state strings.
 	_cbStateHalfOpen = "half-open"

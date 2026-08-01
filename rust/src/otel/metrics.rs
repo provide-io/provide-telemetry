@@ -69,6 +69,14 @@ pub(super) fn meter_provider_slot() -> &'static Mutex<Option<InstalledMeterProvi
     METER_PROVIDER.get_or_init(empty_meter_provider_mutex)
 }
 
+#[cfg(test)]
+pub(super) fn install_meter_provider_for_tests(provider: SdkMeterProvider) {
+    *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
+        provider: Arc::new(provider),
+        runtime: ProvideTokioRuntime::test(),
+    });
+}
+
 #[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
 fn empty_counter_cache_mutex() -> Mutex<HashMap<String, Counter<f64>>> {
     Mutex::new(HashMap::new())
@@ -90,11 +98,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
 
     match protocol {
         OtlpProtocol::HttpProtobuf | OtlpProtocol::HttpJson => {
-            let http_protocol = if protocol == OtlpProtocol::HttpJson {
-                Protocol::HttpJson
-            } else {
-                Protocol::HttpBinary
-            };
+            let http_protocol = http_protocol_for(protocol);
             let mut builder = MetricExporter::builder()
                 .with_http()
                 .with_protocol(http_protocol)
@@ -103,7 +107,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
-            if !cfg.metrics.otlp_headers.is_empty() {
+            if metric_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.metrics.otlp_headers.clone());
             }
             map_exporter_build(builder.build(), "metrics")
@@ -115,12 +119,24 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
-            if !cfg.metrics.otlp_headers.is_empty() {
+            if metric_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.metrics.otlp_headers)?);
             }
             map_exporter_build(builder.build(), "metrics")
         }
     }
+}
+
+fn http_protocol_for(protocol: OtlpProtocol) -> Protocol {
+    if protocol == OtlpProtocol::HttpJson {
+        Protocol::HttpJson
+    } else {
+        Protocol::HttpBinary
+    }
+}
+
+fn metric_headers_configured(cfg: &TelemetryConfig) -> bool {
+    !cfg.metrics.otlp_headers.is_empty()
 }
 
 /// Build and register the SDK `MeterProvider`. Honours

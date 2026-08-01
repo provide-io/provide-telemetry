@@ -12,7 +12,6 @@ use provide_telemetry::{
     set_sampling_policy, set_trace_context, try_acquire, ExporterPolicyConfig, Logger,
     LoggingConfig, QueuePolicy, SamplingPolicy, SecurityConfig, Signal, TelemetryConfig,
 };
-#[cfg(feature = "governance")]
 use provide_telemetry::{reset_consent_for_tests, set_consent_level, ConsentLevel};
 use serde_json::json;
 
@@ -217,7 +216,6 @@ fn logger_public_paths_cover_parse_failure_empty_fields_and_fallback_buffer_cap(
     assert_eq!(buffered.len(), 1000, "fallback buffer must stay capped");
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn logger_public_paths_cover_plain_log_guards_and_log_trait_variants() {
     let _state = acquire_test_state_lock();

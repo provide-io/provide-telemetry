@@ -22,3 +22,12 @@ export class ConfigurationError extends TelemetryError {
     this.name = 'ConfigurationError';
   }
 }
+
+export class ProviderImmutableError extends ConfigurationError {
+  constructor(message?: string) {
+    super(message);
+    this.name = 'ProviderImmutableError';
+  }
+}
+
+export type providerImmutableError = ProviderImmutableError;

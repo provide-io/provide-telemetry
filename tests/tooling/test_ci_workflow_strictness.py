@@ -62,10 +62,7 @@ def test_python_facing_workflows_retry_uv_sync() -> None:
         assert helper in workflow
         assert "- run: uv sync" not in workflow
 
-    for workflow_path in (
-        REPO_ROOT / ".github" / "workflows" / "release.yml",
-        REPO_ROOT / ".github" / "workflows" / "ci-strip-governance.yml",
-    ):
+    for workflow_path in (REPO_ROOT / ".github" / "workflows" / "release.yml",):
         workflow = workflow_path.read_text(encoding="utf-8")
         assert helper in workflow
 
@@ -108,6 +105,7 @@ def test_rust_ci_runs_real_otlp_collector_gate() -> None:
     workflow = CI_RUST.read_text(encoding="utf-8")
 
     assert "otlp-integration:" in workflow
+    assert "--fail-uncovered-lines 0 --fail-under-functions 100" in workflow
     assert "otel/opentelemetry-collector-contrib:0.102.1" in workflow
     assert "cargo test --manifest-path Cargo.toml --features otel" in workflow
     assert "PROVIDE_TEST_OTLP_ENDPOINT" in workflow
@@ -124,14 +122,29 @@ def test_typescript_ci_runs_real_otlp_collector_gate() -> None:
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
 
 
-def test_mutation_workflow_keeps_rust_nightly_advisory() -> None:
+def test_mutation_workflow_gates_every_changed_language() -> None:
     workflow = CI_MUTATION.read_text(encoding="utf-8")
 
     assert "rust-mutation:" in workflow
-    assert "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in workflow
-    assert "continue-on-error: ${{ github.event_name == 'schedule' }}" in workflow
+    assert "if: needs.changes.outputs.rust == 'true'" in workflow
+    assert "continue-on-error:" not in workflow
+    assert "cargo-nextest --version 0.9.140 --locked" in workflow
+    assert "cargo-mutants --version 27.1.0 --locked" in workflow
+    assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in workflow
+    assert "gremlins/cmd/gremlins@v0.6.0" in workflow
+    assert workflow.count("--threshold-efficacy=100") == 3
+    assert workflow.count("--threshold-mcover=100") == 3
+    assert '--exclude-files="mutation_constants.go"' in workflow
     assert "hashFiles('go/logger/go.mod')" in workflow
     assert "hashFiles('go/otel/go.mod')" in workflow
+
+
+def test_rust_mutation_workflow_bounds_compiler_and_test_parallelism() -> None:
+    workflow = CI_MUTATION.read_text(encoding="utf-8")
+
+    assert 'CARGO_BUILD_JOBS: "1"' in workflow
+    assert 'NEXTEST_TEST_THREADS: "1"' in workflow
+    assert '--shard "${{ matrix.shard }}" -j 1 --jobserver-tasks 1' in workflow
 
 
 def test_typescript_mutation_threshold_matches_documented_regression_floor() -> None:
@@ -139,8 +152,9 @@ def test_typescript_mutation_threshold_matches_documented_regression_floor() -> 
     readme = README.read_text(encoding="utf-8")
 
     assert "break: 95" in stryker
-    assert "TypeScript runs Stryker with a 96.07% current score / 95% break threshold" in readme
-    assert "Rust nightly mutation sweep is advisory" in readme
+    assert "break: 80" in (REPO_ROOT / "typescript" / "stryker.otel.config.mjs").read_text(encoding="utf-8")
+    assert "TypeScript uses Stryker with a 95% core break threshold plus an 80% OTLP transport ratchet" in readme
+    assert "Rust requires a 100% cargo-mutants kill rate" in readme
 
 
 def test_python_mutation_threshold_matches_documented_regression_floor() -> None:
@@ -148,7 +162,7 @@ def test_python_mutation_threshold_matches_documented_regression_floor() -> None
     readme = README.read_text(encoding="utf-8")
 
     assert "--min-mutation-score 95" in workflow
-    assert "Python runs mutmut with a 95.90% current score / 95% minimum threshold" in readme
+    assert "Python runs mutmut with a 95% minimum threshold and rejects timeouts" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:

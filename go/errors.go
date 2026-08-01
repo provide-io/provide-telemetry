@@ -73,3 +73,13 @@ func NewEventSchemaError(msg string, cause ...error) *EventSchemaError {
 	}
 	return &EventSchemaError{TelemetryError: &TelemetryError{msg: msg, cause: c}}
 }
+
+// ProviderImmutableError mirrors the spec's host-provider-change rejection error.
+// It is type-aliasing ConfigurationError so legacy `errors.As(err, &ConfigurationError)`
+// checks continue to match.
+type ProviderImmutableError = ConfigurationError
+
+// NewProviderImmutableError creates a new ProviderImmutableError with an optional cause.
+func NewProviderImmutableError(msg string, cause ...error) *ProviderImmutableError {
+	return NewConfigurationError(msg, cause...)
+}

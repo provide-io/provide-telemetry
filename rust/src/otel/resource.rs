@@ -18,11 +18,11 @@ use crate::config::TelemetryConfig;
 
 /// Build the OTel `Resource` describing this service.
 ///
-/// Precedence (cross-language contract, see `spec/behavioral_fixtures.yaml`):
+/// resource_precedence (cross-language contract, see `spec/behavioral_fixtures.yaml`):
 ///
 ///   framework default  <  OTEL_* env  <  explicit config
 ///
-/// An identity key joins the top layer only when its config value differs from
+/// ResourcePrecedence: an identity key joins the top layer only when its config value differs from
 /// the framework default, so an explicitly named service is never hijacked by an
 /// ambient `OTEL_RESOURCE_ATTRIBUTES` while `OTEL_SERVICE_NAME` still fills an
 /// unset name. `Resource::builder()` (not `builder_empty`) runs the standard
@@ -61,16 +61,11 @@ fn env_identity_keys_from(
     keys
 }
 
-fn env_identity_keys() -> HashSet<String> {
-    env_identity_keys_from(
-        std::env::var("OTEL_RESOURCE_ATTRIBUTES").ok().as_deref(),
-        std::env::var("OTEL_SERVICE_NAME").ok().as_deref(),
-    )
-}
-
 pub(crate) fn build_resource(cfg: &TelemetryConfig) -> Resource {
     let defaults = TelemetryConfig::default();
-    let env_keys = env_identity_keys();
+    let resource_attributes = std::env::var("OTEL_RESOURCE_ATTRIBUTES").ok();
+    let service_name = std::env::var("OTEL_SERVICE_NAME").ok();
+    let env_keys = env_identity_keys_from(resource_attributes.as_deref(), service_name.as_deref());
     let mut builder = Resource::builder();
     for (key, current, default) in [
         (sc::SERVICE_NAME, &cfg.service_name, &defaults.service_name),

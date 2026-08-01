@@ -31,7 +31,7 @@ uv run twine check dist/*
 - `.github/workflows/ci-python.yml`, `ci-typescript.yml`, `ci-go.yml`, and `ci-rust.yml`: language-specific test and quality gates.
 - `.github/workflows/ci-spec.yml`, `ci-contracts.yml`, and `ci-surface.yml`: parity, contract, and release-surface gates.
 - `.github/workflows/ci-shared.yml`: docs-quality, release-readiness, and optional OpenObserve end-to-end validation.
-- `.github/workflows/ci-mutation.yml` and `ci-strip-governance.yml`: mutation and stripped-build safety nets.
+- `.github/workflows/ci-mutation.yml`: mutation gate and resilience/runtime stress coverage.
 - `.github/workflows/release.yml`: publishes each language independently — see "Publish Path" below.
 
 Release publishing is language-scoped, not one joint event. `scripts/check_version_sync.py` only
@@ -181,13 +181,12 @@ go tool cover -func=coverage.out | grep total   # must be 100.0%
 GOWORK=off go vet ./...
 GOWORK=off golangci-lint run
 GOWORK=off govulncheck ./...
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" --exclude-files="tracer/" .
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 ./logger
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 ./tracer
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="mutation_constants.go" ./logger
 cd otel
 GOWORK=off go test -race -coverprofile=coverage.out .
 go tool cover -func=coverage.out | grep total   # must be 100.0%
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --exclude-files="examples/" .
+GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="cmd/flush_collector_probe/" --exclude-files="examples/" .
 ```
 
 ### TypeScript validation before release

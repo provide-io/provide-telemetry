@@ -110,13 +110,16 @@ fn config_test_exported_types_are_distinct_and_constructible() {
     let telemetry = TelemetryError::new("telemetry blew up");
     let config = ConfigurationError::new("config invalid");
     let schema = EventSchemaError::new("schema invalid");
+    let immutable = provide_telemetry::ProviderImmutableError::new("provider immutable");
     let overrides = RuntimeOverrides::default();
 
     assert_eq!(telemetry.message, "telemetry blew up");
     assert_eq!(config.message, "config invalid");
     assert_eq!(schema.message, "schema invalid");
+    assert_eq!(immutable.message, "provider immutable");
     assert_eq!(config.to_string(), "config invalid");
     assert_eq!(schema.to_string(), "schema invalid");
+    assert_eq!(immutable.to_string(), "provider immutable");
     assert!(overrides.strict_schema.is_none());
     assert!(overrides.event_schema.is_none());
 }

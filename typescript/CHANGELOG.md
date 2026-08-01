@@ -193,7 +193,6 @@ Two things to know when reading it:
 ### Added
 
 - **`guardAttributes` and strict-schema accessors** — `setStrictSchema` / `getStrictSchema`, added to the spec and to all four languages.
-- **Strippable governance modules** — the governance layer can be excluded from a build, across all four languages.
 
 ### Quality
 

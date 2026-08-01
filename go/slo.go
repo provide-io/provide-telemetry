@@ -40,21 +40,20 @@ func ClassifyError(excName string, statusCode int) map[string]string {
 
 	isTimeout := statusCode == 0 || strings.Contains(strings.ToLower(excName), "timeout")
 
-	switch {
-	case isTimeout:
+	if isTimeout {
 		result["error.category"] = _errCatTimeout
 		result["error.severity"] = _severityInfo
-	case statusCode >= 500:
+	} else if statusCode >= 500 {
 		result["error.category"] = _errCatServerError
 		result["error.severity"] = _severityCritical
-	case statusCode >= 400:
+	} else if statusCode >= 400 {
 		result["error.category"] = _errCatClientError
 		if statusCode == 429 {
 			result["error.severity"] = _severityCritical
 		} else {
 			result["error.severity"] = _severityWarning
 		}
-	default:
+	} else {
 		result["error.category"] = _errCatUnknown
 		result["error.severity"] = _severityInfo
 	}

@@ -7,19 +7,10 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::backpressure::{release, try_acquire, QueueTicket};
-#[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::{set_trace_context_internal, trace_snapshot, ContextGuard};
 use crate::health::increment_emitted;
 use crate::sampling::{should_sample, Signal};
-
-// When the governance feature is disabled, consent is unconditionally granted.
-#[cfg(not(feature = "governance"))]
-#[cfg_attr(test, mutants::skip)] // Dead under the --all-features build used in mutation CI (governance shadows this).
-#[inline(always)]
-fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
-    true
-}
 
 pub struct NoopSpan {
     trace_id: String,
@@ -69,11 +60,15 @@ static TRACE_COUNTER: AtomicU64 = AtomicU64::new(1);
 fn next_hex(len: usize) -> String {
     let seed = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut value = format!("{seed:016x}");
-    while value.len() < len {
+    // Iterate over the finite set of missing 16-character chunks. Keeping the
+    // bound independent of the growing output prevents a faulty boundary
+    // predicate from turning trace-ID generation into an unbounded loop.
+    for _ in (16..len).step_by(16) {
         let snapshot = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
         value.push_str(&format!("{snapshot:016x}"));
     }
-    value[..len].to_string()
+    value.truncate(len);
+    value
 }
 
 pub fn get_tracer(name: Option<&str>) -> Tracer {

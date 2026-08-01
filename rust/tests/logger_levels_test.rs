@@ -373,7 +373,6 @@ fn tracer_test_full_queue_drops_span_but_still_calls_callback() {
 }
 
 #[test]
-#[cfg(feature = "governance")]
 fn tracer_test_consent_none_skips_emitted_counter() {
     let _guard = logger_lock().lock().expect("logger lock poisoned");
     use provide_telemetry::{

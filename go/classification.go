@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-//go:build !nogovernance
-
-// Package telemetry — data classification engine (strippable governance module).
-// Build with -tags nogovernance to exclude. The PII engine runs unchanged (hook stays nil).
+// Package telemetry — data classification engine.
 package telemetry
 
 import (

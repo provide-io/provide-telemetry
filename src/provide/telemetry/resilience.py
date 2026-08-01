@@ -299,8 +299,8 @@ def _run_attempt_with_timeout(
         return operation()
     sem = _get_executor_semaphore(signal)
     if not sem.acquire(
-        blocking=False
-    ):  # pragma: no mutate — blocking=None is also non-blocking; both forms are semantically equivalent
+        blocking=False  # pragma: no mutate — mutating to blocking=True deadlocks on saturation; behavior is asserted by test_run_attempt_drops_when_semaphore_full_does_not_block
+    ):
         # Pending queue is full — raise so the retry loop treats this as a
         # failure and honors policy.fail_open rather than returning a silent
         # None that masquerades as success.

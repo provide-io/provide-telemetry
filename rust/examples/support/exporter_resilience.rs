@@ -23,7 +23,7 @@ pub struct DemoSummary {
 
 const DEMO_SUCCESS: u8 = 0;
 const DEMO_ERROR: u8 = 1;
-const DEMO_PENDING: u8 = 2;
+const DEMO_SLOW: u8 = 2;
 
 static DEMO_OPERATION_MODE: AtomicU8 = AtomicU8::new(DEMO_SUCCESS);
 
@@ -35,7 +35,10 @@ async fn demo_operation() -> Result<(), TelemetryError> {
     match DEMO_OPERATION_MODE.load(Ordering::SeqCst) {
         DEMO_SUCCESS => Ok(()),
         DEMO_ERROR => Err(TelemetryError::new("exporter resilience demo failure")),
-        DEMO_PENDING => std::future::pending::<Result<(), TelemetryError>>().await,
+        DEMO_SLOW => {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            Ok(())
+        }
         _ => Err(TelemetryError::new("unknown exporter resilience demo mode")),
     }
 }
@@ -102,9 +105,9 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 "tracing resilience demo expected success before timeout path",
             ));
         }
-        // future::pending() never resolves, so the wrapper timeout MUST fire.
-        // Earlier `sleep(25ms) > timeout(10ms)` flaked on macOS-15 CI runners.
-        set_demo_operation_mode(DEMO_PENDING);
+        // A 10x margin keeps the wrapper deadline deterministic while ensuring
+        // a timeout-bypass mutation still completes and fails promptly.
+        set_demo_operation_mode(DEMO_SLOW);
         let result: Option<()> = run_with_resilience(Signal::Traces, demo_operation).await?;
         Ok::<bool, TelemetryError>(result.is_none())
     })?;
@@ -120,7 +123,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
                 allow_blocking_in_event_loop: false,
             },
         )?;
-        set_demo_operation_mode(DEMO_PENDING);
+        set_demo_operation_mode(DEMO_SLOW);
         for _ in 0..4 {
             // Same pattern as above: pending future guarantees wrapper-imposed
             // timeout fires; only real timeouts count toward the circuit breaker.

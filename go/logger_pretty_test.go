@@ -154,19 +154,30 @@ func TestResolveNamedColor_Map(t *testing.T) {
 	}
 }
 
-// _levelName covers each branch in the level-to-name switch.
-func TestLevelName_Branches(t *testing.T) {
-	cases := map[slog.Level]string{
-		LevelTrace:       "trace",
-		slog.LevelDebug:  "debug",
-		slog.LevelInfo:   "info",
-		slog.LevelWarn:   "warning",
-		slog.LevelError:  "error",
-		slog.Level(1000): "error",
+// _levelName covers both sides of every level boundary.
+func TestLevelName_Boundaries(t *testing.T) {
+	if LevelTrace != slog.Level(-8) {
+		t.Fatalf("LevelTrace=%d want -8", LevelTrace)
 	}
-	for lvl, want := range cases {
-		if got := _levelName(lvl); got != want {
-			t.Errorf("_levelName(%d)=%q want %q", lvl, got, want)
+	cases := []struct {
+		level slog.Level
+		want  string
+	}{
+		{LevelTrace - 1, "trace"},
+		{LevelTrace, "trace"},
+		{LevelTrace + 1, "debug"},
+		{slog.LevelDebug, "debug"},
+		{slog.LevelDebug + 1, "info"},
+		{slog.LevelInfo, "info"},
+		{slog.LevelInfo + 1, "warning"},
+		{slog.LevelWarn, "warning"},
+		{slog.LevelWarn + 1, "error"},
+		{slog.LevelError, "error"},
+		{slog.Level(1000), "error"},
+	}
+	for _, tc := range cases {
+		if got := _levelName(tc.level); got != tc.want {
+			t.Errorf("_levelName(%d)=%q want %q", tc.level, got, tc.want)
 		}
 	}
 }

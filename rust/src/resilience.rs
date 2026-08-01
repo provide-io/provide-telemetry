@@ -179,8 +179,7 @@ where
 
     let max_attempts = policy.retries + 1;
     let mut last_err: Option<E> = None;
-    let mut attempt = 0;
-    while attempt < max_attempts {
+    for attempt in 0..max_attempts {
         wait_before_retry(signal, attempt, policy.backoff_seconds, has_tokio_reactor).await;
 
         let started = Instant::now();
@@ -213,7 +212,6 @@ where
                 last_err = Some(err);
             }
         }
-        attempt += 1;
     }
 
     if policy.fail_open {
@@ -312,6 +310,10 @@ pub(crate) fn _record_circuit_success_for_wrappers(signal: Signal) {
     state.consecutive_timeouts = 0;
 }
 
+fn circuit_cooldown_is_active(elapsed: Duration) -> bool {
+    elapsed < CIRCUIT_COOLDOWN
+}
+
 /// Check whether the circuit for `signal` should be entered for a probe attempt,
 /// and if so mark the probe as in-flight. Returns `true` if the circuit is open
 /// (fully — cooldown still active) or if a probe is already running (concurrent
@@ -327,7 +329,7 @@ pub(crate) fn _check_and_start_probe_for_wrappers(signal: Signal) -> bool {
     }
     let cooldown_active = state
         .tripped_at
-        .map(|instant| instant.elapsed() < CIRCUIT_COOLDOWN)
+        .map(|instant| circuit_cooldown_is_active(instant.elapsed()))
         .unwrap_or(false);
     if cooldown_active {
         return true; // Still open — reject.

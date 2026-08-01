@@ -82,7 +82,7 @@ jobs:
       - name: Enforce 100% project line coverage
         env:
           RUST_TEST_THREADS: "1"
-        run: cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0
+        run: cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0 --fail-under-functions 100
 
   conformance:
     runs-on: ubuntu-24.04

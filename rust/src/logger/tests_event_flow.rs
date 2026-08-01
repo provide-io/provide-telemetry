@@ -109,7 +109,6 @@ fn log_event_helpers_cover_threshold_fields_and_event_metadata() {
     );
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn log_event_helpers_respect_consent_gate() {
     let _guard = acquire_test_state_lock();

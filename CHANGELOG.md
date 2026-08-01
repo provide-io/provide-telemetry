@@ -207,7 +207,7 @@ March 0.3.x line covered by "0.3.16 and earlier" below._
 ### Added
 
 - **`guard_attributes`, `set_strict_schema` / `get_strict_schema`** — added to the spec and implemented in all four languages.
-- **Strippable governance modules** — the governance layer can be excluded from a build, in all four languages.
+- **Governance modules are mandatory** — classification, consent, and receipts are required and always present across language builds.
 - **Rust: SLO metrics and a secret-pattern API**, plus examples rewritten onto the public `setup_telemetry()` surface.
 
 ### Fixed
@@ -282,7 +282,7 @@ The TypeScript package moved for version parity only.
 ### Features
 
 - **Go: control-plane integrity** — `RuntimeOverrides` type; `UpdateRuntimeConfig` accepts hot-field-only overrides; `ReloadRuntimeFromEnv` warns on cold-field drift; `ReconfigureTelemetry` for full restart
-- **Go: data governance** — `ClassificationPolicy`, `ConsentLevel`/`ShouldAllow`, cryptographic redaction receipts with HMAC signing (strippable modules)
+- **Go: data governance** — `ClassificationPolicy`, `ConsentLevel`/`ShouldAllow`, cryptographic redaction receipts with HMAC signing.
 - **Go: config masking** — `TelemetryConfig.String()` masks OTLP header values and endpoint passwords
 - **Go: PII depth** — `PROVIDE_LOG_PII_MAX_DEPTH` env var; default max depth 8; depth limit applied across all rule types
 - **All: canonical 25-field `HealthSnapshot`** — per-signal fields aligned across Go, TypeScript, and Python

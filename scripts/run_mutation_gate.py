@@ -18,6 +18,7 @@ BAD_STAT_KEYS: Final[tuple[str, ...]] = (
     "segfault",
     "suspicious",
     "no_tests",
+    "timeout",
     "check_was_interrupted_by_user",
 )
 DEFAULT_MIN_MUTATION_SCORE: Final[float] = 95.0

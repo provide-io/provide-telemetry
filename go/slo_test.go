@@ -45,6 +45,32 @@ func TestClassifyError5xx(t *testing.T) {
 	}
 }
 
+func TestClassifyErrorStatusBoundaries(t *testing.T) {
+	cases := []struct {
+		status   int
+		category string
+		severity string
+	}{
+		{399, "unknown", "info"},
+		{400, "client_error", "warning"},
+		{499, "client_error", "warning"},
+		{500, "server_error", "critical"},
+	}
+	for _, tc := range cases {
+		got := ClassifyError("HTTPError", tc.status)
+		if got["error.category"] != tc.category || got["error.severity"] != tc.severity {
+			t.Errorf(
+				"ClassifyError(status=%d)=(%q,%q), want (%q,%q)",
+				tc.status,
+				got["error.category"],
+				got["error.severity"],
+				tc.category,
+				tc.severity,
+			)
+		}
+	}
+}
+
 func TestClassifyErrorStatus0Timeout(t *testing.T) {
 	m := ClassifyError("ConnectionError", 0)
 	if got := m["error.category"]; got != "timeout" {

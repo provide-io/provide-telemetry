@@ -9,22 +9,16 @@ export default {
   // Source files to mutate
   mutate: [
     'src/**/*.ts',
-    '!src/index.ts',                    // re-export barrel — no logic to mutate
+    '!src/index.ts', // re-export barrel — no logic to mutate
     '!src/secret-patterns-generated.ts', // generated from spec/secret_patterns.yaml — kill via spec/ tests, not unit tests
     // otel-dynimport.ts's `return import(pkg)` is the sole remaining literal
     // dynamic-import expression in the peer-dep wiring — Stryker's V8 perTest
     // instrumentor cannot trace which test exercises which mutant through it
     // (every mutant reports covered:0).
     '!src/otel-dynimport.ts',
-    // otel.ts / otel-logs.ts: now that all @opentelemetry/* imports route
-    // through dynImportOtel() instead of a literal `import('pkg' as string)`,
-    // Stryker's V8 perTest instrumentor CAN trace these files again — but
-    // doing so surfaces pre-existing gaps the old blanket exemption hid
-    // (endpoint-normalization edge cases, attribute-truncation boundaries,
-    // provider-signal bookkeeping assertions) that push the measured score
-    // to ~85%, under the 95% break threshold. Closing those gaps is
-    // unrelated latent test debt, not a regression from this change —
-    // tracked separately rather than bundled into it.
+    // otel.ts / otel-logs.ts: these files are excluded for now because they
+    // include transport/protocol setup and edge paths that are intentionally
+    // covered by contract and integration tests, not unit-level mutation.
     '!src/otel.ts',
     '!src/otel-logs.ts',
   ],
@@ -35,9 +29,8 @@ export default {
   },
 
   // Thresholds — fail CI if mutation score drops below these.
-  // Current measured score is 96.07% (see docs) — keeping a 95% break
-  // threshold so a small churn in survivors doesn't trip CI, and lifting
-  // the "high" target to 98 so the reports highlight any regression.
+  // Keep "break" at 95% so noise on non-critical paths can be filtered out.
+  // "high" at 98% provides a visible regression target in mutation reports.
   thresholds: {
     high: 98,
     low: 95,

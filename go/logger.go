@@ -16,9 +16,6 @@ import (
 	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
-// LevelTrace is a custom slog level below DEBUG for very verbose output.
-const LevelTrace = slog.Level(-8)
-
 // Logger is the package-level default logger. Set by _configureLogger (called from SetupTelemetry).
 var Logger *slog.Logger
 

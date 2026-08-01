@@ -496,5 +496,5 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.6.0';
+export const version = '0.7.0';
 export const __version__ = version;

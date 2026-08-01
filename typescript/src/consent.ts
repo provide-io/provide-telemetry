@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Consent-aware telemetry collection — strippable governance module.
+ * Consent-aware telemetry collection.
  * When deleted, all signals pass through unchanged.
  */
 

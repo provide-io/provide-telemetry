@@ -61,7 +61,9 @@ jobs:
       # Fails if any fixture category is missing from a language's parity tests
       # without a corresponding entry in spec/fixture_coverage_accepted_gaps.yaml.
       - name: Fixture coverage gate
-        run: uv run python spec/check_fixture_coverage.py
+        run: |
+          uv run python spec/check_fixture_coverage.py --strict
+          uv run python spec/check_fixture_test_ids.py
 
   version-sync:
     runs-on: ubuntu-24.04

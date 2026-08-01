@@ -73,7 +73,7 @@ export {
   getTraceContext,
 } from './tracing.js';
 
-// Optional OTEL SDK wiring (call after setupTelemetry to activate exporters)
+// OTel SDK wiring (call after setupTelemetry to activate exporters)
 export { registerOtelProviders } from './otel.js';
 
 // PII sanitization utilities
@@ -162,13 +162,31 @@ export {
   updateRuntimeConfig,
   reloadRuntimeFromEnv,
   reconfigureTelemetry,
+  ProviderMode,
+  RuntimeState,
+  TelemetryRuntime,
 } from './runtime.js';
-export type { RuntimeStatus } from './runtime.js';
+export type {
+  RuntimeStatus,
+  SignalFlushResult,
+  FlushResult,
+  ReconfigureResult,
+  telemetryRuntime,
+  telemetryConfig,
+  runtimeStatus,
+  runtimeState,
+  providerMode,
+  signalFlushResult,
+  flushResult,
+  reconfigureResult,
+} from './runtime.js';
+export { ProviderImmutableError } from './exceptions.js';
+export type { providerImmutableError } from './exceptions.js';
 
 // Test utilities
 export { resetTelemetryState, resetTraceContext, telemetryTestPlugin } from './testing.js';
 
-// Optional governance module — strippable: consent
+// Governance modules
 export type { ConsentLevel } from './consent.js';
 export {
   setConsentLevel,
@@ -178,7 +196,7 @@ export {
   resetConsentForTests,
 } from './consent.js';
 
-// Optional governance module — strippable
+// Governance modules
 export type { DataClass, ClassificationRule, ClassificationPolicy } from './classification.js';
 export {
   classifyKey,
@@ -189,7 +207,7 @@ export {
   resetClassificationForTests,
 } from './classification.js';
 
-// Optional governance module — strippable: receipts
+// Governance modules
 export type { RedactionReceipt } from './receipts.js';
 export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts.js';
 

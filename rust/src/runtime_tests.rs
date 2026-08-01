@@ -212,6 +212,76 @@ fn runtime_test_runtime_config_snapshot_reports_cfg_and_setup_done_from_one_read
     crate::testing::reset_telemetry_state();
 }
 
+#[cfg(feature = "otel")]
+#[test]
+fn runtime_test_loaded_config_controls_each_effective_signal() {
+    let _guard = crate::testing::acquire_test_state_lock();
+    crate::testing::reset_telemetry_state();
+
+    set_active_config(None);
+    assert!(tracing_enabled_by_loaded_config());
+    assert!(metrics_enabled_by_loaded_config());
+
+    let mut configured = TelemetryConfig::default();
+    configured.tracing.enabled = false;
+    configured.metrics.enabled = false;
+    set_active_config(Some(configured));
+    assert!(!tracing_enabled_by_loaded_config());
+    assert!(!metrics_enabled_by_loaded_config());
+
+    crate::testing::reset_telemetry_state();
+}
+
+#[test]
+fn runtime_test_status_marks_every_missing_provider_as_fallback() {
+    let _guard = crate::testing::acquire_test_state_lock();
+    crate::testing::reset_telemetry_state();
+    set_active_config(Some(TelemetryConfig::default()));
+
+    let status = get_runtime_status();
+    assert_eq!(
+        status.fallback,
+        SignalStatus {
+            logs: true,
+            traces: true,
+            metrics: true,
+        }
+    );
+    assert_eq!(
+        status.providers,
+        SignalStatus {
+            logs: false,
+            traces: false,
+            metrics: false,
+        }
+    );
+
+    crate::testing::reset_telemetry_state();
+}
+
+#[test]
+fn runtime_test_config_or_default_preserves_snapshot_and_environment_values() {
+    let supplied = TelemetryConfig {
+        service_name: "supplied-service".to_string(),
+        ..TelemetryConfig::default()
+    };
+    assert_eq!(runtime_config_or_default(Some(supplied.clone())), supplied);
+
+    with_env(
+        &[
+            ("PROVIDE_TELEMETRY_SERVICE_NAME", "environment-service"),
+            ("PROVIDE_TRACE_ENABLED", "false"),
+            ("PROVIDE_METRICS_ENABLED", "false"),
+        ],
+        || {
+            let loaded = runtime_config_or_default(None);
+            assert_eq!(loaded.service_name, "environment-service");
+            assert!(!loaded.tracing.enabled);
+            assert!(!loaded.metrics.enabled);
+        },
+    );
+}
+
 #[test]
 fn runtime_test_update_runtime_config_requires_setup_in_unit_module() {
     let _guard = crate::testing::acquire_test_state_lock();

@@ -78,6 +78,92 @@ mod tests {
     use super::*;
     use crate::config::TelemetryConfig;
     use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
+    use opentelemetry::logs::{Logger as _, LoggerProvider as _};
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry::trace::{Span as _, Tracer as _, TracerProvider as _};
+    use opentelemetry::{Context, InstrumentationScope};
+    use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
+    use opentelemetry_sdk::logs::{LogProcessor, SdkLogRecord, SdkLoggerProvider};
+    use opentelemetry_sdk::metrics::data::ResourceMetrics;
+    use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+    use opentelemetry_sdk::metrics::periodic_reader_with_async_runtime::PeriodicReader;
+    use opentelemetry_sdk::metrics::{SdkMeterProvider, Temporality};
+    use opentelemetry_sdk::trace::{SdkTracerProvider, Span, SpanData, SpanProcessor};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(Debug)]
+    struct BlockingSpanProcessor {
+        released: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct FlushErrorLogProcessor;
+
+    #[derive(Debug)]
+    struct FlushErrorMetricExporter;
+
+    #[test]
+    fn failing_flush_test_doubles_expose_their_trait_callbacks() {
+        assert!(PushMetricExporter::force_flush(&FlushErrorMetricExporter).is_err());
+
+        let provider = SdkLoggerProvider::builder().build();
+        let logger = provider.logger("provide-telemetry.flush-fixture");
+        let mut record = logger.create_log_record();
+        let scope = InstrumentationScope::builder("provide-telemetry.flush-fixture").build();
+        LogProcessor::emit(&FlushErrorLogProcessor, &mut record, &scope);
+    }
+
+    impl PushMetricExporter for FlushErrorMetricExporter {
+        async fn export(&self, _metrics: &ResourceMetrics) -> OTelSdkResult {
+            Err(OTelSdkError::InternalFailure("test export".into()))
+        }
+
+        fn force_flush(&self) -> OTelSdkResult {
+            Err(OTelSdkError::InternalFailure("test flush".into()))
+        }
+
+        fn shutdown_with_timeout(&self, _timeout: std::time::Duration) -> OTelSdkResult {
+            Ok(())
+        }
+
+        fn temporality(&self) -> Temporality {
+            Temporality::Cumulative
+        }
+    }
+
+    impl LogProcessor for FlushErrorLogProcessor {
+        fn emit(&self, _record: &mut SdkLogRecord, _instrumentation: &InstrumentationScope) {}
+
+        fn force_flush(&self) -> OTelSdkResult {
+            Err(OTelSdkError::InternalFailure("test flush".into()))
+        }
+
+        fn shutdown_with_timeout(&self, _timeout: std::time::Duration) -> OTelSdkResult {
+            Ok(())
+        }
+    }
+
+    impl SpanProcessor for BlockingSpanProcessor {
+        fn on_start(&self, _span: &mut Span, _cx: &Context) {}
+
+        fn on_end(&self, _span: SpanData) {}
+
+        fn force_flush(&self) -> OTelSdkResult {
+            // Keep an independent ceiling so a broken library deadline fails
+            // this test instead of hanging the entire mutation suite.
+            let started = std::time::Instant::now();
+            while !self.released.load(Ordering::Acquire)
+                && started.elapsed() < std::time::Duration::from_millis(250)
+            {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Ok(())
+        }
+
+        fn shutdown_with_timeout(&self, _timeout: std::time::Duration) -> OTelSdkResult {
+            Ok(())
+        }
+    }
 
     fn install_config() -> TelemetryConfig {
         // A syntactically valid endpoint that nothing listens on: the provider
@@ -108,23 +194,66 @@ mod tests {
         assert!(flush_meter_provider());
     }
 
+    #[test]
+    fn logger_flush_surfaces_processor_failure() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        let provider = SdkLoggerProvider::builder()
+            .with_log_processor(FlushErrorLogProcessor)
+            .build();
+        logs::install_logger_provider_for_tests(provider);
+
+        assert!(!flush_logger_provider());
+        reset_telemetry_state();
+    }
+
+    #[test]
+    fn meter_flush_surfaces_exporter_failure() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        let reader = PeriodicReader::builder(
+            FlushErrorMetricExporter,
+            super::super::async_runtime::ProvideTokioRuntime::test(),
+        )
+        .with_interval(std::time::Duration::from_secs(60))
+        .build();
+        let provider = SdkMeterProvider::builder().with_reader(reader).build();
+        provider
+            .meter("provide-telemetry.flush-test")
+            .u64_counter("flush.test.counter")
+            .build()
+            .add(1, &[]);
+        metrics::install_meter_provider_for_tests(provider);
+
+        assert!(!flush_meter_provider());
+        reset_telemetry_state();
+    }
+
     /// crate::flush_telemetry() must surface an incomplete drain as Err — the
     /// whole point of flush over shutdown is that the caller learns when its
-    /// records did not make it out. Driven by a deadline no drain can meet
-    /// rather than by an unreachable exporter, so the outcome does not depend
-    /// on how a given SDK version reports an unreachable collector.
+    /// records did not make it out. A deliberately blocked processor makes the
+    /// outcome independent of scheduler speed and exporter implementation.
     #[test]
     fn flush_telemetry_reports_an_incomplete_drain_as_an_error() {
         let _guard = acquire_test_state_lock();
         reset_telemetry_state();
 
-        let mut cfg = install_config();
-        let resource = super::super::resource::build_resource(&cfg);
-        let _ = super::super::traces::install_tracer_provider(&cfg, resource);
+        let released = Arc::new(AtomicBool::new(false));
+        let provider = SdkTracerProvider::builder()
+            .with_span_processor(BlockingSpanProcessor {
+                released: Arc::clone(&released),
+            })
+            .build();
+        let mut span = provider
+            .tracer("provide-telemetry.flush-test")
+            .start("blocked.flush");
+        span.end();
+        super::super::traces::install_tracer_provider_for_tests(provider);
 
-        // A deadline shorter than a thread spawn: the worker is always still
-        // running when recv_timeout expires.
-        cfg.exporter.logs_shutdown_timeout_seconds = 0.000_001;
+        let mut cfg = TelemetryConfig::default();
+        cfg.exporter.logs_shutdown_timeout_seconds = 0.05;
         crate::runtime::set_active_config(Some(cfg));
 
         assert!(
@@ -132,6 +261,7 @@ mod tests {
             "a drain abandoned at its deadline must report Err"
         );
 
+        released.store(true, Ordering::Release);
         crate::runtime::set_active_config(None);
         reset_telemetry_state();
     }

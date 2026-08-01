@@ -11,10 +11,10 @@ pub(crate) fn level_order(level: &str) -> u8 {
     match level.to_ascii_uppercase().as_str() {
         "TRACE" => 0,
         "DEBUG" => 1,
-        "INFO" => 2,
         "WARN" | "WARNING" => 3,
         "ERROR" | "CRITICAL" | "FATAL" => 4,
-        _ => 2, // default to INFO
+        // INFO and unknown values both resolve to the INFO threshold.
+        _ => 2,
     }
 }
 

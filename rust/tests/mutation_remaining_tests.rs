@@ -162,7 +162,6 @@ fn otel_installed_for_tests_returns_false_without_otel_feature() {
 
 // --- ClassificationPolicy get/set (governance feature only) ---
 
-#[cfg(feature = "governance")]
 #[test]
 fn classification_policy_default_values() {
     // Kills: replace default() with all-empty strings or wrong values.
@@ -175,7 +174,6 @@ fn classification_policy_default_values() {
     assert_eq!(policy.secret, "drop");
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn classification_policy_set_and_get_roundtrip() {
     use provide_telemetry::testing::{acquire_test_state_lock, reset_telemetry_state};
@@ -199,7 +197,6 @@ fn classification_policy_set_and_get_roundtrip() {
     provide_telemetry::set_classification_policy(provide_telemetry::ClassificationPolicy::default());
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn classification_policy_fields_are_distinct() {
     // Kills: setting all fields to the same value.

@@ -5,9 +5,8 @@
 
 """Public API for provide.telemetry.
 
-Core symbols (logger, tracing, config, exceptions, schema) are eagerly imported.
-All other symbols are loaded lazily on first access via __getattr__ (PEP 562),
-keeping the import footprint small for FaaS / serverless environments.
+Core telemetry symbols are eagerly imported.
+Governance modules are mandatory by contract.
 """
 
 from __future__ import annotations
@@ -17,14 +16,13 @@ from typing import TYPE_CHECKING
 
 # ── Eager: core symbols needed by every consumer ────────────────────────────
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig, redact_config
-from provide.telemetry.exceptions import ConfigurationError, TelemetryError
-from provide.telemetry.logger import bind_context, clear_context, get_logger, logger, unbind_context
+from provide.telemetry.exceptions import ConfigurationError, ProviderImmutableError, TelemetryError
+from provide.telemetry.logger import bind_context, clear_context, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
 from provide.telemetry.schema.events import Event, EventSchemaError, event, event_name
 from provide.telemetry.setup import flush_telemetry, setup_telemetry, shutdown_telemetry
 from provide.telemetry.tracing import (
     get_trace_context,
-    get_tracer,
     record_exception,
     set_attrs,
     set_trace_context,
@@ -60,14 +58,9 @@ if TYPE_CHECKING:
         register_classification_rules,
         set_classification_policy,
     )
-    from provide.telemetry.consent import (
-        ConsentLevel,
-        get_consent_level,
-        set_consent_level,
-        should_allow,
-    )
+    from provide.telemetry.consent import ConsentLevel, get_consent_level, set_consent_level, should_allow
     from provide.telemetry.health import HealthSnapshot, get_health_snapshot
-    from provide.telemetry.metrics import counter, gauge, get_meter, histogram
+    from provide.telemetry.metrics import counter, gauge, histogram
     from provide.telemetry.pii import (
         PIIRule,
         get_pii_rules,
@@ -85,12 +78,34 @@ if TYPE_CHECKING:
     from provide.telemetry.receipts import RedactionReceipt, enable_receipts, get_emitted_receipts_for_tests
     from provide.telemetry.resilience import ExporterPolicy, get_exporter_policy, set_exporter_policy
     from provide.telemetry.runtime import (
+        FlushResult,
+        ProviderMode,
+        ReconfigureResult,
+        RuntimeState,
+        RuntimeStatus,
+        SignalFlushResult,
+        TelemetryRuntime,
+        flush,
+        flush_result,
+        get_logger,
+        get_meter,
         get_runtime_config,
         get_runtime_status,
         get_strict_schema,
+        get_tracer,
+        provider_immutable_error,
+        provider_mode,
+        reconfigure_result,
         reconfigure_telemetry,
         reload_runtime_from_env,
+        runtime_state,
+        runtime_status,
         set_strict_schema,
+        shutdown,
+        signal_flush_result,
+        start,
+        telemetry_config,
+        telemetry_runtime,
         update_runtime_config,
     )
     from provide.telemetry.sampling import SamplingPolicy, get_sampling_policy, set_sampling_policy, should_sample
@@ -112,13 +127,13 @@ def _register(
 
 _register("provide.telemetry.asgi", "TelemetryMiddleware", "bind_websocket_context", "clear_websocket_context")
 _register("provide.telemetry.backpressure", "QueuePolicy", "get_queue_policy", "set_queue_policy")
-# Optional governance module — strippable: if classification.py is deleted, __getattr__ raises AttributeError
 _register(
-    "provide.telemetry.consent",
-    "ConsentLevel",
-    "get_consent_level",
-    "set_consent_level",
-    "should_allow",
+    "provide.telemetry.cardinality",
+    "CardinalityLimit",
+    "clear_cardinality_limits",
+    "get_cardinality_limits",
+    "guard_attributes",
+    "register_cardinality_limit",
 )
 _register(
     "provide.telemetry.classification",
@@ -132,12 +147,11 @@ _register(
     "set_classification_policy",
 )
 _register(
-    "provide.telemetry.cardinality",
-    "CardinalityLimit",
-    "clear_cardinality_limits",
-    "get_cardinality_limits",
-    "guard_attributes",
-    "register_cardinality_limit",
+    "provide.telemetry.consent",
+    "ConsentLevel",
+    "get_consent_level",
+    "set_consent_level",
+    "should_allow",
 )
 _register("provide.telemetry.health", "HealthSnapshot", "get_health_snapshot")
 _register("provide.telemetry.metrics", "counter", "gauge", "get_meter", "histogram")
@@ -167,10 +181,32 @@ _register(
     "reload_runtime_from_env",
     "set_strict_schema",
     "update_runtime_config",
+    "start",
+    "shutdown",
+    "flush",
+    "get_logger",
+    "get_tracer",
+    "get_meter",
+    "ProviderMode",
+    "provider_mode",
+    "RuntimeState",
+    "runtime_state",
+    "RuntimeStatus",
+    "runtime_status",
+    "SignalFlushResult",
+    "signal_flush_result",
+    "ReconfigureResult",
+    "reconfigure_result",
+    "FlushResult",
+    "flush_result",
+    "TelemetryRuntime",
+    "telemetry_runtime",
+    "telemetry_config",
+    "provider_immutable_error",
 )
 _register("provide.telemetry.sampling", "SamplingPolicy", "get_sampling_policy", "set_sampling_policy", "should_sample")
-_register("provide.telemetry.receipts", "RedactionReceipt", "enable_receipts", "get_emitted_receipts_for_tests")
 _register("provide.telemetry.slo", "classify_error", "record_red_metrics", "record_use_metrics")
+_register("provide.telemetry.receipts", "RedactionReceipt", "enable_receipts", "get_emitted_receipts_for_tests")
 
 
 def __getattr__(name: str) -> object:
@@ -201,15 +237,23 @@ __all__ = [
     "Event",
     "EventSchemaError",
     "ExporterPolicy",
+    "FlushResult",
     "HealthSnapshot",
     "PIIRule",
+    "ProviderImmutableError",
+    "ProviderMode",
     "QueuePolicy",
+    "ReconfigureResult",
     "RedactionReceipt",
     "RuntimeOverrides",
+    "RuntimeState",
+    "RuntimeStatus",
     "SamplingPolicy",
+    "SignalFlushResult",
     "TelemetryConfig",
     "TelemetryError",
     "TelemetryMiddleware",
+    "TelemetryRuntime",
     "__version__",
     "bind_context",
     "bind_propagation_context",
@@ -226,6 +270,8 @@ __all__ = [
     "event",
     "event_name",
     "extract_w3c_context",
+    "flush",
+    "flush_result",
     "flush_telemetry",
     "gauge",
     "get_cardinality_limits",
@@ -251,6 +297,9 @@ __all__ = [
     "inject_traceparent",
     "logger",
     "parse_baggage",
+    "provider_immutable_error",
+    "provider_mode",
+    "reconfigure_result",
     "reconfigure_telemetry",
     "record_exception",
     "record_red_metrics",
@@ -263,6 +312,8 @@ __all__ = [
     "register_secret_pattern",
     "reload_runtime_from_env",
     "replace_pii_rules",
+    "runtime_state",
+    "runtime_status",
     "set_attrs",
     "set_classification_policy",
     "set_consent_level",
@@ -274,8 +325,13 @@ __all__ = [
     "setup_telemetry",
     "should_allow",
     "should_sample",
+    "shutdown",
     "shutdown_telemetry",
+    "signal_flush_result",
     "span",
+    "start",
+    "telemetry_config",
+    "telemetry_runtime",
     "trace",
     "tracer",
     "unbind_context",

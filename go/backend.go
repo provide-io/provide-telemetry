@@ -231,7 +231,7 @@ func _providerStatusLocked() SignalStatus {
 }
 
 func _providerConfigError() error {
-	return NewConfigurationError(
+	return NewProviderImmutableError(
 		"provider-changing reconfiguration is unsupported after optional providers are installed; restart the process and call SetupTelemetry() with the new config",
 	)
 }

@@ -32,17 +32,6 @@ fn build_runtime(thread_name: &'static str) -> tokio::runtime::Runtime {
         .expect("failed to create background Tokio runtime for OpenTelemetry")
 }
 
-fn observe_task_handle(
-    runtime: &'static tokio::runtime::Runtime,
-    handle: tokio::task::JoinHandle<()>,
-) {
-    drop(runtime.spawn(async move {
-        if let Err(err) = handle.await {
-            eprintln!("provide_telemetry: OTLP background task panicked: {err}");
-        }
-    }));
-}
-
 impl ProvideTokioRuntime {
     pub(super) fn logs() -> Self {
         Self {
@@ -91,17 +80,18 @@ impl ProvideTokioRuntime {
         }
     }
 
-    pub(super) fn quiesce(&self) {
+    pub(super) fn quiesce(&self) -> bool {
         // Shutdown helpers are synchronous and can be called from async
         // tests. Entering a Tokio runtime from another Tokio runtime
         // panics, so treat quiesce as best-effort in that situation.
         if tokio::runtime::Handle::try_current().is_ok() {
-            return;
+            return false;
         }
         self.runtime().block_on(async {
             tokio::task::yield_now().await;
             tokio::task::yield_now().await;
         });
+        true
     }
 }
 
@@ -112,7 +102,11 @@ impl Runtime for ProvideTokioRuntime {
     {
         let runtime = self.runtime();
         let handle = runtime.spawn(future);
-        observe_task_handle(runtime, handle);
+        drop(runtime.spawn(async move {
+            if let Err(err) = handle.await {
+                eprintln!("provide_telemetry: OTLP background task panicked: {err}");
+            }
+        }));
     }
 
     fn delay(&self, duration: Duration) -> impl std::future::Future<Output = ()> + Send + 'static {
@@ -178,13 +172,13 @@ mod tests {
             panic!("expected panic in background task");
         });
         thread::sleep(Duration::from_millis(20));
-        runtime.quiesce();
+        assert!(runtime.quiesce());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn async_runtime_test_quiesce_is_safe_inside_tokio_runtime() {
         let runtime = ProvideTokioRuntime::test();
 
-        runtime.quiesce();
+        assert!(!runtime.quiesce());
     }
 }

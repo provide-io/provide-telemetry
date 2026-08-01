@@ -16,7 +16,6 @@ use crate::schema::event;
 use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
 use crate::tracer::set_trace_context;
 use crate::TelemetryConfig;
-#[cfg(feature = "governance")]
 use crate::{reset_consent_for_tests, set_consent_level, ConsentLevel};
 
 fn cfg_with_module_level(module: &str, level: &str) -> crate::config::LoggingConfig {
@@ -53,7 +52,6 @@ fn reset_logger_state() {
     ] {
         std::env::remove_var(key);
     }
-    #[cfg(feature = "governance")]
     reset_consent_for_tests();
 }
 

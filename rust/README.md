@@ -219,12 +219,11 @@ All options come from environment variables:
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `governance` | yes | Data governance / consent gating. Without this, `should_allow` is always true. |
 | `otel` | no | Real OTLP export for traces, metrics, and logs via `opentelemetry-otlp` (HTTP/protobuf). When off, the crate provides in-process fallback instrumentation (noop tracer, in-process metrics, stderr-only logs). |
 | `otel-grpc` | no | Adds gRPC transport on top of `otel`. Requires `tonic` (heavier dep tree). |
 
 ```bash
-cargo build                        # default (governance, no OTel)
+cargo build                        # default (fallback-only + governance)
 cargo build --features otel        # + OTLP/HTTP export
 cargo build --features otel-grpc   # + OTLP/gRPC transport
 cargo build --no-default-features  # minimal fallback-only build
@@ -294,7 +293,7 @@ cargo run --example telemetry_10_performance_metrics
 cargo run --example telemetry_11_lazy_loading_proof
 cargo run --example telemetry_12_error_fingerprint_and_sessions
 cargo run --example telemetry_13_security_hardening
-cargo run --features governance --example telemetry_14_data_governance
+cargo run --example telemetry_14_data_governance
 cargo run --features otel --example openobserve_01_emit_all_signals
 cargo run --features otel --example openobserve_02_verify_ingestion
 cargo run --features otel --example openobserve_03_hardening_profile
@@ -318,7 +317,7 @@ The gate ignores Rust standard-library source paths only; missed lines in
 `rust/` fail the workflow. Locally:
 
 ```bash
-RUST_TEST_THREADS=1 cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0
+RUST_TEST_THREADS=1 cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0 --fail-under-functions 100
 ```
 
 ## Performance gate
@@ -332,22 +331,24 @@ seed or refresh entries.
 
 ## Mutation testing
 
-The Rust nightly mutation sweep is **advisory only**. It does not gate
-CI the way the Python and Go mutation suites do, and the current
-baseline in [`rust/mutants.out/`](./mutants.out) records a `Failure`
-summary — the sweep's own build/test baseline is broken and no mutants
-have been scored against it yet. Configuration lives in
-[`rust/.cargo/mutants.toml`](./.cargo/mutants.toml).
+Rust changes are gated by a complete all-feature `cargo-mutants` sweep with
+a 100% kill requirement. Equivalent mutations must be narrowly documented in
+[`rust/.cargo/mutants.toml`](./.cargo/mutants.toml) or at the source site; the
+gate does not permit surviving or timed-out behavioral mutants.
 
 Re-run the sweep from `rust/`:
 
 ```bash
-cargo mutants --all-features --test-tool nextest -j 4 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
+CARGO_BUILD_JOBS=1 NEXTEST_TEST_THREADS=1 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo mutants --all-features --test-tool nextest -j 1 \
+  --jobserver-tasks 1 --no-shuffle \
+  --minimum-test-timeout 300 --timeout-multiplier 4
 ```
 
-This exactly mirrors the invocation used by the Rust mutation job in
+This uses the same memory-bounded compiler, test-runner, and mutation-worker
+limits as each Rust mutation shard in
 [`.github/workflows/ci-mutation.yml`](../.github/workflows/ci-mutation.yml).
-Sweep outputs land in `rust/mutants.out/` (tracked), including
+Sweep outputs land in `rust/mutants.out/`, including
 `outcomes.json`, `caught.txt`, `missed.txt`, and per-mutant logs.
 
 ## License

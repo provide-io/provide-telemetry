@@ -7,7 +7,8 @@ mod runtime_test_support;
 use provide_telemetry::{
     get_runtime_status, reconfigure_telemetry, reload_runtime_from_env, setup_telemetry,
     shutdown_telemetry, update_runtime_config, BackpressureConfig, ExporterPolicyConfig,
-    RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
+    ProviderMode, RuntimeOverrides, RuntimeState, SLOConfig, SamplingConfig, SecurityConfig,
+    SignalFlushResult, TelemetryConfig, TelemetryRuntime,
 };
 use runtime_test_support::*;
 
@@ -232,5 +233,123 @@ fn runtime_test_reload_runtime_from_env_requires_setup_and_surfaces_parse_errors
         let err = reload_runtime_from_env().expect_err("invalid env must fail reload");
         assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
         std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+    });
+}
+
+fn assert_flush_result_matches_provider(installed: bool, result: SignalFlushResult) {
+    assert_eq!(result.flushed, installed);
+    assert_eq!(result.not_installed, !installed);
+    assert!(!result.not_owned);
+    assert!(!result.timed_out);
+    assert!(!result.failed);
+}
+
+#[test]
+fn runtime_object_test_complete_successful_lifecycle() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[], || {
+        reset_runtime();
+        let mut runtime = TelemetryRuntime::default();
+
+        assert_eq!(runtime.provider_mode(), ProviderMode::Owned);
+        assert_eq!(runtime.state(), RuntimeState::Ready);
+        assert!(runtime.get_runtime_config().is_none());
+        assert!(!runtime.get_runtime_status().setup_done);
+        assert_eq!(
+            runtime.get_logger(Some("runtime.logger")).target(),
+            "runtime.logger"
+        );
+        assert_eq!(
+            runtime.get_tracer(Some("runtime.tracer")).name(),
+            "runtime.tracer"
+        );
+        assert_eq!(
+            runtime.get_meter(Some("runtime.meter")).name(),
+            "runtime.meter"
+        );
+
+        let started = runtime.start().expect("runtime start should succeed");
+        assert_eq!(runtime.state(), RuntimeState::Ready);
+        assert_eq!(runtime.get_runtime_config(), Some(started.clone()));
+        let status = runtime.get_runtime_status();
+        assert!(status.setup_done);
+
+        let flushed = runtime.flush().expect("runtime flush should succeed");
+        assert_flush_result_matches_provider(status.providers.logs, flushed.logs);
+        assert_flush_result_matches_provider(status.providers.traces, flushed.traces);
+        assert_flush_result_matches_provider(status.providers.metrics, flushed.metrics);
+
+        let update = runtime.update_config(RuntimeOverrides {
+            strict_schema: Some(!started.strict_schema),
+            ..RuntimeOverrides::default()
+        });
+        assert!(update.applied);
+        assert_eq!(update.previous, Some(started));
+        assert_eq!(
+            update.current.as_ref().map(|cfg| cfg.strict_schema),
+            Some(
+                !update
+                    .previous
+                    .as_ref()
+                    .expect("previous config")
+                    .strict_schema
+            )
+        );
+        assert!(update.error.is_none());
+        assert_eq!(update.state, RuntimeState::Ready);
+
+        let current = update.current.expect("updated config");
+        assert_eq!(
+            runtime
+                .reconfigure(Some(current.clone()))
+                .expect("explicit reconfigure"),
+            current
+        );
+        assert_eq!(
+            runtime.reconfigure(None).expect("environment reconfigure"),
+            TelemetryConfig::from_env().expect("default environment config")
+        );
+
+        runtime.shutdown().expect("runtime shutdown should succeed");
+        assert_eq!(runtime.state(), RuntimeState::Stopped);
+        assert!(runtime.get_runtime_config().is_none());
+    });
+}
+
+#[test]
+fn runtime_object_test_failed_start_is_degraded_and_update_reports_error() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool")], || {
+        reset_runtime();
+        let mut runtime = TelemetryRuntime::new();
+
+        let err = runtime.start().expect_err("invalid config must fail start");
+        assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
+        assert_eq!(runtime.state(), RuntimeState::Degraded);
+
+        let update = runtime.update_config(RuntimeOverrides::default());
+        assert!(!update.applied);
+        assert!(update.previous.is_none());
+        assert!(update.current.is_none());
+        assert!(update
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("setup_telemetry")));
+        assert_eq!(update.state, RuntimeState::Degraded);
+    });
+}
+
+#[test]
+fn runtime_object_test_reconfigure_from_invalid_environment_returns_error() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool")], || {
+        reset_runtime();
+        let mut runtime = TelemetryRuntime::new();
+
+        let err = runtime
+            .reconfigure(None)
+            .expect_err("invalid environment must fail reconfigure");
+        assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
+        assert_eq!(runtime.state(), RuntimeState::Ready);
     });
 }

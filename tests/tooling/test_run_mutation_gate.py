@@ -156,8 +156,8 @@ def test_run_mutation_gate_fails_when_score_too_low(monkeypatch: pytest.MonkeyPa
         gate.run_mutation_gate("3.11", max_children=2, retries=0, min_mutation_score=80.0)
 
 
-def test_is_clean_ignores_timeout_but_rejects_segfault() -> None:
-    assert gate._is_clean({"total": 10, "timeout": 5, "segfault": 0, "suspicious": 0, "no_tests": 0}) is True
+def test_is_clean_rejects_timeout_and_segfault() -> None:
+    assert gate._is_clean({"total": 10, "timeout": 5, "segfault": 0, "suspicious": 0, "no_tests": 0}) is False
     assert gate._is_clean({"total": 10, "timeout": 0, "segfault": 1, "suspicious": 0, "no_tests": 0}) is False
 
 

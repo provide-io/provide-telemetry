@@ -293,10 +293,9 @@ fn pretty_test_emit_if_console_suppressed_when_format_is_pretty() {
 }
 
 #[test]
-fn pretty_test_stderr_is_tty_does_not_panic() {
-    // Exercised for coverage — outcome depends on how the test harness was
-    // launched, so we only assert that the call returns without panicking.
-    let _ = super::stderr_is_tty();
+fn pretty_test_terminal_detecting_entrypoint_renders_the_event() {
+    let rendered = format_pretty_line(&sample_event("INFO"), &LoggingConfig::default());
+    assert!(rendered.contains("pretty.message"));
 }
 
 #[test]

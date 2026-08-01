@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Cryptographic redaction receipts — strippable governance module.
+ * Cryptographic redaction receipts.
  *
  * Registers a receipt hook on the PII engine when enabled.
  * If this file is deleted, the PII engine runs unchanged (hook stays null).

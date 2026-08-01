@@ -69,11 +69,10 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         .map_err(|err| TelemetryError::new(format!("failed to build runtime: {err}")))?;
     runtime.block_on(async {
         for _ in 0..4 {
-            // future::pending() never resolves, so the wrapper-imposed timeout
-            // MUST fire. Earlier `sleep(50ms) > timeout(10ms)` flaked on
-            // macOS-15 CI runners with high scheduling jitter.
+            // The slow operation exceeds the wrapper deadline by 10x. Keeping
+            // it finite ensures a timeout-bypass mutation fails promptly.
             let _: Option<()> = run_with_resilience(Signal::Metrics, || async {
-                std::future::pending::<()>().await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 Ok(())
             })
             .await?;

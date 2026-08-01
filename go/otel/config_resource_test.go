@@ -27,7 +27,7 @@ func defaultCfg() *telemetry.TelemetryConfig {
 	}
 }
 
-// Precedence contract: framework floor < OTEL_* env < explicit config.
+// resource_precedence contract: framework floor < OTEL_* env < explicit config.
 // With nothing set, all three identity keys fall back to the framework floor.
 func TestBuildResource_FloorWhenUnset(t *testing.T) {
 	d := telemetry.DefaultTelemetryConfig()
@@ -44,6 +44,7 @@ func TestBuildResource_FloorWhenUnset(t *testing.T) {
 	}
 }
 
+// ResourcePrecedence: env > floor path.
 // env > floor: OTEL_SERVICE_NAME fills a service name left at the default.
 func TestBuildResource_EnvFillsUnsetIdentity(t *testing.T) {
 	t.Setenv("OTEL_SERVICE_NAME", "env-service")
@@ -59,6 +60,7 @@ func TestBuildResource_EnvFillsUnsetIdentity(t *testing.T) {
 	}
 }
 
+// resourcePrecedence: explicit > env for identity fields.
 // explicit > env: an explicitly named service is never hijacked by ambient env.
 func TestBuildResource_ExplicitBeatsEnv(t *testing.T) {
 	t.Setenv("OTEL_SERVICE_NAME", "env-service")

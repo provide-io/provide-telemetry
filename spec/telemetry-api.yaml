@@ -16,12 +16,10 @@
 #               symbols when the language advertises that capability.
 #               Supported values: "governance"
 #               Capability rules by language:
-#                 python, typescript, go — governance always present (first-class module)
-#                 rust                  — governance present when the `governance` feature
-#                                         is enabled (it is in the default feature set)
+#                 python, typescript, go, rust — governance always present
 #   note:       human-readable description or rationale
 
-spec_version: "1"
+spec_version: "2"
 
 naming_conventions:
   python: snake_case
@@ -31,6 +29,10 @@ naming_conventions:
 
 api:
   lifecycle:
+    - name: telemetry_runtime
+      kind: type
+      required: true
+      note: "Canonical runtime facade object with start/shutdown/flush/getter APIs."
     - name: setup_telemetry
       kind: function
       required: true
@@ -194,7 +196,7 @@ api:
     - name: classify_error
       kind: function
       required: false
-      note: "lazy-loaded in Python; optional for initial implementations"
+      note: "Classify an error object into SLO category."
     - name: record_red_metrics
       kind: function
       required: false
@@ -203,6 +205,22 @@ api:
       required: false
 
   runtime:
+    - name: telemetry_config
+      kind: type
+      required: true
+      note: "Canonical runtime configuration type."
+    - name: runtime_status
+      kind: type
+      required: true
+      note: "Canonical runtime status shape including generation/state/provider metadata."
+    - name: runtime_state
+      kind: type
+      required: true
+      note: "Canonical generation/runtime lifecycle state enum."
+    - name: provider_mode
+      kind: type
+      required: true
+      note: "owned | host | local"
     - name: get_runtime_config
       kind: function
       required: true
@@ -216,54 +234,60 @@ api:
     - name: reconfigure_telemetry
       kind: function
       required: true
+    - name: signal_flush_result
+      kind: type
+      required: true
+      note: "Per-signal flush result for concurrent flush reporting."
+    - name: flush_result
+      kind: type
+      required: true
+      note: "Aggregated flush status with per-signal entries."
+    - name: reconfigure_result
+      kind: type
+      required: true
+      note: "Structured result for attempted runtime reconfiguration."
 
   governance:
     - name: register_classification_rules
       kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when classification module is installed"
+      required: true
+      note: "Canonical classification policy registration."
     - name: register_classification_rule
       kind: function
-      required: false
-      capability: governance
+      required: true
       note: "Convenience wrapper for single-rule registration. Equivalent to register_classification_rules([rule])."
     - name: classify_key
       kind: function
-      required: false
-      capability: governance
+      required: true
       note: "Return the DataClass label for a key if a rule matches, else null/None/nil."
     - name: set_classification_policy
       kind: function
-      required: false
-      capability: governance
+      required: true
     - name: get_classification_policy
       kind: function
-      required: false
-      capability: governance
+      required: true
     - name: set_consent_level
       kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when consent module is installed"
+      required: true
+      note: "Set consent level for logs, traces, and metrics gating."
     - name: get_consent_level
       kind: function
-      required: false
-      capability: governance
+      required: true
     - name: should_allow
       kind: function
-      required: false
-      capability: governance
+      required: true
     - name: enable_receipts
       kind: function
-      required: false
-      capability: governance
-      note: "Strippable — only present when receipts module is installed"
+      required: true
+      note: "Enable receipts and optional HMAC signing."
     - name: redact_config
       kind: function
-      required: false
-      capability: governance
+      required: true
       note: "Returns a safe copy of TelemetryConfig with secrets masked"
+    - name: provider_immutable_error
+      kind: type
+      required: true
+      note: "Raised when host-provider-changing updates are rejected."
 
   errors:
     - name: TelemetryError
@@ -273,6 +297,9 @@ api:
       kind: type
       required: true
     - name: EventSchemaError
+      kind: type
+      required: true
+    - name: ProviderImmutableError
       kind: type
       required: true
 
@@ -299,31 +326,47 @@ api:
       kind: type
       required: true
       note: "Hot-reloadable config subset — sampling, backpressure, exporter, security, SLO, pii_max_depth, strict_schema"
+    - name: TelemetryConfig
+      kind: type
+      required: true
+    - name: RuntimeStatus
+      kind: type
+      required: true
+    - name: RuntimeState
+      kind: type
+      required: true
+    - name: ProviderMode
+      kind: type
+      required: true
+    - name: SignalFlushResult
+      kind: type
+      required: true
+    - name: FlushResult
+      kind: type
+      required: true
+    - name: ReconfigureResult
+      kind: type
+      required: true
     - name: DataClass
       kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
+      required: true
+      note: "Classification data class enum."
     - name: ClassificationRule
       kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
+      required: true
+      note: "Governance rule type."
     - name: ClassificationPolicy
       kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
+      required: true
+      note: "Effective classification policy."
     - name: ConsentLevel
       kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
+      required: true
+      note: "Consent level enum."
     - name: RedactionReceipt
       kind: type
-      required: false
-      capability: governance
-      note: "Strippable governance type"
+      required: true
+      note: "Receipt emitted when redactions occur."
 
 config_defaults:
   core:

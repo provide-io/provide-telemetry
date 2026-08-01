@@ -3,10 +3,7 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Consent-aware telemetry collection — strippable governance module.
-
-When deleted, all signals pass through unchanged (no hook or gate installed).
-"""
+"""Consent-aware telemetry collection."""
 
 from __future__ import annotations
 

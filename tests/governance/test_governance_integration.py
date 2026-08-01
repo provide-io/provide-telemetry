@@ -180,23 +180,23 @@ def test_config_repr_masks_metrics_header_secret() -> None:
     assert "****" in text
 
 
-# ── Strippability ─────────────────────────────────────────────────────────────
+# ── Baseline governance defaults ─────────────────────────────────────────────
 
 
 @pytest.mark.integration
-def test_core_functions_work_without_governance_modules() -> None:
-    """Core imports (get_logger, setup_telemetry) work when governance modules not imported."""
+def test_core_functions_work_with_default_governance_state() -> None:
+    """Core imports (get_logger, setup_telemetry) work with default governance state."""
     from provide.telemetry import get_logger, setup_telemetry
 
-    log = get_logger("strippability-test")
+    log = get_logger("baseline-governance-test")
     assert log is not None
     assert callable(setup_telemetry)
 
 
 @pytest.mark.integration
-def test_pii_engine_runs_without_governance_hooks() -> None:
-    """PII engine sanitizes correctly when classification/consent/receipts not initialized."""
-    # All hooks are None after reset (autouse fixture already reset them)
+def test_pii_engine_runs_with_default_governance_hooks() -> None:
+    """PII engine sanitizes correctly with default governance hooks."""
+    # All hooks are in their baseline state after reset (autouse fixture already reset them).
     assert pii_mod._classification_hook is None
     assert pii_mod._receipt_hook is None
     result = pii_mod.sanitize_payload({"password": "s3cr3t", "name": "Alice"}, enabled=True)  # pragma: allowlist secret

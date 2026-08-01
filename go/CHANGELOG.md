@@ -121,7 +121,7 @@ version files and the `go/otel` requirement below.
 ### Features
 
 - **Control-plane integrity** — `RuntimeOverrides` struct for hot-field-only updates; `UpdateRuntimeConfig` narrows signature to accept `RuntimeOverrides` (not full `TelemetryConfig`); `ReloadRuntimeFromEnv` re-reads env vars at runtime and warns on cold-field drift; `ReconfigureTelemetry` for full restart
-- **Data governance** — `classification.go`: `ClassificationPolicy`, `RegisterClassificationRules`, `GetClassificationPolicy`, `SetClassificationPolicy`; `consent.go`: `ConsentLevel`, `SetConsentLevel`, `GetConsentLevel`, `ShouldAllow`, `LoadConsentFromEnv`; `receipts.go`: cryptographic redaction receipts with optional HMAC signing (strippable module)
+- **Data governance** — `classification.go`: `ClassificationPolicy`, `RegisterClassificationRules`, `GetClassificationPolicy`, `SetClassificationPolicy`; `consent.go`: `ConsentLevel`, `SetConsentLevel`, `GetConsentLevel`, `ShouldAllow`, `LoadConsentFromEnv`; `receipts.go`: cryptographic redaction receipts with optional HMAC signing.
 - **Config masking** — `TelemetryConfig.String()` / `GoString()` / `RedactedString()` mask OTLP header values and endpoint passwords so configs are safe to log
 - **PII depth control** — `PROVIDE_LOG_PII_MAX_DEPTH` env var; default max depth changed from 32 to 8; `SanitizePayload` respects depth limit across all rule types and secret detection
 

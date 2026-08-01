@@ -11,6 +11,36 @@ use super::*;
 use crate::testing::acquire_test_state_lock;
 
 #[test]
+fn resilience_test_success_latency_is_recorded_in_milliseconds() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    crate::health::_reset_health_for_tests();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    let result = runtime.block_on(async {
+        run_with_resilience(Signal::Logs, || async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Ok::<_, TelemetryError>(())
+        })
+        .await
+    });
+    assert_eq!(result.expect("operation should succeed"), Some(()));
+
+    let latency_ms = crate::health::get_health_snapshot().export_latency_ms_logs;
+    assert!(
+        latency_ms >= 10.0,
+        "a delayed operation must retain millisecond precision: {latency_ms}ms"
+    );
+    assert!(
+        latency_ms < 1_000.0,
+        "a short operation must not be offset by one second: {latency_ms}ms"
+    );
+}
+
+#[test]
 fn resilience_test_get_circuit_state_closed_open_half_open() {
     let _guard = acquire_test_state_lock();
     _reset_resilience_for_tests();

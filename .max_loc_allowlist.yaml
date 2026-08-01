@@ -11,15 +11,4 @@
 # without explicit approval.
 
 allowlist:
-  # ── Go ─────────────────────────────────────────────────────────────────────
-
-  # ── Rust ───────────────────────────────────────────────────────────────────
-  - path: rust/src/otel/traces.rs
-    ceiling: 516
-
-
-  # ── Python ─────────────────────────────────────────────────────────────────
-  # (no Python violators — both files split into siblings under 500)
-
-  # ── TypeScript ─────────────────────────────────────────────────────────────
-  # (no TypeScript violators remaining)
+  # No current exemptions.

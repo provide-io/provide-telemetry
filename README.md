@@ -65,7 +65,7 @@ await shutdownTelemetry();
 
 All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration.
 
-**On wire-format parity**: the JSON shape emitted by each language is *semantically* equivalent but not byte-identical. Go follows OpenTelemetry semantic conventions for its standard fields (`service.name`, `service.env`, `service.version`, `trace.id`, `span.id`); Python, TypeScript, and Rust use snake_case (`service`, `env`, `version`, `trace_id`, `span_id`). The cross-language parity harness in `spec/` normalises these key forms before comparing outputs (see `_FIELD_RENAMES` in `spec/parity_probe_support.py`), so semantic equivalence is what's tested and guaranteed — not literal wire-format identity. Consumers parsing logs across languages should normalize to whichever convention they prefer.
+**On wire-format parity**: local JSON logs use a canonical snake_case envelope across implementations (`timestamp`, `level`, `message`, `logger_name`, `service`, `env`, `version`, `trace_id`, `span_id`, plus event fields). The parity harness in `spec/` also normalizes legacy OTel keys (`service.name`, `service.env`, `service.version`, `trace.id`, `span.id`) when present to keep comparisons stable for older emit paths.
 
 ## Configuration
 
@@ -133,8 +133,8 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Quality
 
-- Coverage gates: Python and TypeScript branch coverage; Go statement coverage for the root, logger, tracer, and otel packages; Rust crate verified with `cargo test`
-- Python runs mutmut with a 95.90% current score / 95% minimum threshold; Go requires 100% gremlins efficacy; TypeScript runs Stryker with a 96.07% current score / 95% break threshold (the re-export barrel `index.ts` is excluded at the config level; remaining survivors are concentrated in config/runtime/pretty/propagation edge cases); Rust nightly mutation sweep is advisory (current baseline is re-verified manually; see `rust/README.md`)
+- Coverage gates: full 100% gates (Python, TypeScript, Go, Rust) with language-appropriate threshold interpretation.
+- Python runs mutmut with a 95% minimum threshold and rejects timeouts; Go requires both 100% gremlins efficacy and 100% mutant coverage; TypeScript uses Stryker with a 95% core break threshold plus an 80% OTLP transport ratchet; Rust requires a 100% cargo-mutants kill rate whenever Rust implementation or test code changes.
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
 - SHA-pinned third-party GitHub Actions
@@ -151,6 +151,7 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 - [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
 - [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
 - [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
+- [Quality Gap-to-Closure Checklist](https://github.com/provide-io/provide-telemetry/blob/main/docs/QUALITY_GAP_CLOSURE.md) — auditable coverage, fixture, and mutation gates
 - [Polyglot Parity Roadmap](https://github.com/provide-io/provide-telemetry/blob/main/docs/PARITY_ROADMAP.md) — prioritized work to reach true behavioral parity
 - [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
 - [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing

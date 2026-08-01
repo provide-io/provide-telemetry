@@ -240,8 +240,7 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/provide/telemetry/"]
-tests_dir = ["tests/"]
+source_paths = ["src/provide/telemetry/"]
 # context_runtime.py subclasses a concrete OTel runtime-context class, so it
 # cannot be imported or exercised without the optional otel extra (the gated
 # mutation run omits it) — same rationale as the coverage `omit` above. span.py

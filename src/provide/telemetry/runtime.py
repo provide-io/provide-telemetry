@@ -13,26 +13,176 @@ OpenTelemetry providers are installed require a full process restart.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 __all__ = [
+    "FlushResult",
+    "ProviderMode",
+    "ReconfigureResult",
+    "RuntimeState",
+    "RuntimeStatus",
+    "SignalFlushResult",
+    "TelemetryRuntime",
+    "flush",
+    "flush_result",
+    "get_logger",
+    "get_meter",
     "get_runtime_config",
     "get_runtime_status",
     "get_strict_schema",
+    "get_tracer",
+    "provider_immutable_error",
+    "provider_mode",
+    "reconfigure_result",
     "reconfigure_telemetry",
     "reload_runtime_from_env",
+    "runtime_state",
+    "runtime_status",
     "set_strict_schema",
+    "shutdown",
+    "signal_flush_result",
+    "start",
+    "telemetry_config",
+    "telemetry_runtime",
     "update_runtime_config",
 ]
 
 import copy
 import logging
 import threading
+from typing import Any
 
+from provide.telemetry._runtime_types import (
+    FlushResult,
+    ProviderMode,
+    ReconfigureResult,
+    RuntimeState,
+    RuntimeStatus,
+    SignalFlushResult,
+)
 from provide.telemetry.backpressure import QueuePolicy, set_queue_policy
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
+from provide.telemetry.exceptions import ProviderImmutableError
 from provide.telemetry.resilience import ExporterPolicy, set_exporter_policy
 from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
 _logger = logging.getLogger(__name__)
+
+
+class provider_mode(StrEnum):
+    """Snake-case canonical alias for conformance checks."""
+
+    OWNED = ProviderMode.OWNED.value
+    HOST = ProviderMode.HOST.value
+    LOCAL = ProviderMode.LOCAL.value
+
+
+class runtime_state(StrEnum):
+    """Snake-case canonical alias for conformance checks."""
+
+    LOCAL = RuntimeState.LOCAL.value
+    STARTING = RuntimeState.STARTING.value
+    READY = RuntimeState.READY.value
+    DEGRADED = RuntimeState.DEGRADED.value
+    RECONFIGURING = RuntimeState.RECONFIGURING.value
+    STOPPING = RuntimeState.STOPPING.value
+    STOPPED = RuntimeState.STOPPED.value
+
+
+class signal_flush_result(SignalFlushResult):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class flush_result(FlushResult):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class reconfigure_result(ReconfigureResult):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class telemetry_config(TelemetryConfig):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class provider_immutable_error(ProviderImmutableError):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class TelemetryRuntime:
+    """Canonical runtime facade around the package module-level telemetry APIs."""
+
+    def __init__(self) -> None:
+        self._state = RuntimeState.READY
+        self._provider_mode = ProviderMode.OWNED
+
+    def start(self, config: TelemetryConfig | None = None) -> TelemetryConfig:
+        from provide.telemetry.setup import setup_telemetry
+
+        started = setup_telemetry(config)
+        self._state = RuntimeState.READY
+        return started
+
+    def shutdown(self, timeout: float | None = None) -> None:
+        from provide.telemetry.setup import shutdown_telemetry
+
+        shutdown_telemetry()
+        self._state = RuntimeState.STOPPED if timeout is None else RuntimeState.STOPPING
+
+    def flush(self, timeout: float | None = None) -> bool:
+        from provide.telemetry.setup import flush_telemetry
+
+        return flush_telemetry(timeout_seconds=timeout)
+
+    def get_logger(self, name: str) -> Any:
+        from provide.telemetry.logger import get_logger
+
+        return get_logger(name)
+
+    def get_tracer(self, name: str) -> Any:
+        from provide.telemetry.tracing import get_tracer
+
+        return get_tracer(name)
+
+    def get_meter(self, name: str) -> Any:
+        from provide.telemetry.metrics import get_meter
+
+        return get_meter(name)
+
+    def get_runtime_config(self) -> TelemetryConfig:
+        return get_runtime_config()
+
+    def get_runtime_status(self) -> dict[str, object]:
+        return get_runtime_status()
+
+    def update_config(self, cfg: TelemetryConfig | RuntimeOverrides) -> ReconfigureResult:
+        if isinstance(cfg, RuntimeOverrides):
+            previous = get_runtime_config()
+            result = update_runtime_config(cfg)
+            return ReconfigureResult(
+                applied=True,
+                config=result,
+                previous=previous,
+                state=self._state,
+                status=self._state,
+            )
+        previous = get_runtime_config()
+        return ReconfigureResult(
+            applied=True,
+            config=reconfigure_telemetry(cfg),
+            previous=previous,
+            state=self._state,
+            status=self._state,
+        )
+
+
+class runtime_status(RuntimeStatus):
+    """Snake-case canonical alias for conformance checks."""
+
+
+class telemetry_runtime(TelemetryRuntime):
+    """Snake-case canonical alias for conformance checks."""
+
 
 _lock = threading.Lock()
 _active_config: TelemetryConfig | None = None
@@ -41,6 +191,38 @@ _active_config: TelemetryConfig | None = None
 # which would require process-level coordination. It only serializes concurrent
 # reconfigure_telemetry() callers.
 _reconfigure_lock = threading.Lock()
+
+_runtime = TelemetryRuntime()
+
+
+def start(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    """Start/refresh runtime setup through the canonical facade."""
+    return _runtime.start(config)
+
+
+def shutdown(timeout: float | None = None) -> None:
+    """Shutdown runtime through the canonical facade."""
+    _runtime.shutdown(timeout)
+
+
+def flush(timeout: float | None = None) -> bool:
+    """Flush runtime through the canonical facade."""
+    return _runtime.flush(timeout)
+
+
+def get_logger(name: str) -> Any:
+    """Return a logger from the canonical runtime facade."""
+    return _runtime.get_logger(name)
+
+
+def get_tracer(name: str) -> Any:
+    """Return a tracer from the canonical runtime facade."""
+    return _runtime.get_tracer(name)
+
+
+def get_meter(name: str) -> Any:
+    """Return a meter from the canonical runtime facade."""
+    return _runtime.get_meter(name)
 
 
 def _apply_policies(snapshot: TelemetryConfig) -> None:
@@ -165,7 +347,7 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
             from provide.telemetry.logger.core import _has_real_otel_log_provider
 
             if _has_real_otel_log_provider():
-                raise RuntimeError(
+                raise ProviderImmutableError(
                     "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
                     "are installed. Restart the process and call setup_telemetry() with the new config."
                 )
@@ -211,14 +393,14 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
                 or tracing_provider._has_live_tracing_provider()
                 or metrics_provider._has_live_meter_provider()
             ):
-                raise RuntimeError(
+                raise ProviderImmutableError(
                     "provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed. "
                     "Restart the process and call setup_telemetry() with the new config."
                 )
             shutdown_telemetry()
             return setup_telemetry(target)
         if _logging_provider_config_changed(current, target) and logger_core._has_real_otel_log_provider():
-            raise RuntimeError(
+            raise ProviderImmutableError(
                 "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
                 "are installed (endpoint/headers/timeout change). Restart the process and call "
                 "setup_telemetry() with the new config."

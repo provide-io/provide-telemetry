@@ -136,6 +136,11 @@ fn emit_test_iso8601_helper_covers_january_and_april_paths() {
         iso8601_from_unix_parts(90 * 86_400, 7),
         "1970-04-01T00:00:00.007Z"
     );
+    assert_eq!(
+        iso8601_from_unix_parts(120, 42),
+        "1970-01-01T00:02:00.042Z",
+        "minute conversion must divide the seconds-within-hour, not take another remainder"
+    );
 }
 
 // Kills: `-` -> `+` on `doe / 146_096` in the Howard Hinnant year-of-era

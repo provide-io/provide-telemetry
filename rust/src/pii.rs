@@ -8,9 +8,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
-#[cfg(feature = "governance")]
 use crate::classification::{classify_key, get_classification_policy};
-#[cfg(feature = "governance")]
 use crate::receipts::emit_receipt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,15 +137,14 @@ pub(crate) const REDACTED_SENTINEL: &str = REDACTED;
 /// pattern is replaced.
 pub fn register_secret_pattern(name: &str, pattern: Regex) {
     let mut patterns = crate::_lock::lock(custom_secret_patterns());
-    let mut index = 0;
-    while index < patterns.len() {
-        if patterns[index].0 == name {
-            patterns[index].1 = pattern;
-            return;
-        }
-        index += 1;
+    if let Some((_, existing)) = patterns
+        .iter_mut()
+        .find(|(existing_name, _)| existing_name == name)
+    {
+        *existing = pattern;
+    } else {
+        patterns.push((name.to_string(), pattern));
     }
-    patterns.push((name.to_string(), pattern));
 }
 
 /// Return all secret patterns (built-in and custom).
@@ -247,7 +244,6 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     if let Some(masked) = mask_value(value, &rule.mode, rule.truncate_to) {
                         out.insert(key.clone(), masked);
                     }
-                    #[cfg(feature = "governance")]
                     emit_receipt(
                         &child_path.join("."),
                         &format!("{:?}", rule.mode).to_ascii_lowercase(),
@@ -263,7 +259,6 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     || is_secret(value)
                 {
                     out.insert(key.clone(), Value::String(REDACTED.to_string()));
-                    #[cfg(feature = "governance")]
                     emit_receipt(&child_path.join("."), "redact", &value.to_string());
                     continue;
                 }
@@ -291,7 +286,6 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
     }
 }
 
-#[cfg(feature = "governance")]
 fn annotate_governance_classes(cleaned: &mut Value) {
     let Value::Object(map) = cleaned else {
         return;
@@ -332,11 +326,7 @@ pub fn sanitize_payload(payload: &Value, enabled: bool, max_depth: usize) -> Val
         return payload.clone();
     }
     let rules = get_pii_rules();
-    // `mut` is consumed below only under the governance feature; without it
-    // the binding is genuinely unused-mut and clippy -D warnings fails.
-    #[cfg_attr(not(feature = "governance"), allow(unused_mut))]
     let mut cleaned = apply_rules(payload, &[], &rules, max_depth.max(1));
-    #[cfg(feature = "governance")]
     annotate_governance_classes(&mut cleaned);
     cleaned
 }

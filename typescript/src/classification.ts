@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Data classification engine — strippable governance module.
+ * Data classification engine.
  *
  * Registers a classification hook on the PII engine when rules are configured.
  * If this file is deleted, the PII engine runs unchanged (hook stays null).

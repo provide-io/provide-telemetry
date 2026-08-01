@@ -34,10 +34,4 @@ exclude_re = [
     # identical for all inputs — no test can distinguish `>` from `>=` here.
     'src/propagation.rs:96:24: replace > with >= in extract_w3c_context',
     'src/propagation.rs:96:24: replace > with == in extract_w3c_context',
-    # runtime.rs:214: `if !drifted.is_empty() { eprintln!(...) }`. The `!` flip
-    # only changes whether stderr emits a `runtime.cold_field_drift` warning;
-    # the function's return value and other state are unaffected. Capturing
-    # stderr in tests would require pulling in a new dev-dep (e.g. `gag`) just
-    # for this one boundary, which is not justified for an advisory mutation gate.
-    'src/runtime.rs:214:8: delete ! in reload_runtime_from_env',
 ]

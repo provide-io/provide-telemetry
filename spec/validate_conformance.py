@@ -249,11 +249,7 @@ def _build_kind_overrides(
 # ---------------------------------------------------------------------------
 
 # Languages that always advertise the governance capability.
-# Python, TypeScript, and Go ship governance as a first-class module.
-# Rust ships governance under the `governance` cargo feature which is included
-# in the default feature set (default = ["governance"] in Cargo.toml), so it
-# is treated as always-present here unless the checker is extended to support
-# feature-stripped builds.
+# All supported languages ship governance as a first-class module.
 _GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust"})
 
 

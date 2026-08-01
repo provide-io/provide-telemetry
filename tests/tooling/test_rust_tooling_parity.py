@@ -29,6 +29,10 @@ def test_ci_mutation_workflow_includes_rust_job() -> None:
     assert "cargo-nextest" in workflow
     assert "--all-features" in workflow
     assert "--test-tool nextest" in workflow
+    assert '--shard "${{ matrix.shard }}"' in workflow
+    assert '"1/8"' in workflow
+    assert '"8/8"' in workflow
+    assert "fail-fast: false" in workflow
     assert "working-directory: rust" in workflow
 
 
@@ -47,6 +51,20 @@ def test_ci_mutation_workflow_routes_jobs_by_language_changes() -> None:
     assert 'echo "go=${go}"' in workflow
     assert "needs.changes.outputs.python" in workflow
     assert "needs.changes.outputs.typescript" in workflow
-    assert "needs.changes.outputs.rust" not in workflow
-    assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in workflow
+    assert "if: needs.changes.outputs.rust == 'true'" in workflow
+    assert "continue-on-error: true" not in workflow
     assert "tests/tooling/test_rust_*.py) ;;" in workflow
+
+
+def test_mutation_policy_changes_trigger_their_language_gate() -> None:
+    workflow = (_REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml").read_text(encoding="utf-8")
+
+    for policy_path in (
+        ".ci/pymutant-profiles.json",
+        "rust/.cargo/mutants.toml",
+        "typescript/stryker.config.mjs",
+        "typescript/stryker.otel.config.mjs",
+    ):
+        assert workflow.count(policy_path) >= 3, (
+            f"{policy_path} must appear in push paths, pull-request paths, and change routing"
+        )

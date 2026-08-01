@@ -8,19 +8,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backpressure::{release, try_acquire};
-#[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
 use crate::sampling::{should_sample, Signal};
-
-// When the governance feature is disabled, consent is unconditionally granted.
-#[cfg(not(feature = "governance"))]
-#[cfg_attr(test, mutants::skip)] // Dead under the default/governance build used in mutation CI.
-#[inline(always)]
-fn should_allow(_signal: &str, _level: Option<&str>) -> bool {
-    true
-}
 
 static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 

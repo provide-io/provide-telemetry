@@ -13,9 +13,12 @@ import {
   getConfig,
   setupTelemetry,
 } from './config.js';
-import { ConfigurationError } from './exceptions.js';
+import { ConfigurationError, ProviderImmutableError } from './exceptions.js';
 import { getHealthSnapshot } from './health.js';
+import { getLogger } from './logger.js';
+import { getMeter } from './metrics.js';
 import { _isLiveMeterProviderInstalled, _isLiveTracerProviderInstalled } from './otel-probe.js';
+import { getTracer } from './tracing.js';
 
 /** Minimal interface for providers that can be flushed and shut down cleanly. */
 export interface ShutdownableProvider {
@@ -41,6 +44,119 @@ export interface RuntimeStatus {
     metrics: boolean;
   };
   setupError: string | null;
+}
+
+export enum ProviderMode {
+  OWNED = 'owned',
+  HOST = 'host',
+  LOCAL = 'local',
+}
+
+export enum RuntimeState {
+  LOCAL = 'local',
+  STARTING = 'starting',
+  READY = 'ready',
+  DEGRADED = 'degraded',
+  RECONFIGURING = 'reconfiguring',
+  STOPPING = 'stopping',
+  STOPPED = 'stopped',
+}
+
+export interface SignalFlushResult {
+  flushed: boolean;
+  notInstalled: boolean;
+  notOwned: boolean;
+  timedOut: boolean;
+  failed: boolean;
+}
+
+export interface FlushResult {
+  logs: SignalFlushResult;
+  traces: SignalFlushResult;
+  metrics: SignalFlushResult;
+}
+
+export interface ReconfigureResult {
+  applied: boolean;
+  config?: TelemetryConfig;
+  previous?: TelemetryConfig;
+  state: RuntimeState;
+  status: RuntimeState;
+  error?: string;
+}
+
+export class TelemetryRuntime {
+  private state = RuntimeState.READY;
+  private providerMode = ProviderMode.OWNED;
+
+  constructor() {}
+
+  async start(config?: TelemetryConfig): Promise<TelemetryConfig> {
+    setupTelemetry(config);
+    this.state = RuntimeState.READY;
+    return getRuntimeConfig();
+  }
+
+  async shutdown(timeout?: number): Promise<void> {
+    const { shutdownTelemetry } = await import('./shutdown.js');
+    await shutdownTelemetry();
+    this.state = timeout === undefined ? RuntimeState.STOPPING : RuntimeState.STOPPED;
+    return Promise.resolve();
+  }
+
+  async flush(timeoutMs?: number): Promise<FlushResult> {
+    const { flushTelemetry } = await import('./shutdown.js');
+    const ok = await flushTelemetry(timeoutMs);
+    const result: SignalFlushResult = {
+      flushed: ok,
+      notInstalled: false,
+      notOwned: false,
+      timedOut: !ok,
+      failed: false,
+    };
+    return {
+      logs: result,
+      traces: { ...result },
+      metrics: { ...result },
+    };
+  }
+
+  getLogger(name: string): ReturnType<typeof getLogger> {
+    return getLogger(name);
+  }
+
+  getTracer(_name?: string): ReturnType<typeof getTracer> {
+    void _name;
+    return getTracer();
+  }
+
+  getMeter(name: string): ReturnType<typeof getMeter> {
+    return getMeter(name);
+  }
+
+  getRuntimeConfig(): Readonly<TelemetryConfig> {
+    return getRuntimeConfig();
+  }
+
+  getRuntimeStatus(): RuntimeStatus {
+    return getRuntimeStatus();
+  }
+
+  updateConfig(cfg: RuntimeOverrides): ReconfigureResult {
+    const previous = getRuntimeConfig();
+    updateRuntimeConfig(cfg);
+    return {
+      applied: true,
+      config: getRuntimeConfig(),
+      previous,
+      state: this.state,
+      status: this.state,
+    };
+  }
+
+  reconfigure(config: Partial<TelemetryConfig>): void {
+    return reconfigureTelemetry(config);
+  }
 }
 
 let _activeConfig: TelemetryConfig | null = null;
@@ -326,7 +442,7 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
       (k) => JSON.stringify(current[k]) !== JSON.stringify(proposed[k]),
     );
     if (changed) {
-      throw new ConfigurationError(
+      throw new ProviderImmutableError(
         'provider-changing reconfiguration is unsupported after OpenTelemetry providers are installed; restart the process and call setupTelemetry() with the new config',
       );
     }
@@ -358,3 +474,12 @@ export function _resetRuntimeForTests(): void {
 export const _coldFieldsForTest: readonly (keyof TelemetryConfig)[] = _COLD_FIELDS;
 export const _providerChangingFieldsForTest: readonly (keyof TelemetryConfig)[] =
   PROVIDER_CHANGING_FIELDS;
+
+export type telemetryRuntime = TelemetryRuntime;
+export type telemetryConfig = TelemetryConfig;
+export type runtimeStatus = RuntimeStatus;
+export type runtimeState = RuntimeState;
+export type providerMode = ProviderMode;
+export type signalFlushResult = SignalFlushResult;
+export type flushResult = FlushResult;
+export type reconfigureResult = ReconfigureResult;

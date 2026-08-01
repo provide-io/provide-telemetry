@@ -15,9 +15,6 @@ import (
 	"sync"
 )
 
-// LevelTrace is a custom slog level below DEBUG for very verbose output.
-const LevelTrace = slog.Level(-8)
-
 // Logger is the package-level default logger. Set by Configure.
 var Logger *slog.Logger //nolint:gochecknoglobals
 
@@ -327,18 +324,19 @@ func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
 
 // _slogLevelToString maps a slog.Level to the nearest LogLevel* string constant.
 func _slogLevelToString(l slog.Level) string {
-	switch {
-	case l <= LevelTrace:
+	if l <= LevelTrace {
 		return LogLevelTrace
-	case l <= slog.LevelDebug:
-		return LogLevelDebug
-	case l <= slog.LevelInfo:
-		return LogLevelInfo
-	case l <= slog.LevelWarn:
-		return LogLevelWarn
-	default:
-		return LogLevelError
 	}
+	if l <= slog.LevelDebug {
+		return LogLevelDebug
+	}
+	if l <= slog.LevelInfo {
+		return LogLevelInfo
+	}
+	if l <= slog.LevelWarn {
+		return LogLevelWarn
+	}
+	return LogLevelError
 }
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.

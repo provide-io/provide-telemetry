@@ -10,7 +10,6 @@ use serde_json::Value;
 
 use crate::backpressure::{release, try_acquire, QueueTicket};
 use crate::config::TelemetryConfig;
-#[cfg(feature = "governance")]
 use crate::consent::should_allow;
 use crate::context::get_context;
 use crate::health::increment_emitted;
@@ -31,17 +30,9 @@ pub use emit::{
 use levels::{effective_level_threshold, level_order};
 use processors::process_event;
 
-#[cfg(feature = "governance")]
 #[inline(always)]
 fn consent_allows_logs(level: &str) -> bool {
     should_allow("logs", Some(level))
-}
-
-#[cfg(not(feature = "governance"))]
-#[inline(always)]
-#[cfg_attr(test, mutants::skip)] // Dead under the default governance feature set, so false-return mutants are not meaningfully testable here.
-fn consent_allows_logs(_level: &str) -> bool {
-    true
 }
 
 const MAX_FALLBACK_EVENTS: usize = 1000;

@@ -465,9 +465,9 @@ describe('policy action: pass', () => {
   });
 });
 
-// ── Strippable governance: no classification module ───────────────────────────
+// ── Governance defaults: no classification rules registered ────────────────────
 
-describe('strippable governance', () => {
+describe('governance defaults', () => {
   it('sanitizePayload works correctly when no classification rules are registered', () => {
     // No registerClassificationRules call — hooks stay null.
     const obj: Record<string, unknown> = { email: 'alice@example.com', name: 'Alice' };

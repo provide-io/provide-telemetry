@@ -292,16 +292,17 @@ func _formatValue(v any) string {
 // _levelName returns the lowercased canonical name used by the pretty renderer.
 // Recognises LevelTrace plus standard slog levels.
 func _levelName(lvl slog.Level) string {
-	switch {
-	case lvl <= LevelTrace:
+	if lvl <= LevelTrace {
 		return _severityTrace
-	case lvl <= slog.LevelDebug:
-		return _severityDebug
-	case lvl <= slog.LevelInfo:
-		return _severityInfo
-	case lvl <= slog.LevelWarn:
-		return _severityWarning
-	default:
-		return _severityError
 	}
+	if lvl <= slog.LevelDebug {
+		return _severityDebug
+	}
+	if lvl <= slog.LevelInfo {
+		return _severityInfo
+	}
+	if lvl <= slog.LevelWarn {
+		return _severityWarning
+	}
+	return _severityError
 }

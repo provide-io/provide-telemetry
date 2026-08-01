@@ -22,6 +22,25 @@ fn test_config() -> TelemetryConfig {
 }
 
 #[test]
+fn metric_exporter_protocol_and_header_decisions_are_exact() {
+    assert!(matches!(
+        http_protocol_for(OtlpProtocol::HttpJson),
+        Protocol::HttpJson
+    ));
+    assert!(matches!(
+        http_protocol_for(OtlpProtocol::HttpProtobuf),
+        Protocol::HttpBinary
+    ));
+
+    let mut cfg = test_config();
+    assert!(!metric_headers_configured(&cfg));
+    cfg.metrics
+        .otlp_headers
+        .insert("authorization".to_string(), "secret".to_string());
+    assert!(metric_headers_configured(&cfg));
+}
+
+#[test]
 fn install_with_disabled_metrics_is_a_noop() {
     let _guard = acquire_test_state_lock();
     let mut cfg = test_config();

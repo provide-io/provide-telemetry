@@ -41,15 +41,9 @@ def _open_span(name: str, scope: str | None = None) -> Iterator[Any]:
     and releases the ticket.
     """
     from provide.telemetry.backpressure import release, try_acquire
+    from provide.telemetry.consent import should_allow
     from provide.telemetry.health import increment_emitted
     from provide.telemetry.sampling import should_sample
-
-    try:
-        from provide.telemetry.consent import should_allow
-    except ImportError:  # pragma: no cover — governance module stripped
-
-        def should_allow(signal: str, log_level: str | None = None) -> bool:  # noqa: ARG001
-            return True
 
     if not should_allow("traces"):
         yield _NoopSpan(name)

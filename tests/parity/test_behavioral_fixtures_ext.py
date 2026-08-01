@@ -22,6 +22,7 @@ from provide.telemetry.backpressure import (
     set_queue_policy,
     try_acquire,
 )
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 from provide.telemetry.pii import replace_pii_rules, sanitize_payload
 from provide.telemetry.propagation import extract_w3c_context
 from provide.telemetry.sampling import (
@@ -48,10 +49,24 @@ def _make_scope(headers: list[tuple[bytes, bytes]]) -> dict[str, object]:
 
 @pytest.fixture(autouse=True)
 def _reset_state() -> None:
+    reset_health_for_tests()
     reset_sampling_for_tests()
     reset_queues_for_tests()
     replace_pii_rules([])
     _reset_slo_for_tests()
+
+
+def test_parity_health_snapshot_canonical_defaults() -> None:
+    snapshot = get_health_snapshot()
+    assert len(snapshot._fields) == 25
+    assert snapshot.setup_error is None
+    for field_name, value in snapshot._asdict().items():
+        if field_name == "setup_error":
+            continue
+        if field_name.startswith("circuit_state_"):
+            assert value == "closed"
+        else:
+            assert value == 0
 
 
 # ── Propagation Guards (category-named aliases) ──────────────────────────────

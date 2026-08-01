@@ -5,7 +5,6 @@
 // Mutation-killing tests for classification.rs (governance feature).
 // Specifically targets the match_glob() function and classify_key() lookup.
 
-#[cfg(feature = "governance")]
 mod classification_mutation {
     use provide_telemetry::{
         classify_key, clear_classification_rules, register_classification_rule,

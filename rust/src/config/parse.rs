@@ -144,10 +144,24 @@ fn decode_header_component(raw: &str) -> Option<String> {
 /// Parse `PROVIDE_LOG_MODULE_LEVELS` — comma-separated `module=LEVEL` pairs.
 /// Example: `"provide.server=DEBUG,asyncio=WARNING"`.
 /// Unknown level strings emit a stderr warning and default to INFO at runtime.
-pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
+fn module_level_is_valid(level: &str) -> bool {
     const VALID_LEVELS: &[&str] = &[
         "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL", "FATAL",
     ];
+    VALID_LEVELS.contains(&level)
+}
+
+fn unknown_module_level_warning(module: &str, level: &str) -> Option<String> {
+    if module_level_is_valid(level) {
+        return None;
+    }
+    Some(format!(
+        "provide_telemetry: unknown log level {level:?} for module {module:?} \
+         in PROVIDE_LOG_MODULE_LEVELS; will default to INFO at runtime"
+    ))
+}
+
+pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for pair in raw.split(',') {
         let pair = pair.trim();
@@ -164,11 +178,8 @@ pub(super) fn parse_module_levels(raw: &str) -> HashMap<String, String> {
         if module.is_empty() || level.is_empty() {
             continue;
         }
-        if !VALID_LEVELS.contains(&level.as_str()) {
-            eprintln!(
-                "provide_telemetry: unknown log level {level:?} for module {module:?} \
-                 in PROVIDE_LOG_MODULE_LEVELS; will default to INFO at runtime"
-            );
+        if let Some(warning) = unknown_module_level_warning(&module, &level) {
+            eprintln!("{warning}");
         }
         map.insert(module, level);
     }

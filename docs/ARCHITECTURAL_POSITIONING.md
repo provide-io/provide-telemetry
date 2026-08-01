@@ -47,7 +47,7 @@ My blunt recommendation: shrink it, not keep it as-is and not replace it with a 
 ### What To De-emphasize Or Remove
 
 - Ambitious runtime reconfiguration
-- "Optional" or "strippable" governance claims until they are actually true in live signal paths
+- Governance is mandatory in all supported runtime surfaces; no optional build variants remain.
 - Duplicated custom behavior that sits far above raw OTel in four languages
 
 ### Why
@@ -64,7 +64,7 @@ That second part is where cost and fragility start to dominate:
 
 - Four implementations means semantic drift risk.
 - Global mutable runtime state makes correctness harder.
-- Advanced behaviors like hot reload and optional governance boundaries are where the architecture is already showing cracks.
+- Advanced behaviors like hot reload and multi-runtime consistency are where the architecture is already showing cracks.
 
 So the repo has a good core idea, but it is carrying too much platform logic for what should probably remain an SDK.
 

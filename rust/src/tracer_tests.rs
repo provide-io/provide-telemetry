@@ -1,4 +1,5 @@
 use super::*;
+use rstest::rstest;
 use std::collections::BTreeMap;
 
 use crate::backpressure::{_reset_backpressure_for_tests, set_queue_policy, QueuePolicy};
@@ -10,6 +11,23 @@ use crate::testing::{acquire_test_state_lock, reset_telemetry_state, reset_trace
 fn tracer_test_tracer_names_match_contract() {
     assert_eq!(tracer.name(), "provide.telemetry");
     assert_eq!(get_tracer(Some("custom.tracer")).name(), "custom.tracer");
+}
+
+#[rstest]
+#[case(0)]
+#[case(1)]
+#[case(15)]
+#[case(16)]
+#[case(17)]
+#[case(31)]
+#[case(32)]
+#[case(33)]
+#[case(64)]
+fn tracer_test_next_hex_has_exact_requested_length(#[case] requested_len: usize) {
+    let value = next_hex(requested_len);
+
+    assert_eq!(value.len(), requested_len);
+    assert!(value.chars().all(|character| character.is_ascii_hexdigit()));
 }
 
 #[test]

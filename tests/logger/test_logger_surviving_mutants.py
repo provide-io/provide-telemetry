@@ -288,11 +288,8 @@ class TestGetActiveConfig:
 
 
 class TestApplySamplingFallbackAndRelease:
-    """Kill mutmut_1/2/3 (fallback lambda) and ticket handoff mutants.
+    """Kill ticket handoff mutants.
 
-    mutmut_1: fallback = None (calling None(...) raises TypeError)
-    mutmut_2: fallback returns None (not None is True → blocks events)
-    mutmut_3: fallback returns False (blocks events)
     mutmut_26: ticket omitted / replaced with None during renderer handoff
     """
 
@@ -306,39 +303,6 @@ class TestApplySamplingFallbackAndRelease:
         ticket = SimpleNamespace(signal="logs", token=42)
         monkeypatch.setattr(bp_mod, "try_acquire", lambda signal: ticket)
         monkeypatch.setattr(health_mod, "increment_emitted", lambda signal: None)
-
-    def test_apply_sampling_proceeds_when_consent_module_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When consent module is absent (ImportError), the fallback must allow events.
-
-        Kills mutmut_3 (returns False) and mutmut_2 (returns None → falsy).
-        With the correct fallback (returns True), apply_sampling proceeds.
-        With mutmut_3/2: `not should_allow(...)` is True → raises DropEvent.
-        """
-        self._setup_sampling_mocks(monkeypatch)
-        from provide.telemetry import backpressure as bp_mod
-
-        monkeypatch.setattr(bp_mod, "release", lambda ticket: None)
-
-        from provide.telemetry.logger import processors as proc_mod
-
-        original = sys.modules.pop("provide.telemetry.consent", None)
-        try:
-            import builtins
-
-            real_import = builtins.__import__
-
-            def _failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
-                if name == "provide.telemetry.consent":
-                    raise ImportError("governance stripped")
-                return real_import(name, *args, **kwargs)
-
-            with patch.object(builtins, "__import__", side_effect=_failing_import):
-                # Should NOT raise DropEvent — fallback must return True
-                result = proc_mod.apply_sampling(None, "info", {"event": "test.ok"})
-            assert result is not None
-        finally:
-            if original is not None:
-                sys.modules["provide.telemetry.consent"] = original
 
     def test_renderer_handoff_attaches_actual_ticket_to_logging_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The final renderer processor must preserve the actual ticket on `extra`."""

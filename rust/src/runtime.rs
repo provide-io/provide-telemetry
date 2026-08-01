@@ -5,42 +5,31 @@
 
 use std::sync::{OnceLock, RwLock};
 
-use serde::{Deserialize, Serialize};
-
+use crate::config::RuntimeOverrides;
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
 #[cfg(feature = "otel")]
 use crate::otel::otel_installed;
 use crate::policies::apply_policies;
-use crate::RuntimeOverrides;
+pub use crate::runtime_facade::{
+    flush_result, provider_mode, reconfigure_result, runtime_state, runtime_status,
+    signal_flush_result, telemetry_config, telemetry_runtime, FlushResult, ProviderMode,
+    ReconfigureResult, RuntimeState, RuntimeStatus, SignalFlushResult, SignalStatus,
+    TelemetryRuntime,
+};
 
 static ACTIVE_CONFIG: OnceLock<RwLock<Option<TelemetryConfig>>> = OnceLock::new();
 #[cfg(feature = "otel")]
 const PROVIDER_CHANGE_RESTART_MESSAGE: &str =
     "OpenTelemetry providers already installed; restart the process for provider-changing config";
 
+#[cfg_attr(test, mutants::skip)] // Equivalent mutants only change constructors for the same empty lock.
 fn empty_active_config() -> RwLock<Option<TelemetryConfig>> {
     RwLock::new(None)
 }
 
 fn active_config() -> &'static RwLock<Option<TelemetryConfig>> {
     ACTIVE_CONFIG.get_or_init(empty_active_config)
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignalStatus {
-    pub logs: bool,
-    pub traces: bool,
-    pub metrics: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RuntimeStatus {
-    pub setup_done: bool,
-    pub signals: SignalStatus,
-    pub providers: SignalStatus,
-    pub fallback: SignalStatus,
-    pub setup_error: Option<String>,
 }
 
 pub(crate) fn set_active_config(config: Option<TelemetryConfig>) {

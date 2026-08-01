@@ -44,3 +44,20 @@ impl EventSchemaError {
         }
     }
 }
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[error("{message}")]
+pub struct ProviderImmutableError {
+    pub message: String,
+}
+
+impl ProviderImmutableError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+#[allow(non_camel_case_types)]
+pub type provider_immutable_error = ProviderImmutableError;

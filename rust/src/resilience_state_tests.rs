@@ -14,6 +14,36 @@ async fn ok_unit_operation() -> Result<(), TelemetryError> {
 }
 
 #[test]
+fn resilience_test_circuit_cooldown_boundary_is_strict() {
+    assert!(circuit_cooldown_is_active(
+        CIRCUIT_COOLDOWN - Duration::from_nanos(1)
+    ));
+    assert!(!circuit_cooldown_is_active(CIRCUIT_COOLDOWN));
+    assert!(!circuit_cooldown_is_active(
+        CIRCUIT_COOLDOWN + Duration::from_nanos(1)
+    ));
+}
+
+#[test]
+fn resilience_test_probe_gate_rejects_at_exact_timeout_threshold() {
+    let _guard = acquire_test_state_lock();
+    _reset_resilience_for_tests();
+    {
+        let mut lock = crate::_lock::lock(circuits());
+        let state = lock
+            .get_mut(&Signal::Logs)
+            .expect("logs circuit must exist after reset");
+        state.consecutive_timeouts = CIRCUIT_BREAKER_THRESHOLD;
+        state.tripped_at = Some(Instant::now());
+    }
+
+    assert!(
+        _check_and_start_probe_for_wrappers(Signal::Logs),
+        "the exact threshold with active cooldown must reject the operation"
+    );
+}
+
+#[test]
 fn resilience_test_missing_internal_state_surfaces_unknown_signal_errors() {
     let _guard = acquire_test_state_lock();
     _reset_resilience_for_tests();

@@ -55,8 +55,8 @@ _LANGUAGE_GLOBS: dict[str, list[str]] = {
 _LANGUAGE_EXTRAS: dict[str, list[str]] = {
     "python": [],
     "typescript": ["spec/probes/emit_log_typescript.ts"],
-    "go": ["spec/probes/emit_log_go/main.go"],
-    "rust": ["rust/src/otel/endpoint.rs"],
+    "go": ["spec/probes/emit_log_go/main.go", "go/otel/config_resource_test.go"],
+    "rust": ["rust/src/otel/endpoint.rs", "rust/src/otel/resource.rs"],
 }
 
 _CATEGORY_CONTENT_MARKERS: dict[str, tuple[str, ...]] = {

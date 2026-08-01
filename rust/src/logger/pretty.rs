@@ -72,7 +72,7 @@ pub(super) fn resolve_named_color(name: &str) -> &'static str {
         "blue" => ANSI_BLUE,
         "cyan" => ANSI_CYAN,
         "white" => ANSI_WHITE,
-        "" | "none" => "",
+        // Empty, "none", and unknown names all disable color.
         _ => "",
     }
 }
@@ -199,13 +199,8 @@ pub(super) fn format_pretty_line_with_colors(
 /// Render a pretty log line, auto-detecting whether stderr is a TTY.
 /// Piped / redirected output gets plain text (no ANSI escapes).
 pub(super) fn format_pretty_line(event: &LogEvent, cfg: &LoggingConfig) -> String {
-    format_pretty_line_with_colors(event, cfg, stderr_is_tty())
-}
-
-/// stdlib-only TTY detection — available since Rust 1.70.
-fn stderr_is_tty() -> bool {
     use std::io::IsTerminal;
-    std::io::stderr().is_terminal()
+    format_pretty_line_with_colors(event, cfg, std::io::stderr().is_terminal())
 }
 
 #[cfg(test)]

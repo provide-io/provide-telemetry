@@ -15,7 +15,7 @@
  * take the throw branch.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { _getConfigVersion, _resetConfig, setupTelemetry } from '../src/config.js';
 import { ConfigurationError } from '../src/exceptions.js';
 import { _resetSamplingForTests } from '../src/sampling.js';
@@ -149,5 +149,65 @@ describe('_validateConfig — error messages include field names (kills StringLi
   });
   it('requireNonNegInt message says "non-negative integer" (kills StringLiteral on error template)', () => {
     expect(() => setupTelemetry({ backpressureLogsMaxsize: -1 })).toThrow(/non-negative integer/);
+  });
+});
+
+describe('DEFAULTS — cold-module contract snapshot', () => {
+  it('contains the complete documented default policy', async () => {
+    // Reload so Stryker mutations to module-initialized defaults are evaluated
+    // after the active mutant is selected by the Vitest worker.
+    vi.resetModules();
+    const { DEFAULTS: defaults } = await import('../src/config.js');
+
+    expect(defaults).toEqual({
+      serviceName: 'provide-service',
+      environment: 'dev',
+      version: '0.0.0',
+      logLevel: 'info',
+      logFormat: 'console',
+      otelEnabled: true,
+      otlpLogsEnabled: true,
+      sanitizeFields: [],
+      captureToWindow: true,
+      consoleOutput: true,
+      strictSchema: false,
+      strictEventName: false,
+      requiredLogKeys: [],
+      logIncludeTimestamp: true,
+      logIncludeCaller: true,
+      logSanitize: true,
+      logCodeAttributes: false,
+      logModuleLevels: {},
+      logPrettyKeyColor: 'dim',
+      logPrettyValueColor: '',
+      logPrettyFields: [],
+      traceSampleRate: 1,
+      tracingEnabled: true,
+      metricsEnabled: true,
+      samplingLogsRate: 1,
+      samplingTracesRate: 1,
+      samplingMetricsRate: 1,
+      backpressureLogsMaxsize: 0,
+      backpressureTracesMaxsize: 0,
+      backpressureMetricsMaxsize: 0,
+      exporterLogsRetries: 0,
+      exporterLogsBackoffMs: 0,
+      exporterLogsTimeoutMs: 10000,
+      exporterLogsShutdownTimeoutMs: 5000,
+      exporterLogsFailOpen: true,
+      exporterTracesRetries: 0,
+      exporterTracesBackoffMs: 0,
+      exporterTracesTimeoutMs: 10000,
+      exporterTracesFailOpen: true,
+      exporterMetricsRetries: 0,
+      exporterMetricsBackoffMs: 0,
+      exporterMetricsTimeoutMs: 10000,
+      exporterMetricsFailOpen: true,
+      sloEnableRedMetrics: false,
+      sloEnableUseMetrics: false,
+      piiMaxDepth: 8,
+      securityMaxAttrValueLength: 1024,
+      securityMaxAttrCount: 64,
+    });
   });
 });

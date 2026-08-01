@@ -7,14 +7,20 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
+      - ".ci/pymutant-profiles.json"
       - "scripts/run_mutation_gate.py"
       - "scripts/_mutmut_shims/**"
       - "rust/src/**"
       - "rust/tests/**"
+      - "rust/.cargo/mutants.toml"
       - "rust/Cargo.toml"
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "typescript/package.json"
+      - "typescript/package-lock.json"
+      - "typescript/stryker.config.mjs"
+      - "typescript/stryker.otel.config.mjs"
       - "go/**"
       - ".github/workflows/ci-mutation.yml"
   pull_request:
@@ -23,18 +29,25 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
+      - ".ci/pymutant-profiles.json"
       - "scripts/run_mutation_gate.py"
       - "scripts/_mutmut_shims/**"
       - "rust/src/**"
       - "rust/tests/**"
+      - "rust/.cargo/mutants.toml"
       - "rust/Cargo.toml"
       - "rust/Cargo.lock"
       - "typescript/src/**"
       - "typescript/tests/**"
+      - "typescript/package.json"
+      - "typescript/package-lock.json"
+      - "typescript/stryker.config.mjs"
+      - "typescript/stryker.otel.config.mjs"
       - "go/**"
       - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
-  # Nightly full mutation run — avoids blocking PRs on the multi-hour Rust sweep
+  # Nightly and manual runs exercise every language even when no relevant diff
+  # exists. Pull requests still block on each implementation surface they change.
   schedule:
     - cron: "0 2 * * *"
 
@@ -96,7 +109,7 @@ jobs:
               [[ -z "${changed_file}" ]] && continue
 
               case "${changed_file}" in
-                src/*|tests/*|pyproject.toml|scripts/run_mutation_gate.py|scripts/_mutmut_shims/*)
+                src/*|tests/*|pyproject.toml|.ci/pymutant-profiles.json|scripts/run_mutation_gate.py|scripts/_mutmut_shims/*)
                   case "${changed_file}" in
                     tests/tooling/test_rust_*.py) ;;
                     *) python=true ;;
@@ -105,11 +118,15 @@ jobs:
               esac
 
               case "${changed_file}" in
-                typescript/src/*|typescript/tests/*) typescript=true ;;
+                typescript/src/*|typescript/tests/*|typescript/package.json|typescript/package-lock.json|typescript/stryker.config.mjs|typescript/stryker.otel.config.mjs)
+                  typescript=true
+                  ;;
               esac
 
               case "${changed_file}" in
-                rust/src/*|rust/tests/*|rust/Cargo.toml|rust/Cargo.lock) rust=true ;;
+                rust/src/*|rust/tests/*|rust/.cargo/mutants.toml|rust/Cargo.toml|rust/Cargo.lock)
+                  rust=true
+                  ;;
               esac
 
               case "${changed_file}" in
@@ -156,12 +173,17 @@ jobs:
 
   rust-mutation:
     needs: changes
-    # Advisory nightly/manual sweep only. Rust is not a release-blocking mutation gate.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    continue-on-error: ${{ github.event_name == 'schedule' }}
-    # Full mutation sweep can take several hours; cap at 4h to avoid runaway jobs.
+    if: needs.changes.outputs.rust == 'true'
+    name: rust-mutation (${{ matrix.shard }})
+    # Every shard runs the full test suite for its disjoint candidate set. Eight
+    # shards cover the complete inventory while keeping each blocking job below
+    # the four-hour runaway cap.
     timeout-minutes: 240
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
     defaults:
       run:
         working-directory: rust
@@ -175,15 +197,23 @@ jobs:
         with:
           workspaces: rust
       - name: Install cargo-nextest
-        run: cargo install cargo-nextest --locked
+        run: cargo install cargo-nextest --version 0.9.140 --locked
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       # Use nextest for the inner test runner and include all cargo features so
       # the mutation sweep exercises the OTEL-gated Rust surface as well as the
       # default governance build. A 300s floor avoids spurious timeouts on slow
       # CI hosts while still failing real surviving mutants.
       - name: Run cargo-mutants (100% kill rate required)
-        run: cargo mutants --all-features --test-tool nextest -j 4 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
+        env:
+          # cargo-mutants relinks every test target for each mutation. Debug
+          # symbols do not affect behavior and multiply link I/O substantially.
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          # Bound compiler and test-runner fan-out independently. cargo-mutants'
+          # worker count alone does not limit the child Cargo/Nextest processes.
+          CARGO_BUILD_JOBS: "1"
+          NEXTEST_TEST_THREADS: "1"
+        run: cargo mutants --all-features --test-tool nextest --shard "${{ matrix.shard }}" -j 1 --jobserver-tasks 1 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
 
   go-mutation:
     needs: changes
@@ -206,16 +236,16 @@ jobs:
           echo "Using workspace: ${WORKFILE}"
           go env GOWORK
       - name: Install gremlins
-        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
-      # Excluded files contain comparisons where gremlins boundary/arithmetic
-      # mutations are mathematically equivalent (float64 exact equality P=0,
-      # nanosecond time boundary P≈0). See file header comments.
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+      # Excluded comparison files contain mathematically equivalent mutations
+      # (float64 exact equality P=0, nanosecond time boundary P≈0). The
+      # declaration-only constants file is excluded because Go coverage starts
+      # after package initialization; exact-value tests ratchet those constants.
       # Run each Go package surface explicitly:
       # - root package only (exclude sibling packages/modules and helper binaries)
       # - logger package
-      # - tracer package
       # - optional go/otel module
-      # All surviving mutants fail the job (--threshold-efficacy=100).
+      # Both surviving and uncovered mutants fail the job.
       - name: Run gremlins mutation tests for root package (100% kill rate required)
         run: |
           gremlins unleash \
@@ -223,16 +253,17 @@ jobs:
             --test-cpu=1 \
             --timeout-coefficient=30 \
             --threshold-efficacy=100 \
+            --threshold-mcover=100 \
             --coverpkg="github.com/provide-io/provide-telemetry/go" \
             --exclude-files="sampling_cmp.go" \
             --exclude-files="resilience_cmp.go" \
+            --exclude-files="mutation_constants.go" \
             --exclude-files="cmd/e2e_cross_language_client/" \
             --exclude-files="examples/" \
             --exclude-files="internal/" \
             --exclude-files="logger/" \
             --exclude-files="otel/" \
             --exclude-files="scripts/stress/" \
-            --exclude-files="tracer/" \
             .
       - name: Run gremlins mutation tests for go/logger (100% kill rate required)
         if: ${{ hashFiles('go/logger/go.mod') != '' }}
@@ -242,15 +273,21 @@ jobs:
             --test-cpu=1 \
             --timeout-coefficient=30 \
             --threshold-efficacy=100 \
+            --threshold-mcover=100 \
+            --exclude-files="mutation_constants.go" \
             ./logger
       - name: Run gremlins mutation tests for go/otel (100% kill rate required)
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel
         run: |
+          # The standalone flush probe requires a live collector and is covered
+          # by ci-go's collector-content gate, not the unit mutation runner.
           gremlins unleash \
             --workers=1 \
             --test-cpu=1 \
             --timeout-coefficient=30 \
             --threshold-efficacy=100 \
+            --threshold-mcover=100 \
+            --exclude-files="cmd/flush_collector_probe/" \
             --exclude-files="examples/" \
             .

@@ -3,10 +3,7 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Cryptographic redaction receipts — strippable governance module.
-
-When deleted, the receipt hook stays None and no receipts are generated.
-"""
+"""Cryptographic redaction receipts."""
 
 from __future__ import annotations
 

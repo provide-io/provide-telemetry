@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "provide-telemetry"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "base64 0.23.0",
  "criterion",

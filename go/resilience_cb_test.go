@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+func TestCircuitBreakerCooldownConstants(t *testing.T) {
+	if _cbBaseCooldown != 30*time.Second {
+		t.Fatalf("_cbBaseCooldown=%s want 30s", _cbBaseCooldown)
+	}
+	if _cbMaxCooldown != 1024*time.Second {
+		t.Fatalf("_cbMaxCooldown=%s want 1024s", _cbMaxCooldown)
+	}
+}
+
 func TestCB_TripsAfterThreeTimeouts(t *testing.T) {
 	_resetResiliencePolicies()
 	_resetHealth()

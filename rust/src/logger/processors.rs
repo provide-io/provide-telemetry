@@ -37,10 +37,12 @@ fn truncate_string_value(value: &mut String, max_value_length: usize) {
     if max_value_length == 0 || value.len() <= max_value_length {
         return;
     }
-    let mut cutoff = max_value_length.min(value.len());
-    while !value.is_char_boundary(cutoff) {
-        cutoff -= 1;
-    }
+    let cutoff = value
+        .char_indices()
+        .map(|(index, ch)| index + ch.len_utf8())
+        .take_while(|end| *end <= max_value_length)
+        .last()
+        .unwrap_or(0);
     value.truncate(cutoff);
     value.push_str("...");
 }

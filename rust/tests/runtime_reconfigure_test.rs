@@ -4,6 +4,8 @@
 //
 mod runtime_test_support;
 
+use std::process::Command;
+
 #[cfg(feature = "otel")]
 use provide_telemetry::get_runtime_status;
 use provide_telemetry::{reconfigure_telemetry, reload_runtime_from_env, setup_telemetry};
@@ -36,6 +38,62 @@ fn runtime_test_reload_runtime_from_env_warns_for_all_cold_field_drift() {
             assert!(reloaded.metrics.enabled);
         },
     );
+}
+
+#[test]
+fn runtime_test_cold_drift_subprocess_probe() {
+    if std::env::var("PROVIDE_COLD_DRIFT_SUBPROCESS").as_deref() != Ok("1") {
+        return;
+    }
+
+    reset_runtime();
+    setup_telemetry().expect("subprocess setup should succeed");
+    std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "changed-service");
+    std::env::set_var("PROVIDE_TELEMETRY_ENV", "prod");
+    std::env::set_var("PROVIDE_TELEMETRY_VERSION", "2.0.0");
+    std::env::set_var("PROVIDE_TRACE_ENABLED", "false");
+    std::env::set_var("PROVIDE_METRICS_ENABLED", "false");
+    reload_runtime_from_env().expect("subprocess reload should succeed");
+}
+
+#[test]
+fn runtime_test_cold_drift_warning_is_observable_on_stderr() {
+    let output = Command::new(std::env::current_exe().expect("current test executable"))
+        .args([
+            "--exact",
+            "runtime_test_cold_drift_subprocess_probe",
+            "--nocapture",
+        ])
+        .env("PROVIDE_COLD_DRIFT_SUBPROCESS", "1")
+        .env("PROVIDE_TELEMETRY_SERVICE_NAME", "initial-service")
+        .env("PROVIDE_TELEMETRY_ENV", "dev")
+        .env("PROVIDE_TELEMETRY_VERSION", "1.0.0")
+        .env("PROVIDE_TRACE_ENABLED", "true")
+        .env("PROVIDE_METRICS_ENABLED", "true")
+        .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+        .output()
+        .expect("cold-drift subprocess should run");
+
+    assert!(
+        output.status.success(),
+        "subprocess failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr must be UTF-8");
+    assert!(stderr.contains("runtime.cold_field_drift"));
+    for field in [
+        "service_name",
+        "environment",
+        "version",
+        "tracing.enabled",
+        "metrics.enabled",
+    ] {
+        assert!(stderr.contains(field), "missing {field} in {stderr:?}");
+    }
+    assert!(stderr.contains("restart required to apply"));
 }
 
 #[test]

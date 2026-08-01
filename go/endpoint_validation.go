@@ -18,8 +18,6 @@ func _signalEndpointURL(endpoint, signalPath string) string {
 	if parsed, err := url.Parse(trimmed); err == nil && parsed.Scheme != "" && parsed.Host != "" {
 		currentPath := strings.TrimRight(parsed.Path, "/")
 		switch {
-		case currentPath == "":
-			parsed.Path = signalPath
 		case !strings.HasSuffix(currentPath, signalPath):
 			parsed.Path = currentPath + signalPath
 		default:

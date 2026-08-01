@@ -19,7 +19,6 @@ mod e2e_shared;
 
 #[path = "../examples/support/basic_telemetry.rs"]
 mod basic_telemetry;
-#[cfg(feature = "governance")]
 #[path = "../examples/support/data_governance.rs"]
 mod data_governance;
 #[path = "../examples/support/error_degradation.rs"]
@@ -246,7 +245,6 @@ fn integration_test_security_hardening_example_summary_matches_demo_flow() {
     assert_eq!(summary.depth_preserved_leaf.as_deref(), Some("deep"));
 }
 
-#[cfg(feature = "governance")]
 #[test]
 fn integration_test_data_governance_example_summary_matches_demo_flow() {
     let _guard = acquire_fresh_lock();
@@ -331,14 +329,11 @@ fn integration_test_circuit_breaker_trips_after_three_timeouts() {
         )
         .expect("policy should set");
 
-        // Use a future that never resolves so the wrapper-imposed timeout
-        // is guaranteed to fire. Earlier code relied on `sleep(25ms) >
-        // timeout(10ms)` which flaked on macOS-15 CI runners with high
-        // scheduling jitter (occasionally the sleep completed before the
-        // timeout actually fired).
+        // The 10x margin makes the wrapper timeout deterministic, while the
+        // finite operation ensures a timeout-bypass mutation fails promptly.
         for _ in 0..3 {
             let result = run_with_resilience(Signal::Logs, || async {
-                std::future::pending::<()>().await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 Ok::<_, provide_telemetry::TelemetryError>(())
             })
             .await

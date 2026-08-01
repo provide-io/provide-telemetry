@@ -67,10 +67,10 @@ Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) 
 
 ## Mutation Policy Files
 
-- `.ci/pymutant-profiles.json` is the source of truth for mutation roots and policy floors.
-- Current Python mutation policy: minimum score `95.0`; the local baseline measured on 2026-04-24 is `95.90`.
-- `.ci/pymutant-policy-baseline.json` pins the expected baseline score for policy checks.
-- If mutation roots/tests configuration changes, refresh runtime baseline before evaluating policy to avoid false policy failures from stale state.
+- `.ci/pymutant-profiles.json` is the source of truth for mutation roots.
+- Python mutation policy floor is `95.0` (configured in `scripts/run_mutation_gate.py` and `.github/workflows/ci-mutation.yml`).
+- `.ci/pymutant-policy-baseline.json` is historical metadata and is not used by current gates.
+- If mutation roots or test selection changes, rerun the local mutation gate before declaring policy status to avoid stale baseline assumptions.
 
 ## Docs Quality
 
@@ -88,7 +88,6 @@ Use the checked-in wrapper for local `act` runs:
 
 ```bash
 scripts/act_local.sh push -W .github/workflows/ci-mutation.yml -j changes
-scripts/act_local.sh push -W .github/workflows/ci-strip-governance.yml
 scripts/act_local.sh push -W .github/workflows/ci-typescript.yml -j otlp-integration
 ```
 

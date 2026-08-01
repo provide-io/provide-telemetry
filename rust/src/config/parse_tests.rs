@@ -1,5 +1,32 @@
 use super::*;
+use rstest::rstest;
 use std::collections::HashMap;
+
+#[rstest]
+#[case("TRACE", true)]
+#[case("DEBUG", true)]
+#[case("INFO", true)]
+#[case("WARN", true)]
+#[case("WARNING", true)]
+#[case("ERROR", true)]
+#[case("CRITICAL", true)]
+#[case("FATAL", true)]
+#[case("VERBOSE", false)]
+#[case("", false)]
+#[case("debug", false)]
+fn parse_module_level_validation_is_exact(#[case] level: &str, #[case] expected_valid: bool) {
+    assert_eq!(module_level_is_valid(level), expected_valid);
+}
+
+#[test]
+fn unknown_module_level_warning_is_observable_only_for_invalid_levels() {
+    assert_eq!(unknown_module_level_warning("pkg", "DEBUG"), None);
+    let warning = unknown_module_level_warning("pkg", "VERBOSE")
+        .expect("invalid level must produce a warning");
+    assert!(warning.contains("unknown log level \"VERBOSE\""));
+    assert!(warning.contains("module \"pkg\""));
+    assert!(warning.contains("default to INFO"));
+}
 
 #[test]
 fn parse_module_levels_inserts_unknown_level_and_warns() {

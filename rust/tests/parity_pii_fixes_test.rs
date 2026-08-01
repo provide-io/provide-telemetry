@@ -3,7 +3,6 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 // Parity tests for the five PII / classification fixes.
-// All governance-feature tests are gated with #[cfg(feature = "governance")].
 
 use serde_json::json;
 use std::sync::{Mutex, OnceLock};
@@ -188,7 +187,6 @@ fn pii_rule_array_wildcard_drop_removes_each_element_field() {
 
 // ── Fix 1: Classification policy enforcement ─────────────────────────────────
 
-#[cfg(feature = "governance")]
 mod classification_policy_enforcement {
     use super::*;
     use provide_telemetry::{

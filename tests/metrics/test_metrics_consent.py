@@ -20,18 +20,11 @@ mutmut_7: should_allow("METRICS") instead of should_allow("metrics")
 
 For mutmut_5/6/7: we mock the consent module's should_allow and assert it is called
 with exactly "metrics" (not None, "XXmetricsXX", or "METRICS").
-
-For mutmut_1/2/3: the fallback lambda only runs when the consent module is absent
-(ImportError path). We test by patching the consent import to fail, then verifying
-that operations still proceed (fallback must return True, not None/False).
 """
 
 from __future__ import annotations
 
-import sys
-from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -144,82 +137,3 @@ class TestConsentSignalArgument:
             h = Histogram("blocked.hist")
             h.record(42.0)
         assert h.count == 0, f"Histogram.record must be blocked by consent, got count={h.count}"
-
-
-# ── Fallback lambda: must return True (not None/False) ────────────────────────
-
-
-class TestConsentFallbackLambda:
-    """Kill mutmut_1 (lambda→None), mutmut_2 (returns None), mutmut_3 (returns False).
-
-    These mutants affect the ImportError fallback lambda. We simulate the
-    ImportError path by temporarily removing the consent module from sys.modules
-    and patching the import to fail.
-    """
-
-    def _run_without_consent_module(self, fn: Callable[[], None]) -> None:
-        """Run fn() with consent module absent from sys.modules."""
-        original = sys.modules.pop("provide.telemetry.consent", None)
-        try:
-            # Reload fallback module with builtins.__import__ patched to raise ImportError
-            import builtins
-
-            real_import = builtins.__import__
-
-            def _failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
-                if name == "provide.telemetry.consent":
-                    raise ImportError("governance stripped")
-                return real_import(name, *args, **kwargs)
-
-            with patch.object(builtins, "__import__", side_effect=_failing_import):
-                fn()
-        finally:
-            if original is not None:
-                sys.modules["provide.telemetry.consent"] = original
-
-    def test_counter_add_proceeds_when_consent_module_absent(self) -> None:
-        """Counter.add must proceed (not be silently blocked) when consent is stripped.
-
-        Kills mutmut_3: fallback lambda returns False → add is blocked.
-        Kills mutmut_2: returns None → `not None` is True → add is blocked.
-        Kills mutmut_1: fallback=None → calling None("metrics") raises TypeError.
-        """
-        c = Counter("fallback.counter")
-
-        def _do_add() -> None:
-            c.add(5)
-
-        self._run_without_consent_module(_do_add)
-        assert c.value == 5, (
-            f"Counter.add must proceed when consent module is absent (fallback should return True), got value={c.value}"
-        )
-
-    def test_gauge_add_proceeds_when_consent_module_absent(self) -> None:
-        """Gauge.add must proceed when consent module is absent."""
-        g = Gauge("fallback.gauge")
-
-        def _do_add() -> None:
-            g.add(7)
-
-        self._run_without_consent_module(_do_add)
-        assert g.value == 7, f"Gauge.add must proceed with absent consent, got value={g.value}"
-
-    def test_gauge_set_proceeds_when_consent_module_absent(self) -> None:
-        """Gauge.set must proceed when consent module is absent."""
-        g = Gauge("fallback.gauge.set")
-
-        def _do_set() -> None:
-            g.set(3)
-
-        self._run_without_consent_module(_do_set)
-        assert g.value == 3, f"Gauge.set must proceed with absent consent, got value={g.value}"
-
-    def test_histogram_record_proceeds_when_consent_module_absent(self) -> None:
-        """Histogram.record must proceed when consent module is absent."""
-        h = Histogram("fallback.hist")
-
-        def _do_record() -> None:
-            h.record(9.9)
-
-        self._run_without_consent_module(_do_record)
-        assert h.count == 1, f"Histogram.record must proceed with absent consent, got count={h.count}"

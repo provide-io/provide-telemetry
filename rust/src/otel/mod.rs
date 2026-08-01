@@ -269,6 +269,35 @@ mod tests {
 
         crate::testing::reset_telemetry_state();
     }
+
+    #[cfg(feature = "otel")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn otel_installed_returns_true_when_only_logger_provider_is_installed() {
+        let _guard = crate::testing::acquire_test_state_lock();
+        crate::testing::reset_telemetry_state();
+
+        let mut cfg = TelemetryConfig::default();
+        cfg.tracing.enabled = false;
+        cfg.metrics.enabled = false;
+        cfg.logging.otlp_endpoint = Some("http://127.0.0.1:1/never".to_string());
+        cfg.exporter.logs_fail_open = true;
+        let resource = resource::build_resource(&cfg);
+        logs::install_logger_provider(&cfg, resource)
+            .expect("logger provider should install under fail_open");
+
+        assert!(!traces::tracer_provider_installed());
+        assert!(!metrics::meter_provider_installed());
+        assert!(logs::logger_provider_installed());
+        assert!(otel_installed());
+
+        _reset_otel_for_tests();
+        assert!(!traces::tracer_provider_installed());
+        assert!(!metrics::meter_provider_installed());
+        assert!(!logs::logger_provider_installed());
+        assert!(!otel_installed());
+
+        crate::testing::reset_telemetry_state();
+    }
 }
 
 #[cfg(all(test, feature = "otel"))]
@@ -302,17 +331,15 @@ mod bounded_flush_tests {
         cfg.exporter.logs_shutdown_timeout_seconds = 0.05;
         crate::runtime::set_active_config(Some(cfg));
 
-        let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let worker_released = std::sync::Arc::clone(&released);
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
         assert!(!bounded_flush("metrics", move || {
-            // Outlive the deadline, then exit so the thread is not left running
-            // for the rest of the suite.
-            while !worker_released.load(std::sync::atomic::Ordering::Acquire) {
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
+            // Outlive the library deadline, but keep a finite independent bound:
+            // a comparison mutant must fail this assertion promptly rather than
+            // strand the test inside a synchronous drain.
+            let _ = release_rx.recv_timeout(std::time::Duration::from_millis(250));
             true
         }));
-        released.store(true, std::sync::atomic::Ordering::Release);
+        let _ = release_tx.send(());
 
         crate::runtime::set_active_config(None);
     }

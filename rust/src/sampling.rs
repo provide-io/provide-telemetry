@@ -66,6 +66,10 @@ pub fn get_sampling_policy(signal: Signal) -> Result<SamplingPolicy, TelemetryEr
         .ok_or_else(|| TelemetryError::new("unknown signal"))
 }
 
+fn draw_is_sampled(draw: f64, rate: f64) -> bool {
+    draw < rate
+}
+
 pub fn should_sample(signal: Signal, key: Option<&str>) -> Result<bool, TelemetryError> {
     let policy = get_sampling_policy(signal)?;
     let rate = key
@@ -80,7 +84,7 @@ pub fn should_sample(signal: Signal, key: Option<&str>) -> Result<bool, Telemetr
         return Ok(false);
     }
 
-    let keep = rand::random::<f64>() < rate;
+    let keep = draw_is_sampled(rand::random::<f64>(), rate);
     if !keep {
         increment_dropped(signal, 1);
     }
@@ -100,6 +104,13 @@ mod tests {
     use super::*;
     use crate::health::{_reset_health_for_tests, get_health_snapshot};
     use crate::testing::acquire_test_state_lock;
+
+    #[test]
+    fn sampling_test_draw_boundary_is_strict() {
+        assert!(draw_is_sampled(0.49, 0.5));
+        assert!(!draw_is_sampled(0.5, 0.5));
+        assert!(!draw_is_sampled(0.51, 0.5));
+    }
 
     #[test]
     fn sampling_test_boundary_rates_and_reset_helper() {
