@@ -222,6 +222,21 @@ function _parseTraceparent(value: string): { traceId?: string; spanId?: string }
  * Properties after ``;`` are stripped. Keys and values are whitespace-stripped.
  * Mirrors Python provide.telemetry.propagation.parse_baggage.
  */
+// RFC 7230 token, which the W3C Baggage spec requires of keys. Excludes control
+// characters, whitespace and separators — see parseBaggage for why that matters.
+const BAGGAGE_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+// C0/C1 controls except TAB, stripped from baggage values.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+const BAGGAGE_CONTROL_RE = /[\x00-\x08\x0a-\x1f\x7f]/g;
+
+/**
+ * Parse a W3C baggage header into key-value pairs.
+ *
+ * Keys must be RFC 7230 tokens and control characters are stripped from values.
+ * This is a security boundary: a baggage key becomes a log-attribute key, and the
+ * console renderer emits keys bare, so a newline in a key from an untrusted
+ * inbound header would forge an entire additional log record.
+ */
 export function parseBaggage(raw: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const member of raw.split(',')) {
@@ -229,8 +244,8 @@ export function parseBaggage(raw: string): Record<string, string> {
     const eqIdx = kv.indexOf('=');
     if (eqIdx < 1) continue; // no '=' or empty key
     const key = kv.slice(0, eqIdx).trim();
-    if (key) {
-      result[key] = kv.slice(eqIdx + 1).trim();
+    if (key && BAGGAGE_TOKEN_RE.test(key)) {
+      result[key] = kv.slice(eqIdx + 1).trim().replace(BAGGAGE_CONTROL_RE, '');
     }
   }
   return result;

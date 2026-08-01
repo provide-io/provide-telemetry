@@ -50,7 +50,22 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 ## Quality Constraints
 
 - **100% branch coverage** is enforced for Python, TypeScript, and Go. Rust runs `cargo test` without a coverage gate.
-- **100% mutation kill score** is the target in CI. Python and Go are fully gated. TypeScript uses Stryker with file-scoped exemptions for OTel wiring modules (see `typescript/stryker.config.mjs`). Rust is not mutation-gated.
+- **100% mutation kill score** is enforced, not merely targeted, in every language:
+  - **Python** — `scripts/run_mutation_gate.py`. Note `_is_clean()` requires *zero*
+    survivors, timeouts, suspicious and no-tests results; `--min-mutation-score` is an
+    additional floor, not the bar. A run at 99% still fails.
+  - **Go** — gremlins at `--threshold-efficacy=100 --threshold-mcover=100` for the root
+    package, `logger`, and the `otel` module.
+  - **Rust** — `cargo mutants` across 8 CI shards. No threshold flag is passed because
+    cargo-mutants exits non-zero on any surviving mutant by default.
+  - **TypeScript** — Stryker, run twice (`stryker.config.mjs` then
+    `stryker.otel.config.mjs`). This is the one surface that is *not* whole: see the
+    `mutate:` exclusion list, where each excluded file carries the reason inline.
+- `# pragma: no mutate` only takes effect on a **whole single-line statement**. mutmut
+  ignores it on a continuation line and on an element inside a multi-line dict/list
+  literal, and `block` pragmas cannot nest. Beware that `ruff format` can re-wrap a long
+  line and silently orphan a working pragma — hoist the value to its own short statement
+  (or a module constant) rather than fighting the formatter.
 - **500 LOC max per file** — enforced across Python, TypeScript, Go, and Rust via `scripts/check_max_loc.py`. Pre-existing violators are tracked in `.max_loc_allowlist.yaml` with split plans; new files MUST stay under 500 lines.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.

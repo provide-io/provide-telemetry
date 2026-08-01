@@ -38,15 +38,37 @@ impl Drop for PropagationGuard {
 
 /// Parse a W3C baggage header into key-value pairs.
 /// Properties after `;` are stripped. Empty keys are skipped.
+/// True when `key` is an RFC 7230 token, which the W3C Baggage spec requires.
+fn is_baggage_token(key: &str) -> bool {
+    !key.is_empty()
+        && key.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
+        })
+}
+
+/// Strip C0/C1 control characters except TAB from a baggage value.
+fn strip_control_chars(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| *c == '\t' || !c.is_control())
+        .collect()
+}
+
+/// Parse a W3C baggage header into key-value pairs.
+///
+/// Keys must be RFC 7230 tokens and control characters are stripped from values.
+/// This is a security boundary: a baggage key becomes a log-attribute key, and the
+/// console renderer emits keys bare, so a newline in a key from an untrusted
+/// inbound header would forge an entire additional log record.
 pub fn parse_baggage(raw: &str) -> BTreeMap<String, String> {
     let mut result = BTreeMap::new();
     for member in raw.split(',') {
         let kv = member.split(';').next().unwrap_or("");
         if let Some(eq_idx) = kv.find('=') {
             let key = kv[..eq_idx].trim();
-            if !key.is_empty() {
+            if is_baggage_token(key) {
                 let value = kv[eq_idx + 1..].trim();
-                result.insert(key.to_string(), value.to_string());
+                result.insert(key.to_string(), strip_control_chars(value));
             }
         }
     }

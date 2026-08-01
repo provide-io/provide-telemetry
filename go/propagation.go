@@ -6,6 +6,7 @@ package telemetry
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -74,6 +75,19 @@ func BindPropagationContext(ctx context.Context, pc PropagationContext) context.
 
 // ParseBaggage parses a W3C baggage header into key-value pairs.
 // Properties after ';' are stripped. Empty keys are skipped.
+// _baggageTokenRe is the RFC 7230 token the W3C Baggage spec requires of keys.
+// It excludes control characters, whitespace and separators.
+var _baggageTokenRe = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+
+// _baggageControlRe matches C0/C1 controls except TAB, stripped from values.
+var _baggageControlRe = regexp.MustCompile(`[\x00-\x08\x0a-\x1f\x7f]`)
+
+// ParseBaggage parses a W3C baggage header into key-value pairs.
+//
+// Keys must be RFC 7230 tokens and control characters are stripped from values.
+// This is a security boundary: a baggage key becomes a log-attribute key, and the
+// console renderer emits keys bare, so a newline in a key from an untrusted
+// inbound header would forge an entire additional log record.
 func ParseBaggage(raw string) map[string]string {
 	result := map[string]string{}
 	for _, member := range strings.Split(raw, ",") {
@@ -83,8 +97,8 @@ func ParseBaggage(raw string) map[string]string {
 			continue
 		}
 		key := strings.TrimSpace(kv[:eqIdx])
-		if key != "" {
-			result[key] = strings.TrimSpace(kv[eqIdx+1:])
+		if key != "" && _baggageTokenRe.MatchString(key) {
+			result[key] = _baggageControlRe.ReplaceAllString(strings.TrimSpace(kv[eqIdx+1:]), "")
 		}
 	}
 	return result

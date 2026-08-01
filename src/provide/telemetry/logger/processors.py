@@ -34,6 +34,15 @@ def _get_active_config() -> Any | None:
 
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Keys are rendered bare by the console renderer, so unlike values they cannot
+# keep TAB/LF/CR: any of the three splits or misaligns the rendered line.
+_CONTROL_CHAR_KEY_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _clean_key(key: object) -> str:
+    """Strip every control character from an attribute key."""
+    return _CONTROL_CHAR_KEY_RE.sub("", str(key))
+
 
 # Keys that must survive harden_input truncation regardless of insertion order.
 # These are structlog/telemetry control fields; losing them silently corrupts
@@ -166,7 +175,12 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
             remaining = max(0, _max_attr_count - len(priority))
             user_keys = [k for k in event_dict if k not in _HARDEN_PRIORITY_KEYS]
             event_dict = {**priority, **{k: event_dict[k] for k in user_keys[:remaining]}}
-        return {k: _clean_value(v, 0) for k, v in event_dict.items()}
+        # Keys are hardened as well as values. The console renderer quotes values
+        # but emits keys bare, so a control character in a key — which can reach
+        # here from an untrusted W3C baggage header — would forge a log record.
+        # parse_baggage rejects such keys at the boundary; this is the second line
+        # of defence, and also covers keys a caller passes directly.
+        return {_clean_key(k): _clean_value(v, 0) for k, v in event_dict.items()}
 
     return _processor
 

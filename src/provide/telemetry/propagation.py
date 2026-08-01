@@ -17,6 +17,7 @@ __all__ = [
 ]
 
 import contextvars
+import re as _re
 from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
@@ -38,6 +39,12 @@ from provide.telemetry.tracing.context import (
 _OTEL_TOKEN_FIELD = "otel_token"  # noqa: S105 - a snapshot dict key, not a credential  # pragma: no mutate
 _BAGGAGE_KEYS_FIELD = "_baggage_keys"  # pragma: no mutate
 _BAGGAGE_PRIOR_FIELD = "_baggage_prior"  # pragma: no mutate
+
+# RFC 7230 token, which the W3C Baggage spec requires of keys. Excludes control
+# characters, whitespace and separators — see parse_baggage for why that matters.
+_BAGGAGE_TOKEN_RE = _re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# C0/C1 controls except TAB, stripped from baggage values.
+_CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
 _MAX_HEADER_LENGTH = 512
 _MAX_TRACESTATE_PAIRS = 32
@@ -128,6 +135,13 @@ def parse_baggage(raw: str) -> dict[str, str]:
     Format: ``key1=value1,key2=value2;property1=p1``
     Properties after ``;`` are stripped (metadata, not propagated values).
     Keys and values are stripped of whitespace. Empty keys are skipped.
+
+    Keys must be RFC 7230 tokens, as the W3C Baggage spec requires, and control
+    characters are stripped from values. This is a security boundary, not
+    pedantry: a baggage key becomes a log-attribute key, and the console renderer
+    quotes values but not keys — so a newline in a key from an untrusted inbound
+    header forges an entire additional log record. Rejecting non-token keys stops
+    that where the hostile header is first parsed.
     """
     result: dict[str, str] = {}
     for member in raw.split(","):
@@ -138,8 +152,8 @@ def parse_baggage(raw: str) -> dict[str, str]:
             continue
         key, _, value = kv.partition("=")
         key = key.strip()
-        if key:
-            result[key] = value.strip()
+        if key and _BAGGAGE_TOKEN_RE.fullmatch(key):
+            result[key] = _CONTROL_CHARS_RE.sub("", value.strip())
     return result
 
 

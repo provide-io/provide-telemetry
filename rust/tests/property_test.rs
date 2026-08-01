@@ -380,3 +380,34 @@ proptest! {
         prop_assert_ne!(fp_a, fp_b, "distinct names should (almost always) differ");
     }
 }
+
+/// A baggage key becomes a log-attribute key, and the console renderer emits keys
+/// bare, so a control character in a key from an untrusted inbound header would
+/// forge an entire additional log record. Keys must be RFC 7230 tokens.
+#[test]
+fn parse_baggage_rejects_non_token_keys() {
+    for raw in [
+        "ev\nil=x,ok=1",
+        "ev\ril=x,ok=1",
+        "bad key=x,ok=1",
+        "ev\u{0}il=x,ok=1",
+    ] {
+        let got = provide_telemetry::parse_baggage(raw);
+        assert_eq!(got.len(), 1, "raw={raw:?} produced {got:?}");
+        assert_eq!(got.get("ok").map(String::as_str), Some("1"));
+    }
+}
+
+#[test]
+fn parse_baggage_strips_control_chars_from_values() {
+    let got = provide_telemetry::parse_baggage("k=a\u{0}b\nc");
+    assert_eq!(got.get("k").map(String::as_str), Some("abc"));
+}
+
+#[test]
+fn parse_baggage_keeps_legitimate_members() {
+    let got = provide_telemetry::parse_baggage("tenant=acme;role=admin,region=eu");
+    assert_eq!(got.get("tenant").map(String::as_str), Some("acme"));
+    assert_eq!(got.get("region").map(String::as_str), Some("eu"));
+    assert_eq!(got.len(), 2);
+}
