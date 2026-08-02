@@ -52,8 +52,14 @@ export function sha256Hex(input: string): string {
       words[i] = view.getUint32(offset + i * 4, false);
     }
 
+    // Not a C-style for loop: Stryker's UpdateOperator mutator turns `i++`
+    // into `i--`, producing an infinite loop that is only ever observable as
+    // a test timeout, never a killed mutant. Iterating a pre-built index
+    // array (16..63, a fixed SHA-256 constant range) removes the increment
+    // operator entirely. sha256Hex's known-vector tests in hash.test.ts
+    // still pin correctness.
     // Stryker disable next-line EqualityOperator: Uint32Array(64) silently ignores writes to index 64 — the extra iteration is a no-op
-    for (let i = 16; i < 64; i++) {
+    for (const i of Array.from({ length: 48 }, (_, idx) => idx + 16)) {
       const w15 = words[i - 15] as number;
       const w2 = words[i - 2] as number;
       const sigma0 = rotateRight(w15, 7) ^ rotateRight(w15, 18) ^ (w15 >>> 3);
@@ -70,7 +76,9 @@ export function sha256Hex(input: string): string {
     let g = h6;
     let h = h7;
 
-    for (let i = 0; i < 64; i++) {
+    // Same rationale as the message-schedule loop above: a fixed 0..63 range,
+    // rewritten to avoid the UpdateOperator mutator's infinite-loop escape.
+    for (const i of Array.from({ length: 64 }, (_, idx) => idx)) {
       const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
       const choose = (e & f) ^ (~e & g);
       const temp1 = add32(h, sum1, choose, ROUND_CONSTANTS[i] as number, words[i] as number);

@@ -60,6 +60,13 @@ export interface Logger {
 
 // Pino root instance — lazily created so config is read after setupTelemetry().
 let _root: pino.Logger | null = null;
+// The cache-reuse check below is `_root && _rootConfigVersion === currentVersion`.
+// _root and _rootConfigVersion are always assigned together (see the
+// cache-miss branch and _resetRootLogger), so _root is null on every path
+// that would otherwise consult this initial value — the `&&` short-circuits
+// before it's ever read. Verified by hand-mutating -1 to +1 against the full
+// logger.*.test.ts suite (and the whole test suite) with no failures.
+// Stryker disable next-line UnaryOperator
 let _rootConfigVersion = -1;
 
 function resolveLoggerConfig() {

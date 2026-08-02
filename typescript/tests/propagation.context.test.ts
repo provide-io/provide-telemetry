@@ -12,7 +12,7 @@ import {
   getActivePropagationContext,
   isFallbackMode,
 } from '../src/propagation.js';
-import { _resetContext, getContext } from '../src/context.js';
+import { _resetContext, bindContext, getContext } from '../src/context.js';
 import { getTraceContext, _resetTraceContext } from '../src/tracing.js';
 
 afterEach(() => _resetPropagationForTests());
@@ -114,6 +114,62 @@ describe('bindPropagationContext / clearPropagationContext', () => {
     expect(getActivePropagationContext().traceId).toBe('outer');
     clearPropagationContext();
     expect(getActivePropagationContext().traceId).toBeUndefined();
+  });
+
+  it('clones baggagePriorStack entries (not wiped) across the fallback-to-ALS boundary', () => {
+    const saved = _disablePropagationALSForTest();
+    try {
+      // Establish 'alice' directly in the log context, then overwrite it via
+      // a fallback-mode bind — the frame's prior map captures {'baggage.userId': 'alice'}.
+      bindContext({ 'baggage.userId': 'alice' });
+      bindPropagationContext({ baggage: 'userId=bob' });
+      expect(getContext()['baggage.userId']).toBe('bob');
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+
+    // Triggers _ensureStore()'s ALS-clone path: no active ALS store yet, so
+    // the fallback store (including its baggagePriorStack) must be cloned in.
+    bindPropagationContext({ baggage: 'userId=carol' });
+    expect(getContext()['baggage.userId']).toBe('carol');
+
+    // If the clone dropped the prior map (wiped to {} or undefined), 'bob'
+    // would never come back — the key would stay 'carol' or be unbound.
+    clearPropagationContext();
+    expect(getContext()['baggage.userId']).toBe('bob');
+
+    clearPropagationContext();
+    expect(getContext()['baggage.userId']).toBe('alice');
+  });
+
+  it('clones traceCtxStack entries (not wiped) across the fallback-to-ALS boundary', () => {
+    // Two nested fallback-mode binds, so the fallback store's traceCtxStack
+    // has two real entries to clone (not just one) before the ALS boundary.
+    _resetTraceContext();
+    const saved = _disablePropagationALSForTest();
+    try {
+      bindPropagationContext({ traceId: 'a'.repeat(32), spanId: '1'.repeat(16) }); // outer
+      bindPropagationContext({ traceId: 'b'.repeat(32), spanId: '2'.repeat(16) }); // inner
+    } finally {
+      _restorePropagationALSForTest(saved);
+    }
+
+    // Triggers _ensureStore()'s ALS-clone path, carrying both fallback-store
+    // traceCtxStack entries into the fresh ALS store before this push.
+    bindPropagationContext({ traceId: 'c'.repeat(32), spanId: '3'.repeat(16) }); // als
+    expect(getTraceContext().trace_id).toBe('c'.repeat(32));
+
+    // Each clear pops one level. If the clone dropped the prior entries
+    // (wiped to {} or undefined), these would restore undefined instead of
+    // the real prior trace ids, well before the outer-most pop.
+    clearPropagationContext();
+    expect(getTraceContext().trace_id).toBe('b'.repeat(32));
+
+    clearPropagationContext();
+    expect(getTraceContext().trace_id).toBe('a'.repeat(32));
+
+    clearPropagationContext();
+    expect(getTraceContext().trace_id).toBeUndefined();
   });
 });
 

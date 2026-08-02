@@ -245,6 +245,22 @@ describe('getTracer / tracer singleton', () => {
     expect(typeof t.startActiveSpan).toBe('function');
   });
 
+  it('forwards an explicit name to the underlying trace API unchanged', () => {
+    // The no-op Tracer's identity doesn't reveal what name it was requested
+    // with, so `name ?? TRACER_NAME` collapsing to `name && TRACER_NAME`
+    // (falling back to the library default even for a truthy custom name) is
+    // only observable by spying on the call itself.
+    const spy = vi.spyOn(trace, 'getTracer');
+    getTracer('custom.instrumentation.scope');
+    expect(spy).toHaveBeenCalledWith('custom.instrumentation.scope');
+  });
+
+  it('falls back to the library default name when none is given', () => {
+    const spy = vi.spyOn(trace, 'getTracer');
+    getTracer();
+    expect(spy).toHaveBeenCalledWith('@provide-io/telemetry');
+  });
+
   it('tracer module export is a Tracer', () => {
     expect(tracer).toBeDefined();
     expect(typeof tracer.startActiveSpan).toBe('function');

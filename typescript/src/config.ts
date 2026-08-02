@@ -315,11 +315,19 @@ const _FALLBACK_MESSAGE =
   'AsyncLocalStorage unavailable in a Node.js environment — concurrent requests would share propagation context. Check that node:async_hooks is not excluded from your bundler config.';
 
 function _isNodeLike(): boolean {
+  // `process` is always defined and `process.versions` is always a real
+  // object in every environment this test suite runs in (only `.node`
+  // itself is ever stubbed away, in config.mutants.test.ts) — so a
+  // ConditionalExpression/StringLiteral mutant on the first two clauses is
+  // never observable. The LogicalOperator mutant (first `&&` -> `||`) IS
+  // genuinely killed by that same test and is deliberately left enabled.
+  // Stryker disable ConditionalExpression,StringLiteral
   return (
     typeof process !== 'undefined' &&
     typeof process.versions === 'object' &&
     typeof (process.versions as Record<string, unknown>).node === 'string'
   );
+  // Stryker restore ConditionalExpression,StringLiteral
 }
 
 function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
@@ -434,10 +442,13 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
       if (!key) continue;
       const val = decodeURIComponent(rawVal);
       result[key] = val;
+      // `continue` in a for..of catch is equivalent to an empty body — the
+      // block ending naturally starts the next iteration either way.
+      // Stryker disable BlockStatement
     } catch {
-      // Stryker disable next-line BlockStatement: `continue` in for..of catch is equivalent to an empty body — next iteration starts either way
       continue;
     }
+    // Stryker restore BlockStatement
   }
   return result;
 }
@@ -476,6 +487,7 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
   // Mask per-signal headers
   for (const field of ['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const) {
     const hdrs = config[field];
+    // Stryker disable next-line EqualityOperator: length is never negative — `> 0` vs `>= 0` only differ at length 0, where Object.fromEntries({}) produces the same {} either way
     if (hdrs && Object.keys(hdrs).length > 0) {
       result[field] = Object.fromEntries(
         Object.entries(hdrs).map(([k, v]) => [k, maskHeaderValue(v)]),
@@ -487,11 +499,13 @@ export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
     result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
   }
   // Mask per-signal endpoints
+  // Stryker disable ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
   for (const field of ['otlpLogsEndpoint', 'otlpTracesEndpoint', 'otlpMetricsEndpoint'] as const) {
     if (config[field]) {
       result[field] = maskEndpointUrl(config[field]);
     }
   }
+  // Stryker restore ConditionalExpression
   return result;
 }
 

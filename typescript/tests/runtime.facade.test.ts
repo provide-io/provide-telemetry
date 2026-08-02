@@ -4,7 +4,12 @@
 import { metrics, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig } from '../src/config.js';
-import { _resetRuntimeForTests, RuntimeState, TelemetryRuntime } from '../src/runtime.js';
+import {
+  _resetRuntimeForTests,
+  _storeRegisteredProviders,
+  RuntimeState,
+  TelemetryRuntime,
+} from '../src/runtime.js';
 import { liveTracerProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
@@ -84,6 +89,23 @@ describe('TelemetryRuntime facade', () => {
     const withoutTimeout = new TelemetryRuntime();
     expect(await withoutTimeout.shutdown()).toBeUndefined();
     expect(withoutTimeout.updateConfig({}).state).toBe(RuntimeState.STOPPED);
+  });
+
+  it('reports timedOut only for an installed provider that missed the deadline', async () => {
+    // traces: installed=true, but the registered provider hangs past the
+    // deadline -> flushTelemetry() resolves false -> traces.timedOut = true.
+    // logs/metrics: installed=false, same failed flushTelemetry() -> their
+    // timedOut must stay false (an uninstalled signal can't "time out").
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    _storeRegisteredProviders([{ forceFlush: () => new Promise<void>(() => {}) }]);
+    const result = await new TelemetryRuntime().flush(20);
+
+    expect(result.traces.timedOut).toBe(true);
+    expect(result.traces.flushed).toBe(false);
+    expect(result.logs.timedOut).toBe(false);
+    expect(result.logs.notInstalled).toBe(true);
+    expect(result.metrics.timedOut).toBe(false);
+    expect(result.metrics.notInstalled).toBe(true);
   });
 
   it('forwards the requested name to getTracer', () => {

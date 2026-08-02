@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { ConfigurationError, TelemetryError } from '../src/exceptions.js';
+import { ConfigurationError, ProviderImmutableError, TelemetryError } from '../src/exceptions.js';
 
 describe('TelemetryError', () => {
   it('is an instance of Error', () => {
@@ -36,5 +36,25 @@ describe('ConfigurationError', () => {
     };
     expect(fn).toThrow(TelemetryError);
     expect(fn).toThrow(ConfigurationError);
+  });
+});
+
+describe('ProviderImmutableError', () => {
+  it('is a ConfigurationError, TelemetryError, and Error', () => {
+    const e = new ProviderImmutableError('providers already installed');
+    expect(e).toBeInstanceOf(Error);
+    expect(e).toBeInstanceOf(TelemetryError);
+    expect(e).toBeInstanceOf(ConfigurationError);
+    expect(e).toBeInstanceOf(ProviderImmutableError);
+    expect(e.message).toBe('providers already installed');
+    expect(e.name).toBe('ProviderImmutableError');
+  });
+
+  it('can be caught as ConfigurationError', () => {
+    const fn = () => {
+      throw new ProviderImmutableError('x');
+    };
+    expect(fn).toThrow(ConfigurationError);
+    expect(fn).toThrow(ProviderImmutableError);
   });
 });

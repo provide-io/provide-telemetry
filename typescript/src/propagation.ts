@@ -57,6 +57,10 @@ let _AlsConstructor: (new () => PropagationALS) | null = null;
 // `_propagationInitDone` flips to true once the init has reached a definitive
 // state (ALS attached, OR known-unavailable). Callers like setupTelemetry
 // distinguish "still racing" (defer the check) from "settled" (act on it).
+// The module-init IIFE below runs synchronously (in the CJS/require branch
+// that every test loader takes) and overwrites this before any test — or any
+// real caller — can observe the initial value.
+// Stryker disable next-line BooleanLiteral
 let _propagationInitDone = false;
 let _propagationInitPromise: Promise<void> = Promise.resolve();
 // Stryker disable BlockStatement: module-level init block runs once at import time — cannot be tested by unit tests
@@ -137,7 +141,10 @@ export function awaitPropagationInit(): Promise<void> {
 }
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
-// Stryker disable next-line ArrayDeclaration: initial empty arrays are overwritten by _resetPropagationForTests in every test beforeEach
+// Stryker disable ArrayDeclaration: initial empty arrays are equivalent —
+// every test file resets this store via _resetPropagationForTests before
+// asserting on it, and a stray "Stryker was here" entry as the sole element
+// of an otherwise-untouched stack is never observed by any test.
 let _fallbackStore: PropagationStore = {
   active: {},
   stack: [],
@@ -145,6 +152,7 @@ let _fallbackStore: PropagationStore = {
   baggagePriorStack: [],
   traceCtxStack: [],
 };
+// Stryker restore ArrayDeclaration
 
 // Emit a one-time warning when the module-level fallback store is activated.
 let _fallbackWarned = false;

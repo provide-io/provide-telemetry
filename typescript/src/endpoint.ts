@@ -38,6 +38,15 @@ export function validateOtlpEndpoint(endpoint: string): string {
     // For IPv6 addresses like "[::1]", colons are inside brackets and do not
     // indicate a port segment. Only flag an empty port when the colon appears
     // after the closing bracket (IPv6) or after a bare hostname (IPv4/name).
+    // Equivalent mutant note: for any hostPart with no ']' at all,
+    // `.indexOf(']')` is -1, so `.slice(-1 + 1)` = `.slice(0)` is a no-op —
+    // the "IPv6 branch" degenerates to exactly `hostPart.includes(':')`,
+    // identical to the plain branch. A ']' appearing anywhere in hostPart
+    // without a leading '[' would distinguish them, but that's unreachable:
+    // hostPart comes from a URL that already parsed successfully via `new
+    // URL()`, and WHATWG host parsing never produces a bare ']' outside an
+    // IPv6 literal.
+    // Stryker disable next-line StringLiteral
     const colonAfterHost = hostPart.startsWith('[')
       ? hostPart.slice(hostPart.indexOf(']') + 1).includes(':')
       : hostPart.includes(':');

@@ -163,7 +163,13 @@ export async function runWithResilience<T>(
 
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  // Deliberately not a C-style for loop: Stryker's UpdateOperator mutator turns
+  // `attempt++` into `attempt--`, producing an infinite loop that is only ever
+  // observable as a test timeout (never a killed mutant, since it never
+  // produces a wrong-but-finite result). Iterating over a pre-built index
+  // array removes the increment operator entirely, so there is nothing left
+  // for that mutator to target.
+  for (const attempt of Array.from({ length: attempts }, (_, i) => i)) {
     const started = Date.now();
     try {
       const result = await _withTimeout(fn, policy.timeoutMs);

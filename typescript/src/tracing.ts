@@ -53,10 +53,14 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AsyncLocalStorage } = require('node:async_hooks') as typeof import('node:async_hooks');
   _als = new AsyncLocalStorage<_TraceIds>();
-  // Stryker disable next-line BlockStatement: catch body sets the browser/Deno
-  // fallback (`_als = null`) — Node-based tests cannot reach this branch.
+  // Non-Node runtime (browser, Deno) fallback: `require('node:async_hooks')`
+  // succeeds on every Node-based test runner, so this branch is unreachable
+  // here (mocking the module doesn't help — it's a CJS require, not routed
+  // through the ESM mock graph). Even if it did run, `_als = null` is
+  // redundant with _als's declared initial value above, making this a
+  // genuine equivalent mutant on top of being untestable in this harness.
+  // Stryker disable next-line BlockStatement
 } catch {
-  // Non-Node runtime (browser, Deno): fall back to module globals.
   /* c8 ignore next */
   _als = null;
 }

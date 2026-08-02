@@ -50,7 +50,14 @@ export class EventSchemaError extends TelemetryError {
   }
 }
 
-const SEGMENT_RE = /^[a-z][a-z0-9_]*$/;
+// The pattern lives inside a function, not a module-level const, so it is a
+// genuine per-call mutant rather than a static one evaluated once at import
+// (before Stryker's per-test switch activates) — see propagation.ts's
+// isBaggageToken for the full rationale.
+function isValidSegment(seg: string): boolean {
+  return /^[a-z][a-z0-9_]*$/.test(seg);
+}
+
 const MIN_SEGMENTS = 3;
 const MAX_SEGMENTS = 5;
 
@@ -81,7 +88,7 @@ export function event(...segments: string[]): EventRecord {
   const strict = getStrictSchema();
   if (strict) {
     for (const seg of segments) {
-      if (!SEGMENT_RE.test(seg)) {
+      if (!isValidSegment(seg)) {
         throw new EventSchemaError(`segment '${seg}' does not match pattern ^[a-z][a-z0-9_]*$`);
       }
     }
@@ -118,9 +125,12 @@ export function eventName(...segments: string[]): string {
         `expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got ${segments.length}`,
       );
     }
-    // Stryker disable next-line EqualityOperator: segments[length] is undefined; SEGMENT_RE.test('undefined') returns true so no extra throw — equivalent
-    for (let i = 0; i < segments.length; i++) {
-      if (!SEGMENT_RE.test(segments[i])) {
+    // Not a C-style for loop: Stryker's UpdateOperator mutator turns `i++`
+    // into `i--`, producing an infinite loop that only ever times out rather
+    // than failing an assertion. Iterating a pre-built index array removes
+    // the increment operator entirely.
+    for (const i of Array.from({ length: segments.length }, (_, idx) => idx)) {
+      if (!isValidSegment(segments[i])) {
         // Stryker disable next-line StringLiteral
         throw new EventSchemaError(`invalid event segment: segment[${i}]=${segments[i]}`);
       }
@@ -143,9 +153,8 @@ export function validateEventName(name: string, strict: boolean = true): void {
         `expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got ${segments.length}`,
       );
     }
-    // Stryker disable next-line EqualityOperator: same as above — undefined segment passes SEGMENT_RE
-    for (let i = 0; i < segments.length; i++) {
-      if (!SEGMENT_RE.test(segments[i])) {
+    for (const i of Array.from({ length: segments.length }, (_, idx) => idx)) {
+      if (!isValidSegment(segments[i])) {
         // Stryker disable next-line StringLiteral
         throw new EventSchemaError(`invalid event segment: segment[${i}]=${segments[i]}`);
       }

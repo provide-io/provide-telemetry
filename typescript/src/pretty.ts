@@ -91,6 +91,10 @@ export function formatPretty(
 ): string {
   const parts: string[] = [];
   const keyColor = resolveNamedColor(options.keyColor, 'dim');
+  // resolveNamedColor's own final `?? ''` normalizes ANY fallback that isn't
+  // a real NAMED_COLORS key back to '' — so mutating this literal fallback
+  // string is equivalent for any string that doesn't collide with a color name.
+  // Stryker disable next-line StringLiteral
   const valueColor = resolveNamedColor(options.valueColor, '');
   const fields = new Set(options.fields ?? []);
 
