@@ -146,11 +146,11 @@ pub(super) fn install_meter_provider(
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
     if !cfg.metrics.enabled {
-        shutdown_meter_provider();
+        shutdown_meter_provider(None);
         return Ok(false);
     }
     if cfg.metrics.otlp_endpoint.is_none() {
-        shutdown_meter_provider();
+        shutdown_meter_provider(None);
         return Ok(false);
     }
 
@@ -188,17 +188,21 @@ pub(super) fn install_meter_provider(
 }
 
 /// Force-flush and shut down the installed `MeterProvider`.
-pub(super) fn shutdown_meter_provider() {
+///
+/// `timeout_seconds` is the caller's remaining budget; `None` uses the
+/// configured one. Bounded for the same reason the tracer teardown is: the SDK
+/// call has no timeout of its own.
+///
+/// The instrument caches are cleared on the calling thread, so a teardown
+/// abandoned at the deadline still leaves a subsequent install with fresh ones.
+pub(super) fn shutdown_meter_provider(timeout_seconds: Option<f64>) {
     let mut guard = crate::_lock::lock(meter_provider_slot());
     let provider = guard.take();
     drop(guard);
     if let Some(installed) = provider {
-        installed.runtime.quiesce();
-        let _ = installed.provider.force_flush();
-        if let Err(err) = installed.provider.shutdown() {
-            eprintln!("provide_telemetry: metrics shutdown failed: {err:?}");
-        }
-        installed.runtime.quiesce();
+        super::bounded_teardown("metrics", timeout_seconds, move || {
+            do_shutdown_meter_provider(installed);
+        });
     }
     // Drop cached instruments so a subsequent install gets fresh ones.
     if let Some(m) = COUNTERS.get() {
@@ -210,6 +214,15 @@ pub(super) fn shutdown_meter_provider() {
     if let Some(m) = HISTOGRAMS.get() {
         crate::_lock::lock(m).clear();
     }
+}
+
+fn do_shutdown_meter_provider(installed: InstalledMeterProvider) {
+    installed.runtime.quiesce();
+    let _ = installed.provider.force_flush();
+    if let Err(err) = installed.provider.shutdown() {
+        eprintln!("provide_telemetry: metrics shutdown failed: {err:?}");
+    }
+    installed.runtime.quiesce();
 }
 
 pub(crate) fn meter_provider_installed() -> bool {

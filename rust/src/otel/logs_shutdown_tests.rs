@@ -24,7 +24,7 @@ fn test_config() -> TelemetryConfig {
 fn reset_logs_test_state() -> std::sync::MutexGuard<'static, ()> {
     let guard = acquire_test_state_lock();
     reset_telemetry_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     guard
 }
 
@@ -86,7 +86,7 @@ fn do_shutdown_logger_provider_reaches_the_sdk_processor() {
 #[test]
 fn shutdown_logger_provider_clears_provider_even_when_processor_shutdown_errors() {
     let _guard = reset_logs_test_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     let provider = SdkLoggerProvider::builder()
         .with_resource(super::super::resource::build_resource(&test_config()))
         .with_log_processor(ShutdownErrorLogProcessor)
@@ -96,7 +96,7 @@ fn shutdown_logger_provider_clears_provider_even_when_processor_shutdown_errors(
         runtime: ProvideTokioRuntime::test(),
     });
 
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 
     assert!(!logger_provider_installed());
 }
@@ -120,7 +120,7 @@ fn shutdown_with_zero_timeout_runs_synchronously() {
     // logs_shutdown_timeout_seconds <= 0 opts out of bounding — the worker
     // thread is never spawned and shutdown runs on the caller's thread.
     let _guard = reset_logs_test_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 
     let mut cfg = test_config();
     cfg.exporter.logs_shutdown_timeout_seconds = 0.0;
@@ -134,7 +134,7 @@ fn shutdown_with_zero_timeout_runs_synchronously() {
         runtime: ProvideTokioRuntime::test(),
     });
 
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 
     assert!(!logger_provider_installed());
     crate::runtime::set_active_config(None);
@@ -145,7 +145,7 @@ fn shutdown_falls_back_to_default_timeout_when_no_active_config() {
     // get_runtime_config() returns None — shutdown_logger_provider must
     // fall back to the 5.0s default rather than crashing.
     let _guard = reset_logs_test_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     crate::runtime::set_active_config(None);
 
     let provider = SdkLoggerProvider::builder()
@@ -156,7 +156,7 @@ fn shutdown_falls_back_to_default_timeout_when_no_active_config() {
         runtime: ProvideTokioRuntime::test(),
     });
 
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     assert!(!logger_provider_installed());
 }
 
@@ -181,7 +181,7 @@ impl LogProcessor for HangingShutdownProcessor {
 #[test]
 fn shutdown_abandons_worker_when_deadline_exceeded() {
     let _guard = reset_logs_test_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 
     let mut cfg = test_config();
     // 50ms deadline so the test wall time stays well under a second.
@@ -198,7 +198,7 @@ fn shutdown_abandons_worker_when_deadline_exceeded() {
     });
 
     let started = std::time::Instant::now();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     let elapsed = started.elapsed();
 
     // Slot must be cleared even though the worker thread is still hung.

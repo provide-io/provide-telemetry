@@ -24,14 +24,16 @@ import { extractW3cContext, parseBaggage } from '../../src/propagation.js';
 
 const HEX = '0123456789abcdef';
 const TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: detecting them is the point
+// eslint-disable-next-line no-control-regex -- detecting control characters is the point
 const CONTROL_RE = /[\x00-\x08\x0a-\x1f\x7f]/;
 const ZERO_TRACE = '0'.repeat(32);
 const ZERO_SPAN = '0'.repeat(16);
 
 const anyText = fc.string({ maxLength: 2048 });
 const hex = (n: number) =>
-  fc.array(fc.constantFrom(...HEX.split('')), { minLength: n, maxLength: n }).map((a) => a.join(''));
+  fc
+    .array(fc.constantFrom(...HEX.split('')), { minLength: n, maxLength: n })
+    .map((a) => a.join(''));
 
 describe('propagation fuzz', () => {
   it('parseBaggage never throws', () => {

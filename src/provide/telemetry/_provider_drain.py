@@ -20,10 +20,12 @@ __all__ = [
     "flush_tracing",
     "owned_signals",
     "resolve_drain_deadline",
+    "run_drains_together",
 ]
 
 import threading
 import warnings
+from collections.abc import Callable
 
 # Ceiling on drain workers abandoned at their deadline and still running. Small
 # on purpose: past a handful of stuck workers the exporter is not coming back,
@@ -118,6 +120,59 @@ def owned_signals() -> dict[str, bool]:
     with logger_core._lock:
         logs = logger_core._otel_log_provider is not None
     return {"logs": logs, "traces": traces, "metrics": metrics}
+
+
+def run_drains_together(drains: tuple[Callable[[], None], ...]) -> None:
+    """Run every drain concurrently and return once all of them have.
+
+    Called sequentially, each drain receives the whole of the caller's deadline,
+    so three stalled providers spend three times the budget a SIGTERM handler
+    passed — the exact overrun the deadline exists to prevent. Run together they
+    each still get the full budget to drain in, while the wall time the caller
+    pays stays at one deadline.
+
+    The join is deliberately unbounded: every drain passed here is itself a
+    bounded teardown, and each one clears its module's provider reference on the
+    way out. Abandoning that at a deadline of our own would leave a torn-down
+    provider installed, which is worse than the millisecond it costs to wait.
+
+    The first exception raised by any drain is re-raised once all have finished,
+    matching what a sequential call would have surfaced to the caller.
+    """
+    errors: list[BaseException] = []
+    workers: list[threading.Thread] = []
+    inline: list[Callable[[], None]] = []
+
+    def _guarded(drain: Callable[[], None]) -> Callable[[], None]:
+        def _run() -> None:
+            try:
+                drain()
+            except BaseException as exc:
+                errors.append(exc)
+
+        return _run
+
+    for drain in drains:
+        runner = _guarded(drain)
+        # Operator-visible thread name; asserted by
+        # test_teardown_threads_are_named_for_operator_visibility.
+        name = "provide-provider-teardown"  # pragma: no mutate
+        worker = threading.Thread(target=runner, name=name, daemon=True)
+        try:
+            worker.start()
+        except RuntimeError:
+            # "can't start new thread" — the process is at its thread limit.
+            # Falling back to an inline call is slower than the concurrent path
+            # but still tears the provider down, which is what matters at exit.
+            inline.append(runner)
+        else:
+            workers.append(worker)
+    for runner in inline:
+        runner()
+    for worker in workers:
+        worker.join()
+    if errors:
+        raise errors[0]
 
 
 def _bounded_provider_call(

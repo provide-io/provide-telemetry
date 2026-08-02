@@ -281,25 +281,20 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
     }
     (merged as unknown as Record<string, unknown>)[key] = value;
   }
+  // Publish only once setupTelemetry has accepted the merged config. It applies
+  // ceilings this function does not (exporter retries, for one) and throws on a
+  // value that passed validateRuntimeOverrides, so assigning first would leave
+  // the snapshot reporting a rejected config while the exporter policy still
+  // ran on the old one.
+  const previous = _activeConfig;
   _activeConfig = merged;
-  // setupTelemetry() bumps _configVersion, which forces the logger root to
-  // rebuild on next getLogger() call so new level/format take effect.
-  setupTelemetry(_activeConfig);
-}
-
-function validateRate(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be in [0, 1], got ${String(value)}`);
-  }
-}
-
-function validateNonNegativeInteger(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isInteger(value) || value < 0) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be a non-negative integer, got ${String(value)}`);
+  try {
+    // setupTelemetry() bumps _configVersion, which forces the logger root to
+    // rebuild on next getLogger() call so new level/format take effect.
+    setupTelemetry(merged);
+  } catch (err: unknown) {
+    _activeConfig = previous;
+    throw err;
   }
 }
 
@@ -311,26 +306,27 @@ function validateNonNegativeNumber(name: string, value: number | undefined): voi
   }
 }
 
+/**
+ * Check the override fields `setupTelemetry` does not.
+ *
+ * Rates, backpressure sizes, retry counts and the security/PII limits are all
+ * re-checked by `_validateConfig` against the merged config a few lines below,
+ * with the same bounds and the same message wording. Validating them here as
+ * well duplicated the rule without changing any outcome: with the rejected
+ * update now rolled back, disabling either copy left the other one throwing, so
+ * neither was observable on its own.
+ *
+ * The backoff and timeout fields are genuinely only checked here — they are not
+ * part of `_validateConfig` — so this is what remains.
+ */
 /* Stryker disable StringLiteral: field names in validation calls are only used in error messages — mutating them does not change validation behavior */
 function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
-  validateRate('samplingLogsRate', overrides.samplingLogsRate);
-  validateRate('samplingTracesRate', overrides.samplingTracesRate);
-  validateRate('samplingMetricsRate', overrides.samplingMetricsRate);
-  validateNonNegativeInteger('backpressureLogsMaxsize', overrides.backpressureLogsMaxsize);
-  validateNonNegativeInteger('backpressureTracesMaxsize', overrides.backpressureTracesMaxsize);
-  validateNonNegativeInteger('backpressureMetricsMaxsize', overrides.backpressureMetricsMaxsize);
-  validateNonNegativeInteger('exporterLogsRetries', overrides.exporterLogsRetries);
-  validateNonNegativeInteger('exporterTracesRetries', overrides.exporterTracesRetries);
-  validateNonNegativeInteger('exporterMetricsRetries', overrides.exporterMetricsRetries);
   validateNonNegativeNumber('exporterLogsBackoffMs', overrides.exporterLogsBackoffMs);
   validateNonNegativeNumber('exporterTracesBackoffMs', overrides.exporterTracesBackoffMs);
   validateNonNegativeNumber('exporterMetricsBackoffMs', overrides.exporterMetricsBackoffMs);
   validateNonNegativeNumber('exporterLogsTimeoutMs', overrides.exporterLogsTimeoutMs);
   validateNonNegativeNumber('exporterTracesTimeoutMs', overrides.exporterTracesTimeoutMs);
   validateNonNegativeNumber('exporterMetricsTimeoutMs', overrides.exporterMetricsTimeoutMs);
-  validateNonNegativeInteger('securityMaxAttrValueLength', overrides.securityMaxAttrValueLength);
-  validateNonNegativeInteger('securityMaxAttrCount', overrides.securityMaxAttrCount);
-  validateNonNegativeInteger('piiMaxDepth', overrides.piiMaxDepth);
 }
 /* Stryker restore StringLiteral */
 

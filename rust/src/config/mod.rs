@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 mod from_env;
 mod parse;
 mod redact;
+mod validate;
 
 pub use redact::redact_config;
 

@@ -46,7 +46,7 @@ describe('redactConfig — absent optional fields stay absent', () => {
     const result = redactConfig(bareConfig());
     // A forced-true guard would write `undefined` here — an own property the
     // input never had. toEqual would not notice; hasOwn does.
-    expect(Object.hasOwn(result, field)).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, field)).toBe(false);
   });
 });
 
@@ -70,7 +70,7 @@ describe('redactConfig — absent optional fields, asserted in one pass', () => 
       'otlpTracesHeaders',
       'otlpMetricsHeaders',
     ] as const) {
-      expect(Object.hasOwn(result, field)).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(result, field)).toBe(false);
     }
   });
 });

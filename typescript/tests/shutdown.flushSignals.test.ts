@@ -44,9 +44,9 @@ describe('flushSignals', () => {
     _storeRegisteredProviders([ok()], ['traces']);
 
     const drained = await flushSignals(50);
-    expect(Object.hasOwn(drained, 'traces')).toBe(true);
-    expect(Object.hasOwn(drained, 'logs')).toBe(false);
-    expect(Object.hasOwn(drained, 'metrics')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(drained, 'traces')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(drained, 'logs')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(drained, 'metrics')).toBe(false);
   });
 
   it('omits everything when providers were registered untagged', async () => {

@@ -41,7 +41,7 @@ fn trace_exporter_protocol_and_header_decisions_are_exact() {
 fn reset_traces_test_state() -> std::sync::MutexGuard<'static, ()> {
     let guard = acquire_test_state_lock();
     reset_telemetry_state();
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
     guard
 }
 
@@ -106,7 +106,7 @@ fn install_without_endpoint_returns_false_and_leaves_provider_uninstalled() {
 #[test]
 fn shutdown_without_install_is_a_noop() {
     let _guard = reset_traces_test_state();
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
 }
 
 #[test]
@@ -176,7 +176,7 @@ async fn install_with_unreachable_endpoint_succeeds_and_start_span_emits_real_id
     assert!(guard.trace_id.chars().all(|c| c.is_ascii_hexdigit()));
     assert!(guard.span_id.chars().all(|c| c.is_ascii_hexdigit()));
     drop(guard);
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -194,7 +194,7 @@ async fn install_with_sample_rate_zero_still_installs_provider() {
     let guard = start_span("dropped.span");
     assert_eq!(guard.trace_id.len(), 32);
     drop(guard);
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
 }
 
 #[test]
@@ -287,7 +287,7 @@ fn dropping_otel_span_guard_ends_the_sdk_span() {
 #[test]
 fn shutdown_tracer_provider_clears_provider_even_when_processor_shutdown_errors() {
     let _guard = reset_traces_test_state();
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
     let provider = SdkTracerProvider::builder()
         .with_resource(super::super::resource::build_resource(&test_config()))
         .build();
@@ -296,6 +296,6 @@ fn shutdown_tracer_provider_clears_provider_even_when_processor_shutdown_errors(
         provider: Arc::new(provider),
         runtime: ProvideTokioRuntime::test(),
     });
-    shutdown_tracer_provider();
+    shutdown_tracer_provider(None);
     assert!(!tracer_provider_installed());
 }

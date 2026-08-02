@@ -329,8 +329,13 @@ function _isNodeLike(): boolean {
 }
 
 function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
-  _config = { ...configFromEnv(), ...overrides };
-  _validateConfig(_config);
+  // Validate the candidate before publishing it. Assigning `_config` first left
+  // `getConfig()` returning the rejected values after setupTelemetry threw, so a
+  // caller that caught the error kept emitting under a config it had been told
+  // was invalid.
+  const candidate = { ...configFromEnv(), ...overrides };
+  _validateConfig(candidate);
+  _config = candidate;
   _configVersion++;
   _setActiveConfig(_config);
   try {

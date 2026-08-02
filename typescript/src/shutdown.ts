@@ -83,15 +83,32 @@ async function raceWithDeadline(op: Promise<unknown>, timeoutMs: number): Promis
   return result === SETTLED;
 }
 
+/**
+ * Start a budget of `timeoutMs` now; each call returns what is left of it.
+ *
+ * Never returns a negative value: `setTimeout` treats one as 0, but a negative
+ * delay reads as "already overdue" to anyone stepping through, and clamping
+ * here keeps the two call sites honest.
+ */
+function deadlineRemaining(timeoutMs: number): () => number {
+  const startedAt = Date.now();
+  return () => Math.max(0, timeoutMs - (Date.now() - startedAt));
+}
+
 async function flushAndShutdownProvider(
   provider: ShutdownableProvider,
   timeoutMs: number,
 ): Promise<void> {
+  // One budget spans both phases. Giving each the full `timeoutMs` lets a flush
+  // that lands just inside the deadline be followed by a shutdown that gets the
+  // whole deadline again, so a caller passing its remaining SIGTERM budget can
+  // wait almost twice that long.
+  const remaining = deadlineRemaining(timeoutMs);
   // Skip-when-undefined paths use explicit `if` guards (not `?.()`) so a
   // Stryker mutation that drops the optional chain becomes a hard TypeError
   // observable to the calling test.
   if (provider.forceFlush) {
-    const flushed = await raceWithDeadline(provider.forceFlush(), timeoutMs);
+    const flushed = await raceWithDeadline(provider.forceFlush(), remaining());
     if (!flushed) {
       console.warn(
         `[provide/telemetry] provider forceFlush exceeded ${timeoutMs}ms deadline; abandoning background flush`,
@@ -108,7 +125,7 @@ async function flushAndShutdownProvider(
   // the TypeError is swallowed by Promise.allSettled in shutdownTelemetry,
   // so the mutation has no observable effect on any test assertion.
   if (provider.shutdown) {
-    const stopped = await raceWithDeadline(provider.shutdown(), timeoutMs);
+    const stopped = await raceWithDeadline(provider.shutdown(), remaining());
     if (!stopped) {
       console.warn(
         `[provide/telemetry] provider shutdown exceeded ${timeoutMs}ms deadline; abandoning background shutdown`,

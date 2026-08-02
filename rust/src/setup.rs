@@ -45,6 +45,13 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
         Some(explicit) => explicit,
         None => TelemetryConfig::from_env().map_err(|err| TelemetryError::new(err.message))?,
     };
+    // An explicit config has been through no parser, so nothing has range-checked
+    // it. `apply_policies` below clamps rather than rejects, which would leave
+    // `get_runtime_config()` reporting a sampling rate that is not the one in
+    // force. `from_env` already validates, so this only ever fires for Some(_).
+    config
+        .validate()
+        .map_err(|err| TelemetryError::new(err.message))?;
     setup_otel(&config)?;
     apply_policies(&config);
     set_active_config(Some(config.clone()));
@@ -79,17 +86,19 @@ pub fn flush_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryErro
 
 /// Flush and tear down providers, then clear local runtime state.
 ///
-/// `timeout_seconds` bounds the drain that precedes teardown — the part that can
+/// `timeout_seconds` bounds the whole drain-and-teardown — the part that can
 /// hang on an unreachable collector — and `None` uses the configured deadline.
-/// Teardown itself is local work and always completes.
+///
+/// There is deliberately no separate pre-drain: each per-signal teardown already
+/// runs `force_flush` then `shutdown` under this deadline, so draining first
+/// would export every signal twice and could spend the caller's whole budget
+/// before the teardown it was meant to bound had started.
 pub fn shutdown_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryError> {
-    // Drain under the caller's deadline before teardown, mirroring Python.
-    let _ = flush_otel(timeout_seconds);
     {
         let mut state = crate::_lock::lock(setup_state());
         state.done = false;
     }
-    shutdown_otel();
+    shutdown_otel(timeout_seconds);
     set_active_config(None);
     Ok(())
 }

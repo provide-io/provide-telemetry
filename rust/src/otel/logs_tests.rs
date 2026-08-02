@@ -37,14 +37,14 @@ fn log_exporter_protocol_and_header_decisions_are_exact() {
 fn reset_logs_test_state() -> std::sync::MutexGuard<'static, ()> {
     let guard = acquire_test_state_lock();
     reset_telemetry_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     guard
 }
 
 #[test]
 fn shutdown_without_install_is_a_noop() {
     let _guard = reset_logs_test_state();
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
         span_id: None,
         event_metadata: None,
     });
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
 }
 
 #[test]
@@ -300,7 +300,7 @@ fn emit_log_is_safe_without_provider_and_with_invalid_trace_ids() {
         event_metadata: None,
     });
 
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     assert!(!logger_provider_installed());
 }
 
@@ -327,6 +327,6 @@ fn emit_log_accepts_valid_trace_ids_and_context_attributes() {
         event_metadata: None,
     });
 
-    shutdown_logger_provider();
+    shutdown_logger_provider(None);
     assert!(!logger_provider_installed());
 }

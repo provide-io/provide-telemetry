@@ -182,40 +182,61 @@ def flush_signals(timeout_seconds: float | None = None) -> dict[str, bool]:
     delivered. Keys are ``"logs"``, ``"traces"`` and ``"metrics"``; a signal
     whose provider we never installed counts as nothing to flush and reports
     True.
+
+    *timeout_seconds* bounds the call as a whole, not each signal in turn: the
+    three drains run concurrently, so one unreachable collector cannot spend the
+    budget the other two needed.
     """
     from provide.telemetry._provider_drain import (
         flush_logging,
         flush_metrics,
         flush_tracing,
         resolve_drain_deadline,
+        run_drains_together,
     )
 
     deadline = resolve_drain_deadline(timeout_seconds)
-    # Materialise every entry, and route each through _drain_signal: every
-    # signal must get its drain attempt even when an earlier one is abandoned at
-    # the deadline *or* raises. A lazy reduction would let a slow logs endpoint
-    # deny traces and metrics theirs, and an exception escaping here would break
-    # the documented contract inside a caller's request handler.
-    return {
-        "logs": _drain_signal("logs", flush_logging, deadline),
-        "traces": _drain_signal("traces", flush_tracing, deadline),
-        "metrics": _drain_signal("metrics", flush_metrics, deadline),
-    }
+    # Every signal must get its drain attempt even when another is abandoned at
+    # the deadline *or* raises. Draining one after another would let a slow logs
+    # endpoint deny traces and metrics theirs, and an exception escaping here
+    # would break the documented contract inside a caller's request handler —
+    # _drain_signal absorbs the latter.
+    drained: dict[str, bool] = {}
+
+    def _record(signal: str, drain: Callable[[float], bool]) -> Callable[[], None]:
+        def _run() -> None:
+            drained[signal] = _drain_signal(signal, drain, deadline)
+
+        return _run
+
+    run_drains_together(
+        (
+            _record("logs", flush_logging),
+            _record("traces", flush_tracing),
+            _record("metrics", flush_metrics),
+        )
+    )
+    return drained
 
 
 def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     """Flush and tear down telemetry providers and reset runtime policies.
 
-    *timeout_seconds* bounds each provider's drain-and-teardown — the part that
-    can hang on an unreachable collector — and defaults to the configured
+    *timeout_seconds* bounds the whole drain-and-teardown — the part that can
+    hang on an unreachable collector — and defaults to the configured
     bounded-shutdown deadline. A caller in a SIGTERM handler passes the time it
     has left so shutdown cannot overrun its termination grace period.
 
-    There is deliberately no separate pre-drain: every per-signal teardown below
+    The three per-signal teardowns run *concurrently* for that reason. Run in
+    sequence they each take the deadline in turn, so three stalled providers
+    would spend three times the grace period the caller budgeted for one.
+
+    There is deliberately no separate pre-drain: every per-signal teardown
     runs ``force_flush`` then ``shutdown`` under the same deadline, so draining
     first would export each signal twice and roughly double the wall time
     against a slow collector.
     """
+    from provide.telemetry._provider_drain import run_drains_together
     from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
     from provide.telemetry.metrics.provider import shutdown_metrics
     from provide.telemetry.resilience import reset_resilience_for_tests as _reset_resilience
@@ -225,9 +246,13 @@ def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     global _setup_done
     with _lock:
         _setup_done = False
-        shutdown_tracing(timeout_seconds)
-        shutdown_metrics(timeout_seconds)
-        shutdown_logging(timeout_seconds)
+        run_drains_together(
+            (
+                lambda: shutdown_tracing(timeout_seconds),
+                lambda: shutdown_metrics(timeout_seconds),
+                lambda: shutdown_logging(timeout_seconds),
+            )
+        )
         _reset_runtime()
         _reset_sampling()
         _reset_queues()

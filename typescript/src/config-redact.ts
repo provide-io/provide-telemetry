@@ -77,7 +77,7 @@ const _ENDPOINT_FIELDS = ['otlpLogsEndpoint', 'otlpTracesEndpoint', 'otlpMetrics
  * The presence guards are load-bearing in both directions, so none of them is
  * suppressed: forcing one false leaves a secret unmasked, and forcing one true
  * writes an `undefined` key onto a config that did not carry the field at all
- * (asserted with `Object.hasOwn` in config.redact.test.ts).
+ * (asserted with an own-property check in config-redact.presence.test.ts).
  */
 export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
   const result: Record<string, unknown> = { ...config };

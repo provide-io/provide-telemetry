@@ -108,9 +108,9 @@ pub(super) fn export_test_config(endpoint: &str) -> TelemetryConfig {
 
 pub(super) fn reset_all_otel_state() {
     reset_telemetry_state();
-    shutdown_logger_provider();
-    super::super::metrics::shutdown_meter_provider();
-    super::super::traces::shutdown_tracer_provider();
+    shutdown_logger_provider(None);
+    super::super::metrics::shutdown_meter_provider(None);
+    super::super::traces::shutdown_tracer_provider(None);
     set_active_config(None);
 }
 

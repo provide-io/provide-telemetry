@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 
 import pytest
 
@@ -104,7 +105,7 @@ def test_teardown_returns_within_the_callers_deadline(
     monkeypatch: pytest.MonkeyPatch,
     module: object,
     attribute: str,
-    teardown: object,
+    teardown: Callable[[float], None],
 ) -> None:
     """A stuck provider must not outlast the deadline the caller passed.
 
@@ -116,7 +117,7 @@ def test_teardown_returns_within_the_callers_deadline(
     monkeypatch.setattr(module, attribute, provider)
     started = time.monotonic()
     try:
-        teardown(0.05)  # type: ignore[operator]
+        teardown(0.05)
         elapsed = time.monotonic() - started
     finally:
         provider.release.set()
@@ -149,3 +150,163 @@ def test_shutdown_does_not_drain_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     setup_mod.shutdown_telemetry(0.5)
 
     assert calls == ["force_flush", "shutdown"]
+
+
+# ── the deadline is one budget, not one per signal ─────────────────────
+
+
+def test_three_stalled_providers_share_the_callers_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The budget is for the call, not for each signal in turn.
+
+    Run sequentially the three teardowns each take the whole deadline, so a
+    SIGTERM handler that passed the 5s it had left waits 15s and is SIGKILLed
+    with records still queued. Run together they cost one deadline.
+    """
+    providers = [_HangingProvider() for _ in range(3)]
+    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    monkeypatch.setattr(tracing_provider, "_provider_ref", providers[0])
+    monkeypatch.setattr(metrics_provider, "_meter_provider", providers[1])
+    monkeypatch.setattr(logger_core, "_otel_log_provider", providers[2])
+
+    started = time.monotonic()
+    try:
+        setup_mod.shutdown_telemetry(0.2)
+        elapsed = time.monotonic() - started
+    finally:
+        for provider in providers:
+            provider.release.set()
+        drain._reset_abandoned_workers_for_tests()
+
+    # Sequential would be ~0.6s. Bounded well below that, and at or above the
+    # deadline itself so the assertion still fails if nothing was drained.
+    assert 0.2 <= elapsed < 0.45, f"three stalled teardowns took {elapsed:.2f}s"
+    for provider in providers:
+        assert provider.calls[0] == "force_flush"
+
+
+def test_three_stalled_flushes_share_the_callers_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """flush_signals is bounded the same way, and still answers per signal."""
+    providers = [_HangingProvider() for _ in range(3)]
+    monkeypatch.setattr(tracing_provider, "_provider_ref", providers[0])
+    monkeypatch.setattr(metrics_provider, "_meter_provider", providers[1])
+    monkeypatch.setattr(logger_core, "_otel_log_provider", providers[2])
+
+    started = time.monotonic()
+    try:
+        drained = setup_mod.flush_signals(0.2)
+        elapsed = time.monotonic() - started
+    finally:
+        for provider in providers:
+            provider.release.set()
+        drain._reset_abandoned_workers_for_tests()
+
+    assert drained == {"logs": False, "traces": False, "metrics": False}
+    assert 0.2 <= elapsed < 0.45, f"three stalled flushes took {elapsed:.2f}s"
+
+
+# ── run_drains_together ────────────────────────────────────────────────
+
+
+def test_every_drain_runs_even_though_one_raises() -> None:
+    """One exporter raising must not cost the other two their teardown.
+
+    The exception still reaches the caller — a sequential call would have
+    surfaced it — but only after every drain has had its turn.
+    """
+    ran: list[str] = []
+
+    def _boom() -> None:
+        ran.append("boom")
+        raise RuntimeError("exporter exploded")
+
+    with pytest.raises(RuntimeError, match="exporter exploded"):
+        drain.run_drains_together(
+            (
+                lambda: ran.append("first"),
+                _boom,
+                lambda: ran.append("last"),
+            )
+        )
+
+    assert sorted(ran) == ["boom", "first", "last"]
+
+
+def test_the_first_error_is_the_one_raised() -> None:
+    """Two failures report the one that happened first, not the last."""
+
+    def _first() -> None:
+        raise ValueError("first")
+
+    def _second() -> None:
+        # Ordered well behind _first so which one is "first" is unambiguous.
+        time.sleep(0.2)
+        raise ValueError("second")
+
+    with pytest.raises(ValueError, match="first"):
+        drain.run_drains_together((_first, _second))
+
+
+def test_a_drain_still_runs_when_no_thread_can_be_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """At the process thread limit, tear down inline rather than not at all.
+
+    Slower than the concurrent path, but a provider that never shuts down
+    strands its exporter and its queued records for the life of the process.
+    """
+    ran: list[str] = []
+
+    def _refuse(self: threading.Thread) -> None:
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", _refuse)
+
+    drain.run_drains_together((lambda: ran.append("a"), lambda: ran.append("b")))
+
+    assert ran == ["a", "b"]
+
+
+def test_an_inline_drain_still_reports_its_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spawn-failure fallback must not swallow what the drain raised."""
+
+    def _refuse(self: threading.Thread) -> None:
+        raise RuntimeError("can't start new thread")
+
+    def _boom() -> None:
+        raise ValueError("inline exploded")
+
+    monkeypatch.setattr(threading.Thread, "start", _refuse)
+
+    with pytest.raises(ValueError, match="inline exploded"):
+        drain.run_drains_together((_boom,))
+
+
+def test_teardown_threads_are_named_for_operator_visibility() -> None:
+    """A stuck teardown shows up in py-spy/faulthandler under its own name."""
+    names: list[str] = []
+
+    drain.run_drains_together((lambda: names.append(threading.current_thread().name),))
+
+    assert names == ["provide-provider-teardown"]
+
+
+def test_teardown_threads_are_daemons() -> None:
+    """A teardown worker must not be able to block interpreter exit.
+
+    The join below is unbounded, so in the normal path daemon-ness never shows.
+    It shows when the join itself is interrupted — a Ctrl-C during a shutdown
+    that is waiting on an unreachable collector leaves the workers running, and
+    non-daemon threads would then hold the process open at exit, turning an
+    interrupted shutdown into a hang.
+    """
+    observed: list[bool] = []
+
+    drain.run_drains_together((lambda: observed.append(threading.current_thread().daemon),))
+
+    assert observed == [True]

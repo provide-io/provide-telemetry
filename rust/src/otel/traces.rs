@@ -133,11 +133,11 @@ pub(super) fn install_tracer_provider(
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
     if !cfg.tracing.enabled {
-        shutdown_tracer_provider();
+        shutdown_tracer_provider(None);
         return Ok(false);
     }
     if cfg.tracing.otlp_endpoint.is_none() {
-        shutdown_tracer_provider();
+        shutdown_tracer_provider(None);
         return Ok(false);
     }
 
@@ -176,18 +176,29 @@ pub(super) fn install_tracer_provider(
 
 /// Shut down the installed `TracerProvider`. Safe to
 /// call when no provider has been installed (no-op).
-pub(super) fn shutdown_tracer_provider() {
+///
+/// `timeout_seconds` is the caller's remaining budget; `None` uses the
+/// configured one. `SdkTracerProvider::shutdown` takes no timeout of its own, so
+/// without the bound an unreachable collector holds the caller for the SDK's
+/// 30s batch-worker join.
+pub(super) fn shutdown_tracer_provider(timeout_seconds: Option<f64>) {
     let mut guard = crate::_lock::lock(tracer_provider_slot());
     let provider = guard.take();
     drop(guard);
     if let Some(installed) = provider {
-        installed.runtime.quiesce();
-        let _ = installed.provider.force_flush();
-        if let Err(err) = installed.provider.shutdown() {
-            eprintln!("provide_telemetry: traces shutdown failed: {err:?}");
-        }
-        installed.runtime.quiesce();
+        super::bounded_teardown("traces", timeout_seconds, move || {
+            do_shutdown_tracer_provider(installed);
+        });
     }
+}
+
+fn do_shutdown_tracer_provider(installed: InstalledTracerProvider) {
+    installed.runtime.quiesce();
+    let _ = installed.provider.force_flush();
+    if let Err(err) = installed.provider.shutdown() {
+        eprintln!("provide_telemetry: traces shutdown failed: {err:?}");
+    }
+    installed.runtime.quiesce();
 }
 
 pub(crate) fn tracer_provider_installed() -> bool {

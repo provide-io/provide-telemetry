@@ -33,8 +33,8 @@ fn apply_policies_alone_does_not_block_trace_and_log_exports_without_metrics() {
     });
 
     settle_otel_exports();
-    shutdown_logger_provider();
-    super::super::traces::shutdown_tracer_provider();
+    shutdown_logger_provider(None);
+    super::super::traces::shutdown_tracer_provider(None);
     let health = wait_for_export_health(true, true, false, Duration::from_secs(5));
     assert_export_health_success(&health, true, true, false);
 
@@ -69,9 +69,9 @@ fn apply_policies_with_metrics_exports_when_meter_shuts_down_last() {
     });
 
     settle_otel_exports();
-    shutdown_logger_provider();
-    super::super::traces::shutdown_tracer_provider();
-    super::super::metrics::shutdown_meter_provider();
+    shutdown_logger_provider(None);
+    super::super::traces::shutdown_tracer_provider(None);
+    super::super::metrics::shutdown_meter_provider(None);
     let health = wait_for_export_health(true, true, false, Duration::from_secs(5));
     assert_export_health_success(&health, true, true, false);
 
@@ -102,8 +102,8 @@ fn apply_policies_with_metrics_do_not_block_direct_trace_exports() {
     trace("tests.otel.span", || {});
 
     settle_otel_exports();
-    super::super::traces::shutdown_tracer_provider();
-    super::super::metrics::shutdown_meter_provider();
+    super::super::traces::shutdown_tracer_provider(None);
+    super::super::metrics::shutdown_meter_provider(None);
     let health = crate::health::get_health_snapshot();
     let seen = collector.wait_for_path("/v1/traces", Duration::from_secs(5));
     assert!(
@@ -141,9 +141,9 @@ fn tracer_logger_and_meter_export_when_tracer_shuts_down_before_logs_and_metrics
     });
 
     settle_otel_exports();
-    super::super::traces::shutdown_tracer_provider();
-    shutdown_logger_provider();
-    super::super::metrics::shutdown_meter_provider();
+    super::super::traces::shutdown_tracer_provider(None);
+    shutdown_logger_provider(None);
+    super::super::metrics::shutdown_meter_provider(None);
     let health = wait_for_export_health(true, true, false, Duration::from_secs(5));
     assert_export_health_success(&health, true, true, false);
 
@@ -178,9 +178,9 @@ fn apply_policies_alone_does_not_block_trace_and_log_exports() {
     });
 
     settle_otel_exports();
-    shutdown_logger_provider();
-    super::super::metrics::shutdown_meter_provider();
-    super::super::traces::shutdown_tracer_provider();
+    shutdown_logger_provider(None);
+    super::super::metrics::shutdown_meter_provider(None);
+    super::super::traces::shutdown_tracer_provider(None);
     let health = wait_for_export_health(true, true, false, Duration::from_secs(5));
     assert_export_health_success(&health, true, true, false);
 

@@ -247,7 +247,7 @@ function isBaggageToken(key: string): boolean {
 
 /** Strip C0/C1 controls except TAB from a baggage value. Inlined for the same reason. */
 function stripBaggageControls(value: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
   return value.replace(/[\x00-\x08\x0a-\x1f\x7f]/g, '');
 }
 

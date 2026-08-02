@@ -156,7 +156,8 @@ func (rt *TelemetryRuntime) Reconfigure(ctx context.Context, cfg *TelemetryConfi
 // Backends that do not implement PerSignalFlushableBackend can only answer in
 // aggregate, and every installed signal then carries the same outcome.
 func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
-	providers := GetRuntimeStatus().Providers
+	status := GetRuntimeStatus()
+	providers := status.Providers
 	perSignal, granular := FlushTelemetryBySignal(ctx)
 	err := _joinSignalErrors(perSignal)
 	if !granular {
@@ -165,6 +166,15 @@ func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
 	signal := func(name string, installed bool) SignalFlushResult {
 		if !installed {
 			return SignalFlushResult{NotInstalled: true}
+		}
+		// Before SetupTelemetry nothing installed is ours. A provider visible
+		// here is one the host put on the OTel globals, and both flush entry
+		// points short-circuit on !_setupDone without touching it — so the
+		// aggregate nil they return is "nothing was drained", not "the drain
+		// succeeded". Calling that Flushed would tell a caller its records are
+		// out while they sit in the host's batch processor.
+		if !status.SetupDone {
+			return SignalFlushResult{NotOwned: true}
 		}
 		drainErr := err
 		if granular {

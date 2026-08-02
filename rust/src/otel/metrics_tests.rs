@@ -52,7 +52,7 @@ fn install_with_disabled_metrics_is_a_noop() {
 #[test]
 fn install_without_endpoint_returns_false_and_leaves_provider_uninstalled() {
     let _guard = acquire_test_state_lock();
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
     let cfg = test_config();
     let resource = super::super::resource::build_resource(&cfg);
 
@@ -65,7 +65,7 @@ fn install_without_endpoint_returns_false_and_leaves_provider_uninstalled() {
 #[test]
 fn shutdown_without_install_is_a_noop() {
     let _guard = acquire_test_state_lock();
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
     record_gauge_set("test.gauge", 42.0, None);
     record_histogram("test.histogram", 0.123, None);
 
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn attrs_to_kvs_handles_none_and_populated_attributes() {
 #[test]
 fn get_or_create_instruments_reuse_cached_instances() {
     let _guard = acquire_test_state_lock();
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
     crate::_lock::lock(COUNTERS.get_or_init(empty_counter_cache_mutex)).clear();
     crate::_lock::lock(GAUGES.get_or_init(empty_gauge_cache_mutex)).clear();
     crate::_lock::lock(HISTOGRAMS.get_or_init(empty_histogram_cache_mutex)).clear();
@@ -282,7 +282,7 @@ fn shutdown_meter_provider_clears_provider_even_when_reader_shutdown_errors() {
         .expect("helper force flush should succeed");
     assert_eq!(helper.temporality(), Temporality::Cumulative);
 
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
     let reader = PeriodicReader::builder(ShutdownErrorMetricExporter, ProvideTokioRuntime::test())
         .with_interval(Duration::from_millis(10))
         .build();
@@ -295,7 +295,7 @@ fn shutdown_meter_provider_clears_provider_even_when_reader_shutdown_errors() {
         runtime: ProvideTokioRuntime::test(),
     });
 
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
 
     assert!(!meter_provider_installed());
 }
@@ -303,7 +303,7 @@ fn shutdown_meter_provider_clears_provider_even_when_reader_shutdown_errors() {
 #[test]
 fn shutdown_meter_provider_logs_error_when_provider_is_already_shutdown() {
     let _guard = acquire_test_state_lock();
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
     let provider = SdkMeterProvider::builder()
         .with_resource(super::super::resource::build_resource(&test_config()))
         .build();
@@ -313,7 +313,7 @@ fn shutdown_meter_provider_logs_error_when_provider_is_already_shutdown() {
         runtime: ProvideTokioRuntime::test(),
     });
 
-    shutdown_meter_provider();
+    shutdown_meter_provider(None);
 
     assert!(!meter_provider_installed());
 }

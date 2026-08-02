@@ -153,7 +153,7 @@ def _spy_signals(monkeypatch: pytest.MonkeyPatch, results: dict[str, bool]) -> l
 def test_flushes_every_signal_and_reports_success(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _spy_signals(monkeypatch, {"logs": True, "traces": True, "metrics": True})
     assert flush_telemetry(timeout_seconds=2.5) is True
-    assert [signal for signal, _ in seen] == ["logs", "traces", "metrics"]
+    assert sorted(signal for signal, _ in seen) == ["logs", "metrics", "traces"]
 
 
 def test_explicit_timeout_reaches_every_signal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,10 +178,14 @@ def test_a_signal_abandoned_at_the_deadline_does_not_deny_the_others_theirs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Kills a short-circuiting `all(...)` over a generator: logs failing first
-    must not stop traces and metrics from being drained."""
+    must not stop traces and metrics from being drained.
+
+    Sorted, not ordered: the three drains run concurrently, so which finishes
+    first is not part of the contract — that each one ran is.
+    """
     seen = _spy_signals(monkeypatch, {"logs": False, "traces": True, "metrics": True})
     assert flush_telemetry(timeout_seconds=1.0) is False
-    assert [signal for signal, _ in seen] == ["logs", "traces", "metrics"]
+    assert sorted(signal for signal, _ in seen) == ["logs", "metrics", "traces"]
 
 
 # ── failure handling ───────────────────────────────────────────────────
@@ -214,7 +218,7 @@ def test_a_raising_signal_does_not_abort_the_others_or_escape(
     monkeypatch.setattr(drain, "flush_metrics", _ok("metrics"))
 
     assert flush_telemetry(timeout_seconds=1.0) is False
-    assert seen == ["logs", "traces", "metrics"]
+    assert sorted(seen) == ["logs", "metrics", "traces"]
 
 
 def test_declines_to_strand_more_workers_than_the_budget(monkeypatch: pytest.MonkeyPatch) -> None:

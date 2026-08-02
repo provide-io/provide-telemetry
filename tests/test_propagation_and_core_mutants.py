@@ -96,7 +96,7 @@ def test_traceparent_is_kept_only_when_both_ids_parse() -> None:
 
     assert ctx.trace_id is None
     assert ctx.span_id is None
-    assert ctx.traceparent is None, "an unparseable header must not be forwarded"
+    assert ctx.traceparent is None, "an unparsable header must not be forwarded"
 
 
 def test_valid_traceparent_is_forwarded() -> None:

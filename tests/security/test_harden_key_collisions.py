@@ -15,7 +15,8 @@ the wrong trace and losing the real one.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import pytest
 
@@ -24,8 +25,13 @@ from provide.telemetry.logger.processors import _harden_keys, harden_input
 _CONTROL_KEYS = ("event", "level", "trace_id", "span_id", "logger")
 
 
-def _processor() -> object:
-    return harden_input(max_value_length=200, max_attr_count=0, max_depth=5)
+def _processor() -> Callable[[Any, str, dict[str, Any]], dict[str, Any]]:
+    # harden_input is annotated `-> Any` so it can sit in structlog's processor
+    # list; name the real shape here so the calls below type-check.
+    return cast(
+        "Callable[[Any, str, dict[str, Any]], dict[str, Any]]",
+        harden_input(max_value_length=200, max_attr_count=0, max_depth=5),
+    )
 
 
 @pytest.mark.parametrize("field", _CONTROL_KEYS)
@@ -34,7 +40,7 @@ def test_a_forged_key_cannot_overwrite_a_control_field(field: str) -> None:
     forged = field[:2] + "\x00" + field[2:]
     proc = _processor()
 
-    result = proc(None, "info", {field: "genuine", forged: "FORGED"})  # type: ignore[operator]
+    result = proc(None, "info", {field: "genuine", forged: "FORGED"})
 
     assert result[field] == "genuine"
 
@@ -45,7 +51,7 @@ def test_the_genuine_key_wins_even_when_it_arrives_second(field: str) -> None:
     forged = field[:2] + "\x00" + field[2:]
     proc = _processor()
 
-    result = proc(None, "info", {forged: "FORGED", field: "genuine"})  # type: ignore[operator]
+    result = proc(None, "info", {forged: "FORGED", field: "genuine"})
 
     assert result[field] == "genuine"
 
@@ -54,7 +60,7 @@ def test_two_sanitized_keys_that_collide_keep_the_first() -> None:
     """Arbitrary but lossless-by-one: neither is a genuine field."""
     proc = _processor()
 
-    result = proc(None, "info", {"a\x00b": 1, "a\x01b": 2})  # type: ignore[operator]
+    result = proc(None, "info", {"a\x00b": 1, "a\x01b": 2})
 
     assert result == {"ab": 1}
 
@@ -67,7 +73,7 @@ def test_a_dropped_collision_does_not_end_the_record() -> None:
     """
     proc = _processor()
 
-    result = proc(None, "info", {"a\x00b": 1, "a\x01b": 2, "kept": 3})  # type: ignore[operator]
+    result = proc(None, "info", {"a\x00b": 1, "a\x01b": 2, "kept": 3})
 
     assert result == {"ab": 1, "kept": 3}
 
@@ -75,7 +81,7 @@ def test_a_dropped_collision_does_not_end_the_record() -> None:
 def test_keys_needing_no_cleaning_are_untouched() -> None:
     proc = _processor()
 
-    result = proc(None, "info", {"x": 1, "y": 2, "event": "ok"})  # type: ignore[operator]
+    result = proc(None, "info", {"x": 1, "y": 2, "event": "ok"})
 
     assert result == {"x": 1, "y": 2, "event": "ok"}
 
