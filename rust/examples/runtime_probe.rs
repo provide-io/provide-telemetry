@@ -48,15 +48,15 @@ fn main() {
         }),
         "lazy_logger_shutdown_re_setup" => {
             let first = capture_record("log.output.parity");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             let second = provide_telemetry::get_runtime_status();
             std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "probe-restarted");
             std::env::set_var("PROVIDE_TELEMETRY_ENV", "parity-restarted");
             std::env::set_var("PROVIDE_TELEMETRY_VERSION", "9.9.9");
-            provide_telemetry::setup_telemetry().expect("second setup");
+            provide_telemetry::setup_telemetry(None).expect("second setup");
             let third = provide_telemetry::get_runtime_status();
             let restarted = capture_record("log.output.restart");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "first_logger_emitted": first.get("message") == Some(&Value::String("log.output.parity".to_string())),
@@ -74,9 +74,9 @@ fn main() {
             })
         }
         "strict_schema_rejection" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let record = capture_record("Bad.Event.Ok");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "emitted": true,
@@ -84,9 +84,9 @@ fn main() {
             })
         }
         "strict_event_name_only" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let record = capture_record("Bad.Event.Ok");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "emitted": true,
@@ -94,9 +94,9 @@ fn main() {
             })
         }
         "required_keys_rejection" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let record = capture_record("user.auth.ok");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "emitted": true,
@@ -105,12 +105,12 @@ fn main() {
         }
         "invalid_config" => json!({
             "case": case,
-            "raised": provide_telemetry::setup_telemetry().is_err(),
+            "raised": provide_telemetry::setup_telemetry(None).is_err(),
         }),
         "fail_open_exporter_init" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let status = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "setup_done": status.setup_done,
@@ -119,9 +119,9 @@ fn main() {
             })
         }
         "signal_enablement" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let status = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "setup_done": status.setup_done,
@@ -131,9 +131,9 @@ fn main() {
             })
         }
         "per_signal_logs_endpoint" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let status = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "setup_done": status.setup_done,
@@ -144,7 +144,7 @@ fn main() {
         }
         // Counter, gauge and histogram output — the values, not just the flags.
         "metric_instrument_values" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
 
             let c = provide_telemetry::counter("probe.metric.counter", None, None);
             c.add(1.0, None);
@@ -166,7 +166,7 @@ fn main() {
                 "histogram_count": format!("{}", h.count()),
                 "histogram_total": format!("{}", h.total() as i64),
             });
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             result
         }
         // A host application's own SDK provider must be adopted, and adoption
@@ -212,17 +212,17 @@ fn main() {
                 install_host_provider();
                 let before = provide_telemetry::get_runtime_status();
 
-                // setup_telemetry() reads the environment, so enablement is set there.
+                // setup_telemetry(None) reads the environment, so enablement is set there.
                 std::env::set_var("PROVIDE_TRACE_ENABLED", "true");
-                provide_telemetry::setup_telemetry().expect("setup enabled");
+                provide_telemetry::setup_telemetry(None).expect("setup enabled");
                 let enabled = provide_telemetry::get_runtime_status();
-                provide_telemetry::shutdown_telemetry().expect("shutdown");
+                provide_telemetry::shutdown_telemetry(None).expect("shutdown");
 
                 install_host_provider();
                 std::env::set_var("PROVIDE_TRACE_ENABLED", "false");
-                provide_telemetry::setup_telemetry().expect("setup disabled");
+                provide_telemetry::setup_telemetry(None).expect("setup disabled");
                 let disabled = provide_telemetry::get_runtime_status();
-                provide_telemetry::shutdown_telemetry().expect("shutdown");
+                provide_telemetry::shutdown_telemetry(None).expect("shutdown");
                 std::env::remove_var("PROVIDE_TRACE_ENABLED");
 
                 json!({
@@ -234,7 +234,7 @@ fn main() {
             }
         }
         "provider_identity_reconfigure" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let before = provide_telemetry::get_runtime_status();
             let service_before = provide_telemetry::get_runtime_config()
                 .expect("runtime config")
@@ -246,7 +246,7 @@ fn main() {
                 .expect("runtime config")
                 .service_name
                 == service_before;
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "providers_active": before.providers.logs || before.providers.traces || before.providers.metrics,
@@ -255,13 +255,13 @@ fn main() {
             })
         }
         "shutdown_re_setup" => {
-            provide_telemetry::setup_telemetry().expect("first setup");
+            provide_telemetry::setup_telemetry(None).expect("first setup");
             let first = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             let second = provide_telemetry::get_runtime_status();
-            provide_telemetry::setup_telemetry().expect("second setup");
+            provide_telemetry::setup_telemetry(None).expect("second setup");
             let third = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "first_setup_done": first.setup_done,
@@ -278,7 +278,7 @@ fn main() {
             })
         }
         "hot_reload_log_level" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let service_before = provide_telemetry::get_runtime_config()
                 .expect("runtime config")
                 .service_name;
@@ -296,7 +296,7 @@ fn main() {
             .expect("update must succeed");
             let after = emit_debug_capture("probe", "hot.level.debug.after");
             let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "first_debug_suppressed": !has_message(&before, "hot.level.debug.before"),
@@ -306,7 +306,7 @@ fn main() {
             })
         }
         "hot_reload_log_format" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let status_before = provide_telemetry::get_runtime_status();
             let service_before = provide_telemetry::get_runtime_config()
                 .expect("runtime config")
@@ -324,7 +324,7 @@ fn main() {
             .expect("update must succeed");
             let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
             let status_after = provide_telemetry::get_runtime_status();
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "format_config_updated": cfg.logging.fmt.eq_ignore_ascii_case("console"),
@@ -333,7 +333,7 @@ fn main() {
             })
         }
         "hot_reload_module_level" => {
-            provide_telemetry::setup_telemetry().expect("setup");
+            provide_telemetry::setup_telemetry(None).expect("setup");
             let service_before = provide_telemetry::get_runtime_config()
                 .expect("runtime config")
                 .service_name;
@@ -356,7 +356,7 @@ fn main() {
             .expect("update must succeed");
             let after = emit_debug_capture("probe.child", "hot.module.debug.after");
             let cfg = provide_telemetry::get_runtime_config().expect("runtime config");
-            provide_telemetry::shutdown_telemetry().expect("shutdown");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
             json!({
                 "case": case,
                 "first_debug_suppressed": !has_message(&before, "hot.module.debug.before"),

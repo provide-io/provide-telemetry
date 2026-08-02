@@ -402,7 +402,7 @@ fn runtime_test_reload_runtime_from_env_covers_parse_and_drift_paths_in_unit_mod
 #[test]
 fn runtime_test_reload_timeout_stays_frozen_when_provider_snapshot_is_live() {
     let _guard = crate::testing::acquire_test_state_lock();
-    let _ = crate::shutdown_telemetry();
+    let _ = crate::shutdown_telemetry(None);
     crate::testing::reset_telemetry_state();
     crate::otel::_reset_otel_for_tests();
 
@@ -416,7 +416,7 @@ fn runtime_test_reload_timeout_stays_frozen_when_provider_snapshot_is_live() {
             ("PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS", "9.0"),
         ],
         || {
-            crate::setup_telemetry().expect("setup should succeed");
+            crate::setup_telemetry(None).expect("setup should succeed");
             let status = crate::get_runtime_status();
             assert!(status.providers.logs);
             assert!(status.providers.traces);
@@ -435,7 +435,7 @@ fn runtime_test_reload_timeout_stays_frozen_when_provider_snapshot_is_live() {
         },
     );
 
-    let _ = crate::shutdown_telemetry();
+    let _ = crate::shutdown_telemetry(None);
     crate::testing::reset_telemetry_state();
     crate::otel::_reset_otel_for_tests();
 }

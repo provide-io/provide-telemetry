@@ -103,9 +103,13 @@ impl TelemetryRuntime {
         }
     }
 
-    pub fn start(&mut self) -> Result<TelemetryConfig, TelemetryError> {
+    /// Start the runtime, optionally with an explicit config.
+    ///
+    /// `None` reads the environment. Mirrors Python's `start(config)`,
+    /// TypeScript's `start(config?)` and Go's `Start(ctx, opts...)`.
+    pub fn start(&mut self, config: Option<TelemetryConfig>) -> Result<TelemetryConfig, TelemetryError> {
         self.state = RuntimeState::Starting;
-        match crate::setup::setup_telemetry() {
+        match crate::setup::setup_telemetry(config) {
             Ok(cfg) => {
                 self.state = RuntimeState::Ready;
                 Ok(cfg)
@@ -117,16 +121,18 @@ impl TelemetryRuntime {
         }
     }
 
-    pub fn shutdown(&mut self) -> Result<(), TelemetryError> {
+    /// Shut down, bounding the pre-teardown drain by `timeout_seconds`.
+    pub fn shutdown(&mut self, timeout_seconds: Option<f64>) -> Result<(), TelemetryError> {
         self.state = RuntimeState::Stopping;
-        let result = crate::setup::shutdown_telemetry();
+        let result = crate::setup::shutdown_telemetry(timeout_seconds);
         self.state = RuntimeState::Stopped;
         result
     }
 
-    pub fn flush(&self) -> Result<FlushResult, TelemetryError> {
+    /// Flush installed providers, bounding the drain by `timeout_seconds`.
+    pub fn flush(&self, timeout_seconds: Option<f64>) -> Result<FlushResult, TelemetryError> {
         let providers = crate::runtime::get_runtime_status().providers;
-        crate::setup::flush_telemetry()?;
+        crate::setup::flush_telemetry(timeout_seconds)?;
         let result_for = |installed| SignalFlushResult {
             flushed: installed,
             not_installed: !installed,

@@ -82,7 +82,7 @@ fn otlp_collector_smoke() {
 
         runtime.block_on(async {
             eprintln!("[otlp_collector_smoke] before setup_telemetry");
-            let cfg = setup_telemetry().expect("setup_telemetry should succeed");
+            let cfg = setup_telemetry(None).expect("setup_telemetry should succeed");
             eprintln!(
                 "[otlp_collector_smoke] after setup_telemetry: tracing.enabled={} tracing.endpoint={:?} metrics.enabled={} metrics.endpoint={:?}",
                 cfg.tracing.enabled,
@@ -108,7 +108,7 @@ fn otlp_collector_smoke() {
             tokio::time::sleep(Duration::from_millis(200)).await;
 
             eprintln!("[otlp_collector_smoke] before shutdown_telemetry");
-            shutdown_telemetry().expect("shutdown_telemetry should succeed");
+            shutdown_telemetry(None).expect("shutdown_telemetry should succeed");
             eprintln!("[otlp_collector_smoke] after shutdown_telemetry");
 
             // Hold the runtime open briefly so any in-flight export tasks

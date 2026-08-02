@@ -444,10 +444,10 @@ fn truncate_and_strip_context_helpers_skip_empty_context() {
 fn process_event_prefers_runtime_config_when_present() {
     let _guard = acquire_test_state_lock();
     crate::testing::reset_telemetry_state();
-    shutdown_telemetry().expect("pre-test shutdown should succeed");
+    shutdown_telemetry(None).expect("pre-test shutdown should succeed");
 
     std::env::set_var("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH", "8");
-    setup_telemetry().expect("setup should succeed");
+    setup_telemetry(None).expect("setup should succeed");
 
     let mut event = make_event("INFO", "auth.login.ok");
     event.context.insert(
@@ -464,7 +464,7 @@ fn process_event_prefers_runtime_config_when_present() {
         Some("abcdefgh...")
     );
 
-    shutdown_telemetry().expect("shutdown should succeed");
+    shutdown_telemetry(None).expect("shutdown should succeed");
     std::env::remove_var("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH");
 }
 
@@ -472,7 +472,7 @@ fn process_event_prefers_runtime_config_when_present() {
 fn process_event_reads_env_config_when_runtime_is_absent() {
     let _guard = acquire_test_state_lock();
     crate::testing::reset_telemetry_state();
-    shutdown_telemetry().expect("pre-test shutdown should succeed");
+    shutdown_telemetry(None).expect("pre-test shutdown should succeed");
 
     std::env::set_var("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH", "8");
 

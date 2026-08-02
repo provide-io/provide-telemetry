@@ -15,7 +15,7 @@ fn runtime_test_update_runtime_config_reapplies_runtime_policies() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         update_runtime_config(RuntimeOverrides {
             sampling: Some(SamplingConfig {
@@ -80,7 +80,7 @@ fn runtime_test_reload_runtime_from_env_reapplies_runtime_policies() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[("PROVIDE_SAMPLING_LOGS_RATE", "1.0")], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         std::env::set_var("PROVIDE_SAMPLING_LOGS_RATE", "0.33");
 
@@ -102,7 +102,7 @@ fn runtime_test_reconfigure_telemetry_reapplies_runtime_policies() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         let target = TelemetryConfig {
             sampling: SamplingConfig {

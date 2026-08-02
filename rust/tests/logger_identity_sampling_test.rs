@@ -33,7 +33,7 @@ fn setup_json_logging() {
 
 fn teardown() {
     reset_logging_config_for_tests();
-    shutdown_telemetry().ok();
+    shutdown_telemetry(None).ok();
     Logger::drain_events_for_tests();
 }
 

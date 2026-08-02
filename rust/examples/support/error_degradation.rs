@@ -18,8 +18,8 @@ pub struct DemoSummary {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
-    setup_telemetry()?;
+    let _ = shutdown_telemetry(None);
+    setup_telemetry(None)?;
 
     let bad_bool = TelemetryConfig::from_map(&HashMap::from([(
         "PROVIDE_TRACE_ENABLED".to_string(),
@@ -44,7 +44,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     }
     set_strict_schema(false);
 
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
     Ok(DemoSummary {
         configuration_error_seen,
         event_schema_error_seen,

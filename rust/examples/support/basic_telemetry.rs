@@ -32,13 +32,13 @@ fn telemetry_error(message: impl Into<String>) -> TelemetryError {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     {
         let _clear = clear_context();
     }
     let _ = Logger::drain_events_for_tests();
 
-    let config = setup_telemetry()?;
+    let config = setup_telemetry(None)?;
     let log = get_logger(Some("examples.basic"));
     let requests = counter(
         "example.basic.requests",
@@ -91,7 +91,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
 
     let context_keys_after_clear = get_context().len();
     let logged_events = Logger::drain_events_for_tests().len();
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
 
     Ok(DemoSummary {
         service_name: config.service_name,

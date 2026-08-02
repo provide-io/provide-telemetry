@@ -57,13 +57,17 @@ pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError
 /// also when the drain finished but failed — both mean records may still be
 /// sitting in the exporter's queue, which is what the caller needs to know.
 #[cfg(feature = "otel")]
-fn bounded_flush<F>(signal: &str, flush: F) -> bool
+fn bounded_flush<F>(signal: &str, timeout_seconds: Option<f64>, flush: F) -> bool
 where
     F: FnOnce() -> bool + Send + 'static,
 {
-    let timeout_secs = crate::runtime::get_runtime_config()
-        .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
-        .unwrap_or(5.0);
+    // A caller-supplied deadline wins over the configured one, so a caller with
+    // a budget (a SIGTERM handler, a request boundary) can bound this call.
+    let timeout_secs = timeout_seconds.unwrap_or_else(|| {
+        crate::runtime::get_runtime_config()
+            .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
+            .unwrap_or(5.0)
+    });
 
     if timeout_secs <= 0.0 {
         // Caller opted out of bounding — do the synchronous drain.
@@ -102,17 +106,18 @@ where
 /// Returns false when any signal was abandoned at the deadline. Every signal
 /// gets its attempt regardless — one stalled exporter must not deny the others
 /// their drain.
-pub(crate) fn flush_otel() -> bool {
+pub(crate) fn flush_otel(timeout_seconds: Option<f64>) -> bool {
     #[cfg(feature = "otel")]
     {
-        let logs = flush::flush_logger_provider();
-        let traces = flush::flush_tracer_provider();
-        let metrics = flush::flush_meter_provider();
+        let logs = flush::flush_logger_provider(timeout_seconds);
+        let traces = flush::flush_tracer_provider(timeout_seconds);
+        let metrics = flush::flush_meter_provider(timeout_seconds);
         logs && traces && metrics
     }
 
     #[cfg(not(feature = "otel"))]
     {
+        let _ = timeout_seconds;
         true
     }
 }
@@ -308,12 +313,12 @@ mod bounded_flush_tests {
     /// caller is deciding whether its records are safely out.
     #[test]
     fn a_failed_drain_is_reported_as_failure() {
-        assert!(!bounded_flush("traces", || false));
+        assert!(!bounded_flush("traces", None, || false));
     }
 
     #[test]
     fn a_successful_drain_is_reported_as_success() {
-        assert!(bounded_flush("traces", || true));
+        assert!(bounded_flush("traces", None, || true));
     }
 
     /// A drain still running at the deadline is abandoned and reported as a
@@ -332,7 +337,7 @@ mod bounded_flush_tests {
         crate::runtime::set_active_config(Some(cfg));
 
         let (release_tx, release_rx) = std::sync::mpsc::channel();
-        assert!(!bounded_flush("metrics", move || {
+        assert!(!bounded_flush("metrics", None, move || {
             // Outlive the library deadline, but keep a finite independent bound:
             // a comparison mutant must fail this assertion promptly rather than
             // strand the test inside a synchronous drain.
@@ -355,8 +360,8 @@ mod bounded_flush_tests {
         cfg.exporter.logs_shutdown_timeout_seconds = 0.0;
         crate::runtime::set_active_config(Some(cfg));
 
-        assert!(!bounded_flush("logs", || false));
-        assert!(bounded_flush("logs", || true));
+        assert!(!bounded_flush("logs", None, || false));
+        assert!(bounded_flush("logs", None, || true));
 
         crate::runtime::set_active_config(None);
     }

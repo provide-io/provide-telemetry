@@ -38,7 +38,7 @@ fn with_env(vars: &[(&str, &str)], test: impl FnOnce()) {
 #[test]
 fn runtime_test_reconfigure_telemetry_none_surfaces_env_parse_errors() {
     let _guard = acquire_test_state_lock();
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     provide_telemetry::otel::_reset_otel_for_tests();
 
     with_env(

@@ -222,12 +222,26 @@ function _parseTraceparent(value: string): { traceId?: string; spanId?: string }
  * Properties after ``;`` are stripped. Keys and values are whitespace-stripped.
  * Mirrors Python provide.telemetry.propagation.parse_baggage.
  */
-// RFC 7230 token, which the W3C Baggage spec requires of keys. Excludes control
-// characters, whitespace and separators — see parseBaggage for why that matters.
-const BAGGAGE_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-// C0/C1 controls except TAB, stripped from baggage values.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-const BAGGAGE_CONTROL_RE = /[\x00-\x08\x0a-\x1f\x7f]/g;
+/**
+ * True when `key` is an RFC 7230 token, which the W3C Baggage spec requires.
+ *
+ * The pattern lives inside the function rather than in a module-level const on
+ * purpose. A module-level regex is a *static* mutant: it is evaluated once at
+ * import, before Stryker flips its per-test mutant switch, so mutations of it
+ * can never be killed no matter what the tests assert — they are reported as
+ * survived and the pattern effectively escapes mutation testing. This is a
+ * security boundary (see parseBaggage), so it must be genuinely covered. The
+ * cost is one RegExp wrapper per call; V8 caches the compiled pattern.
+ */
+function isBaggageToken(key: string): boolean {
+  return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(key);
+}
+
+/** Strip C0/C1 controls except TAB from a baggage value. Inlined for the same reason. */
+function stripBaggageControls(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+  return value.replace(/[\x00-\x08\x0a-\x1f\x7f]/g, '');
+}
 
 /**
  * Parse a W3C baggage header into key-value pairs.
@@ -244,8 +258,8 @@ export function parseBaggage(raw: string): Record<string, string> {
     const eqIdx = kv.indexOf('=');
     if (eqIdx < 1) continue; // no '=' or empty key
     const key = kv.slice(0, eqIdx).trim();
-    if (key && BAGGAGE_TOKEN_RE.test(key)) {
-      result[key] = kv.slice(eqIdx + 1).trim().replace(BAGGAGE_CONTROL_RE, '');
+    if (key && isBaggageToken(key)) {
+      result[key] = stripBaggageControls(kv.slice(eqIdx + 1).trim());
     }
   }
   return result;

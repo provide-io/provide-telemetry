@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-//! Emit a span via the public `setup_telemetry()` + `trace()` API and
+//! Emit a span via the public `setup_telemetry(None)` + `trace()` API and
 //! verify that real OTLP export reaches an OpenObserve collector.
 //!
 //! Unlike `openobserve_01_emit_all_signals`, which constructs the OTel
@@ -34,7 +34,7 @@ fn main() {
     runtime.block_on(async {
         // Standard public-API entry point. Reads the OTEL_EXPORTER_OTLP_*
         // env vars via TelemetryConfig::from_env() inside.
-        let cfg = provide_telemetry::setup_telemetry().expect("setup_telemetry");
+        let cfg = provide_telemetry::setup_telemetry(None).expect("setup_telemetry");
         println!(
             "setup ok service={} env={}",
             cfg.service_name, cfg.environment
@@ -86,7 +86,7 @@ fn main() {
 
         // Flush + tear down the providers so the batch processor exports
         // before the runtime is dropped.
-        provide_telemetry::shutdown_telemetry().expect("shutdown_telemetry");
+        provide_telemetry::shutdown_telemetry(None).expect("shutdown_telemetry");
         println!("shutdown ok");
     });
 }

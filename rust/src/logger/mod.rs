@@ -47,7 +47,7 @@ fn empty_events_mutex() -> Mutex<Vec<LogEvent>> {
 
 /// Override the active logging configuration programmatically.
 ///
-/// Takes precedence over both `setup_telemetry()` config and env vars.
+/// Takes precedence over both `setup_telemetry(None)` config and env vars.
 /// Useful when the caller wants to set level/format at startup in code
 /// rather than relying solely on environment variables.
 pub fn configure_logging(config: crate::config::LoggingConfig) {

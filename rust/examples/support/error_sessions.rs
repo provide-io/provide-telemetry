@@ -20,8 +20,8 @@ pub struct DemoSummary {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
-    setup_telemetry()?;
+    let _ = shutdown_telemetry(None);
+    setup_telemetry(None)?;
     let value_error_a = compute_error_fingerprint("ValueError", None);
     let value_error_b = compute_error_fingerprint("ValueError", None);
     let type_error = compute_error_fingerprint("TypeError", None);
@@ -34,7 +34,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     let session_after_bind = get_session_id();
     drop(guard);
     let session_after_clear = get_session_id();
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
     Ok(DemoSummary {
         value_error_a,
         value_error_b,

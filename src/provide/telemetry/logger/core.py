@@ -11,13 +11,13 @@ import logging
 import sys
 import threading
 import warnings
-from typing import Any, Protocol, cast
+from typing import Any
 
 import structlog
 
-from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.logger import _otel_logs
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
@@ -35,6 +35,27 @@ from provide.telemetry.logger.processors import (
     sanitize_sensitive_fields,
 )
 
+# Explicit bindings rather than aliased re-imports: mypy's no_implicit_reexport
+# rejects the latter, and a module attribute is what the tests patch.
+_InstrumentationLoggingHandlerFactory = _otel_logs.InstrumentationLoggingHandlerFactory
+_has_otel_logs = _otel_logs.has_otel_logs
+_load_instrumentation_logging_handler = _otel_logs.load_instrumentation_logging_handler
+_log_provider_config_key = _otel_logs.log_provider_config_key
+
+
+def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
+    """Gate the component load on OTel availability.
+
+    The check stays here rather than in _otel_logs so that patching
+    core._has_otel_logs — which the tests do — still governs the result.
+    """
+    if not _has_otel_logs():
+        return None
+    return _otel_logs.load_otel_logs_components()
+
+
+_make_handler = _otel_logs.make_otel_logging_handler
+
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
 
@@ -49,19 +70,12 @@ _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {
 
 
 def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
-    """Build the default stderr handler.
-
-    Hoisted to its own single-line statement so the pragma applies: mutmut only
-    honours a trailing pragma on a whole statement, not on an element inside a
-    multi-line literal. logging.StreamHandler(None) also defaults to stderr, so
-    the argument is unobservable.
-    """
-    return logging.StreamHandler(sys.stderr)  # pragma: no mutate
+    """Default handler. Hoisted so the pragma applies; see CLAUDE.md on placement."""
+    return logging.StreamHandler(sys.stderr)  # pragma: no mutate — None also defaults to stderr
 
 
-# CRITICAL is the highest level and structlog_level never exceeds it, so the
-# `method_level < structlog_level` test never fires for this entry — the key is
-# unreachable, making every mutation of it equivalent.
+# structlog_level never exceeds CRITICAL, so this entry's `<` test never fires:
+# the key is unreachable and every mutation of it is equivalent.
 _CRITICAL_KEY = "critical"  # pragma: no mutate
 
 
@@ -76,9 +90,8 @@ def _plain_console_renderer() -> Any:
 
 
 def _get_level(level: str) -> int:
-    # TRACE is registered with logging.addLevelName, so getLevelName("TRACE")
-    # below already resolves it — this fast path is a shortcut, not the only
-    # route, which makes every mutation of the literal equivalent.
+    # addLevelName registers TRACE, so getLevelName below resolves it anyway —
+    # this fast path is a shortcut, making mutations of the literal equivalent.
     is_trace = level == "TRACE"  # pragma: no mutate
     if is_trace:
         return TRACE
@@ -141,62 +154,10 @@ _otel_log_provider: object | None = None
 _otel_log_global_set: bool = False  # True once we called set_logger_provider()
 
 
-def _has_otel_logs() -> bool:
-    return _otel.has_otel()
-
-
-class _InstrumentationLoggingHandlerFactory(Protocol):
-    def __call__(
-        self,
-        level: int,
-        logger_provider: object | None,
-        log_code_attributes: bool,
-        **kwargs: object,
-    ) -> logging.Handler: ...
-
-
-def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
-    if not _has_otel_logs():
-        return None
-    return _otel.load_otel_logs_components()
-
-
-def _load_instrumentation_logging_handler() -> _InstrumentationLoggingHandlerFactory | None:
-    return _otel.load_instrumentation_logging_handler()
-
-
-def _log_provider_config_key(config: TelemetryConfig) -> tuple[object, ...]:
-    return (
-        config.service_name,
-        config.version,
-        config.logging.otlp_endpoint,
-        tuple(sorted(config.logging.otlp_headers.items())),
-        config.exporter.logs_timeout_seconds,
-    )
-
-
 def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: TelemetryConfig) -> bool:
     if previous is None or _otel_log_provider is None or not _otel_log_global_set:
         return False
     return _log_provider_config_key(previous) == _log_provider_config_key(current)
-
-
-def _make_otel_logging_handler(
-    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
-) -> logging.Handler:
-    instrumentation_handler_cls = _load_instrumentation_logging_handler()
-    if instrumentation_handler_cls is not None:
-        return instrumentation_handler_cls(
-            level=level,
-            logger_provider=provider,
-            log_code_attributes=config.logging.log_code_attributes,
-        )
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        handler = sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
-        # cast() returns its second argument unchanged at runtime, so mutating
-        # the type argument cannot be observed.
-        return cast(logging.Handler, handler)  # pragma: no mutate
 
 
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
@@ -525,3 +486,10 @@ class _LazyLogger:
 
 
 logger = _LazyLogger()
+
+
+def _make_otel_logging_handler(
+    sdk_logs_mod: Any, provider: object, level: int, config: TelemetryConfig
+) -> logging.Handler:
+    """Resolve the instrumentation factory here so tests can patch the lookup."""
+    return _make_handler(sdk_logs_mod, provider, level, config, _load_instrumentation_logging_handler())

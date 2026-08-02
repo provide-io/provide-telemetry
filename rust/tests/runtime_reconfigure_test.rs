@@ -24,7 +24,7 @@ fn runtime_test_reload_runtime_from_env_warns_for_all_cold_field_drift() {
         ],
         || {
             reset_runtime();
-            setup_telemetry().expect("setup should succeed");
+            setup_telemetry(None).expect("setup should succeed");
 
             std::env::set_var("PROVIDE_TELEMETRY_ENV", "prod");
             std::env::set_var("PROVIDE_TELEMETRY_VERSION", "2.0.0");
@@ -47,7 +47,7 @@ fn runtime_test_cold_drift_subprocess_probe() {
     }
 
     reset_runtime();
-    setup_telemetry().expect("subprocess setup should succeed");
+    setup_telemetry(None).expect("subprocess setup should succeed");
     std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "changed-service");
     std::env::set_var("PROVIDE_TELEMETRY_ENV", "prod");
     std::env::set_var("PROVIDE_TELEMETRY_VERSION", "2.0.0");
@@ -107,7 +107,7 @@ fn runtime_test_reconfigure_telemetry_none_reads_environment() {
         || {
             reset_runtime();
             #[cfg(not(feature = "otel"))]
-            setup_telemetry().expect("setup should succeed");
+            setup_telemetry(None).expect("setup should succeed");
 
             let cfg = reconfigure_telemetry(None).expect("reconfigure should read env");
             assert_eq!(cfg.service_name, "from-env");
@@ -127,7 +127,7 @@ fn runtime_test_reconfigure_telemetry_rejects_identity_change_when_otel_provider
         ],
         || {
             reset_runtime();
-            let current = setup_telemetry().expect("setup should succeed");
+            let current = setup_telemetry(None).expect("setup should succeed");
             let status = get_runtime_status();
             assert!(status.providers.logs, "logs provider should be live");
             assert!(status.providers.traces, "traces provider should be live");

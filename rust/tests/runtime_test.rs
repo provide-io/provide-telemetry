@@ -44,7 +44,7 @@ fn runtime_test_get_runtime_status_after_setup_reports_signal_enablement() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         let status = get_runtime_status();
 
@@ -64,8 +64,8 @@ fn runtime_test_setup_is_idempotent() {
     with_env(&[], || {
         reset_runtime();
 
-        let first = setup_telemetry().expect("first setup should succeed");
-        let second = setup_telemetry().expect("second setup should succeed");
+        let first = setup_telemetry(None).expect("first setup should succeed");
+        let second = setup_telemetry(None).expect("second setup should succeed");
 
         assert_eq!(first.service_name, second.service_name);
         assert!(provide_telemetry::get_runtime_config().is_some());
@@ -77,7 +77,7 @@ fn runtime_test_get_runtime_config_returns_defensive_copy() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         let mut local = provide_telemetry::get_runtime_config().expect("config should exist");
         local.service_name = "mutated-locally".to_string();
@@ -92,7 +92,7 @@ fn runtime_test_update_runtime_config_applies_hot_fields() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         let updated = update_runtime_config(RuntimeOverrides {
             sampling: Some(SamplingConfig {
@@ -156,7 +156,7 @@ fn runtime_test_reload_runtime_from_env_preserves_cold_fields_and_updates_hot_fi
         ],
         || {
             reset_runtime();
-            let initial = setup_telemetry().expect("setup should succeed");
+            let initial = setup_telemetry(None).expect("setup should succeed");
             assert_eq!(initial.service_name, "initial-service");
 
             std::env::set_var("PROVIDE_TELEMETRY_SERVICE_NAME", "reloaded-service");
@@ -176,7 +176,7 @@ fn runtime_test_reconfigure_telemetry_applies_cold_fields() {
         reset_runtime();
 
         #[cfg(not(feature = "otel"))]
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
         let target = TelemetryConfig {
             service_name: "reconfigured-service".to_string(),
@@ -195,9 +195,9 @@ fn runtime_test_shutdown_clears_setup_state() {
     let _guard = runtime_lock().lock().expect("runtime lock poisoned");
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
 
-        shutdown_telemetry().expect("shutdown should succeed");
+        shutdown_telemetry(None).expect("shutdown should succeed");
 
         assert!(provide_telemetry::get_runtime_config().is_none());
     });
@@ -227,7 +227,7 @@ fn runtime_test_reload_runtime_from_env_requires_setup_and_surfaces_parse_errors
 
     with_env(&[], || {
         reset_runtime();
-        setup_telemetry().expect("setup should succeed");
+        setup_telemetry(None).expect("setup should succeed");
         std::env::set_var("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool");
 
         let err = reload_runtime_from_env().expect_err("invalid env must fail reload");
@@ -268,13 +268,13 @@ fn runtime_object_test_complete_successful_lifecycle() {
             "runtime.meter"
         );
 
-        let started = runtime.start().expect("runtime start should succeed");
+        let started = runtime.start(None).expect("runtime start should succeed");
         assert_eq!(runtime.state(), RuntimeState::Ready);
         assert_eq!(runtime.get_runtime_config(), Some(started.clone()));
         let status = runtime.get_runtime_status();
         assert!(status.setup_done);
 
-        let flushed = runtime.flush().expect("runtime flush should succeed");
+        let flushed = runtime.flush(None).expect("runtime flush should succeed");
         assert_flush_result_matches_provider(status.providers.logs, flushed.logs);
         assert_flush_result_matches_provider(status.providers.traces, flushed.traces);
         assert_flush_result_matches_provider(status.providers.metrics, flushed.metrics);
@@ -310,7 +310,7 @@ fn runtime_object_test_complete_successful_lifecycle() {
             TelemetryConfig::from_env().expect("default environment config")
         );
 
-        runtime.shutdown().expect("runtime shutdown should succeed");
+        runtime.shutdown(None).expect("runtime shutdown should succeed");
         assert_eq!(runtime.state(), RuntimeState::Stopped);
         assert!(runtime.get_runtime_config().is_none());
     });
@@ -323,7 +323,7 @@ fn runtime_object_test_failed_start_is_degraded_and_update_reports_error() {
         reset_runtime();
         let mut runtime = TelemetryRuntime::new();
 
-        let err = runtime.start().expect_err("invalid config must fail start");
+        let err = runtime.start(None).expect_err("invalid config must fail start");
         assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
         assert_eq!(runtime.state(), RuntimeState::Degraded);
 

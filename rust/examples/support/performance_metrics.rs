@@ -25,8 +25,8 @@ fn bench(mut op: impl FnMut(), iterations: usize) -> f64 {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
-    setup_telemetry()?;
+    let _ = shutdown_telemetry(None);
+    setup_telemetry(None)?;
     let c = counter("perf.example.requests", Some("bench counter"), None);
     let g = gauge("perf.example.active", Some("bench gauge"), None);
     let h = histogram("perf.example.latency", Some("bench histogram"), Some("ms"));
@@ -51,7 +51,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         },
         500,
     );
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
     Ok(DemoSummary {
         counter_ns,
         event_ns,

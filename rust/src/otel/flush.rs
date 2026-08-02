@@ -19,7 +19,7 @@ use super::{logs, metrics, traces};
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
 /// the flush was abandoned at the bounded-shutdown deadline or the exporter
 /// rejected it.
-pub(crate) fn flush_logger_provider() -> bool {
+pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> bool {
     let provider = {
         let guard = crate::_lock::lock(logs::logger_provider_slot());
         guard
@@ -30,7 +30,7 @@ pub(crate) fn flush_logger_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("logs", move || provider.force_flush().is_ok())
+    super::bounded_flush("logs", timeout_seconds, move || provider.force_flush().is_ok())
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
@@ -39,7 +39,7 @@ pub(crate) fn flush_logger_provider() -> bool {
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
 /// the flush was abandoned at the bounded-shutdown deadline or the exporter
 /// rejected it.
-pub(crate) fn flush_tracer_provider() -> bool {
+pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> bool {
     let provider = {
         let guard = crate::_lock::lock(traces::tracer_provider_slot());
         guard
@@ -50,7 +50,7 @@ pub(crate) fn flush_tracer_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("traces", move || provider.force_flush().is_ok())
+    super::bounded_flush("traces", timeout_seconds, move || provider.force_flush().is_ok())
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
@@ -59,7 +59,7 @@ pub(crate) fn flush_tracer_provider() -> bool {
 /// rather than taken, so telemetry keeps working afterwards. Returns false when
 /// the flush was abandoned at the bounded-shutdown deadline or the exporter
 /// rejected it.
-pub(crate) fn flush_meter_provider() -> bool {
+pub(crate) fn flush_meter_provider(timeout_seconds: Option<f64>) -> bool {
     let provider = {
         let guard = crate::_lock::lock(metrics::meter_provider_slot());
         guard
@@ -70,7 +70,7 @@ pub(crate) fn flush_meter_provider() -> bool {
         return true;
     };
 
-    super::bounded_flush("metrics", move || provider.force_flush().is_ok())
+    super::bounded_flush("metrics", timeout_seconds, move || provider.force_flush().is_ok())
 }
 
 #[cfg(test)]
@@ -189,9 +189,9 @@ mod tests {
         let _guard = acquire_test_state_lock();
         reset_telemetry_state();
 
-        assert!(flush_logger_provider());
-        assert!(flush_tracer_provider());
-        assert!(flush_meter_provider());
+        assert!(flush_logger_provider(None));
+        assert!(flush_tracer_provider(None));
+        assert!(flush_meter_provider(None));
     }
 
     #[test]
@@ -204,7 +204,7 @@ mod tests {
             .build();
         logs::install_logger_provider_for_tests(provider);
 
-        assert!(!flush_logger_provider());
+        assert!(!flush_logger_provider(None));
         reset_telemetry_state();
     }
 
@@ -227,11 +227,11 @@ mod tests {
             .add(1, &[]);
         metrics::install_meter_provider_for_tests(provider);
 
-        assert!(!flush_meter_provider());
+        assert!(!flush_meter_provider(None));
         reset_telemetry_state();
     }
 
-    /// crate::flush_telemetry() must surface an incomplete drain as Err — the
+    /// crate::flush_telemetry(None) must surface an incomplete drain as Err — the
     /// whole point of flush over shutdown is that the caller learns when its
     /// records did not make it out. A deliberately blocked processor makes the
     /// outcome independent of scheduler speed and exporter implementation.
@@ -257,7 +257,7 @@ mod tests {
         crate::runtime::set_active_config(Some(cfg));
 
         assert!(
-            crate::flush_telemetry().is_err(),
+            crate::flush_telemetry(None).is_err(),
             "a drain abandoned at its deadline must report Err"
         );
 
@@ -281,9 +281,9 @@ mod tests {
         let _ = super::super::logs::install_logger_provider(&cfg, resource);
 
         // Each returns true: the drain completed inside the bounded deadline.
-        assert!(flush_tracer_provider());
-        assert!(flush_meter_provider());
-        assert!(flush_logger_provider());
+        assert!(flush_tracer_provider(None));
+        assert!(flush_meter_provider(None));
+        assert!(flush_logger_provider(None));
 
         // Still installed — that is the whole point of flush over shutdown.
         assert!(super::super::traces::tracer_provider_installed());
@@ -291,9 +291,9 @@ mod tests {
         assert!(super::super::logs::logger_provider_installed());
 
         // And repeatable.
-        assert!(flush_tracer_provider());
-        assert!(flush_meter_provider());
-        assert!(flush_logger_provider());
+        assert!(flush_tracer_provider(None));
+        assert!(flush_meter_provider(None));
+        assert!(flush_logger_provider(None));
 
         reset_telemetry_state();
     }

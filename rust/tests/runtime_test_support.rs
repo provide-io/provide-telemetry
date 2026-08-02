@@ -63,6 +63,6 @@ pub fn with_env(vars: &[(&str, &str)], test: impl FnOnce()) {
 }
 
 pub fn reset_runtime() {
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     provide_telemetry::otel::_reset_otel_for_tests();
 }

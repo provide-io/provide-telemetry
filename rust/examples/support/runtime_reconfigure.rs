@@ -24,8 +24,8 @@ fn restore_var(key: &str, previous: Option<String>) {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
-    setup_telemetry()?;
+    let _ = shutdown_telemetry(None);
+    setup_telemetry(None)?;
 
     let before_logs_rate = get_runtime_config()
         .map(|cfg| cfg.sampling.logs_rate)
@@ -58,7 +58,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     let after_reload_logs_rate = reload_runtime_from_env()?.sampling.logs_rate;
     restore_var(env_key, previous);
 
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
     Ok(DemoSummary {
         before_logs_rate,
         after_update_logs_rate,

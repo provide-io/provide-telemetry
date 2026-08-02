@@ -60,7 +60,7 @@ fn with_env(vars: &[(&str, &str)], test: impl FnOnce()) {
 }
 
 fn reset_runtime() {
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     provide_telemetry::otel::_reset_otel_for_tests();
 }
 
@@ -78,7 +78,7 @@ fn runtime_test_reload_runtime_from_env_preserves_timeout_fields_for_live_provid
         ],
         || {
             reset_runtime();
-            setup_telemetry().expect("setup should succeed");
+            setup_telemetry(None).expect("setup should succeed");
 
             let status = get_runtime_status();
             assert!(status.providers.logs, "logs provider should be live");

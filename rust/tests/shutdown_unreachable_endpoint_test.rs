@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
-//! Regression: `shutdown_telemetry()` must return promptly when the OTLP
+//! Regression: `shutdown_telemetry(None)` must return promptly when the OTLP
 //! log endpoint is unreachable.
 //!
 //! Mirrors the Python/TS/Go regressions. Without the bounded-shutdown
@@ -38,7 +38,7 @@ fn restore_var(key: &str, previous: Option<String>) {
 #[test]
 fn shutdown_telemetry_returns_within_deadline_with_unreachable_endpoint() {
     let _guard = acquire_test_state_lock();
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     provide_telemetry::otel::_reset_otel_for_tests();
 
     let endpoint = format!("http://127.0.0.1:{}/", reserve_closed_port());
@@ -64,10 +64,10 @@ fn shutdown_telemetry_returns_within_deadline_with_unreachable_endpoint() {
     std::env::set_var(trace_key, "false");
     std::env::set_var(metrics_key, "false");
 
-    setup_telemetry().expect("setup should succeed even with unreachable endpoint");
+    setup_telemetry(None).expect("setup should succeed even with unreachable endpoint");
 
     let started = Instant::now();
-    shutdown_telemetry().expect("shutdown should return cleanly");
+    shutdown_telemetry(None).expect("shutdown should return cleanly");
     let elapsed = started.elapsed();
 
     provide_telemetry::otel::_reset_otel_for_tests();
@@ -87,7 +87,7 @@ fn shutdown_telemetry_returns_within_deadline_with_unreachable_endpoint() {
 #[test]
 fn disable_log_otlp_avoids_provider_install_and_keeps_shutdown_fast() {
     let _guard = acquire_test_state_lock();
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     provide_telemetry::otel::_reset_otel_for_tests();
 
     let endpoint = format!("http://127.0.0.1:{}/", reserve_closed_port());
@@ -106,10 +106,10 @@ fn disable_log_otlp_avoids_provider_install_and_keeps_shutdown_fast() {
     std::env::set_var(trace_key, "false");
     std::env::set_var(metrics_key, "false");
 
-    setup_telemetry().expect("setup should succeed with otlp_enabled=false");
+    setup_telemetry(None).expect("setup should succeed with otlp_enabled=false");
 
     let started = Instant::now();
-    shutdown_telemetry().expect("shutdown should return cleanly");
+    shutdown_telemetry(None).expect("shutdown should return cleanly");
     let elapsed = started.elapsed();
 
     provide_telemetry::otel::_reset_otel_for_tests();

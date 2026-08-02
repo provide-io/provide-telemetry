@@ -162,8 +162,14 @@ def test_abandoned_drain_names_the_consequence(monkeypatch: Any) -> None:
     )
     # The abandoned worker decrements the budget on its way out, so it has to be
     # gone before the autouse reset runs — otherwise the counter goes negative
-    # and leaks into whichever test runs next.
-    assert finished.wait(timeout=5), "the stranded worker must exit before the budget reset"
+    # and leaks into whichever test runs next. Sync on the counter, not on the
+    # worker's own event: the decrement happens after force_flush returns, so the
+    # event fires marginally too early to be a safe barrier.
+    assert finished.wait(timeout=5), "the stranded worker must finish"
+    deadline = time.monotonic() + 5.0
+    while drain_mod._abandoned_workers != 0 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert drain_mod._abandoned_workers == 0, "the budget must be settled before teardown"
 
     assert result is False
     assert calls[0]["message"] == (

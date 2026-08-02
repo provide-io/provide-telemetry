@@ -227,9 +227,9 @@ fn with_metrics_env(endpoint: &str, test: impl FnOnce()) {
 fn run_metrics_export_smoke(expected_metric_name: &str, test: impl FnOnce()) {
     let collector = MockMetricsCollector::start();
     with_metrics_env(&collector.endpoint, || {
-        setup_telemetry().expect("setup_telemetry should succeed");
+        setup_telemetry(None).expect("setup_telemetry should succeed");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
-        shutdown_telemetry().expect("shutdown_telemetry should succeed");
+        shutdown_telemetry(None).expect("shutdown_telemetry should succeed");
         result.expect("metric export smoke test should not panic");
     });
 

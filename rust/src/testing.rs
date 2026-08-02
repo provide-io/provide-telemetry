@@ -39,7 +39,7 @@ pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
 
 /// Reset all telemetry state to keep tests isolated.
 pub fn reset_telemetry_state() {
-    let _ = shutdown_telemetry();
+    let _ = shutdown_telemetry(None);
     _reset_otel_for_tests();
     _reset_health_for_tests();
     _reset_backpressure_for_tests();

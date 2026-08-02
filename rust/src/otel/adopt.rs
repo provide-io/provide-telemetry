@@ -50,7 +50,7 @@ impl AdoptedProviders {
 /// Tell the facade that the host has installed live providers on the OTel
 /// globals, so emission routes through them instead of the no-op path.
 ///
-/// Call it after the host's own SDK setup and after `setup_telemetry()`, which
+/// Call it after the host's own SDK setup and after `setup_telemetry(None)`, which
 /// does not clear the assertion. Passing a field as `false` releases that
 /// signal's assertion.
 pub fn adopt_global_providers(adopted: AdoptedProviders) {
@@ -199,7 +199,7 @@ mod tests {
         let _guard = acquire_test_state_lock();
         adopt_global_providers(AdoptedProviders::all());
 
-        crate::shutdown_telemetry().expect("shutdown should succeed");
+        crate::shutdown_telemetry(None).expect("shutdown should succeed");
 
         // The host's providers are untouched; only our assertion is dropped.
         assert_eq!(adopted_global_providers(), AdoptedProviders::default());
@@ -213,7 +213,7 @@ mod tests {
         use crate::sampling::{set_sampling_policy, SamplingPolicy, Signal};
 
         let _guard = acquire_test_state_lock();
-        crate::shutdown_telemetry().expect("pre-test shutdown should succeed");
+        crate::shutdown_telemetry(None).expect("pre-test shutdown should succeed");
         crate::health::_reset_health_for_tests();
         set_sampling_policy(
             Signal::Traces,

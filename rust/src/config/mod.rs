@@ -181,10 +181,10 @@ pub struct ExporterPolicyConfig {
     pub logs_timeout_seconds: f64,
     pub traces_timeout_seconds: f64,
     pub metrics_timeout_seconds: f64,
-    /// Hard deadline for `shutdown_telemetry()`'s flush+shutdown sequence
+    /// Hard deadline for `shutdown_telemetry(None)`'s flush+shutdown sequence
     /// per signal (seconds). When the OTLP endpoint is unreachable the OTel
     /// SDK's `force_flush()`/`shutdown()` can sit in its internal retry
-    /// loop; this deadline forces `shutdown_telemetry()` to return. Mirrors
+    /// loop; this deadline forces `shutdown_telemetry(None)` to return. Mirrors
     /// `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS`. Default 5.0.
     pub logs_shutdown_timeout_seconds: f64,
     pub logs_fail_open: bool,

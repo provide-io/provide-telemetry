@@ -17,8 +17,8 @@ pub struct DemoSummary {
 }
 
 pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
-    let _ = shutdown_telemetry();
-    setup_telemetry()?;
+    let _ = shutdown_telemetry(None);
+    setup_telemetry(None)?;
 
     let http = extract_w3c_context(
         Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
@@ -60,7 +60,7 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
     drop(outer_guard);
     let nested_after_clear = get_trace_context().get("trace_id").and_then(Clone::clone);
 
-    shutdown_telemetry()?;
+    shutdown_telemetry(None)?;
     Ok(DemoSummary {
         http_trace_id,
         manual_trace_id_after_clear,

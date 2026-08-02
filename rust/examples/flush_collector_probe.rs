@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-//! Prove `flush_telemetry()` puts records on the wire without tearing providers down.
+//! Prove `flush_telemetry(None)` puts records on the wire without tearing providers down.
 //!
 //! Why a standalone process rather than a case in the OTLP integration test: the
 //! collector is verified by grepping its debug log after the run, which cannot
 //! tell *when* a record arrived. If this process also called
-//! `shutdown_telemetry()`, shutdown's own drain would be an equally good
+//! `shutdown_telemetry(None)`, shutdown's own drain would be an equally good
 //! explanation for anything that showed up, and the check would pass with flush
 //! completely broken.
 //!
@@ -48,7 +48,7 @@ fn main() {
         format!("{endpoint}/v1/logs"),
     );
 
-    if provide_telemetry::setup_telemetry().is_err() {
+    if provide_telemetry::setup_telemetry(None).is_err() {
         fail("setup_telemetry failed");
     }
 
@@ -65,8 +65,8 @@ fn main() {
         requests.add(1.0, None);
     });
 
-    if provide_telemetry::flush_telemetry().is_err() {
-        fail("flush_telemetry() reported an incomplete drain against a reachable collector");
+    if provide_telemetry::flush_telemetry(None).is_err() {
+        fail("flush_telemetry(None) reported an incomplete drain against a reachable collector");
     }
 
     // Flush drains; it must not tear down.
@@ -84,10 +84,10 @@ fn main() {
         requests.add(1.0, None);
     });
 
-    if provide_telemetry::flush_telemetry().is_err() {
-        fail("a second flush_telemetry() reported an incomplete drain; flush is not repeatable");
+    if provide_telemetry::flush_telemetry(None).is_err() {
+        fail("a second flush_telemetry(None) reported an incomplete drain; flush is not repeatable");
     }
 
     eprintln!("flush-collector-probe: OK — flushed twice, providers still installed");
-    // Deliberately no shutdown_telemetry(): see the module comment.
+    // Deliberately no shutdown_telemetry(None): see the module comment.
 }

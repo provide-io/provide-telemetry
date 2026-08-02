@@ -53,7 +53,7 @@ fn exec_setup(step: &Value) {
             unsafe { std::env::set_var(env_key, s) };
         }
     }
-    provide_telemetry::setup_telemetry().ok();
+    provide_telemetry::setup_telemetry(None).ok();
 }
 
 fn exec_setup_invalid(step: &Value, variables: &mut BTreeMap<String, Value>) {
@@ -77,7 +77,7 @@ fn exec_setup_invalid(step: &Value, variables: &mut BTreeMap<String, Value>) {
         unsafe { std::env::set_var(env_key, &val_str) };
     }
 
-    let result = provide_telemetry::setup_telemetry();
+    let result = provide_telemetry::setup_telemetry(None);
     let raised = result.is_err();
     let error = result.err().map(|e| e.to_string()).unwrap_or_default();
 
@@ -141,7 +141,7 @@ fn exec_flush(step: &Value, variables: &mut BTreeMap<String, Value>) {
     if into.is_empty() {
         return;
     }
-    let ok = provide_telemetry::flush_telemetry().is_ok();
+    let ok = provide_telemetry::flush_telemetry(None).is_ok();
     variables.insert(into.to_string(), json!({ "ok": ok }));
 }
 
@@ -264,7 +264,7 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "setup" => exec_setup(step),
             "setup_invalid" => exec_setup_invalid(step, &mut variables),
             "shutdown" => {
-                provide_telemetry::shutdown_telemetry().ok();
+                provide_telemetry::shutdown_telemetry(None).ok();
             }
             "flush" => exec_flush(step, &mut variables),
             "bind_propagation" => exec_bind_propagation(step, &mut guards),

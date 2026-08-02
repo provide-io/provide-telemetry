@@ -27,8 +27,8 @@ fn test_telemetry_config_from_env() {
 
 #[test]
 fn test_setup_telemetry() {
-    let _ = setup_telemetry();
-    let _ = setup_telemetry();
+    let _ = setup_telemetry(None);
+    let _ = setup_telemetry(None);
 }
 
 // --- has_invalid_percent_encoding boundary tests ---

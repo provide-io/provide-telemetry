@@ -175,7 +175,7 @@ fn with_runtime_otlp_env(endpoint: &str, test: impl FnOnce()) {
 fn run_runtime_otlp_smoke(emit_trace: bool, emit_metric: bool) -> HealthSnapshot {
     let collector = MockOtlpCollector::start();
     with_runtime_otlp_env(&collector.endpoint, || {
-        setup_telemetry().expect("setup_telemetry should succeed");
+        setup_telemetry(None).expect("setup_telemetry should succeed");
         let status = get_runtime_status();
         assert!(
             status.providers.logs,
@@ -209,7 +209,7 @@ fn run_runtime_otlp_smoke(emit_trace: bool, emit_metric: bool) -> HealthSnapshot
         }
 
         std::thread::sleep(Duration::from_millis(200));
-        shutdown_telemetry().expect("shutdown_telemetry should succeed");
+        shutdown_telemetry(None).expect("shutdown_telemetry should succeed");
         std::thread::sleep(Duration::from_secs(2));
     });
 

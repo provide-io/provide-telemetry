@@ -134,7 +134,11 @@ export class TelemetryRuntime {
     };
   }
 
-  getLogger(name: string): ReturnType<typeof getLogger> {
+  // All three names are optional, matching the module-level functions these
+  // delegate to and the Python/Rust facades. A required name here would narrow
+  // the underlying API for no reason — the same defect that made Python's
+  // get_logger() raise TypeError on the documented zero-argument form.
+  getLogger(name?: string): ReturnType<typeof getLogger> {
     return getLogger(name);
   }
 
@@ -142,7 +146,7 @@ export class TelemetryRuntime {
     return getTracer(name);
   }
 
-  getMeter(name: string): ReturnType<typeof getMeter> {
+  getMeter(name?: string): ReturnType<typeof getMeter> {
     return getMeter(name);
   }
 
