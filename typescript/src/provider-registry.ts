@@ -95,6 +95,11 @@ export function _isLogsProviderInstalled(): boolean {
 export function _clearProviderRegistry(): void {
   _providersRegistered = false;
   _registeredProviders = [];
+  // Equivalent mutant: the two arrays are positional and cleared together, and
+  // _getProvidersBySignal only emits a tag whose provider is present. With
+  // _registeredProviders empty, no value here is observable — and the next
+  // _storeRegisteredProviders overwrites both.
+  // Stryker disable next-line ArrayDeclaration
   _providerSignals = [];
   _logsProviderInstalled = false;
 }

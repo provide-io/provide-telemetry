@@ -6,11 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetConfig } from '../src/config.js';
 import {
   _resetRuntimeForTests,
+  _setLogsProviderInstalled,
   _storeRegisteredProviders,
   RuntimeState,
   TelemetryRuntime,
 } from '../src/runtime.js';
-import { liveTracerProvider } from './fixtures/live-providers.js';
+import { liveMeterProvider, liveTracerProvider } from './fixtures/live-providers.js';
 
 beforeEach(() => {
   trace.disable();
@@ -80,6 +81,28 @@ describe('TelemetryRuntime facade', () => {
     expect(result.traces.flushed).toBe(true);
     expect(result.traces.notInstalled).toBe(false);
     expect(result.traces.notOwned).toBe(false);
+  });
+
+  it.each([
+    ['logs', 'traces'],
+    ['metrics', 'traces'],
+  ] as const)('keys the %s result by its own signal, not another', async (signal, other) => {
+    // Each signal must read its own entry out of the per-signal drain. Keying
+    // one by the wrong name (or by an empty name) silently turns a drained
+    // signal into notOwned, which is the "we did not touch this" answer.
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    metrics.setGlobalMeterProvider(liveMeterProvider() as never);
+    _setLogsProviderInstalled(true);
+    _storeRegisteredProviders(
+      [{ forceFlush: () => Promise.resolve() }, { forceFlush: () => new Promise<void>(() => {}) }],
+      [signal, other],
+    );
+
+    const result = await new TelemetryRuntime().flush(20);
+
+    expect(result[signal].flushed).toBe(true);
+    expect(result[signal].notOwned).toBe(false);
+    expect(result[signal].timedOut).toBe(false);
   });
 
   it('reports notOwned for a provider the host installed on the OTel globals', async () => {

@@ -43,6 +43,26 @@ describe('setupTelemetryAsync — isNodeLike guard skips the ALS check on non-No
     }
   });
 
+  it('treats a host with no process.versions object as non-Node', async () => {
+    // The two clauses of the host-presence check are not interchangeable: with
+    // `process.versions` absent, `&&` yields false (non-Node, return early)
+    // while `||` yields true and the `.node` lookup dereferences undefined.
+    const savedAls = _disablePropagationALSForTest();
+    const savedDone = _setPropagationInitDoneForTest(true);
+    const savedVersions = Object.getOwnPropertyDescriptor(
+      process,
+      'versions',
+    ) as PropertyDescriptor;
+    Object.defineProperty(process, 'versions', { value: undefined, configurable: true });
+    try {
+      await expect(setupTelemetryAsync()).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(process, 'versions', savedVersions);
+      _setPropagationInitDoneForTest(savedDone);
+      _restorePropagationALSForTest(savedAls);
+    }
+  });
+
   it('still throws on a genuine Node host with ALS in fallback mode', async () => {
     const savedAls = _disablePropagationALSForTest();
     const savedDone = _setPropagationInitDoneForTest(true);

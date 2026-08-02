@@ -31,13 +31,14 @@ export function parseOtlpHeaders(raw: string): Record<string, string> {
       if (!key) continue;
       const val = decodeURIComponent(rawVal);
       result[key] = val;
-      // `continue` in a for..of catch is equivalent to an empty body — the
-      // block ending naturally starts the next iteration either way.
-      // Stryker disable BlockStatement
     } catch {
-      continue;
+      // Malformed percent-encoding — skip this pair. Deliberately empty rather
+      // than `continue`: the try/catch is the last statement in the loop body,
+      // so `continue` was a no-op that only existed to be an equivalent
+      // BlockStatement mutant. A suppression comment here did not take (the
+      // directive does not reach the catch body), so the construct is gone
+      // instead of silenced.
     }
-    // Stryker restore BlockStatement
   }
   return result;
 }

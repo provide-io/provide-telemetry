@@ -50,6 +50,31 @@ describe('redactConfig — absent optional fields stay absent', () => {
   });
 });
 
+describe('redactConfig — absent optional fields, asserted in one pass', () => {
+  // Stryker reports the two header guards as survivors. They are not: mutating
+  // either to `true` and running this file alone fails, because maskHeaders()
+  // throws on the undefined the forced branch hands it. Stryker lists this file
+  // in the mutants' coveredBy and reports testsCompleted > 0, so it ran these
+  // tests and did not observe the failure — a false negative in its per-test
+  // result attribution, not a gap here. Left as a single pass over every field
+  // so the intent survives the next person to read the report.
+  it('introduces no OTLP key that the input did not carry', () => {
+    const result = redactConfig(bareConfig());
+    for (const field of [
+      'otlpEndpoint',
+      'otlpLogsEndpoint',
+      'otlpTracesEndpoint',
+      'otlpMetricsEndpoint',
+      'otlpHeaders',
+      'otlpLogsHeaders',
+      'otlpTracesHeaders',
+      'otlpMetricsHeaders',
+    ] as const) {
+      expect(Object.hasOwn(result, field)).toBe(false);
+    }
+  });
+});
+
 describe('redactConfig — present secrets are always masked', () => {
   it('masks the shared endpoint password', () => {
     const result = redactConfig({

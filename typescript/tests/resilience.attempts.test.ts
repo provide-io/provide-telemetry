@@ -42,6 +42,19 @@ describe('exporter retries — config validation', () => {
     },
   );
 
+  it('rejects retries one past the ceiling and accepts it exactly at the ceiling', () => {
+    // Stryker reports the `MAX_EXPORT_ATTEMPTS - 1` arithmetic as a survivor.
+    // It is not: mutating it to `+ 1` and running exactly the four tests
+    // Stryker lists in that mutant's coveredBy fails all four. Stryker ran them
+    // (testsCompleted: 4) and still scored it Survived — a false negative in its
+    // result attribution. The message is asserted as well as the type so the
+    // boundary cannot be satisfied by an unrelated ConfigurationError.
+    expect(() => setupTelemetry({ exporterLogsRetries: MAX_EXPORT_ATTEMPTS })).toThrow(
+      /at most 100/,
+    );
+    expect(() => setupTelemetry({ exporterLogsRetries: MAX_EXPORT_ATTEMPTS - 1 })).not.toThrow();
+  });
+
   it('still rejects a negative value', () => {
     expect(() => setupTelemetry({ exporterLogsRetries: -1 })).toThrow(/non-negative integer/);
   });
