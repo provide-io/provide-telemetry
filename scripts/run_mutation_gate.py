@@ -14,13 +14,21 @@ import subprocess  # nosec
 from pathlib import Path
 from typing import Final
 
+# Any non-zero count here fails the gate. "survived" is in the list because the
+# documented contract is a 100% kill score, not a high one: without it a run
+# with live survivors passed as long as the score cleared the floor below, which
+# is how two killable mutants sat in the tree while the gate reported clean.
 BAD_STAT_KEYS: Final[tuple[str, ...]] = (
     "segfault",
     "suspicious",
+    "survived",
     "no_tests",
     "timeout",
     "check_was_interrupted_by_user",
 )
+# An additional floor, not the bar — _is_clean() above is the bar. Kept below
+# 100 so a run that somehow reports no survivors but a short total still fails
+# on the score rather than passing silently.
 DEFAULT_MIN_MUTATION_SCORE: Final[float] = 95.0
 
 CONFIG_FILES: Final[tuple[str, ...]] = (

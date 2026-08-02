@@ -496,3 +496,24 @@ class TestExtractW3cContextSizeGuards:
         bg = "k=" + "v" * 8190
         scope: dict[str, Any] = {"headers": [(b"baggage", bg.encode())]}
         assert propagation_mod.extract_w3c_context(scope).baggage == bg
+
+
+class TestParseBaggageControlStripping:
+    """Control characters are *removed* from a baggage value, not replaced.
+
+    The substitution is a security boundary — a baggage value becomes a log
+    attribute, and the console renderer emits it into a line-oriented stream.
+    Substituting anything other than the empty string would leave a marker in
+    the operator's record and change the value the next hop propagates.
+    """
+
+    def test_control_characters_are_removed_leaving_nothing_behind(self) -> None:
+        assert propagation_mod.parse_baggage("a=x\x00y") == {"a": "xy"}
+        assert propagation_mod.parse_baggage("a=x\x1fy") == {"a": "xy"}
+        assert propagation_mod.parse_baggage("a=x\x7fy") == {"a": "xy"}
+
+    def test_a_value_that_is_only_control_characters_becomes_empty(self) -> None:
+        assert propagation_mod.parse_baggage("a=\x00\x01\x02") == {"a": ""}
+
+    def test_tab_survives(self) -> None:
+        assert propagation_mod.parse_baggage("a=x\ty") == {"a": "x\ty"}

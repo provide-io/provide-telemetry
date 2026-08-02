@@ -59,6 +59,19 @@ def test_two_sanitized_keys_that_collide_keep_the_first() -> None:
     assert result == {"ab": 1}
 
 
+def test_a_dropped_collision_does_not_end_the_record() -> None:
+    """The loop skips the colliding key and keeps going.
+
+    Abandoning the rest of the event dict at the first collision would let one
+    malformed attribute truncate every field a caller passed after it.
+    """
+    proc = _processor()
+
+    result = proc(None, "info", {"a\x00b": 1, "a\x01b": 2, "kept": 3})  # type: ignore[operator]
+
+    assert result == {"ab": 1, "kept": 3}
+
+
 def test_keys_needing_no_cleaning_are_untouched() -> None:
     proc = _processor()
 

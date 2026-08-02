@@ -161,6 +161,16 @@ def test_is_clean_rejects_timeout_and_segfault() -> None:
     assert gate._is_clean({"total": 10, "timeout": 0, "segfault": 1, "suspicious": 0, "no_tests": 0}) is False
 
 
+def test_is_clean_rejects_survivors() -> None:
+    """The documented contract is a 100% kill score, not a high one.
+
+    Without this a run with live survivors passed as long as the score cleared
+    --min-mutation-score, which is an additional floor and not the bar.
+    """
+    assert gate._is_clean({"total": 100, "killed": 98, "survived": 2}) is False
+    assert gate._is_clean({"total": 100, "killed": 100, "survived": 0}) is True
+
+
 def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
