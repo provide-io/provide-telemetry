@@ -73,11 +73,15 @@ func BindPropagationContext(ctx context.Context, pc PropagationContext) context.
 	return ctx
 }
 
-// ParseBaggage parses a W3C baggage header into key-value pairs.
-// Properties after ';' are stripped. Empty keys are skipped.
 // _baggageTokenRe is the RFC 7230 token the W3C Baggage spec requires of keys.
 // It excludes control characters, whitespace and separators.
-var _baggageTokenRe = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+//
+// Written as one interpreted string rather than a raw literal spliced around a
+// backtick. The splice needed two `+` operators, which gremlins mutates as
+// arithmetic; being a package-level var, its initialiser runs before Go's
+// coverage counters start, so those two mutants could never be reported as
+// covered and held mutator coverage below the 100% the gate asks for.
+var _baggageTokenRe = regexp.MustCompile("^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$")
 
 // _baggageControlRe matches C0/C1 controls except TAB, stripped from values.
 var _baggageControlRe = regexp.MustCompile(`[\x00-\x08\x0a-\x1f\x7f]`)

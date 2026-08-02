@@ -243,10 +243,15 @@ jobs:
       # - root package only (exclude sibling packages/modules and helper binaries)
       # - logger package
       # - optional go/otel module
-      # Both surviving and uncovered mutants fail the job.
+      # Both surviving and uncovered mutants fail the job — but only because
+      # each run goes through scripts/run_gremlins_gate.sh. gremlins' own
+      # --threshold-efficacy / --threshold-mcover flags do not gate: v0.6.0
+      # exits 0 even when asked for an impossible 101%, so these steps passed
+      # unconditionally before the wrapper. The flags are kept for the numbers
+      # they print in the log.
       - name: Run gremlins mutation tests for root package (100% kill rate required)
         run: |
-          gremlins unleash \
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
             --timeout-coefficient=30 \
@@ -267,7 +272,7 @@ jobs:
       # its own module, so gating on go/logger/go.mod would skip this step forever.
       - name: Run gremlins mutation tests for go/logger (100% kill rate required)
         run: |
-          gremlins unleash \
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
             --timeout-coefficient=30 \
@@ -281,7 +286,7 @@ jobs:
         run: |
           # The standalone flush probe requires a live collector and is covered
           # by ci-go's collector-content gate, not the unit mutation runner.
-          gremlins unleash \
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
             --timeout-coefficient=30 \
