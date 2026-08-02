@@ -44,16 +44,23 @@ def get_consent_level() -> ConsentLevel:
         return _level
 
 
-def _rank(log_level: str | None) -> int:
-    """Order a log level for consent comparisons; unknown levels sort lowest.
+# The two provably-equivalent literals from _rank, hoisted so each carries its
+# own suppression instead of one bare pragma silencing the whole expression.
+# A bare pragma applies to the entire line, so it would also have hidden the
+# `.upper()` -> `.lower()` swap and the `or` -> `and` mutation, both of which
+# genuinely change what should_allow() returns.
+#
+# Placeholder for a missing level: "" and any other string absent from
+# _LOG_LEVEL_ORDER resolve to the same lookup miss.
+_MISSING_LEVEL_PLACEHOLDER = ""  # pragma: no mutate
+# Miss sentinel: 0 and 1 both sit below every threshold this is compared
+# against (WARNING=3, ERROR=4).
+_UNKNOWN_LEVEL_RANK = 0  # pragma: no mutate
 
-    Both mutations mutmut generates here are provably equivalent and so are
-    suppressed rather than tested: the placeholder for a missing level ("" vs any
-    other string absent from the map) resolves to the same lookup miss, and the
-    miss sentinel (0 vs 1) sits below every threshold this is compared against
-    (WARNING=3, ERROR=4). The pragma must be on a single-line statement to apply.
-    """
-    return _LOG_LEVEL_ORDER.get((log_level or "").upper(), 0)  # pragma: no mutate
+
+def _rank(log_level: str | None) -> int:
+    """Order a log level for consent comparisons; unknown levels sort lowest."""
+    return _LOG_LEVEL_ORDER.get((log_level or _MISSING_LEVEL_PLACEHOLDER).upper(), _UNKNOWN_LEVEL_RANK)
 
 
 def should_allow(signal: str, log_level: str | None = None) -> bool:
@@ -74,10 +81,17 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
     return False  # traces/metrics/context blocked at MINIMAL
 
 
+# Default consent when PROVIDE_CONSENT_LEVEL is unset. Suppressed on its own
+# line rather than on the read below: the default is upper-cased along with the
+# env value so a case mutation cannot change the result, and any other mutation
+# of it yields a string ConsentLevel() rejects, leaving the already-FULL default
+# in place. The env var *name* and the `.upper()` on the read are not equivalent
+# and stay mutable.
+_DEFAULT_CONSENT_LEVEL = "FULL"  # pragma: no mutate
+
+
 def _load_consent_from_env() -> None:
-    # The default is upper-cased along with the env value, so a case mutation of
-    # the literal cannot change the result — provably equivalent.
-    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", "FULL").strip().upper()  # pragma: no mutate
+    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", _DEFAULT_CONSENT_LEVEL).strip().upper()
     with contextlib.suppress(ValueError):
         set_consent_level(ConsentLevel(raw))
 

@@ -18,6 +18,8 @@ __all__ = [
     "flush_logging",
     "flush_metrics",
     "flush_tracing",
+    "owned_signals",
+    "resolve_drain_deadline",
 ]
 
 import threading
@@ -40,11 +42,12 @@ import warnings
 # otherwise have used.
 _MAX_ABANDONED_WORKERS = 8
 # Shutdown is the last chance to drain, so it never declines for want of budget.
-# The flag is only ever tested for truthiness, so False and the None mutmut
-# substitutes are provably equivalent. Held in a module-level mapping because the
-# pragma only applies to a whole single-line statement, and the formatter wraps
-# the call site across lines where it would be ignored.
-_SHUTDOWN_DRAIN_OPTS: dict[str, bool] = {"decline_when_saturated": False}  # pragma: no mutate
+# Held in a module-level mapping so the keyword survives the formatter wrapping
+# the call site. Deliberately *not* suppressed: flipping the flag to True makes
+# shutdown decline once earlier flushes have stranded the budget, silently
+# dropping the whole export queue at exit — the second half of
+# test_declines_to_strand_more_workers_than_the_budget asserts it does not.
+_SHUTDOWN_DRAIN_OPTS: dict[str, bool] = {"decline_when_saturated": False}
 _abandoned_lock = threading.Lock()
 _abandoned_workers = 0
 
@@ -63,6 +66,58 @@ def _reset_abandoned_workers_for_tests() -> None:
     global _abandoned_workers
     with _abandoned_lock:
         _abandoned_workers = 0
+
+
+def resolve_drain_deadline(timeout_seconds: float | None) -> float:
+    """Deadline for a bounded drain or teardown, resolved without raising.
+
+    ``None`` means "use the configured bounded-shutdown deadline". Reading it
+    goes through :func:`~provide.telemetry.runtime.get_runtime_config`, which
+    falls back to ``TelemetryConfig.from_env()`` when no config is active — and
+    that raises :class:`ConfigurationError` on a malformed ``PROVIDE_*`` /
+    ``OTEL_*`` value.
+
+    Every caller here is a drain or a teardown, and the two situations where no
+    config is active are exactly the ones this API exists for: a SIGTERM handler
+    in a process whose environment is mis-set, and a ``shutdown_telemetry()`` in
+    a finally-block after a failed setup. Raising there would abandon the
+    teardown entirely and leave providers installed, so a bad environment falls
+    back to the dataclass default instead.
+    """
+    if timeout_seconds is not None:
+        return timeout_seconds
+    from provide.telemetry.config import ExporterPolicyConfig
+    from provide.telemetry.exceptions import ConfigurationError
+    from provide.telemetry.runtime import get_runtime_config
+
+    try:
+        return get_runtime_config().exporter.logs_shutdown_timeout_seconds
+    except ConfigurationError:
+        return ExporterPolicyConfig().logs_shutdown_timeout_seconds
+
+
+def owned_signals() -> dict[str, bool]:
+    """Which signals have a provider *we* installed — the ones a drain can reach.
+
+    A provider a host application put on the OTel globals is reported installed
+    by :func:`~provide.telemetry.runtime.get_runtime_status` (``get_tracer()`` /
+    ``get_meter()`` resolve it, so calling it fallback would be a lie) but is not
+    ours to drain: the flush helpers below return True without touching it. That
+    distinction is what ``SignalFlushResult.not_owned`` reports — telling a
+    caller ``flushed=True`` for a host provider would claim records are out when
+    they are still queued in the host's batch processor.
+    """
+    from provide.telemetry.logger import core as logger_core
+    from provide.telemetry.metrics import provider as metrics_provider
+    from provide.telemetry.tracing import provider as tracing_provider
+
+    with tracing_provider._provider_lock:
+        traces = tracing_provider._provider_ref is not None
+    with metrics_provider._meter_lock:
+        metrics = metrics_provider._meter_provider is not None
+    with logger_core._lock:
+        logs = logger_core._otel_log_provider is not None
+    return {"logs": logs, "traces": traces, "metrics": metrics}
 
 
 def _bounded_provider_call(

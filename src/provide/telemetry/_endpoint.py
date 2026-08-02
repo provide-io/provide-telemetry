@@ -22,12 +22,16 @@ def _check_port(parsed: ParseResult, endpoint: str) -> None:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
     # "http://host:" — colon present but urlparse sets port=None.
     # rsplit on "]" avoids false positives from IPv6 colons.
-    # Taking [-1] makes the maxsplit argument irrelevant — the text after the
-    # final "]" is the same for any maxsplit >= 1 and for none at all — so the
-    # only non-equivalent mutation here is rsplit -> split, which is killed by
-    # test_bracket_in_userinfo_is_split_from_the_right. The pragma has to sit on
-    # a single-line statement: mutmut ignores one trailing a multi-line `if`.
-    after_bracket = parsed.netloc.rsplit("]", 1)[-1]  # pragma: no mutate
+    #
+    # No maxsplit, and no `# pragma: no mutate`. Taking [-1] makes maxsplit
+    # unobservable, so passing one only created mutants that were equivalent
+    # (1 -> 2, dropping the argument) while a bare pragma to silence them
+    # suppressed every *other* mutation on the line as well — including the
+    # separator and the index, which are load-bearing for IPv6 endpoints. With
+    # the argument gone, split/rsplit are genuinely indistinguishable here (the
+    # last segment is the same either way) and everything mutmut still generates
+    # is killable — see test_endpoint_ipv6_without_port_is_accepted.
+    after_bracket = parsed.netloc.rsplit("]")[-1]
     if port is None and ":" in after_bracket:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
 

@@ -211,13 +211,13 @@ def test_setup_telemetry_emits_slo_startup_metrics(monkeypatch: pytest.MonkeyPat
 def test_shutdown_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
     called = {"log": 0, "trace": 0, "metrics": 0}
 
-    def _log() -> None:
+    def _log(timeout_seconds: float | None = None) -> None:
         called["log"] += 1
 
-    def _trace() -> None:
+    def _trace(timeout_seconds: float | None = None) -> None:
         called["trace"] += 1
 
-    def _metrics() -> None:
+    def _metrics(timeout_seconds: float | None = None) -> None:
         called["metrics"] += 1
 
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", _log)
@@ -229,9 +229,9 @@ def test_shutdown_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_mod, "_setup_done", True)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
     shutdown_telemetry()
     assert setup_mod._setup_done is False
 
@@ -242,9 +242,9 @@ def test_shutdown_telemetry_resets_runtime_signal_policies(monkeypatch: pytest.M
     from provide.telemetry.sampling import get_sampling_policy
 
     _reset_all_for_tests()
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
     setup_telemetry(
         TelemetryConfig(
             sampling=SamplingConfig(logs_rate=0.25),
@@ -343,15 +343,15 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
-        lambda: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_tracing",
-        lambda: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
     )
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.shutdown_metrics",
-        lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -380,15 +380,15 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
-        lambda: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_tracing",
-        lambda: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("trace_shutdown", called["trace_shutdown"] + 1),
     )
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.shutdown_metrics",
-        lambda: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("metrics_shutdown", called["metrics_shutdown"] + 1),
     )
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -423,10 +423,10 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
-        lambda: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
+        lambda timeout_seconds=None: called.__setitem__("log_shutdown", called["log_shutdown"] + 1),
     )
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", _trace_shutdown_raises)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -457,7 +457,7 @@ def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> N
     def _metrics(_cfg: object) -> None:
         calls["metrics"] += 1
 
-    def _shutdown_log() -> None:
+    def _shutdown_log(timeout_seconds: float | None = None) -> None:
         shutdown_started.set()
         assert allow_shutdown_to_continue.wait(timeout=1.0)
 
@@ -468,8 +468,8 @@ def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", _trace)
     monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", _metrics)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", _shutdown_log)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     shutdown_thread = threading.Thread(target=shutdown_telemetry, daemon=True)
     setup_thread = threading.Thread(target=lambda: setup_telemetry(TelemetryConfig()), daemon=True)

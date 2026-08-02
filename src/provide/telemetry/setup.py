@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "flush_signals",
     "flush_telemetry",
     "setup_telemetry",
     "shutdown_telemetry",
@@ -165,34 +166,55 @@ def flush_telemetry(timeout_seconds: float | None = None) -> bool:
 
     A provider a host application installed on the OTel globals is not ours to
     drain and is left alone.
-    """
-    from provide.telemetry._provider_drain import flush_logging, flush_metrics, flush_tracing
-    from provide.telemetry.runtime import get_runtime_config
 
-    deadline = (
-        get_runtime_config().exporter.logs_shutdown_timeout_seconds if timeout_seconds is None else timeout_seconds
+    Use :func:`flush_signals` when you need to know *which* signal failed.
+    """
+    return all(flush_signals(timeout_seconds).values())
+
+
+def flush_signals(timeout_seconds: float | None = None) -> dict[str, bool]:
+    """Force-flush installed providers, reporting the outcome per signal.
+
+    The per-signal form of :func:`flush_telemetry`. The signals drain
+    independently against three potentially different endpoints, so one
+    unreachable collector says nothing about the other two — collapsing them to
+    a single bool makes a caller re-emit or alert on records that were
+    delivered. Keys are ``"logs"``, ``"traces"`` and ``"metrics"``; a signal
+    whose provider we never installed counts as nothing to flush and reports
+    True.
+    """
+    from provide.telemetry._provider_drain import (
+        flush_logging,
+        flush_metrics,
+        flush_tracing,
+        resolve_drain_deadline,
     )
-    # Materialise before reducing, and route each through _drain_signal: every
+
+    deadline = resolve_drain_deadline(timeout_seconds)
+    # Materialise every entry, and route each through _drain_signal: every
     # signal must get its drain attempt even when an earlier one is abandoned at
-    # the deadline *or* raises. `all()` over a generator would let a slow logs
-    # endpoint deny traces and metrics theirs, and an exception escaping here
-    # would break the documented bool contract inside a caller's request handler.
-    results = [
-        _drain_signal("logs", flush_logging, deadline),
-        _drain_signal("traces", flush_tracing, deadline),
-        _drain_signal("metrics", flush_metrics, deadline),
-    ]
-    return all(results)
+    # the deadline *or* raises. A lazy reduction would let a slow logs endpoint
+    # deny traces and metrics theirs, and an exception escaping here would break
+    # the documented contract inside a caller's request handler.
+    return {
+        "logs": _drain_signal("logs", flush_logging, deadline),
+        "traces": _drain_signal("traces", flush_tracing, deadline),
+        "metrics": _drain_signal("metrics", flush_metrics, deadline),
+    }
 
 
 def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     """Flush and tear down telemetry providers and reset runtime policies.
 
-    *timeout_seconds* bounds the drain that precedes teardown — the part that can
-    hang on an unreachable collector — and defaults to the configured
+    *timeout_seconds* bounds each provider's drain-and-teardown — the part that
+    can hang on an unreachable collector — and defaults to the configured
     bounded-shutdown deadline. A caller in a SIGTERM handler passes the time it
-    has left so the drain cannot overrun its termination grace period; teardown
-    itself is local work and always completes.
+    has left so shutdown cannot overrun its termination grace period.
+
+    There is deliberately no separate pre-drain: every per-signal teardown below
+    runs ``force_flush`` then ``shutdown`` under the same deadline, so draining
+    first would export each signal twice and roughly double the wall time
+    against a slow collector.
     """
     from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
     from provide.telemetry.metrics.provider import shutdown_metrics
@@ -200,17 +222,12 @@ def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
     from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
 
-    # Drain under the caller's deadline before teardown. Taken outside _lock:
-    # flush_telemetry reads runtime config, and the per-signal shutdowns below
-    # re-flush what this leaves behind.
-    flush_telemetry(timeout_seconds)
-
     global _setup_done
     with _lock:
         _setup_done = False
-        shutdown_tracing()
-        shutdown_metrics()
-        shutdown_logging()
+        shutdown_tracing(timeout_seconds)
+        shutdown_metrics(timeout_seconds)
+        shutdown_logging(timeout_seconds)
         _reset_runtime()
         _reset_sampling()
         _reset_queues()

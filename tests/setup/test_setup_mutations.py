@@ -60,9 +60,11 @@ def test_rollback_reverse_order() -> None:
     order: list[str] = []
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("provide.telemetry.setup.shutdown_logging", lambda: order.append("logging"))
-        mp.setattr("provide.telemetry.setup.shutdown_tracing", lambda: order.append("tracing"))
-        mp.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: order.append("metrics"))
+        mp.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: order.append("logging"))
+        mp.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: order.append("tracing"))
+        mp.setattr(
+            "provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: order.append("metrics")
+        )
 
         _rollback(["configure_logging", "setup_tracing", "setup_metrics"])
 
@@ -114,15 +116,15 @@ def test_setup_metrics_failure_triggers_rollback_of_logging_and_tracing(
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
-        lambda: shutdown_calls.append("logging"),
+        lambda timeout_seconds=None: shutdown_calls.append("logging"),
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_tracing",
-        lambda: shutdown_calls.append("tracing"),
+        lambda timeout_seconds=None: shutdown_calls.append("tracing"),
     )
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.shutdown_metrics",
-        lambda: shutdown_calls.append("metrics"),
+        lambda timeout_seconds=None: shutdown_calls.append("metrics"),
     )
 
     with warnings.catch_warnings(record=True) as w:
@@ -249,15 +251,15 @@ def test_setup_telemetry_completed_list_has_correct_keys(
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_logging",
-        lambda: shutdown_calls.append("logging"),
+        lambda timeout_seconds=None: shutdown_calls.append("logging"),
     )
     monkeypatch.setattr(
         "provide.telemetry.setup.shutdown_tracing",
-        lambda: shutdown_calls.append("tracing"),
+        lambda timeout_seconds=None: shutdown_calls.append("tracing"),
     )
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.shutdown_metrics",
-        lambda: shutdown_calls.append("metrics"),
+        lambda timeout_seconds=None: shutdown_calls.append("metrics"),
     )
 
     with warnings.catch_warnings(record=True) as w:
@@ -487,9 +489,9 @@ def test_setup_fallback_restores_logging_after_rollback(
     monkeypatch.setattr(
         "provide.telemetry.metrics.provider.setup_metrics", lambda _: (_ for _ in ()).throw(RuntimeError("boom"))
     )
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()

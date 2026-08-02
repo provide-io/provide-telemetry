@@ -354,7 +354,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
     _configured = True
 
 
-def shutdown_logging() -> None:
+def shutdown_logging(timeout_seconds: float | None = None) -> None:
+    """Tear the OTel log provider down; *timeout_seconds* bounds the drain.
+
+    ``None`` uses the logger's own active config. A caller with a termination
+    grace period passes what it has left.
+    """
     global _configured, _active_config, _otel_log_provider
     with _lock:
         provider = _otel_log_provider
@@ -367,10 +372,10 @@ def shutdown_logging() -> None:
         _configured = False
     if provider is None:
         return
-    timeout = active.exporter.logs_shutdown_timeout_seconds if active is not None else 5.0
     from provide.telemetry.resilience import bounded_provider_shutdown
 
-    bounded_provider_shutdown(provider, timeout)
+    configured = active.exporter.logs_shutdown_timeout_seconds if active is not None else 5.0
+    bounded_provider_shutdown(provider, timeout_seconds if timeout_seconds is not None else configured)
 
 
 def _reset_logging_for_tests() -> None:

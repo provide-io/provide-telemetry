@@ -236,11 +236,23 @@ fn runtime_test_reload_runtime_from_env_requires_setup_and_surfaces_parse_errors
     });
 }
 
+/// With no OTel providers installed, every signal reports not_installed.
+///
+/// `flushed` is deliberately *not* asserted equal to `installed` any more: a
+/// signal reported installed without a provider of ours behind it is not_owned,
+/// because we do not drain a provider the host put on the OTel globals.
 fn assert_flush_result_matches_provider(installed: bool, result: SignalFlushResult) {
-    assert_eq!(result.flushed, installed);
     assert_eq!(result.not_installed, !installed);
-    assert!(!result.not_owned);
-    assert!(!result.timed_out);
+    if installed {
+        assert!(
+            result.flushed || result.not_owned,
+            "an installed signal must report a drain outcome or not_owned: {result:?}"
+        );
+    } else {
+        assert!(!result.flushed);
+        assert!(!result.not_owned);
+        assert!(!result.timed_out);
+    }
     assert!(!result.failed);
 }
 
@@ -310,7 +322,9 @@ fn runtime_object_test_complete_successful_lifecycle() {
             TelemetryConfig::from_env().expect("default environment config")
         );
 
-        runtime.shutdown(None).expect("runtime shutdown should succeed");
+        runtime
+            .shutdown(None)
+            .expect("runtime shutdown should succeed");
         assert_eq!(runtime.state(), RuntimeState::Stopped);
         assert!(runtime.get_runtime_config().is_none());
     });
@@ -323,7 +337,9 @@ fn runtime_object_test_failed_start_is_degraded_and_update_reports_error() {
         reset_runtime();
         let mut runtime = TelemetryRuntime::new();
 
-        let err = runtime.start(None).expect_err("invalid config must fail start");
+        let err = runtime
+            .start(None)
+            .expect_err("invalid config must fail start");
         assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
         assert_eq!(runtime.state(), RuntimeState::Degraded);
 
@@ -351,5 +367,47 @@ fn runtime_object_test_reconfigure_from_invalid_environment_returns_error() {
             .expect_err("invalid environment must fail reconfigure");
         assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
         assert_eq!(runtime.state(), RuntimeState::Ready);
+    });
+}
+
+/// A signal drains, or reports why it did not — one aggregate must not stand in
+/// for all three, and an adopted provider must not be reported as flushed.
+#[test]
+fn runtime_object_test_flush_reports_each_signal_on_its_own() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[], || {
+        reset_runtime();
+        let mut runtime = TelemetryRuntime::default();
+        runtime.start(None).expect("runtime start should succeed");
+
+        let result = runtime.flush(None).expect("flush should succeed");
+
+        // Nothing installed in this build: each signal says so, and no signal
+        // claims to have flushed records it never had.
+        for signal in [&result.logs, &result.traces, &result.metrics] {
+            assert!(signal.not_installed, "expected not_installed: {signal:?}");
+            assert!(!signal.flushed);
+            assert!(!signal.not_owned);
+            assert!(!signal.timed_out);
+            assert!(!signal.failed);
+        }
+    });
+}
+
+/// A caller-supplied deadline reaches the drain without panicking, whatever it
+/// holds — `Duration::from_secs_f64` rejects NaN and infinity.
+#[test]
+fn runtime_object_test_flush_survives_a_non_finite_deadline() {
+    let _guard = runtime_lock().lock().expect("runtime lock poisoned");
+    with_env(&[], || {
+        reset_runtime();
+        let mut runtime = TelemetryRuntime::default();
+        runtime.start(None).expect("runtime start should succeed");
+
+        for deadline in [f64::NAN, f64::INFINITY, 0.0, -1.0, f64::MAX] {
+            runtime
+                .flush(Some(deadline))
+                .unwrap_or_else(|err| panic!("flush({deadline}) failed: {err:?}"));
+        }
     });
 }

@@ -19,12 +19,23 @@ import { getLogger } from './logger.js';
 import { getMeter } from './metrics.js';
 import { _isLiveMeterProviderInstalled, _isLiveTracerProviderInstalled } from './otel-probe.js';
 import { getTracer } from './tracing.js';
+import {
+  _areProvidersRegistered,
+  _clearProviderRegistry,
+  _isLogsProviderInstalled,
+  type SignalName,
+} from './provider-registry.js';
 
-/** Minimal interface for providers that can be flushed and shut down cleanly. */
-export interface ShutdownableProvider {
-  forceFlush?(): Promise<void>;
-  shutdown?(): Promise<void>;
-}
+export {
+  _areProvidersRegistered,
+  _getProvidersBySignal,
+  _getRegisteredProviders,
+  _markProvidersRegistered,
+  _setLogsProviderInstalled,
+  _storeRegisteredProviders,
+  type ShutdownableProvider,
+  type SignalName,
+} from './provider-registry.js';
 
 export interface RuntimeStatus {
   setupDone: boolean;
@@ -113,24 +124,37 @@ export class TelemetryRuntime {
     return Promise.resolve();
   }
 
+  /**
+   * Drain installed providers and report each signal's own outcome.
+   *
+   * A signal with no provider is `notInstalled`. A signal reported installed but
+   * with no provider of ours behind it — traces and metrics status is probed
+   * against the OTel globals, so a host application's own SDK counts — is
+   * `notOwned`: we do not drain it, and calling it `flushed` would say the
+   * records are out when they are still in the host's queue. The rest carry
+   * their own drain result, not an aggregate of all three.
+   */
   async flush(timeoutMs?: number): Promise<FlushResult> {
-    const { flushTelemetry } = await import('./shutdown.js');
-    // Read provider status before draining: a signal with no provider installed
-    // must report notInstalled rather than riding on flushTelemetry's vacuously
-    // true [].every(). Mirrors the Rust facade.
+    const { flushSignals } = await import('./shutdown.js');
     const providers = getRuntimeStatus().providers;
-    const ok = await flushTelemetry(timeoutMs);
-    const resultFor = (installed: boolean): SignalFlushResult => ({
-      flushed: installed && ok,
-      notInstalled: !installed,
-      notOwned: false,
-      timedOut: installed && !ok,
-      failed: false,
-    });
+    const drained = await flushSignals(timeoutMs);
+    const resultFor = (signal: SignalName, installed: boolean): SignalFlushResult => {
+      const base = {
+        flushed: false,
+        notInstalled: false,
+        notOwned: false,
+        timedOut: false,
+        failed: false,
+      };
+      if (!installed) return { ...base, notInstalled: true };
+      const ours = drained[signal];
+      if (ours === undefined) return { ...base, notOwned: true };
+      return { ...base, flushed: ours, timedOut: !ours };
+    };
     return {
-      logs: resultFor(providers.logs),
-      traces: resultFor(providers.traces),
-      metrics: resultFor(providers.metrics),
+      logs: resultFor('logs', providers.logs),
+      traces: resultFor('traces', providers.traces),
+      metrics: resultFor('metrics', providers.metrics),
     };
   }
 
@@ -175,45 +199,8 @@ export class TelemetryRuntime {
 }
 
 let _activeConfig: TelemetryConfig | null = null;
-// Stryker disable next-line BooleanLiteral: initial false is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
-let _providersRegistered = false;
-// Stryker disable next-line ArrayDeclaration: initial [] is overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
-let _registeredProviders: ShutdownableProvider[] = [];
-// Logs is the one signal whose provider state is bookkept at install time:
-// traces and metrics are probed against the OTel globals instead (see
-// getRuntimeStatus), so a host application's own SDK counts as installed. The
-// logs API lives in the optional @opentelemetry/api-logs peer, which cannot be
-// imported synchronously here, so there is nothing to probe against.
-// Stryker disable next-line BooleanLiteral: initial value overwritten by _resetRuntimeForTests() in every test beforeEach — equivalent mutant
-let _logsProviderInstalled = false;
-
 function resolveEffectiveConfig(): TelemetryConfig {
   return _activeConfig ?? configFromEnv();
-}
-
-/** Store the live providers so shutdownTelemetry can flush and drain them. */
-export function _storeRegisteredProviders(providers: ShutdownableProvider[]): void {
-  _registeredProviders = providers;
-}
-
-/** Return the currently registered providers (snapshot). */
-export function _getRegisteredProviders(): ShutdownableProvider[] {
-  return [..._registeredProviders];
-}
-
-/** Called by registerOtelProviders once providers are live. */
-export function _markProvidersRegistered(): void {
-  _providersRegistered = true;
-}
-
-/** Return true if OTEL providers have been registered. */
-export function _areProvidersRegistered(): boolean {
-  return _providersRegistered;
-}
-
-/** Called by registerOtelProviders once the OTLP log provider is live. */
-export function _setLogsProviderInstalled(installed: boolean): void {
-  _logsProviderInstalled = installed;
 }
 
 export function getRuntimeStatus(): RuntimeStatus {
@@ -245,12 +232,12 @@ export function getRuntimeStatus(): RuntimeStatus {
       metrics: cfg.metricsEnabled,
     },
     providers: {
-      logs: _logsProviderInstalled,
+      logs: _isLogsProviderInstalled(),
       traces: tracesInstalled,
       metrics: metricsInstalled,
     },
     fallback: {
-      logs: !_logsProviderInstalled,
+      logs: !_isLogsProviderInstalled(),
       traces: !tracesInstalled,
       metrics: !metricsInstalled,
     },
@@ -452,7 +439,7 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
   const current = getRuntimeConfig();
   const proposed: TelemetryConfig = { ...current, ...config };
 
-  if (_providersRegistered) {
+  if (_areProvidersRegistered()) {
     const changed = PROVIDER_CHANGING_FIELDS.some(
       (k) => JSON.stringify(current[k]) !== JSON.stringify(proposed[k]),
     );
@@ -468,9 +455,7 @@ export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
 
 /** Clear provider registration state. Called by shutdownTelemetry after flush/shutdown. */
 export function _clearProviderState(): void {
-  _providersRegistered = false;
-  _registeredProviders = [];
-  _logsProviderInstalled = false;
+  _clearProviderRegistry();
   _activeConfig = null;
 }
 
@@ -481,9 +466,7 @@ export function _setActiveConfig(cfg: TelemetryConfig): void {
 
 export function _resetRuntimeForTests(): void {
   _activeConfig = null;
-  _providersRegistered = false;
-  _registeredProviders = [];
-  _logsProviderInstalled = false;
+  _clearProviderRegistry();
 }
 
 export const _coldFieldsForTest: readonly (keyof TelemetryConfig)[] = _COLD_FIELDS;

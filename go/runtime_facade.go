@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 )
 
@@ -103,12 +104,21 @@ func (rt *TelemetryRuntime) GetRuntimeStatus() RuntimeStatus {
 }
 
 // UpdateConfig applies the hot-reloadable fields of cfg and returns the resulting
-// runtime config. Provider-changing fields (endpoints, headers) are rejected by
-// UpdateRuntimeConfig — use Reconfigure for those.
+// runtime config.
+//
+// Provider-changing fields (service identity, OTLP endpoints and headers, and
+// the per-signal enable flags) are rejected when they differ from the live
+// config — installing a new exporter needs a process restart, and quietly
+// copying a new endpoint into the live config would leave records going to the
+// old collector while GetRuntimeConfig reported the new one. Use Reconfigure
+// for those, or restart with SetupTelemetry.
 func (rt *TelemetryRuntime) UpdateConfig(ctx context.Context, cfg *TelemetryConfig) (*TelemetryConfig, error) {
 	_ = ctx
 	if cfg == nil {
 		return nil, NewConfigurationError("UpdateConfig requires a non-nil config")
+	}
+	if err := rejectProviderChangingFields(cfg); err != nil {
+		return nil, err
 	}
 	if err := UpdateRuntimeConfig(runtimeOverridesFromConfig(cfg)); err != nil {
 		return nil, err
@@ -117,33 +127,83 @@ func (rt *TelemetryRuntime) UpdateConfig(ctx context.Context, cfg *TelemetryConf
 }
 
 // Reconfigure applies cfg as the reconfiguration target. A nil cfg falls back to
-// the process environment. Explicit opts are applied after cfg, so a caller-supplied
-// WithConfig takes precedence.
+// the runtime's constructor options, then to the process environment. Options
+// are ordered constructor-first so an explicit cfg, and then explicit opts,
+// each override what came before — matching Start.
 func (rt *TelemetryRuntime) Reconfigure(ctx context.Context, cfg *TelemetryConfig, opts ...SetupOption) (*TelemetryConfig, error) {
+	// rt.opts is forwarded for the same reason Start forwards it: a host that
+	// built the runtime with WithConfig did so because it must not read the
+	// process environment. Dropping them here made Reconfigure(ctx, nil) fall
+	// through to ConfigFromEnv and silently replace the caller's settings with
+	// environment defaults.
+	resolved := append([]SetupOption{}, rt.opts...)
 	if cfg != nil {
-		opts = append([]SetupOption{WithConfig(cfg)}, opts...)
+		resolved = append(resolved, WithConfig(cfg))
 	}
-	return ReconfigureTelemetry(ctx, opts...)
+	resolved = append(resolved, opts...)
+	return ReconfigureTelemetry(ctx, resolved...)
 }
 
-// Flush drains installed providers and reports per-signal outcomes. A signal with
-// no provider installed reports NotInstalled rather than Flushed — matching the
-// Rust facade, which reads the same per-signal provider status.
+// Flush drains installed providers and reports per-signal outcomes.
+//
+// A signal with no provider installed reports NotInstalled. A signal whose
+// provider the host application put on the OTel globals reports NotOwned — we
+// leave it alone, so calling it Flushed would tell a caller its records are out
+// when they are still in the host's queue. The rest carry their own drain
+// result: the three export to potentially different endpoints, and one
+// unreachable collector says nothing about the other two.
+//
+// Backends that do not implement PerSignalFlushableBackend can only answer in
+// aggregate, and every installed signal then carries the same outcome.
 func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
 	providers := GetRuntimeStatus().Providers
-	err := FlushTelemetry(ctx)
-	signal := func(installed bool) SignalFlushResult {
-		return SignalFlushResult{
-			Flushed:      installed && err == nil,
-			NotInstalled: !installed,
-			Failed:       installed && err != nil,
+	perSignal, granular := FlushTelemetryBySignal(ctx)
+	err := _joinSignalErrors(perSignal)
+	if !granular {
+		err = FlushTelemetry(ctx)
+	}
+	signal := func(name string, installed bool) SignalFlushResult {
+		if !installed {
+			return SignalFlushResult{NotInstalled: true}
 		}
+		drainErr := err
+		if granular {
+			ours, owned := perSignal[name]
+			if !owned {
+				return SignalFlushResult{NotOwned: true}
+			}
+			drainErr = ours
+		}
+		if drainErr == nil {
+			return SignalFlushResult{Flushed: true}
+		}
+		if errors.Is(drainErr, context.DeadlineExceeded) {
+			return SignalFlushResult{TimedOut: true}
+		}
+		return SignalFlushResult{Failed: true}
 	}
 	return &FlushResult{
-		Logs:    signal(providers.Logs),
-		Traces:  signal(providers.Traces),
-		Metrics: signal(providers.Metrics),
+		Logs:    signal(SignalLogs, providers.Logs),
+		Traces:  signal(SignalTraces, providers.Traces),
+		Metrics: signal(SignalMetrics, providers.Metrics),
 	}, err
+}
+
+// _joinSignalErrors collapses per-signal drain errors for Flush's error return,
+// which stays aggregate for callers that only want "did everything get out".
+func _joinSignalErrors(perSignal map[string]error) error {
+	errs := make([]error, 0, len(perSignal))
+	for _, name := range []string{SignalLogs, SignalTraces, SignalMetrics} {
+		if err, ok := perSignal[name]; ok && err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) == 1 {
+		// Handed back untouched so a caller's `== context.DeadlineExceeded`
+		// still matches, as FlushTelemetry documents.
+		return errs[0]
+	}
+	return errors.Join(errs...)
 }
 
 func (rt *TelemetryRuntime) Shutdown(ctx context.Context) error {

@@ -203,7 +203,15 @@ def _set_meter_for_test(meter: Any | None) -> None:
     _metrics_explicitly_disabled = False
 
 
-def shutdown_metrics() -> None:
+def shutdown_metrics(timeout_seconds: float | None = None) -> None:
+    """Tear the meter provider down under a bounded deadline.
+
+    *timeout_seconds* defaults to the configured bounded-shutdown deadline.
+    See :func:`provide.telemetry.tracing.provider.shutdown_tracing` for why the
+    bound is not optional.
+    """
+    from provide.telemetry._provider_drain import bounded_provider_shutdown, resolve_drain_deadline
+
     global _meter_provider, _setup_generation
     with _meter_lock:
         _setup_generation += 1
@@ -211,9 +219,7 @@ def shutdown_metrics() -> None:
         if provider is None:
             return
         try:
-            shutdown = getattr(provider, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
+            bounded_provider_shutdown(provider, resolve_drain_deadline(timeout_seconds))
         finally:
             _meters.clear()
             _meter_provider = None

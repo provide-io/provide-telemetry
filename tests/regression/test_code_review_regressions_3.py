@@ -195,9 +195,9 @@ class TestShutdownResetsRuntime:
         _reset_setup_state_for_tests()
         runtime_mod.apply_runtime_config(TelemetryConfig(service_name="before-shutdown"))
         assert runtime_mod.get_runtime_config().service_name == "before-shutdown"
-        monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-        monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-        monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+        monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+        monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+        monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
         shutdown_telemetry()
         assert runtime_mod.get_runtime_config().service_name != "before-shutdown"
 

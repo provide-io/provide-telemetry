@@ -205,7 +205,17 @@ def setup_tracing(config: TelemetryConfig) -> None:
         _otel_global_set = True
 
 
-def shutdown_tracing() -> None:
+def shutdown_tracing(timeout_seconds: float | None = None) -> None:
+    """Tear the tracer provider down under a bounded deadline.
+
+    *timeout_seconds* defaults to the configured bounded-shutdown deadline.
+    The bound is not optional: ``TracerProvider.shutdown()`` joins its
+    ``BatchSpanProcessor`` worker with the OTel SDK's own 30s default, so
+    against an unreachable collector an unbounded call here would overrun any
+    termination grace period a caller passed a deadline to stay inside.
+    """
+    from provide.telemetry._provider_drain import bounded_provider_shutdown, resolve_drain_deadline
+
     global _provider_ref, _provider_configured, _setup_generation
     with _provider_lock:
         _setup_generation += 1
@@ -214,9 +224,7 @@ def shutdown_tracing() -> None:
             _provider_configured = False
             return
         try:
-            shutdown = getattr(provider, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
+            bounded_provider_shutdown(provider, resolve_drain_deadline(timeout_seconds))
         finally:
             _provider_ref = None
             _provider_configured = False

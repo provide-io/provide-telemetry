@@ -11,6 +11,16 @@ __all__ = ["get_header"]
 
 from typing import Any
 
+# Codec names are looked up case-insensitively, so a case mutation of either
+# selects the identical codec — the only provably-equivalent mutation at the
+# decode call sites. They are hoisted here so each carries its own suppression:
+# a bare pragma on the `value.decode(...)` lines would have silenced the whole
+# line, including the argument-removal mutants that turn a decode into a
+# TypeError and the `"XXutf-8XX"` mutant that raises LookupError past the
+# UnicodeDecodeError handler.
+_PRIMARY_CODEC = "utf-8"  # pragma: no mutate
+_FALLBACK_CODEC = "latin-1"  # pragma: no mutate
+
 
 def get_header(scope: dict[str, Any], key: bytes) -> str | None:
     """Return a decoded header value or None for malformed/unsupported values."""
@@ -36,10 +46,8 @@ def _decode_header_value(value: object) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, bytes):
-        # Codec names are looked up case-insensitively, so the only mutations
-        # generated here ("UTF-8" / "LATIN-1") select the identical codec.
         try:
-            return value.decode("utf-8")  # pragma: no mutate
+            return value.decode(_PRIMARY_CODEC)
         except UnicodeDecodeError:
-            return value.decode("latin-1")  # pragma: no mutate
+            return value.decode(_FALLBACK_CODEC)
     return None

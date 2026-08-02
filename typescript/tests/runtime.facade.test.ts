@@ -73,11 +73,25 @@ describe('TelemetryRuntime facade', () => {
     }
   });
 
-  it('reports flushed for a signal whose provider is live', async () => {
+  it('reports flushed for a signal whose provider is live and ours', async () => {
     trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    _storeRegisteredProviders([{ forceFlush: () => Promise.resolve() }], ['traces']);
     const result = await new TelemetryRuntime().flush(100);
     expect(result.traces.flushed).toBe(true);
     expect(result.traces.notInstalled).toBe(false);
+    expect(result.traces.notOwned).toBe(false);
+  });
+
+  it('reports notOwned for a provider the host installed on the OTel globals', async () => {
+    // traces status is probed against the globals, so a host application's own
+    // SDK counts as installed — but we registered nothing, so there is nothing
+    // of ours to drain. Calling it flushed would say the spans are out while
+    // they sit in the host's BatchSpanProcessor.
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    const result = await new TelemetryRuntime().flush(100);
+    expect(result.traces.notOwned).toBe(true);
+    expect(result.traces.flushed).toBe(false);
+    expect(result.traces.timedOut).toBe(false);
   });
 
   it('settles in STOPPED after shutdown, with or without a timeout', async () => {
@@ -97,7 +111,7 @@ describe('TelemetryRuntime facade', () => {
     // logs/metrics: installed=false, same failed flushTelemetry() -> their
     // timedOut must stay false (an uninstalled signal can't "time out").
     trace.setGlobalTracerProvider(liveTracerProvider() as never);
-    _storeRegisteredProviders([{ forceFlush: () => new Promise<void>(() => {}) }]);
+    _storeRegisteredProviders([{ forceFlush: () => new Promise<void>(() => {}) }], ['traces']);
     const result = await new TelemetryRuntime().flush(20);
 
     expect(result.traces.timedOut).toBe(true);

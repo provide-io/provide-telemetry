@@ -19,11 +19,13 @@
 
 import { context, metrics, trace } from '@opentelemetry/api';
 import { getConfig } from './config.js';
+import { _clearProviderState } from './runtime.js';
 import {
-  _clearProviderState,
+  _getProvidersBySignal,
   _getRegisteredProviders,
   type ShutdownableProvider,
-} from './runtime.js';
+  type SignalName,
+} from './provider-registry.js';
 import { _resetRootLogger } from './logger.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { dynImportOtel } from './otel-dynimport.js';
@@ -152,6 +154,8 @@ async function flushProvider(provider: ShutdownableProvider, timeoutMs: number):
  *
  * A provider a host application installed on the OTel globals is not ours to
  * drain and is left alone.
+ *
+ * Use {@link flushSignals} when you need to know *which* signal failed.
  */
 export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
   const providers = _getRegisteredProviders();
@@ -160,6 +164,33 @@ export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
   // one slow exporter must not delay the others' drain.
   const results = await Promise.all(providers.map((p) => flushProvider(p, deadlineMs)));
   return results.every((ok) => ok);
+}
+
+/**
+ * Force-flush installed providers, reporting the outcome per signal.
+ *
+ * The per-signal form of {@link flushTelemetry}. The signals export to three
+ * potentially different endpoints, so one unreachable collector says nothing
+ * about the other two — collapsing them to a single boolean makes a caller
+ * re-emit or alert on records that were already delivered.
+ *
+ * A signal absent from the returned record has no provider of ours behind it.
+ * Providers registered without a signal tag are still drained, but cannot be
+ * attributed, so they appear under no key.
+ */
+export async function flushSignals(
+  timeoutMs?: number,
+): Promise<Partial<Record<SignalName, boolean>>> {
+  const bySignal = _getProvidersBySignal();
+  const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
+  const entries = Object.entries(bySignal) as [SignalName, ShutdownableProvider][];
+  // Start every flush before the first await, as flushTelemetry does.
+  const results = await Promise.all(entries.map(([, p]) => flushProvider(p, deadlineMs)));
+  const drained: Partial<Record<SignalName, boolean>> = {};
+  for (const [index, [signal]] of entries.entries()) {
+    drained[signal] = results[index];
+  }
+  return drained;
 }
 
 /**

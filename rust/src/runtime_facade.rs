@@ -33,7 +33,7 @@ pub enum RuntimeState {
     Stopped,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignalFlushResult {
     pub flushed: bool,
     pub not_installed: bool,
@@ -107,7 +107,10 @@ impl TelemetryRuntime {
     ///
     /// `None` reads the environment. Mirrors Python's `start(config)`,
     /// TypeScript's `start(config?)` and Go's `Start(ctx, opts...)`.
-    pub fn start(&mut self, config: Option<TelemetryConfig>) -> Result<TelemetryConfig, TelemetryError> {
+    pub fn start(
+        &mut self,
+        config: Option<TelemetryConfig>,
+    ) -> Result<TelemetryConfig, TelemetryError> {
         self.state = RuntimeState::Starting;
         match crate::setup::setup_telemetry(config) {
             Ok(cfg) => {
@@ -130,20 +133,38 @@ impl TelemetryRuntime {
     }
 
     /// Flush installed providers, bounding the drain by `timeout_seconds`.
+    ///
+    /// Each signal reports its own outcome. A signal with no provider is
+    /// `not_installed`; one whose provider was adopted from the OTel globals is
+    /// `not_owned` (the host's to drain, so we leave it alone); the rest carry
+    /// the result of their own drain, not an aggregate of all three.
     pub fn flush(&self, timeout_seconds: Option<f64>) -> Result<FlushResult, TelemetryError> {
         let providers = crate::runtime::get_runtime_status().providers;
-        crate::setup::flush_telemetry(timeout_seconds)?;
-        let result_for = |installed| SignalFlushResult {
-            flushed: installed,
-            not_installed: !installed,
-            not_owned: false,
-            timed_out: false,
-            failed: false,
+        let owned = crate::otel::owned_signals();
+        let drained = crate::otel::flush_otel_by_signal(timeout_seconds);
+        let result_for = |installed: bool, owned: bool, drained: bool| {
+            if !installed {
+                return SignalFlushResult {
+                    not_installed: true,
+                    ..SignalFlushResult::default()
+                };
+            }
+            if !owned {
+                return SignalFlushResult {
+                    not_owned: true,
+                    ..SignalFlushResult::default()
+                };
+            }
+            SignalFlushResult {
+                flushed: drained,
+                timed_out: !drained,
+                ..SignalFlushResult::default()
+            }
         };
         Ok(FlushResult {
-            logs: result_for(providers.logs),
-            traces: result_for(providers.traces),
-            metrics: result_for(providers.metrics),
+            logs: result_for(providers.logs, owned.logs, drained.logs),
+            traces: result_for(providers.traces, owned.traces, drained.traces),
+            metrics: result_for(providers.metrics, owned.metrics, drained.metrics),
         })
     }
 

@@ -41,16 +41,24 @@ impl Drop for PropagationGuard {
 /// True when `key` is an RFC 7230 token, which the W3C Baggage spec requires.
 fn is_baggage_token(key: &str) -> bool {
     !key.is_empty()
-        && key.bytes().all(|b| {
-            b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
-        })
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
 }
 
-/// Strip C0/C1 control characters except TAB from a baggage value.
+/// Strip C0 control characters and DEL from a baggage value, keeping TAB.
+///
+/// The set is exactly `[\x00-\x08\x0a-\x1f\x7f]` — the same one the Python,
+/// TypeScript and Go siblings compile. `char::is_control()` is deliberately not
+/// used: it is the Unicode Cc category, which also covers C1 (U+0080–U+009F).
+/// Stripping those here would make one baggage header parse to two different
+/// values depending on which language handled the hop, so the same request
+/// would carry different `baggage.*` log attributes and different
+/// cardinality-guard keys on either side.
 fn strip_control_chars(value: &str) -> String {
     value
         .chars()
-        .filter(|c| *c == '\t' || !c.is_control())
+        .filter(|c| !matches!(*c, '\x00'..='\x08' | '\x0a'..='\x1f' | '\x7f'))
         .collect()
 }
 

@@ -80,11 +80,11 @@ def test_shutdown_forwards_timeout_and_sets_stopped(monkeypatch: Any) -> None:
 def test_flush_forwards_timeout(monkeypatch: Any) -> None:
     seen: list[float | None] = []
 
-    def fake_flush(timeout_seconds: float | None = None) -> bool:
+    def fake_flush(timeout_seconds: float | None = None) -> dict[str, bool]:
         seen.append(timeout_seconds)
-        return True
+        return {"logs": True, "traces": True, "metrics": True}
 
-    monkeypatch.setattr("provide.telemetry.setup.flush_telemetry", fake_flush)
+    monkeypatch.setattr("provide.telemetry.setup.flush_signals", fake_flush)
     rt = runtime_mod.TelemetryRuntime()
 
     rt.flush(0.75)
@@ -94,8 +94,12 @@ def test_flush_forwards_timeout(monkeypatch: Any) -> None:
 @pytest.mark.parametrize("drained", [True, False])
 def test_flush_applies_drained_flag_to_every_signal(monkeypatch: Any, drained: bool) -> None:
     monkeypatch.setattr(
-        "provide.telemetry.setup.flush_telemetry",
-        lambda timeout_seconds=None: drained,
+        "provide.telemetry.setup.flush_signals",
+        lambda timeout_seconds=None: {"logs": drained, "traces": drained, "metrics": drained},
+    )
+    monkeypatch.setattr(
+        "provide.telemetry._provider_drain.owned_signals",
+        lambda: {"logs": True, "traces": True, "metrics": True},
     )
     monkeypatch.setattr(
         runtime_mod,
@@ -119,10 +123,10 @@ def test_flush_applies_drained_flag_to_every_signal(monkeypatch: Any, drained: b
 
 
 def test_signal_flush_result_sets_timed_out() -> None:
-    assert runtime_mod._signal_flush_result(True, False) == SignalFlushResult(
+    assert runtime_mod._signal_flush_result(True, True, False) == SignalFlushResult(
         flushed=False, not_installed=False, timed_out=True
     )
-    assert runtime_mod._signal_flush_result(True, True) == SignalFlushResult(
+    assert runtime_mod._signal_flush_result(True, True, True) == SignalFlushResult(
         flushed=True, not_installed=False, timed_out=False
     )
 

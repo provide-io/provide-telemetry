@@ -198,6 +198,32 @@ type FlushableBackend interface {
 	ForceFlush(ctx context.Context) error
 }
 
+// Signal names used as keys by PerSignalFlushableBackend. They match the
+// sampling/queue policy signal names so a caller can key one map by both.
+const (
+	SignalLogs    = signalLogs
+	SignalTraces  = signalTraces
+	SignalMetrics = signalMetrics
+)
+
+// PerSignalFlushableBackend is the per-signal refinement of FlushableBackend.
+//
+// The three signals drain against three potentially different endpoints, so one
+// aggregate error cannot say which of them failed — reporting all three as
+// failed makes an operator re-emit or alert on records that were delivered.
+// Separate from FlushableBackend, like FlushableBackend is separate from
+// Backend, so adding it does not break existing implementations.
+type PerSignalFlushableBackend interface {
+	FlushableBackend
+
+	// ForceFlushBySignal drains every provider and returns one entry per signal
+	// the backend itself installed. A signal absent from the map has no provider
+	// of ours behind it: either nothing is installed, or the provider was adopted
+	// from the OTel globals and belongs to the host. A present nil value means
+	// that signal drained cleanly.
+	ForceFlushBySignal(ctx context.Context) map[string]error
+}
+
 func _flushBackend(ctx context.Context) error {
 	backend := _activeBackend()
 	if backend == nil {
@@ -208,6 +234,23 @@ func _flushBackend(ctx context.Context) error {
 		return nil
 	}
 	return flushable.ForceFlush(ctx)
+}
+
+// _flushBackendBySignal drains per signal when the backend supports it.
+//
+// The second return reports whether the per-signal path was taken; when it is
+// false the caller has only the aggregate error from _flushBackend and cannot
+// distinguish the signals.
+func _flushBackendBySignal(ctx context.Context) (map[string]error, bool) {
+	backend := _activeBackend()
+	if backend == nil {
+		return nil, false
+	}
+	perSignal, ok := backend.(PerSignalFlushableBackend)
+	if !ok {
+		return nil, false
+	}
+	return perSignal.ForceFlushBySignal(ctx), true
 }
 
 func _shutdownBackendLocked(ctx context.Context) error {

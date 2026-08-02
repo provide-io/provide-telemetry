@@ -32,9 +32,9 @@ def test_setup_does_not_raise_on_provider_failure(monkeypatch: pytest.MonkeyPatc
         "provide.telemetry.metrics.provider.setup_metrics",
         lambda _cfg: (_ for _ in ()).throw(RuntimeError("metrics boom")),
     )
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -57,9 +57,9 @@ def test_setup_done_false_after_failure(monkeypatch: pytest.MonkeyPatch) -> None
         "provide.telemetry.metrics.provider.setup_metrics",
         lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom")),
     )
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -85,9 +85,9 @@ def test_health_snapshot_reflects_setup_error(monkeypatch: pytest.MonkeyPatch) -
         "provide.telemetry.metrics.provider.setup_metrics",
         lambda _cfg: (_ for _ in ()).throw(RuntimeError("metrics boom")),
     )
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -114,9 +114,9 @@ def test_setup_fallback_calls_configure_logging_when_it_was_not_completed(
     monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", lambda _cfg: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -165,9 +165,9 @@ def test_retry_after_degraded_setup_reruns_setup(monkeypatch: pytest.MonkeyPatch
         "provide.telemetry.metrics.provider.setup_metrics",
         lambda _cfg: (_ for _ in ()).throw(RuntimeError("boom")),
     )
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -193,9 +193,9 @@ def test_retry_after_failure_with_fixed_config_succeeds(monkeypatch: pytest.Monk
     monkeypatch.setattr("provide.telemetry.metrics.provider._refresh_otel_metrics", lambda: None)
     monkeypatch.setattr("provide.telemetry.setup.setup_tracing", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.metrics.provider.setup_metrics", _setup_metrics_fn)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda: None)
-    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda: None)
-    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
     monkeypatch.setattr("provide.telemetry.slo._rebind_slo_instruments", lambda: None)
 
     with warnings.catch_warnings():

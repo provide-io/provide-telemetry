@@ -67,8 +67,7 @@ def main() -> int:
     )
 
     before = get_runtime_status()
-    providers = before["providers"]
-    assert isinstance(providers, dict)
+    providers = before.providers
     if not all(providers.get(signal) for signal in ("traces", "metrics", "logs")):
         _fail(f"providers not installed before flush: {providers}")
 
@@ -85,11 +84,10 @@ def main() -> int:
 
     # Flush drains; it must not tear down.
     after = get_runtime_status()
-    after_providers = after["providers"]
-    assert isinstance(after_providers, dict)
+    after_providers = after.providers
     if not all(after_providers.get(signal) for signal in ("traces", "metrics", "logs")):
         _fail(f"flush tore providers down: {after_providers}")
-    if not after["setup_done"]:
+    if not after.setup_done:
         _fail("flush cleared setup state")
 
     @trace("integration.flush.after.span")

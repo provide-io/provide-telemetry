@@ -30,7 +30,9 @@ pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> bool {
         return true;
     };
 
-    super::bounded_flush("logs", timeout_seconds, move || provider.force_flush().is_ok())
+    super::bounded_flush("logs", timeout_seconds, move || {
+        provider.force_flush().is_ok()
+    })
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
@@ -50,7 +52,9 @@ pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> bool {
         return true;
     };
 
-    super::bounded_flush("traces", timeout_seconds, move || provider.force_flush().is_ok())
+    super::bounded_flush("traces", timeout_seconds, move || {
+        provider.force_flush().is_ok()
+    })
 }
 
 /// Force-flush the installed provider, leaving it installed and usable.
@@ -70,7 +74,9 @@ pub(crate) fn flush_meter_provider(timeout_seconds: Option<f64>) -> bool {
         return true;
     };
 
-    super::bounded_flush("metrics", timeout_seconds, move || provider.force_flush().is_ok())
+    super::bounded_flush("metrics", timeout_seconds, move || {
+        provider.force_flush().is_ok()
+    })
 }
 
 #[cfg(test)]

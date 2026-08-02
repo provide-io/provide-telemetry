@@ -40,12 +40,13 @@ def test_trailing_colon_is_rejected() -> None:
         _check_port(urlparse("http://host:"), "http://host:")
 
 
-def test_ipv6_host_without_a_port_is_accepted() -> None:
-    """rsplit("]", 1)[-1] must look only *after* the IPv6 bracket.
+def test_endpoint_ipv6_without_port_is_accepted() -> None:
+    """rsplit("]")[-1] must look only *after* the IPv6 bracket.
 
-    A plain split, a maxsplit of 2, or a missing maxsplit changes which segment
-    is inspected, making the colons inside the address look like a trailing-colon
-    endpoint and rejecting a perfectly valid URL.
+    Mutating the separator or the index changes which segment is inspected,
+    making the colons inside the address look like a trailing-colon endpoint and
+    rejecting a perfectly valid URL. This is the test the suppression-free
+    version of _check_port relies on.
     """
     endpoint = "http://[2001:db8::1]"
     _check_port(urlparse(endpoint), endpoint)
@@ -65,9 +66,9 @@ def test_ipv6_host_with_a_real_port_is_accepted() -> None:
 def test_bracket_in_userinfo_is_split_from_the_right() -> None:
     """Only the segment after the LAST "]" may be inspected for a trailing colon.
 
-    netloc here is 'a]b@[::1]': splitting from the left leaves 'b@[::1]', whose
-    IPv6 colons look like a trailing-colon endpoint and wrongly reject the URL.
-    Splitting from the right leaves '', which correctly accepts it.
+    netloc here is 'a]b@[::1]'. Only the final segment ('') is inspected, which
+    correctly accepts the URL; an index mutation reaches 'b@[::1', whose IPv6
+    colons look like a trailing-colon endpoint and wrongly reject it.
     """
     endpoint = "http://a]b@[::1]"
     _check_port(urlparse(endpoint), endpoint)

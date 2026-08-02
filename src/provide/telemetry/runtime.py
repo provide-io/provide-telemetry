@@ -103,14 +103,19 @@ class TelemetryRuntime:
         self._state = RuntimeState.STOPPED
 
     def flush(self, timeout: float | None = None) -> FlushResult:
-        from provide.telemetry.setup import flush_telemetry
+        from provide.telemetry._provider_drain import owned_signals
+        from provide.telemetry.setup import flush_signals
 
         installed = get_runtime_status().providers
-        ok = flush_telemetry(timeout_seconds=timeout)
+        owned = owned_signals()
+        # Per signal, not one aggregate: the three drain independently against
+        # three potentially different endpoints, so an unreachable logs
+        # collector must not be reported as a traces and metrics timeout too.
+        drained = flush_signals(timeout_seconds=timeout)
         return FlushResult(
-            logs=_signal_flush_result(installed["logs"], ok),
-            traces=_signal_flush_result(installed["traces"], ok),
-            metrics=_signal_flush_result(installed["metrics"], ok),
+            logs=_signal_flush_result(installed["logs"], owned["logs"], drained["logs"]),
+            traces=_signal_flush_result(installed["traces"], owned["traces"], drained["traces"]),
+            metrics=_signal_flush_result(installed["metrics"], owned["metrics"], drained["metrics"]),
         )
 
     def get_logger(self, name: str | None = None) -> Any:
@@ -144,13 +149,21 @@ runtime_status = RuntimeStatus
 telemetry_runtime = TelemetryRuntime
 
 
-def _signal_flush_result(installed: bool, drained: bool) -> SignalFlushResult:
-    """Per-signal flush outcome. A signal with no provider has nothing to drain."""
-    return SignalFlushResult(
-        flushed=installed and drained,
-        not_installed=not installed,
-        timed_out=installed and not drained,
-    )
+def _signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalFlushResult:
+    """Per-signal flush outcome.
+
+    A signal with no provider has nothing to drain. A signal whose provider a
+    host application installed on the OTel globals is reported installed — that
+    is what ``get_tracer()`` resolves — but is not ours to drain: the flush
+    helpers leave it alone. Calling that ``flushed`` would tell a caller its
+    spans are out when they are still in the host's batch processor, which is
+    exactly what a serverless handler flushing before a freeze is asking about.
+    """
+    if not installed:
+        return SignalFlushResult(not_installed=True)
+    if not owned:
+        return SignalFlushResult(not_owned=True)
+    return SignalFlushResult(flushed=drained, timed_out=not drained)
 
 
 _lock = threading.Lock()

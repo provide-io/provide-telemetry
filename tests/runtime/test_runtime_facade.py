@@ -50,13 +50,17 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
     def fake_shutdown(timeout_seconds: float | None = None) -> None:
         got.append(("shutdown", timeout_seconds))
 
-    def fake_flush(timeout_seconds: float | None = None) -> bool:
+    def fake_flush(timeout_seconds: float | None = None) -> dict[str, bool]:
         got.append(("flush", timeout_seconds))
-        return True
+        return {"logs": True, "traces": True, "metrics": True}
 
     monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", fake_setup)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", fake_shutdown)
-    monkeypatch.setattr("provide.telemetry.setup.flush_telemetry", fake_flush)
+    monkeypatch.setattr("provide.telemetry.setup.flush_signals", fake_flush)
+    monkeypatch.setattr(
+        "provide.telemetry._provider_drain.owned_signals",
+        lambda: {"logs": True, "traces": True, "metrics": True},
+    )
 
     fake_logger_module = _FakeLoggerModule("provide.telemetry.logger")
     monkeypatch.setitem(sys.modules, "provide.telemetry.logger", fake_logger_module)

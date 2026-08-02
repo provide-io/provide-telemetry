@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"math"
 	"strings"
 	"sync/atomic"
 )
@@ -127,6 +126,48 @@ func ReloadRuntimeFromEnv() error {
 	return nil
 }
 
+// rejectProviderChangingFields reports an error when cfg's provider-changing
+// fields differ from the live runtime config.
+//
+// These are the fields baked into a provider at install time: service identity
+// (which becomes the Resource), the per-signal OTLP endpoints and headers, and
+// the enable flags. UpdateRuntimeConfig applies its overrides to the live
+// config without touching installed providers, so letting one of these through
+// produces a config that describes an exporter nothing is using — and, worse,
+// makes the next ReconfigureTelemetry compare new-against-new and never report
+// that a restart is required.
+func rejectProviderChangingFields(cfg *TelemetryConfig) error {
+	_setupMu.Lock()
+	current := _runtimeCfg
+	_setupMu.Unlock()
+	if current == nil {
+		return nil
+	}
+	if _identityFieldsChanged(current, cfg) ||
+		_tracerFieldsChanged(current, cfg) ||
+		_meterFieldsChanged(current, cfg) ||
+		_loggerFieldsChanged(current, cfg) ||
+		current.Tracing.Enabled != cfg.Tracing.Enabled ||
+		current.Metrics.Enabled != cfg.Metrics.Enabled ||
+		current.Logging.OTLPEnabled != cfg.Logging.OTLPEnabled {
+		return _providerConfigError()
+	}
+	return nil
+}
+
+// validateReconfigureTarget checks a caller-supplied reconfiguration target.
+//
+// validateTelemetryConfig covers rates and log format/level; the hot-reloadable
+// blocks (backpressure sizes, exporter policy, security limits) are checked by
+// the same validators UpdateRuntimeConfig runs, so a config accepted by one
+// entry point is accepted by the other.
+func validateReconfigureTarget(cfg *TelemetryConfig) error {
+	if err := validateTelemetryConfig(cfg); err != nil {
+		return err
+	}
+	return validateRuntimeOverrides(runtimeOverridesFromConfig(cfg))
+}
+
 func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
 	return RuntimeOverrides{
 		Sampling:     &cfg.Sampling,
@@ -144,8 +185,18 @@ func runtimeOverridesFromConfig(cfg *TelemetryConfig) RuntimeOverrides {
 func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 	// Logging is applied first so per-field scalar overrides below
 	// (PIIMaxDepth) take precedence when both are supplied.
+	//
+	// The reference-typed fields are cloned rather than shared. `cfg.Logging =
+	// *overrides.Logging` is a shallow struct copy, so without this the live
+	// runtime config would hold the very maps the caller still owns — and a
+	// caller mutating its own cfg.Logging.ModuleLevels while any goroutine
+	// emits a log record trips Go's `fatal error: concurrent map read and map
+	// write`, which is unrecoverable.
 	if overrides.Logging != nil {
 		cfg.Logging = *overrides.Logging
+		cfg.Logging.OTLPHeaders = maps.Clone(overrides.Logging.OTLPHeaders)
+		cfg.Logging.ModuleLevels = maps.Clone(overrides.Logging.ModuleLevels)
+		cfg.Logging.PrettyFields = append([]string(nil), overrides.Logging.PrettyFields...)
 	}
 	if overrides.Sampling != nil {
 		cfg.Sampling = *overrides.Sampling
@@ -164,6 +215,7 @@ func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 	}
 	if overrides.EventSchema != nil {
 		cfg.EventSchema = *overrides.EventSchema
+		cfg.EventSchema.RequiredKeys = append([]string(nil), overrides.EventSchema.RequiredKeys...)
 	}
 	if overrides.PIIMaxDepth != nil {
 		cfg.Logging.PIIMaxDepth = *overrides.PIIMaxDepth
@@ -171,155 +223,6 @@ func applyRuntimeOverrides(cfg *TelemetryConfig, overrides RuntimeOverrides) {
 	if overrides.StrictSchema != nil {
 		cfg.StrictSchema = *overrides.StrictSchema
 	}
-}
-
-func validateRuntimeOverrides(overrides RuntimeOverrides) error {
-	validators := []func() error{
-		func() error {
-			if overrides.Sampling != nil {
-				return _validateSamplingOverride(*overrides.Sampling)
-			}
-			return nil
-		},
-		func() error {
-			if overrides.Backpressure != nil {
-				return _validateBackpressureOverride(*overrides.Backpressure)
-			}
-			return nil
-		},
-		func() error {
-			if overrides.Exporter != nil {
-				return validateExporterPolicyOverride(*overrides.Exporter)
-			}
-			return nil
-		},
-		func() error {
-			if overrides.Security != nil {
-				return _validateSecurityOverride(*overrides.Security)
-			}
-			return nil
-		},
-		func() error {
-			if overrides.PIIMaxDepth != nil {
-				return validateNonNegative(*overrides.PIIMaxDepth, "RuntimeOverrides.PIIMaxDepth")
-			}
-			return nil
-		},
-		func() error {
-			if overrides.Logging != nil {
-				return _validateLoggingOverride(*overrides.Logging)
-			}
-			return nil
-		},
-	}
-	for _, v := range validators {
-		if err := v(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func _validateSamplingOverride(s SamplingConfig) error {
-	if err := validateRateFinite(s.LogsRate, "RuntimeOverrides.Sampling.LogsRate"); err != nil {
-		return err
-	}
-	if err := validateRateFinite(s.TracesRate, "RuntimeOverrides.Sampling.TracesRate"); err != nil {
-		return err
-	}
-	return validateRateFinite(s.MetricsRate, "RuntimeOverrides.Sampling.MetricsRate")
-}
-
-func _validateBackpressureOverride(b BackpressureConfig) error {
-	if err := validateNonNegative(b.LogsMaxSize, "RuntimeOverrides.Backpressure.LogsMaxSize"); err != nil {
-		return err
-	}
-	if err := validateNonNegative(b.TracesMaxSize, "RuntimeOverrides.Backpressure.TracesMaxSize"); err != nil {
-		return err
-	}
-	return validateNonNegative(b.MetricsMaxSize, "RuntimeOverrides.Backpressure.MetricsMaxSize")
-}
-
-// _validateLoggingOverride validates level, format, module-level levels, and
-// PIIMaxDepth on a runtime logging override. Mirrors the env-parse validation
-// in config_env.go so runtime overrides cannot introduce invalid values.
-func _validateLoggingOverride(l LoggingConfig) error {
-	if l.Level != "" {
-		if _, err := normalizeLevel(l.Level); err != nil {
-			return err
-		}
-	}
-	if l.Format != "" {
-		if err := validateFormat(l.Format); err != nil {
-			return err
-		}
-	}
-	for module, levelStr := range l.ModuleLevels {
-		if _, err := normalizeLevel(levelStr); err != nil {
-			return NewConfigurationError(
-				fmt.Sprintf("RuntimeOverrides.Logging.ModuleLevels[%q]: %s", module, err.Error()),
-			)
-		}
-	}
-	return validateNonNegative(l.PIIMaxDepth, "RuntimeOverrides.Logging.PIIMaxDepth")
-}
-
-func _validateSecurityOverride(s SecurityConfig) error {
-	if err := validateNonNegative(s.MaxAttrValueLength, "RuntimeOverrides.Security.MaxAttrValueLength"); err != nil {
-		return err
-	}
-	if err := validateNonNegative(s.MaxAttrCount, "RuntimeOverrides.Security.MaxAttrCount"); err != nil {
-		return err
-	}
-	return validateNonNegative(s.MaxNestingDepth, "RuntimeOverrides.Security.MaxNestingDepth")
-}
-
-// exporterPolicyFieldNames are the string keys used for exporter policy validation messages.
-const (
-	_fieldLogsRetries    = "LogsRetries"
-	_fieldTracesRetries  = "TracesRetries"
-	_fieldMetricsRetries = "MetricsRetries"
-)
-
-func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
-	ints := map[string]int{
-		_fieldLogsRetries:    policy.LogsRetries,
-		_fieldTracesRetries:  policy.TracesRetries,
-		_fieldMetricsRetries: policy.MetricsRetries,
-	}
-	for field, value := range ints {
-		if err := validateNonNegative(value, "RuntimeOverrides.Exporter."+field); err != nil {
-			return err
-		}
-	}
-	floats := map[string]float64{
-		"LogsBackoffSeconds":    policy.LogsBackoffSeconds,
-		"TracesBackoffSeconds":  policy.TracesBackoffSeconds,
-		"MetricsBackoffSeconds": policy.MetricsBackoffSeconds,
-		"LogsTimeoutSeconds":    policy.LogsTimeoutSeconds,
-		"TracesTimeoutSeconds":  policy.TracesTimeoutSeconds,
-		"MetricsTimeoutSeconds": policy.MetricsTimeoutSeconds,
-	}
-	for field, value := range floats {
-		if err := validateNonNegativeFloatFinite(value, "RuntimeOverrides.Exporter."+field); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateRateFinite(v float64, field string) error {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
-	}
-	return validateRate(v, field)
-}
-
-func validateNonNegativeFloatFinite(v float64, field string) error {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
-	}
-	return validateNonNegativeFloat(v, field)
 }
 
 // _warnColdFieldDrift logs a warning if cold fields in next differ from the live config.
@@ -383,6 +286,14 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 			return nil, err
 		}
 		target = fromEnv
+	} else if err := validateReconfigureTarget(target); err != nil {
+		// The env path validates as it parses; an in-memory config from
+		// WithConfig has had nothing check it. Without this a NaN sampling rate
+		// clamps to 0.0 and silently stops the signal, and a negative queue size
+		// becomes an unbounded queue — both reported as a successful reconfigure.
+		// SetupTelemetry(WithConfig) and UpdateRuntimeConfig both reject these;
+		// the two facade methods on one runtime must not disagree.
+		return nil, err
 	}
 
 	providers := _providerStatusLocked()
@@ -452,5 +363,9 @@ func _applyHotFields(current, fresh *TelemetryConfig) {
 	current.StrictSchema = fresh.StrictSchema
 	current.EventSchema = fresh.EventSchema
 	current.Logging.PIIMaxDepth = fresh.Logging.PIIMaxDepth
-	current.Logging.ModuleLevels = fresh.Logging.ModuleLevels
+	// Cloned, not aliased: `fresh` can be a caller-supplied config (WithConfig),
+	// and sharing these with the live runtime hands a caller the ability to
+	// mutate it concurrently with the emit path. See applyRuntimeOverrides.
+	current.EventSchema.RequiredKeys = append([]string(nil), fresh.EventSchema.RequiredKeys...)
+	current.Logging.ModuleLevels = maps.Clone(fresh.Logging.ModuleLevels)
 }

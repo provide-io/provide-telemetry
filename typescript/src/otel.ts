@@ -46,6 +46,7 @@ import {
   _markProvidersRegistered,
   _setLogsProviderInstalled,
   _storeRegisteredProviders,
+  type SignalName,
 } from './runtime.js';
 
 function normalizeEndpoint(endpoint: string | undefined): string | undefined {
@@ -87,6 +88,9 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     return;
   }
   const registered: ShutdownableProvider[] = [];
+  // Parallel to `registered`: names the signal each provider drains, so the
+  // facade's flush() can report them separately instead of as one aggregate.
+  const signals: SignalName[] = [];
 
   // ── Context manager ──────────────────────────────────────────────────────────
   // Install AsyncLocalStorageContextManager so startActiveSpan propagates spans
@@ -144,6 +148,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         });
         trace.setGlobalTracerProvider(provider);
         registered.push(provider as ShutdownableProvider);
+        signals.push('traces');
       }
     } catch (err) {
       console.warn('[provide/telemetry] OTEL trace setup failed (missing peer deps?):', err);
@@ -177,6 +182,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
         });
         metrics.setGlobalMeterProvider(meterProvider);
         registered.push(meterProvider as ShutdownableProvider);
+        signals.push('metrics');
       }
     } catch (err) {
       console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
@@ -191,13 +197,14 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   if (logsEndpoint && cfg.otlpLogsEnabled) {
     try {
       registered.push(await setupOtelLogProvider(cfg));
+      signals.push('logs');
       _setLogsProviderInstalled(true);
     } catch (err) {
       console.warn('[provide/telemetry] OTEL logs setup failed (missing peer deps?):', err);
     }
   }
 
-  _storeRegisteredProviders(registered);
+  _storeRegisteredProviders(registered, signals);
   if (registered.length > 0) {
     _markProvidersRegistered();
   }

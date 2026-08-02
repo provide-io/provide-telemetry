@@ -62,6 +62,57 @@ func (b *_backend) ForceFlush(ctx context.Context) error {
 	return _drainConcurrently(ctx, providers, _drainable.ForceFlush)
 }
 
+// ForceFlushBySignal is ForceFlush with the outcomes kept apart.
+//
+// One entry per signal this backend installed; a signal we did not install — or
+// one adopted from the OTel globals, which belongs to the host — is absent, so
+// the facade can report it as NotOwned rather than claiming its records are out.
+// Every signal is still attempted concurrently on the caller's full budget.
+func (b *_backend) ForceFlushBySignal(ctx context.Context) map[string]error {
+	_providersMu.RLock()
+	names, providers := _installedSignalsLocked()
+	_providersMu.RUnlock()
+
+	errs := make([]error, len(providers))
+	var wg sync.WaitGroup
+	for i, provider := range providers {
+		wg.Add(1)
+		go func(i int, provider _drainable) {
+			defer wg.Done()
+			errs[i] = provider.ForceFlush(ctx)
+		}(i, provider)
+	}
+	wg.Wait()
+
+	results := make(map[string]error, len(names))
+	for i, name := range names {
+		results[name] = errs[i]
+	}
+	return results
+}
+
+// _installedSignalsLocked returns the signal names and providers this backend
+// installed, in signal order. Must be called with _providersMu held.
+func _installedSignalsLocked() ([]string, []_drainable) {
+	names := []string{}
+	providers := []_drainable{}
+	// Each concrete pointer is nil-checked before it is boxed — a typed nil in
+	// an interface would compare non-nil and panic on call.
+	if _otelTracerProvider != nil {
+		names = append(names, telemetry.SignalTraces)
+		providers = append(providers, _otelTracerProvider)
+	}
+	if _otelMeterProvider != nil {
+		names = append(names, telemetry.SignalMetrics)
+		providers = append(providers, _otelMeterProvider)
+	}
+	if _otelLoggerProvider != nil {
+		names = append(names, telemetry.SignalLogs)
+		providers = append(providers, _otelLoggerProvider)
+	}
+	return names, providers
+}
+
 // _drainable is the lifecycle pair every SDK provider carries. Declared so the
 // two drains can share one collection and one runner: they differ only in which
 // method they bind.

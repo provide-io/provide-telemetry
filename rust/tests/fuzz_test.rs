@@ -49,11 +49,14 @@ proptest! {
         }
     }
 
+    /// The stripped set is the cross-language one — `[\x00-\x08\x0a-\x1f\x7f]`,
+    /// TAB kept — not Unicode Cc. C1 (U+0080–U+009F) is deliberately preserved
+    /// so a baggage value parses identically on a Rust hop and a Python one.
     #[test]
     fn parse_baggage_values_never_carry_controls(raw in ".{0,2048}") {
         for value in parse_baggage(&raw).values() {
             prop_assert!(
-                value.chars().all(|c| c == '\t' || !c.is_control()),
+                !value.chars().any(|c| matches!(c, '\x00'..='\x08' | '\x0a'..='\x1f' | '\x7f')),
                 "control character survived in value: {value:?}"
             );
         }

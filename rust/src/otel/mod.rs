@@ -50,6 +50,37 @@ pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError
     Ok(())
 }
 
+/// Ceiling applied to a drain deadline. Past this a "bounded" drain is not
+/// bounding anything, and it keeps the value well inside what
+/// `Duration::from_secs_f64` can represent.
+#[cfg(feature = "otel")]
+const MAX_DRAIN_SECONDS: f64 = 86_400.0;
+
+/// Turn a drain deadline in seconds into a `Duration`, or `None` when the value
+/// asks for no bound at all.
+///
+/// `Duration::from_secs_f64` panics on NaN, on ±inf, and on anything past
+/// `u64::MAX` seconds. These deadlines arrive from a public API argument
+/// (`flush_telemetry`/`shutdown_telemetry`) and from config, and the callers
+/// are shutdown paths — a panic there aborts the process mid-termination and
+/// loses every queued record, which is the opposite of what a caller passing a
+/// deadline is asking for.
+///
+/// The guard is written as "finite and positive" rather than as a negated
+/// comparison so NaN lands in the unbounded branch alongside `<= 0` ("caller
+/// opted out") and infinity ("drain without a deadline"): every comparison
+/// against NaN is false, so `x <= 0.0` alone would let it through. A finite
+/// value is clamped so the conversion cannot overflow.
+#[cfg(feature = "otel")]
+pub(super) fn drain_deadline(timeout_secs: f64) -> Option<std::time::Duration> {
+    if !timeout_secs.is_finite() || timeout_secs <= 0.0 {
+        return None;
+    }
+    Some(std::time::Duration::from_secs_f64(
+        timeout_secs.min(MAX_DRAIN_SECONDS),
+    ))
+}
+
 /// Run `flush` under the bounded-shutdown deadline, on a detached worker when
 /// one applies. `flush` reports whether the export succeeded.
 ///
@@ -69,12 +100,10 @@ where
             .unwrap_or(5.0)
     });
 
-    if timeout_secs <= 0.0 {
-        // Caller opted out of bounding — do the synchronous drain.
+    // No usable bound (<= 0, NaN, or infinity) — do the synchronous drain.
+    let Some(timeout) = drain_deadline(timeout_secs) else {
         return flush();
-    }
-
-    let timeout = std::time::Duration::from_secs_f64(timeout_secs);
+    };
     let (tx, rx) = std::sync::mpsc::channel();
     let _worker = std::thread::Builder::new()
         .name(format!("provide-{signal}-flush"))
@@ -107,18 +136,67 @@ where
 /// gets its attempt regardless — one stalled exporter must not deny the others
 /// their drain.
 pub(crate) fn flush_otel(timeout_seconds: Option<f64>) -> bool {
+    let per_signal = flush_otel_by_signal(timeout_seconds);
+    per_signal.logs && per_signal.traces && per_signal.metrics
+}
+
+/// One drain outcome per signal.
+///
+/// The signals drain against three potentially different endpoints, so an
+/// unreachable logs collector says nothing about traces and metrics. Collapsing
+/// them to a single bool — which [`flush_otel`] still does for its own callers —
+/// makes a facade report every signal as failed when one was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SignalDrains {
+    pub logs: bool,
+    pub traces: bool,
+    pub metrics: bool,
+}
+
+pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains {
     #[cfg(feature = "otel")]
     {
-        let logs = flush::flush_logger_provider(timeout_seconds);
-        let traces = flush::flush_tracer_provider(timeout_seconds);
-        let metrics = flush::flush_meter_provider(timeout_seconds);
-        logs && traces && metrics
+        SignalDrains {
+            logs: flush::flush_logger_provider(timeout_seconds),
+            traces: flush::flush_tracer_provider(timeout_seconds),
+            metrics: flush::flush_meter_provider(timeout_seconds),
+        }
     }
 
     #[cfg(not(feature = "otel"))]
     {
         let _ = timeout_seconds;
-        true
+        SignalDrains {
+            logs: true,
+            traces: true,
+            metrics: true,
+        }
+    }
+}
+
+/// Which signals have a provider *we* installed — the ones a drain can reach.
+///
+/// A provider adopted from the OTel globals belongs to the host: `shutdown_otel`
+/// releases the assertion without shutting it down, and the flush helpers never
+/// see it. Reporting such a signal as flushed would tell a caller its records
+/// are out when they are still in the host's batch processor.
+pub(crate) fn owned_signals() -> SignalDrains {
+    #[cfg(feature = "otel")]
+    {
+        SignalDrains {
+            logs: logs::logger_provider_installed(),
+            traces: traces::tracer_provider_installed(),
+            metrics: metrics::meter_provider_installed(),
+        }
+    }
+
+    #[cfg(not(feature = "otel"))]
+    {
+        SignalDrains {
+            logs: false,
+            traces: false,
+            metrics: false,
+        }
     }
 }
 
@@ -178,6 +256,48 @@ pub fn _reset_otel_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Duration::from_secs_f64` panics on NaN, on ±inf, and past u64::MAX
+    /// seconds. `drain_deadline` must absorb all of those rather than let a
+    /// caller-supplied `timeout_seconds` abort the process from a shutdown path.
+    #[cfg(feature = "otel")]
+    #[test]
+    fn otel_test_drain_deadline_rejects_unusable_values() {
+        assert_eq!(drain_deadline(f64::NAN), None);
+        assert_eq!(drain_deadline(f64::INFINITY), None);
+        assert_eq!(drain_deadline(f64::NEG_INFINITY), None);
+        assert_eq!(drain_deadline(0.0), None);
+        assert_eq!(drain_deadline(-1.5), None);
+    }
+
+    #[cfg(feature = "otel")]
+    #[test]
+    fn otel_test_drain_deadline_passes_through_and_clamps() {
+        assert_eq!(
+            drain_deadline(2.5),
+            Some(std::time::Duration::from_secs_f64(2.5))
+        );
+        // f64::MAX seconds is well past what Duration can hold; clamping is what
+        // keeps the conversion from panicking.
+        assert_eq!(
+            drain_deadline(f64::MAX),
+            Some(std::time::Duration::from_secs_f64(MAX_DRAIN_SECONDS))
+        );
+        assert_eq!(
+            drain_deadline(MAX_DRAIN_SECONDS - 1.0),
+            Some(std::time::Duration::from_secs_f64(MAX_DRAIN_SECONDS - 1.0))
+        );
+    }
+
+    /// The whole point of the guard: these arguments used to panic inside
+    /// `shutdown_telemetry`, aborting the process instead of draining.
+    #[cfg(feature = "otel")]
+    #[test]
+    fn otel_test_bounded_flush_survives_a_non_finite_caller_timeout() {
+        assert!(bounded_flush("logs", Some(f64::NAN), || true));
+        assert!(bounded_flush("traces", Some(f64::INFINITY), || true));
+        assert!(!bounded_flush("metrics", Some(f64::MAX), || false));
+    }
 
     #[cfg(not(feature = "otel"))]
     #[test]

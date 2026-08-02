@@ -85,7 +85,9 @@ fn main() {
     });
 
     if provide_telemetry::flush_telemetry(None).is_err() {
-        fail("a second flush_telemetry(None) reported an incomplete drain; flush is not repeatable");
+        fail(
+            "a second flush_telemetry(None) reported an incomplete drain; flush is not repeatable",
+        );
     }
 
     eprintln!("flush-collector-probe: OK — flushed twice, providers still installed");

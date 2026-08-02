@@ -238,3 +238,33 @@ fn propagation_test_bind_sets_trace_context_when_only_trace_id_is_present() {
     assert_eq!(restored.get("trace_id"), Some(&None));
     assert_eq!(restored.get("span_id"), Some(&None));
 }
+
+/// C0 controls and DEL are stripped from baggage values; TAB survives.
+#[rstest]
+#[case("a=x\u{0000}y", "xy")]
+#[case("a=x\u{0008}y", "xy")]
+#[case("a=x\u{000a}y", "xy")]
+#[case("a=x\u{001f}y", "xy")]
+#[case("a=x\u{007f}y", "xy")]
+#[case("a=x\ty", "x\ty")]
+fn propagation_test_parse_baggage_strips_c0_controls(#[case] raw: &str, #[case] expected: &str) {
+    let result = parse_baggage(raw);
+    assert_eq!(result.get("a").map(String::as_str), Some(expected));
+}
+
+/// C1 (U+0080–U+009F) is deliberately preserved, matching the Python,
+/// TypeScript and Go regex `[\x00-\x08\x0a-\x1f\x7f]`. `char::is_control()`
+/// would strip these, and the same header would then parse to two different
+/// values depending on which language handled the hop.
+#[rstest]
+#[case('\u{0080}')]
+#[case('\u{0085}')]
+#[case('\u{009f}')]
+fn propagation_test_parse_baggage_keeps_c1_controls(#[case] c1: char) {
+    let raw = format!("tenant=ac{c1}me");
+    let result = parse_baggage(&raw);
+    assert_eq!(
+        result.get("tenant").map(String::as_str),
+        Some(format!("ac{c1}me").as_str()),
+    );
+}

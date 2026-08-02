@@ -44,6 +44,38 @@ def _clean_key(key: object) -> str:
     return _CONTROL_CHAR_KEY_RE.sub("", str(key))
 
 
+def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Rebuild *event_dict* under cleaned keys, resolving collisions safely.
+
+    Cleaning is many-to-one: ``"trace_i\\x00d"`` and ``"trace_id"`` both come out
+    as ``"trace_id"``. A plain dict comprehension lets the later one win, and
+    structlog's ``merge_contextvars`` always inserts contextvar-bound fields
+    (``trace_id``, ``span_id``, ``request_id``, ``session_id``) *before* the
+    caller's keyword arguments — so a request payload forwarded as
+    ``logger.info(event, **payload)`` with a control-character key could replace
+    the real bound value and correlate the record to an attacker-chosen trace.
+
+    So a key that needed cleaning never displaces one already present, and a key
+    that needed no cleaning always wins over a sanitized one that got there
+    first. Two sanitized keys that collide keep the first, which is arbitrary but
+    at least does not lose a genuine field.
+    """
+    resolved: dict[str, Any] = {}
+    verbatim: set[str] = set()
+    for key, value in event_dict.items():
+        text = str(key)
+        name = _clean_key(text)
+        untouched = name == text
+        if name in resolved and not (untouched and name not in verbatim):
+            continue
+        # Re-assigning an existing name keeps its original insertion position,
+        # so a verbatim key reclaiming its slot does not reorder the record.
+        resolved[name] = value
+        if untouched:
+            verbatim.add(name)
+    return resolved
+
+
 # Keys that must survive harden_input truncation regardless of insertion order.
 # These are structlog/telemetry control fields; losing them silently corrupts
 # routing, filtering, and trace correlation downstream.
@@ -105,9 +137,13 @@ def _compute_error_fingerprint(exc_type: str, tb: types.TracebackType | None) ->
     parts = [exc_type.lower()]
     if tb is not None:
         for frame in traceback.extract_tb(tb)[-3:]:
-            # Taking [-1] makes the maxsplit argument unobservable; the
-            # separator normalisation and the index itself are not.
-            segments = frame.filename.replace("\\", "/").rsplit("/", 1)  # pragma: no mutate
+            # No maxsplit, and no `# pragma: no mutate`. Taking [-1] made the
+            # maxsplit unobservable, so it only ever produced equivalent mutants
+            # — but the bare pragma needed to silence them also hid the
+            # separator normalisation and the index, which are not equivalent.
+            # Without the argument, split/rsplit are indistinguishable here and
+            # every mutation mutmut still generates changes the fingerprint.
+            segments = frame.filename.replace("\\", "/").rsplit("/")
             leaf = segments[-1]
             basename = leaf.rsplit(".", 1)[0].lower()
             func = (frame.name or "").lower()
@@ -179,8 +215,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         # but emits keys bare, so a control character in a key — which can reach
         # here from an untrusted W3C baggage header — would forge a log record.
         # parse_baggage rejects such keys at the boundary; this is the second line
-        # of defence, and also covers keys a caller passes directly.
-        return {_clean_key(k): _clean_value(v, 0) for k, v in event_dict.items()}
+        # of defence, and also covers keys a caller passes directly. _harden_keys
+        # rather than a plain comprehension because cleaning is many-to-one: see
+        # its docstring for the trace_id-shadowing vector that opens up otherwise.
+        return {k: _clean_value(v, 0) for k, v in _harden_keys(event_dict).items()}
 
     return _processor
 

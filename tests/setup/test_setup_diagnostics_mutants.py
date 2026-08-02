@@ -101,34 +101,37 @@ def test_degraded_setup_warning_blames_the_caller(monkeypatch: Any) -> None:
     assert "tracing refused to start" in degraded[0]["message"]
 
 
-def test_shutdown_forwards_its_deadline_to_the_drain(monkeypatch: Any) -> None:
-    """The caller's timeout must bound the pre-teardown drain.
-
-    Dropping it to None restores the configured default, which is exactly the
-    overrun a SIGTERM handler passes a deadline to avoid.
-    """
+def _record_teardown_deadlines(monkeypatch: Any) -> list[float | None]:
+    """Capture the deadline each per-signal teardown is handed."""
     seen: list[float | None] = []
 
-    def _record(timeout_seconds: float | None = None) -> bool:
+    def _record(timeout_seconds: float | None = None) -> None:
         seen.append(timeout_seconds)
-        return True
 
-    monkeypatch.setattr(setup_mod, "flush_telemetry", _record)
+    monkeypatch.setattr(setup_mod, "shutdown_tracing", _record)
+    monkeypatch.setattr(setup_mod, "shutdown_logging", _record)
+    monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", _record)
+    return seen
+
+
+def test_shutdown_forwards_its_deadline_to_every_teardown(monkeypatch: Any) -> None:
+    """The caller's timeout must bound every provider teardown.
+
+    Each of the three runs force_flush + shutdown against its own endpoint under
+    this deadline. Dropping it to None on any of them restores the configured
+    default, which is exactly the overrun a SIGTERM handler passes a deadline to
+    avoid.
+    """
+    seen = _record_teardown_deadlines(monkeypatch)
 
     setup_mod.shutdown_telemetry(timeout_seconds=1.5)
 
-    assert seen == [1.5]
+    assert seen == [1.5, 1.5, 1.5]
 
 
 def test_shutdown_without_a_deadline_passes_none(monkeypatch: Any) -> None:
-    seen: list[float | None] = []
-
-    def _record(timeout_seconds: float | None = None) -> bool:
-        seen.append(timeout_seconds)
-        return True
-
-    monkeypatch.setattr(setup_mod, "flush_telemetry", _record)
+    seen = _record_teardown_deadlines(monkeypatch)
 
     setup_mod.shutdown_telemetry()
 
-    assert seen == [None]
+    assert seen == [None, None, None]

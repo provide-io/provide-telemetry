@@ -178,13 +178,13 @@ pub(super) fn shutdown_logger_provider() {
         .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
         .unwrap_or(5.0);
 
-    if timeout_secs <= 0.0 {
-        // Caller opted out of bounding — do the synchronous drain.
+    // No usable bound (<= 0, NaN, or infinity) — do the synchronous drain.
+    // See `super::drain_deadline` for why NaN and infinity cannot be handed to
+    // `Duration::from_secs_f64`.
+    let Some(timeout) = super::drain_deadline(timeout_secs) else {
         do_shutdown_logger_provider(installed);
         return;
-    }
-
-    let timeout = Duration::from_secs_f64(timeout_secs);
+    };
     let (tx, rx) = std::sync::mpsc::channel();
     let _worker = std::thread::Builder::new()
         .name("provide-logger-shutdown".to_string())

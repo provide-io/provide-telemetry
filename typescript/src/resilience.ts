@@ -35,6 +35,19 @@ const DEFAULT_POLICY: ExporterPolicy = {
   failOpen: true,
 };
 
+/**
+ * Ceiling on export attempts (one initial try plus retries).
+ *
+ * `runWithResilience` materialises an index array of this length on every
+ * export call, so an unbounded `retries` would allocate an array of that size
+ * before the first attempt — a large `PROVIDE_EXPORTER_LOGS_RETRIES` would OOM
+ * or throw `RangeError: Invalid array length` on a healthy collector where the
+ * first attempt was going to succeed. `_validateConfig` rejects an out-of-range
+ * value up front; this clamp covers `setExporterPolicy` callers, which bypass
+ * config validation entirely.
+ */
+export const MAX_EXPORT_ATTEMPTS = 101;
+
 export const CIRCUIT_BREAKER_THRESHOLD = 3;
 export const CIRCUIT_BASE_COOLDOWN_MS = 30_000;
 const CIRCUIT_MAX_COOLDOWN_MS = 1_024_000;
@@ -124,7 +137,7 @@ export async function runWithResilience<T>(
   fn: () => Promise<T>,
 ): Promise<T | null> {
   const policy = _policies[signal] ?? { ...DEFAULT_POLICY };
-  const attempts = Math.max(1, policy.retries + 1);
+  const attempts = Math.min(Math.max(1, policy.retries + 1), MAX_EXPORT_ATTEMPTS);
 
   // Ensure per-signal dicts are initialized for custom signals.
   // Stryker disable next-line ConditionalExpression: custom signal init — skipping leaves _openCount[signal] as undefined; 2**undefined=NaN makes cooldown NaN which fails < comparison identically

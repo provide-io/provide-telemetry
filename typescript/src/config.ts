@@ -14,13 +14,14 @@
 
 import { setSamplingPolicy } from './sampling.js';
 import { setQueuePolicy } from './backpressure.js';
-import { setExporterPolicy } from './resilience.js';
+import { MAX_EXPORT_ATTEMPTS, setExporterPolicy } from './resilience.js';
 import { ConfigurationError } from './exceptions.js';
 import { setSetupError } from './health.js';
 import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation.js';
 import { _setActiveConfig } from './runtime.js';
 import { configFromEnv } from './config-env.js';
 export { configFromEnv } from './config-env.js';
+export { parseOtlpHeaders, redactConfig } from './config-redact.js';
 export interface TelemetryConfig {
   /** Service name injected into every log record. */
   serviceName: string;
@@ -315,19 +316,16 @@ const _FALLBACK_MESSAGE =
   'AsyncLocalStorage unavailable in a Node.js environment — concurrent requests would share propagation context. Check that node:async_hooks is not excluded from your bundler config.';
 
 function _isNodeLike(): boolean {
-  // `process` is always defined and `process.versions` is always a real
-  // object in every environment this test suite runs in (only `.node`
-  // itself is ever stubbed away, in config.mutants.test.ts) — so a
-  // ConditionalExpression/StringLiteral mutant on the first two clauses is
-  // never observable. The LogicalOperator mutant (first `&&` -> `||`) IS
-  // genuinely killed by that same test and is deliberately left enabled.
-  // Stryker disable ConditionalExpression,StringLiteral
-  return (
-    typeof process !== 'undefined' &&
-    typeof process.versions === 'object' &&
-    typeof (process.versions as Record<string, unknown>).node === 'string'
-  );
-  // Stryker restore ConditionalExpression,StringLiteral
+  // Only the host-presence half is suppressed, and only for
+  // ConditionalExpression: `process` is defined and `process.versions` is a
+  // real object in every environment this suite runs in (only `.node` is ever
+  // stubbed away, in config.mutants.test.ts), so forcing this line true or
+  // false is unobservable. Everything else stays live — the `'object'` and
+  // `'string'` literals and the `.node` check all change what _isNodeLike
+  // reports, and config.mutants2.test.ts asserts both directions.
+  // Stryker disable next-line ConditionalExpression
+  const hasProcess = typeof process !== 'undefined' && typeof process.versions === 'object';
+  return hasProcess && typeof (process.versions as Record<string, unknown>).node === 'string';
 }
 
 function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
@@ -407,9 +405,20 @@ function _validateConfig(cfg: TelemetryConfig): void {
   requireNonNegInt('backpressureLogsMaxsize', cfg.backpressureLogsMaxsize);
   requireNonNegInt('backpressureTracesMaxsize', cfg.backpressureTracesMaxsize);
   requireNonNegInt('backpressureMetricsMaxsize', cfg.backpressureMetricsMaxsize);
-  requireNonNegInt('exporterLogsRetries', cfg.exporterLogsRetries);
-  requireNonNegInt('exporterTracesRetries', cfg.exporterTracesRetries);
-  requireNonNegInt('exporterMetricsRetries', cfg.exporterMetricsRetries);
+  // Retries get a ceiling as well as a floor: runWithResilience builds a
+  // retries+1 index array per export call, so an unbounded value costs memory
+  // on every healthy export, not only on a failing one.
+  const requireRetries = (name: string, v: number): void => {
+    requireNonNegInt(name, v);
+    if (v > MAX_EXPORT_ATTEMPTS - 1) {
+      throw new ConfigurationError(
+        `${name} must be at most ${String(MAX_EXPORT_ATTEMPTS - 1)}, got ${String(v)}`,
+      );
+    }
+  };
+  requireRetries('exporterLogsRetries', cfg.exporterLogsRetries);
+  requireRetries('exporterTracesRetries', cfg.exporterTracesRetries);
+  requireRetries('exporterMetricsRetries', cfg.exporterMetricsRetries);
   requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
   requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
   requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
@@ -419,94 +428,6 @@ function _validateConfig(cfg: TelemetryConfig): void {
 export function _resetConfig(): void {
   _config = { ...DEFAULTS };
   _configVersion = 0;
-}
-
-/**
- * Parse OTLP-style header string "key=value,key2=value2" into a Record.
- * Keys and values are URL-decoded. Malformed pairs (no '=') and empty keys are skipped.
- * Values may contain '=' characters (only the first '=' splits key from value).
- */
-export function parseOtlpHeaders(raw: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  // Stryker disable next-line ConditionalExpression: early return is an optimization — empty string splits to [""], idx<1 skips the only pair, returns {} identically
-  if (!raw) return result;
-  for (const pair of raw.split(',')) {
-    const idx = pair.indexOf('=');
-    if (idx < 1) continue; // no '=' or empty key
-    const rawKey = pair.slice(0, idx).trim();
-    const rawVal = pair.slice(idx + 1).trim();
-    try {
-      const key = decodeURIComponent(rawKey);
-      // Stryker disable next-line ConditionalExpression: defensive guard — unreachable because idx<1 check and trim() already exclude empty keys
-      /* v8 ignore next: defensive — idx<1 and trim() already exclude observable empty keys */
-      if (!key) continue;
-      const val = decodeURIComponent(rawVal);
-      result[key] = val;
-      // `continue` in a for..of catch is equivalent to an empty body — the
-      // block ending naturally starts the next iteration either way.
-      // Stryker disable BlockStatement
-    } catch {
-      continue;
-    }
-    // Stryker restore BlockStatement
-  }
-  return result;
-}
-
-/** Mask a single header value: show first 4 chars + **** if >= 8 chars, else ****. */
-function maskHeaderValue(v: string): string {
-  return v.length < 8 ? '****' : v.slice(0, 4) + '****';
-}
-
-/** Mask the password component of a URL's userinfo, if present. */
-function maskEndpointUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    if (u.password) {
-      u.password = '****';
-      return u.toString();
-    }
-  } catch {
-    /* not a valid URL — return as-is */
-  }
-  return raw;
-}
-
-/**
- * Return a copy of the config with OTLP secrets masked.
- * Safe to log or serialize — never leaks header values or endpoint credentials.
- */
-export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...config };
-  // Stryker disable next-line EqualityOperator,ConditionalExpression: empty headers produce {} from Object.fromEntries — equivalent; undefined headers throw on Object.keys but caught identically
-  if (config.otlpHeaders && Object.keys(config.otlpHeaders).length > 0) {
-    result.otlpHeaders = Object.fromEntries(
-      Object.entries(config.otlpHeaders).map(([k, v]) => [k, maskHeaderValue(v)]),
-    );
-  }
-  // Mask per-signal headers
-  for (const field of ['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const) {
-    const hdrs = config[field];
-    // Stryker disable next-line EqualityOperator: length is never negative — `> 0` vs `>= 0` only differ at length 0, where Object.fromEntries({}) produces the same {} either way
-    if (hdrs && Object.keys(hdrs).length > 0) {
-      result[field] = Object.fromEntries(
-        Object.entries(hdrs).map(([k, v]) => [k, maskHeaderValue(v)]),
-      );
-    }
-  }
-  // Stryker disable next-line ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
-  if (config.otlpEndpoint) {
-    result.otlpEndpoint = maskEndpointUrl(config.otlpEndpoint);
-  }
-  // Mask per-signal endpoints
-  // Stryker disable ConditionalExpression: maskEndpointUrl(undefined) returns undefined via catch — equivalent to skipping the block
-  for (const field of ['otlpLogsEndpoint', 'otlpTracesEndpoint', 'otlpMetricsEndpoint'] as const) {
-    if (config[field]) {
-      result[field] = maskEndpointUrl(config[field]);
-    }
-  }
-  // Stryker restore ConditionalExpression
-  return result;
 }
 
 /** Package version — mirrors Python __version__. */

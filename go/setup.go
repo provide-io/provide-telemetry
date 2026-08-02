@@ -255,6 +255,33 @@ func FlushTelemetry(ctx context.Context) error {
 	return _flushBackend(ctx)
 }
 
+// FlushTelemetryBySignal is the per-signal form of FlushTelemetry.
+//
+// The map holds one entry per signal the active backend installed: nil for a
+// clean drain, the drain error otherwise. A signal absent from the map has no
+// provider of ours behind it — nothing installed, or a provider the host put on
+// the OTel globals, which is not ours to drain.
+//
+// The second return reports whether the backend could answer per signal. When
+// it is false the map is nil and callers have only FlushTelemetry's aggregate.
+func FlushTelemetryBySignal(ctx context.Context) (map[string]error, bool) {
+	_setupMu.Lock()
+	if !_setupDone {
+		_setupMu.Unlock()
+		return nil, false
+	}
+	timeout := _shutdownDeadlineForLocked(ctx)
+	_setupMu.Unlock()
+
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	return _flushBackendBySignal(ctx)
+}
+
 func ShutdownTelemetry(ctx context.Context) error {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
