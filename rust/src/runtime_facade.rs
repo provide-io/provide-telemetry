@@ -84,6 +84,38 @@ pub type telemetry_runtime = TelemetryRuntime;
 #[allow(non_camel_case_types)]
 pub type runtime_status = RuntimeStatus;
 
+/// One signal's flush outcome, from what is installed, what we own, and whether
+/// it drained.
+///
+/// A free function rather than a closure inside `flush` so it is reachable
+/// without a live provider: in a build with no OTel providers installed, only
+/// the `not_installed` arm of the inline version ever ran, leaving the rest
+/// untested. Mirrors Python's `_signal_flush_result`.
+///
+/// A signal with no provider has nothing to drain. A signal whose provider was
+/// adopted from the OTel globals belongs to the host — we leave it alone, so
+/// calling it `flushed` would claim records are out while they sit in the
+/// host's batch processor.
+fn signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalFlushResult {
+    if !installed {
+        return SignalFlushResult {
+            not_installed: true,
+            ..SignalFlushResult::default()
+        };
+    }
+    if !owned {
+        return SignalFlushResult {
+            not_owned: true,
+            ..SignalFlushResult::default()
+        };
+    }
+    SignalFlushResult {
+        flushed: drained,
+        timed_out: !drained,
+        ..SignalFlushResult::default()
+    }
+}
+
 pub struct TelemetryRuntime {
     provider_mode: ProviderMode,
     state: RuntimeState,
@@ -142,29 +174,10 @@ impl TelemetryRuntime {
         let providers = crate::runtime::get_runtime_status().providers;
         let owned = crate::otel::owned_signals();
         let drained = crate::otel::flush_otel_by_signal(timeout_seconds);
-        let result_for = |installed: bool, owned: bool, drained: bool| {
-            if !installed {
-                return SignalFlushResult {
-                    not_installed: true,
-                    ..SignalFlushResult::default()
-                };
-            }
-            if !owned {
-                return SignalFlushResult {
-                    not_owned: true,
-                    ..SignalFlushResult::default()
-                };
-            }
-            SignalFlushResult {
-                flushed: drained,
-                timed_out: !drained,
-                ..SignalFlushResult::default()
-            }
-        };
         Ok(FlushResult {
-            logs: result_for(providers.logs, owned.logs, drained.logs),
-            traces: result_for(providers.traces, owned.traces, drained.traces),
-            metrics: result_for(providers.metrics, owned.metrics, drained.metrics),
+            logs: signal_flush_result(providers.logs, owned.logs, drained.logs),
+            traces: signal_flush_result(providers.traces, owned.traces, drained.traces),
+            metrics: signal_flush_result(providers.metrics, owned.metrics, drained.metrics),
         })
     }
 
@@ -224,5 +237,92 @@ impl TelemetryRuntime {
 
     pub fn state(&self) -> RuntimeState {
         self.state
+    }
+}
+
+#[cfg(test)]
+mod signal_flush_result_tests {
+    use super::{signal_flush_result, SignalFlushResult};
+
+    /// The full truth table. Each row is a distinct answer a caller acts on:
+    /// nothing to drain, not ours to drain, drained, or missed the deadline.
+    #[test]
+    fn covers_every_combination() {
+        let cases: [(bool, bool, bool, SignalFlushResult); 5] = [
+            (
+                false,
+                false,
+                true,
+                SignalFlushResult {
+                    not_installed: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+            (
+                false,
+                true,
+                true,
+                SignalFlushResult {
+                    not_installed: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+            (
+                true,
+                false,
+                true,
+                SignalFlushResult {
+                    not_owned: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+            (
+                true,
+                true,
+                true,
+                SignalFlushResult {
+                    flushed: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+            (
+                true,
+                true,
+                false,
+                SignalFlushResult {
+                    timed_out: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+        ];
+
+        for (installed, owned, drained, want) in cases {
+            let got = signal_flush_result(installed, owned, drained);
+            assert_eq!(
+                got, want,
+                "installed={installed} owned={owned} drained={drained}"
+            );
+        }
+    }
+
+    /// not_installed wins over not_owned: a signal with no provider at all is
+    /// not "the host's to drain", it is simply absent.
+    #[test]
+    fn not_installed_takes_precedence_over_not_owned() {
+        let got = signal_flush_result(false, false, false);
+        assert!(got.not_installed);
+        assert!(!got.not_owned);
+        assert!(!got.flushed);
+        assert!(!got.timed_out);
+    }
+
+    /// An owned, installed signal that missed its deadline is timed_out, never
+    /// flushed — the distinction a caller checks before a serverless freeze.
+    #[test]
+    fn a_missed_deadline_is_never_reported_as_flushed() {
+        let got = signal_flush_result(true, true, false);
+        assert!(!got.flushed);
+        assert!(got.timed_out);
+        assert!(!got.failed);
     }
 }
