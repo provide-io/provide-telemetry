@@ -117,8 +117,10 @@ mod tests {
         let _guard = acquire_test_state_lock();
         shutdown_telemetry(None).expect("pre-test shutdown should succeed");
 
-        let mut cfg = TelemetryConfig::default();
-        cfg.service_name = "explicit-setup".to_string();
+        let cfg = TelemetryConfig {
+            service_name: "explicit-setup".to_string(),
+            ..Default::default()
+        };
 
         let got = setup_telemetry(Some(cfg)).expect("a valid explicit config should install");
 
