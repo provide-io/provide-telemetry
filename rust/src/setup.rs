@@ -109,6 +109,58 @@ mod tests {
 
     use crate::testing::acquire_test_state_lock;
 
+    /// The explicit-config arm of `setup_telemetry`, and the validation that
+    /// now guards it. Nothing exercised `Some(_)` before, which left both the
+    /// match arm and the reject path uncovered.
+    #[test]
+    fn an_explicit_config_is_installed_and_reported_back() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+
+        let mut cfg = TelemetryConfig::default();
+        cfg.service_name = "explicit-setup".to_string();
+
+        let got = setup_telemetry(Some(cfg)).expect("a valid explicit config should install");
+
+        assert_eq!(got.service_name, "explicit-setup");
+        // The runtime snapshot must agree with what was handed in — the whole
+        // point of rejecting rather than clamping.
+        assert_eq!(
+            get_runtime_config()
+                .expect("an explicit setup should leave a runtime config")
+                .service_name,
+            "explicit-setup"
+        );
+
+        shutdown_telemetry(None).expect("shutdown should succeed");
+    }
+
+    /// An out-of-range rate in an explicit config is rejected outright. Left to
+    /// `apply_policies` it would be silently clamped to 1.0 while the snapshot
+    /// kept reporting 2.0.
+    #[test]
+    fn an_invalid_explicit_config_is_rejected_before_install() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+
+        let mut cfg = TelemetryConfig::default();
+        cfg.sampling.logs_rate = 2.0;
+
+        let err = setup_telemetry(Some(cfg)).expect_err("a rate above one must be rejected");
+
+        assert!(
+            err.message.contains("PROVIDE_SAMPLING_LOGS_RATE"),
+            "unexpected message: {}",
+            err.message
+        );
+        assert!(
+            get_runtime_config().is_none(),
+            "a rejected config must not be installed"
+        );
+
+        shutdown_telemetry(None).expect("shutdown should succeed");
+    }
+
     #[test]
     fn flush_is_ok_when_nothing_is_installed() {
         let _guard = acquire_test_state_lock();

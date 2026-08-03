@@ -48,6 +48,9 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 
 > go test -p 2 ./...                                            # seeds only; add -fuzz deliberately
 > go test -run FuzzX -fuzz FuzzX -fuzztime 30s -parallel 2 .
 > cargo mutants -j 1 --shard 1/8                                # shard rather than run whole
+> #   ...and point TMPDIR at real disk: cargo-mutants copies the crate and builds
+> #   it per mutant, which exhausts a 14G /tmp tmpfs and dies with EDQUOT.
+> #   TMPDIR=~/.cache/cargo-mutants-tmp cargo mutants ...
 > uv run pytest -p no:xdist ...                                 # serial when running alongside anything
 > ```
 >
@@ -67,13 +70,29 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 
 ## Quality Constraints
 
-- **100% branch coverage** is enforced for Python, TypeScript, and Go. Rust runs `cargo test` without a coverage gate.
+- **100% branch coverage** is enforced for Python, TypeScript, and Go.
+- **Rust has a coverage gate too** — `ci-rust.yml` runs `cargo llvm-cov` with
+  `--fail-under-functions 100`, so every function must be exercised. `cargo test`
+  passing tells you nothing about it: a new `match` arm or error path that no test
+  reaches compiles, tests green, and fails only in CI. Run it before pushing Rust:
+  ```bash
+  cargo llvm-cov --all-targets --all-features \
+    --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' \
+    --fail-uncovered-lines 0 --fail-under-functions 100
+  ```
 - **100% mutation kill score** is enforced, not merely targeted, in every language:
   - **Python** — `scripts/run_mutation_gate.py`. Note `_is_clean()` requires *zero*
     survivors, timeouts, suspicious and no-tests results; `--min-mutation-score` is an
     additional floor, not the bar. A run at 99% still fails.
-  - **Go** — gremlins at `--threshold-efficacy=100 --threshold-mcover=100` for the root
-    package, `logger`, and the `otel` module.
+  - **Go** — gremlins for the root package, `logger`, and the `otel` module, run
+    through `scripts/run_gremlins_gate.sh`. The wrapper is what enforces the gate:
+    gremlins' own `--threshold-efficacy` / `--threshold-mcover` flags do **not** fail
+    the run — v0.6.0 exits 0 even when asked for an impossible 101% — so the flags are
+    kept only for the numbers they print. The wrapper fails on a surviving, uncovered
+    or timed-out mutant, and on a run that printed no summary at all (a crashed run
+    would otherwise read as a pass). Locally the `otel` module needs
+    `GOTOOLCHAIN=go1.26.1`: gremlins copies the module to a temp dir where its
+    `replace => ../` and Go's toolchain auto-switching disagree.
   - **Rust** — `cargo mutants` across 8 CI shards. No threshold flag is passed because
     cargo-mutants exits non-zero on any surviving mutant by default.
   - **TypeScript** — Stryker, run twice (`stryker.config.mjs` then
