@@ -11,6 +11,15 @@ import { ConfigurationError } from './exceptions.js';
  * Validate that an endpoint is a valid HTTP(S) URL with optional valid port.
  * Throws ConfigurationError for malformed endpoints.
  * Returns the endpoint unchanged if valid.
+ *
+ * Stryker reports the `!parsed.hostname` and port-range guards below as
+ * survivors. They are not: forcing either to `false` and running the suite
+ * fails it (one test and three tests respectively). Stryker lists the covering
+ * tests in each mutant's `coveredBy` and reports testsCompleted > 0, so it ran
+ * them and did not observe the failure — the same false negative in its
+ * per-test result attribution that config-redact.ts documents for its presence
+ * guards. Deliberately not suppressed: the guards are load-bearing, and a
+ * suppression would hide a real regression if one ever landed here.
  */
 export function validateOtlpEndpoint(endpoint: string): string {
   let parsed: URL;
