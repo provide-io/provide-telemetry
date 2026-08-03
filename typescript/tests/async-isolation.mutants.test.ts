@@ -71,9 +71,12 @@ describe('trace context isolation across interleaved tasks', () => {
   });
 
   it('gives each concurrent span its own trace id across an await', async () => {
-    // withTrace opens an AsyncLocalStorage scope per call. Without one, the
-    // synthetic ids live in module globals that the second task overwrites
-    // while the first is suspended, and both report the same trace id.
+    // withTrace opens an AsyncLocalStorage scope per call. Without one the
+    // synthetic ids live in module globals, and the fallback only restores them
+    // once its promise settles — so the short task must resume while the long
+    // one is still in flight and still owns the globals. Overlap the other way
+    // round and the fallback happens to give the right answer, which is what
+    // made an earlier version of this test pass against the mutant.
     const seen: Record<string, string | undefined> = {};
 
     const task = (name: string, delay: number) =>
@@ -83,12 +86,14 @@ describe('trace context isolation across interleaved tasks', () => {
         seen[name] = getTraceContext().trace_id;
       });
 
-    await Promise.all([task('a', 20), task('b', 0)]);
+    // 'b' starts second, overwriting the globals, and holds them until 60ms.
+    // 'a' resumes at 10ms and must still see its own id.
+    await Promise.all([task('a', 10), task('b', 60)]);
 
-    // Each task still sees the id it entered with, and the two differ.
+    expect(seen['a-entry']).toBeDefined();
+    expect(seen['b-entry']).toBeDefined();
+    expect(seen['a-entry']).not.toBe(seen['b-entry']);
     expect(seen.a).toBe(seen['a-entry']);
     expect(seen.b).toBe(seen['b-entry']);
-    expect(seen.a).not.toBe(seen.b);
-    expect(seen.a).toBeDefined();
   });
 });
