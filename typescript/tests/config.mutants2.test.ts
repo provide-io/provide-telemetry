@@ -13,6 +13,7 @@ import { configFromEnv, redactConfig, setupTelemetryAsync, version } from '../sr
 import { ConfigurationError } from '../src/exceptions.js';
 import {
   _disablePropagationALSForTest,
+  _resetPropagationForTests,
   _restorePropagationALSForTest,
   _setPropagationInitDoneForTest,
 } from '../src/propagation.js';
@@ -125,5 +126,26 @@ describe('version — package version string', () => {
 
   it('matches the currently-imported module value', () => {
     expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe('_isNodeLike is load-bearing in setupTelemetryAsync', () => {
+  it('throws on a Node runtime when ALS is genuinely unavailable', async () => {
+    // The only observable difference between _isNodeLike() true and false is
+    // this branch: on Node, setupTelemetryAsync awaits propagation init and
+    // fails loud when ALS is missing; off Node it returns early and stays
+    // silent. Every mutation that makes _isNodeLike() report false — including
+    // breaking the `typeof process.versions === 'object'` literal — turns this
+    // throw into a silent success.
+    const saved = _disablePropagationALSForTest();
+    _setPropagationInitDoneForTest(true);
+    try {
+      await expect(setupTelemetryAsync({ serviceName: 'node-like' })).rejects.toThrow(
+        ConfigurationError,
+      );
+    } finally {
+      _restorePropagationALSForTest(saved);
+      _resetPropagationForTests();
+    }
   });
 });
