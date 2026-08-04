@@ -48,6 +48,11 @@ _LANGUAGE_GLOBS: dict[str, list[str]] = {
     "typescript": ["typescript/tests/parity*.test.ts", "typescript/tests/endpoint.test.ts"],
     "go": ["go/parity_*_test.go", "go/parity_test.go"],
     "rust": ["rust/tests/parity_*.rs", "rust/tests/parity_test.rs"],
+    "csharp": [
+        "csharp/tests/**/Parity*.cs",
+        "csharp/tests/**/*Parity*.cs",
+        "csharp/tests/Provide.Telemetry.Tests/Parity*.cs",
+    ],
 }
 
 # Extras are canonical probe files that contribute to a language's coverage
@@ -57,6 +62,10 @@ _LANGUAGE_EXTRAS: dict[str, list[str]] = {
     "typescript": ["spec/probes/emit_log_typescript.ts"],
     "go": ["spec/probes/emit_log_go/main.go"],
     "rust": ["rust/src/otel/endpoint.rs"],
+    "csharp": [
+        "csharp/probes/EmitLog/Program.cs",
+        "csharp/src/Provide.Telemetry/ConfigEnv.cs",
+    ],
 }
 
 _CATEGORY_CONTENT_MARKERS: dict[str, tuple[str, ...]] = {

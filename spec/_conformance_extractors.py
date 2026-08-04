@@ -230,3 +230,47 @@ def get_typescript_exports(repo_root: Path | None = None) -> dict[str, str]:
             exports[exported] = kind
 
     return exports
+
+
+def get_csharp_exports(repo_root: Path | None = None) -> dict[str, str]:
+    """Parse public C# symbols under csharp/src for conformance.
+
+    Scans ``.cs`` files for public types and public static methods/properties.
+    Method/property names are exported at face value (PascalCase). Properties
+    with a public getter are treated as ``instance``; methods as ``function``;
+    classes/records/structs/enums/interfaces as ``type``.
+    """
+    repo_root = repo_root or _REPO_ROOT
+    src = repo_root / "csharp" / "src"
+    if not src.is_dir():
+        return {}
+
+    exports: dict[str, str] = {}
+    type_re = re.compile(
+        r"\bpublic\s+(?:static\s+)?(?:partial\s+)?(?:sealed\s+)?(?:abstract\s+)?"
+        r"(?:class|record|struct|enum|interface)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    )
+    method_re = re.compile(
+        r"\bpublic\s+static\s+(?:async\s+)?(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*[<(]"
+    )
+    prop_re = re.compile(
+        r"\bpublic\s+static\s+(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*(?:\{|=>)"
+    )
+
+    for cs in sorted(src.rglob("*.cs")):
+        body = cs.read_text(encoding="utf-8")
+        for m in type_re.finditer(body):
+            exports[m.group(1)] = "type"
+        for m in method_re.finditer(body):
+            name = m.group(1)
+            if name in exports and exports[name] == "type":
+                continue
+            exports[name] = "function"
+        for m in prop_re.finditer(body):
+            name = m.group(1)
+            if name not in exports:
+                exports[name] = "instance"
+            elif name in ("Logger", "Tracer"):
+                exports[name] = "instance"
+
+    return exports

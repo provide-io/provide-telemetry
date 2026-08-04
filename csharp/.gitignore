@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.DotSettings.user
+TestResults/
+*.nupkg
+*.snupkg
+project.lock.json
+artifacts/

@@ -134,6 +134,18 @@ def _probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> lis
             cwd=repo / "rust",
             env_extra={**cargo_env},
         ),
+        ProbeRunner(
+            name="csharp",
+            label="C#",
+            cmd=[
+                "dotnet",
+                "run",
+                "--project",
+                str(repo / "csharp" / "probes" / "EmitLog" / "EmitLog.csproj"),
+                "--nologo",
+            ],
+            cwd=repo / "csharp",
+        ),
     ]
 
 

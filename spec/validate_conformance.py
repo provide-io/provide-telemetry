@@ -36,6 +36,9 @@ from _conformance_extractors import (
 from _conformance_extractors import (
     get_typescript_exports as _ext_get_typescript_exports,
 )
+from _conformance_extractors import (
+    get_csharp_exports as _ext_get_csharp_exports,
+)
 
 try:
     import yaml  # type: ignore[import-untyped]
@@ -67,6 +70,10 @@ def _get_rust_exports() -> dict[str, str]:
 
 def _get_typescript_exports() -> dict[str, str]:
     return _ext_get_typescript_exports(_REPO_ROOT)
+
+
+def _get_csharp_exports() -> dict[str, str]:
+    return _ext_get_csharp_exports(_REPO_ROOT)
 
 
 def _identity(name: str) -> str:
@@ -254,7 +261,7 @@ def _build_kind_overrides(
 # in the default feature set (default = ["governance"] in Cargo.toml), so it
 # is treated as always-present here unless the checker is extended to support
 # feature-stripped builds.
-_GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust"})
+_GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
 
 def _language_has_capability(lang: str, capability: str) -> bool:
@@ -291,6 +298,9 @@ def _check_language(
         transform = _to_camel_case
     elif lang == "go":
         exports = _get_go_exports()
+        transform = _to_pascal_case
+    elif lang == "csharp":
+        exports = _get_csharp_exports()
         transform = _to_pascal_case
     else:
         return [f"Language '{lang}' is not yet supported by the conformance checker."], []
@@ -349,7 +359,9 @@ def _check_language(
 # per-language: tests/foo.py, go/bar_test.go". They are the only enforcement a
 # behavioural rule has, so a moved or renamed test must not leave the spec
 # pointing at nothing.
-_PATH_REF_RE = re.compile(r"\b((?:src|tests|go|rust|typescript|spec|scripts)/[\w./-]+\.(?:py|go|rs|ts|yaml))")
+_PATH_REF_RE = re.compile(
+    r"\b((?:src|tests|go|rust|typescript|csharp|spec|scripts)/[\w./-]+\.(?:py|go|rs|ts|cs|yaml))"
+)
 
 
 def _check_behavioral_parity_refs(spec: dict[str, object], root: Path) -> list[str]:
@@ -376,14 +388,19 @@ def _check_behavioral_parity_refs(spec: dict[str, object], root: Path) -> list[s
 def main() -> int:
     """Run conformance checks. Returns 0 on success, 1 on failure."""
     parser = argparse.ArgumentParser(description="Validate API conformance against spec.")
-    parser.add_argument("--lang", choices=["python", "rust", "typescript", "go"], action="append", default=None)
+    parser.add_argument(
+        "--lang",
+        choices=["python", "rust", "typescript", "go", "csharp"],
+        action="append",
+        default=None,
+    )
     parser.add_argument("--spec", type=Path, default=None, help="Path to spec YAML (default: spec/telemetry-api.yaml)")
     args = parser.parse_args()
 
     spec = _load_spec(args.spec)
     symbols = _collect_spec_symbols(spec)
 
-    langs = args.lang or ["python", "rust", "typescript", "go"]
+    langs = args.lang or ["python", "rust", "typescript", "go", "csharp"]
     all_errors: list[str] = []
 
     for lang in langs:

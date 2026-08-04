@@ -84,6 +84,18 @@ def _contract_probe_runners(
             cwd=repo / "rust",
             env_extra={**cargo_env},
         ),
+        _ContractProbeRunner(
+            name="csharp",
+            label="C#",
+            cmd=[
+                "dotnet",
+                "run",
+                "--project",
+                str(repo / "csharp" / "probes" / "ContractProbe" / "ContractProbe.csproj"),
+                "--nologo",
+            ],
+            cwd=repo / "csharp",
+        ),
     ]
 
 
