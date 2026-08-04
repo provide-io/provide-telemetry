@@ -16,6 +16,10 @@ export interface SamplingPolicy {
 const DEFAULT_POLICY: SamplingPolicy = { defaultRate: 1.0 };
 let _policies: Record<string, SamplingPolicy> = {};
 
+// Stryker reports the 'metrics' entry as a survivor. It is not: blanking it
+// and running the suite fails 130 tests (hand-verified 2026-08-04) — the same
+// per-test attribution false negative endpoint.ts documents. Not suppressed:
+// the signal-name set is the API contract.
 const VALID_SIGNALS = new Set(['logs', 'traces', 'metrics']);
 
 function _validateSignal(signal: string): void {

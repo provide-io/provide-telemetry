@@ -13,13 +13,15 @@ import { ConfigurationError } from './exceptions.js';
  * Returns the endpoint unchanged if valid.
  *
  * Stryker reports the `!parsed.hostname` and port-range guards below as
- * survivors. They are not: forcing either to `false` and running the suite
- * fails it (one test and three tests respectively). Stryker lists the covering
- * tests in each mutant's `coveredBy` and reports testsCompleted > 0, so it ran
- * them and did not observe the failure — the same false negative in its
- * per-test result attribution that config-redact.ts documents for its presence
- * guards. Deliberately not suppressed: the guards are load-bearing, and a
- * suppression would hide a real regression if one ever landed here.
+ * survivors — and the hostname guard's throw body additionally as NoCoverage.
+ * They are neither: forcing either guard to `false` and running the suite
+ * fails it (hand-verified again 2026-08-04; the hostname mutation fails one
+ * test). Stryker lists the covering tests in each mutant's `coveredBy` and
+ * reports testsCompleted > 0, so it ran them and did not observe the failure
+ * — the same false negative in its per-test result attribution that
+ * config-redact.ts documents for its presence guards. Deliberately not
+ * suppressed: the guards are load-bearing, and a suppression would hide a
+ * real regression if one ever landed here.
  */
 export function validateOtlpEndpoint(endpoint: string): string {
   let parsed: URL;
@@ -65,8 +67,12 @@ export function validateOtlpEndpoint(endpoint: string): string {
     }
     // No colon after hostname — port was simply omitted, which is fine.
   } else {
+    // No upper-bound clause: WHATWG URL parsing already throws for any port
+    // above 65535 (new URL('http://h:65536') is a TypeError), so a parsed
+    // port can only be 0..65535 and an upper-bound check here is unreachable
+    // — it existed only to be an equivalent Stryker mutant.
     const portNum = Number(parsed.port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!Number.isInteger(portNum) || portNum < 1) {
       throw new ConfigurationError(`invalid OTLP endpoint port: ${JSON.stringify(endpoint)}`);
     }
   }

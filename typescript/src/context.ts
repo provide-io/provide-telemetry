@@ -24,6 +24,10 @@ type ALS = {
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
 let _asyncLocalStorage: ALS | null = null;
 let _AlsConstructor: (new () => ALS) | null = null;
+// Stryker reports this try body as a survivor. It is not: emptying it and
+// running the suite fails seven tests (hand-verified 2026-08-04) — the same
+// per-test attribution false negative endpoint.ts documents. Not suppressed:
+// ALS-backed context isolation is load-bearing.
 try {
   // Dynamic require so the import doesn't break browser bundles.
   // eslint-disable-next-line @typescript-eslint/no-require-imports

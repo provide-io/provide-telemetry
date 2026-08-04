@@ -82,6 +82,38 @@ describe('TelemetryRuntime facade', () => {
     expect(result.traces.flushed).toBe(true);
     expect(result.traces.notInstalled).toBe(false);
     expect(result.traces.notOwned).toBe(false);
+    // A clean drain must not carry a failure flag: `failed` and `timedOut`
+    // compare the outcome against their own literal, and forcing either
+    // comparison true would brand every successful flush a failure.
+    expect(result.traces.failed).toBe(false);
+    expect(result.traces.timedOut).toBe(false);
+  });
+
+  it('reports failed for a provider whose forceFlush throws synchronously', async () => {
+    // A sync throw is the same broken exporter as a rejection, and it must
+    // surface as the *failed* outcome specifically — not merely a falsy one.
+    // flushTelemetry() collapses every non-flushed outcome to false, so only
+    // this per-signal assertion distinguishes 'failed' from a mangled
+    // outcome string.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    _storeRegisteredProviders(
+      [
+        {
+          forceFlush: () => {
+            throw new Error('sync boom');
+          },
+        },
+      ],
+      ['traces'],
+    );
+
+    const result = await new TelemetryRuntime().flush(100);
+
+    expect(result.traces.failed).toBe(true);
+    expect(result.traces.timedOut).toBe(false);
+    expect(result.traces.flushed).toBe(false);
+    vi.restoreAllMocks();
   });
 
   it.each([

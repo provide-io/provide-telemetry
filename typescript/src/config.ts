@@ -319,12 +319,18 @@ function _isNodeLike(): boolean {
   // Only the host-presence half is suppressed, and only for
   // ConditionalExpression: `process` is defined and `process.versions` is a
   // real object in every environment this suite runs in (only `.node` is ever
-  // stubbed away, in config.mutants.test.ts), so forcing this line true or
-  // false is unobservable. Everything else stays live — the `'object'` and
-  // `'string'` literals and the `.node` check all change what _isNodeLike
-  // reports, and config.mutants2.test.ts asserts both directions.
+  // stubbed away, in config.mutants.test.ts), so forcing these lines true or
+  // false is unobservable. StringLiteral on `'undefined'` is the same class:
+  // `typeof process` is `'object'` here, so it compares unequal to any
+  // replacement string and the check stays true. The literal sits on its own
+  // line so the suppression cannot reach the `'object'` and `'string'`
+  // literals below, which stay live — they and the `.node` check all change
+  // what _isNodeLike reports, and config.mutants2.test.ts asserts both
+  // directions.
+  // Stryker disable next-line ConditionalExpression, StringLiteral
+  const processDefined = typeof process !== 'undefined';
   // Stryker disable next-line ConditionalExpression
-  const hasProcess = typeof process !== 'undefined' && typeof process.versions === 'object';
+  const hasProcess = processDefined && typeof process.versions === 'object';
   return hasProcess && typeof (process.versions as Record<string, unknown>).node === 'string';
 }
 

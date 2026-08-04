@@ -87,6 +87,11 @@ let _propagationInitPromise: Promise<void> = Promise.resolve();
 // have full coverage and by the typescript-examples-smoke CI job.
 (function initAsyncStorage(): void {
   try {
+    // Stryker disable next-line ConditionalExpression: `require` is a function
+    // under every Node-based test runner, so forcing the CJS-detection true is
+    // indistinguishable here; the browser path this guards is exercised by the
+    // typescript-examples-smoke CI job, not this suite (hand-verified
+    // 2026-08-04: suite passes with the guard forced true).
     if (typeof require === 'function') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const als = require('node:async_hooks') as {
@@ -111,6 +116,11 @@ let _propagationInitPromise: Promise<void> = Promise.resolve();
     } catch {
       // node:async_hooks unresolvable — leave _als null and use fallback.
     } finally {
+      // Stryker disable next-line BooleanLiteral: this async-import fallback
+      // only runs where require is unavailable (browser bundles), which the
+      // Node harness cannot reach — Stryker reports it NoCoverage for the same
+      // reason the surrounding IIFE carries the v8 ignore. Init-done signaling
+      // is asserted downstream via isPropagationInitDone.
       _propagationInitDone = true;
     }
   })();

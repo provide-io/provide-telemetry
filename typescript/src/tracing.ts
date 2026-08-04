@@ -49,20 +49,22 @@ let _als: {
   getStore(): _TraceIds | undefined;
 } | null = null;
 
+// Stryker reports the try body below as a survivor. It is not: emptying it
+// and running the suite fails two tests (hand-verified 2026-08-04) — the same
+// per-test attribution false negative endpoint.ts documents. Not suppressed:
+// the ALS wiring is load-bearing for trace-context isolation.
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AsyncLocalStorage } = require('node:async_hooks') as typeof import('node:async_hooks');
   _als = new AsyncLocalStorage<_TraceIds>();
-  // Non-Node runtime (browser, Deno) fallback: `require('node:async_hooks')`
-  // succeeds on every Node-based test runner, so this branch is unreachable
-  // here (mocking the module doesn't help — it's a CJS require, not routed
-  // through the ESM mock graph). Even if it did run, `_als = null` is
-  // redundant with _als's declared initial value above, making this a
-  // genuine equivalent mutant on top of being untestable in this harness.
-  // Stryker disable next-line BlockStatement
 } catch {
-  /* c8 ignore next */
-  _als = null;
+  // Non-Node runtime (browser, Deno) fallback: `require('node:async_hooks')`
+  // succeeds on every Node-based test runner, so this arm is unreachable here
+  // (mocking the module doesn't help — it's a CJS require, not routed through
+  // the ESM mock graph). Deliberately empty: `_als` already holds its declared
+  // null, so the assignment that used to sit here existed only to be an
+  // equivalent BlockStatement mutant — and a disable directive above a
+  // `} catch {` line never reaches the catch body anyway.
 }
 
 let _manualTraceId: string | undefined;
@@ -179,11 +181,12 @@ function _withSyntheticIds<T>(fn: () => T): T {
   _manualTraceId = traceId;
   _manualSpanId = spanId;
   const result = fn();
-  // Stryker disable next-line ConditionalExpression: reachable only in the
-  // browser/Deno fallback where _als is null, which Node-based tests cannot
-  // enter without a source-level seam into _als. The sync-vs-Promise branch
-  // is covered end-to-end by the Node path; pinning here requires mutating
-  // a module-private for no gain.
+  // Stryker disable next-line ConditionalExpression, BlockStatement: reachable
+  // only in the browser/Deno fallback where _als is null, which Node-based
+  // tests cannot enter without a source-level seam into _als (Stryker reports
+  // the consequent block NoCoverage for exactly that reason). The
+  // sync-vs-Promise branch is covered end-to-end by the Node path; pinning
+  // here requires mutating a module-private for no gain.
   if (result instanceof Promise) {
     return result.then(
       (value) => {
