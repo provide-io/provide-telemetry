@@ -169,15 +169,12 @@ def _rust_version() -> str | None:
     return match.group(1) if match else None
 
 
-
 def _csharp_version() -> str | None:
     """Read version from csharp/VERSION or Provide.Telemetry.csproj."""
     version_file = _REPO_ROOT / "csharp" / "VERSION"
     if version_file.exists():
         return version_file.read_text(encoding="utf-8").strip() or None
-    csproj = (
-        _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry" / "Provide.Telemetry.csproj"
-    )
+    csproj = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry" / "Provide.Telemetry.csproj"
     if not csproj.exists():
         return None
     text = csproj.read_text(encoding="utf-8")
