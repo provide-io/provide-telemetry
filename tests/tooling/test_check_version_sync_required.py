@@ -43,6 +43,10 @@ def _make_repo_without_pyproject(tmp_path: Path) -> Path:
     # go + rust minimal
     _write(tmp_path / "go" / "VERSION", "0.4.0\n")
     _write(tmp_path / "rust" / "Cargo.toml", 'version = "0.4.0"\n')
+    # csharp joined REQUIRED_MODULES with the Provide.Telemetry library, so a
+    # fake repo without it fails the required-module check rather than
+    # exercising the optional-module path these tests are about.
+    _write(tmp_path / "csharp" / "VERSION", "0.4.0\n")
     return tmp_path
 
 

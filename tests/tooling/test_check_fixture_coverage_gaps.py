@@ -156,6 +156,7 @@ def test_glob_discovery_finds_new_parity_file(tmp_path: Path) -> None:
     (fake_repo / "tests" / "parity").mkdir(parents=True)
     (fake_repo / "typescript" / "tests").mkdir(parents=True)
     (fake_repo / "rust" / "tests").mkdir(parents=True)
+    (fake_repo / "csharp" / "tests" / "Provide.Telemetry.Tests").mkdir(parents=True)
 
     discoverable = fake_repo / "go" / "parity_brandnew_test.go"
     discoverable.write_text("// sentinel: parity_brandnew_marker\n", encoding="utf-8")
@@ -164,9 +165,14 @@ def test_glob_discovery_finds_new_parity_file(tmp_path: Path) -> None:
     (fake_repo / "tests" / "parity" / "test_parity_dummy.py").write_text("# ok\n", encoding="utf-8")
     (fake_repo / "typescript" / "tests" / "parity.test.ts").write_text("// ok\n", encoding="utf-8")
     (fake_repo / "rust" / "tests" / "parity_test.rs").write_text("// ok\n", encoding="utf-8")
+    (fake_repo / "csharp" / "tests" / "Provide.Telemetry.Tests" / "ParityTests.cs").write_text(
+        "// ok\n", encoding="utf-8"
+    )
 
     discovered = module._discover_language_files(
-        fake_repo, module._LANGUAGE_GLOBS, {"python": [], "typescript": [], "go": [], "rust": []}
+        fake_repo,
+        module._LANGUAGE_GLOBS,
+        {"python": [], "typescript": [], "go": [], "rust": [], "csharp": []},
     )
 
     assert discoverable.resolve() in discovered["go"], f"parity_brandnew_test.go not discovered: {discovered['go']}"
