@@ -25,6 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _conformance_extractors import (
+    get_csharp_exports as _ext_get_csharp_exports,
+)
+from _conformance_extractors import (
     get_go_exports as _ext_get_go_exports,
 )
 from _conformance_extractors import (
@@ -35,9 +38,6 @@ from _conformance_extractors import (
 )
 from _conformance_extractors import (
     get_typescript_exports as _ext_get_typescript_exports,
-)
-from _conformance_extractors import (
-    get_csharp_exports as _ext_get_csharp_exports,
 )
 
 try:
@@ -259,9 +259,7 @@ def _build_kind_overrides(
 # All supported languages ship governance as a first-class module. Rust has no
 # `governance` cargo feature — its Cargo.toml declares only default/otel/otel-grpc
 # — so there is no feature-stripped build to special-case here.
-_GOVERNANCE_LANGUAGES: frozenset[str] = frozenset(
-    {"python", "typescript", "go", "rust", "csharp"}
-)
+_GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
 
 def _language_has_capability(lang: str, capability: str) -> bool:
@@ -359,9 +357,7 @@ def _check_language(
 # per-language: tests/foo.py, go/bar_test.go". They are the only enforcement a
 # behavioural rule has, so a moved or renamed test must not leave the spec
 # pointing at nothing.
-_PATH_REF_RE = re.compile(
-    r"\b((?:src|tests|go|rust|typescript|csharp|spec|scripts)/[\w./-]+\.(?:py|go|rs|ts|cs|yaml))"
-)
+_PATH_REF_RE = re.compile(r"\b((?:src|tests|go|rust|typescript|csharp|spec|scripts)/[\w./-]+\.(?:py|go|rs|ts|cs|yaml))")
 
 
 def _check_behavioral_parity_refs(spec: dict[str, object], root: Path) -> list[str]:

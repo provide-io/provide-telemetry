@@ -271,12 +271,8 @@ def get_csharp_exports(repo_root: Path | None = None) -> dict[str, str]:
         r"\bpublic\s+(?:static\s+)?(?:partial\s+)?(?:sealed\s+)?(?:abstract\s+)?"
         r"(?:class|record|struct|enum|interface)\s+([A-Za-z_][A-Za-z0-9_]*)"
     )
-    method_re = re.compile(
-        r"\bpublic\s+static\s+(?:async\s+)?(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*[<(]"
-    )
-    prop_re = re.compile(
-        r"\bpublic\s+static\s+(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*(?:\{|=>)"
-    )
+    method_re = re.compile(r"\bpublic\s+static\s+(?:async\s+)?(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*[<(]")
+    prop_re = re.compile(r"\bpublic\s+static\s+(?:[\w.?<>\[\],\s]+?)\s+([A-Z][A-Za-z0-9_]*)\s*(?:\{|=>)")
 
     for cs in sorted(src.rglob("*.cs")):
         body = cs.read_text(encoding="utf-8")
@@ -289,9 +285,7 @@ def get_csharp_exports(repo_root: Path | None = None) -> dict[str, str]:
             exports[name] = "function"
         for m in prop_re.finditer(body):
             name = m.group(1)
-            if name not in exports:
-                exports[name] = "instance"
-            elif name in ("Logger", "Tracer"):
+            if name not in exports or name in ("Logger", "Tracer"):
                 exports[name] = "instance"
 
     return exports
