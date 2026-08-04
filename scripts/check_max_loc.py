@@ -24,12 +24,14 @@ DEFAULT_EXCLUDE_PARTS = {
     "dist",
     "node_modules",
     "target",
+    "bin",
+    "obj",
     ".worktrees",
     ".claude",
     "_secret_patterns_generated.py",  # generated file, intentionally large
 }
 
-# Polyglot scope: every source/test file across all four languages must
+# Polyglot scope: every source/test file across all languages must
 # obey the same 500-LOC ceiling. New violations are blocked at commit time.
 DEFAULT_ROOTS = [
     "src",
@@ -44,8 +46,13 @@ DEFAULT_ROOTS = [
     "rust/src",
     "rust/tests",
     "rust/examples",
+    "csharp/src",
+    "csharp/tests",
+    "csharp/probes",
+    "csharp/consumer",
+    "csharp/examples",
 ]
-DEFAULT_EXTENSIONS = (".py", ".ts", ".go", ".rs")
+DEFAULT_EXTENSIONS = (".py", ".ts", ".go", ".rs", ".cs")
 DEFAULT_ALLOWLIST = Path(__file__).parent.parent / ".max_loc_allowlist.yaml"
 
 

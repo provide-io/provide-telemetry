@@ -223,6 +223,24 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             # on the same thread (default 2 MiB is insufficient for deep sanitize_payload calls)
             env_extra={"RUST_MIN_STACK": "8388608", **_CARGO_ENV},
         ),
+        LanguageRunner(
+            name="csharp",
+            label="C#",
+            check_cmd=["dotnet", "--version"],
+            # Parity tests live under csharp/tests and are named Parity*.cs so
+            # check_fixture_coverage.py can attribute categories to them.
+            run_cmds=[
+                [
+                    "dotnet",
+                    "test",
+                    "tests/Provide.Telemetry.Tests/Provide.Telemetry.Tests.csproj",
+                    "--nologo",
+                    "--filter",
+                    "FullyQualifiedName~Parity",
+                ],
+            ],
+            cwd=repo / "csharp",
+        ),
     ]
 
 
@@ -322,8 +340,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--lang",
-        default="python,typescript,go,rust",
-        help="Comma-separated list of languages to check (default: all four)",
+        default="python,typescript,go,rust,csharp",
+        help="Comma-separated list of languages to check (default: all five)",
     )
     parser.add_argument(
         "--timeout",

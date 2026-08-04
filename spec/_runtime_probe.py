@@ -122,6 +122,18 @@ def _runtime_probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]
             cwd=repo / "rust",
             env_extra={**cargo_env},
         ),
+        ProbeRunner(
+            name="csharp",
+            label="C#",
+            cmd=[
+                "dotnet",
+                "run",
+                "--project",
+                str(repo / "csharp" / "probes" / "RuntimeProbe" / "RuntimeProbe.csproj"),
+                "--nologo",
+            ],
+            cwd=repo / "csharp",
+        ),
     ]
 
 

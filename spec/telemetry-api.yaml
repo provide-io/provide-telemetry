@@ -16,7 +16,7 @@
 #               symbols when the language advertises that capability.
 #               Supported values: "governance"
 #               Capability rules by language:
-#                 python, typescript, go, rust — governance always present
+#                 python, typescript, go, rust, csharp — governance always present
 #   note:       human-readable description or rationale
 
 spec_version: "2"
@@ -26,6 +26,7 @@ naming_conventions:
   typescript: camelCase
   go: PascalCase
   rust: snake_case
+  csharp: PascalCase
 
 api:
   lifecycle:
@@ -900,3 +901,22 @@ language_overrides:
     - spec_name: tracer
       accepted_kinds: [instance]
       note: "Python exports a lazy tracer instance"
+  csharp:
+    - spec_name: tracer
+      accepted_kinds: [type, instance, function]
+      note: "C# exports ITracer interface type and Tracer property/instance"
+    - spec_name: trace
+      accepted_kinds: [function]
+      note: "C# uses Trace() method as decorator equivalent"
+    - spec_name: counter
+      accepted_kinds: [function, type]
+      note: "C# Counter() factory and ICounter type"
+    - spec_name: gauge
+      accepted_kinds: [function, type]
+      note: "C# Gauge() factory and IGauge type"
+    - spec_name: histogram
+      accepted_kinds: [function, type]
+      note: "C# Histogram() factory and IHistogram type"
+    - spec_name: logger
+      accepted_kinds: [instance, type]
+      note: "C# Logger type and Logger static instance property"
