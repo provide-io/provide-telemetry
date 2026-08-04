@@ -9,8 +9,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Literal
 
 from provide.telemetry.config import TelemetryConfig
+
+# Per-signal drain outcome, as reported by ``setup.flush_signals``. Three-valued
+# because a caller alerting on export loss treats the cases differently: a
+# ``timed_out`` drain may still complete in the background, a ``failed`` one
+# raised and will not. Matches Go's facade (DeadlineExceeded → TimedOut, any
+# other error → Failed).
+SignalDrainOutcome = Literal["flushed", "timed_out", "failed"]
 
 
 class ProviderMode(StrEnum):
@@ -44,9 +52,21 @@ class SignalFlushResult:
 
 @dataclass(frozen=True)
 class FlushResult:
+    """Per-signal outcome of a facade flush.
+
+    Truthiness preserves the pre-0.7 ``flush() -> bool`` contract, so
+    ``if not telemetry.flush(): alert()`` keeps meaning what it did: ``True``
+    iff no signal timed out or failed. A signal with nothing of ours to drain
+    (``not_installed`` / ``not_owned``) counts as success, exactly as
+    ``flush_telemetry()`` reports it.
+    """
+
     logs: SignalFlushResult = field(default_factory=SignalFlushResult)
     traces: SignalFlushResult = field(default_factory=SignalFlushResult)
     metrics: SignalFlushResult = field(default_factory=SignalFlushResult)
+
+    def __bool__(self) -> bool:
+        return not any(s.timed_out or s.failed for s in (self.logs, self.traces, self.metrics))
 
 
 @dataclass(frozen=True)

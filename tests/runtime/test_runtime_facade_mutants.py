@@ -80,9 +80,9 @@ def test_shutdown_forwards_timeout_and_sets_stopped(monkeypatch: Any) -> None:
 def test_flush_forwards_timeout(monkeypatch: Any) -> None:
     seen: list[float | None] = []
 
-    def fake_flush(timeout_seconds: float | None = None) -> dict[str, bool]:
+    def fake_flush(timeout_seconds: float | None = None) -> dict[str, str]:
         seen.append(timeout_seconds)
-        return {"logs": True, "traces": True, "metrics": True}
+        return {"logs": "flushed", "traces": "flushed", "metrics": "flushed"}
 
     monkeypatch.setattr("provide.telemetry.setup.flush_signals", fake_flush)
     rt = runtime_mod.TelemetryRuntime()
@@ -91,43 +91,40 @@ def test_flush_forwards_timeout(monkeypatch: Any) -> None:
     assert seen == [0.75], "flush must forward the caller's deadline, not None"
 
 
-@pytest.mark.parametrize("drained", [True, False])
-def test_flush_applies_drained_flag_to_every_signal(monkeypatch: Any, drained: bool) -> None:
+@pytest.mark.parametrize("outcome", ["flushed", "timed_out", "failed"])
+def test_flush_applies_drain_outcome_to_every_signal(monkeypatch: Any, outcome: str) -> None:
     monkeypatch.setattr(
         "provide.telemetry.setup.flush_signals",
-        lambda timeout_seconds=None: {"logs": drained, "traces": drained, "metrics": drained},
+        lambda timeout_seconds=None: {"logs": outcome, "traces": outcome, "metrics": outcome},
     )
     monkeypatch.setattr(
         "provide.telemetry._provider_drain.owned_signals",
         lambda: {"logs": True, "traces": True, "metrics": True},
     )
     monkeypatch.setattr(
-        runtime_mod,
-        "get_runtime_status",
-        lambda: runtime_mod.RuntimeStatus(
-            setup_done=True,
-            signals={"logs": True, "traces": True, "metrics": True},
-            providers={"logs": True, "traces": True, "metrics": True},
-            fallback={"logs": False, "traces": False, "metrics": False},
-            setup_error=None,
-        ),
+        "provide.telemetry._provider_drain.installed_signals",
+        lambda: {"logs": True, "traces": True, "metrics": True},
     )
 
     result = runtime_mod.TelemetryRuntime().flush()
 
     # Each signal must carry the real drain outcome — a mutant nulling any one of
-    # them flips that signal to not-flushed/not-timed-out.
+    # them flips that signal's flags.
     for signal in (result.logs, result.traces, result.metrics):
-        assert signal.flushed is drained
-        assert signal.timed_out is (not drained)
+        assert signal.flushed is (outcome == "flushed")
+        assert signal.timed_out is (outcome == "timed_out")
+        assert signal.failed is (outcome == "failed")
 
 
-def test_signal_flush_result_sets_timed_out() -> None:
-    assert runtime_mod._signal_flush_result(True, True, False) == SignalFlushResult(
+def test_signal_flush_result_maps_each_outcome() -> None:
+    assert runtime_mod._signal_flush_result(True, True, "timed_out") == SignalFlushResult(
         flushed=False, not_installed=False, timed_out=True
     )
-    assert runtime_mod._signal_flush_result(True, True, True) == SignalFlushResult(
+    assert runtime_mod._signal_flush_result(True, True, "flushed") == SignalFlushResult(
         flushed=True, not_installed=False, timed_out=False
+    )
+    assert runtime_mod._signal_flush_result(True, True, "failed") == SignalFlushResult(
+        flushed=False, not_installed=False, timed_out=False, failed=True
     )
 
 

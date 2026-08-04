@@ -18,6 +18,7 @@ __all__ = [
     "flush_logging",
     "flush_metrics",
     "flush_tracing",
+    "installed_signals",
     "owned_signals",
     "resolve_drain_deadline",
     "run_drains_together",
@@ -96,6 +97,29 @@ def resolve_drain_deadline(timeout_seconds: float | None) -> float:
         return get_runtime_config().exporter.logs_shutdown_timeout_seconds
     except ConfigurationError:
         return ExporterPolicyConfig().logs_shutdown_timeout_seconds
+
+
+def installed_signals() -> dict[str, bool]:
+    """Per-signal provider presence, read from the providers themselves.
+
+    The same trio :func:`~provide.telemetry.runtime.get_runtime_status` reports,
+    without the config read that makes that function raise on a malformed
+    environment. traces and metrics report what is in play, not what we
+    installed: a host application's own provider owns the OTel global, and
+    ``get_tracer()`` / ``get_meter()`` resolve it, so reporting it as fallback
+    would be a lie. Logs stays install-scoped — our records reach OTel through
+    the handler *we* attach, so a foreign logger provider is genuinely not in
+    our path.
+    """
+    from provide.telemetry.logger import core as logger_core
+    from provide.telemetry.metrics import provider as metrics_provider
+    from provide.telemetry.tracing import provider as tracing_provider
+
+    return {
+        "logs": bool(logger_core._has_real_otel_log_provider()),
+        "traces": bool(tracing_provider._has_effective_tracing_provider()),
+        "metrics": bool(metrics_provider._has_effective_meter_provider()),
+    }
 
 
 def owned_signals() -> dict[str, bool]:

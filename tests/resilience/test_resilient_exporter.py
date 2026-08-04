@@ -133,6 +133,34 @@ def test_retries_invoke_inner_export_multiple_times() -> None:
     assert call_count["n"] == 3
 
 
+def test_export_attempts_ceiling_matches_typescript() -> None:
+    """101 attempts = 1 first try + the 100-retry config ceiling, as in TS."""
+    assert resilience_mod.MAX_EXPORT_ATTEMPTS == 101
+
+
+def test_attempts_are_clamped_to_the_export_ceiling() -> None:
+    """set_exporter_policy bypasses config validation, so the retry loop must
+    clamp: an out-of-range retries value buys MAX_EXPORT_ATTEMPTS attempts, not
+    one per configured retry."""
+    set_exporter_policy(
+        "logs",
+        ExporterPolicy(
+            retries=resilience_mod.MAX_EXPORT_ATTEMPTS + 49,
+            backoff_seconds=0.0,
+            timeout_seconds=0.0,
+            fail_open=True,
+        ),
+    )
+    calls = {"n": 0}
+
+    def _always_failing() -> None:
+        calls["n"] += 1
+        raise RuntimeError("collector down")
+
+    assert resilience_mod.run_with_resilience("logs", _always_failing) is None
+    assert calls["n"] == resilience_mod.MAX_EXPORT_ATTEMPTS
+
+
 def test_circuit_opens_after_consecutive_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     set_exporter_policy(
         "metrics",

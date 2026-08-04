@@ -204,7 +204,7 @@ def test_three_stalled_flushes_share_the_callers_deadline(
             provider.release.set()
         drain._reset_abandoned_workers_for_tests()
 
-    assert drained == {"logs": False, "traces": False, "metrics": False}
+    assert drained == {"logs": "timed_out", "traces": "timed_out", "metrics": "timed_out"}
     assert 0.2 <= elapsed < 0.45, f"three stalled flushes took {elapsed:.2f}s"
 
 

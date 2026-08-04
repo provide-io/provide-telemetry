@@ -12,8 +12,11 @@ from __future__ import annotations
 
 __all__ = [
     "MAX_DURATION_SECONDS",
+    "MAX_EXPORT_RETRIES",
     "parse_duration_float",
+    "parse_env_retries",
     "resolve_otlp_endpoint",
+    "validate_retries_ceiling",
     "warn_on_endpoint_shadowing",
 ]
 
@@ -27,6 +30,34 @@ from provide.telemetry.exceptions import ConfigurationError
 # above this usually indicate a unit mistake (minutes/ms confused with seconds)
 # and silently tie up worker threads, so we reject them up front.
 MAX_DURATION_SECONDS = 3600.0
+
+# Upper bound on PROVIDE_EXPORTER_*_RETRIES. run_with_resilience makes
+# retries + 1 attempts per export call, so an unbounded value turns one bad
+# exporter into hours of blocking retries. TypeScript rejects the same values
+# (its MAX_EXPORT_ATTEMPTS is this + 1), so an env shared across a polyglot
+# deployment fails the same way in every language.
+MAX_EXPORT_RETRIES = 100
+
+
+def validate_retries_ceiling(value: int, field: str) -> None:
+    """Reject an exporter retries value above :data:`MAX_EXPORT_RETRIES`."""
+    if value > MAX_EXPORT_RETRIES:
+        raise ConfigurationError(f"{field} must be at most {MAX_EXPORT_RETRIES}, got {value}")
+
+
+def parse_env_retries(value: str, field: str) -> int:
+    """Parse an exporter retries env var, enforcing the shared ceiling.
+
+    Mirrors :func:`config._parse_env_int` but additionally rejects values
+    greater than :data:`MAX_EXPORT_RETRIES`, naming the env var so the operator
+    who set it can find it.
+    """
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise ConfigurationError(f"invalid integer for {field}: {value!r}") from None
+    validate_retries_ceiling(parsed, field)
+    return parsed
 
 
 def parse_duration_float(value: str, field: str) -> float:

@@ -73,6 +73,31 @@ async def test_exception_event_name_follows_the_scope_type(scope_type: str, expe
     assert event.startswith(expected_prefix)
 
 
+async def test_exception_path_survives_an_app_that_mutated_the_scope() -> None:
+    """The ASGI scope is a plain mutable dict the app is free to alter.
+
+    An app that popped "type" and then raised must still get its own exception
+    re-raised and reported — a KeyError from the telemetry middleware here would
+    bury the real failure under ours and drop the unhandled-exception record.
+    """
+
+    async def _mutating_boom_app(scope: Any, receive: Any, send: Any) -> None:
+        del scope["type"]
+        raise RuntimeError("handler exploded")
+
+    mw = TelemetryMiddleware(_mutating_boom_app, auto_slo=True)
+    logger = _RecordingLogger()
+    mw._logger = logger  # type: ignore[assignment]
+
+    await _run(mw, {"type": "http", "path": "/x", "headers": []})
+
+    assert logger.errors, "the unhandled exception must still be reported"
+    event, kw = logger.errors[0]
+    # With "type" gone the event name falls back to the "http" default.
+    assert event == "http.request.unhandled_exception"
+    assert kw["exc_name"] == "RuntimeError"
+
+
 async def test_duration_is_reported_in_milliseconds(monkeypatch: Any) -> None:
     """1.0s elapsed must record exactly 1000.0ms — 1001.0 is a real drift."""
     recorded: list[float] = []

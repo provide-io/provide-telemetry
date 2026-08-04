@@ -8,15 +8,18 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 
 import pytest
 
 from provide.telemetry._config_validation import (
     MAX_DURATION_SECONDS,
+    MAX_EXPORT_RETRIES,
     parse_duration_float,
+    parse_env_retries,
     warn_on_endpoint_shadowing,
 )
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import ExporterPolicyConfig, TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError
 
 # ---------------------------------------------------------------------------
@@ -136,3 +139,64 @@ class TestFromEnvIntegration:
     def test_from_env_accepts_boundary_timeout(self) -> None:
         cfg = TelemetryConfig.from_env({"PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS": str(MAX_DURATION_SECONDS)})
         assert cfg.exporter.logs_timeout_seconds == MAX_DURATION_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# exporter retries ceiling
+# ---------------------------------------------------------------------------
+
+
+class TestExportRetriesCeiling:
+    """PROVIDE_EXPORTER_*_RETRIES shares TypeScript's ceiling (100 retries).
+
+    An env shared across a polyglot deployment must fail the same way in every
+    language — TypeScript already rejects a value above MAX_EXPORT_ATTEMPTS - 1,
+    so Python must too, with the env var named in the error.
+    """
+
+    def test_ceiling_is_the_typescript_parity_value(self) -> None:
+        assert MAX_EXPORT_RETRIES == 100
+
+    def test_boundary_value_parses(self) -> None:
+        assert parse_env_retries(str(MAX_EXPORT_RETRIES), "x") == MAX_EXPORT_RETRIES
+
+    def test_above_ceiling_rejected_with_the_env_var_named(self) -> None:
+        with pytest.raises(ConfigurationError, match="PROVIDE_TEST must be at most 100, got 101"):
+            parse_env_retries(str(MAX_EXPORT_RETRIES + 1), "PROVIDE_TEST")
+
+    def test_garbage_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match="invalid integer for PROVIDE_TEST"):
+            parse_env_retries("not-a-number", "PROVIDE_TEST")
+
+    @pytest.mark.parametrize(
+        "var",
+        [
+            "PROVIDE_EXPORTER_LOGS_RETRIES",
+            "PROVIDE_EXPORTER_TRACES_RETRIES",
+            "PROVIDE_EXPORTER_METRICS_RETRIES",
+        ],
+    )
+    def test_from_env_rejects_each_signal_above_the_ceiling(self, var: str) -> None:
+        with pytest.raises(ConfigurationError, match=f"{var} must be at most 100, got 150"):
+            TelemetryConfig.from_env({var: "150"})
+
+    def test_from_env_accepts_the_boundary(self) -> None:
+        cfg = TelemetryConfig.from_env({"PROVIDE_EXPORTER_LOGS_RETRIES": str(MAX_EXPORT_RETRIES)})
+        assert cfg.exporter.logs_retries == MAX_EXPORT_RETRIES
+
+    @pytest.mark.parametrize(
+        ("field", "make"),
+        [
+            ("logs_retries", lambda n: ExporterPolicyConfig(logs_retries=n)),
+            ("traces_retries", lambda n: ExporterPolicyConfig(traces_retries=n)),
+            ("metrics_retries", lambda n: ExporterPolicyConfig(metrics_retries=n)),
+        ],
+    )
+    def test_explicit_config_is_held_to_the_same_ceiling(
+        self, field: str, make: Callable[[int], ExporterPolicyConfig]
+    ) -> None:
+        """update_runtime_config takes ExporterPolicyConfig directly — the env
+        parser never sees it, so the dataclass must enforce the ceiling itself."""
+        assert make(MAX_EXPORT_RETRIES).__class__ is ExporterPolicyConfig
+        with pytest.raises(ConfigurationError, match=f"{field} must be at most 100, got 101"):
+            make(MAX_EXPORT_RETRIES + 1)

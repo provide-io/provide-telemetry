@@ -30,6 +30,7 @@ from typing import TypeVar
 # Re-exported so `provide.telemetry.resilience.bounded_provider_*` stays the
 # public spelling — the deadline machinery lives in _provider_drain alongside
 # the per-signal drains it serves.
+from provide.telemetry._config_validation import MAX_EXPORT_RETRIES
 from provide.telemetry._provider_drain import bounded_provider_flush, bounded_provider_shutdown
 from provide.telemetry.health import (
     increment_async_blocking_risk,
@@ -59,6 +60,12 @@ class ExporterPolicy:
     fail_open: bool = True
     allow_blocking_in_event_loop: bool = False
 
+
+# Ceiling on export attempts per call (1 first try + MAX_EXPORT_RETRIES
+# retries), matching TypeScript's MAX_EXPORT_ATTEMPTS. Config validation
+# rejects an out-of-range retries value up front; this clamp covers
+# set_exporter_policy callers, which bypass config validation entirely.
+MAX_EXPORT_ATTEMPTS = MAX_EXPORT_RETRIES + 1
 
 _CIRCUIT_BREAKER_THRESHOLD = 3  # consecutive timeouts before tripping
 _CIRCUIT_BASE_COOLDOWN = 30.0  # seconds before allowing a half-open probe
@@ -176,7 +183,7 @@ def _record_attempt_failure(sig: str, *, is_timeout: bool) -> None:
 def run_with_resilience(signal: Signal, operation: Callable[[], T]) -> T | None:
     sig = _validate_signal(signal)
     policy = get_exporter_policy(sig)
-    attempts = max(1, policy.retries + 1)
+    attempts = min(max(1, policy.retries + 1), MAX_EXPORT_ATTEMPTS)
     backoff_seconds = policy.backoff_seconds
     timeout_seconds = max(0.0, policy.timeout_seconds)
     # Circuit breaker: skip work if the pool is likely saturated.

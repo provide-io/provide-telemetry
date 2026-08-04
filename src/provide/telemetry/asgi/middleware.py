@@ -75,10 +75,10 @@ class TelemetryMiddleware:
             await self.app(scope, receive, _wrapped_send if self.auto_slo else send)
         except Exception as exc:
             if self.auto_slo and self._logger is not None:
-                # __call__ returns early for any scope whose type is not
-                # "http"/"websocket", so the key is always present here — a
-                # default would be dead code.
-                scope_type = str(scope["type"])
+                # The entry guard checked "type" at request start, but the ASGI
+                # scope is a mutable dict the app can alter before raising — a
+                # KeyError here would bury the app's real exception under ours.
+                scope_type = str(scope.get("type", "http"))
                 self._logger.error(
                     event_name(scope_type, "request", "unhandled_exception"),
                     exc_info=True,

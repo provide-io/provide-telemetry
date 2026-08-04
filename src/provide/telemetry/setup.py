@@ -19,6 +19,7 @@ import threading
 import warnings
 from collections.abc import Callable
 
+from provide.telemetry._runtime_types import SignalDrainOutcome
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from provide.telemetry.logger.core import configure_logging, shutdown_logging
@@ -135,18 +136,22 @@ def _reset_all_for_tests() -> None:
     _reset_runtime()
 
 
-def _drain_signal(signal: str, drain: Callable[[float], bool], deadline: float) -> bool:
-    """Run one signal's drain, reporting a raised exporter error as a failed drain.
+def _drain_signal(signal: str, drain: Callable[[float], bool], deadline: float) -> SignalDrainOutcome:
+    """Run one signal's drain, distinguishing a raised error from a missed deadline.
 
     ``bounded_provider_flush`` re-raises what ``force_flush`` raised — the right
-    contract for the primitive, the wrong one for a bool-returning public API
-    called at a request boundary.
+    contract for the primitive, the wrong one for a public API called at a
+    request boundary, so the exception is absorbed here. It is reported as
+    ``"failed"``, not ``"timed_out"``: an exporter that raised in milliseconds
+    (bad auth header, TLS failure) never timed anything out, and a caller
+    alerting on the distinction must not see the two collapsed.
     """
     try:
-        return drain(deadline)
+        drained = drain(deadline)
     except Exception as exc:
         _logger.warning("telemetry.flush.signal_failed", extra={"signal": signal, "error": str(exc)})
-        return False
+        return "failed"
+    return "flushed" if drained else "timed_out"
 
 
 def flush_telemetry(timeout_seconds: float | None = None) -> bool:
@@ -169,19 +174,20 @@ def flush_telemetry(timeout_seconds: float | None = None) -> bool:
 
     Use :func:`flush_signals` when you need to know *which* signal failed.
     """
-    return all(flush_signals(timeout_seconds).values())
+    return all(outcome == "flushed" for outcome in flush_signals(timeout_seconds).values())
 
 
-def flush_signals(timeout_seconds: float | None = None) -> dict[str, bool]:
+def flush_signals(timeout_seconds: float | None = None) -> dict[str, SignalDrainOutcome]:
     """Force-flush installed providers, reporting the outcome per signal.
 
     The per-signal form of :func:`flush_telemetry`. The signals drain
     independently against three potentially different endpoints, so one
     unreachable collector says nothing about the other two — collapsing them to
     a single bool makes a caller re-emit or alert on records that were
-    delivered. Keys are ``"logs"``, ``"traces"`` and ``"metrics"``; a signal
-    whose provider we never installed counts as nothing to flush and reports
-    True.
+    delivered. Keys are ``"logs"``, ``"traces"`` and ``"metrics"``; each value
+    is ``"flushed"`` (drained in time — including a signal with no provider of
+    ours, which has nothing to flush), ``"timed_out"`` (abandoned at the
+    deadline) or ``"failed"`` (the flush raised).
 
     *timeout_seconds* bounds the call as a whole, not each signal in turn: the
     three drains run concurrently, so one unreachable collector cannot spend the
@@ -201,7 +207,7 @@ def flush_signals(timeout_seconds: float | None = None) -> dict[str, bool]:
     # endpoint deny traces and metrics theirs, and an exception escaping here
     # would break the documented contract inside a caller's request handler —
     # _drain_signal absorbs the latter.
-    drained: dict[str, bool] = {}
+    drained: dict[str, SignalDrainOutcome] = {}
 
     def _record(signal: str, drain: Callable[[float], bool]) -> Callable[[], None]:
         def _run() -> None:

@@ -50,9 +50,9 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
     def fake_shutdown(timeout_seconds: float | None = None) -> None:
         got.append(("shutdown", timeout_seconds))
 
-    def fake_flush(timeout_seconds: float | None = None) -> dict[str, bool]:
+    def fake_flush(timeout_seconds: float | None = None) -> dict[str, str]:
         got.append(("flush", timeout_seconds))
-        return {"logs": True, "traces": True, "metrics": True}
+        return {"logs": "flushed", "traces": "flushed", "metrics": "flushed"}
 
     monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", fake_setup)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", fake_shutdown)
@@ -80,6 +80,12 @@ def test_runtime_instance_delegates_core_calls(monkeypatch: Any) -> None:
         setup_error=None,
     )
     monkeypatch.setattr("provide.telemetry.runtime.get_runtime_status", lambda: status)
+    # flush() reads provider presence directly (never through config) — mirror
+    # the providers dict the status above reports.
+    monkeypatch.setattr(
+        "provide.telemetry._provider_drain.installed_signals",
+        lambda: {"logs": True, "traces": False, "metrics": True},
+    )
 
     cfg = TelemetryConfig(service_name="configured")
     assert runtime.start(cfg) == TelemetryConfig(service_name="runtime-test")

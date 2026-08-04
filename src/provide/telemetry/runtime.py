@@ -56,6 +56,7 @@ from provide.telemetry._runtime_types import (
     ReconfigureResult,
     RuntimeState,
     RuntimeStatus,
+    SignalDrainOutcome,
     SignalFlushResult,
 )
 from provide.telemetry.backpressure import QueuePolicy, set_queue_policy
@@ -103,10 +104,15 @@ class TelemetryRuntime:
         self._state = RuntimeState.STOPPED
 
     def flush(self, timeout: float | None = None) -> FlushResult:
-        from provide.telemetry._provider_drain import owned_signals
+        from provide.telemetry._provider_drain import installed_signals, owned_signals
         from provide.telemetry.setup import flush_signals
 
-        installed = get_runtime_status().providers
+        # Not get_runtime_status(): that reads the runtime config, which with no
+        # active config falls back to TelemetryConfig.from_env() and raises on a
+        # malformed environment. flush() is a drain path — a SIGTERM handler in
+        # a process with a mis-set env var must still get its records out — so
+        # it asks the providers directly and never touches config.
+        installed = installed_signals()
         owned = owned_signals()
         # Per signal, not one aggregate: the three drain independently against
         # three potentially different endpoints, so an unreachable logs
@@ -149,7 +155,7 @@ runtime_status = RuntimeStatus
 telemetry_runtime = TelemetryRuntime
 
 
-def _signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalFlushResult:
+def _signal_flush_result(installed: bool, owned: bool, outcome: SignalDrainOutcome) -> SignalFlushResult:
     """Per-signal flush outcome.
 
     A signal with no provider has nothing to drain. A signal whose provider a
@@ -158,12 +164,20 @@ def _signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalF
     helpers leave it alone. Calling that ``flushed`` would tell a caller its
     spans are out when they are still in the host's batch processor, which is
     exactly what a serverless handler flushing before a freeze is asking about.
+
+    *outcome* is a :data:`~provide.telemetry._runtime_types.SignalDrainOutcome`:
+    a drain that raised maps to ``failed``, one abandoned at the deadline to
+    ``timed_out`` — the same split Go's facade reports.
     """
     if not installed:
         return SignalFlushResult(not_installed=True)
     if not owned:
         return SignalFlushResult(not_owned=True)
-    return SignalFlushResult(flushed=drained, timed_out=not drained)
+    return SignalFlushResult(
+        flushed=outcome == "flushed",
+        timed_out=outcome == "timed_out",
+        failed=outcome == "failed",
+    )
 
 
 _lock = threading.Lock()
@@ -416,24 +430,13 @@ def get_runtime_config() -> TelemetryConfig:
 def get_runtime_status() -> RuntimeStatus:
     """Return runtime/provider status using the shared cross-language shape."""
     from provide.telemetry import setup as setup_mod
+    from provide.telemetry._provider_drain import installed_signals
     from provide.telemetry.health import get_health_snapshot
-    from provide.telemetry.logger import core as logger_core
-    from provide.telemetry.metrics import provider as metrics_provider
-    from provide.telemetry.tracing import provider as tracing_provider
 
     cfg = get_runtime_config()
     with setup_mod._lock:
         setup_done = setup_mod._setup_done
-    # traces and metrics report what is in play, not what we installed: a host
-    # application's own provider owns the OTel global, and get_tracer() /
-    # get_meter() resolve it, so reporting it as fallback would be a lie. Logs
-    # stays install-scoped — our records reach OTel through the handler *we*
-    # attach, so a foreign logger provider is genuinely not in our path.
-    providers = {
-        "logs": bool(logger_core._has_real_otel_log_provider()),
-        "traces": bool(tracing_provider._has_effective_tracing_provider()),
-        "metrics": bool(metrics_provider._has_effective_meter_provider()),
-    }
+    providers = installed_signals()
     return RuntimeStatus(
         setup_done=setup_done,
         signals={

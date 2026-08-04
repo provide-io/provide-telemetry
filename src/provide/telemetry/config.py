@@ -30,7 +30,9 @@ from dataclasses import dataclass, field
 from urllib.parse import unquote
 
 from provide.telemetry._config_validation import parse_duration_float as _parse_duration_float
+from provide.telemetry._config_validation import parse_env_retries as _parse_env_retries
 from provide.telemetry._config_validation import resolve_otlp_endpoint as _resolve_otlp_endpoint
+from provide.telemetry._config_validation import validate_retries_ceiling as _validate_retries_ceiling
 from provide.telemetry._config_validation import warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing
 from provide.telemetry._masking import _mask_endpoint_url as _mask_endpoint_url
 from provide.telemetry._masking import _mask_header_value as _mask_header_value
@@ -154,6 +156,11 @@ class ExporterPolicyConfig:
     logs_allow_blocking_in_event_loop: bool = False
     traces_allow_blocking_in_event_loop: bool = False
     metrics_allow_blocking_in_event_loop: bool = False
+
+    def __post_init__(self) -> None:
+        _validate_retries_ceiling(self.logs_retries, "logs_retries")
+        _validate_retries_ceiling(self.traces_retries, "traces_retries")
+        _validate_retries_ceiling(self.metrics_retries, "metrics_retries")
 
 
 @dataclass(slots=True)
@@ -304,13 +311,13 @@ class TelemetryConfig:
                 ),
             ),
             exporter=ExporterPolicyConfig(
-                logs_retries=_parse_env_int(
+                logs_retries=_parse_env_retries(
                     data.get("PROVIDE_EXPORTER_LOGS_RETRIES", "0"), "PROVIDE_EXPORTER_LOGS_RETRIES"
                 ),
-                traces_retries=_parse_env_int(
+                traces_retries=_parse_env_retries(
                     data.get("PROVIDE_EXPORTER_TRACES_RETRIES", "0"), "PROVIDE_EXPORTER_TRACES_RETRIES"
                 ),
-                metrics_retries=_parse_env_int(
+                metrics_retries=_parse_env_retries(
                     data.get("PROVIDE_EXPORTER_METRICS_RETRIES", "0"), "PROVIDE_EXPORTER_METRICS_RETRIES"
                 ),
                 logs_backoff_seconds=_parse_duration_float(
