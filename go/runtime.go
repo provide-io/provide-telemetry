@@ -117,6 +117,16 @@ func ReloadRuntimeFromEnv() error {
 	// Warn on cold-field drift.
 	_warnColdFieldDrift(cfg)
 
+	// The logging overrides below carry the OTLP fields baked into an installed
+	// log exporter. Applying a drifted endpoint would leave records exporting to
+	// the old collector while GetRuntimeConfig reported the new one — so with a
+	// live log provider this is an error, not a warning, matching Python's
+	// reload path. Identity/enable drift above stays a warning: those fields are
+	// never applied by this function.
+	if _providerStatusLocked().Logs && _loggerFieldsChanged(_runtimeCfg, cfg) {
+		return _providerConfigError()
+	}
+
 	overrides := runtimeOverridesFromConfig(cfg)
 	next := cloneTelemetryConfig(_runtimeCfg)
 	applyRuntimeOverrides(next, overrides)
@@ -127,7 +137,8 @@ func ReloadRuntimeFromEnv() error {
 }
 
 // rejectProviderChangingFields reports an error when cfg's provider-changing
-// fields differ from the live runtime config.
+// fields differ from the live runtime config while a live provider is
+// installed.
 //
 // These are the fields baked into a provider at install time: service identity
 // (which becomes the Resource), the per-signal OTLP endpoints and headers, and
@@ -136,20 +147,19 @@ func ReloadRuntimeFromEnv() error {
 // produces a config that describes an exporter nothing is using — and, worse,
 // makes the next ReconfigureTelemetry compare new-against-new and never report
 // that a restart is required.
+//
+// The liveness gate is the same one ReconfigureTelemetry uses: with no live
+// provider there is nothing an exporter has baked in, so a differing field is
+// not an error — the two facade methods must not disagree on the same input.
 func rejectProviderChangingFields(cfg *TelemetryConfig) error {
 	_setupMu.Lock()
+	defer _setupMu.Unlock()
 	current := _runtimeCfg
-	_setupMu.Unlock()
 	if current == nil {
 		return nil
 	}
-	if _identityFieldsChanged(current, cfg) ||
-		_tracerFieldsChanged(current, cfg) ||
-		_meterFieldsChanged(current, cfg) ||
-		_loggerFieldsChanged(current, cfg) ||
-		current.Tracing.Enabled != cfg.Tracing.Enabled ||
-		current.Metrics.Enabled != cfg.Metrics.Enabled ||
-		current.Logging.OTLPEnabled != cfg.Logging.OTLPEnabled {
+	providers := _providerStatusLocked()
+	if _providerConfigChanged(current, cfg, providers.Traces, providers.Metrics, providers.Logs) {
 		return _providerConfigError()
 	}
 	return nil
@@ -351,6 +361,7 @@ func _meterFieldsChanged(current, target *TelemetryConfig) bool {
 
 func _loggerFieldsChanged(current, target *TelemetryConfig) bool {
 	return current.Logging.OTLPEndpoint != target.Logging.OTLPEndpoint ||
+		current.Logging.OTLPEnabled != target.Logging.OTLPEnabled ||
 		!maps.Equal(current.Logging.OTLPHeaders, target.Logging.OTLPHeaders)
 }
 
@@ -362,10 +373,20 @@ func _applyHotFields(current, fresh *TelemetryConfig) {
 	current.SLO = fresh.SLO
 	current.StrictSchema = fresh.StrictSchema
 	current.EventSchema = fresh.EventSchema
-	current.Logging.PIIMaxDepth = fresh.Logging.PIIMaxDepth
+	// Logging is hot except the fields baked into an installed log exporter:
+	// the OTLP endpoint, headers, and enable flag keep their live values.
+	// Everything else — level, format, renderer options — must apply, or
+	// Reconfigure validates a level change and then silently discards it while
+	// UpdateConfig on the same runtime applies it.
+	baked := current.Logging
+	current.Logging = fresh.Logging
+	current.Logging.OTLPEndpoint = baked.OTLPEndpoint
+	current.Logging.OTLPEnabled = baked.OTLPEnabled
+	current.Logging.OTLPHeaders = baked.OTLPHeaders
 	// Cloned, not aliased: `fresh` can be a caller-supplied config (WithConfig),
 	// and sharing these with the live runtime hands a caller the ability to
 	// mutate it concurrently with the emit path. See applyRuntimeOverrides.
 	current.EventSchema.RequiredKeys = append([]string(nil), fresh.EventSchema.RequiredKeys...)
 	current.Logging.ModuleLevels = maps.Clone(fresh.Logging.ModuleLevels)
+	current.Logging.PrettyFields = append([]string(nil), fresh.Logging.PrettyFields...)
 }

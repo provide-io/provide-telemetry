@@ -51,11 +51,12 @@ func TestUpdateConfig_DoesNotAliasCallerOwnedMaps(t *testing.T) {
 	}
 }
 
-// The doc says provider-changing fields are rejected. They have to actually be:
-// UpdateRuntimeConfig does not reinstall exporters, so accepting a new endpoint
-// leaves records going to the old collector while GetRuntimeConfig reports the
-// new one — and makes the next Reconfigure compare new-against-new and never
-// report that a restart is needed.
+// The doc says provider-changing fields are rejected while a live provider is
+// installed. They have to actually be: UpdateRuntimeConfig does not reinstall
+// exporters, so accepting a new endpoint leaves records going to the old
+// collector while GetRuntimeConfig reports the new one — and makes the next
+// Reconfigure compare new-against-new and never report that a restart is
+// needed.
 func TestUpdateConfig_RejectsProviderChangingFields(t *testing.T) {
 	base := DefaultTelemetryConfig()
 	base.ServiceName = "provider-fields"
@@ -78,13 +79,19 @@ func TestUpdateConfig_RejectsProviderChangingFields(t *testing.T) {
 			if _, err := SetupTelemetry(WithConfig(base)); err != nil {
 				t.Fatalf("setup: %v", err)
 			}
+			installFakeProviders(t, SignalStatus{Logs: true, Traces: true, Metrics: true})
 
 			target := cloneTelemetryConfig(base)
 			mutate(target)
 
 			rt := NewTelemetryRuntime(context.Background())
-			if _, err := rt.UpdateConfig(context.Background(), target); err == nil {
+			_, err := rt.UpdateConfig(context.Background(), target)
+			if err == nil {
 				t.Fatal("expected a provider-immutable error")
+			}
+			var immutable *ProviderImmutableError
+			if !errors.As(err, &immutable) {
+				t.Fatalf("expected ProviderImmutableError, got %T: %v", err, err)
 			}
 			// Nothing may have leaked into the live config either.
 			if live := GetRuntimeConfig(); live.ServiceName != base.ServiceName ||
@@ -129,6 +136,7 @@ func TestReconfigureTelemetry_ValidatesAnExplicitConfig(t *testing.T) {
 		"Inf traces rate":      func(cfg *TelemetryConfig) { cfg.Sampling.TracesRate = math.Inf(1) },
 		"negative queue size":  func(cfg *TelemetryConfig) { cfg.Backpressure.LogsMaxSize = -1 },
 		"negative retries":     func(cfg *TelemetryConfig) { cfg.Exporter.LogsRetries = -1 },
+		"retries above 100":    func(cfg *TelemetryConfig) { cfg.Exporter.TracesRetries = 101 },
 		"bad log level":        func(cfg *TelemetryConfig) { cfg.Logging.Level = "LOUD" },
 		"negative attr length": func(cfg *TelemetryConfig) { cfg.Security.MaxAttrValueLength = -1 },
 	}

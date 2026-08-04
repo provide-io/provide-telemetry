@@ -20,3 +20,9 @@ const (
 	_cbBaseCooldown = 30 * time.Second
 	_cbMaxCooldown  = 1024 * time.Second
 )
+
+// _maxExportAttempts caps the export retry loop (retries + the first try).
+// Matches TypeScript's MAX_EXPORT_ATTEMPTS, so an exporter retries value the
+// TS runtime rejects is rejected here too instead of booting one language and
+// failing another on the same environment.
+const _maxExportAttempts = 101

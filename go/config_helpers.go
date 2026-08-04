@@ -38,6 +38,21 @@ func validateNonNegative(v int, field string) error {
 	return nil
 }
 
+// validateRetries returns a ConfigurationError if v is negative or exceeds the
+// retry ceiling (_maxExportAttempts - 1). RunWithResilience clamps its attempt
+// count to _maxExportAttempts, so a larger value would be silently meaningless;
+// rejecting it here matches the TypeScript runtime, which fails setup on the
+// same environment value.
+func validateRetries(v int, field string) error {
+	if err := validateNonNegative(v, field); err != nil {
+		return err
+	}
+	if v > _maxExportAttempts-1 {
+		return NewConfigurationError(fmt.Sprintf("%s must be at most %d, got %d", field, _maxExportAttempts-1, v))
+	}
+	return nil
+}
+
 // validateNonNegativeFloat returns a ConfigurationError if v is negative.
 func validateNonNegativeFloat(v float64, field string) error {
 	if v < 0 {

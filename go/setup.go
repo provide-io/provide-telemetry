@@ -177,8 +177,8 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	return cloneTelemetryConfig(cfg), nil
 }
 
-// validateTelemetryConfig checks rates and log format/level on an in-memory
-// config (the env path validates as it parses).
+// validateTelemetryConfig checks rates, log format/level and exporter retries
+// on an in-memory config (the env path validates as it parses).
 func validateTelemetryConfig(cfg *TelemetryConfig) error {
 	if err := validateRate(cfg.Tracing.SampleRate, "Tracing.SampleRate"); err != nil {
 		return err
@@ -196,6 +196,15 @@ func validateTelemetryConfig(cfg *TelemetryConfig) error {
 		return err
 	}
 	if _, err := normalizeLevel(cfg.Logging.Level); err != nil {
+		return err
+	}
+	if err := validateRetries(cfg.Exporter.LogsRetries, "Exporter."+_fieldLogsRetries); err != nil {
+		return err
+	}
+	if err := validateRetries(cfg.Exporter.TracesRetries, "Exporter."+_fieldTracesRetries); err != nil {
+		return err
+	}
+	if err := validateRetries(cfg.Exporter.MetricsRetries, "Exporter."+_fieldMetricsRetries); err != nil {
 		return err
 	}
 	return nil

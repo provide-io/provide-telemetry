@@ -127,7 +127,7 @@ func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
 		_fieldMetricsRetries: policy.MetricsRetries,
 	}
 	for field, value := range ints {
-		if err := validateNonNegative(value, "RuntimeOverrides.Exporter."+field); err != nil {
+		if err := validateRetries(value, "RuntimeOverrides.Exporter."+field); err != nil {
 			return err
 		}
 	}

@@ -167,7 +167,10 @@ func GetCircuitState(signal string) CircuitState {
 func RunWithResilience(ctx context.Context, signal string, fn func(context.Context) error) error {
 	policy := GetExporterPolicy(signal)
 
-	attempts := max(1, policy.Retries+1)
+	// The upper clamp backstops policies set directly through SetExporterPolicy,
+	// which bypasses config validation; validated configs cap Retries at
+	// _maxExportAttempts-1 already.
+	attempts := min(max(1, policy.Retries+1), _maxExportAttempts)
 
 	if _timeoutEnabled(policy.TimeoutSeconds) {
 		if _checkCircuitBreaker(signal) {

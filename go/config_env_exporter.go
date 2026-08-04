@@ -87,7 +87,7 @@ func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegative(n, "PROVIDE_EXPORTER_LOGS_RETRIES"); err != nil {
+		if err := validateRetries(n, "PROVIDE_EXPORTER_LOGS_RETRIES"); err != nil {
 			return err
 		}
 		cfg.Exporter.LogsRetries = n
@@ -97,7 +97,7 @@ func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegative(n, "PROVIDE_EXPORTER_TRACES_RETRIES"); err != nil {
+		if err := validateRetries(n, "PROVIDE_EXPORTER_TRACES_RETRIES"); err != nil {
 			return err
 		}
 		cfg.Exporter.TracesRetries = n
@@ -107,7 +107,7 @@ func applyExporterRetries(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegative(n, "PROVIDE_EXPORTER_METRICS_RETRIES"); err != nil {
+		if err := validateRetries(n, "PROVIDE_EXPORTER_METRICS_RETRIES"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsRetries = n
