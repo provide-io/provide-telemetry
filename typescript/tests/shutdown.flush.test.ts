@@ -85,11 +85,46 @@ describe('flushTelemetry', () => {
     expect(fast.calls).toEqual(['forceFlush']);
   });
 
-  it('rejects when a forceFlush that arrived in time rejected', async () => {
+  it('resolves false and warns when a forceFlush that arrived in time rejected', async () => {
+    // A broken exporter is a result, not an exception: rethrowing here would
+    // blow away the other providers' outcomes for the caller.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken = provider(() => Promise.reject(new Error('exporter down')));
     _storeRegisteredProviders([broken.provider]);
 
-    await expect(flushTelemetry(50)).rejects.toThrow('exporter down');
+    await expect(flushTelemetry(50)).resolves.toBe(false);
+
+    expect(warn).toHaveBeenCalledWith(
+      '[provide/telemetry] provider forceFlush failed: Error: exporter down',
+    );
+  });
+
+  it('resolves false when forceFlush throws synchronously', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    _storeRegisteredProviders([
+      {
+        forceFlush: () => {
+          throw new Error('sync exporter break');
+        },
+      },
+    ]);
+
+    await expect(flushTelemetry(50)).resolves.toBe(false);
+
+    expect(warn).toHaveBeenCalledWith(
+      '[provide/telemetry] provider forceFlush failed: Error: sync exporter break',
+    );
+  });
+
+  it('still reports the healthy providers when one rejects', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const broken = provider(() => Promise.reject(new Error('exporter down')));
+    const fast = provider();
+    _storeRegisteredProviders([broken.provider, fast.provider]);
+
+    await expect(flushTelemetry(50)).resolves.toBe(false);
+
+    expect(fast.calls).toEqual(['forceFlush']);
   });
 
   it('defaults the deadline to the bounded-shutdown timeout', async () => {

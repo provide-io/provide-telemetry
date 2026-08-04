@@ -103,6 +103,11 @@ async function flushAndShutdownProvider(
   // that lands just inside the deadline be followed by a shutdown that gets the
   // whole deadline again, so a caller passing its remaining SIGTERM budget can
   // wait almost twice that long.
+  //
+  // A forceFlush rejection is deliberately treated as settled here, not
+  // rethrown: teardown must still run on a provider whose exporter is broken,
+  // or its queues and sockets leak. The flush-only paths go through
+  // flushProviderOutcome instead, which does report the failure.
   const remaining = deadlineRemaining(timeoutMs);
   // Skip-when-undefined paths use explicit `if` guards (not `?.()`) so a
   // Stryker mutation that drops the optional chain becomes a hard TypeError
@@ -135,24 +140,51 @@ async function flushAndShutdownProvider(
 }
 
 /**
- * Force-flush one provider, leaving it installed. Resolves to false when the
- * flush was abandoned at the deadline; rethrows a forceFlush rejection that
- * arrived in time, so a broken exporter is not silently reported as drained.
+ * Outcome of one provider's bounded drain: `flushed` when forceFlush resolved
+ * in time (or there was nothing to flush), `timedOut` when it was abandoned at
+ * the deadline, `failed` when it rejected (or threw) within it.
  */
-async function flushProvider(provider: ShutdownableProvider, timeoutMs: number): Promise<boolean> {
-  if (!provider.forceFlush) return true;
-  const flush = provider.forceFlush();
-  const flushed = await raceWithDeadline(flush, timeoutMs);
-  if (!flushed) {
+export type FlushOutcome = 'flushed' | 'timedOut' | 'failed';
+
+/**
+ * Force-flush one provider, leaving it installed, and report the outcome.
+ *
+ * Never rejects: a broken exporter is a result (`'failed'`), not an exception —
+ * one failing provider must not blow away the other signals' outcomes, and a
+ * caller draining before a freeze needs the per-signal answer more than a
+ * stack trace (Go maps the same condition to `Failed`, not an aborted call).
+ * Both the timeout and the failure are logged so neither is silent.
+ */
+async function flushProviderOutcome(
+  provider: ShutdownableProvider,
+  timeoutMs: number,
+): Promise<FlushOutcome> {
+  if (!provider.forceFlush) return 'flushed';
+  let flush: Promise<void>;
+  try {
+    flush = provider.forceFlush();
+  } catch (err: unknown) {
+    // A synchronously-throwing forceFlush is the same broken exporter as a
+    // rejecting one; without this catch it would reject this call instead.
+    console.warn(`[provide/telemetry] provider forceFlush failed: ${String(err)}`);
+    return 'failed';
+  }
+  const settled = await raceWithDeadline(flush, timeoutMs);
+  if (!settled) {
     console.warn(
       `[provide/telemetry] provider forceFlush exceeded ${timeoutMs}ms deadline; abandoning background flush`,
     );
-    return false;
+    return 'timedOut';
   }
   // raceWithDeadline maps a rejection to "settled"; re-await the already-settled
   // promise so the error surfaces instead of counting as a successful drain.
-  await flush;
-  return true;
+  try {
+    await flush;
+  } catch (err: unknown) {
+    console.warn(`[provide/telemetry] provider forceFlush failed: ${String(err)}`);
+    return 'failed';
+  }
+  return 'flushed';
 }
 
 /**
@@ -167,7 +199,9 @@ async function flushProvider(provider: ShutdownableProvider, timeoutMs: number):
  * `timeoutMs` defaults to the bounded-shutdown deadline
  * (`PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_MS`) and is applied per provider.
  * Resolves true when every provider flushed within the deadline, false when any
- * was abandoned; with nothing installed there is nothing to flush, so true.
+ * was abandoned or failed; with nothing installed there is nothing to flush, so
+ * true. Never rejects: an exporter error is a `false` result (and a logged
+ * warning), because the other providers' drain outcome must survive it.
  *
  * A provider a host application installed on the OTel globals is not ours to
  * drain and is left alone.
@@ -179,8 +213,8 @@ export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
   const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
   // Map eagerly so every provider's flush is in flight before the first await:
   // one slow exporter must not delay the others' drain.
-  const results = await Promise.all(providers.map((p) => flushProvider(p, deadlineMs)));
-  return results.every((ok) => ok);
+  const results = await Promise.all(providers.map((p) => flushProviderOutcome(p, deadlineMs)));
+  return results.every((outcome) => outcome === 'flushed');
 }
 
 /**
@@ -192,18 +226,27 @@ export async function flushTelemetry(timeoutMs?: number): Promise<boolean> {
  * re-emit or alert on records that were already delivered.
  *
  * A signal absent from the returned record has no provider of ours behind it.
- * Providers registered without a signal tag are still drained, but cannot be
- * attributed, so they appear under no key.
+ * Providers registered without a signal tag are still drained under the same
+ * deadline, but cannot be attributed, so they appear under no key — their
+ * outcome surfaces only through the per-provider warnings.
  */
 export async function flushSignals(
   timeoutMs?: number,
-): Promise<Partial<Record<SignalName, boolean>>> {
+): Promise<Partial<Record<SignalName, FlushOutcome>>> {
   const bySignal = _getProvidersBySignal();
   const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
   const entries = Object.entries(bySignal) as [SignalName, ShutdownableProvider][];
-  // Start every flush before the first await, as flushTelemetry does.
-  const results = await Promise.all(entries.map(([, p]) => flushProvider(p, deadlineMs)));
-  const drained: Partial<Record<SignalName, boolean>> = {};
+  // Compared by identity: a provider is either tagged or not, and the untagged
+  // remainder must be drained exactly once — not skipped, not drained twice.
+  const tagged = new Set(entries.map(([, p]) => p));
+  const untagged = _getRegisteredProviders().filter((p) => !tagged.has(p));
+  // Start every flush — tagged and untagged — before the first await, as
+  // flushTelemetry does. Awaiting the untagged drains too is what makes the
+  // "still drained" promise above true by the time this call resolves.
+  const results = await Promise.all(
+    [...entries.map(([, p]) => p), ...untagged].map((p) => flushProviderOutcome(p, deadlineMs)),
+  );
+  const drained: Partial<Record<SignalName, FlushOutcome>> = {};
   for (const [index, [signal]] of entries.entries()) {
     drained[signal] = results[index];
   }

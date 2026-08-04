@@ -13,7 +13,8 @@ import {
   getConfig,
   setupTelemetry,
 } from './config.js';
-import { ConfigurationError, ProviderImmutableError } from './exceptions.js';
+import { ProviderImmutableError, TelemetryError } from './exceptions.js';
+import { validateRuntimeOverrides } from './runtime-validate.js';
 import { getHealthSnapshot } from './health.js';
 import { getLogger } from './logger.js';
 import { getMeter } from './metrics.js';
@@ -132,7 +133,10 @@ export class TelemetryRuntime {
    * against the OTel globals, so a host application's own SDK counts — is
    * `notOwned`: we do not drain it, and calling it `flushed` would say the
    * records are out when they are still in the host's queue. The rest carry
-   * their own drain result, not an aggregate of all three.
+   * their own drain result, not an aggregate of all three: `timedOut` for a
+   * drain abandoned at the deadline, `failed` for an exporter that errored
+   * within it. A provider registered without a signal tag is drained too, but
+   * cannot be attributed here — its outcome surfaces only as a logged warning.
    */
   async flush(timeoutMs?: number): Promise<FlushResult> {
     const { flushSignals } = await import('./shutdown.js');
@@ -149,7 +153,12 @@ export class TelemetryRuntime {
       if (!installed) return { ...base, notInstalled: true };
       const ours = drained[signal];
       if (ours === undefined) return { ...base, notOwned: true };
-      return { ...base, flushed: ours, timedOut: !ours };
+      return {
+        ...base,
+        flushed: ours === 'flushed',
+        timedOut: ours === 'timedOut',
+        failed: ours === 'failed',
+      };
     };
     return {
       logs: resultFor('logs', providers.logs),
@@ -261,10 +270,28 @@ export function getRuntimeConfig(): Readonly<TelemetryConfig> {
   return deepFreeze({ ...cfg });
 }
 
-/** Merge hot-reloadable overrides into the active config and re-apply policies. */
+/**
+ * Throw unless setupTelemetry has published a config that is still live.
+ *
+ * `_activeConfig` is null both before the first setup and after
+ * shutdownTelemetry, and updating in either state is an error — Go and Rust
+ * refuse it with this same message, and silently re-running setup here is what
+ * used to flip `setupDone` back to true with zero providers registered.
+ */
+function requireActiveConfig(): TelemetryConfig {
+  if (_activeConfig === null) {
+    throw new TelemetryError('telemetry not set up: call setupTelemetry first');
+  }
+  return _activeConfig;
+}
+
+/**
+ * Merge hot-reloadable overrides into the active config and re-apply policies.
+ * Throws when telemetry is not set up (never started, or already shut down).
+ */
 export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
+  const base = requireActiveConfig();
   validateRuntimeOverrides(overrides);
-  const base = _activeConfig ?? configFromEnv();
   const merged: TelemetryConfig = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) continue;
@@ -298,38 +325,6 @@ export function updateRuntimeConfig(overrides: RuntimeOverrides): void {
   }
 }
 
-function validateNonNegativeNumber(name: string, value: number | undefined): void {
-  if (value === undefined) return;
-  if (!Number.isFinite(value) || value < 0) {
-    // Stryker disable next-line StringLiteral: error message content
-    throw new ConfigurationError(`${name} must be >= 0, got ${String(value)}`);
-  }
-}
-
-/**
- * Check the override fields `setupTelemetry` does not.
- *
- * Rates, backpressure sizes, retry counts and the security/PII limits are all
- * re-checked by `_validateConfig` against the merged config a few lines below,
- * with the same bounds and the same message wording. Validating them here as
- * well duplicated the rule without changing any outcome: with the rejected
- * update now rolled back, disabling either copy left the other one throwing, so
- * neither was observable on its own.
- *
- * The backoff and timeout fields are genuinely only checked here — they are not
- * part of `_validateConfig` — so this is what remains.
- */
-/* Stryker disable StringLiteral: field names in validation calls are only used in error messages — mutating them does not change validation behavior */
-function validateRuntimeOverrides(overrides: RuntimeOverrides): void {
-  validateNonNegativeNumber('exporterLogsBackoffMs', overrides.exporterLogsBackoffMs);
-  validateNonNegativeNumber('exporterTracesBackoffMs', overrides.exporterTracesBackoffMs);
-  validateNonNegativeNumber('exporterMetricsBackoffMs', overrides.exporterMetricsBackoffMs);
-  validateNonNegativeNumber('exporterLogsTimeoutMs', overrides.exporterLogsTimeoutMs);
-  validateNonNegativeNumber('exporterTracesTimeoutMs', overrides.exporterTracesTimeoutMs);
-  validateNonNegativeNumber('exporterMetricsTimeoutMs', overrides.exporterMetricsTimeoutMs);
-}
-/* Stryker restore StringLiteral */
-
 const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'serviceName',
   'environment',
@@ -347,23 +342,24 @@ const _COLD_FIELDS: (keyof TelemetryConfig)[] = [
   'otlpMetricsHeaders',
 ];
 
-/** Reload config from env vars and apply only hot-reloadable fields. */
+/**
+ * Reload config from env vars and apply only hot-reloadable fields.
+ * Throws when telemetry is not set up, like Go's ReloadRuntimeFromEnv.
+ */
 export function reloadRuntimeFromEnv(): void {
+  const current = requireActiveConfig();
   const fresh = configFromEnv();
-  const current = _activeConfig;
-  if (current) {
-    const drifted = _COLD_FIELDS.filter(
-      (k) => JSON.stringify(current[k]) !== JSON.stringify(fresh[k]),
+  const drifted = _COLD_FIELDS.filter(
+    (k) => JSON.stringify(current[k]) !== JSON.stringify(fresh[k]),
+  );
+  if (drifted.length > 0) {
+    /* Stryker disable StringLiteral: warning message content */
+    console.warn(
+      '[provide-telemetry] runtime.cold_field_drift:',
+      drifted.join(', '),
+      '— restart required to apply',
     );
-    if (drifted.length > 0) {
-      /* Stryker disable StringLiteral: warning message content */
-      console.warn(
-        '[provide-telemetry] runtime.cold_field_drift:',
-        drifted.join(', '),
-        '— restart required to apply',
-      );
-      /* Stryker restore StringLiteral */
-    }
+    /* Stryker restore StringLiteral */
   }
   // Apply only hot fields via overrides
   const overrides: RuntimeOverrides = {

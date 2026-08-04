@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { metrics, trace } from '@opentelemetry/api';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetConfig } from '../src/config.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
 import {
   _resetRuntimeForTests,
   _setLogsProviderInstalled,
@@ -47,6 +47,7 @@ describe('TelemetryRuntime facade', () => {
   });
 
   it('reconfigure delegates through the facade and returns active state', () => {
+    setupTelemetry({ serviceName: 'facade-update' });
     const runtime = new TelemetryRuntime();
     const result = runtime.updateConfig({ samplingLogsRate: 0.5 });
     expect(result.applied).toBe(true);
@@ -118,14 +119,56 @@ describe('TelemetryRuntime facade', () => {
   });
 
   it('settles in STOPPED after shutdown, with or without a timeout', async () => {
+    // updateConfig refuses to run after shutdown (see the test below), so the
+    // state is observed by re-running module-level setup — which satisfies the
+    // not-set-up guard without touching the instance's own lifecycle state.
     const withTimeout = new TelemetryRuntime();
     await withTimeout.shutdown(100);
-    expect(withTimeout.getRuntimeStatus).toBeDefined();
+    setupTelemetry({ serviceName: 'post-shutdown' });
     expect(withTimeout.updateConfig({}).state).toBe(RuntimeState.STOPPED);
 
     const withoutTimeout = new TelemetryRuntime();
     expect(await withoutTimeout.shutdown()).toBeUndefined();
+    setupTelemetry({ serviceName: 'post-shutdown' });
     expect(withoutTimeout.updateConfig({}).state).toBe(RuntimeState.STOPPED);
+  });
+
+  it('refuses updateConfig after shutdown instead of resurrecting setup', async () => {
+    // On this branch's parent, updateConfig after shutdownTelemetry silently
+    // republished the config and flipped setupDone back to true with zero
+    // providers registered — a health endpoint would report telemetry live
+    // while every record no-ops. Go and Rust refuse with this error instead.
+    const runtime = new TelemetryRuntime();
+    await runtime.start({ serviceName: 'resurrect' } as unknown as Parameters<
+      TelemetryRuntime['start']
+    >[0]);
+    await runtime.shutdown(100);
+
+    expect(() => runtime.updateConfig({ samplingLogsRate: 0.5 })).toThrow(
+      'telemetry not set up: call setupTelemetry first',
+    );
+    expect(runtime.getRuntimeStatus().setupDone).toBe(false);
+  });
+
+  it('reports failed for an installed provider whose exporter rejected in time', async () => {
+    // A rejection that beat the deadline is an exporter failure, not a timeout:
+    // the drain did not run out of budget, it was refused. Conflating the two
+    // (or throwing) loses the healthy signals' outcomes — Go maps this to
+    // Failed and TypeScript must agree.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    trace.setGlobalTracerProvider(liveTracerProvider() as never);
+    _storeRegisteredProviders(
+      [{ forceFlush: () => Promise.reject(new Error('down')) }],
+      ['traces'],
+    );
+
+    const result = await new TelemetryRuntime().flush(100);
+
+    expect(result.traces.failed).toBe(true);
+    expect(result.traces.timedOut).toBe(false);
+    expect(result.traces.flushed).toBe(false);
+    expect(result.traces.notOwned).toBe(false);
+    vi.restoreAllMocks();
   });
 
   it('reports timedOut only for an installed provider that missed the deadline', async () => {

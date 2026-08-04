@@ -5,6 +5,7 @@ import { metrics, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import type { RuntimeOverrides } from '../src/config.js';
+import { TelemetryError } from '../src/exceptions.js';
 import {
   _markProvidersRegistered,
   _resetRuntimeForTests,
@@ -157,6 +158,9 @@ describe('getRuntimeStatus', () => {
 });
 
 describe('updateRuntimeConfig', () => {
+  // Updating requires a live setup — Go and Rust refuse otherwise, and so do we.
+  beforeEach(() => setupTelemetry());
+
   it('merges overrides into active config', () => {
     updateRuntimeConfig({ samplingLogsRate: 0.5, samplingTracesRate: 0.3 });
     const cfg = getRuntimeConfig();
@@ -214,6 +218,8 @@ describe('updateRuntimeConfig', () => {
 });
 
 describe('RuntimeOverrides', () => {
+  beforeEach(() => setupTelemetry());
+
   it('accepts only hot-reloadable fields', () => {
     const overrides: RuntimeOverrides = {
       samplingLogsRate: 0.5,
@@ -247,6 +253,11 @@ describe('RuntimeOverrides', () => {
 });
 
 describe('reloadRuntimeFromEnv', () => {
+  // Reloading requires a live setup, like Go's ReloadRuntimeFromEnv. The plain
+  // env-derived setup keeps the cold fields identical to a fresh configFromEnv()
+  // so the drift tests below only see the drift they themselves introduce.
+  beforeEach(() => setupTelemetry());
+
   it('resets hot fields to env-derived config', () => {
     updateRuntimeConfig({ samplingLogsRate: 0.1 });
     reloadRuntimeFromEnv();
@@ -273,14 +284,6 @@ describe('reloadRuntimeFromEnv', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // Set up with defaults — reloading from env should produce same cold fields
     updateRuntimeConfig({ samplingLogsRate: 0.5 });
-    reloadRuntimeFromEnv();
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it('does not warn when no active config exists', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // No prior updateRuntimeConfig call, _activeConfig is null
     reloadRuntimeFromEnv();
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -443,5 +446,48 @@ describe('reloadRuntimeFromEnv', () => {
       '— restart required to apply',
     );
     warnSpy.mockRestore();
+  });
+});
+
+describe('not-set-up guard', () => {
+  // Go returns "telemetry not set up: call SetupTelemetry first" and Rust
+  // "…call setup_telemetry first" for the same states; the TypeScript wording
+  // names its own entry point. Asserted exactly so a mutated message cannot
+  // slip through as a generic error.
+  const MSG = 'telemetry not set up: call setupTelemetry first';
+
+  it('updateRuntimeConfig throws before any setup', () => {
+    expect(() => updateRuntimeConfig({ samplingLogsRate: 0.5 })).toThrow(MSG);
+  });
+
+  it('updateRuntimeConfig throws with a TelemetryError, not a plain Error', () => {
+    let thrown: unknown;
+    try {
+      updateRuntimeConfig({});
+    } catch (err: unknown) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(TelemetryError);
+  });
+
+  it('updateRuntimeConfig throws after shutdown and leaves setupDone false', async () => {
+    setupTelemetry({ serviceName: 'guard' });
+    const { shutdownTelemetry } = await import('../src/shutdown.js');
+    await shutdownTelemetry(50);
+
+    expect(() => updateRuntimeConfig({ samplingLogsRate: 0.5 })).toThrow(MSG);
+    expect(getRuntimeStatus().setupDone).toBe(false);
+  });
+
+  it('reloadRuntimeFromEnv throws before any setup', () => {
+    expect(() => reloadRuntimeFromEnv()).toThrow(MSG);
+  });
+
+  it('reloadRuntimeFromEnv throws after shutdown', async () => {
+    setupTelemetry({ serviceName: 'guard' });
+    const { shutdownTelemetry } = await import('../src/shutdown.js');
+    await shutdownTelemetry(50);
+
+    expect(() => reloadRuntimeFromEnv()).toThrow(MSG);
   });
 });
