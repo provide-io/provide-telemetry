@@ -7,6 +7,13 @@ namespace Provide.Telemetry;
 
 public static class Resilience
 {
+    /// <summary>
+    /// Hard ceiling on export attempts (1 initial + 100 retries), shared with the
+    /// Python/TypeScript/Go/Rust runtimes. C# has no retry loop of its own — the
+    /// OTel SDK exports — so the ceiling is enforced at config validation instead.
+    /// </summary>
+    public const int MaxExportAttempts = 101;
+
     private static readonly object Gate = new();
     private static readonly Dictionary<string, ExporterPolicy> Policies = new(StringComparer.Ordinal)
     {

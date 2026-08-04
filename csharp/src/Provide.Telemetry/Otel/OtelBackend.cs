@@ -261,14 +261,18 @@ internal static class OtelBackend
 
     public static FlushResult Flush(TimeSpan timeout, bool logs, bool traces, bool metrics)
     {
-        var result = new FlushResult
-        {
-            Logs = new SignalFlushResult { NotInstalled = !logs },
-            Traces = new SignalFlushResult { NotInstalled = !traces },
-            Metrics = new SignalFlushResult { NotInstalled = !metrics },
-        };
+        FlushResult result;
         lock (Gate)
         {
+            // A host application's provider is installed but not ours to drain:
+            // NotOwned, not NotInstalled — a caller flushing before a freeze must
+            // learn its records may still sit in the host's batch processor.
+            result = new FlushResult
+            {
+                Logs = UndrainedSignal(logs, _hostLogs),
+                Traces = UndrainedSignal(traces, _hostTraces),
+                Metrics = UndrainedSignal(metrics, _hostMetrics),
+            };
             var timeoutMs = (int)Math.Clamp(timeout.TotalMilliseconds, 1, int.MaxValue);
             if (traces && _tracerProvider is not null)
             {
@@ -304,6 +308,12 @@ internal static class OtelBackend
         }
         return result;
     }
+
+    private static SignalFlushResult UndrainedSignal(bool owned, bool host) => new()
+    {
+        NotInstalled = !owned && !host,
+        NotOwned = !owned && host,
+    };
 
     public static void Shutdown()
     {

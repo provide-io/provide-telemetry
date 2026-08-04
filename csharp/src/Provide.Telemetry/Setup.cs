@@ -36,6 +36,10 @@ public static class Setup
                 throw new ConfigurationError(ex.Message, ex);
             }
 
+            // The env path validated as it parsed; an explicit config has been
+            // through no parser, so nothing has range-checked it yet.
+            ValidateRetriesCeiling(cfg);
+
             Consent.LoadConsentFromEnv();
             ApplyRuntimePolicies(cfg);
             var otel = Otel.OtelBackend.TrySetup(cfg);
@@ -133,6 +137,13 @@ public static class Setup
     {
         lock (Gate)
         {
+            // Matching Go/Rust/TypeScript: updating config when telemetry was
+            // never started or has been shut down is refused rather than
+            // silently publishing a config nothing is using.
+            if (!_setupDone)
+            {
+                throw new TelemetryError("telemetry not set up: call SetupTelemetry first");
+            }
             var cfg = _runtimeCfg?.Clone() ?? SafeConfigFromEnv();
             if (overrides.LogLevel is not null) cfg.Logging.Level = overrides.LogLevel;
             if (overrides.LogFormat is not null) cfg.Logging.Format = overrides.LogFormat;
@@ -157,9 +168,13 @@ public static class Setup
     {
         lock (Gate)
         {
+            if (!_setupDone)
+            {
+                throw new TelemetryError("telemetry not set up: call SetupTelemetry first");
+            }
             var cfg = ConfigEnv.ConfigFromEnv();
-            // Reject provider-changing fields when already set up with providers.
-            if (_setupDone && _runtimeCfg is not null)
+            // Reject provider-changing fields when live providers have them baked in.
+            if (_runtimeCfg is not null)
             {
                 RejectProviderChanging(cfg, _runtimeCfg);
             }
@@ -175,6 +190,7 @@ public static class Setup
         {
             var previous = _runtimeCfg?.Clone();
             var cfg = config?.Clone() ?? ConfigEnv.ConfigFromEnv();
+            ValidateRetriesCeiling(cfg);
             if (_setupDone && previous is not null)
             {
                 RejectProviderChanging(cfg, previous);
@@ -305,19 +321,57 @@ public static class Setup
         Schema.SetStrictSchema(cfg.StrictSchema || cfg.EventSchema.StrictEventName);
     }
 
+    /// <summary>
+    /// Reject changes to fields a live provider has baked in. With no owned
+    /// provider installed (fallback mode) nothing has baked anything, so any
+    /// difference is applicable and no restart is required — matching the
+    /// liveness-gated guards in the Go, Rust and TypeScript runtimes. Endpoint
+    /// changes are gated per signal: a live tracer does not freeze the logging
+    /// endpoint.
+    /// </summary>
     private static void RejectProviderChanging(TelemetryConfig next, TelemetryConfig current)
     {
-        if (!string.Equals(next.ServiceName, current.ServiceName, StringComparison.Ordinal)
+        var anyLive = _providersLogs || _providersTraces || _providersMetrics;
+        if (!anyLive)
+        {
+            return;
+        }
+        var identityChanged =
+            !string.Equals(next.ServiceName, current.ServiceName, StringComparison.Ordinal)
             || !string.Equals(next.Environment, current.Environment, StringComparison.Ordinal)
             || !string.Equals(next.Version, current.Version, StringComparison.Ordinal)
-            || !string.Equals(next.Logging.OtlpEndpoint, current.Logging.OtlpEndpoint, StringComparison.Ordinal)
-            || !string.Equals(next.Tracing.OtlpEndpoint, current.Tracing.OtlpEndpoint, StringComparison.Ordinal)
-            || !string.Equals(next.Metrics.OtlpEndpoint, current.Metrics.OtlpEndpoint, StringComparison.Ordinal)
             || next.Tracing.Enabled != current.Tracing.Enabled
-            || next.Metrics.Enabled != current.Metrics.Enabled)
+            || next.Metrics.Enabled != current.Metrics.Enabled;
+        var logsChanged = _providersLogs
+            && !string.Equals(next.Logging.OtlpEndpoint, current.Logging.OtlpEndpoint, StringComparison.Ordinal);
+        var tracesChanged = _providersTraces
+            && !string.Equals(next.Tracing.OtlpEndpoint, current.Tracing.OtlpEndpoint, StringComparison.Ordinal);
+        var metricsChanged = _providersMetrics
+            && !string.Equals(next.Metrics.OtlpEndpoint, current.Metrics.OtlpEndpoint, StringComparison.Ordinal);
+        if (identityChanged || logsChanged || tracesChanged || metricsChanged)
         {
             throw new ProviderImmutableError(
                 "provider-changing fields cannot be updated via reconfigure; restart the process");
+        }
+    }
+
+    /// <summary>
+    /// Enforce the shared exporter-retries ceiling (100) on an in-memory config.
+    /// The env path enforces it as it parses with env-var-named messages; this
+    /// covers configs that arrived through no parser.
+    /// </summary>
+    private static void ValidateRetriesCeiling(TelemetryConfig cfg)
+    {
+        RejectRetriesAboveCeiling(cfg.Exporter.LogsRetries, "Exporter.LogsRetries");
+        RejectRetriesAboveCeiling(cfg.Exporter.TracesRetries, "Exporter.TracesRetries");
+        RejectRetriesAboveCeiling(cfg.Exporter.MetricsRetries, "Exporter.MetricsRetries");
+    }
+
+    private static void RejectRetriesAboveCeiling(int v, string field)
+    {
+        if (v > Resilience.MaxExportAttempts - 1)
+        {
+            throw new ConfigurationError($"{field} must be at most {Resilience.MaxExportAttempts - 1}, got {v}");
         }
     }
 

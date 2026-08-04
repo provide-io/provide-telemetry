@@ -61,11 +61,14 @@ public static class ConfigEnv
         cfg.Backpressure.TracesMaxSize = EnvInt("PROVIDE_BACKPRESSURE_TRACES_MAX_SIZE", cfg.Backpressure.TracesMaxSize);
         cfg.Backpressure.MetricsMaxSize = EnvInt("PROVIDE_BACKPRESSURE_METRICS_MAX_SIZE", cfg.Backpressure.MetricsMaxSize);
 
-        cfg.Exporter.LogsRetries = EnvInt("PROVIDE_EXPORTER_LOGS_RETRIES", cfg.Exporter.LogsRetries);
+        cfg.Exporter.LogsRetries = ValidateRetries(
+            EnvInt("PROVIDE_EXPORTER_LOGS_RETRIES", cfg.Exporter.LogsRetries), "PROVIDE_EXPORTER_LOGS_RETRIES");
         cfg.Exporter.LogsFailOpen = EnvBool("PROVIDE_EXPORTER_LOGS_FAIL_OPEN", cfg.Exporter.LogsFailOpen);
-        cfg.Exporter.TracesRetries = EnvInt("PROVIDE_EXPORTER_TRACES_RETRIES", cfg.Exporter.TracesRetries);
+        cfg.Exporter.TracesRetries = ValidateRetries(
+            EnvInt("PROVIDE_EXPORTER_TRACES_RETRIES", cfg.Exporter.TracesRetries), "PROVIDE_EXPORTER_TRACES_RETRIES");
         cfg.Exporter.TracesFailOpen = EnvBool("PROVIDE_EXPORTER_TRACES_FAIL_OPEN", cfg.Exporter.TracesFailOpen);
-        cfg.Exporter.MetricsRetries = EnvInt("PROVIDE_EXPORTER_METRICS_RETRIES", cfg.Exporter.MetricsRetries);
+        cfg.Exporter.MetricsRetries = ValidateRetries(
+            EnvInt("PROVIDE_EXPORTER_METRICS_RETRIES", cfg.Exporter.MetricsRetries), "PROVIDE_EXPORTER_METRICS_RETRIES");
         cfg.Exporter.MetricsFailOpen = EnvBool("PROVIDE_EXPORTER_METRICS_FAIL_OPEN", cfg.Exporter.MetricsFailOpen);
 
         cfg.Slo.EnableRed = EnvBool("PROVIDE_SLO_ENABLE_RED", cfg.Slo.EnableRed);
@@ -105,6 +108,20 @@ public static class ConfigEnv
                 ["otlp_headers"] = MaskHeaders(c.Metrics.OtlpHeaders),
             },
         };
+    }
+
+    /// <summary>
+    /// Retries above the shared attempt ceiling (100 = MaxExportAttempts - 1) are
+    /// rejected, matching the other four language runtimes, so an identical
+    /// PROVIDE_EXPORTER_*_RETRIES value behaves the same everywhere.
+    /// </summary>
+    private static int ValidateRetries(int v, string field)
+    {
+        if (v > Resilience.MaxExportAttempts - 1)
+        {
+            throw new ConfigurationError($"{field} must be at most {Resilience.MaxExportAttempts - 1}, got {v}");
+        }
+        return v;
     }
 
     private static double ValidateRate(double v, string field)
