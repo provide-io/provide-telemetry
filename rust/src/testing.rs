@@ -41,6 +41,10 @@ pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
 pub fn reset_telemetry_state() {
     let _ = shutdown_telemetry(None);
     _reset_otel_for_tests();
+    // Restore the stranded-drain-worker budget. Sound even with workers still
+    // pending: each decrements with a saturating subtraction on its way out.
+    #[cfg(feature = "otel")]
+    crate::otel::_reset_abandoned_workers_for_tests();
     _reset_health_for_tests();
     _reset_backpressure_for_tests();
     _reset_sampling_for_tests();

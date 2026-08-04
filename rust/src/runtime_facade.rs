@@ -84,6 +84,15 @@ pub type telemetry_runtime = TelemetryRuntime;
 #[allow(non_camel_case_types)]
 pub type runtime_status = RuntimeStatus;
 
+/// True when any owned signal's drain was abandoned at its deadline.
+///
+/// Only `timed_out` can be set for a signal we installed and drained, so this
+/// is exactly "an owned drain did not complete" — `not_installed` and
+/// `not_owned` signals have nothing of ours to lose and are not failures.
+fn any_owned_drain_abandoned(result: &FlushResult) -> bool {
+    result.logs.timed_out || result.traces.timed_out || result.metrics.timed_out
+}
+
 /// One signal's flush outcome, from what is installed, what we own, and whether
 /// it drained.
 ///
@@ -170,15 +179,26 @@ impl TelemetryRuntime {
     /// `not_installed`; one whose provider was adopted from the OTel globals is
     /// `not_owned` (the host's to drain, so we leave it alone); the rest carry
     /// the result of their own drain, not an aggregate of all three.
+    ///
+    /// Returns `Err` when any owned signal was abandoned at the deadline, so
+    /// `rt.flush(None)?` before a freeze fails loudly instead of freezing with
+    /// records still queued — the contract `setup::flush_telemetry` has always
+    /// had. Inspect the `FlushResult` on `Ok` for per-signal detail.
     pub fn flush(&self, timeout_seconds: Option<f64>) -> Result<FlushResult, TelemetryError> {
         let providers = crate::runtime::get_runtime_status().providers;
         let owned = crate::otel::owned_signals();
         let drained = crate::otel::flush_otel_by_signal(timeout_seconds);
-        Ok(FlushResult {
+        let result = FlushResult {
             logs: signal_flush_result(providers.logs, owned.logs, drained.logs),
             traces: signal_flush_result(providers.traces, owned.traces, drained.traces),
             metrics: signal_flush_result(providers.metrics, owned.metrics, drained.metrics),
-        })
+        };
+        if any_owned_drain_abandoned(&result) {
+            return Err(TelemetryError::new(
+                "telemetry flush exceeded its deadline; records may not have been exported",
+            ));
+        }
+        Ok(result)
     }
 
     pub fn get_logger(&self, name: Option<&str>) -> crate::logger::Logger {
@@ -242,7 +262,65 @@ impl TelemetryRuntime {
 
 #[cfg(test)]
 mod signal_flush_result_tests {
-    use super::{signal_flush_result, SignalFlushResult};
+    use super::{any_owned_drain_abandoned, signal_flush_result, FlushResult, SignalFlushResult};
+
+    fn drained() -> SignalFlushResult {
+        SignalFlushResult {
+            flushed: true,
+            ..SignalFlushResult::default()
+        }
+    }
+
+    fn abandoned() -> SignalFlushResult {
+        SignalFlushResult {
+            timed_out: true,
+            ..SignalFlushResult::default()
+        }
+    }
+
+    /// Each signal alone must trip the abandoned check — `rt.flush(None)?` is
+    /// how a serverless handler learns its records are still queued, and an
+    /// `&&` here would let a single stalled exporter pass silently.
+    #[test]
+    fn one_abandoned_signal_is_enough_to_report_an_abandoned_drain() {
+        let clean = FlushResult {
+            logs: drained(),
+            traces: drained(),
+            metrics: drained(),
+        };
+        assert!(!any_owned_drain_abandoned(&clean));
+
+        for signal in ["logs", "traces", "metrics"] {
+            let mut result = clean.clone();
+            match signal {
+                "logs" => result.logs = abandoned(),
+                "traces" => result.traces = abandoned(),
+                _ => result.metrics = abandoned(),
+            }
+            assert!(
+                any_owned_drain_abandoned(&result),
+                "an abandoned {signal} drain must be reported"
+            );
+        }
+    }
+
+    /// Signals that are not ours to drain are not failures: a host-owned
+    /// provider or an absent one must not turn flush into an error.
+    #[test]
+    fn not_installed_and_not_owned_signals_are_not_abandoned_drains() {
+        let result = FlushResult {
+            logs: SignalFlushResult {
+                not_installed: true,
+                ..SignalFlushResult::default()
+            },
+            traces: SignalFlushResult {
+                not_owned: true,
+                ..SignalFlushResult::default()
+            },
+            metrics: drained(),
+        };
+        assert!(!any_owned_drain_abandoned(&result));
+    }
 
     /// The full truth table. Each row is a distinct answer a caller acts on:
     /// nothing to drain, not ours to drain, drained, or missed the deadline.

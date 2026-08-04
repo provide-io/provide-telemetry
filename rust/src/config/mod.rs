@@ -14,6 +14,12 @@ mod validate;
 
 pub use redact::redact_config;
 
+/// Ceiling on exporter retries per signal, shared with the resilience layer's
+/// `MAX_EXPORT_ATTEMPTS` (retries + the first attempt). Mirrors TypeScript's
+/// `MAX_EXPORT_ATTEMPTS = 101`, so the same `PROVIDE_EXPORTER_*_RETRIES` value
+/// is accepted or rejected identically in every language.
+pub(crate) const MAX_EXPORTER_RETRIES: usize = 100;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RuntimeOverrides {

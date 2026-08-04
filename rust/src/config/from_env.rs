@@ -11,7 +11,7 @@ use std::env;
 
 use super::parse::{
     env_value, nonempty_env_value, parse_bool, parse_module_levels, parse_non_negative_float,
-    parse_otlp_headers, parse_rate, parse_usize,
+    parse_otlp_headers, parse_rate, parse_retries, parse_usize,
 };
 use super::{
     BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig, MetricsConfig,
@@ -184,17 +184,17 @@ impl TelemetryConfig {
                 )?,
             },
             exporter: ExporterPolicyConfig {
-                logs_retries: parse_usize(
+                logs_retries: parse_retries(
                     env_value(env, &["PROVIDE_EXPORTER_LOGS_RETRIES"]),
                     0,
                     "PROVIDE_EXPORTER_LOGS_RETRIES",
                 )?,
-                traces_retries: parse_usize(
+                traces_retries: parse_retries(
                     env_value(env, &["PROVIDE_EXPORTER_TRACES_RETRIES"]),
                     0,
                     "PROVIDE_EXPORTER_TRACES_RETRIES",
                 )?,
-                metrics_retries: parse_usize(
+                metrics_retries: parse_retries(
                     env_value(env, &["PROVIDE_EXPORTER_METRICS_RETRIES"]),
                     0,
                     "PROVIDE_EXPORTER_METRICS_RETRIES",

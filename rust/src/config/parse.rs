@@ -68,6 +68,26 @@ pub(super) fn parse_usize(
     }
 }
 
+/// `parse_usize` with the exporter-retries ceiling applied.
+///
+/// The resilience layer caps attempts at `MAX_EXPORTER_RETRIES + 1`, so a
+/// larger value would be silently meaningless; rejecting it keeps the config
+/// honest and matches TypeScript's `requireRetries`.
+pub(super) fn parse_retries(
+    raw: Option<&str>,
+    default: usize,
+    field: &str,
+) -> Result<usize, ConfigurationError> {
+    let parsed = parse_usize(raw, default, field)?;
+    if parsed > super::MAX_EXPORTER_RETRIES {
+        return Err(ConfigurationError::new(format!(
+            "{field} must be at most {}, got {parsed}",
+            super::MAX_EXPORTER_RETRIES
+        )));
+    }
+    Ok(parsed)
+}
+
 pub(super) fn parse_non_negative_float(
     raw: Option<&str>,
     default: f64,

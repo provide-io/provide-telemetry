@@ -272,6 +272,100 @@ mod tests {
         reset_telemetry_state();
     }
 
+    /// The facade contract restored by this branch: `rt.flush(None)?` must trip
+    /// when an owned drain is abandoned at the deadline. The old facade had it
+    /// via `flush_telemetry()?`; a body that always returns `Ok(FlushResult)`
+    /// lets a serverless handler freeze believing its records were exported.
+    #[test]
+    fn runtime_facade_flush_surfaces_an_abandoned_drain_as_an_error() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        let released = Arc::new(AtomicBool::new(false));
+        let provider = SdkTracerProvider::builder()
+            .with_span_processor(BlockingSpanProcessor {
+                released: Arc::clone(&released),
+            })
+            .build();
+        let mut span = provider
+            .tracer("provide-telemetry.flush-test")
+            .start("blocked.facade.flush");
+        span.end();
+        super::super::traces::install_tracer_provider_for_tests(provider);
+
+        let mut cfg = TelemetryConfig::default();
+        cfg.tracing.enabled = true;
+        cfg.exporter.logs_shutdown_timeout_seconds = 0.05;
+        crate::runtime::set_active_config(Some(cfg));
+
+        let runtime = crate::runtime::TelemetryRuntime::new();
+        let err = runtime
+            .flush(None)
+            .expect_err("an abandoned owned drain must surface as Err");
+        assert!(
+            err.message.contains("deadline"),
+            "unexpected message: {}",
+            err.message
+        );
+
+        released.store(true, Ordering::Release);
+        crate::runtime::set_active_config(None);
+        reset_telemetry_state();
+    }
+
+    /// `update_runtime_config` must reject a provider-baked logging change
+    /// while the log provider is live: endpoint/headers/protocol were baked
+    /// into the exporter at construction, so applying the override would leave
+    /// `get_runtime_config()` naming a collector nothing sends to. Hot logging
+    /// fields stay reloadable. Mirrors Python's ProviderImmutableError contract
+    /// and this crate's own `reload_runtime_from_env` freezing.
+    #[test]
+    fn a_provider_baked_logging_change_is_rejected_while_the_log_provider_is_live() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        crate::runtime::set_active_config(Some(TelemetryConfig::default()));
+        logs::install_logger_provider_for_tests(SdkLoggerProvider::builder().build());
+
+        let changed = crate::config::LoggingConfig {
+            otlp_endpoint: Some("http://collector.example:4318/v1/logs".to_string()),
+            ..crate::config::LoggingConfig::default()
+        };
+        let err = crate::runtime::update_runtime_config(crate::config::RuntimeOverrides {
+            logging: Some(changed),
+            ..Default::default()
+        })
+        .expect_err("a provider-baked logging change must be rejected");
+        assert!(
+            err.is_provider_immutable(),
+            "the caller must be able to branch on the kind: {}",
+            err.message
+        );
+        assert!(err.message.contains("log providers are installed"));
+        assert_eq!(
+            crate::runtime::get_runtime_config()
+                .expect("the active config must survive a rejected override")
+                .logging
+                .otlp_endpoint,
+            None,
+            "a rejected override must not be applied"
+        );
+
+        let hot = crate::config::LoggingConfig {
+            level: "DEBUG".to_string(),
+            ..crate::config::LoggingConfig::default()
+        };
+        let next = crate::runtime::update_runtime_config(crate::config::RuntimeOverrides {
+            logging: Some(hot),
+            ..Default::default()
+        })
+        .expect("hot logging fields must stay reloadable with a live provider");
+        assert_eq!(next.logging.level, "DEBUG");
+
+        crate::runtime::set_active_config(None);
+        reset_telemetry_state();
+    }
+
     // The installed path: each provider is cloned out of its slot rather than
     // taken, so the flush runs and the provider is still installed afterwards.
     // Without this the whole cloned-not-taken branch is unexercised.

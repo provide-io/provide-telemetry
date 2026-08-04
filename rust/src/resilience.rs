@@ -14,6 +14,19 @@ use crate::sampling::Signal;
 
 pub(crate) const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
 pub(crate) const CIRCUIT_COOLDOWN: Duration = Duration::from_secs(30);
+/// Attempts ceiling: the first attempt plus [`crate::config::MAX_EXPORTER_RETRIES`]
+/// retries. Mirrors TypeScript's `MAX_EXPORT_ATTEMPTS = 101`.
+pub(crate) const MAX_EXPORT_ATTEMPTS: u32 = crate::config::MAX_EXPORTER_RETRIES as u32 + 1;
+
+/// Attempts for a retry policy, capped at [`MAX_EXPORT_ATTEMPTS`].
+///
+/// Config validation already rejects retries above the ceiling, but a policy
+/// can also be set programmatically via `set_exporter_policy`, and
+/// `retries + 1` on an unchecked `u32::MAX` would overflow. Defense in the
+/// same place TypeScript applies it (`resilience.ts`).
+fn capped_attempts(retries: u32) -> u32 {
+    retries.saturating_add(1).min(MAX_EXPORT_ATTEMPTS)
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExporterPolicy {
@@ -177,7 +190,7 @@ where
         };
     }
 
-    let max_attempts = policy.retries + 1;
+    let max_attempts = capped_attempts(policy.retries);
     let mut last_err: Option<E> = None;
     for attempt in 0..max_attempts {
         wait_before_retry(signal, attempt, policy.backoff_seconds, has_tokio_reactor).await;

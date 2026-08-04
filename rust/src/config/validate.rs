@@ -35,6 +35,19 @@ fn require_non_negative(field: &str, value: f64) -> Result<(), ConfigurationErro
     Ok(())
 }
 
+/// Retries above the ceiling are silently meaningless — the resilience layer
+/// caps attempts at `MAX_EXPORTER_RETRIES + 1` — so reject them, exactly as
+/// `from_env` and TypeScript's `requireRetries` do.
+fn require_retries(field: &str, value: usize) -> Result<(), ConfigurationError> {
+    if value > super::MAX_EXPORTER_RETRIES {
+        return Err(ConfigurationError::new(format!(
+            "{field} must be at most {}, got {value}",
+            super::MAX_EXPORTER_RETRIES
+        )));
+    }
+    Ok(())
+}
+
 impl TelemetryConfig {
     /// Check every numeric field `from_env` would have rejected.
     ///
@@ -73,6 +86,15 @@ impl TelemetryConfig {
         require_non_negative(
             "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS",
             self.exporter.logs_shutdown_timeout_seconds,
+        )?;
+        require_retries("PROVIDE_EXPORTER_LOGS_RETRIES", self.exporter.logs_retries)?;
+        require_retries(
+            "PROVIDE_EXPORTER_TRACES_RETRIES",
+            self.exporter.traces_retries,
+        )?;
+        require_retries(
+            "PROVIDE_EXPORTER_METRICS_RETRIES",
+            self.exporter.metrics_retries,
         )?;
         Ok(())
     }

@@ -184,6 +184,10 @@ pub fn update_runtime_config(
     overrides: RuntimeOverrides,
 ) -> Result<TelemetryConfig, TelemetryError> {
     let logging_override = overrides.logging.clone();
+    // Read once, outside the config lock: the provider slot has its own lock
+    // and this avoids nesting the two.
+    #[cfg(feature = "otel")]
+    let log_provider_live = crate::otel::logs::logger_provider_installed();
     let next = {
         let mut guard = crate::_lock::rwlock_write(active_config());
         let current = match guard.as_ref().cloned() {
@@ -194,7 +198,25 @@ pub fn update_runtime_config(
                 ));
             }
         };
-        let next = apply_runtime_overrides(current, overrides);
+        let next = apply_runtime_overrides(current.clone(), overrides);
+        // The OTLP log exporter bakes endpoint/headers/protocol (and its
+        // timeout) in at construction. Applying a change here would leave
+        // `get_runtime_config()` naming a collector the installed exporter
+        // never sends to — reject instead, exactly as Python's
+        // `update_runtime_config` and this crate's `reconfigure_telemetry` do.
+        // `reload_runtime_from_env` freezes the same fields for the same reason.
+        #[cfg(feature = "otel")]
+        if log_provider_live && logging_provider_config_changed(&current, &next) {
+            return Err(TelemetryError::from(
+                crate::errors::ProviderImmutableError::new(
+                    "provider-changing logging reconfiguration is unsupported after \
+                     OpenTelemetry log providers are installed. Restart the process and \
+                     call setup_telemetry() with the new config.",
+                ),
+            ));
+        }
+        #[cfg(not(feature = "otel"))]
+        let _ = &current;
         *guard = Some(next.clone());
         next
     }; // write lock released here before calling apply_policies

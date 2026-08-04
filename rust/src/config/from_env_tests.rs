@@ -276,6 +276,37 @@ fn from_map_test_invalid_scalar_env_values_fail_on_their_own_fields() {
     }
 }
 
+/// The exporter-retries ceiling, at its exact boundary. Retries past what the
+/// resilience layer's attempt cap can honor would be silently meaningless, so
+/// the parse rejects them — the same contract as TypeScript's `requireRetries`
+/// and `TelemetryConfig::validate`.
+#[test]
+fn from_map_test_exporter_retries_are_capped_at_one_hundred() {
+    let at_cap = env_map(&[
+        ("PROVIDE_EXPORTER_LOGS_RETRIES", "100"),
+        ("PROVIDE_EXPORTER_TRACES_RETRIES", "100"),
+        ("PROVIDE_EXPORTER_METRICS_RETRIES", "100"),
+    ]);
+    let cfg = TelemetryConfig::from_map(&at_cap).expect("100 retries is the accepted maximum");
+    assert_eq!(cfg.exporter.logs_retries, 100);
+    assert_eq!(cfg.exporter.traces_retries, 100);
+    assert_eq!(cfg.exporter.metrics_retries, 100);
+
+    for key in [
+        "PROVIDE_EXPORTER_LOGS_RETRIES",
+        "PROVIDE_EXPORTER_TRACES_RETRIES",
+        "PROVIDE_EXPORTER_METRICS_RETRIES",
+    ] {
+        let over = env_map(&[(key, "101")]);
+        let err = TelemetryConfig::from_map(&over).expect_err("101 retries must be rejected");
+        assert!(
+            err.message.contains(key) && err.message.contains("must be at most 100, got 101"),
+            "unexpected message for {key}: {}",
+            err.message
+        );
+    }
+}
+
 #[test]
 fn from_map_test_invalid_otlp_header_env_values_are_skipped_without_failing_parse() {
     for key in [

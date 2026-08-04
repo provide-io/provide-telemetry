@@ -10,6 +10,8 @@ pub(crate) mod adopt;
 #[cfg(feature = "otel")]
 mod async_runtime;
 #[cfg(feature = "otel")]
+mod bounded;
+#[cfg(feature = "otel")]
 mod endpoint;
 #[cfg(feature = "otel")]
 mod flush;
@@ -50,133 +52,15 @@ pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError
     Ok(())
 }
 
-/// Ceiling applied to a drain deadline. Past this a "bounded" drain is not
-/// bounding anything, and it keeps the value well inside what
-/// `Duration::from_secs_f64` can represent.
+// The bounded drain/teardown primitives live in `bounded.rs`; the flush and
+// shutdown paths below and the per-signal modules reach them through these
+// re-exports.
 #[cfg(feature = "otel")]
-const MAX_DRAIN_SECONDS: f64 = 86_400.0;
-
-/// Turn a drain deadline in seconds into a `Duration`, or `None` when the value
-/// asks for no bound at all.
-///
-/// `Duration::from_secs_f64` panics on NaN, on ±inf, and on anything past
-/// `u64::MAX` seconds. These deadlines arrive from a public API argument
-/// (`flush_telemetry`/`shutdown_telemetry`) and from config, and the callers
-/// are shutdown paths — a panic there aborts the process mid-termination and
-/// loses every queued record, which is the opposite of what a caller passing a
-/// deadline is asking for.
-///
-/// The guard is written as "finite and positive" rather than as a negated
-/// comparison so NaN lands in the unbounded branch alongside `<= 0` ("caller
-/// opted out") and infinity ("drain without a deadline"): every comparison
-/// against NaN is false, so `x <= 0.0` alone would let it through. A finite
-/// value is clamped so the conversion cannot overflow.
+pub(crate) use bounded::_reset_abandoned_workers_for_tests;
+#[cfg(all(test, feature = "otel"))]
+pub(crate) use bounded::drain_deadline;
 #[cfg(feature = "otel")]
-pub(super) fn drain_deadline(timeout_secs: f64) -> Option<std::time::Duration> {
-    if !timeout_secs.is_finite() || timeout_secs <= 0.0 {
-        return None;
-    }
-    Some(std::time::Duration::from_secs_f64(
-        timeout_secs.min(MAX_DRAIN_SECONDS),
-    ))
-}
-
-/// The configured bounded-shutdown deadline, for callers that passed none.
-#[cfg(feature = "otel")]
-fn configured_drain_seconds() -> f64 {
-    crate::runtime::get_runtime_config()
-        .map(|cfg| cfg.exporter.logs_shutdown_timeout_seconds)
-        .unwrap_or(5.0)
-}
-
-/// Run `teardown` under the caller's deadline, on a detached worker when one
-/// applies.
-///
-/// Bounded for the same reason [`bounded_flush`] is: `SdkTracerProvider::shutdown`
-/// and its logger/meter counterparts take no timeout parameter and join their
-/// batch worker with the SDK's own 30s default. Without this the deadline a
-/// SIGTERM handler passed buys nothing — the pre-drain returns on time and the
-/// teardown right behind it blocks until the collector answers or the pod is
-/// SIGKILLed.
-///
-/// On expiry the worker is abandoned. The provider slot has already been taken
-/// by the caller, so the abandoned thread is draining a provider nothing can
-/// reach any more.
-#[cfg(feature = "otel")]
-pub(super) fn bounded_teardown<F>(signal: &str, timeout_seconds: Option<f64>, teardown: F)
-where
-    F: FnOnce() + Send + 'static,
-{
-    let timeout_secs = timeout_seconds.unwrap_or_else(configured_drain_seconds);
-
-    // No usable bound (<= 0, NaN, or infinity) — do the synchronous teardown.
-    // See `drain_deadline` for why NaN and infinity cannot be handed to
-    // `Duration::from_secs_f64`.
-    let Some(timeout) = drain_deadline(timeout_secs) else {
-        teardown();
-        return;
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let _worker = std::thread::Builder::new()
-        .name(format!("provide-{signal}-shutdown"))
-        .spawn(move || {
-            teardown();
-            let _ = tx.send(());
-        })
-        .expect("OS must allow spawning a shutdown worker thread");
-
-    if rx.recv_timeout(timeout).is_err() {
-        eprintln!(
-            "provide_telemetry: {signal} shutdown exceeded {:.3}s deadline; abandoning background flush",
-            timeout.as_secs_f64(),
-        );
-    }
-}
-
-/// Run `flush` under the bounded-shutdown deadline, on a detached worker when
-/// one applies. `flush` reports whether the export succeeded.
-///
-/// Returns false when the deadline expired and the worker was abandoned, and
-/// also when the drain finished but failed — both mean records may still be
-/// sitting in the exporter's queue, which is what the caller needs to know.
-#[cfg(feature = "otel")]
-fn bounded_flush<F>(signal: &str, timeout_seconds: Option<f64>, flush: F) -> bool
-where
-    F: FnOnce() -> bool + Send + 'static,
-{
-    // A caller-supplied deadline wins over the configured one, so a caller with
-    // a budget (a SIGTERM handler, a request boundary) can bound this call.
-    let timeout_secs = timeout_seconds.unwrap_or_else(configured_drain_seconds);
-
-    // No usable bound (<= 0, NaN, or infinity) — do the synchronous drain.
-    let Some(timeout) = drain_deadline(timeout_secs) else {
-        return flush();
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let _worker = std::thread::Builder::new()
-        .name(format!("provide-{signal}-flush"))
-        .spawn(move || {
-            let _ = tx.send(flush());
-        })
-        .expect("OS must allow spawning a flush worker thread");
-
-    match rx.recv_timeout(timeout) {
-        Ok(true) => true,
-        // The drain finished in time but the exporter rejected it: reporting Ok
-        // here would tell a caller its records are out when they are not.
-        Ok(false) => {
-            eprintln!("provide_telemetry: {signal} flush failed");
-            false
-        }
-        Err(_) => {
-            eprintln!(
-                "provide_telemetry: {signal} flush exceeded {:.3}s deadline; abandoning background flush",
-                timeout.as_secs_f64(),
-            );
-            false
-        }
-    }
-}
+pub(crate) use bounded::{bounded_flush, bounded_teardown};
 
 /// Force-flush every installed provider, leaving them installed.
 ///
@@ -208,14 +92,23 @@ pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains
         // the caller's whole deadline in turn, so three stalled exporters spend
         // three times the budget a SIGTERM handler passed — the overrun the
         // deadline exists to prevent. Each drain is itself bounded, so the joins
-        // here are bounded too.
+        // here are bounded too. A spawn refused by the OS (thread limit) falls
+        // back to draining that signal inline instead of panicking mid-shutdown.
+        // Each drain closure is spawned and, on a failed spawn, reused as the
+        // inline fallback — one body, so both paths drain identically.
+        let drain_logs = || flush::flush_logger_provider(timeout_seconds);
+        let drain_traces = || flush::flush_tracer_provider(timeout_seconds);
         std::thread::scope(|scope| {
-            let logs = scope.spawn(|| flush::flush_logger_provider(timeout_seconds));
-            let traces = scope.spawn(|| flush::flush_tracer_provider(timeout_seconds));
+            let logs = std::thread::Builder::new()
+                .name("provide-logs-drain".to_string())
+                .spawn_scoped(scope, drain_logs);
+            let traces = std::thread::Builder::new()
+                .name("provide-traces-drain".to_string())
+                .spawn_scoped(scope, drain_traces);
             let metrics = flush::flush_meter_provider(timeout_seconds);
             SignalDrains {
-                logs: logs.join().expect("logs drain worker must not panic"),
-                traces: traces.join().expect("traces drain worker must not panic"),
+                logs: bounded::join_or_inline(logs, drain_logs),
+                traces: bounded::join_or_inline(traces, drain_traces),
                 metrics,
             }
         })
@@ -289,10 +182,22 @@ pub(crate) fn shutdown_otel(timeout_seconds: Option<f64>) {
     adopt::release_adopted_providers();
     #[cfg(feature = "otel")]
     {
+        // A spawn refused by the OS (thread limit) falls back to tearing that
+        // signal down inline instead of panicking mid-shutdown — degraded to
+        // sequential, but every signal still drains. Each teardown closure is
+        // spawned and, on a failed spawn, reused as the inline fallback.
+        let teardown_logs = || logs::shutdown_logger_provider(timeout_seconds);
+        let teardown_metrics = || metrics::shutdown_meter_provider(timeout_seconds);
         std::thread::scope(|scope| {
-            scope.spawn(|| logs::shutdown_logger_provider(timeout_seconds));
-            scope.spawn(|| metrics::shutdown_meter_provider(timeout_seconds));
+            let logs = std::thread::Builder::new()
+                .name("provide-logs-teardown".to_string())
+                .spawn_scoped(scope, teardown_logs);
+            let metrics = std::thread::Builder::new()
+                .name("provide-metrics-teardown".to_string())
+                .spawn_scoped(scope, teardown_metrics);
             traces::shutdown_tracer_provider(timeout_seconds);
+            bounded::join_or_inline(logs, teardown_logs);
+            bounded::join_or_inline(metrics, teardown_metrics);
         });
     }
 

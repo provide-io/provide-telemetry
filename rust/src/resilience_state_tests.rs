@@ -13,6 +13,20 @@ async fn ok_unit_operation() -> Result<(), TelemetryError> {
     Ok(())
 }
 
+/// The attempts ceiling, at its exact boundaries: retries inside the cap gain
+/// an attempt each, retries past it are silently capped, and u32::MAX must not
+/// overflow the `+ 1`.
+#[test]
+fn resilience_test_attempts_are_capped_at_max_export_attempts() {
+    assert_eq!(capped_attempts(0), 1);
+    assert_eq!(
+        capped_attempts(MAX_EXPORT_ATTEMPTS - 1),
+        MAX_EXPORT_ATTEMPTS
+    );
+    assert_eq!(capped_attempts(MAX_EXPORT_ATTEMPTS), MAX_EXPORT_ATTEMPTS);
+    assert_eq!(capped_attempts(u32::MAX), MAX_EXPORT_ATTEMPTS);
+}
+
 #[test]
 fn resilience_test_circuit_cooldown_boundary_is_strict() {
     assert!(circuit_cooldown_is_active(

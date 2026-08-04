@@ -181,3 +181,34 @@ fn runtime_test_update_runtime_config_hot_reloads_module_level_override() {
         "INFO must still pass after reload — got: {output}"
     );
 }
+
+/// In fallback mode — no live OTel log provider — the provider-baked logging
+/// fields are still hot: nothing has baked them anywhere yet, so applying them
+/// is safe. The reject path only exists for a live provider (see the
+/// live-provider test beside the OTel flush tests), and Python behaves the
+/// same way.
+#[test]
+fn runtime_test_update_runtime_config_applies_otlp_fields_without_a_live_provider() {
+    let _guard = crate::testing::acquire_test_state_lock();
+    crate::testing::reset_telemetry_state();
+    crate::logger::reset_logging_config_for_tests();
+    set_active_config(Some(TelemetryConfig::default()));
+
+    let new_logging = crate::config::LoggingConfig {
+        otlp_endpoint: Some("http://collector.example:4318/v1/logs".to_string()),
+        ..crate::config::LoggingConfig::default()
+    };
+    let next = update_runtime_config(RuntimeOverrides {
+        logging: Some(new_logging),
+        ..RuntimeOverrides::default()
+    })
+    .expect("without a live provider the otlp fields are hot");
+    assert_eq!(
+        next.logging.otlp_endpoint.as_deref(),
+        Some("http://collector.example:4318/v1/logs")
+    );
+
+    set_active_config(None);
+    crate::logger::reset_logging_config_for_tests();
+    crate::testing::reset_telemetry_state();
+}

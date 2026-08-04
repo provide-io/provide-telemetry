@@ -123,5 +123,40 @@ fn the_boundaries_of_each_range_are_accepted() {
     cfg.sampling.metrics_rate = 0.0;
     cfg.tracing.sample_rate = 1.0;
     cfg.exporter.logs_backoff_seconds = 0.0;
+    cfg.exporter.logs_retries = crate::config::MAX_EXPORTER_RETRIES;
+    cfg.exporter.traces_retries = crate::config::MAX_EXPORTER_RETRIES;
+    cfg.exporter.metrics_retries = crate::config::MAX_EXPORTER_RETRIES;
     cfg.validate().expect("boundary values must be accepted");
+}
+
+/// Retries above the ceiling would be silently ignored by the resilience
+/// layer's attempt cap — reject each signal's field, exactly at the boundary,
+/// with the same message TypeScript's `requireRetries` produces.
+#[test]
+fn each_exporter_retries_field_is_rejected_above_the_ceiling() {
+    type SetRetries = fn(&mut TelemetryConfig, usize);
+    let over = crate::config::MAX_EXPORTER_RETRIES + 1;
+    let cases: [(&str, SetRetries); 3] = [
+        ("PROVIDE_EXPORTER_LOGS_RETRIES", |cfg, v| {
+            cfg.exporter.logs_retries = v;
+        }),
+        ("PROVIDE_EXPORTER_TRACES_RETRIES", |cfg, v| {
+            cfg.exporter.traces_retries = v;
+        }),
+        ("PROVIDE_EXPORTER_METRICS_RETRIES", |cfg, v| {
+            cfg.exporter.metrics_retries = v;
+        }),
+    ];
+    for (field, set) in cases {
+        let mut cfg = valid();
+        set(&mut cfg, over);
+        let err = cfg
+            .validate()
+            .expect_err("retries above the ceiling must be rejected");
+        assert!(
+            err.message.contains(field) && err.message.contains("must be at most 100, got 101"),
+            "unexpected message for {field}: {}",
+            err.message
+        );
+    }
 }

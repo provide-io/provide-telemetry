@@ -5,6 +5,8 @@
 //! Tests for the OTel facade in `mod.rs`, split out to keep that file inside
 //! the 500-line ceiling `scripts/check_max_loc.py` enforces.
 
+#[cfg(feature = "otel")]
+use super::bounded::MAX_DRAIN_SECONDS;
 use super::*;
 
 /// `Duration::from_secs_f64` panics on NaN, on ±inf, and past u64::MAX
@@ -15,9 +17,22 @@ use super::*;
 fn otel_test_drain_deadline_rejects_unusable_values() {
     assert_eq!(drain_deadline(f64::NAN), None);
     assert_eq!(drain_deadline(f64::INFINITY), None);
-    assert_eq!(drain_deadline(f64::NEG_INFINITY), None);
-    assert_eq!(drain_deadline(0.0), None);
-    assert_eq!(drain_deadline(-1.5), None);
+}
+
+/// `<= 0` is a zero budget, not an opt-out: Python's `wait(0)` and
+/// TypeScript's `setTimeout(..., 0)` abandon the drain immediately, and a
+/// caller porting `flush(0)` from either must not get an unbounded
+/// synchronous drain here instead — that is the SIGTERM hang the timeout
+/// parameter exists to prevent.
+#[cfg(feature = "otel")]
+#[test]
+fn otel_test_drain_deadline_treats_non_positive_values_as_a_zero_budget() {
+    assert_eq!(drain_deadline(0.0), Some(std::time::Duration::ZERO));
+    assert_eq!(drain_deadline(-1.5), Some(std::time::Duration::ZERO));
+    assert_eq!(
+        drain_deadline(f64::NEG_INFINITY),
+        Some(std::time::Duration::ZERO)
+    );
 }
 
 #[cfg(feature = "otel")]
