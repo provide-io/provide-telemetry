@@ -59,4 +59,11 @@ EOF
 
 node probe.mjs
 
+# Behavior, not just loadability. AsyncLocalStorage acquisition differs between
+# the CJS module system every test runner uses and the ESM package that ships,
+# so scoped-context isolation has to be asserted against the installed tarball
+# or it is not asserted at all. See typescript/tests/packed-esm-context.mjs.
+cp "${package_dir}/tests/packed-esm-context.mjs" .
+node packed-esm-context.mjs
+
 printf 'OK: npm consumer probe succeeded for %s\n' "${tarball}"

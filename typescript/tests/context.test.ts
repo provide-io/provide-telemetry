@@ -125,6 +125,51 @@ describe('runWithContext — with AsyncLocalStorage (Node.js)', () => {
     });
     expect(result).toBe('abc');
   });
+
+  it('keeps concurrent contexts isolated until callbacks settle', async () => {
+    // Regression: the published ESM artifact had no AsyncLocalStorage at all
+    // (context.ts acquired it with a bare `require`, which is undefined in an
+    // ESM package), so both flows shared one module-level store and this
+    // returned [undefined, undefined). See src/async-storage.ts.
+    const seen = await Promise.all(
+      ['a', 'b'].map((request_id) =>
+        runWithContext({ request_id }, async () => {
+          await Promise.resolve();
+          return getContext()['request_id'];
+        }),
+      ),
+    );
+    expect(seen).toEqual(['a', 'b']);
+  });
+
+  it('reinstates ALS-backed isolation after _restoreAsyncLocalStorageForTest', async () => {
+    // Restoring must put the storage back, not merely stop suppressing it:
+    // a no-op restore leaves every later assertion silently on the shared
+    // module-level store, which is exactly the failure mode this file tests.
+    const saved = _disableAsyncLocalStorageForTest();
+    _restoreAsyncLocalStorageForTest(saved);
+    const seen = await Promise.all(
+      ['x', 'y'].map((request_id) =>
+        runWithContext({ request_id }, async () => {
+          await Promise.resolve();
+          return getContext()['request_id'];
+        }),
+      ),
+    );
+    expect(seen).toEqual(['x', 'y']);
+  });
+
+  it('restores the predecessor after an async callback rejects', async () => {
+    await runWithContext({ request_id: 'outer' }, async () => {
+      await expect(
+        runWithContext({ request_id: 'inner' }, async () => {
+          await Promise.resolve();
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+      expect(getContext()['request_id']).toBe('outer');
+    });
+  });
 });
 
 describe('runWithContext — without AsyncLocalStorage (browser fallback)', () => {

@@ -12,48 +12,39 @@
  * Use runWithContext() to scope bindings to a single request/operation.
  */
 
+import { type AsyncLocalStorageLike, createScopedStorage } from './async-storage.js';
+
 type Context = Record<string, unknown>;
 
 // ── AsyncLocalStorage type (Node.js / Cloudflare Workers) ─────────────────────
-type ALS = {
-  getStore(): Context | undefined;
-  run<T>(store: Context, fn: () => T): T;
-  enterWith(store: Context): void;
-};
+type ALS = AsyncLocalStorageLike<Context>;
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
-let _asyncLocalStorage: ALS | null = null;
-let _AlsConstructor: (new () => ALS) | null = null;
-// Stryker reports this try body as a survivor. It is not: emptying it and
-// running the suite fails seven tests (hand-verified 2026-08-04) — the same
-// per-test attribution false negative endpoint.ts documents. Not suppressed:
-// ALS-backed context isolation is load-bearing.
-try {
-  // Dynamic require so the import doesn't break browser bundles.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const als = require('node:async_hooks') as { AsyncLocalStorage: new () => ALS };
-  _AlsConstructor = als.AsyncLocalStorage;
-  _asyncLocalStorage = new _AlsConstructor();
-} catch {
-  // Not available — fall back to module-level context below.
-}
+// Acquired lazily through the shared loader rather than with a bare
+// `require('node:async_hooks')` at module scope: the published package is ESM,
+// where `require` is undefined, so the old eager path pinned this to null and
+// every consumer silently shared one module-level context across concurrent
+// requests. See src/async-storage.ts.
+const _storage = createScopedStorage<Context>();
 
 // ── Fallback: module-level context (browser / single-thread) ──────────────────
 let _moduleCtx: Context = {};
 
 function getStore(): Context {
-  if (_asyncLocalStorage) {
-    return _asyncLocalStorage.getStore() ?? _moduleCtx;
+  const als = _storage.get();
+  if (als) {
+    return als.getStore() ?? _moduleCtx;
   }
   return _moduleCtx;
 }
 
 function ensureStore(): Context {
-  if (_asyncLocalStorage) {
-    const store = _asyncLocalStorage.getStore();
+  const als = _storage.get();
+  if (als) {
+    const store = als.getStore();
     if (store) return store;
     const next = { ..._moduleCtx };
-    _asyncLocalStorage.enterWith(next);
+    als.enterWith(next);
     return next;
   }
   return _moduleCtx;
@@ -80,8 +71,9 @@ export function unbindContext(...keys: string[]): void {
  * Clear all context bindings.
  */
 export function clearContext(): void {
-  if (_asyncLocalStorage) {
-    const store = _asyncLocalStorage.getStore();
+  const als = _storage.get();
+  if (als) {
+    const store = als.getStore();
     if (store) {
       for (const k of Object.keys(store)) delete store[k];
       return;
@@ -104,9 +96,10 @@ export function getContext(): Context {
  * Mirrors Python: contextvars copy_context().run(fn) pattern.
  */
 export function runWithContext<T>(values: Context, fn: () => T): T {
-  if (_asyncLocalStorage) {
+  const als = _storage.get();
+  if (als) {
     const inherited = { ...getStore(), ...values };
-    return _asyncLocalStorage.run(inherited, fn);
+    return als.run(inherited, fn);
   }
   const prev = { ...getStore() };
   bindContext(values);
@@ -141,22 +134,18 @@ export function clearSessionContext(): void {
 
 /** Reset to empty context (used in tests). */
 export function _resetContext(): void {
-  // Recreate ALS so no enterWith-seeded store leaks between tests.
-  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
-  /* v8 ignore next */
-  _asyncLocalStorage = _AlsConstructor ? new _AlsConstructor() : null;
+  // Drop the ALS instance so no enterWith-seeded store leaks between tests;
+  // the next access builds a fresh one.
+  _storage.reset();
   _moduleCtx = {};
 }
 
 /** Disable AsyncLocalStorage for testing the module-level fallback path. */
 export function _disableAsyncLocalStorageForTest(): ALS | null {
-  const prev = _asyncLocalStorage;
-  _asyncLocalStorage = null;
-  return prev;
+  return _storage.suppress();
 }
 
 /** Re-enable AsyncLocalStorage after testing (pass value from _disable call). */
-// Stryker disable next-line BlockStatement: assignment-only body — removing leaves _asyncLocalStorage unchanged which is equivalent when tests always call _resetContext after restore
 export function _restoreAsyncLocalStorageForTest(saved: ALS | null): void {
-  _asyncLocalStorage = saved;
+  _storage.restore(saved);
 }

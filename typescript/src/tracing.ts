@@ -15,6 +15,7 @@ import {
   trace,
   context as otelContext,
 } from '@opentelemetry/api';
+import { createScopedStorage } from './async-storage.js';
 import { _emittedField, _incrementHealth } from './health.js';
 import { getActiveOtelContext } from './propagation.js';
 import { randomHex } from './hash.js';
@@ -44,27 +45,17 @@ const TRACER_NAME = '@provide-io/telemetry';
 
 type _TraceIds = { traceId?: string; spanId?: string };
 
-let _als: {
-  run<T>(store: _TraceIds, fn: () => T): T;
-  getStore(): _TraceIds | undefined;
-} | null = null;
+// Acquired lazily through the shared loader rather than with a bare
+// `require('node:async_hooks')` at module scope: the published package is ESM,
+// where `require` is undefined, so the old eager path pinned this to null and
+// concurrent flows read each other's trace IDs off the globals below.
+// See src/async-storage.ts.
+const _storage = createScopedStorage<_TraceIds>();
 
-// Stryker reports the try body below as a survivor. It is not: emptying it
-// and running the suite fails two tests (hand-verified 2026-08-04) — the same
-// per-test attribution false negative endpoint.ts documents. Not suppressed:
-// the ALS wiring is load-bearing for trace-context isolation.
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { AsyncLocalStorage } = require('node:async_hooks') as typeof import('node:async_hooks');
-  _als = new AsyncLocalStorage<_TraceIds>();
-} catch {
-  // Non-Node runtime (browser, Deno) fallback: `require('node:async_hooks')`
-  // succeeds on every Node-based test runner, so this arm is unreachable here
-  // (mocking the module doesn't help — it's a CJS require, not routed through
-  // the ESM mock graph). Deliberately empty: `_als` already holds its declared
-  // null, so the assignment that used to sit here existed only to be an
-  // equivalent BlockStatement mutant — and a disable directive above a
-  // `} catch {` line never reaches the catch body anyway.
+/** The IDs scoped to this async chain, or undefined when no scope is entered. */
+function _scopedIds(): _TraceIds | undefined {
+  // Stryker disable next-line OptionalChaining: `.get()?.` collapses to `.get().` only when ALS is null (browser/Deno fallback) — Node tests can't enter that branch
+  return _storage.get()?.getStore();
 }
 
 let _manualTraceId: string | undefined;
@@ -79,8 +70,7 @@ export function setTraceContext(traceId: string | undefined, spanId: string | un
   // Treat empty strings as clearing the value — prevents empty-string IDs in logs.
   const normalizedTraceId = traceId || undefined;
   const normalizedSpanId = spanId || undefined;
-  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
-  const store = _als?.getStore();
+  const store = _scopedIds();
   if (store !== undefined) {
     store.traceId = normalizedTraceId;
     store.spanId = normalizedSpanId;
@@ -94,8 +84,7 @@ export function setTraceContext(traceId: string | undefined, spanId: string | un
  * Return the current trace context: manual injection first, then active OTEL span.
  */
 export function getTraceContext(): { trace_id?: string; span_id?: string } {
-  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
-  const store = _als?.getStore();
+  const store = _scopedIds();
   const traceId = store?.traceId ?? _manualTraceId;
   const spanId = store?.spanId ?? _manualSpanId;
   // Stryker disable next-line ConditionalExpression,LogicalOperator: setTraceContext always sets both; partial state not reachable via public API
@@ -118,8 +107,7 @@ export function getTraceContext(): { trace_id?: string; span_id?: string } {
 export function _resetTraceContext(): void {
   _manualTraceId = undefined;
   _manualSpanId = undefined;
-  // Stryker disable next-line OptionalChaining: `_als?.` collapses to `_als.` only when _als is null (browser/Deno fallback) — Node tests can't enter that branch
-  const store = _als?.getStore();
+  const store = _scopedIds();
   if (store !== undefined) {
     store.traceId = undefined;
     store.spanId = undefined;
@@ -169,13 +157,14 @@ function _withSyntheticIds<T>(fn: () => T): T {
   // Stryker disable next-line StringLiteral: random IDs are non-deterministic — exact value not observable in mutations
   const traceId = randomHex(16);
   const spanId = randomHex(8);
+  const als = _storage.get();
   /* v8 ignore start */
-  // Stryker disable next-line ConditionalExpression: `if (true)` mutant equivalent in Node.js — _als is never null in tests
-  if (_als !== null) {
-    return _als.run<T>({ traceId, spanId }, fn);
+  // Stryker disable next-line ConditionalExpression: `if (true)` mutant equivalent in Node.js — ALS is never null in tests
+  if (als !== null) {
+    return als.run<T>({ traceId, spanId }, fn);
   }
   /* v8 ignore stop */
-  /* c8 ignore start -- browser/Deno fallback: _als is always non-null in Node.js tests */
+  /* c8 ignore start -- browser/Deno fallback: ALS is always non-null in Node.js tests */
   const prevTraceId = _manualTraceId;
   const prevSpanId = _manualSpanId;
   _manualTraceId = traceId;
@@ -183,7 +172,7 @@ function _withSyntheticIds<T>(fn: () => T): T {
   const result = fn();
   // Stryker disable next-line ConditionalExpression, BlockStatement: reachable
   // only in the browser/Deno fallback where _als is null, which Node-based
-  // tests cannot enter without a source-level seam into _als (Stryker reports
+  // tests cannot enter without a source-level seam into the ALS (Stryker reports
   // the consequent block NoCoverage for exactly that reason). The
   // sync-vs-Promise branch is covered end-to-end by the Node path; pinning
   // here requires mutating a module-private for no gain.

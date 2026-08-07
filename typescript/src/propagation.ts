@@ -6,6 +6,13 @@
  * Mirrors Python provide.telemetry.propagation.
  */
 
+import {
+  type AsyncLocalStorageLike,
+  _setAsyncStorageInitDoneForTest,
+  awaitAsyncStorageInit,
+  createScopedStorage,
+  isAsyncStorageInitDone,
+} from './async-storage.js';
 import { bindContext, getContext, unbindContext } from './context.js';
 import { getTraceContext, setTraceContext } from './tracing.js';
 
@@ -45,88 +52,13 @@ type PropagationStore = {
   traceCtxStack: Array<{ traceId: string | undefined; spanId: string | undefined }>;
 };
 
-export type PropagationALS = {
-  getStore(): PropagationStore | undefined;
-  run<T>(store: PropagationStore, fn: () => T): T;
-  enterWith(store: PropagationStore): void;
-};
+export type PropagationALS = AsyncLocalStorageLike<PropagationStore>;
 
 // ── AsyncLocalStorage (Node.js / Cloudflare Workers) ──────────────────────────
-let _als: PropagationALS | null = null;
-let _AlsConstructor: (new () => PropagationALS) | null = null;
-// `_propagationInitDone` flips to true once the init has reached a definitive
-// state (ALS attached, OR known-unavailable). Callers like setupTelemetry
-// distinguish "still racing" (defer the check) from "settled" (act on it).
-// The module-init IIFE below runs synchronously (in the CJS/require branch
-// that every test loader takes) and overwrites this before any test — or any
-// real caller — can observe the initial value.
-// Stryker disable next-line BooleanLiteral
-let _propagationInitDone = false;
-let _propagationInitPromise: Promise<void> = Promise.resolve();
-// Stryker disable BlockStatement: module-level init block runs once at import time — cannot be tested by unit tests
-//
-// Three load environments must be supported:
-//   1. CJS Node (tsx default, transpiled CJS bundles): `require` is defined;
-//      load synchronously. tsx/esbuild forbid top-level await in CJS output,
-//      so we must NOT use `await import` at module scope.
-//   2. ESM Node (modern bundlers, .mjs entrypoints): `require` is undefined;
-//      fire off an async import without awaiting it at top level. Calls that
-//      happen before the import resolves use the module-level fallback store
-//      (with a one-time warning) — the racing window is tiny in practice.
-//   3. Browsers / Workers / Deno: neither path resolves `node:async_hooks`;
-//      both branches throw or reject, _als stays null, fallback store used.
-/* v8 ignore start */
-// Module-level init IIFE. Behavior is exercised end-to-end:
-//   * vitest loader hits the CJS sync-require branch (lines 81-87).
-//   * tsx-as-ESM (every TS example, parity probes) hits the async-import
-//     branch (lines 91-103).
-//   * Browsers/workers hit the catch (line 89) on the require attempt.
-// Branch and line coverage cannot capture all three from a single test
-// loader, so this whole IIFE is excluded; correctness is asserted by the
-// observable downstream state (isFallbackMode, isPropagationInitDone) which
-// have full coverage and by the typescript-examples-smoke CI job.
-(function initAsyncStorage(): void {
-  try {
-    // Stryker disable next-line ConditionalExpression: `require` is a function
-    // under every Node-based test runner, so forcing the CJS-detection true is
-    // indistinguishable here; the browser path this guards is exercised by the
-    // typescript-examples-smoke CI job, not this suite (hand-verified
-    // 2026-08-04: suite passes with the guard forced true).
-    if (typeof require === 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const als = require('node:async_hooks') as {
-        AsyncLocalStorage: new () => PropagationALS;
-      };
-      _AlsConstructor = als.AsyncLocalStorage;
-      _als = new _AlsConstructor();
-      _propagationInitDone = true;
-      return;
-    }
-  } catch {
-    // CJS path failed (e.g. browserified bundle where require throws) —
-    // fall through to async import.
-  }
-  _propagationInitPromise = (async () => {
-    try {
-      const als = (await import('node:async_hooks')) as {
-        AsyncLocalStorage: new () => PropagationALS;
-      };
-      _AlsConstructor = als.AsyncLocalStorage;
-      _als = new _AlsConstructor();
-    } catch {
-      // node:async_hooks unresolvable — leave _als null and use fallback.
-    } finally {
-      // Stryker disable next-line BooleanLiteral: this async-import fallback
-      // only runs where require is unavailable (browser bundles), which the
-      // Node harness cannot reach — Stryker reports it NoCoverage for the same
-      // reason the surrounding IIFE carries the v8 ignore. Init-done signaling
-      // is asserted downstream via isPropagationInitDone.
-      _propagationInitDone = true;
-    }
-  })();
-})();
-/* v8 ignore stop */
-// Stryker restore BlockStatement
+// The require/import dance that used to live here now lives in
+// src/async-storage.ts, shared with context.ts and tracing.ts so all three
+// behave identically in the published ESM artifact.
+const _storage = createScopedStorage<PropagationStore>();
 
 /**
  * Has the AsyncLocalStorage init reached a definitive state?
@@ -139,7 +71,7 @@ let _propagationInitPromise: Promise<void> = Promise.resolve();
  * "ALS init still racing, defer the check".
  */
 export function isPropagationInitDone(): boolean {
-  return _propagationInitDone;
+  return isAsyncStorageInitDone();
 }
 
 /**
@@ -147,7 +79,7 @@ export function isPropagationInitDone(): boolean {
  * Always-resolved in the CJS path; awaits the dynamic import in the ESM path.
  */
 export function awaitPropagationInit(): Promise<void> {
-  return _propagationInitPromise;
+  return awaitAsyncStorageInit();
 }
 
 // ── Fallback: module-level store (browser / single-thread) ────────────────────
@@ -185,12 +117,13 @@ function _warnFallbackOnce(): void {
  * environments where concurrent requests share propagation context.
  */
 export function isFallbackMode(): boolean {
-  return _als === null;
+  return _storage.get() === null;
 }
 
 function _getStore(): PropagationStore {
-  if (_als) {
-    return _als.getStore() ?? _fallbackStore;
+  const als = _storage.get();
+  if (als) {
+    return als.getStore() ?? _fallbackStore;
   }
   _warnFallbackOnce();
   return _fallbackStore;
@@ -198,8 +131,9 @@ function _getStore(): PropagationStore {
 
 // Stryker disable ConditionalExpression,BlockStatement,ArrayDeclaration: _ensureStore ALS-to-fallback clone path — tested by "clones fallback stack" test; remaining mutants are equivalent because _resetPropagationForTests empties both stores
 function _ensureStore(): PropagationStore {
-  if (_als) {
-    const store = _als.getStore();
+  const als = _storage.get();
+  if (als) {
+    const store = als.getStore();
     if (store) return store;
     const next: PropagationStore = {
       active: { ..._fallbackStore.active },
@@ -208,7 +142,7 @@ function _ensureStore(): PropagationStore {
       baggagePriorStack: _fallbackStore.baggagePriorStack.map((entry) => ({ ...entry })),
       traceCtxStack: _fallbackStore.traceCtxStack.map((ctx) => ({ ...ctx })),
     };
-    _als.enterWith(next);
+    als.enterWith(next);
     return next;
   }
   _warnFallbackOnce();
@@ -438,10 +372,9 @@ export function getActiveOtelContext(): unknown | undefined {
 }
 
 export function _resetPropagationForTests(): void {
-  // Recreate the ALS instance so no enterWith-seeded store leaks between tests.
-  // The null branch is only reachable in environments without node:async_hooks (e.g. browsers).
-  /* v8 ignore next */
-  _als = _AlsConstructor ? new _AlsConstructor() : null;
+  // Drop the ALS instance so no enterWith-seeded store leaks between tests;
+  // the next access builds a fresh one.
+  _storage.reset();
   _fallbackStore = {
     active: {},
     stack: [],
@@ -455,14 +388,12 @@ export function _resetPropagationForTests(): void {
 
 /** Disable AsyncLocalStorage for testing the module-level fallback path. */
 export function _disablePropagationALSForTest(): PropagationALS | null {
-  const prev = _als;
-  _als = null;
-  return prev;
+  return _storage.suppress();
 }
 
 /** Re-enable AsyncLocalStorage after testing (pass value from _disable call). */
 export function _restorePropagationALSForTest(saved: PropagationALS | null): void {
-  _als = saved;
+  _storage.restore(saved);
 }
 
 /**
@@ -473,7 +404,5 @@ export function _restorePropagationALSForTest(saved: PropagationALS | null): voi
  * since settled by the time the test runs).
  */
 export function _setPropagationInitDoneForTest(done: boolean): boolean {
-  const prev = _propagationInitDone;
-  _propagationInitDone = done;
-  return prev;
+  return _setAsyncStorageInitDoneForTest(done);
 }

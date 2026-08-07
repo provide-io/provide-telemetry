@@ -91,17 +91,13 @@ Expected: the parity runners already mention C#, while the fixture-ID checker re
 def test_required_languages_include_csharp() -> None:
     from spec.check_fixture_test_ids import REQUIRED_LANGUAGES
 
-    assert REQUIRED_LANGUAGES == (
-        "python", "typescript", "go", "rust", "csharp"
-    )
+    assert REQUIRED_LANGUAGES == ("python", "typescript", "go", "rust", "csharp")
 
 
 def test_every_config_default_declares_applicability(api_spec: dict) -> None:
     for name, entry in api_spec["config_defaults"].items():
         assert entry["applicability"], name
-        assert set(entry["applicability"]) <= {
-            "python", "typescript", "go", "rust", "csharp"
-        }
+        assert set(entry["applicability"]) <= {"python", "typescript", "go", "rust", "csharp"}
 ```
 
 - [ ] **Step 3: Run the tests and confirm the expected red state**
@@ -207,27 +203,23 @@ def test_receipt_vectors_are_self_consistent() -> None:
         # Compare STRINGS, not parsed objects: `json.loads(canonical_json) ==
         # normalized` would pass for both {"z":…,"a":1.5} and {"a":1.5000}
         # because json.loads discards key order and number spelling, which
-        # defeats the whole point of a JCS fixture. `rfc8785` is not present
-        # in pyproject.toml's `[dependency-groups] dev` (checked; not a
-        # current test dependency), so this re-derives the canonical string
-        # with Python's own independent sorter/formatter rather than trusting
-        # the same expression Step 4 used to produce `canonical_json` in the
-        # first place. Note this is not a full RFC 8785 JCS implementation
-        # (e.g. ECMAScript number-to-string rules differ from Python's float
-        # repr), but the byte-exact string comparison still catches
-        # key-order and number-spelling divergences that object equality
-        # would mask.
-        recanonicalized = json.dumps(
-            case["normalized"], sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        )
+        # defeats the whole point of a JCS fixture.
+        #
+        # As built, `rfc8785` was added to pyproject.toml's
+        # `[dependency-groups] dev` and is what re-derives the string here.
+        # The originally-planned `json.dumps(..., sort_keys=True,
+        # separators=(",", ":"))` is NOT a valid JCS verifier: it emits
+        # "-0.0" where JCS requires "0", so the negative_zero_collapses case
+        # would have failed against a correct fixture. An independent
+        # implementation is also the only thing that makes this test
+        # non-tautological — verified by injecting a self-consistent but
+        # non-JCS `canonical_json` and confirming the test fails.
+        recanonicalized = rfc8785.dumps(case["normalized"]).decode("utf-8")
         assert recanonicalized == case["canonical_json"]
         assert hashlib.sha256(case["canonical_json"].encode()).hexdigest() == case["original_hash"]
-        assert hmac.new(
-            case["key"].encode(), case["payload"].encode(), hashlib.sha256
-        ).hexdigest() == case["signature"]
+        assert hmac.new(case["key"].encode(), case["payload"].encode(), hashlib.sha256).hexdigest() == case["signature"]
         assert case["payload"] == "|".join(
-            [case["receipt_id"], case["timestamp"], case["field_path"],
-             case["action"], case["original_hash"]]
+            [case["receipt_id"], case["timestamp"], case["field_path"], case["action"], case["original_hash"]]
         )
 
 
@@ -463,6 +455,36 @@ npx tsx typescript/src/index.ts
 ```
 
 Expected: all commands pass, the packed test observes `['a', 'b']`, `propagation.module-scope-await.test.ts` passes with its AST scan covering both `propagation.ts` and the new `async-storage.ts`, and the `tsx` smoke-load does not raise "Top-level await is currently not supported with the cjs output format". `rg -n "require\(['\"]node:async_hooks" typescript/src typescript/dist` still matches inside `async-storage.ts` — that guarded `require` is the intended CJS-path acquisition, not a regression; what Step 1 reproduces and this step must not reintroduce is an *unguarded module-scope* `await import(...)`.
+
+**As built — three deviations from the sketch above, all measured:**
+
+1. *A fourth acquisition branch was required.* The plan's CJS-sync / ESM-async
+   pair is not sufficient: measured against the packed tarball, two concurrent
+   `runWithContext` calls both observed `undefined`, because a consumer that
+   awaits `import('@provide-io/telemetry')` and immediately serves a request
+   runs *before* the fire-and-forget `import('node:async_hooks')` settles. The
+   racing window the plan called "tiny in practice" is the common case. The
+   shipped loader therefore tries `process.getBuiltinModule('node:async_hooks')`
+   (Node ≥ 20.16 / 22.3) between the two, which resolves builtins synchronously
+   from ESM and closes the window; the async import remains branch 3 for the
+   Node 18–20.15 range `engines` still allows.
+2. *Acquisition is retried, not resolved once.* `createAsyncLocalStorage()` is
+   exported as specified, but the three call sites consume it through a new
+   `createScopedStorage<T>()` holder that re-attempts on every miss. Caching the
+   first `null` at module scope — which is what the sketch's call-site contract
+   implies — would have relocated the bug rather than fixed it.
+3. *`isAsyncStorageFallback()` was not exported.* `propagation.ts`'s
+   `isFallbackMode()` must reflect the per-holder store (that is what
+   `_disablePropagationALSForTest` manipulates and what ~15 test files assert
+   on), not the module-global constructor, so a constructor-level predicate had
+   no caller and would have shipped as unmutated dead code. A
+   `_setAsyncStorageConstructorForTest` seam was added instead — it makes the
+   browser/Deno no-ALS branches genuinely executable, replacing two
+   `/* v8 ignore */` suppressions with real tests.
+
+Consequently `index.ts`, `tracing.test.ts`, `propagation.await-init.test.ts`,
+`propagation.esm-load.test.ts` and `setup-async.test.ts` needed no edits: the
+public surface is unchanged and all 1843 pre-existing tests passed untouched.
 
 - [ ] **Step 6: Commit the ESM context repair**
 
@@ -956,20 +978,14 @@ class LifecycleCoordinator:
     def snapshot(self) -> LifecycleGeneration:
         with self._condition:
             generation = self._generation
-            return LifecycleGeneration(
-                generation.number, self._copy_config(generation.config), generation.setup_done
-            )
+            return LifecycleGeneration(generation.number, self._copy_config(generation.config), generation.setup_done)
 
     def publish(self, config: TelemetryConfig, *, setup_done: bool) -> LifecycleGeneration:
         with self._condition:
-            self._generation = LifecycleGeneration(
-                self._generation.number + 1, self._copy_config(config), setup_done
-            )
+            self._generation = LifecycleGeneration(self._generation.number + 1, self._copy_config(config), setup_done)
             self._condition.notify_all()
             generation = self._generation
-            return LifecycleGeneration(
-                generation.number, self._copy_config(generation.config), generation.setup_done
-            )
+            return LifecycleGeneration(generation.number, self._copy_config(generation.config), generation.setup_done)
 
     @staticmethod
     def _copy_config(config: TelemetryConfig) -> TelemetryConfig:
@@ -2119,9 +2135,7 @@ def test_csharp_package_versions_are_exactly_synchronized(tmp_path):
 
 def test_all_config_probes_match_schema():
     reports = run_config_probes(("python", "typescript", "go", "rust", "csharp"))
-    assert {report.language for report in reports} == {
-        "python", "typescript", "go", "rust", "csharp"
-    }
+    assert {report.language for report in reports} == {"python", "typescript", "go", "rust", "csharp"}
     assert all(report.diff == [] for report in reports)
 ```
 
