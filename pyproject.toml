@@ -100,6 +100,12 @@ dev = [
   "pytest-rerunfailures>=14.0",
   "pytest-xdist>=3.8.0",
   "reuse>=6.2.0",
+  # Independent RFC 8785 (JCS) implementation. The governance receipt fixtures
+  # pin a canonical JSON string that all five SDKs must reproduce byte for byte,
+  # so the self-test has to check that string against something other than the
+  # expression that produced it. Python's json.dumps is not JCS — it emits
+  # "-0.0" where JCS requires "0" — so it cannot serve as the verifier.
+  "rfc8785>=0.1.4",
   "ruff>=0.14.5",
   "twine>=5.1.1",
   "ty>=0.0.18",

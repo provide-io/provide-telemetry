@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Canonical signal pipeline order — the cross-language contract.
+#
+# `events` is the order every SDK must run its stages in. Each case is one exit
+# path through that pipeline: a stage may be skipped, but two stages may never
+# swap places, so every `expected` list is a subsequence of `events`.
+#
+# `release` appears exactly once on every path, including rejections: whatever
+# admission control decides, the backpressure ticket must be returned. A path
+# that rejects an event and forgets to release leaks queue capacity until the
+# process restarts.
+
+version: 1
+events:
+  - consent
+  - sampling
+  - backpressure
+  - hardening
+  - pii
+  - receipt
+  - local
+  - backend
+  - health
+  - release
+cases:
+  - id: consent_rejection
+    description: 'Consent withheld: nothing is captured, but the ticket is still released.'
+    expected:
+      - consent
+      - health
+      - release
+  - id: sampling_rejection
+    description: 'Sampled out: consent passed, no payload work is done.'
+    expected:
+      - consent
+      - sampling
+      - health
+      - release
+  - id: queue_rejection
+    description: 'Backpressure refused a ticket: no hardening, no export.'
+    expected:
+      - consent
+      - sampling
+      - backpressure
+      - health
+      - release
+  - id: local_only_success
+    description: 'No backend configured: the record is emitted locally and the pipeline completes.'
+    expected:
+      - consent
+      - sampling
+      - backpressure
+      - hardening
+      - pii
+      - receipt
+      - local
+      - health
+      - release
+  - id: backend_success
+    description: 'Full path: every stage runs and the backend accepts the record.'
+    expected:
+      - consent
+      - sampling
+      - backpressure
+      - hardening
+      - pii
+      - receipt
+      - local
+      - backend
+      - health
+      - release
+  - id: backend_failure
+    description: 'Backend rejected the record: the stage still runs and is still recorded in health, and the ticket is still released.'
+    expected:
+      - consent
+      - sampling
+      - backpressure
+      - hardening
+      - pii
+      - receipt
+      - local
+      - backend
+      - health
+      - release

@@ -80,3 +80,23 @@ def test_at_least_one_entry_is_not_universal() -> None:
         "every config default declares the same applicability; the field was likely "
         "filled in uniformly rather than by checking which SDKs parse each variable"
     )
+
+
+def test_health_snapshot_declares_receipt_failures() -> None:
+    """Governance receipt delivery must be observable in the health snapshot.
+
+    A sink that silently drops receipts is indistinguishable from one that
+    delivers them unless the failure count is part of the canonical surface.
+    """
+    fields = _spec()["health_snapshot"]["fields"]
+    assert "receipt_failures" in fields
+    assert fields["receipt_failures"]["type"] == "uint64"
+
+
+def test_health_snapshot_field_count_is_pinned() -> None:
+    """26 serialized fields: the 25 that existed plus receipt_failures.
+
+    Pinning the count makes an accidental addition or removal a test failure
+    rather than a silent change to a cross-language contract.
+    """
+    assert len(_spec()["health_snapshot"]["fields"]) == 26

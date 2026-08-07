@@ -1,0 +1,162 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Canonical governance receipt vectors — the cross-language contract.
+#
+# Every SDK must reproduce, byte for byte:
+#   canonical_json  RFC 8785 (JCS) serialization of `normalized`
+#   original_hash   lowercase hex SHA-256 of the canonical_json bytes
+#   payload         receipt_id|timestamp|field_path|action|original_hash
+#   signature       lowercase hex HMAC-SHA256 of payload under `key`
+#
+# `input` is the value as captured; `normalized` is what canonicalization runs
+# on. They differ only where JCS cannot encode the input — NaN and Infinity have
+# no JSON representation, so the contract fixes that they normalize to null
+# rather than leaving each SDK to invent a spelling.
+#
+# The digests here are derived with `rfc8785`, an independent implementation;
+# tests/tooling/test_receipt_fixtures.py re-derives them on every run. Python's
+# json.dumps is NOT a valid verifier: it emits "-0.0" where JCS requires "0",
+# which the negative_zero_collapses case pins deliberately.
+
+version: 1
+cases:
+  - id: nested_unicode_and_number
+    key: parity-secret
+    input:
+      z:
+        - true
+        - null
+        - é
+      a: 1.5
+    normalized:
+      z:
+        - true
+        - null
+        - é
+      a: 1.5
+    canonical_json: '{"a":1.5,"z":[true,null,"é"]}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-111213141516
+    timestamp: '2026-08-04T12:34:56.789Z'
+    field_path: user.profile
+    action: redact
+    original_hash: fea3d4b3eb8f3219bf751b664a930bb41758a129b864bbd74f79d399e9aa9de3
+    payload: 018f47a2-6b7c-7d8e-9f10-111213141516|2026-08-04T12:34:56.789Z|user.profile|redact|fea3d4b3eb8f3219bf751b664a930bb41758a129b864bbd74f79d399e9aa9de3
+    signature: 9005d50fd071ef627c56290c5b8a639ee748fea3d3a5e3c89eed8fcf19e82c11
+  - id: negative_zero_collapses
+    key: parity-secret
+    input:
+      balance: -0.0
+      delta: 0.0
+    normalized:
+      balance: -0.0
+      delta: 0.0
+    canonical_json: '{"balance":0,"delta":0}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-111213141517
+    timestamp: '2026-08-04T12:34:56.790Z'
+    field_path: account.balance
+    action: hash
+    original_hash: 5b0956f9149fac008f0d8d71b73f273c690b54338222c65b961fd30a7cea3175
+    payload: 018f47a2-6b7c-7d8e-9f10-111213141517|2026-08-04T12:34:56.790Z|account.balance|hash|5b0956f9149fac008f0d8d71b73f273c690b54338222c65b961fd30a7cea3175
+    signature: 2c13ef19ec9698f9c2c2c804a37ac28f5517f9949fc62aca8319ba0e7fa94e07
+  - id: escaped_control_characters
+    key: parity-secret
+    input:
+      note: "line\nbreak\ttab\"quote\\slash"
+    normalized:
+      note: "line\nbreak\ttab\"quote\\slash"
+    canonical_json: '{"note":"line\nbreak\ttab\"quote\\slash"}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-111213141518
+    timestamp: '2026-08-04T12:34:56.791Z'
+    field_path: audit.note
+    action: truncate
+    original_hash: 1f995c15b68378b7530854985d7b16065cbdeab14bde59e8c5e7bd11c05e321f
+    payload: 018f47a2-6b7c-7d8e-9f10-111213141518|2026-08-04T12:34:56.791Z|audit.note|truncate|1f995c15b68378b7530854985d7b16065cbdeab14bde59e8c5e7bd11c05e321f
+    signature: e90e3510a6559896ef5f4ee862bbdb43fdd265588259500739a7de53fed9d0e5
+  - id: astral_unicode
+    key: parity-secret
+    input:
+      emoji: 😀
+      cjk: 中文
+    normalized:
+      emoji: 😀
+      cjk: 中文
+    canonical_json: '{"cjk":"中文","emoji":"😀"}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-111213141519
+    timestamp: '2026-08-04T12:34:56.792Z'
+    field_path: user.display_name
+    action: redact
+    original_hash: f6d959e714000374d3ef2e9e3698fb83b773ccf03eafaf6fb67803369fbda48b
+    payload: 018f47a2-6b7c-7d8e-9f10-111213141519|2026-08-04T12:34:56.792Z|user.display_name|redact|f6d959e714000374d3ef2e9e3698fb83b773ccf03eafaf6fb67803369fbda48b
+    signature: f0f47b72ec282e2be86e92eaca87de451c06f6e34a8770a918d53a3df37cb170
+  - id: nested_arrays
+    key: parity-secret
+    input:
+      matrix:
+        - - 1
+          - 2
+        - - 3
+          - - 4
+            - 5
+      empty: []
+    normalized:
+      matrix:
+        - - 1
+          - 2
+        - - 3
+          - - 4
+            - 5
+      empty: []
+    canonical_json: '{"empty":[],"matrix":[[1,2],[3,[4,5]]]}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-11121314151a
+    timestamp: '2026-08-04T12:34:56.793Z'
+    field_path: request.body
+    action: drop
+    original_hash: e16b689b111bc2c29fdd1a243a0193c74157c06bbed3f4c4c05f92086a1db804
+    payload: 018f47a2-6b7c-7d8e-9f10-11121314151a|2026-08-04T12:34:56.793Z|request.body|drop|e16b689b111bc2c29fdd1a243a0193c74157c06bbed3f4c4c05f92086a1db804
+    signature: 351549067feeaa63be0eb7dd8611e6421cf614b84405d93db2a83c008389b706
+  - id: sorted_object_keys
+    key: parity-secret
+    input:
+      zeta: 1
+      Alpha: 2
+      alpha: 3
+      é: 4
+      '10': 5
+      '2': 6
+    normalized:
+      zeta: 1
+      Alpha: 2
+      alpha: 3
+      é: 4
+      '10': 5
+      '2': 6
+    canonical_json: '{"10":5,"2":6,"Alpha":2,"alpha":3,"zeta":1,"é":4}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-11121314151b
+    timestamp: '2026-08-04T12:34:56.794Z'
+    field_path: payload.keys
+    action: hash
+    original_hash: 94a4e31acf65f211db38848c6c0cd05e6d72c9adbcd82407d5a35c2f0d90c46a
+    payload: 018f47a2-6b7c-7d8e-9f10-11121314151b|2026-08-04T12:34:56.794Z|payload.keys|hash|94a4e31acf65f211db38848c6c0cd05e6d72c9adbcd82407d5a35c2f0d90c46a
+    signature: 5e95daddd77c6cdcee8a8df92c859411a32fc4c282ea5f03e2a549608b50ee8d
+  - id: non_finite_normalization
+    key: parity-secret
+    input:
+      ratio: .nan
+      ceiling: .inf
+      floor: -.inf
+      ok: 2.0
+    normalized:
+      ratio: null
+      ceiling: null
+      floor: null
+      ok: 2.0
+    canonical_json: '{"ceiling":null,"floor":null,"ok":2,"ratio":null}'
+    receipt_id: 018f47a2-6b7c-7d8e-9f10-11121314151c
+    timestamp: '2026-08-04T12:34:56.795Z'
+    field_path: metrics.ratio
+    action: drop
+    original_hash: d199bcf4d84632ac0dfd42000fc773b68a7c92ce38e307536154eaf76776c8d7
+    payload: 018f47a2-6b7c-7d8e-9f10-11121314151c|2026-08-04T12:34:56.795Z|metrics.ratio|drop|d199bcf4d84632ac0dfd42000fc773b68a7c92ce38e307536154eaf76776c8d7
+    signature: 60140ba49cd2708dabdb5980afdf7ff0011c8e1a92561620c1d503c1060614fc

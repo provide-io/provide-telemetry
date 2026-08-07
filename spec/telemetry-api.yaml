@@ -700,6 +700,91 @@ config_defaults:
       description: "Maximum nesting depth for dict/list attribute values"
       applicability: [python, go, rust]
 
+health_snapshot:
+  description: >
+    Typed, canonical health surface. Every SDK serializes exactly these
+    fields under exactly these names: 8 per-signal fields across 3 signals
+    plus 2 global fields.
+  fields:
+    emitted_logs:
+      type: uint64
+      description: "Records handed to the pipeline for this signal (logs)"
+    dropped_logs:
+      type: uint64
+      description: "Records refused before export (consent, sampling, or backpressure) (logs)"
+    export_failures_logs:
+      type: uint64
+      description: "Export attempts that returned an error or timed out (logs)"
+    retries_logs:
+      type: uint64
+      description: "Retry attempts beyond the first for this signal (logs)"
+    export_latency_ms_logs:
+      type: float64
+      description: "Latency of the most recent export, not cumulative (logs)"
+    async_blocking_risk_logs:
+      type: uint64
+      description: "Times a blocking export ran on an async event loop (logs)"
+    circuit_state_logs:
+      type: string
+      description: "One of closed, open, half-open (logs)"
+    circuit_open_count_logs:
+      type: uint64
+      description: "Times the breaker has transitioned to open (logs)"
+    emitted_traces:
+      type: uint64
+      description: "Records handed to the pipeline for this signal (traces)"
+    dropped_traces:
+      type: uint64
+      description: "Records refused before export (consent, sampling, or backpressure) (traces)"
+    export_failures_traces:
+      type: uint64
+      description: "Export attempts that returned an error or timed out (traces)"
+    retries_traces:
+      type: uint64
+      description: "Retry attempts beyond the first for this signal (traces)"
+    export_latency_ms_traces:
+      type: float64
+      description: "Latency of the most recent export, not cumulative (traces)"
+    async_blocking_risk_traces:
+      type: uint64
+      description: "Times a blocking export ran on an async event loop (traces)"
+    circuit_state_traces:
+      type: string
+      description: "One of closed, open, half-open (traces)"
+    circuit_open_count_traces:
+      type: uint64
+      description: "Times the breaker has transitioned to open (traces)"
+    emitted_metrics:
+      type: uint64
+      description: "Records handed to the pipeline for this signal (metrics)"
+    dropped_metrics:
+      type: uint64
+      description: "Records refused before export (consent, sampling, or backpressure) (metrics)"
+    export_failures_metrics:
+      type: uint64
+      description: "Export attempts that returned an error or timed out (metrics)"
+    retries_metrics:
+      type: uint64
+      description: "Retry attempts beyond the first for this signal (metrics)"
+    export_latency_ms_metrics:
+      type: float64
+      description: "Latency of the most recent export, not cumulative (metrics)"
+    async_blocking_risk_metrics:
+      type: uint64
+      description: "Times a blocking export ran on an async event loop (metrics)"
+    circuit_state_metrics:
+      type: string
+      description: "One of closed, open, half-open (metrics)"
+    circuit_open_count_metrics:
+      type: uint64
+      description: "Times the breaker has transitioned to open (metrics)"
+    setup_error:
+      type: string
+      description: "Last setup failure message, empty when setup succeeded"
+    receipt_failures:
+      type: uint64
+      description: "Governance receipts a configured ReceiptSink refused or threw on. Without this, a sink that silently drops every receipt is indistinguishable from one that delivers them."
+
 required_behaviors:
   - id: graceful_degradation
     description: >
@@ -799,9 +884,9 @@ behavioral_parity:
 
   health_snapshot_canonical:
     description: >
-      Health snapshots return 25 canonical fields across all languages.
+      Health snapshots return 26 canonical fields across all languages.
     rules:
-      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 1 global (setup_error)
+      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 2 global (setup_error, receipt_failures)
       - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
 
