@@ -25,6 +25,12 @@ fn resilience_test_attempts_are_capped_at_max_export_attempts() {
     );
     assert_eq!(capped_attempts(MAX_EXPORT_ATTEMPTS), MAX_EXPORT_ATTEMPTS);
     assert_eq!(capped_attempts(u32::MAX), MAX_EXPORT_ATTEMPTS);
+    // The literal, not the constant: comparing capped_attempts against
+    // MAX_EXPORT_ATTEMPTS alone lets a mutated `MAX_EXPORTER_RETRIES + 1`
+    // (99 or 100) satisfy every symbolic assertion above. 101 is the
+    // cross-language contract (TypeScript's MAX_EXPORT_ATTEMPTS).
+    assert_eq!(MAX_EXPORT_ATTEMPTS, 101);
+    assert_eq!(capped_attempts(250), 101);
 }
 
 #[test]
