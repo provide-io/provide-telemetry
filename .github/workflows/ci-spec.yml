@@ -109,12 +109,19 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all four language parity suites with strict defaults: output-format probes
-      # and contract DSL cases are both on by default (no flags required).
+      # Run all five language parity suites with strict defaults: output-format probes
+      # and contract DSL cases are both on by default (no flags required), and a
+      # missing toolchain fails rather than skipping.
       # Each language runner covers every parity file counted by check_fixture_coverage.py:
       #   Python    — tests/parity/ (whole directory)
       #   TypeScript — tests/parity.test.ts + tests/endpoint.test.ts
       #   Go        — TestParity* + TestEndpointValidationParity (all parity_*_test.go files)
       #   Rust      — parity_test + parity_extra_test + parity_pii_fixes_test (three binaries)
+      #   C#        — Parity*.cs under csharp/tests
       - name: Behavioral parity check
         run: uv run python spec/run_behavioral_parity.py
+      # Diff every SDK's observed config defaults against spec/telemetry-api.yaml.
+      # The probes read each SDK's real config object, so this catches a default
+      # or a type drifting in one language without the spec being updated.
+      - name: Config parity check
+        run: uv run python spec/check_config_parity.py

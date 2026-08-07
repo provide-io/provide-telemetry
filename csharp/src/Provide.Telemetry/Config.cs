@@ -59,19 +59,19 @@ public sealed class BackpressureConfig
 
 public sealed class ExporterPolicyConfig
 {
-    public int LogsRetries { get; set; } = 3;
+    public int LogsRetries { get; set; }
     public double LogsBackoffSeconds { get; set; } = 0.5;
     public double LogsTimeoutSeconds { get; set; } = 10.0;
     public bool LogsFailOpen { get; set; } = true;
     public bool LogsAllowBlockingInEventLoop { get; set; }
 
-    public int TracesRetries { get; set; } = 3;
+    public int TracesRetries { get; set; }
     public double TracesBackoffSeconds { get; set; } = 0.5;
     public double TracesTimeoutSeconds { get; set; } = 10.0;
     public bool TracesFailOpen { get; set; } = true;
     public bool TracesAllowBlockingInEventLoop { get; set; }
 
-    public int MetricsRetries { get; set; } = 3;
+    public int MetricsRetries { get; set; }
     public double MetricsBackoffSeconds { get; set; } = 0.5;
     public double MetricsTimeoutSeconds { get; set; } = 10.0;
     public bool MetricsFailOpen { get; set; } = true;
