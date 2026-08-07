@@ -352,8 +352,14 @@ schema_strict_mode:
 
 health_snapshot:
   description: >
-    Canonical 25-field health snapshot layout. All languages must return
-    these fields with these default values after reset.
+    Canonical 26-field health snapshot layout: 8 per-signal fields across 3
+    signals, plus 2 global fields. All languages must return these fields with
+    these default values after reset.
+
+    receipt_failures is the newest field and rolls out per language with that
+    language's receipt-delivery task: TypeScript has it; Go, Python, Rust and
+    C# return the other 25 until theirs lands. Their own parity tests assert
+    the surface each actually has, so this is visible rather than assumed.
   canonical_fields:
     per_signal:
       - emitted
@@ -366,6 +372,7 @@ health_snapshot:
       - circuit_open_count
     global:
       - setup_error
+      - receipt_failures
   defaults:
     emitted: 0
     dropped: 0
@@ -376,6 +383,7 @@ health_snapshot:
     circuit_state: "closed"
     circuit_open_count: 0
     setup_error: null
+    receipt_failures: 0
   circuit_state_values: ["closed", "open", "half_open"]
 
 pii_depth:

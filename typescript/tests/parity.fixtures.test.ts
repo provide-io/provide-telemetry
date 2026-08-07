@@ -145,6 +145,7 @@ describe('parity: health_snapshot', () => {
     'circuitStateMetrics',
     'circuitOpenCountMetrics',
     'setupError',
+    'receiptFailures',
   ];
 
   beforeEach(() => {
@@ -157,7 +158,7 @@ describe('parity: health_snapshot', () => {
     _resetResilienceForTests();
   });
 
-  it('returns the canonical 25-field layout with reset defaults', () => {
+  it('returns the canonical 26-field layout with reset defaults', () => {
     const snapshot = getHealthSnapshot();
 
     expect(Object.keys(snapshot)).toEqual(canonicalFields);
@@ -187,6 +188,7 @@ describe('parity: health_snapshot', () => {
       circuitStateMetrics: 'closed',
       circuitOpenCountMetrics: 0,
       setupError: null,
+      receiptFailures: 0,
     });
   });
 });

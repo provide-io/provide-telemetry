@@ -612,6 +612,54 @@ bash ci/verify-npm-consumer-package.sh
 
 Expected: all commands pass and `npm --prefix typescript ls` reports one compatible exporter version line.
 
+**As built — where the shipped code differs from the sketch, and why:**
+
+1. *JCS needed almost no code.* RFC 8785 was specified against ECMAScript, so
+   `JSON.stringify` already emits exactly the string escaping it mandates and
+   JavaScript's Number-to-string is already its binary64 rendering — including
+   `-0` printing as `0`, which `negative_zero_collapses` pins. All that remained
+   was sorting object keys by UTF-16 code unit and normalizing what JSON cannot
+   encode. Verified against all seven committed vectors before a line was
+   written, so no hand-rolled key orderer, escaper or number formatter exists to
+   drift. It lives in `receipts.ts` (per the ownership line above) rather than
+   `hash.ts`; only `hmacSha256Hex` and `sha256Bytes` went into `hash.ts`.
+2. *Hardening got its own module.* Adding it to `pii.ts` put that file at 559
+   lines against the 500-line cap, and the split is the right one anyway:
+   `pii.ts` decides policy (which fields are sensitive), `harden.ts` decides
+   shape (how deep, how wide, how long, and what to do with values JSON cannot
+   represent). Its control-character range is character-for-character Python's
+   `_CONTROL_CHAR_RE`, so TAB/LF/CR survive in both SDKs.
+3. *No `receiptSink` on `TelemetryConfig`.* TypeScript's `setupTelemetry` never
+   enables receipts — `enableReceipts` is a standalone API — so a config field
+   would be read by nothing and would ship as dead code the mutation gate could
+   not kill. The "reject enabled production receipts without a sink"
+   requirement is enforced where the decision is actually made, in
+   `enableReceipts`, which now throws `MissingReceiptSinkError`.
+4. *Receipt fields stay camelCase.* `originalHash`/`hmac`, not the snake_case
+   in the Step 2 sketch: `RedactionReceipt` is existing public API and the rest
+   of the TypeScript surface is camelCase. The *wire* contract — payload byte
+   order and digest spellings — is snake_case-independent and unchanged.
+5. *The pipeline-order test drives the real write hook.* A `processSignal` plus
+   `RecordingPipelineObserver` built for the test would be a second
+   implementation of the pipeline, free to agree with the fixture while the
+   shipping one diverged — the exact failure this fixture exists to catch. Each
+   stage is instead detected by the effect it leaves on a real record: a health
+   counter, a collapsed cycle, a redacted field, a collected receipt, a rendered
+   line, a returned ticket.
+
+**Two interim divergences this task creates, both closed by later tasks:**
+
+- `original_hash` is now `sha256(JCS(value))` in TypeScript, where Python, Go,
+  Rust and C# still hash `String(value)`. Tasks 6, 8, 10 and 13 converge them.
+  No executable gate pins the redaction-path digest today — `receipt` is not a
+  behavioral-fixture category — so this is stated here rather than caught.
+- `health_snapshot` is 26 fields in TypeScript and 25 elsewhere.
+  `spec/telemetry-api.yaml` has declared 26 since Task 2 and
+  `spec/behavioral_fixtures.yaml` now does too; each language's own parity test
+  asserts the surface it actually has, so the gap is visible per language rather
+  than assumed away. Adding the counter to the other four now would mean adding
+  an incrementer with no caller, which their mutation gates would rightly fail.
+
 - [ ] **Step 6: Commit TypeScript governance parity**
 
 ```bash

@@ -34,8 +34,16 @@ export interface HealthSnapshot {
   asyncBlockingRiskMetrics: number;
   circuitStateMetrics: string;
   circuitOpenCountMetrics: number;
-  // Global (1)
+  // Global (2)
   setupError: string | null;
+  /**
+   * Governance receipts a configured ReceiptSink refused or threw on.
+   *
+   * Without this, a sink that silently drops every receipt is
+   * indistinguishable from one that delivers them — and the receipt error path
+   * deliberately cannot log, because logging is what produces receipts.
+   */
+  receiptFailures: number;
 }
 
 /** Numeric fields that live in the mutable _state object (not derived circuit fields). */
@@ -57,7 +65,8 @@ type NumericHealthField =
   | 'exportLatencyMsMetrics'
   | 'asyncBlockingRiskLogs'
   | 'asyncBlockingRiskTraces'
-  | 'asyncBlockingRiskMetrics';
+  | 'asyncBlockingRiskMetrics'
+  | 'receiptFailures';
 
 let _setupError: string | null = null;
 
@@ -80,6 +89,7 @@ const _state = {
   asyncBlockingRiskLogs: 0,
   asyncBlockingRiskTraces: 0,
   asyncBlockingRiskMetrics: 0,
+  receiptFailures: 0,
 };
 
 // Lazy reference to avoid circular dependency at module load time.
@@ -129,6 +139,7 @@ export function getHealthSnapshot(): HealthSnapshot {
     circuitStateMetrics: csMetrics.state,
     circuitOpenCountMetrics: csMetrics.openCount,
     setupError: _setupError,
+    receiptFailures: _state.receiptFailures,
   };
 }
 
@@ -202,5 +213,6 @@ export function _resetHealthForTests(): void {
   _state.asyncBlockingRiskLogs = 0;
   _state.asyncBlockingRiskTraces = 0;
   _state.asyncBlockingRiskMetrics = 0;
+  _state.receiptFailures = 0;
   _setupError = null;
 }

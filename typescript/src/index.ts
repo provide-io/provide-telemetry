@@ -77,6 +77,8 @@ export {
 export { registerOtelProviders } from './otel.js';
 
 // PII sanitization utilities
+export { harden, hardenRecord } from './harden.js';
+export type { HardenOptions } from './harden.js';
 export {
   sanitize,
   DEFAULT_SANITIZE_FIELDS,
@@ -208,8 +210,19 @@ export {
 } from './classification.js';
 
 // Governance modules
-export type { RedactionReceipt } from './receipts.js';
-export { enableReceipts, getEmittedReceiptsForTests, resetReceiptsForTests } from './receipts.js';
+export type { EnableReceiptsOptions, ReceiptSink, RedactionReceipt } from './receipts.js';
+export {
+  canonicalJson,
+  emitReceipt,
+  enableReceipts,
+  getEmittedReceiptsForTests,
+  MissingReceiptSinkError,
+  receiptPayload,
+  resetReceiptsForTests,
+  signReceipt,
+  TEST_RECEIPT_CAPACITY,
+  TestReceiptCollector,
+} from './receipts.js';
 
 // Shutdown
 export { flushTelemetry, shutdownTelemetry } from './shutdown.js';

@@ -32,6 +32,7 @@
 import type { TelemetryConfig } from './config.js';
 import { getConfig } from './config.js';
 import { validateOtlpEndpoint } from './endpoint.js';
+import { hardenRecord } from './harden.js';
 import { buildOtelResource } from './otel-resource.js';
 import { dynImportOtel } from './otel-dynimport.js';
 import { wrapResilientExporter } from './resilient-exporter.js';
@@ -145,23 +146,17 @@ export function emitLogRecord(o: Record<string, unknown>): void {
     if (!SKIP.has(k) && v !== undefined) attributes[k] = v;
   }
 
-  // — Security: truncate long attribute values —
+  // — Security: recursive hardening —
+  // Truncation and the attribute-count cap used to be applied here as two
+  // top-level-only passes, so a nested object went to the exporter unbounded
+  // and a cyclic one reached its serializer. hardenRecord applies the same
+  // caps at every level, and collapses cycles and non-JSON composites.
   const cfg = getConfig();
-  const maxLen = cfg.securityMaxAttrValueLength;
-  for (const [k, v] of Object.entries(attributes)) {
-    if (typeof v === 'string' && v.length > maxLen) {
-      attributes[k] = v.slice(0, maxLen) + '...';
-    }
-  }
-
-  // — Security: limit attribute count —
-  const maxCount = cfg.securityMaxAttrCount;
-  const keys = Object.keys(attributes);
-  if (keys.length > maxCount) {
-    for (const k of keys.slice(maxCount)) {
-      delete attributes[k];
-    }
-  }
+  hardenRecord(attributes, {
+    maxValueLength: cfg.securityMaxAttrValueLength,
+    maxAttrCount: cfg.securityMaxAttrCount,
+    maxDepth: cfg.piiMaxDepth,
+  });
 
   // — Code attributes: map provide-telemetry fields to OTel semantic conventions —
   if (cfg.logCodeAttributes) {

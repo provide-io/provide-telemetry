@@ -21,6 +21,7 @@ import { computeErrorFingerprint } from './fingerprint.js';
 import { formatPretty, supportsColor } from './pretty.js';
 import { _emittedField, _incrementHealth } from './health.js';
 import { emitLogRecord } from './otel-logs.js';
+import { hardenRecord } from './harden.js';
 import { sanitize, sanitizePayload } from './pii.js';
 import { EventSchemaError, validateEventName, validateRequiredKeys } from './schema.js';
 import { tryAcquire, release } from './backpressure.js';
@@ -151,6 +152,17 @@ export function makeWriteHook() {
         const stack = (errObj?.['stack'] ?? o['stack']) as string | undefined;
         o['error_fingerprint'] = computeErrorFingerprint(String(excName), stack);
       }
+
+      // Recursive hardening runs before classification and PII, per the
+      // canonical signal order: bound the record structurally so everything
+      // after it sees a finite, JSON-shaped, non-cyclic value. Doing it here
+      // rather than at export means a cyclic payload cannot reach the local
+      // renderer either.
+      hardenRecord(o, {
+        maxValueLength: cfg.securityMaxAttrValueLength,
+        maxAttrCount: cfg.securityMaxAttrCount,
+        maxDepth: cfg.piiMaxDepth,
+      });
 
       // PII sanitization: blocked keys + secret detection + custom PII rules.
       if (cfg.logSanitize) {

@@ -28,8 +28,7 @@ function rotateRight(value: number, bits: number): number {
   return (value >>> bits) | (value << (32 - bits));
 }
 
-export function sha256Hex(input: string): string {
-  const bytes = new TextEncoder().encode(input);
+function sha256Words(bytes: Uint8Array): number[] {
   const bitLength = bytes.length * 8;
   const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
   const padded = new Uint8Array(paddedLength);
@@ -106,9 +105,71 @@ export function sha256Hex(input: string): string {
     h7 = add32(h7, h);
   }
 
-  return [h0, h1, h2, h3, h4, h5, h6, h7]
-    .map((word) => word.toString(16).padStart(8, '0'))
-    .join('');
+  return [h0, h1, h2, h3, h4, h5, h6, h7];
+}
+
+function wordsToHex(words: number[]): string {
+  return words.map((word) => word.toString(16).padStart(8, '0')).join('');
+}
+
+function wordsToBytes(words: number[]): Uint8Array {
+  const out = new Uint8Array(words.length * 4);
+  const view = new DataView(out.buffer);
+  words.forEach((word, i) => {
+    view.setUint32(i * 4, word, false);
+  });
+  return out;
+}
+
+export function sha256Hex(input: string): string {
+  return wordsToHex(sha256Words(new TextEncoder().encode(input)));
+}
+
+/** SHA-256 over raw bytes, returning the 32-byte digest. */
+export function sha256Bytes(bytes: Uint8Array): Uint8Array {
+  return wordsToBytes(sha256Words(bytes));
+}
+
+/** SHA-256 block size in bytes — the key-padding width HMAC (RFC 2104) requires. */
+const HMAC_BLOCK_SIZE = 64;
+const HMAC_INNER_PAD = 0x36;
+const HMAC_OUTER_PAD = 0x5c;
+
+/**
+ * Real HMAC-SHA256 (RFC 2104), returned as lowercase hex.
+ *
+ * The receipt signature this produces is cross-checked against
+ * `spec/receipt_fixtures.yaml`, whose vectors come from Python's `hmac` module
+ * — so this is the same construction every other SDK signs with, not a
+ * look-alike. Its predecessor here hashed `sha256(key + "|" + payload)`, which
+ * is a keyed digest, not an HMAC: length-extendable, and unable to reproduce
+ * any cross-language vector.
+ *
+ * Kept as pure JavaScript on top of the SHA-256 above rather than routed
+ * through WebCrypto, because `crypto.subtle.sign` is async and only available
+ * over HTTPS/localhost in browsers, while the redaction hook this serves is
+ * synchronous and must work in every runtime the package ships to.
+ */
+export function hmacSha256Hex(key: Uint8Array, message: Uint8Array): string {
+  const block = new Uint8Array(HMAC_BLOCK_SIZE);
+  // A key longer than the block is hashed down first; anything shorter is
+  // zero-padded, which the freshly allocated array already is.
+  block.set(key.length > HMAC_BLOCK_SIZE ? sha256Bytes(key) : key);
+
+  const inner = new Uint8Array(HMAC_BLOCK_SIZE + message.length);
+  const outer = new Uint8Array(HMAC_BLOCK_SIZE + 32);
+  // Iterating `block` rather than a counted loop: `i < HMAC_BLOCK_SIZE` has an
+  // off-by-one mutant that is genuinely equivalent here, because the two
+  // `.set` calls below overwrite index 64 anyway. Driving the loop from the
+  // array removes the comparison instead of arguing about it — the same
+  // rationale as the message-schedule loops above.
+  block.forEach((byte, i) => {
+    inner[i] = byte ^ HMAC_INNER_PAD;
+    outer[i] = byte ^ HMAC_OUTER_PAD;
+  });
+  inner.set(message, HMAC_BLOCK_SIZE);
+  outer.set(sha256Bytes(inner), HMAC_BLOCK_SIZE);
+  return wordsToHex(sha256Words(outer));
 }
 
 export function shortHash12(input: string): string {

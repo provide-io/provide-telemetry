@@ -40,10 +40,11 @@ export const DEFAULT_SANITIZE_FIELDS: readonly string[] = [
   'cookie',
 ];
 
-const REDACTED = '***';
+/** The mask literal every redaction and collapse uses. */
+export const REDACTED = '***';
 
-/** Default maximum recursion depth for PII sanitization. */
-const _DEFAULT_MAX_DEPTH = 8;
+/** Default maximum recursion depth for PII sanitization and hardening. */
+export const DEFAULT_MAX_DEPTH = 8;
 
 /* Stryker disable all: regex quantifier mutations produce patterns that still match test values */
 export const _SECRET_PATTERNS: RegExp[] = _GENERATED_PATTERNS.map((p) => p.regex);
@@ -212,7 +213,7 @@ function _applyRuleFull(
   node: unknown,
   rule: PIIRule,
   currentPath: string[],
-  maxDepth: number = _DEFAULT_MAX_DEPTH,
+  maxDepth: number = DEFAULT_MAX_DEPTH,
   depth: number = 0,
   receiptHook: ((fieldPath: string, action: string, originalValue: unknown) => void) | null = null,
 ): unknown {
@@ -360,7 +361,7 @@ export function sanitizePayload(
   extraFields: string[] = [],
   options?: SanitizePayloadOptions,
 ): void {
-  const maxDepth = options?.maxDepth ?? _DEFAULT_MAX_DEPTH;
+  const maxDepth = options?.maxDepth ?? DEFAULT_MAX_DEPTH;
   // Capture hooks once at call time to avoid repeated reads.
   const receiptHook = _receiptHook;
   const classHook = _classificationHook;
