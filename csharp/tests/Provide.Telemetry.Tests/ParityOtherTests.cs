@@ -136,11 +136,132 @@ public class ParityOtherTests
     }
 }
 
-// Additional fixture-category anchors for check_fixture_coverage.py:
-//   propagation_guards — oversized/malformed headers discarded (see ParityPropagationTests)
-//   propagation_oversized_traceparent — covered in ParityPropagationTests
-//   default_sensitive_keys — password/api_key redaction defaults (see ParityPiiTests)
-//   error_fingerprint — stable fingerprint classification via Slo.ClassifyError
-//   sampling_signal_validation — invalid signal names rejected (ParitySamplingTests)
-//   sampling_rate_bounds — rates clamped to [0,1] (ParitySamplingTests)
-//   cardinality_saturation — overflow sentinel when MaxValues exceeded (Cardinality_Clamping)
+/// <summary>
+/// Fixture categories whose evidence is the fixture's own data, not a
+/// representative example: <c>cardinality_saturation</c> and
+/// <c>error_fingerprint</c>.
+/// </summary>
+[Collection("Telemetry")]
+public class ParityFixtureDataTests
+{
+    public ParityFixtureDataTests() => Testing.ResetForTests();
+
+    // ── cardinality_saturation ───────────────────────────────────────────────
+
+    [Fact]
+    public void CardinalitySaturation_FixtureSequence_OverflowsOnFourthValue()
+    {
+        // spec/behavioral_fixtures.yaml: key "route", max_values 3, ttl 300,
+        // values /a /b /c /d -> the first three pass through, /d saturates.
+        ProvideTelemetry.ClearCardinalityLimits();
+        ProvideTelemetry.RegisterCardinalityLimit(
+            "route", new CardinalityLimit { MaxValues = 3, TtlSeconds = 300.0 });
+
+        var observed = new List<string>();
+        foreach (var value in new[] { "/a", "/b", "/c", "/d" })
+        {
+            var guarded = ProvideTelemetry.GuardAttributes(
+                new Dictionary<string, string> { ["route"] = value });
+            observed.Add(guarded["route"]);
+        }
+
+        Assert.Equal(new[] { "/a", "/b", "/c", "__overflow__" }, observed);
+    }
+
+    [Fact]
+    public void CardinalitySaturation_IsDeterministic()
+    {
+        // "Every call must observe the sentinel deterministically — no sampling,
+        // no probabilistic behavior."
+        ProvideTelemetry.ClearCardinalityLimits();
+        ProvideTelemetry.RegisterCardinalityLimit(
+            "route", new CardinalityLimit { MaxValues = 1, TtlSeconds = 300.0 });
+        _ = ProvideTelemetry.GuardAttributes(new Dictionary<string, string> { ["route"] = "/a" });
+
+        for (var i = 0; i < 10; i++)
+        {
+            var guarded = ProvideTelemetry.GuardAttributes(
+                new Dictionary<string, string> { ["route"] = "/b" });
+            Assert.Equal("__overflow__", guarded["route"]);
+        }
+    }
+
+    // ── error_fingerprint ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ErrorFingerprint_NoFrames_MatchesCanonicalDigest()
+    {
+        // The fixture pins the cross-language digest: sha256("valueerror")[:12].
+        // Python, TypeScript, Go and Rust all produce this exact value.
+        var fingerprint = Fingerprint.ComputeErrorFingerprint("ValueError");
+        Assert.Equal("a50aba76697e", fingerprint);
+        Assert.Equal(12, fingerprint.Length);
+    }
+
+    [Fact]
+    public void ErrorFingerprint_OneFrame_IsTwelveHexChars()
+    {
+        var fingerprint = Fingerprint.ComputeErrorFingerprintFromParts(
+            "TypeError", new[] { "module:main" });
+        Assert.Equal("49f2403c8009", fingerprint);
+        Assert.Equal(12, fingerprint.Length);
+    }
+
+    [Fact]
+    public void ErrorFingerprint_IsCaseInsensitiveOnTypeName()
+    {
+        Assert.Equal(
+            Fingerprint.ComputeErrorFingerprint("VALUEERROR"),
+            Fingerprint.ComputeErrorFingerprint("valueerror"));
+    }
+
+    [Fact]
+    public void ErrorFingerprint_DiffersByExceptionType()
+    {
+        Assert.NotEqual(
+            Fingerprint.ComputeErrorFingerprint("ValueError"),
+            Fingerprint.ComputeErrorFingerprint("TypeError"));
+    }
+
+    [Fact]
+    public void ErrorFingerprint_NormalizesFramesToBasenameAndFunction()
+    {
+        var stack = "   at Provide.Telemetry.Tests.Widget.Explode() in /src/deep/Widget.cs:line 42";
+        Assert.Equal(new[] { "widget:explode" }, Fingerprint.ExtractFrames(stack));
+    }
+
+    [Fact]
+    public void ErrorFingerprint_KeepsAtMostThreeFrames()
+    {
+        var stack = string.Join("\n", Enumerable.Range(0, 6).Select(
+            i => $"   at Ns.Type.M{i}() in /src/F{i}.cs:line {i}"));
+        Assert.Equal(3, Fingerprint.ExtractFrames(stack).Count);
+    }
+
+    [Fact]
+    public void ErrorFingerprint_IgnoresFramesWithoutFileInfo()
+    {
+        // Release builds without a PDB emit "at Ns.Type.Method()" and nothing more;
+        // a frame with no file contributes no basename and is skipped.
+        Assert.Empty(Fingerprint.ExtractFrames("   at Ns.Type.Method()"));
+    }
+
+    [Fact]
+    public void ErrorFingerprint_FromException_UsesTypeName()
+    {
+        Exception thrown;
+        try { throw new InvalidOperationException("boom"); }
+        catch (InvalidOperationException caught) { thrown = caught; }
+        Assert.Equal(
+            Fingerprint.ComputeErrorFingerprint(thrown),
+            Fingerprint.ComputeErrorFingerprint("InvalidOperationException", thrown.StackTrace));
+    }
+
+    [Fact]
+    public void ErrorFingerprint_NullAndEmptyStacks_MatchNoFrames()
+    {
+        var bare = Fingerprint.ComputeErrorFingerprint("ValueError");
+        Assert.Equal(bare, Fingerprint.ComputeErrorFingerprint("ValueError", null));
+        Assert.Equal(bare, Fingerprint.ComputeErrorFingerprint("ValueError", ""));
+    }
+}

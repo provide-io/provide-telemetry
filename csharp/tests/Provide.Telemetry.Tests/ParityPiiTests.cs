@@ -113,4 +113,48 @@ public class ParityPiiTests
         var l2 = Assert.IsType<Dictionary<string, object?>>(l1["l2"]);
         Assert.Equal("***", l2["password"]);
     }
+
+    // ── default_sensitive_keys ───────────────────────────────────────────────
+    // The canonical list is 17 names, matched case-insensitively. Asserting one
+    // key proves nothing about the other sixteen, so the whole list is pinned —
+    // dropping a name from the default set has to fail here.
+
+    private static readonly string[] CanonicalKeys =
+    [
+        "password", "passwd", "secret", "token", "api_key", "apikey", "auth", "authorization",
+        "credential", "private_key", "ssn", "credit_card", "creditcard", "cvv", "pin",
+        "account_number", "cookie",
+    ];
+
+    public static TheoryData<string> CanonicalSensitiveKeys()
+    {
+        var data = new TheoryData<string>();
+        foreach (var key in CanonicalKeys) data.Add(key);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(CanonicalSensitiveKeys))]
+    public void DefaultSensitiveKeys_AreRedacted(string key)
+    {
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { [key] = "sensitive" }, true, 8);
+        Assert.Equal("***", r[key]);
+    }
+
+    [Fact]
+    public void DefaultSensitiveKeys_MatchCaseInsensitively()
+    {
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["PassWord"] = "x" }, true, 8);
+        Assert.Equal("***", r["PassWord"]);
+    }
+
+    [Fact]
+    public void DefaultSensitiveKeys_ListIsExactlySeventeen()
+    {
+        // Guards the other direction: an over-broad default set redacts fields
+        // the contract says to leave alone.
+        Assert.Equal(17, CanonicalKeys.Length);
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["username"] = "tim" }, true, 8);
+        Assert.Equal("tim", r["username"]);
+    }
 }

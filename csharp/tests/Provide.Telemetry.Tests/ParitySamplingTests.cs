@@ -70,4 +70,41 @@ public class ParitySamplingTests
         p = ProvideTelemetry.SetSamplingPolicy("logs", new SamplingPolicy { DefaultRate = -1 });
         Assert.Equal(0.0, p.DefaultRate);
     }
+
+    [Fact]
+    public void SamplingRateBounds_FixtureCases_Clamp()
+    {
+        // The fixture's exact values, not merely "some out-of-range number".
+        Assert.Equal(0.0, ProvideTelemetry.SetSamplingPolicy(
+            "logs", new SamplingPolicy { DefaultRate = -0.5 }).DefaultRate);
+        Assert.Equal(1.0, ProvideTelemetry.SetSamplingPolicy(
+            "logs", new SamplingPolicy { DefaultRate = 1.5 }).DefaultRate);
+    }
+
+    // ── sampling_signal_validation ───────────────────────────────────────────
+    // Both halves are contractual: the three valid names must be accepted and
+    // every listed invalid name rejected. Testing only rejection would pass
+    // against an implementation that rejects everything.
+
+    [Theory]
+    [InlineData("logs")]
+    [InlineData("traces")]
+    [InlineData("metrics")]
+    public void SamplingSignalValidation_AcceptsCanonicalSignals(string signal)
+    {
+        var p = ProvideTelemetry.SetSamplingPolicy(signal, new SamplingPolicy { DefaultRate = 0.5 });
+        Assert.Equal(0.5, p.DefaultRate, 5);
+    }
+
+    [Theory]
+    [InlineData("log")]
+    [InlineData("trace")]
+    [InlineData("metric")]
+    [InlineData("events")]
+    [InlineData("")]
+    public void SamplingSignalValidation_RejectsUnknownSignals(string signal)
+    {
+        Assert.Throws<ConfigurationError>(() =>
+            ProvideTelemetry.SetSamplingPolicy(signal, new SamplingPolicy()));
+    }
 }

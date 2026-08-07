@@ -54,7 +54,7 @@ def test_fixture_test_ids_resolve_for_every_language() -> None:
         cwd=str(_REPO_ROOT),
     )
     assert result.returncode == 0, result.stderr
-    assert "24 categories x 4 languages" in result.stdout
+    assert "24 categories x 5 languages" in result.stdout
 
 
 def test_check_fixture_coverage_outputs_all_yaml_categories() -> None:

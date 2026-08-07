@@ -56,4 +56,81 @@ public class ParityPropagationTests
         Assert.Equal("0af7651916cd43dd8448eb211c80319c", tid);
         Assert.Equal("b7ad6b7169203331", sid);
     }
+
+    // ── propagation_guards ───────────────────────────────────────────────────
+    // spec/behavioral_fixtures.yaml pins six boundary cases. Both sides of each
+    // limit matter: a test that only proves oversize is discarded passes just as
+    // happily against an implementation that discards everything.
+
+    [Fact]
+    public void PropagationGuards_TraceparentAtLimit_Accepted()
+    {
+        // A canonical 55-char traceparent is well inside the 512-byte cap.
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string>
+        {
+            ["traceparent"] = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        });
+        Assert.NotEqual("", pc.Traceparent);
+        Assert.Equal("0af7651916cd43dd8448eb211c80319c", pc.TraceID);
+    }
+
+    [Fact]
+    public void PropagationGuards_TraceparentOverLimit_Discarded()
+    {
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string>
+        {
+            ["traceparent"] = new string('x', 513),
+        });
+        Assert.Equal("", pc.Traceparent);
+        Assert.Equal("", pc.TraceID);
+    }
+
+    [Fact]
+    public void PropagationGuards_Tracestate32Pairs_Accepted()
+    {
+        var state = string.Join(",", Enumerable.Range(0, 32).Select(i => $"k{i}=v{i}"));
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string> { ["tracestate"] = state });
+        Assert.Equal(state, pc.Tracestate);
+    }
+
+    [Fact]
+    public void PropagationGuards_Tracestate33Pairs_Discarded()
+    {
+        var state = string.Join(",", Enumerable.Range(0, 33).Select(i => $"k{i}=v{i}"));
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string> { ["tracestate"] = state });
+        Assert.Equal("", pc.Tracestate);
+    }
+
+    [Fact]
+    public void PropagationGuards_BaggageAtLimit_Accepted()
+    {
+        var baggage = "k=" + new string('v', 8192 - 2);
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string> { ["baggage"] = baggage });
+        Assert.Equal(baggage, pc.Baggage);
+    }
+
+    [Fact]
+    public void PropagationGuards_BaggageOverLimit_Discarded()
+    {
+        var baggage = "k=" + new string('v', 8192 - 1);
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string> { ["baggage"] = baggage });
+        Assert.Equal("", pc.Baggage);
+    }
+
+    // ── propagation_oversized_traceparent ────────────────────────────────────
+
+    [Fact]
+    public void PropagationOversizedTraceparent_TrailingSegment_Rejected()
+    {
+        // Structural, not length-based: a 5th hyphen-separated segment must be
+        // rejected outright — no truncation, no partial acceptance. The oversize
+        // *length* case is propagation_guards' job, above.
+        var pc = ProvideTelemetry.ExtractW3CContext(new Dictionary<string, string>
+        {
+            ["traceparent"] = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra",
+        });
+        Assert.Equal("", pc.TraceID);
+        Assert.Equal("", pc.SpanID);
+        Assert.Equal("", pc.Traceparent);
+    }
 }

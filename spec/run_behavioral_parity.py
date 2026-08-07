@@ -25,7 +25,6 @@ Exit code 0 if every checked language passes, 1 otherwise.
 
 from __future__ import annotations
 
-import argparse
 import os
 import shutil
 import subprocess
@@ -38,6 +37,7 @@ _SPEC_DIR = Path(__file__).resolve().parent
 if str(_SPEC_DIR) not in sys.path:
     sys.path.insert(0, str(_SPEC_DIR))
 
+from _parity_cli import _build_parser  # type: ignore[import-not-found]  # noqa: E402  (path set up above)
 from parity_probe_support import (  # noqa: E402
     run_contract_cases,
     run_output_check,
@@ -337,36 +337,7 @@ _PROBE_ENV: dict[str, str] = {}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--lang",
-        default="python,typescript,go,rust,csharp",
-        help="Comma-separated list of languages to check (default: all five)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=300,
-        help="Seconds before a single language run is considered timed out (default: 300)",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Print full test output for failing languages",
-    )
-    parser.add_argument(
-        "--skip-output",
-        action="store_true",
-        default=False,
-        help="Skip log-output probes (default: probes are run)",
-    )
-    parser.add_argument(
-        "--skip-contracts",
-        action="store_true",
-        default=False,
-        help="Skip contract probe DSL cases (default: cases are run)",
-    )
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     selected = {s.strip().lower() for s in args.lang.split(",")}
@@ -379,6 +350,21 @@ def main(argv: list[str] | None = None) -> int:
     results: list[Result] = []
     for runner in runners:
         if not _runtime_available(runner):
+            if not args.allow_missing_runtimes:
+                print(
+                    f"  [{runner.label:12s}] runtime not found — FAIL "
+                    "(install it, or pass --allow-missing-runtimes to downgrade to a skip)"
+                )
+                results.append(
+                    Result(
+                        lang=runner.name,
+                        label=runner.label,
+                        status="fail",
+                        duration_s=0.0,
+                        output=f"required parity runtime unavailable: {runner.name}",
+                    )
+                )
+                continue
             print(f"  [{runner.label:12s}] runtime not found — skipping")
             results.append(
                 Result(

@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-LANGUAGES = ("python", "typescript", "go", "rust")
+REQUIRED_LANGUAGES = ("python", "typescript", "go", "rust", "csharp")
 
 
 def _python_ids() -> set[str]:
@@ -65,6 +65,20 @@ def _rust_ids() -> set[str]:
     return result
 
 
+def _csharp_ids() -> set[str]:
+    # xUnit facts are `[Fact]`/`[Theory]`-attributed methods; the attribute may
+    # carry arguments (`[Theory]` + `[InlineData(...)]` lines) and the signature
+    # may be async, so match the declaration rather than the attribute line.
+    pattern = re.compile(
+        r"^\s*public\s+(?:async\s+)?(?:void|Task|ValueTask)\s+(\w+)\s*\(",
+        re.MULTILINE,
+    )
+    result: set[str] = set()
+    for path in (ROOT / "csharp" / "tests").rglob("Parity*.cs"):
+        result.update(pattern.findall(path.read_text(encoding="utf-8")))
+    return result
+
+
 def _is_probe(identifier: str) -> bool:
     if not identifier.startswith("probe:"):
         return False
@@ -85,6 +99,7 @@ def validate() -> list[str]:
         "typescript": _typescript_ids(),
         "go": _go_ids(),
         "rust": _rust_ids(),
+        "csharp": _csharp_ids(),
     }
     errors: list[str] = []
     fixture_categories = set(fixtures)
@@ -98,13 +113,13 @@ def validate() -> list[str]:
         if not isinstance(by_language, dict):
             errors.append(f"{category}: mapping must be an object")
             continue
-        for language in LANGUAGES:
+        for language in REQUIRED_LANGUAGES:
             identifier = by_language.get(language)
             if not isinstance(identifier, str) or not identifier:
                 errors.append(f"{category}:{language}: missing test ID")
             elif identifier not in discovered[language] and not _is_probe(identifier):
                 errors.append(f"{category}:{language}: unresolved test ID {identifier!r}")
-        extra = set(by_language) - set(LANGUAGES)
+        extra = set(by_language) - set(REQUIRED_LANGUAGES)
         if extra:
             errors.append(f"{category}: unknown languages {sorted(extra)}")
     return errors
@@ -118,7 +133,7 @@ def main() -> int:
             print(f"  - {error}", file=sys.stderr)
         return 1
     categories = len(yaml.safe_load((ROOT / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8")))
-    print(f"Fixture test-ID gate passed: {categories} categories x {len(LANGUAGES)} languages")
+    print(f"Fixture test-ID gate passed: {categories} categories x {len(REQUIRED_LANGUAGES)} languages")
     return 0
 
 

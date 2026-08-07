@@ -12,118 +12,142 @@ fixture_test_ids:
     typescript: "parity: sampling"
     go: TestParity_Sampling_RateZero_AlwaysDrops
     rust: parity_test_sampling_policy_roundtrip
+    csharp: Sampling_RateZero_AlwaysDrops
   pii_hash:
     python: test_parity_pii_hash_deterministic
     typescript: "parity: pii_hash"
     go: TestParity_PIIHash_Deterministic
     rust: parity_test_pii_hash_matches_fixture
+    csharp: PiiHash_Deterministic
   pii_truncate:
     python: test_parity_pii_truncate_longer_than_limit
     typescript: "parity: pii_truncate"
     go: TestParity_PIITruncate_LongerThanLimit
     rust: parity_test_pii_truncate_mode
+    csharp: PiiTruncate_LongerThanLimit
   pii_redact:
     python: test_parity_pii_redact_sensitive_key
     typescript: "parity: pii_redact"
     go: TestParity_PIIRedact_SensitiveKey
     rust: parity_test_pii_redact_mode
+    csharp: PiiRedact_SensitiveKey
   pii_drop:
     python: test_parity_pii_drop_removes_key
     typescript: "parity: pii_drop"
     go: TestParity_PIIDrop_RemovesKey
     rust: parity_test_pii_drop_mode
+    csharp: PiiDrop_RemovesKey
   event_dars:
     python: test_parity_event_dars_4_segments
     typescript: "parity: event_dars"
     go: TestParity_Event_DARS
     rust: parity_test_event_dars_matches_fixture
+    csharp: EventDars_FourSegments
   propagation_guards:
     python: test_parity_propagation_guards_traceparent_at_limit_accepted
     typescript: "parity: propagation_guards"
     go: TestParity_Propagation_TraceparentAtLimit_Accepted
     rust: parity_test_propagation_guards_limits_match_fixture
+    csharp: PropagationGuards_TraceparentAtLimit_Accepted
   config_headers:
     python: test_parity_config_headers_plus_preserved
     typescript: "parity: config_headers"
     go: TestParity_ConfigHeaders_PlusPreserved
     rust: parity_test_config_headers_plus_preserved
+    csharp: ConfigHeaders_Parsing
   slo_classify:
     python: test_parity_slo_classify_status_400_client_error
     typescript: "parity: slo_classify"
     go: TestParity_ClassifyError_400
     rust: parity_test_slo_classify_classification_matches_fixture
+    csharp: SloClassify
   secret_detection:
     python: test_parity_secret_detection_aws_key
     typescript: "parity: secret_detection"
     go: TestParity_SecretDetection_AWSKey
     rust: parity_test_secret_detection_matches_fixture
+    csharp: SecretDetection_AWSKey
   default_sensitive_keys:
     python: test_parity_default_sensitive_keys_cookie
     typescript: "parity: default_sensitive_keys"
     go: TestParity_DefaultSensitiveKeys_Cookie
     rust: parity_test_default_sensitive_keys_all_redacted
+    csharp: DefaultSensitiveKeys_AreRedacted
   error_fingerprint:
     python: test_parity_error_fingerprint_no_frames
     typescript: "parity: error_fingerprint_algorithm"
     go: TestParity_ErrorFingerprint_NoFrames
     rust: parity_test_fingerprint_is_deterministic
+    csharp: ErrorFingerprint_NoFrames_MatchesCanonicalDigest
   backpressure_unlimited:
     python: test_parity_backpressure_unlimited_size_zero_acquire_succeeds
     typescript: "parity: backpressure_unlimited"
     go: TestParity_Backpressure_UnlimitedAlwaysAcquires
     rust: parity_test_backpressure_unlimited_zero_size_always_succeeds
+    csharp: Backpressure_Unlimited_ZeroSize
   cardinality_clamping:
     python: test_parity_cardinality_clamping_zero_max_values
     typescript: "parity: cardinality_clamping"
     go: TestParity_Cardinality_ZeroMaxValuesClamped
     rust: parity_test_cardinality_clamping_zero_max_values
+    csharp: Cardinality_Clamping
   sampling_signal_validation:
     python: test_parity_sampling_signal_validation_valid_signals
     typescript: "parity: sampling_signal_validation"
     go: TestParity_Sampling_ValidSignalsAccepted
     rust: parity_test_sampling_signal_validation_valid_logs_accepted
+    csharp: SamplingSignalValidation_RejectsUnknownSignals
   schema_strict_mode:
     python: test_parity_schema_strict_mode_strict_rejects_uppercase
     typescript: "parity: schema strict mode"
     go: TestParity_EventName_StrictRejectsUppercase
     rust: parity_test_schema_strict_mode_strict_rejects_uppercase
+    csharp: SchemaStrictMode_RejectsBadSegment
   health_snapshot:
     python: test_parity_health_snapshot_canonical_defaults
     typescript: "parity: health_snapshot"
     go: TestParity_Health_CanonicalFieldCount
     rust: parity_test_health_snapshot_is_available
+    csharp: HealthSnapshot_Canonical
   pii_depth:
     python: test_parity_pii_depth_at_max_depth_is_untouched
     typescript: "parity: pii depth limiting"
     go: TestParity_PIIDepth_DefaultIs8
     rust: parity_test_pii_depth_at_max_depth_is_untouched
+    csharp: PiiDepth_Nested
   log_output_format:
     python: "probe:spec/probes/emit_log_python.py"
     typescript: "probe:spec/probes/emit_log_typescript.ts"
     go: "probe:spec/probes/emit_log_go/main.go"
     rust: "probe:rust/examples/emit_log_probe.rs"
+    csharp: LogOutputFormat_JsonEnvelope
   endpoint_validation:
     python: test_parity_endpoint_validation_valid
     typescript: "endpoint validation parity (shared fixtures)"
     go: TestEndpointValidationParity
     rust: parity_valid_endpoints
+    csharp: EndpointValidation_Invalid
   sampling_rate_bounds:
     python: test_parity_sampling_rate_bounds_negative_clamps_to_zero
     typescript: "parity: sampling_rate_bounds"
     go: TestParity_Sampling_RateBounds_NegativeClampsToZero
     rust: parity_test_sampling_rate_bounds_negative_clamps_to_zero
+    csharp: SamplingRateBounds_FixtureCases_Clamp
   propagation_oversized_traceparent:
     python: test_parity_propagation_oversized_traceparent_rejected
     typescript: "parity: propagation_oversized_traceparent"
     go: TestParity_Propagation_OversizedTraceparent_Rejected
     rust: parity_test_propagation_oversized_traceparent_rejected
+    csharp: PropagationOversizedTraceparent_TrailingSegment_Rejected
   cardinality_saturation:
     python: test_parity_cardinality_saturation_fourth_value_overflows
     typescript: "parity: cardinality_saturation"
     go: TestParity_Cardinality_Saturation_FourthValueOverflows
     rust: parity_test_cardinality_saturation_fourth_value_overflows
+    csharp: CardinalitySaturation_FixtureSequence_OverflowsOnFourthValue
   resource_precedence:
     python: test_parity_resource_precedence_explicit_keys
     typescript: "parity: resource_precedence"
     go: TestBuildResource_ExplicitBeatsEnv
     rust: env_provided_key_is_not_overridden_by_floor
+    csharp: ResourcePrecedence_ServiceNameFromEnv
