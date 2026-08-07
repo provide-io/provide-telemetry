@@ -410,6 +410,10 @@ config_defaults:
       default: "INFO"
       description: "Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL"
       applicability: [python, typescript, go, rust, csharp]
+      overrides:
+        typescript:
+          default: "info"
+          note: "TypeScript maps levels onto Pino's vocabulary (trace|debug|info|warn|error) and lowercases on read, so its default is the lowercase spelling of the canonical value"
     - env: PROVIDE_LOG_FORMAT
       type: str
       default: "console"
@@ -435,6 +439,13 @@ config_defaults:
       default: "8"
       description: "Maximum nesting depth for PII/sensitive field traversal during sanitization"
       applicability: [python, typescript, go, rust, csharp]
+      overrides:
+        go:
+          default: "0"
+          note: "Go's struct field carries the zero value as an 'unset' sentinel because a Go struct cannot declare a non-zero default; SanitizePayload substitutes the canonical 8 whenever maxDepth <= 0 (go/pii.go), so the effective depth matches the spec"
+        csharp:
+          default: "0"
+          note: "C# uses the same unset sentinel as Go: Pii.SanitizePayload substitutes the canonical 8 whenever maxDepth <= 0 (csharp/src/Provide.Telemetry/Pii.cs), so the effective depth matches the spec"
     - env: PROVIDE_LOG_CODE_ATTRIBUTES
       type: bool
       default: "false"
@@ -445,16 +456,28 @@ config_defaults:
       default: "dim"
       description: "ANSI color name for keys in pretty format (see named colors below)"
       applicability: [python, typescript, go, rust]
+      overrides:
+        rust:
+          probe_visible: false
+          note: "Rust reads this straight from the environment inside the pretty renderer (rust/src/logger/pretty.rs) rather than storing it on TelemetryConfig, so the variable is honoured but is not visible to a probe that inspects the config object"
     - env: PROVIDE_LOG_PRETTY_VALUE_COLOR
       type: str
       default: ""
       description: "ANSI color name for values in pretty format (empty = default)"
       applicability: [python, typescript, go, rust]
+      overrides:
+        rust:
+          probe_visible: false
+          note: "Rust reads this straight from the environment inside the pretty renderer (rust/src/logger/pretty.rs) rather than storing it on TelemetryConfig, so the variable is honoured but is not visible to a probe that inspects the config object"
     - env: PROVIDE_LOG_PRETTY_FIELDS
       type: str
       default: ""
       description: "Comma-separated field names to display in pretty format"
       applicability: [python, typescript, go, rust]
+      overrides:
+        rust:
+          probe_visible: false
+          note: "Rust reads this straight from the environment inside the pretty renderer (rust/src/logger/pretty.rs) rather than storing it on TelemetryConfig, so the variable is honoured but is not visible to a probe that inspects the config object"
     - env: PROVIDE_LOG_MODULE_LEVELS
       type: str
       default: ""
@@ -488,42 +511,42 @@ config_defaults:
   otlp:
     - env: OTEL_EXPORTER_OTLP_ENDPOINT
       type: str
-      default: "None"
+      default: ""
       description: "Shared OTLP endpoint (fallback for all signals)"
       applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_HEADERS
       type: str
-      default: "None"
+      default: ""
       description: "Shared OTLP headers (fallback for all signals)"
       applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP endpoint for logs"
       applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_LOGS_HEADERS
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP headers for logs"
       applicability: [python, typescript, go, rust]
     - env: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP endpoint for traces"
       applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_TRACES_HEADERS
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP headers for traces"
       applicability: [python, typescript, go, rust]
     - env: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP endpoint for metrics"
       applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_METRICS_HEADERS
       type: str
-      default: "None"
+      default: ""
       description: "Per-signal OTLP headers for metrics"
       applicability: [python, typescript, go, rust]
 
