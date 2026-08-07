@@ -97,7 +97,6 @@ internal static class OtelBackend
                 {
                     var traceHeaders = new Dictionary<string, string>(
                         cfg.Tracing.OtlpHeaders, StringComparer.OrdinalIgnoreCase);
-                    EnsureAuthHeader(traceHeaders);
                     var builder = Sdk.CreateTracerProviderBuilder()
                         .SetResourceBuilder(resource)
                         .AddSource("Provide.Telemetry")
@@ -127,7 +126,6 @@ internal static class OtelBackend
                 {
                     var metricHeaders = new Dictionary<string, string>(
                         cfg.Metrics.OtlpHeaders, StringComparer.OrdinalIgnoreCase);
-                    EnsureAuthHeader(metricHeaders);
                     var builder = Sdk.CreateMeterProviderBuilder()
                         .SetResourceBuilder(resource)
                         .AddMeter("Provide.Telemetry")
@@ -154,7 +152,6 @@ internal static class OtelBackend
                 try
                 {
                     var logHeaders = new Dictionary<string, string>(cfg.Logging.OtlpHeaders, StringComparer.OrdinalIgnoreCase);
-                    EnsureAuthHeader(logHeaders);
                     var endpoint = BuildSignalUri(logsEp!, "logs");
                     var headerStr = FormatHeaders(logHeaders);
                     var resourceCopy = resource;
@@ -385,17 +382,6 @@ internal static class OtelBackend
         var dedup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (k, v) in headers) dedup[k] = v;
         return string.Join(",", dedup.Select(kv => $"{kv.Key}={kv.Value}"));
-    }
-
-    private static void EnsureAuthHeader(Dictionary<string, string> headers)
-    {
-        if (headers.Keys.Any(k => k.Equals("Authorization", StringComparison.OrdinalIgnoreCase)))
-            return;
-        var user = Environment.GetEnvironmentVariable("OPENOBSERVE_USER");
-        var pass = Environment.GetEnvironmentVariable("OPENOBSERVE_PASSWORD");
-        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass)) return;
-        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user}:{pass}"));
-        headers["Authorization"] = $"Basic {token}";
     }
 }
 
