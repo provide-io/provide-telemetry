@@ -30,7 +30,7 @@
 - Host-owned providers are never shut down or disposed by the SDK.
 - C# owned code must reach 100% line and branch coverage and reject surviving owned-code mutants; any framework-glue exemption requires a reviewed reason.
 - Before each production change, search for an implementation, characterize it, and skip or narrow the production edit when the existing behavior already passes the new contract test.
-- Preserve the pre-existing user modification to `rust/src/resilience_state_tests.rs`; do not stage or rewrite it unless a later explicit user request puts it in scope.
+- Preserve the user's `MAX_EXPORT_ATTEMPTS == 101` assertions in `rust/src/resilience_state_tests.rs`, committed in `b2c7af2`; do not weaken or revert them unless a later explicit user request puts them in scope.
 
 ---
 
@@ -204,7 +204,23 @@ import yaml
 def test_receipt_vectors_are_self_consistent() -> None:
     data = yaml.safe_load(Path("spec/receipt_fixtures.yaml").read_text())
     for case in data["cases"]:
-        assert json.loads(case["canonical_json"]) == case["normalized"]
+        # Compare STRINGS, not parsed objects: `json.loads(canonical_json) ==
+        # normalized` would pass for both {"z":…,"a":1.5} and {"a":1.5000}
+        # because json.loads discards key order and number spelling, which
+        # defeats the whole point of a JCS fixture. `rfc8785` is not present
+        # in pyproject.toml's `[dependency-groups] dev` (checked; not a
+        # current test dependency), so this re-derives the canonical string
+        # with Python's own independent sorter/formatter rather than trusting
+        # the same expression Step 4 used to produce `canonical_json` in the
+        # first place. Note this is not a full RFC 8785 JCS implementation
+        # (e.g. ECMAScript number-to-string rules differ from Python's float
+        # repr), but the byte-exact string comparison still catches
+        # key-order and number-spelling divergences that object equality
+        # would mask.
+        recanonicalized = json.dumps(
+            case["normalized"], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+        assert recanonicalized == case["canonical_json"]
         assert hashlib.sha256(case["canonical_json"].encode()).hexdigest() == case["original_hash"]
         assert hmac.new(
             case["key"].encode(), case["payload"].encode(), hashlib.sha256
@@ -298,7 +314,7 @@ git commit -m "spec: define canonical governance and pipeline vectors"
 
 **Interfaces:**
 - Consumes: Node ESM packaging and the existing context, trace-context, and propagation store value types.
-- Produces: `createAsyncLocalStorage<T>(): AsyncLocalStorage<T>` from `src/async-storage.ts`; no production `require('node:async_hooks')`; packed-artifact concurrent context retention.
+- Produces: `createAsyncLocalStorage<T>(): AsyncLocalStorageLike<T> | null` from `src/async-storage.ts`, acquired via the same guarded CJS-sync-`require` / ESM-async-`import` dual path `propagation.ts` already proves out today (no *module-scope* `await` — a guarded `require('node:async_hooks')` is expected and fine); packed-artifact concurrent context retention.
 
 - [ ] **Step 1: Reproduce the published-artifact failure**
 
@@ -348,35 +364,105 @@ bash ci/verify-npm-consumer-package.sh
 
 Expected: at least the packed ESM concurrency assertion fails because no live `AsyncLocalStorage` backs the published module.
 
-- [ ] **Step 4: Add one ESM-safe storage loader and use it everywhere**
+- [ ] **Step 4: Extract one shared ESM-safe storage loader and use it everywhere**
 
 ```typescript
-import type { AsyncLocalStorage as AsyncLocalStorageType } from 'node:async_hooks'
+// typescript/src/async-storage.ts
+//
+// Shared AsyncLocalStorage acquisition for context.ts, tracing.ts, and
+// propagation.ts. Mirrors the CJS-sync / ESM-async-import dual path that
+// propagation.ts's `initAsyncStorage` IIFE already proves out — no
+// module-scope `await`. tsx's default CJS output rejects top-level await
+// ("Top-level await is currently not supported with the cjs output
+// format"), and every TS runtime/contract/behavioral probe launches via
+// `npx tsx` (spec/parity_probe_support.py, spec/contract_probe_harness.py,
+// spec/_runtime_probe.py) — a regression here breaks TypeScript parity in CI.
 
-type AsyncLocalStorageConstructor = new <T>() => AsyncLocalStorageType<T>
-const nodeBuiltin = 'node:' + 'async_hooks'
-const { AsyncLocalStorage } = await import(nodeBuiltin) as {
-  AsyncLocalStorage: AsyncLocalStorageConstructor
+export type AsyncLocalStorageLike<T> = {
+  getStore(): T | undefined
+  run<R>(store: T, fn: () => R): R
+  enterWith(store: T): void
 }
 
-export function createAsyncLocalStorage<T>(): AsyncLocalStorageType<T> {
-  return new AsyncLocalStorage<T>()
+type AlsConstructor = new <T>() => AsyncLocalStorageLike<T>
+
+let _AlsConstructor: AlsConstructor | null = null
+let _asyncStorageInitDone = false
+let _asyncStorageInitPromise: Promise<void> = Promise.resolve()
+
+// Three load environments, same split propagation.ts already handles:
+//   1. CJS Node (tsx default, transpiled bundles): `require` is defined —
+//      resolve synchronously, no await needed.
+//   2. ESM Node: `require` is undefined — fire off an async import WITHOUT
+//      awaiting it at module scope; a caller that asks before it settles
+//      gets `null` and should use its own no-ALS fallback for that call.
+//   3. Browsers / Workers / Deno: neither path resolves `node:async_hooks`;
+//      `_AlsConstructor` stays null permanently — fallback is not a race,
+//      it is the steady state.
+(function initAsyncStorage(): void {
+  try {
+    if (typeof require === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('node:async_hooks') as { AsyncLocalStorage: AlsConstructor }
+      _AlsConstructor = mod.AsyncLocalStorage
+      _asyncStorageInitDone = true
+      return
+    }
+  } catch {
+    // require() present but threw (e.g. browserified bundle) — fall through.
+  }
+  _asyncStorageInitPromise = (async () => {
+    try {
+      const mod = (await import('node:async_hooks')) as { AsyncLocalStorage: AlsConstructor }
+      _AlsConstructor = mod.AsyncLocalStorage
+    } catch {
+      // node:async_hooks unresolvable — leave _AlsConstructor null.
+    } finally {
+      _asyncStorageInitDone = true
+    }
+  })()
+})()
+
+/** Resolves once acquisition has settled (constructor found, or confirmed unavailable). */
+export function awaitAsyncStorageInit(): Promise<void> {
+  return _asyncStorageInitPromise
+}
+
+/** True once acquisition has reached a definitive state. */
+export function isAsyncStorageInitDone(): boolean {
+  return _asyncStorageInitDone
+}
+
+/** True when no `node:async_hooks` constructor was resolved. Callers keep their own no-ALS fallback store for this case. */
+export function isAsyncStorageFallback(): boolean {
+  return _AlsConstructor === null
+}
+
+/**
+ * Creates a fresh AsyncLocalStorage-backed store, or `null` when
+ * `node:async_hooks` is unavailable or not yet resolved. Callers must keep
+ * a no-ALS fallback path for the `null` case, exactly as `propagation.ts`
+ * does today via `isFallbackMode()`.
+ */
+export function createAsyncLocalStorage<T>(): AsyncLocalStorageLike<T> | null {
+  return _AlsConstructor ? new _AlsConstructor<T>() : null
 }
 ```
 
-Replace the three local loaders with `createAsyncLocalStorage<T>()`. Delete `awaitPropagationInit` and the fire-and-forget initialization path; ESM module evaluation now completes storage initialization before public functions run. Rewrite the four tests that enforce the former no-top-level-await fallback so they assert immediate initialized storage in the ESM artifact.
+Replace the three local loaders in `context.ts`, `tracing.ts`, and `propagation.ts` with calls to `createAsyncLocalStorage<T>()`. Keep the fallback path — do **not** delete it: route `propagation.ts`'s `isFallbackMode()` and `awaitPropagationInit()` through the shared module's `isAsyncStorageFallback()` and `awaitAsyncStorageInit()` instead of duplicating the require/import dance locally, and give `context.ts`/`tracing.ts` the same fallback-aware store lookup `propagation.ts` already has rather than assuming ALS is always present. Extend `propagation.module-scope-await.test.ts`'s AST scan to also cover `async-storage.ts` (the new home of the require/import calls), and update `propagation.await-init.test.ts` and `propagation.esm-load.test.ts` to exercise the shared module's init/fallback surface through the three call sites. None of these tests get weaker: the no-module-scope-await guarantee and the no-ALS fallback behavior both stay under test, unchanged in intent.
 
 - [ ] **Step 5: Verify source and packed ESM behavior**
 
 Run:
 
 ```bash
-npm --prefix typescript test -- --run tests/context.test.ts tests/tracing.test.ts tests/propagation.test.ts
+npm --prefix typescript test -- --run tests/context.test.ts tests/tracing.test.ts tests/propagation.test.ts tests/propagation.module-scope-await.test.ts tests/propagation.await-init.test.ts tests/propagation.esm-load.test.ts
 npm --prefix typescript run build
 bash ci/verify-npm-consumer-package.sh
+npx tsx typescript/src/index.ts
 ```
 
-Expected: all commands pass, the packed test observes `['a', 'b']`, and `rg -n "require\(['\"]node:async_hooks" typescript/src typescript/dist` returns no matches.
+Expected: all commands pass, the packed test observes `['a', 'b']`, `propagation.module-scope-await.test.ts` passes with its AST scan covering both `propagation.ts` and the new `async-storage.ts`, and the `tsx` smoke-load does not raise "Top-level await is currently not supported with the cjs output format". `rg -n "require\(['\"]node:async_hooks" typescript/src typescript/dist` still matches inside `async-storage.ts` — that guarded `require` is the intended CJS-path acquisition, not a regression; what Step 1 reproduces and this step must not reintroduce is an *unguarded module-scope* `await import(...)`.
 
 - [ ] **Step 6: Commit the ESM context repair**
 
@@ -830,9 +916,17 @@ def test_reconfigure_does_not_publish_before_policies_finish(monkeypatch):
     release.set()
     worker.join(2)
     assert runtime_status().config.log_level == "debug"
+
+
+def test_publish_notifies_under_lock_and_preserves_receipt_sink_identity():
+    my_sink = TestReceiptCollector()
+    active = setup_telemetry(TelemetryConfig(service_name="active", receipt_sink=my_sink))
+    assert active.receipt_sink is my_sink
+    reconfigured = reconfigure_telemetry(log_level="debug")
+    assert reconfigured.receipt_sink is my_sink
 ```
 
-Add a shutdown test whose fake provider blocks in `shutdown()` and assert a concurrent read of `runtime_status()` completes while provider disposal remains blocked.
+Add a shutdown test whose fake provider blocks in `shutdown()` and assert a concurrent read of `runtime_status()` completes while provider disposal remains blocked. `test_publish_notifies_under_lock_and_preserves_receipt_sink_identity` guards both fixes: today, `publish` calling `self._condition.notify_all()` without holding `self._condition` raises `RuntimeError`, so `setup_telemetry` never returns; and `copy.deepcopy(config)` clones `my_sink`, so the identity assertions fail even once the lock issue is fixed.
 
 - [ ] **Step 3: Run the lifecycle tests and verify red**
 
@@ -842,7 +936,7 @@ Run:
 uv run pytest tests/concurrency/test_lifecycle_interleavings.py tests/setup/test_setup_lifecycle.py tests/integration/test_setup_reinitialization.py -q
 ```
 
-Expected: invalid environment is parsed on repeated setup, a partial generation becomes visible, or provider disposal holds the lifecycle lock.
+Expected: invalid environment is parsed on repeated setup, a partial generation becomes visible, provider disposal holds the lifecycle lock, `publish` raises `RuntimeError: cannot notify on un-acquired lock`, or the returned `receipt_sink` is a deep-copied clone rather than the sink passed to `setup_telemetry`.
 
 - [ ] **Step 4: Implement one coordinator and publish only complete generations**
 
@@ -861,17 +955,35 @@ class LifecycleCoordinator:
 
     def snapshot(self) -> LifecycleGeneration:
         with self._condition:
-            return copy.deepcopy(self._generation)
+            generation = self._generation
+            return LifecycleGeneration(
+                generation.number, self._copy_config(generation.config), generation.setup_done
+            )
 
     def publish(self, config: TelemetryConfig, *, setup_done: bool) -> LifecycleGeneration:
-        self._generation = LifecycleGeneration(
-            self._generation.number + 1, copy.deepcopy(config), setup_done
-        )
-        self._condition.notify_all()
-        return copy.deepcopy(self._generation)
+        with self._condition:
+            self._generation = LifecycleGeneration(
+                self._generation.number + 1, self._copy_config(config), setup_done
+            )
+            self._condition.notify_all()
+            generation = self._generation
+            return LifecycleGeneration(
+                generation.number, self._copy_config(generation.config), generation.setup_done
+            )
+
+    @staticmethod
+    def _copy_config(config: TelemetryConfig) -> TelemetryConfig:
+        # Deep-copy plain config data, but seed the memo with the caller's
+        # ReceiptSink so it is carried by reference. A deep copy would
+        # silently deliver receipts to a clone the caller never observes,
+        # and a sink holding a socket/file handle/DB client would raise
+        # TypeError instead of copying.
+        sink = config.receipt_sink
+        memo = {} if sink is None else {id(sink): sink}
+        return copy.deepcopy(config, memo)
 ```
 
-Route setup, update, reconfigure, flush, and shutdown through one module-level coordinator. On repeated setup, check `setup_done` before parsing arguments or environment and return `snapshot().config`. Build and validate the candidate, apply policies and logging, then publish. During shutdown, detach owned providers and publish the stopped generation under the coordinator lock, then perform concurrent bounded drains and disposal after leaving the lock.
+Route setup, update, reconfigure, flush, and shutdown through one module-level coordinator. On repeated setup, check `setup_done` before parsing arguments or environment and return `snapshot().config`. Build and validate the candidate, apply policies and logging, then publish. During shutdown, detach owned providers and publish the stopped generation under the coordinator lock, then perform concurrent bounded drains and disposal after leaving the lock. Take `self._condition` for the entire generation bump and `notify_all()` in `publish` — `Condition.notify_all()` raises `RuntimeError` on an unheld lock, and the lock also prevents `snapshot()` from observing a torn generation. `_copy_config` deep-copies everything except `receipt_sink`, which Task 8 adds to `TelemetryConfig`: a bare `copy.deepcopy(config)` would clone the caller's `ReceiptSink`, so `emit_receipt` would deliver to a copy the caller never sees (or raise `TypeError` if the sink holds a socket, file handle, or DB client). Assert `snapshot().receipt_sink is my_sink` after `setup_telemetry(TelemetryConfig(..., receipt_sink=my_sink))` and after `reconfigure_telemetry(...)` so a regression here is caught by the test suite, not silently in production.
 
 - [ ] **Step 5: Run lifecycle, concurrency, and full Python tests**
 
@@ -884,7 +996,7 @@ uv run mypy src
 uv run ruff check src tests
 ```
 
-Expected: all commands pass, repeated setup ignores unapplied inputs, and no test observes a partial generation.
+Expected: all commands pass, repeated setup ignores unapplied inputs, no test observes a partial generation, `publish` notifies successfully under `self._condition`, and `snapshot().receipt_sink is my_sink` holds after setup and after reconfigure.
 
 - [ ] **Step 6: Commit the Python lifecycle coordinator**
 
@@ -911,7 +1023,7 @@ git commit -m "fix(py): serialize lifecycle generation publication"
 
 **Interfaces:**
 - Consumes: Task 2 vectors and Task 7 lifecycle config snapshots.
-- Produces: `class ReceiptSink(Protocol): emit(self, receipt: RedactionReceipt) -> bool`; bounded `TestReceiptCollector`; `HealthSnapshot.receipt_failures`; hardening before every capture or export sink.
+- Produces: `class ReceiptSink(Protocol): emit(self, receipt: RedactionReceipt) -> bool`; a `TelemetryConfig.receipt_sink: ReceiptSink | None` field held by reference through `LifecycleCoordinator.publish`/`snapshot` (Task 7), never deep-copied; bounded `TestReceiptCollector`; `HealthSnapshot.receipt_failures`; hardening before every capture or export sink.
 
 - [ ] **Step 1: Characterize receipt buffering and hardening order**
 
@@ -1234,12 +1346,12 @@ Run:
 (cd rust && cargo fmt --check)
 (cd rust && cargo clippy --all-features --all-targets -- -D warnings)
 (cd rust && cargo test --all-features --all-targets)
-git diff -- rust/src/resilience_state_tests.rs
+git diff main...HEAD -- rust/src/resilience_state_tests.rs
 ```
 
-Expected: Rust gates pass and the final diff for `rust/src/resilience_state_tests.rs` contains only the user's pre-existing change.
+Expected: Rust gates pass and the branch diff for `rust/src/resilience_state_tests.rs` still shows the user's `b2c7af2` assertions (`MAX_EXPORT_ATTEMPTS == 101`, `capped_attempts(250) == 101`) intact and unmodified by this task.
 
-- [ ] **Step 6: Commit Rust governance parity without staging the user file**
+- [ ] **Step 6: Commit Rust governance parity, leaving the user's test file untouched**
 
 ```bash
 git add rust/src/receipts.rs rust/src/pii.rs rust/src/health.rs rust/src/runtime.rs rust/src/setup.rs rust/src/lib.rs rust/tests/receipt_fixtures.rs rust/tests/signal_pipeline_order.rs rust/src/health_tests.rs rust/src/runtime_logging_tests.rs
@@ -1778,6 +1890,65 @@ public void SetupDoesNotMutateOtelEnvironment()
         .Where(e => e.Key.ToString()!.StartsWith("OTEL_", StringComparison.Ordinal)).ToArray();
     Assert.Equal(before, after);
 }
+
+[Fact]
+public async Task AttemptExceptionDoesNotEscapeExecuteAsync()
+{
+    var attempts = 0;
+    var result = await TestBackend.ExecuteAsync("logs", _ =>
+    {
+        attempts++;
+        throw new HttpRequestException("collector unreachable");
+    }, DateTimeOffset.UtcNow.AddMilliseconds(200));
+    Assert.False(result.Succeeded);
+    Assert.True(attempts >= 1);
+}
+
+[Fact]
+public async Task CircuitBreakerIsConsultedWithZeroRetries()
+{
+    Resilience.SetExporterPolicy("logs", new ExporterPolicy { Retries = 0, TimeoutSeconds = 0.05 });
+    for (var i = 0; i < 3; i++)
+    {
+        await TestBackend.ExecuteAsync("logs", _ => throw new TimeoutException(),
+            DateTimeOffset.UtcNow.AddMilliseconds(200));
+    }
+    Assert.Equal("open", Resilience.GetCircuitState("logs"));
+    var attempted = false;
+    await TestBackend.ExecuteAsync("logs", _ =>
+    {
+        attempted = true;
+        return ValueTask.FromResult(true);
+    }, DateTimeOffset.UtcNow.AddMilliseconds(200));
+    Assert.False(attempted);
+}
+
+[Fact]
+public async Task RetriesClampToMaxExportAttemptsCeiling()
+{
+    Resilience.SetExporterPolicy("logs", new ExporterPolicy { Retries = 1_000_000, BackoffSeconds = 0 });
+    var attempts = 0;
+    var result = await TestBackend.ExecuteAsync("logs", _ =>
+    {
+        attempts++;
+        return ValueTask.FromResult(false);
+    }, DateTimeOffset.UtcNow.AddSeconds(30));
+    Assert.False(result.Succeeded);
+    Assert.Equal(Resilience.MaxExportAttempts, attempts);
+}
+
+[Fact]
+public async Task ExpiredDeadlineStillMakesOneAttempt()
+{
+    var attempted = false;
+    var result = await TestBackend.ExecuteAsync("logs", _ =>
+    {
+        attempted = true;
+        return ValueTask.FromResult(true);
+    }, DateTimeOffset.UtcNow.AddSeconds(-1));
+    Assert.True(attempted);
+    Assert.True(result.Succeeded);
+}
 ```
 
 Add a host-owned provider test proving shutdown returns `NotOwned` and never calls dispose.
@@ -1801,23 +1972,78 @@ public async ValueTask<ExportAttemptResult> ExecuteAsync(
     DateTimeOffset deadline,
     CancellationToken cancellationToken = default)
 {
-    for (var index = 0; ; index++) {
-        var remaining = deadline - TimeProvider.GetUtcNow();
-        if (remaining <= TimeSpan.Zero) return ExportAttemptResult.TimedOut(index);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        linked.CancelAfter(remaining);
-        var started = Stopwatch.GetTimestamp();
-        try { if (await attempt(linked.Token)) return ExportAttemptResult.Success(index + 1); }
-        finally { Health.RecordAttempt(signal, Stopwatch.GetElapsedTime(started)); }
-        if (index >= Policy(signal).Retries || !Circuit(signal).AllowAttempt())
-            return ExportAttemptResult.Failed(index + 1);
-        Health.IncrementRetries(signal);
-        await DelayBoundedByDeadline(signal, index, deadline, linked.Token);
+    var policy = Policy(signal);
+    // Both bounds, exactly as Python does it (resilience.py:186):
+    // min(max(1, retries + 1), MAX_EXPORT_ATTEMPTS) — the lower bound keeps a
+    // negative Retries from producing zero attempts, the upper is the ceiling.
+    var maxAttempts = Math.Min(Math.Max(1, policy.Retries + 1), Resilience.MaxExportAttempts);
+
+    // Gate the whole export on breaker state before any attempt runs — mirrors
+    // Python's `_check_circuit_breaker` (called once, before `_retry_loop`) and
+    // Rust's `_check_and_start_probe_for_wrappers` (called once, before the
+    // attempt loop): once per call, not per attempt, and never short-circuited
+    // behind a retries check, so an open breaker is honored even at the shipped
+    // `retries = 0` default. The `TimeoutSeconds > 0` guard is Python's too
+    // (resilience.py:190): with no timeout there is no pool to saturate, so
+    // there is nothing for the breaker to shed. `fail_open` decides what an
+    // open breaker means: swallow silently (no attempt, a vacuous Success,
+    // matching Python's `return None`) or surface the rejection — which
+    // Python raises but C# reports as `Failed`, because finding 1 requires
+    // that `ExecuteAsync` never throw. Record the rejection in health on both
+    // branches, as Python does before it decides, or an open breaker is
+    // invisible to `Health`.
+    if (policy.TimeoutSeconds > 0 && !Circuit(signal).AllowAttempt()) {
+        Health.RecordExportFailure(signal, new TimeoutException("circuit breaker open"));
+        return policy.FailOpen ? ExportAttemptResult.Success(0) : ExportAttemptResult.Failed(0);
     }
+
+    for (var index = 0; index < maxAttempts; index++) {
+        // The deadline check gates RETRIES only. The first attempt always
+        // runs, even against an already-expired deadline: capped_attempts(0)
+        // == 1 (rust/src/resilience_state_tests.rs:21), and Go/TS compute
+        // max(1, retries + 1). Otherwise whichever drain runs last against a
+        // shared, already-spent Shutdown() deadline emits nothing at all.
+        if (index > 0) {
+            var remaining = deadline - TimeProvider.GetUtcNow();
+            if (remaining <= TimeSpan.Zero) return ExportAttemptResult.TimedOut(index);
+            Health.IncrementRetries(signal);
+            await DelayBoundedByDeadline(signal, index, deadline, cancellationToken);
+        }
+
+        var budget = deadline - TimeProvider.GetUtcNow();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (budget > TimeSpan.Zero) linked.CancelAfter(budget);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try {
+            succeeded = await attempt(linked.Token);
+        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+            // linked.CancelAfter fired at the deadline — a timed-out attempt,
+            // not an escaping fault. Genuine caller cancellation (the token
+            // passed in by the caller) still propagates normally.
+        } catch (Exception) {
+            // A transient export fault (e.g. HttpRequestException against an
+            // unreachable collector) counts as a failed attempt instead of
+            // escaping the loop — Shutdown() must return within one deadline
+            // even against a dead collector, never throw at the caller.
+        } finally {
+            Health.RecordAttempt(signal, Stopwatch.GetElapsedTime(started));
+        }
+
+        if (succeeded) {
+            Circuit(signal).RecordSuccess();
+            return ExportAttemptResult.Success(index + 1);
+        }
+        // Recorded unconditionally on every failed attempt — not gated behind
+        // `index >= Retries` — so the breaker actually advances toward
+        // tripping even when Retries == 0.
+        Circuit(signal).RecordFailure();
+    }
+    return ExportAttemptResult.Failed(maxAttempts);
 }
 ```
 
-Wrap real log, trace, and metric export calls. Build exporters from explicit options instead of environment mutation. For flush/shutdown, calculate `deadline` once, detach owned providers under the lifecycle lock, start signal drain tasks together, await them against remaining time, then dispose owned providers outside the lock. Preserve installed providers after flush; detach only during shutdown.
+Wrap real log, trace, and metric export calls. Build exporters from explicit options instead of environment mutation. Clamp `SetExporterPolicy`'s stored `Retries` to `Resilience.MaxExportAttempts - 1` (mirroring `ConfigEnv.ValidateRetries` at `csharp/src/Provide.Telemetry/ConfigEnv.cs:120`, and Rust's `capped_attempts`) so a policy set programmatically — bypassing config validation — can't request a million attempts; `ExecuteAsync`'s own `maxAttempts` clamp is defense in depth, not the only guard. For flush/shutdown, calculate `deadline` once, detach owned providers under the lifecycle lock, start signal drain tasks together, await them against remaining time, then dispose owned providers outside the lock. Preserve installed providers after flush; detach only during shutdown.
 
 - [ ] **Step 5: Run integration, lifecycle, and collector tests**
 
@@ -1828,7 +2054,7 @@ dotnet test csharp/Provide.Telemetry.sln --filter 'Resilien|Retry|Circuit|Deadli
 bash ci/verify-collector-signals.sh csharp
 ```
 
-Expected: retries drive actual attempts, health transitions are exact, lifecycle returns within one deadline, collector signals arrive, and no global environment value changes.
+Expected: retries drive actual attempts, health transitions are exact, lifecycle returns within one deadline, collector signals arrive, and no global environment value changes. Confirm specifically: `AttemptExceptionDoesNotEscapeExecuteAsync` — a throwing attempt never propagates out of `ExecuteAsync`; `CircuitBreakerIsConsultedWithZeroRetries` — the breaker still opens and rejects a 4th call at the shipped `Retries = 0` default; `RetriesClampToMaxExportAttemptsCeiling` — a programmatic `SetExporterPolicy("logs", new ExporterPolicy { Retries = 1_000_000 })` still stops at exactly `Resilience.MaxExportAttempts` (101) attempts; `ExpiredDeadlineStillMakesOneAttempt` — a deadline already in the past still executes `attempt` once.
 
 - [ ] **Step 6: Commit C# resilient lifecycle integration**
 
@@ -1964,20 +2190,35 @@ Document five SDKs, the canonical config vocabulary, no legacy C# aliases, snake
 
 - [ ] **Step 6: Run the whole repository verification matrix**
 
-Run:
+Run (CLAUDE.md requires the mutation- and fuzz-heavy gates below to run ONE AT A TIME on a workstation, bounded as shown — do not launch any of them concurrently with each other or with anything else; CI's unbounded invocations are for separate runners and must not be copied locally verbatim):
 
 ```bash
 python spec/validate_conformance.py
 python spec/check_fixture_test_ids.py
 python spec/check_config_parity.py --strict
 python spec/run_behavioral_parity.py --strict
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests
+uv run bandit -r src -ll
+uv run codespell
+uv run python scripts/check_max_loc.py --max-lines 500
+uv run python scripts/check_spdx_headers.py
 uv run pytest -q
 uv run coverage run -m pytest -q && uv run coverage report --fail-under=100
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --max-children 2
 npm --prefix typescript test && npm --prefix typescript run lint && npm --prefix typescript run typecheck && npm --prefix typescript run build
+(cd typescript && npx stryker run --concurrency 2)
+(cd typescript && npx stryker run stryker.otel.config.mjs --concurrency 2)
 bash ci/verify-npm-consumer-package.sh
 (cd go && go test -race ./...)
 (cd go/otel && go test -race ./...)
+scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" .
+scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 ./logger
+(cd go/otel && GOTOOLCHAIN=go1.26.1 ../../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 .)
 (cd rust && cargo fmt --check && cargo clippy --all-features --all-targets -- -D warnings && cargo test --all-features --all-targets)
+(cd rust && cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0 --fail-under-functions 100)
+(cd rust && for shard in 1/8 2/8 3/8 4/8 5/8 6/8 7/8 8/8; do TMPDIR=~/.cache/cargo-mutants-tmp cargo mutants -j 1 --shard "$shard"; done)
 dotnet restore csharp/Provide.Telemetry.sln
 dotnet build csharp/Provide.Telemetry.sln --no-restore -warnaserror
 dotnet test csharp/Provide.Telemetry.sln --no-build --collect:'XPlat Code Coverage'
@@ -1989,20 +2230,22 @@ python scripts/check_version_sync.py
 git diff --check
 ```
 
-Expected: every command passes; C# reports 100% owned line and branch coverage and zero surviving owned-code mutants; all five collector signals and both C# packages verify.
+Expected: every command passes; the Python mutation gate (`_is_clean()`), the Go gremlins wrapper (all three surfaces), Rust's `cargo mutants` (all eight shards), and both TypeScript Stryker runs report zero survivors, timeouts, or uncovered mutants; Rust `cargo llvm-cov` reports 100% function coverage; C# reports 100% owned line and branch coverage and zero surviving owned-code mutants; all five collector signals and both C# packages verify.
 
 - [ ] **Step 7: Perform a final branch review against the approved design**
 
 Run:
 
 ```bash
-git diff --stat 19fbbb7...HEAD
-git diff --check 19fbbb7...HEAD
+git diff --stat main...HEAD
+git diff --check main...HEAD
 rg -n 'all four|four languages|PROVIDE_TELEMETRY_ENVIRONMENT|service\.name|trace\.id' README.md docs csharp/src spec
 git status --short
 ```
 
-Expected: no stale four-language or legacy-wire claims, no whitespace errors, and only the preserved user modification to `rust/src/resilience_state_tests.rs` remains unstaged. Review every critical/high finding in the approved design and record its passing regression test in `CHANGELOG.md` under `0.8.0`.
+Use the merge-base form against `main`, not a hardcoded commit SHA: a fixed SHA drifts as the branch gains commits, and acceptance criterion 8 asks for "a final whole-branch review" — `git diff main...HEAD` covers everything on the branch, including the ~279-file C# SDK addition and prior commits that a stale SHA would silently exclude.
+
+Expected: no stale four-language or legacy-wire claims, no whitespace errors, a clean `git status --short`, and the user's `b2c7af2` assertions in `rust/src/resilience_state_tests.rs` still present in the branch diff. Review every critical/high finding in the approved design and record its passing regression test in `CHANGELOG.md` under `0.8.0`.
 
 - [ ] **Step 8: Commit release rigor and documentation**
 
