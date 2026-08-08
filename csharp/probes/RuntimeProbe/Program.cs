@@ -6,6 +6,10 @@ using System.Text.Json;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
 using Provide.Telemetry;
+using Provide.Telemetry.OpenTelemetry;
+
+// The probe speaks for an application that opted into OTLP delivery.
+OpenTelemetryBackendRegistration.Register();
 
 const string TraceId = "0af7651916cd43dd8448eb211c80319c";
 const string SpanId = "b7ad6b7169203331";
@@ -269,7 +273,7 @@ static Dictionary<string, object?> CaseHostProviderAdoption()
     using var hostTp = Sdk.CreateTracerProviderBuilder()
         .AddSource("Provide.Telemetry.Host")
         .Build();
-    Provide.Telemetry.Otel.OtelBackend.MarkHostProviders(traces: true);
+    TelemetryBackendRegistry.MarkHostProviders(traces: true);
 
     var before = ProvideTelemetry.GetRuntimeStatus();
 

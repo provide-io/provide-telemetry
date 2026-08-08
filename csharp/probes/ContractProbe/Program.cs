@@ -230,7 +230,7 @@ static void ApplyOverrides(Dictionary<string, object>? overrides)
     if (overrides.TryGetValue("serviceName", out var sn))
         Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_SERVICE_NAME", sn?.ToString());
     if (overrides.TryGetValue("environment", out var env))
-        Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_ENVIRONMENT", env?.ToString());
+        Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_ENV", env?.ToString());
     if (overrides.TryGetValue("samplingLogsRate", out var lr))
         Environment.SetEnvironmentVariable("PROVIDE_SAMPLING_LOGS_RATE", lr?.ToString());
     if (overrides.TryGetValue("samplingTracesRate", out var tr))

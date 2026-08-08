@@ -10,22 +10,25 @@
     <AssemblyVersion>0.6.0.0</AssemblyVersion>
     <FileVersion>0.6.0.0</FileVersion>
     <Authors>provide.io</Authors>
-    <Description>Idiomatic C# provide.telemetry — logs, traces, metrics with OpenTelemetry OTLP.</Description>
+    <Description>Idiomatic C# provide.telemetry — logs, traces, metrics with no exporter dependency.</Description>
     <PackageId>Provide.Telemetry</PackageId>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/provide-io/provide-telemetry</RepositoryUrl>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
-    <PackageReference Include="OpenTelemetry" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-  </ItemGroup>
+  <!--
+    No PackageReference by design. The core package is BCL-only so an
+    application that wants provide.telemetry without an OpenTelemetry (or
+    Microsoft.Extensions.DependencyInjection) dependency can install it alone;
+    delivery arrives through ITelemetryBackend from Provide.Telemetry.OpenTelemetry.
+    PackageBoundaryTests enforces this against the built assembly.
+  -->
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Provide.Telemetry.OpenTelemetry" />
     <InternalsVisibleTo Include="Provide.Telemetry.Tests" />
+    <InternalsVisibleTo Include="Provide.Telemetry.OpenTelemetry.Tests" />
     <InternalsVisibleTo Include="RuntimeProbe" />
     <InternalsVisibleTo Include="ContractProbe" />
     <InternalsVisibleTo Include="EmitLog" />

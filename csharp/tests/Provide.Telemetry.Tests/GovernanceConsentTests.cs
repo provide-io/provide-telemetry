@@ -297,7 +297,6 @@ public class GovernanceConsentTests
         Assert.False(string.IsNullOrEmpty(r.ReceiptId));
         Assert.False(string.IsNullOrEmpty(r.OriginalHash));
         Assert.False(string.IsNullOrEmpty(r.Hmac));
-        Assert.Equal(r.Hmac, r.Signature);
     }
 
     [Fact]

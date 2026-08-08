@@ -54,6 +54,32 @@ public static class Context
         Trace.Value = (traceId ?? "", spanId ?? "");
     }
 
+    /// <summary>
+    /// Set the trace context and hand back a scope that restores the previous one.
+    /// </summary>
+    /// <remarks>
+    /// Spans nest, so ending one must reveal its parent rather than clearing the
+    /// slot: an inner span that reset the context to empty left every subsequent
+    /// log line in the outer span untraced. The returned scope captures the
+    /// predecessor before the write and is safe to dispose more than once.
+    /// </remarks>
+    public static IDisposable PushTraceContext(string traceId, string spanId)
+    {
+        var predecessor = Trace.Value;
+        Trace.Value = (traceId ?? "", spanId ?? "");
+        return new AsyncLocalScope<(string TraceId, string SpanId)?>(Trace, predecessor);
+    }
+
+    /// <summary>
+    /// Bind fields and hand back a scope that restores the previous bindings.
+    /// </summary>
+    public static IDisposable PushContext(IReadOnlyDictionary<string, object?> fields)
+    {
+        var predecessor = Bound.Value;
+        BindContext(fields);
+        return new AsyncLocalScope<Dictionary<string, object?>?>(Bound, predecessor);
+    }
+
     public static (string TraceId, string SpanId) GetTraceContext()
     {
         return Trace.Value ?? ("", "");

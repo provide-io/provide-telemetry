@@ -51,21 +51,54 @@ public static class Pii
         lock (Gate) { _rules = rules.Select(CloneRule).ToList(); }
     }
 
-    /// <summary>Alias used by some call sites / Go parity.</summary>
-    public static void SetPIIRules(IEnumerable<PIIRule> rules) => ReplacePIIRules(rules);
-
     public static void RegisterSecretPattern(string name, Regex pattern)
     {
         lock (Gate) { CustomSecrets[name] = pattern; }
     }
+
+    /// <summary>
+    /// Reduce an arbitrary value to dictionaries, lists and scalars.
+    /// </summary>
+    /// <remarks>
+    /// Runs before redaction so that lists, JSON trees and plain objects are
+    /// inspectable rather than opaque. Cycles and over-deep branches collapse to
+    /// <see cref="Redacted"/>.
+    /// </remarks>
+    public static object? Harden(object? value, int maxDepth = DefaultMaxDepth) =>
+        Hardening.Harden(value, maxDepth <= 0 ? DefaultMaxDepth : maxDepth);
 
     public static Dictionary<string, object?> SanitizePayload(
         IReadOnlyDictionary<string, object?> payload,
         bool enabled,
         int maxDepth)
     {
-        if (!enabled) return payload.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-        if (maxDepth <= 0) maxDepth = DefaultMaxDepth;
+        ArgumentNullException.ThrowIfNull(payload);
+        var (sanitized, redactions) = SanitizeHardened(HardenPayload(payload, maxDepth), enabled);
+        Receipts.RecordAll(redactions);
+        return sanitized;
+    }
+
+    /// <summary>Harden a payload without redacting it — the pipeline's hardening stage.</summary>
+    internal static Dictionary<string, object?> HardenPayload(
+        IReadOnlyDictionary<string, object?> payload, int maxDepth)
+    {
+        var depth = maxDepth <= 0 ? DefaultMaxDepth : maxDepth;
+        return Hardening.Harden(payload, depth) as Dictionary<string, object?>
+               ?? new Dictionary<string, object?>(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Redact an already-hardened payload — the pipeline's pii stage.
+    /// </summary>
+    /// <remarks>
+    /// Takes no depth: hardening already applied it, and a second limit here
+    /// could only disagree with the first.
+    /// </remarks>
+    internal static (Dictionary<string, object?> Payload, IReadOnlyList<PendingRedaction> Redactions)
+        SanitizeHardened(Dictionary<string, object?> hardened, bool enabled)
+    {
+        if (!enabled) return (hardened, Array.Empty<PendingRedaction>());
+
         List<PIIRule> rules;
         Dictionary<string, Regex> custom;
         lock (Gate)
@@ -73,9 +106,17 @@ public static class Pii
             rules = _rules.Select(CloneRule).ToList();
             custom = new Dictionary<string, Regex>(CustomSecrets, StringComparer.Ordinal);
         }
-        return SanitizeMap(payload, rules, custom, maxDepth, Array.Empty<string>())
-               ?? new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        var redactions = new List<PendingRedaction>();
+        var context = new SanitizeContext(rules, custom, redactions);
+        return (SanitizeMap(hardened, context, Array.Empty<string>()), redactions);
     }
+
+    /// <summary>Rules, patterns and the receipt log for one sanitize pass.</summary>
+    private sealed record SanitizeContext(
+        List<PIIRule> Rules,
+        Dictionary<string, Regex> Custom,
+        List<PendingRedaction> Redactions);
 
     public static bool DetectSecretInValue(string text)
     {
@@ -116,86 +157,94 @@ public static class Pii
         }
     }
 
-    private static Dictionary<string, object?>? SanitizeMap(
-        IReadOnlyDictionary<string, object?> payload,
-        List<PIIRule> rules,
-        Dictionary<string, Regex> custom,
-        int maxDepth,
+    private static Dictionary<string, object?> SanitizeMap(
+        Dictionary<string, object?> payload,
+        SanitizeContext context,
         IReadOnlyList<string> path)
     {
-        if (maxDepth < 0) return new Dictionary<string, object?>(StringComparer.Ordinal);
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (key, value) in payload)
         {
-            var childPath = path.Concat(new[] { key }).ToArray();
-            var (keep, newVal) = SanitizeValue(key, value, rules, custom, maxDepth, childPath);
-            if (keep) result[key] = newVal;
+            var childPath = path.Append(key).ToArray();
+            var (keep, sanitized) = SanitizeValue(key, value, context, childPath);
+            if (keep) result[key] = sanitized;
         }
         return result;
     }
 
-    private static (bool keep, object? value) SanitizeValue(
+    /// <summary>
+    /// Redact one already-hardened value.
+    /// </summary>
+    /// <remarks>
+    /// List elements inherit their container's path rather than gaining an index
+    /// segment, so a rule written for <c>request.body</c> applies to every entry
+    /// of a list at that path instead of to none of them.
+    /// </remarks>
+    private static (bool Keep, object? Value) SanitizeValue(
         string key,
         object? value,
-        List<PIIRule> rules,
-        Dictionary<string, Regex> custom,
-        int maxDepth,
+        SanitizeContext context,
         IReadOnlyList<string> path)
     {
         var fieldPath = string.Join(".", path);
-        foreach (var rule in rules)
+        foreach (var rule in context.Rules)
         {
             if (!PathMatches(rule.Path, path)) continue;
-            return ApplyMode(value, rule.Mode, rule.TruncateTo, fieldPath);
+            return ApplyMode(value, rule.Mode, rule.TruncateTo, fieldPath, context);
         }
 
         if (DefaultSensitiveKeys.Contains(key))
         {
-            if (!Equals(value, Redacted))
+            return (true, Redact(value, fieldPath, context));
+        }
+
+        if (value is string s)
+        {
+            return DetectSecret(s, context.Custom)
+                ? (true, Redact(value, fieldPath, context))
+                : (true, value);
+        }
+
+        if (value is Dictionary<string, object?> nested)
+        {
+            return (true, SanitizeMap(nested, context, path));
+        }
+
+        if (value is List<object?> sequence)
+        {
+            var sanitized = new List<object?>(sequence.Count);
+            foreach (var item in sequence)
             {
-                Receipts.Record(fieldPath, PiiModes.Redact, value);
+                var (keep, element) = SanitizeValue(key, item, context, path);
+                if (keep) sanitized.Add(element);
             }
-            return (true, Redacted);
-        }
-
-        if (value is string s && DetectSecret(s, custom))
-        {
-            if (s != Redacted)
-            {
-                Receipts.Record(fieldPath, PiiModes.Redact, value);
-            }
-            return (true, Redacted);
-        }
-
-        if (value is Dictionary<string, object?> nestedDict)
-        {
-            return (true, SanitizeMap(nestedDict, rules, custom, maxDepth - 1, path));
-        }
-
-        if (value is IReadOnlyDictionary<string, object?> nestedRo)
-        {
-            return (true, SanitizeMap(nestedRo, rules, custom, maxDepth - 1, path));
-        }
-
-        if (value is IDictionary<string, object?> nested)
-        {
-            var copy = nested.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-            return (true, SanitizeMap(copy, rules, custom, maxDepth - 1, path));
+            return (true, sanitized);
         }
 
         return (true, value);
     }
 
-    private static (bool keep, object? value) ApplyMode(
-        object? value, string mode, int truncateTo, string fieldPath)
+    private static object Redact(object? value, string fieldPath, SanitizeContext context)
+    {
+        // An already-redacted value earns no receipt: re-redacting the sentinel
+        // would log an audit record for a change that did not happen.
+        if (!Equals(value, Redacted))
+        {
+            context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Redact, value));
+        }
+        return Redacted;
+    }
+
+    private static (bool Keep, object? Value) ApplyMode(
+        object? value, string mode, int truncateTo, string fieldPath, SanitizeContext context)
     {
         switch (mode)
         {
             case PiiModes.Drop:
-                Receipts.Record(fieldPath, PiiModes.Drop, value);
+                context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Drop, value));
                 return (false, null);
             case PiiModes.Hash:
-                Receipts.Record(fieldPath, PiiModes.Hash, value);
+                context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Hash, value));
                 return (true, HashValue(value));
             case PiiModes.Truncate:
             {
@@ -203,17 +252,13 @@ public static class Pii
                     ? s
                     : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
                 if (truncateTo <= 0 || text.Length <= truncateTo) return (true, text);
-                Receipts.Record(fieldPath, PiiModes.Truncate, value);
+                context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Truncate, value));
                 return (true, text[..truncateTo] + TruncationSuffix);
             }
             case PiiModes.Pass:
                 return (true, value);
             default:
-                if (!Equals(value, Redacted))
-                {
-                    Receipts.Record(fieldPath, PiiModes.Redact, value);
-                }
-                return (true, Redacted);
+                return (true, Redact(value, fieldPath, context));
         }
     }
 

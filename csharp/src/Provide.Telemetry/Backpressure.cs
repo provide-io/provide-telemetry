@@ -42,6 +42,30 @@ public static class Backpressure
         }
     }
 
+    /// <summary>The configured bound for a signal; 0 means unlimited.</summary>
+    public static int MaxSize(string signal)
+    {
+        lock (Gate)
+        {
+            return signal switch
+            {
+                Signals.Logs => _policy.LogsMaxSize,
+                Signals.Traces => _policy.TracesMaxSize,
+                Signals.Metrics => _policy.MetricsMaxSize,
+                _ => 0,
+            };
+        }
+    }
+
+    /// <summary>
+    /// Take a queue slot, or null when the bounded queue is full.
+    /// </summary>
+    /// <remarks>
+    /// A refusal is not counted here. <see cref="SignalPipeline"/> owns the
+    /// health accounting for every admission decision so that consent, sampling
+    /// and backpressure rejections are recorded at one stage, in one order,
+    /// exactly once — counting in both places double-counted every full queue.
+    /// </remarks>
     public static QueueTicket? TryAcquire(string signal)
     {
         lock (Gate)
@@ -65,7 +89,6 @@ public static class Backpressure
                 }
                 return new QueueTicket(signal);
             }
-            Health.RecordDropped(signal);
             return null;
         }
     }

@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-
 using System.Text.Json;
 
 namespace Provide.Telemetry;
 
-/// <summary>Structured logger emitting the canonical JSON envelope to stderr.</summary>
+/// <summary>Structured logger emitting the canonical envelope to stderr.</summary>
 public sealed class Logger
 {
     private readonly string _name;
@@ -29,127 +28,115 @@ public sealed class Logger
     public void Critical(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
         Emit("CRITICAL", message, fields);
 
-    private void Emit(string level, string message, IReadOnlyDictionary<string, object?>? fields)
+    /// <summary>Log an exception, attaching its stable fingerprint.</summary>
+    public void Error(string message, Exception error, IReadOnlyDictionary<string, object?>? fields = null)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        Emit("ERROR", message, fields, Fingerprint.ComputeErrorFingerprint(error));
+    }
+
+    private void Emit(
+        string level,
+        string message,
+        IReadOnlyDictionary<string, object?>? fields,
+        string? errorFingerprint = null)
     {
         Setup.EnsureLazyInit();
         var cfg = Setup.GetRuntimeConfig() ?? TelemetryConfig.Default();
-
         if (!LevelEnabled(level, EffectiveLevel(_name, cfg))) return;
-        // Consent gates all signals before sampling/backpressure (parity with Go/TS/Rust).
-        if (!Consent.ShouldAllow(Signals.Logs, level)) return;
-        if (!Sampling.ShouldSample(Signals.Logs, message)) return;
 
-        var ticket = Backpressure.TryAcquire(Signals.Logs);
-        if (ticket is null && GetQueuePolicyMax(cfg) > 0) return;
+        var merged = Merge(fields);
+        var schemaError = ValidateSchema(merged, cfg, message);
+        var rendered = cfg.Logging.Sanitize && Pii.DetectSecretInValue(message) ? Pii.Redacted : message;
+        var backend = Setup.CurrentBackend;
 
+        SignalPipeline.Process(new LogDispatch
+        {
+            SamplingKey = message,
+            LogLevel = level,
+            Harden = () => Pii.HardenPayload(merged, cfg.Logging.PiiMaxDepth),
+            Sanitize = hardened => Materialize(
+                Pii.SanitizeHardened(hardened, cfg.Logging.Sanitize), schemaError),
+            Build = payload => CanonicalLogRecord.Create(
+                DateTimeOffset.UtcNow, level, rendered, _name, cfg,
+                Context.GetTraceContext().TraceId, Context.GetTraceContext().SpanId,
+                payload, errorFingerprint),
+            EmitLocal = record => Console.Error.WriteLine(Render(record, cfg)),
+            Backend = backend is null ? null : backend.EmitLog,
+        });
+    }
+
+    private static (IReadOnlyDictionary<string, object?>, IReadOnlyList<PendingRedaction>) Materialize(
+        (Dictionary<string, object?> Payload, IReadOnlyList<PendingRedaction> Redactions) sanitized,
+        string? schemaError)
+    {
+        // Attached after redaction so the diagnostic itself is never treated as
+        // a caller field and re-sanitized into "***".
+        if (schemaError is not null) sanitized.Payload["_schema_error"] = schemaError;
+        return (sanitized.Payload, sanitized.Redactions);
+    }
+
+    private Dictionary<string, object?> Merge(IReadOnlyDictionary<string, object?>? fields)
+    {
+        var merged = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (fields is not null)
+        {
+            foreach (var (k, v) in fields) merged[k] = v;
+        }
+        foreach (var (k, v) in Context.GetBoundFields())
+        {
+            if (!merged.ContainsKey(k)) merged[k] = v;
+        }
+        return merged;
+    }
+
+    /// <summary>
+    /// Check the event against the schema, returning the complaint rather than throwing.
+    /// </summary>
+    /// <remarks>
+    /// A malformed event name is a developer mistake worth surfacing, but not
+    /// worth failing the caller's request over: the diagnostic rides along on
+    /// the record as <c>_schema_error</c>.
+    /// </remarks>
+    private static string? ValidateSchema(
+        IReadOnlyDictionary<string, object?> record, TelemetryConfig cfg, string message)
+    {
         try
         {
-            var record = new Dictionary<string, object?>(StringComparer.Ordinal);
-            if (fields is not null)
+            if (cfg.EventSchema.RequiredKeys.Count > 0)
             {
-                foreach (var (k, v) in fields) record[k] = v;
+                Schema.ValidateRequiredKeys(record, cfg.EventSchema.RequiredKeys);
             }
-            foreach (var (k, v) in Context.GetBoundFields())
-            {
-                if (!record.ContainsKey(k)) record[k] = v;
-            }
-
-            // Schema checks — on failure attach _schema_error (runtime probe) or drop.
-            string? schemaError = null;
-            try
-            {
-                if (cfg.EventSchema.RequiredKeys.Count > 0)
-                {
-                    Schema.ValidateRequiredKeys(record, cfg.EventSchema.RequiredKeys);
-                }
-                if (Schema.GetStrictSchema())
-                {
-                    Schema.ValidateEventName(message);
-                }
-            }
-            catch (EventSchemaError ex)
-            {
-                schemaError = ex.Message;
-            }
-
-            if (cfg.Logging.Sanitize)
-            {
-                record = Pii.SanitizePayload(record, true, cfg.Logging.PiiMaxDepth);
-                if (Pii.DetectSecretInValue(message))
-                {
-                    message = Pii.Redacted;
-                }
-            }
-
-            var output = new Dictionary<string, object?>(StringComparer.Ordinal);
-            if (cfg.Logging.IncludeTimestamp)
-            {
-                output["timestamp"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
-            }
-            output["level"] = level;
-            output["message"] = message;
-            if (!string.IsNullOrEmpty(_name)) output["logger_name"] = _name;
-            if (!string.IsNullOrEmpty(cfg.ServiceName)) output["service.name"] = cfg.ServiceName;
-            if (!string.IsNullOrEmpty(cfg.Environment)) output["service.env"] = cfg.Environment;
-            if (!string.IsNullOrEmpty(cfg.Version)) output["service.version"] = cfg.Version;
-
-            var (traceId, spanId) = Context.GetTraceContext();
-            if (!string.IsNullOrEmpty(traceId)) output["trace.id"] = traceId;
-            if (!string.IsNullOrEmpty(spanId)) output["span.id"] = spanId;
-
-            foreach (var (k, v) in record)
-            {
-                if (!output.ContainsKey(k)) output[k] = v;
-            }
-            if (schemaError is not null) output["_schema_error"] = schemaError;
-
-            string line;
-            if (string.Equals(cfg.Logging.Format, "json", StringComparison.OrdinalIgnoreCase))
-            {
-                line = JsonSerializer.Serialize(output);
-            }
-            else if (string.Equals(cfg.Logging.Format, "pretty", StringComparison.OrdinalIgnoreCase))
-            {
-                line = FormatPretty(output, level, message);
-            }
-            else
-            {
-                line = FormatConsole(output, level, message);
-            }
-
-            Console.Error.WriteLine(line);
-            Health.RecordEmitted(Signals.Logs);
-            Otel.OtelBackend.EmitLog(level, message, output);
+            if (Schema.GetStrictSchema()) Schema.ValidateEventName(message);
+            return null;
         }
-        finally
+        catch (EventSchemaError ex)
         {
-            Backpressure.Release(ticket);
+            return ex.Message;
         }
     }
 
-    private static int GetQueuePolicyMax(TelemetryConfig cfg) =>
-        Backpressure.GetQueuePolicy().LogsMaxSize;
-
-    private static string FormatConsole(Dictionary<string, object?> output, string level, string message)
+    private static string Render(CanonicalLogRecord record, TelemetryConfig cfg)
     {
-        var extras = string.Join(" ", output
-            .Where(kv => kv.Key is not ("level" or "message" or "timestamp"))
-            .Select(kv => $"{kv.Key}={kv.Value}"));
-        var ts = output.TryGetValue("timestamp", out var t) ? t + " " : "";
-        return string.IsNullOrEmpty(extras)
-            ? $"{ts}[{level}] {message}"
-            : $"{ts}[{level}] {message} {extras}";
+        var output = record.ToWireEnvelope(cfg.Logging.IncludeTimestamp);
+        if (string.Equals(cfg.Logging.Format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(output);
+        }
+        var quote = string.Equals(cfg.Logging.Format, "pretty", StringComparison.OrdinalIgnoreCase) ? "\"" : "";
+        return FormatText(output, record, quote);
     }
 
-    private static string FormatPretty(Dictionary<string, object?> output, string level, string message)
+    private static string FormatText(
+        IReadOnlyDictionary<string, object?> output, CanonicalLogRecord record, string quote)
     {
         var extras = string.Join(" ", output
             .Where(kv => kv.Key is not ("level" or "message" or "timestamp"))
-            .Select(kv => $"{kv.Key}=\"{kv.Value}\""));
+            .Select(kv => $"{kv.Key}={quote}{kv.Value}{quote}"));
         var ts = output.TryGetValue("timestamp", out var t) ? t + " " : "";
         return string.IsNullOrEmpty(extras)
-            ? $"{ts}[{level}] {message}"
-            : $"{ts}[{level}] {message} {extras}";
+            ? $"{ts}[{record.Level}] {record.Event}"
+            : $"{ts}[{record.Level}] {record.Event} {extras}";
     }
 
     private static string EffectiveLevel(string name, TelemetryConfig cfg)
@@ -188,4 +175,34 @@ public static class Logging
     public static Logger Logger { get; } = new("");
 
     public static Logger GetLogger(string name) => new(name ?? "");
+}
+
+/// <summary>Builds canonical records without emitting them.</summary>
+/// <remarks>
+/// Exists so callers and tests can inspect exactly what the renderers will see,
+/// which is the only way to assert that the record's field vocabulary is the
+/// canonical one rather than whichever renderer happened to run.
+/// </remarks>
+public static class Capture
+{
+    /// <summary>Build the record an exception would produce.</summary>
+    public static CanonicalLogRecord Error(
+        Exception error,
+        string? message = null,
+        IReadOnlyDictionary<string, object?>? fields = null)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var cfg = Setup.GetRuntimeConfig() ?? TelemetryConfig.Default();
+        var (traceId, spanId) = Context.GetTraceContext();
+        return CanonicalLogRecord.Create(
+            DateTimeOffset.UtcNow,
+            "ERROR",
+            message ?? error.Message,
+            "",
+            cfg,
+            traceId,
+            spanId,
+            fields ?? new Dictionary<string, object?>(StringComparer.Ordinal),
+            Fingerprint.ComputeErrorFingerprint(error));
+    }
 }

@@ -107,8 +107,9 @@ public static class ProvideTelemetry
     public static ConsentLevel GetConsentLevel() => Consent.GetConsentLevel();
     public static bool ShouldAllow(string signal, string logLevel) => Consent.ShouldAllow(signal, logLevel);
     public static void LoadConsentFromEnv() => Consent.LoadConsentFromEnv();
-    public static void EnableReceipts(bool enabled, string signingKey = "", string serviceName = "") =>
-        Receipts.EnableReceipts(enabled, signingKey, serviceName);
+    public static void EnableReceipts(
+        bool enabled, string signingKey = "", string serviceName = "", IReceiptSink? sink = null) =>
+        Receipts.EnableReceipts(enabled, signingKey, serviceName, sink);
     public static IReadOnlyList<RedactionReceipt> GetEmittedReceiptsForTests() =>
         Receipts.GetEmittedReceiptsForTests();
     public static Dictionary<string, object?> RedactConfig(TelemetryConfig c) => ConfigEnv.RedactConfig(c);

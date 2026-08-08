@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-
 namespace Provide.Telemetry;
 
 public interface ISpan : IDisposable
@@ -19,38 +18,56 @@ public interface ITracer
     ISpan StartSpan(string name);
 }
 
+/// <summary>Span used when no backend tracer is installed, and for dropped spans.</summary>
 public sealed class NoOpSpan : ISpan
 {
-    private readonly QueueTicket? _ticket;
-    private bool _disposed;
+    private readonly SignalAdmission _admission;
+    private readonly IDisposable? _contextScope;
+    private int _disposed;
 
     public string TraceId { get; }
     public string SpanId { get; }
 
-    public NoOpSpan(string? traceId = null, string? spanId = null, QueueTicket? ticket = null)
+    /// <summary>
+    /// Construct a span. Internal: a span is only ever handed out by a tracer,
+    /// which is what pairs it with the queue ticket and context scope it owns.
+    /// </summary>
+    internal NoOpSpan(string? traceId, string? spanId, SignalAdmission admission, IDisposable? contextScope)
     {
-        TraceId = string.IsNullOrEmpty(traceId) ? RandomId(32) : traceId;
-        SpanId = string.IsNullOrEmpty(spanId) ? RandomId(16) : spanId;
-        _ticket = ticket;
+        TraceId = string.IsNullOrEmpty(traceId) ? NewId(32) : traceId;
+        SpanId = string.IsNullOrEmpty(spanId) ? NewId(16) : spanId;
+        _admission = admission;
+        _contextScope = contextScope;
     }
+
+    /// <summary>The all-zero span returned when admission control refused.</summary>
+    internal static NoOpSpan Dropped() =>
+        new("00000000000000000000000000000000", "0000000000000000", default, null);
 
     public void SetAttribute(string key, object? value) { }
     public void RecordException(Exception ex) { }
     public void SetStatus(string status, string? description = null) { }
 
+    /// <summary>
+    /// End the span, restore the enclosing trace context, and return the ticket.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, so a span disposed both by a <c>using</c> and by an explicit
+    /// call releases one ticket and unwinds one level of context.
+    /// </remarks>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        // Hold ticket for span lifetime (parity with OtelSpan / live path).
-        Backpressure.Release(_ticket);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _contextScope?.Dispose();
+        _admission.Release();
     }
 
-    private static string RandomId(int hexLen)
+    /// <summary>A random lowercase-hex identifier of the given character length.</summary>
+    internal static string NewId(int hexLen)
     {
         var bytes = new byte[hexLen / 2];
         Random.Shared.NextBytes(bytes);
-        return Convert.ToHexString(bytes).ToLowerInvariant();
+        return Convert.ToHexStringLower(bytes);
     }
 }
 
@@ -58,34 +75,17 @@ public sealed class NoOpTracer : ITracer
 {
     public ISpan StartSpan(string name)
     {
-        if (!Setup.IsTracingEnabled())
-        {
-            return DroppedSpan();
-        }
-        // Dropped spans: consent / sampling / backpressure reject without a live span.
-        if (!Consent.ShouldAllow(Signals.Traces, ""))
-        {
-            return DroppedSpan();
-        }
-        if (!Sampling.ShouldSample(Signals.Traces, name))
-        {
-            return DroppedSpan();
-        }
-        var ticket = Backpressure.TryAcquire(Signals.Traces);
-        if (ticket is null)
-        {
-            // TryAcquire returns null when limited queue is full (or unknown signal).
-            var max = Backpressure.GetQueuePolicy().TracesMaxSize;
-            if (max > 0) return DroppedSpan();
-        }
-        var span = new NoOpSpan(ticket: ticket);
-        Context.SetTraceContext(span.TraceId, span.SpanId);
-        Health.RecordEmitted(Signals.Traces);
-        return span;
-    }
+        var admission = SignalPipeline.Admit(Signals.Traces, name);
+        if (!admission.Admitted) return NoOpSpan.Dropped();
 
-    private static NoOpSpan DroppedSpan() =>
-        new("00000000000000000000000000000000", "0000000000000000");
+        // Identifiers first, so the scope that will restore the caller's context
+        // is opened with the values this span is about to publish.
+        var traceId = NoOpSpan.NewId(32);
+        var spanId = NoOpSpan.NewId(16);
+        var scope = Context.PushTraceContext(traceId, spanId);
+        Health.RecordEmitted(Signals.Traces);
+        return new NoOpSpan(traceId, spanId, admission, scope);
+    }
 }
 
 public static class Tracing
@@ -98,28 +98,30 @@ public static class Tracing
         get
         {
             Setup.EnsureLazyInit();
-            return Otel.OtelBackend.GetTracer() ?? _default;
+            return Setup.CurrentBackend?.GetTracer("") ?? _default;
         }
     }
 
     public static ITracer GetTracer(string name = "")
     {
         Setup.EnsureLazyInit();
-        return Otel.OtelBackend.GetTracer(name) ?? _default;
+        return Setup.CurrentBackend?.GetTracer(name) ?? _default;
     }
 
     /// <summary>
     /// Idiomatic span wrapper (decorator equivalent). Runs action inside a span
-    /// and disposes the span when the action returns. Does not return the disposed span.
+    /// and disposes the span when the action returns.
     /// </summary>
     public static void Trace(string name, Action action)
     {
+        ArgumentNullException.ThrowIfNull(action);
         using var span = GetTracer().StartSpan(name);
         action();
     }
 
     public static T Trace<T>(string name, Func<T> func)
     {
+        ArgumentNullException.ThrowIfNull(func);
         using var span = GetTracer().StartSpan(name);
         return func();
     }

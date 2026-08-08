@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-
 namespace Provide.Telemetry;
 
 public interface ICounter
@@ -31,83 +30,84 @@ public interface IMeter
     IHistogram CreateHistogram(string name);
 }
 
+/// <summary>In-process counter used when no backend meter is installed.</summary>
 public sealed class FallbackCounter : ICounter
 {
     private readonly string _name;
     private long _value;
+
     public FallbackCounter(string name = "counter") => _name = name;
+
     public long Value => Interlocked.Read(ref _value);
+
     public void Add(long value, IReadOnlyDictionary<string, object?>? attributes = null)
     {
-        if (!Setup.IsMetricsEnabled()) return;
-        if (!Consent.ShouldAllow(Signals.Metrics, "")) return;
-        if (!Sampling.ShouldSample(Signals.Metrics, _name)) return;
-        var ticket = Backpressure.TryAcquire(Signals.Metrics);
-        if (ticket is null && Backpressure.GetQueuePolicy().MetricsMaxSize > 0) return;
+        var admission = SignalPipeline.Admit(Signals.Metrics, _name);
+        if (!admission.Admitted) return;
         try
         {
             Interlocked.Add(ref _value, value);
             Health.RecordEmitted(Signals.Metrics);
-            Otel.OtelBackend.RecordCounter(value, attributes);
         }
         finally
         {
-            Backpressure.Release(ticket);
+            admission.Release();
         }
     }
 }
 
+/// <summary>In-process gauge used when no backend meter is installed.</summary>
 public sealed class FallbackGauge : IGauge
 {
     private readonly string _name;
-    private double _value;
+    private readonly AtomicDouble _value = new();
+
     public FallbackGauge(string name = "gauge") => _name = name;
-    public double Value => _value;
+
+    public double Value => _value.Read();
+
     public void Set(double value, IReadOnlyDictionary<string, object?>? attributes = null)
     {
-        if (!Setup.IsMetricsEnabled()) return;
-        if (!Consent.ShouldAllow(Signals.Metrics, "")) return;
-        if (!Sampling.ShouldSample(Signals.Metrics, _name)) return;
-        var ticket = Backpressure.TryAcquire(Signals.Metrics);
-        if (ticket is null && Backpressure.GetQueuePolicy().MetricsMaxSize > 0) return;
+        var admission = SignalPipeline.Admit(Signals.Metrics, _name);
+        if (!admission.Admitted) return;
         try
         {
-            _value = value;
+            _value.Write(value);
             Health.RecordEmitted(Signals.Metrics);
-            Otel.OtelBackend.RecordGauge(value, attributes);
         }
         finally
         {
-            Backpressure.Release(ticket);
+            admission.Release();
         }
     }
 }
 
+/// <summary>In-process histogram used when no backend meter is installed.</summary>
 public sealed class FallbackHistogram : IHistogram
 {
     private readonly string _name;
+    private readonly AtomicDouble _sum = new();
     private long _count;
-    private double _sum;
+
     public FallbackHistogram(string name = "histogram") => _name = name;
+
     public long Count => Interlocked.Read(ref _count);
-    public double Sum => _sum;
+
+    public double Sum => _sum.Read();
+
     public void Record(double value, IReadOnlyDictionary<string, object?>? attributes = null)
     {
-        if (!Setup.IsMetricsEnabled()) return;
-        if (!Consent.ShouldAllow(Signals.Metrics, "")) return;
-        if (!Sampling.ShouldSample(Signals.Metrics, _name)) return;
-        var ticket = Backpressure.TryAcquire(Signals.Metrics);
-        if (ticket is null && Backpressure.GetQueuePolicy().MetricsMaxSize > 0) return;
+        var admission = SignalPipeline.Admit(Signals.Metrics, _name);
+        if (!admission.Admitted) return;
         try
         {
             Interlocked.Increment(ref _count);
-            _sum += value;
+            _sum.Add(value);
             Health.RecordEmitted(Signals.Metrics);
-            Otel.OtelBackend.RecordHistogram(value, attributes);
         }
         finally
         {
-            Backpressure.Release(ticket);
+            admission.Release();
         }
     }
 }
@@ -126,7 +126,7 @@ public static class Metrics
     public static IMeter GetMeter(string name = "")
     {
         Setup.EnsureLazyInit();
-        return Otel.OtelBackend.GetMeter(name) ?? Fallback;
+        return Setup.CurrentBackend?.GetMeter(name) ?? Fallback;
     }
 
     public static ICounter Counter(string name) => GetMeter().CreateCounter(name);

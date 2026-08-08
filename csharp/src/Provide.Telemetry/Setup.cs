@@ -9,22 +9,20 @@ namespace Provide.Telemetry;
 public static class Setup
 {
     private static readonly object Gate = new();
-    private static bool _setupDone;
-    private static TelemetryConfig? _runtimeCfg;
-    private static bool _providersLogs;
-    private static bool _providersTraces;
-    private static bool _providersMetrics;
+    private static LifecycleGeneration? _generation;
+    private static long _generationCounter;
     private static string _setupError = "";
+
+    /// <summary>Default budget for a flush or shutdown drain.</summary>
+    private static readonly TimeSpan DefaultDrainTimeout = TimeSpan.FromSeconds(10);
 
     public static TelemetryConfig SetupTelemetry(TelemetryConfig? config = null)
     {
+        ITelemetryBackend? backend = null;
         lock (Gate)
         {
             // Idempotent: first call wins; later calls ignore config args.
-            if (_setupDone)
-            {
-                return _runtimeCfg?.Clone() ?? TelemetryConfig.Default();
-            }
+            if (_generation is not null) return _generation.Config.Clone();
 
             TelemetryConfig cfg;
             try
@@ -42,12 +40,8 @@ public static class Setup
 
             Consent.LoadConsentFromEnv();
             ApplyRuntimePolicies(cfg);
-            var otel = Otel.OtelBackend.TrySetup(cfg);
-            _providersLogs = otel.Logs;
-            _providersTraces = otel.Traces;
-            _providersMetrics = otel.Metrics;
-            _runtimeCfg = cfg;
-            _setupDone = true;
+            backend = TelemetryBackendRegistry.Create(cfg);
+            _generation = Publish(cfg, backend, RuntimeState.Ready);
             _setupError = "";
             Health.SetSetupError("");
             return cfg.Clone();
@@ -56,30 +50,55 @@ public static class Setup
 
     public static void ShutdownTelemetry()
     {
+        // The deadline is computed once, before the lock, and shared by every
+        // signal drain: a caller asking for ten seconds gets ten, not ten per
+        // installed provider.
+        var deadline = DateTimeOffset.UtcNow + DefaultDrainTimeout;
+        ITelemetryBackend? backend;
         lock (Gate)
         {
-            Otel.OtelBackend.Shutdown();
-            _setupDone = false;
-            _runtimeCfg = null;
-            _providersLogs = _providersTraces = _providersMetrics = false;
+            backend = _generation?.Backend;
+            _generation = null;
             Schema.SetStrictSchema(false);
         }
+
+        // Outside the lock: draining talks to the network, and holding the
+        // lifecycle gate through a collector timeout would block every
+        // concurrent GetRuntimeStatus for the same duration.
+        backend?.Shutdown(deadline);
+        backend?.Dispose();
     }
 
     public static FlushResult FlushTelemetry(TimeSpan? timeout = null)
     {
+        var budget = timeout ?? DefaultDrainTimeout;
+        var deadline = DateTimeOffset.UtcNow + (budget > TimeSpan.Zero ? budget : TimeSpan.Zero);
+        ITelemetryBackend? backend;
         lock (Gate)
         {
-            return Otel.OtelBackend.Flush(timeout ?? TimeSpan.FromSeconds(10),
-                _providersLogs, _providersTraces, _providersMetrics);
+            backend = _generation?.Backend;
         }
+
+        // Flush preserves the installed providers; only shutdown detaches them.
+        return backend?.Flush(deadline)
+               ?? FlushResults.Undrained(ProviderFlags.None, TelemetryBackendRegistry.HostProviders);
     }
+
+    /// <summary>The backend for the current generation, or null in fallback mode.</summary>
+    internal static ITelemetryBackend? CurrentBackend
+    {
+        get { lock (Gate) { return _generation?.Backend; } }
+    }
+
+    private static LifecycleGeneration Publish(
+        TelemetryConfig cfg, ITelemetryBackend? backend, RuntimeState state) =>
+        new(++_generationCounter, cfg, backend, state);
 
     public static TelemetryConfig? GetRuntimeConfig()
     {
         lock (Gate)
         {
-            return _runtimeCfg?.Clone();
+            return _generation?.Config.Clone();
         }
     }
 
@@ -87,31 +106,25 @@ public static class Setup
     {
         TelemetryConfig cfg;
         bool setupDone;
-        bool pl, pt, pm;
+        ProviderFlags owned;
         string err;
+        // One read of one immutable generation: status can no longer report a
+        // config from one lifecycle alongside provider flags from another.
         lock (Gate)
         {
-            setupDone = _setupDone;
-            cfg = _runtimeCfg?.Clone() ?? SafeConfigFromEnv();
-            pl = _providersLogs;
-            pt = _providersTraces;
-            pm = _providersMetrics;
+            var generation = _generation;
+            setupDone = generation is not null;
+            cfg = generation?.Config.Clone() ?? SafeConfigFromEnv();
+            owned = generation?.Providers ?? ProviderFlags.None;
             err = _setupError;
         }
 
-        var (hl, ht, hm) = Otel.OtelBackend.ProviderFlags();
+        var host = TelemetryBackendRegistry.HostProviders;
         // Providers report owned OR host-adopted installations. When a signal is
         // disabled, host adoption is suppressed so status matches the emit path.
-        var providersLogs = hl || pl;
-        var providersTraces = cfg.Tracing.Enabled && (ht || pt);
-        var providersMetrics = cfg.Metrics.Enabled && (hm || pm);
-        // Before setup, host marks still report (adoption detection).
-        if (!setupDone)
-        {
-            providersLogs = hl || pl;
-            providersTraces = ht || pt;
-            providersMetrics = hm || pm;
-        }
+        var providersLogs = host.Logs || owned.Logs;
+        var providersTraces = (host.Traces || owned.Traces) && (!setupDone || cfg.Tracing.Enabled);
+        var providersMetrics = (host.Metrics || owned.Metrics) && (!setupDone || cfg.Metrics.Enabled);
 
         return new RuntimeStatus
         {
@@ -140,11 +153,9 @@ public static class Setup
             // Matching Go/Rust/TypeScript: updating config when telemetry was
             // never started or has been shut down is refused rather than
             // silently publishing a config nothing is using.
-            if (!_setupDone)
-            {
-                throw new TelemetryError("telemetry not set up: call SetupTelemetry first");
-            }
-            var cfg = _runtimeCfg?.Clone() ?? SafeConfigFromEnv();
+            var current = _generation ?? throw new TelemetryError(
+                "telemetry not set up: call SetupTelemetry first");
+            var cfg = current.Config.Clone();
             if (overrides.LogLevel is not null) cfg.Logging.Level = overrides.LogLevel;
             if (overrides.LogFormat is not null) cfg.Logging.Format = overrides.LogFormat;
             if (overrides.Sanitize is not null) cfg.Logging.Sanitize = overrides.Sanitize.Value;
@@ -160,7 +171,7 @@ public static class Setup
                 }
             }
             ApplyRuntimePolicies(cfg);
-            _runtimeCfg = cfg;
+            _generation = Publish(cfg, current.Backend, current.State);
         }
     }
 
@@ -168,18 +179,13 @@ public static class Setup
     {
         lock (Gate)
         {
-            if (!_setupDone)
-            {
-                throw new TelemetryError("telemetry not set up: call SetupTelemetry first");
-            }
+            var current = _generation ?? throw new TelemetryError(
+                "telemetry not set up: call SetupTelemetry first");
             var cfg = ConfigEnv.ConfigFromEnv();
             // Reject provider-changing fields when live providers have them baked in.
-            if (_runtimeCfg is not null)
-            {
-                RejectProviderChanging(cfg, _runtimeCfg);
-            }
+            RejectProviderChanging(cfg, current);
             ApplyRuntimePolicies(cfg);
-            _runtimeCfg = cfg;
+            _generation = Publish(cfg, current.Backend, current.State);
             return cfg.Clone();
         }
     }
@@ -188,15 +194,19 @@ public static class Setup
     {
         lock (Gate)
         {
-            var previous = _runtimeCfg?.Clone();
+            // Reconfiguring a runtime that was never started — or one already
+            // shut down — is an error, not an implicit setup. Publishing a
+            // generation here would report SetupDone with no providers
+            // installed and no shutdown owed, which is exactly the state Go's
+            // ReconfigureTelemetry refuses with this message; UpdateRuntimeConfig
+            // and ReloadRuntimeFromEnv above hold the same precondition.
+            var current = _generation ?? throw new ConfigurationError(
+                "telemetry not set up: call SetupTelemetry first");
             var cfg = config?.Clone() ?? ConfigEnv.ConfigFromEnv();
             ValidateRetriesCeiling(cfg);
-            if (_setupDone && previous is not null)
-            {
-                RejectProviderChanging(cfg, previous);
-            }
+            RejectProviderChanging(cfg, current);
             ApplyRuntimePolicies(cfg);
-            _runtimeCfg = cfg;
+            _generation = Publish(cfg, current.Backend, current.State);
             return cfg.Clone();
         }
     }
@@ -204,37 +214,28 @@ public static class Setup
     /// <summary>Lazy init when GetLogger is used without SetupTelemetry.</summary>
     internal static void EnsureLazyInit()
     {
-        if (_setupDone) return;
+        if (Volatile.Read(ref _generation) is not null) return;
         lock (Gate)
         {
-            if (_setupDone) return;
+            if (_generation is not null) return;
+            Consent.LoadConsentFromEnv();
+            TelemetryConfig cfg;
+            ITelemetryBackend? backend = null;
             try
             {
-                Consent.LoadConsentFromEnv();
-                var cfg = SafeConfigFromEnv();
-                ApplyRuntimePolicies(cfg);
-                _runtimeCfg = cfg;
-                // Mark as set up for logger fields, but do not install OTel providers
-                // unless endpoints are configured — graceful degradation.
-                var otel = Otel.OtelBackend.TrySetup(cfg);
-                _providersLogs = otel.Logs;
-                _providersTraces = otel.Traces;
-                _providersMetrics = otel.Metrics;
-                _setupDone = true;
+                cfg = SafeConfigFromEnv();
+                // Providers install only when endpoints are configured, so a
+                // lazy start against an unconfigured environment degrades to the
+                // in-process fallbacks rather than failing.
+                backend = TelemetryBackendRegistry.Create(cfg);
             }
             catch (ConfigurationError)
             {
-                Consent.LoadConsentFromEnv();
-                _runtimeCfg = TelemetryConfig.Default();
-                ApplyRuntimePolicies(_runtimeCfg);
-                _setupDone = true;
+                cfg = TelemetryConfig.Default();
             }
+            ApplyRuntimePolicies(cfg);
+            _generation = Publish(cfg, backend, RuntimeState.Ready);
         }
-    }
-
-    internal static bool IsSetupDone
-    {
-        get { lock (Gate) return _setupDone; }
     }
 
     /// <summary>
@@ -245,7 +246,7 @@ public static class Setup
     {
         lock (Gate)
         {
-            return _runtimeCfg is null || _runtimeCfg.Tracing.Enabled;
+            return _generation is null || _generation.Config.Tracing.Enabled;
         }
     }
 
@@ -254,21 +255,21 @@ public static class Setup
     {
         lock (Gate)
         {
-            return _runtimeCfg is null || _runtimeCfg.Metrics.Enabled;
+            return _generation is null || _generation.Config.Metrics.Enabled;
         }
     }
 
     internal static void ResetForTests()
     {
+        ITelemetryBackend? backend;
         lock (Gate)
         {
-            Otel.OtelBackend.Shutdown();
-            Otel.OtelBackend.ClearHostProviders();
-            _setupDone = false;
-            _runtimeCfg = null;
-            _providersLogs = _providersTraces = _providersMetrics = false;
+            backend = _generation?.Backend;
+            _generation = null;
             _setupError = "";
         }
+        backend?.Dispose();
+        TelemetryBackendRegistry.ClearHostProviders();
         Sampling.Reset();
         Backpressure.Reset();
         Resilience.Reset();
@@ -329,25 +330,26 @@ public static class Setup
     /// changes are gated per signal: a live tracer does not freeze the logging
     /// endpoint.
     /// </summary>
-    private static void RejectProviderChanging(TelemetryConfig next, TelemetryConfig current)
+    private static void RejectProviderChanging(TelemetryConfig next, LifecycleGeneration current)
     {
-        var anyLive = _providersLogs || _providersTraces || _providersMetrics;
-        if (!anyLive)
+        var live = current.Providers;
+        if (!live.Any)
         {
             return;
         }
+        var previous = current.Config;
         var identityChanged =
-            !string.Equals(next.ServiceName, current.ServiceName, StringComparison.Ordinal)
-            || !string.Equals(next.Environment, current.Environment, StringComparison.Ordinal)
-            || !string.Equals(next.Version, current.Version, StringComparison.Ordinal)
-            || next.Tracing.Enabled != current.Tracing.Enabled
-            || next.Metrics.Enabled != current.Metrics.Enabled;
-        var logsChanged = _providersLogs
-            && !string.Equals(next.Logging.OtlpEndpoint, current.Logging.OtlpEndpoint, StringComparison.Ordinal);
-        var tracesChanged = _providersTraces
-            && !string.Equals(next.Tracing.OtlpEndpoint, current.Tracing.OtlpEndpoint, StringComparison.Ordinal);
-        var metricsChanged = _providersMetrics
-            && !string.Equals(next.Metrics.OtlpEndpoint, current.Metrics.OtlpEndpoint, StringComparison.Ordinal);
+            !string.Equals(next.ServiceName, previous.ServiceName, StringComparison.Ordinal)
+            || !string.Equals(next.Environment, previous.Environment, StringComparison.Ordinal)
+            || !string.Equals(next.Version, previous.Version, StringComparison.Ordinal)
+            || next.Tracing.Enabled != previous.Tracing.Enabled
+            || next.Metrics.Enabled != previous.Metrics.Enabled;
+        var logsChanged = live.Logs
+            && !string.Equals(next.Logging.OtlpEndpoint, previous.Logging.OtlpEndpoint, StringComparison.Ordinal);
+        var tracesChanged = live.Traces
+            && !string.Equals(next.Tracing.OtlpEndpoint, previous.Tracing.OtlpEndpoint, StringComparison.Ordinal);
+        var metricsChanged = live.Metrics
+            && !string.Equals(next.Metrics.OtlpEndpoint, previous.Metrics.OtlpEndpoint, StringComparison.Ordinal);
         if (identityChanged || logsChanged || tracesChanged || metricsChanged)
         {
             throw new ProviderImmutableError(

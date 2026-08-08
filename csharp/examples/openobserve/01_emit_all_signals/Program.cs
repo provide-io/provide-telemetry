@@ -10,6 +10,7 @@
 //   PROVIDE_EXAMPLE_RUN_ID  defaults to DateTimeOffset.UtcNow millis
 
 using Provide.Telemetry;
+using Provide.Telemetry.OpenTelemetry;
 
 static string RequireEnv(string name)
 {
@@ -49,12 +50,9 @@ Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-te
 Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_ENV", "development");
 Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_VERSION", "examples");
 Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
-Environment.SetEnvironmentVariable("PROVIDE_LOG_OTLP_ENDPOINT", baseUrl);
-Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_ENDPOINT", baseUrl);
-Environment.SetEnvironmentVariable("PROVIDE_METRICS_OTLP_ENDPOINT", baseUrl);
-Environment.SetEnvironmentVariable("PROVIDE_LOG_OTLP_HEADERS", headers);
-Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_HEADERS", headers);
-Environment.SetEnvironmentVariable("PROVIDE_METRICS_OTLP_HEADERS", headers);
+
+// Delivery is opt-in: the core package exports nothing on its own.
+OpenTelemetryBackendRegistration.Register();
 
 Testing.ResetForTests();
 var cfg = ProvideTelemetry.SetupTelemetry();

@@ -13,6 +13,7 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Provide.Telemetry\Provide.Telemetry.csproj" />
+    <ProjectReference Include="..\..\src\Provide.Telemetry.OpenTelemetry\Provide.Telemetry.OpenTelemetry.csproj" />
   </ItemGroup>
 
 </Project>

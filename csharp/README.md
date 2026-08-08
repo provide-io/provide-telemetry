@@ -2,6 +2,26 @@
 
 Idiomatic C# implementation of provide-telemetry at API parity with Python, TypeScript, Go, and Rust.
 
+## Packages
+
+| Package | Dependencies | What it gives you |
+| --- | --- | --- |
+| `Provide.Telemetry` | BCL only | The whole facade: logging, tracing, metrics, governance, health. Signals render locally. |
+| `Provide.Telemetry.OpenTelemetry` | `Provide.Telemetry` + OpenTelemetry + `Microsoft.Extensions.*` | OTLP delivery for all three signals. |
+
+The core package has no exporter dependency, so an application that does not want
+OpenTelemetry on its dependency graph installs it alone and every call still works.
+To export, add the integration package and register it once, before setup:
+
+```csharp
+using Provide.Telemetry.OpenTelemetry;
+
+OpenTelemetryBackendRegistration.Register();
+```
+
+Nothing else about the application changes — see `consumer/Provide.Telemetry.CoreConsumer`
+and `consumer/Provide.Telemetry.OpenTelemetryConsumer` for the same program either way.
+
 ## Requirements
 
 - .NET 10 SDK
@@ -11,7 +31,7 @@ Idiomatic C# implementation of provide-telemetry at API parity with Python, Type
 
 ```bash
 dotnet build csharp/Provide.Telemetry.sln
-dotnet test csharp/tests/Provide.Telemetry.Tests/Provide.Telemetry.Tests.csproj --nologo
+dotnet test csharp/Provide.Telemetry.sln --nologo
 ```
 
 ## Usage

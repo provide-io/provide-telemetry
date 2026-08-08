@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Provide.Telemetry\Provide.Telemetry.csproj" />
+    <ProjectReference Include="..\..\src\Provide.Telemetry.OpenTelemetry\Provide.Telemetry.OpenTelemetry.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

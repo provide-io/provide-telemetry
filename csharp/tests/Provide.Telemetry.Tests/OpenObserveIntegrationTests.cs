@@ -45,12 +45,6 @@ public class OpenObserveIntegrationTests
         Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_SERVICE_NAME", "csharp-openobserve");
         Environment.SetEnvironmentVariable("PROVIDE_TELEMETRY_ENV", "integration");
         Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
-        Environment.SetEnvironmentVariable("PROVIDE_LOG_OTLP_ENDPOINT", baseUrl);
-        Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_ENDPOINT", baseUrl);
-        Environment.SetEnvironmentVariable("PROVIDE_METRICS_OTLP_ENDPOINT", baseUrl);
-        Environment.SetEnvironmentVariable("PROVIDE_LOG_OTLP_HEADERS", headers);
-        Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_HEADERS", headers);
-        Environment.SetEnvironmentVariable("PROVIDE_METRICS_OTLP_HEADERS", headers);
 
         try
         {
@@ -144,8 +138,6 @@ public class OpenObserveIntegrationTests
                      {
                          "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_PROTOCOL",
                          "PROVIDE_TELEMETRY_SERVICE_NAME", "PROVIDE_TELEMETRY_ENV", "PROVIDE_LOG_FORMAT",
-                         "PROVIDE_LOG_OTLP_ENDPOINT", "PROVIDE_TRACE_OTLP_ENDPOINT", "PROVIDE_METRICS_OTLP_ENDPOINT",
-                         "PROVIDE_LOG_OTLP_HEADERS", "PROVIDE_TRACE_OTLP_HEADERS", "PROVIDE_METRICS_OTLP_HEADERS",
                      })
             {
                 Environment.SetEnvironmentVariable(k, null);

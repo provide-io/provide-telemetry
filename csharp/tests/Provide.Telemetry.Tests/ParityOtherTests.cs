@@ -51,20 +51,47 @@ public class ParityOtherTests
         Assert.Equal("config", Slo.ClassifyError(new ConfigurationError("x")));
     }
 
-    [Fact]
-    public void ConfigHeaders_Parsing()
+    [Theory]
+    // spec/behavioral_fixtures.yaml config_headers, case for case.
+    [InlineData("Authorization=Bearer+token", "Authorization", "Bearer+token")]
+    [InlineData("my%20key=my%20value", "my key", "my value")]
+    [InlineData("=value,key=val", "key", "val")]
+    [InlineData("malformed,key=val", "key", "val")]
+    [InlineData("Authorization=Bearer token=xyz", "Authorization", "Bearer token=xyz")]
+    [InlineData("a+b=c+d", "a+b", "c+d")]
+    [InlineData("a%20b=c%20d", "a b", "c d")]
+    public void ConfigHeaders_Parsing(string raw, string key, string value)
     {
-        Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_HEADERS", "Authorization=Bearer abc,X-Custom=1");
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_HEADERS", raw);
         try
         {
             Testing.ResetForTests();
             var cfg = ConfigEnv.ConfigFromEnv();
-            Assert.Equal("Bearer abc", cfg.Tracing.OtlpHeaders["Authorization"]);
-            Assert.Equal("1", cfg.Tracing.OtlpHeaders["X-Custom"]);
+            // A '+' is a legal token character and must survive verbatim; only
+            // %HH sequences decode. The shared header list feeds all three
+            // signals, so all three must agree.
+            Assert.Equal(value, cfg.Tracing.OtlpHeaders[key]);
+            Assert.Equal(value, cfg.Logging.OtlpHeaders[key]);
+            Assert.Equal(value, cfg.Metrics.OtlpHeaders[key]);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("PROVIDE_TRACE_OTLP_HEADERS", null);
+            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_HEADERS", null);
+        }
+    }
+
+    [Fact]
+    public void ConfigHeaders_EmptyStringYieldsNoHeaders()
+    {
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_HEADERS", "");
+        try
+        {
+            Testing.ResetForTests();
+            Assert.Empty(ConfigEnv.ConfigFromEnv().Tracing.OtlpHeaders);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_HEADERS", null);
         }
     }
 
@@ -122,8 +149,16 @@ public class ParityOtherTests
             Assert.Contains("\"message\":\"log.output.parity\"", line);
             Assert.Contains("\"level\":\"INFO\"", line);
             Assert.Contains("\"logger_name\":\"probe\"", line);
-            Assert.Contains("\"service.name\":\"parity-svc\"", line);
-            Assert.Contains("\"trace.id\":\"0af7651916cd43dd8448eb211c80319c\"", line);
+            // Canonical snake_case identity, per log_output_format in
+            // spec/behavioral_fixtures.yaml. The dotted spellings are listed
+            // there as noise to be stripped, and no longer appear at all.
+            Assert.Contains("\"service\":\"parity-svc\"", line);
+            Assert.Contains("\"env\":\"test\"", line);
+            Assert.Contains("\"version\":\"0.6.0\"", line);
+            Assert.Contains("\"trace_id\":\"0af7651916cd43dd8448eb211c80319c\"", line);
+            Assert.Contains("\"span_id\":\"b7ad6b7169203331\"", line);
+            Assert.DoesNotContain("service.name", line);
+            Assert.DoesNotContain("trace.id", line);
         }
         finally
         {

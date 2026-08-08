@@ -17,10 +17,20 @@ public sealed class QueuePolicy
     public int MetricsMaxSize { get; set; }
 }
 
+/// <summary>
+/// Per-signal export policy.
+/// </summary>
+/// <remarks>
+/// The defaults are the schema's, not this SDK's own: zero retries and zero
+/// backoff, matching <c>PROVIDE_EXPORTER_*_RETRIES</c> in
+/// <c>spec/telemetry-api.yaml</c>. They used to be 3 and 0.5s, so a C# service
+/// that set no exporter environment at all retried four times where the other
+/// four SDKs tried once.
+/// </remarks>
 public sealed class ExporterPolicy
 {
-    public int Retries { get; set; } = 3;
-    public double BackoffSeconds { get; set; } = 0.5;
+    public int Retries { get; set; }
+    public double BackoffSeconds { get; set; }
     public double TimeoutSeconds { get; set; } = 10.0;
     public bool FailOpen { get; set; } = true;
     public bool AllowBlockingInEventLoop { get; set; }
@@ -76,6 +86,9 @@ public sealed class HealthSnapshot
     public long MetricsAsyncBlockingRisk { get; set; }
     public string MetricsCircuitState { get; set; } = "closed";
     public long MetricsCircuitOpenCount { get; set; }
+
+    /// <summary>Receipts a sink refused or faulted on. The 26th canonical field.</summary>
+    public long ReceiptFailures { get; set; }
 
     public string SetupError { get; set; } = "";
 }
@@ -181,8 +194,6 @@ public sealed class RedactionReceipt
     public string ServiceName { get; set; } = "";
     public string Timestamp { get; set; } = "";
     public string OriginalHash { get; set; } = "";
-    /// <summary>HMAC-SHA256 hex when a signing key is configured.</summary>
+    /// <summary>HMAC-SHA256 hex of the canonical payload; empty when unsigned.</summary>
     public string Hmac { get; set; } = "";
-    /// <summary>Alias of <see cref="Hmac"/> for older call sites.</summary>
-    public string? Signature { get; set; }
 }

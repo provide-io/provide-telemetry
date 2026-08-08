@@ -12,6 +12,8 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
+using OtelResourceBuilder = OpenTelemetry.Resources.ResourceBuilder;
+
 using Provide.Telemetry;
 
 namespace Provide.Telemetry.OpenTelemetry;
@@ -54,7 +56,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         return new ProviderFlags(logs, traces, metrics);
     }
 
-    private bool InstallTraces(TelemetryConfig config, global::OpenTelemetry.Resources.ResourceBuilder resource)
+    private bool InstallTraces(TelemetryConfig config, OtelResourceBuilder resource)
     {
         var endpoint = Endpoints.Normalize(config.Tracing.OtlpEndpoint);
         if (!config.Tracing.Enabled || endpoint is null) return false;
@@ -77,7 +79,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         }
     }
 
-    private bool InstallMetrics(TelemetryConfig config, global::OpenTelemetry.Resources.ResourceBuilder resource)
+    private bool InstallMetrics(TelemetryConfig config, OtelResourceBuilder resource)
     {
         var endpoint = Endpoints.Normalize(config.Metrics.OtlpEndpoint);
         if (!config.Metrics.Enabled || endpoint is null) return false;
@@ -98,7 +100,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         }
     }
 
-    private bool InstallLogs(TelemetryConfig config, global::OpenTelemetry.Resources.ResourceBuilder resource)
+    private bool InstallLogs(TelemetryConfig config, OtelResourceBuilder resource)
     {
         var endpoint = Endpoints.Normalize(config.Logging.OtlpEndpoint);
         if (!config.Logging.OtlpEnabled || endpoint is null) return false;

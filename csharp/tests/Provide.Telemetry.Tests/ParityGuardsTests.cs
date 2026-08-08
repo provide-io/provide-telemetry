@@ -113,6 +113,26 @@ public class ParityGuardsTests
     }
 
     [Fact]
+    public void Reconfigure_BeforeSetup_Throws()
+    {
+        var ex = Assert.Throws<ConfigurationError>(() => ProvideTelemetry.ReconfigureTelemetry());
+        Assert.Equal("telemetry not set up: call SetupTelemetry first", ex.Message);
+        // No generation may be published by the refusal: a caller who never set
+        // up must not end up with status claiming it did.
+        Assert.False(ProvideTelemetry.GetRuntimeStatus().SetupDone);
+    }
+
+    [Fact]
+    public void Reconfigure_AfterShutdown_Throws()
+    {
+        ProvideTelemetry.SetupTelemetry();
+        ProvideTelemetry.ShutdownTelemetry();
+        var cfg = TelemetryConfig.Default();
+        Assert.Throws<ConfigurationError>(() => ProvideTelemetry.ReconfigureTelemetry(cfg));
+        Assert.False(ProvideTelemetry.GetRuntimeStatus().SetupDone);
+    }
+
+    [Fact]
     public void Reconfigure_FallbackMode_AppliesProviderFields()
     {
         // No OTLP endpoints — no owned providers — so provider-field diffs must
@@ -164,7 +184,7 @@ public class ParityGuardsTests
     [Fact]
     public void Flush_HostAdoptedProvider_ReportsNotOwned()
     {
-        Otel.OtelBackend.MarkHostProviders(logs: true);
+        TelemetryBackendRegistry.MarkHostProviders(logs: true);
         ProvideTelemetry.SetupTelemetry();
         var result = ProvideTelemetry.FlushTelemetry();
         // The host's provider is installed but not ours to drain.

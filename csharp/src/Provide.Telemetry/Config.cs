@@ -96,6 +96,15 @@ public sealed class TelemetryConfig
     public string Environment { get; set; } = "dev";
     public string Version { get; set; } = "0.0.0";
     public bool StrictSchema { get; set; }
+    /// <summary>
+    /// Extra OTel resource attributes, at the top of the precedence ladder.
+    /// </summary>
+    /// <remarks>
+    /// Explicit by construction: unlike the identity fields there is no framework
+    /// default to be indistinguishable from, so anything here was chosen.
+    /// </remarks>
+    public Dictionary<string, string> ResourceAttributes { get; set; } = new(StringComparer.Ordinal);
+
     public LoggingConfig Logging { get; set; } = new();
     public TracingConfig Tracing { get; set; } = new();
     public MetricsConfig Metrics { get; set; } = new();
@@ -117,6 +126,7 @@ public sealed class TelemetryConfig
             Environment = Environment,
             Version = Version,
             StrictSchema = StrictSchema,
+            ResourceAttributes = new Dictionary<string, string>(ResourceAttributes, StringComparer.Ordinal),
             Logging = new LoggingConfig
             {
                 Level = Logging.Level,
