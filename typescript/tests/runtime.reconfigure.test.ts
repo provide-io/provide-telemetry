@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetConfig } from '../src/config.js';
+import { _resetConfig, setupTelemetry } from '../src/config.js';
 import {
   _areProvidersRegistered,
   _clearProviderState,
@@ -19,6 +19,10 @@ import {
 beforeEach(() => {
   _resetRuntimeForTests();
   _resetConfig();
+  // reconfigureTelemetry now requires a live config, so every case below
+  // establishes one. The preconditions suite at the bottom resets this
+  // deliberately to assert the refusal.
+  setupTelemetry({ serviceName: 'reconfigure-suite' });
 });
 afterEach(() => {
   _resetRuntimeForTests();
@@ -310,5 +314,31 @@ describe('_clearProviderState — resets all provider state', () => {
     expect(_getRegisteredProviders()).toHaveLength(0);
     expect(getRuntimeStatus().providers).toEqual({ logs: false, traces: false, metrics: false });
     expect(getRuntimeStatus().fallback).toEqual({ logs: true, traces: true, metrics: true });
+  });
+});
+
+describe('reconfigureTelemetry preconditions', () => {
+  // Only Go enforced this at first; C# and TypeScript were found to perform an
+  // implicit first-time setup instead, reporting setupDone with no providers
+  // registered. The sibling entry points (updateRuntimeConfig,
+  // reloadRuntimeFromEnv) already refused, so the reconfigure path was the odd
+  // one out in every SDK that had the bug.
+  it('refuses to run before setupTelemetry', () => {
+    _resetRuntimeForTests();
+    expect(() => {
+      reconfigureTelemetry({ serviceName: 'never-set-up' });
+    }).toThrow(/telemetry not set up/);
+    expect(getRuntimeStatus().setupDone).toBe(false);
+  });
+
+  it('refuses to run after shutdownTelemetry', () => {
+    _resetRuntimeForTests();
+    setupTelemetry({ serviceName: 'svc' });
+    expect(getRuntimeStatus().setupDone).toBe(true);
+    _clearProviderState();
+    expect(() => {
+      reconfigureTelemetry({ serviceName: 'after-shutdown' });
+    }).toThrow(/telemetry not set up/);
+    expect(getRuntimeStatus().setupDone).toBe(false);
   });
 });

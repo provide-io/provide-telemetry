@@ -12,8 +12,8 @@ import {
   _setLogsProviderInstalled,
   getRuntimeConfig,
   getRuntimeStatus,
-  reloadRuntimeFromEnv,
   reconfigureTelemetry,
+  reloadRuntimeFromEnv,
   updateRuntimeConfig,
 } from '../src/runtime.js';
 import { liveMeterProvider, liveTracerProvider } from './fixtures/live-providers.js';

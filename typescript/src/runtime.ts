@@ -428,7 +428,13 @@ const PROVIDER_CHANGING_FIELDS: (keyof TelemetryConfig)[] = [
  * Otherwise delegates to setupTelemetry.
  */
 export function reconfigureTelemetry(config: Partial<TelemetryConfig>): void {
-  const current = getRuntimeConfig();
+  // Reconfiguring something that was never configured is a caller error, not a
+  // shorthand for setup. getRuntimeConfig() falls back to the environment when
+  // nothing is live, so merging over it here quietly performed a first-time
+  // setup and reported setupDone with no providers registered — the same state
+  // requireActiveConfig was written to refuse. Go and C# reject this on their
+  // reconfigure entry points; updateRuntimeConfig already did on ours.
+  const current = requireActiveConfig();
   const proposed: TelemetryConfig = { ...current, ...config };
 
   if (_areProvidersRegistered()) {

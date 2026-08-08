@@ -57,6 +57,9 @@ describe('TelemetryRuntime facade', () => {
   });
 
   it('reconfigures via shared function path', () => {
+    // reconfigure requires a live config; the facade shares that precondition
+    // with the free function.
+    setupTelemetry({ serviceName: 'facade-reconfigure' });
     const runtime = new TelemetryRuntime();
     runtime.reconfigure({ tracingEnabled: false });
     expect(runtime.getRuntimeConfig().tracingEnabled).toBe(false);

@@ -5,13 +5,14 @@ import { context, metrics, trace } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type ShutdownableProvider,
   _areProvidersRegistered,
   _getRegisteredProviders,
   _markProvidersRegistered,
   _resetRuntimeForTests,
   _storeRegisteredProviders,
+  getRuntimeStatus,
   reconfigureTelemetry,
+  type ShutdownableProvider,
 } from '../src/runtime.js';
 import { DEFAULTS, _resetConfig, setupTelemetry } from '../src/config.js';
 import { shutdownTelemetry } from '../src/shutdown.js';
@@ -331,9 +332,22 @@ describe('shutdownTelemetry — clears provider registration state', () => {
     expect(_getRegisteredProviders()).toHaveLength(0);
   });
 
-  it('allows provider-changing reconfigureTelemetry after shutdown', async () => {
+  it('clears provider registration, so nothing is left to guard', async () => {
+    // This used to probe the cleared state by reconfiguring and asserting the
+    // provider-immutability error did not fire. reconfigureTelemetry now
+    // refuses before it gets that far — after shutdown there is no live config
+    // to reconfigure — so the claim is asserted directly instead of through a
+    // call that fails for a different reason.
+    _markProvidersRegistered();
+    expect(_areProvidersRegistered()).toBe(true);
+    await shutdownTelemetry();
+    expect(_areProvidersRegistered()).toBe(false);
+    expect(getRuntimeStatus().setupDone).toBe(false);
+  });
+
+  it('refuses reconfigureTelemetry after shutdown, pointing callers at setup', async () => {
     _markProvidersRegistered();
     await shutdownTelemetry();
-    expect(() => reconfigureTelemetry({ otelEnabled: true })).not.toThrow();
+    expect(() => reconfigureTelemetry({ otelEnabled: true })).toThrow(/telemetry not set up/);
   });
 });
