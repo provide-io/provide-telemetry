@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from provide.telemetry import setup as setup_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import BackpressureConfig, ExporterPolicyConfig, SamplingConfig, TelemetryConfig
 from provide.telemetry.setup import (
     _reset_all_for_tests,
@@ -228,12 +228,12 @@ def test_shutdown_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_shutdown_telemetry_resets_setup_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_logging", lambda timeout_seconds=None: None)
     monkeypatch.setattr("provide.telemetry.setup.shutdown_tracing", lambda timeout_seconds=None: None)
     monkeypatch.setattr("provide.telemetry.metrics.provider.shutdown_metrics", lambda timeout_seconds=None: None)
     shutdown_telemetry()
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 def test_shutdown_telemetry_resets_runtime_signal_policies(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -317,15 +317,15 @@ def test_reconfigure_telemetry_allows_provider_replacement_after_shutdown(monkey
 
 
 def test_reset_all_for_tests_sets_setup_done_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     _reset_all_for_tests()
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 def test_reset_setup_state_sets_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     _reset_setup_state_for_tests()
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -362,7 +362,7 @@ def test_setup_rollback_on_tracing_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["trace_shutdown"] == 0
     assert called["metrics_shutdown"] == 0
     # Setup is NOT marked done after failure — allows retry
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,8 +398,8 @@ def test_setup_rollback_on_metrics_failure(monkeypatch: pytest.MonkeyPatch) -> N
     assert called["log_shutdown"] == 1
     assert called["trace_shutdown"] == 1
     assert called["metrics_shutdown"] == 0
-    # Metrics setup failed — _setup_done stays False so a retry is possible.
-    assert setup_mod._setup_done is False
+    # Metrics setup failed — the setup latch stays False so a retry is possible.
+    assert coordinator.peek().setup_done is False
 
 
 def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -434,13 +434,13 @@ def test_rollback_continues_when_teardown_raises(monkeypatch: pytest.MonkeyPatch
     # Tracing teardown raised, but logging teardown must still have been called
     assert called["trace_shutdown"] == 1
     assert called["log_shutdown"] == 1
-    # Setup failed (metrics raised) — _setup_done stays False so a retry is possible.
-    assert setup_mod._setup_done is False
+    # Setup failed (metrics raised) — the setup latch stays False so a retry is possible.
+    assert coordinator.peek().setup_done is False
 
 
 def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_setup_state_for_tests()
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     calls = {"runtime": 0, "log": 0, "trace": 0, "metrics": 0}
     shutdown_started = threading.Event()
     allow_shutdown_to_continue = threading.Event()
@@ -483,4 +483,4 @@ def test_shutdown_and_setup_are_serialized(monkeypatch: pytest.MonkeyPatch) -> N
     shutdown_thread.join(timeout=1.0)
     setup_thread.join(timeout=1.0)
     assert calls == {"runtime": 1, "log": 1, "trace": 1, "metrics": 1}
-    assert setup_mod._setup_done is True
+    assert coordinator.peek().setup_done is True

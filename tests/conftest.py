@@ -42,12 +42,12 @@ def reset_logger_state() -> None:
     drop all events in the next test, and a test that trips the logs circuit
     breaker would cause later logger tests to fail-open and skip OTLP setup.
 
-    setup_telemetry()'s _setup_done latch is also cleared here. Without that,
+    setup_telemetry()'s setup latch is also cleared here. Without that,
     a previous test can leave setup marked complete even after conftest resets
     structlog/runtime state, causing later setup_telemetry(config) calls to
     no-op and get_logger() to lazily rebuild logging from env defaults.
 
-    Runtime _active_config is also cleared: processors that read live config
+    The published lifecycle generation is also cleared: processors that read live config
     (harden_input, sanitize_sensitive_fields, enforce_event_schema) would
     otherwise pick up a previous test's TelemetryConfig and ignore the
     constructor-captured values, breaking property tests that specify tight

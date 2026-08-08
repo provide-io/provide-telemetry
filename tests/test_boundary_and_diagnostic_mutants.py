@@ -146,15 +146,15 @@ def test_attr_count_at_exactly_the_limit_is_not_truncated() -> None:
 def test_nesting_depth_increments_on_the_way_down() -> None:
     """`depth + 1` must count downward; `depth - 1` never reaches the limit.
 
-    With max_depth=1 the traversal recurses once, so a dict two levels down is
-    returned untouched. A decrementing depth never reaches the limit, so it keeps
-    descending and cleans strings the budget was meant to leave alone.
+    With max_depth=1 the traversal expands once, so the dict two levels down hits
+    the ceiling and is refused. A decrementing depth never reaches the limit, so
+    it keeps descending and cleans strings the budget was meant to cut off.
     """
     payload = {"a": {"b": {"c": "x\x00y"}}}
 
     result = _harden(payload, max_depth=1)
 
-    assert result["a"]["b"]["c"] == "x\x00y", "past max_depth the subtree is left alone"
+    assert result["a"] == {"b": "***"}, "at max_depth the subtree collapses to the marker"
 
 
 def test_control_characters_are_stripped_at_the_top_level() -> None:
@@ -284,13 +284,13 @@ def test_nesting_depth_increments_through_lists() -> None:
     """The list branch must increment depth too, not decrement it.
 
     A decrementing depth never reaches the limit, so it keeps descending through
-    nested lists and cleans values the budget was meant to leave alone.
+    nested lists and cleans values the budget was meant to cut off.
     """
     payload = {"a": [[{"c": "x\x00y"}]]}
 
     result = _harden(payload, max_depth=1)
 
-    assert result["a"][0][0]["c"] == "x\x00y", "past max_depth the subtree is left alone"
+    assert result["a"] == ["***"], "at max_depth the nested list collapses to the marker"
 
 
 def test_fingerprint_handles_a_filename_with_no_directory() -> None:

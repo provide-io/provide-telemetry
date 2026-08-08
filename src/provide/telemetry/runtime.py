@@ -45,11 +45,11 @@ __all__ = [
     "update_runtime_config",
 ]
 
-import copy
 import logging
-import threading
 from typing import Any
 
+from provide.telemetry._lifecycle import coordinator, copy_config
+from provide.telemetry._runtime_policies import apply_policies
 from provide.telemetry._runtime_types import (
     FlushResult,
     ProviderMode,
@@ -59,11 +59,8 @@ from provide.telemetry._runtime_types import (
     SignalDrainOutcome,
     SignalFlushResult,
 )
-from provide.telemetry.backpressure import QueuePolicy, set_queue_policy
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 from provide.telemetry.exceptions import ProviderImmutableError
-from provide.telemetry.resilience import ExporterPolicy, set_exporter_policy
-from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
 _logger = logging.getLogger(__name__)
 
@@ -180,14 +177,6 @@ def _signal_flush_result(installed: bool, owned: bool, outcome: SignalDrainOutco
     )
 
 
-_lock = threading.Lock()
-_active_config: TelemetryConfig | None = None
-# Serializes concurrent reconfigure_telemetry() calls against each other.
-# Note: this does not fully prevent races with concurrent setup_telemetry() calls,
-# which would require process-level coordination. It only serializes concurrent
-# reconfigure_telemetry() callers.
-_reconfigure_lock = threading.Lock()
-
 _runtime = TelemetryRuntime()
 
 
@@ -221,62 +210,19 @@ def get_meter(name: str | None = None) -> Any:
     return _runtime.get_meter(name)
 
 
-def _apply_policies(snapshot: TelemetryConfig) -> None:
-    """Push hot policy values from a config snapshot to signal subsystems. Lock-free."""
-    set_sampling_policy(
-        "logs", SamplingPolicy(default_rate=snapshot.sampling.logs_rate)
-    )  # pragma: no mutate — signal name string is the API contract; pinned across reloads
-    set_sampling_policy(
-        "traces",
-        SamplingPolicy(default_rate=min(snapshot.sampling.traces_rate, snapshot.tracing.sample_rate)),
-    )
-    set_sampling_policy("metrics", SamplingPolicy(default_rate=snapshot.sampling.metrics_rate))
-    set_queue_policy(
-        QueuePolicy(
-            logs_maxsize=snapshot.backpressure.logs_maxsize,
-            traces_maxsize=snapshot.backpressure.traces_maxsize,
-            metrics_maxsize=snapshot.backpressure.metrics_maxsize,
-        )
-    )
-    set_exporter_policy(
-        "logs",
-        ExporterPolicy(
-            retries=snapshot.exporter.logs_retries,
-            backoff_seconds=snapshot.exporter.logs_backoff_seconds,
-            timeout_seconds=snapshot.exporter.logs_timeout_seconds,
-            fail_open=snapshot.exporter.logs_fail_open,
-            allow_blocking_in_event_loop=snapshot.exporter.logs_allow_blocking_in_event_loop,
-        ),
-    )
-    set_exporter_policy(
-        "traces",
-        ExporterPolicy(
-            retries=snapshot.exporter.traces_retries,
-            backoff_seconds=snapshot.exporter.traces_backoff_seconds,
-            timeout_seconds=snapshot.exporter.traces_timeout_seconds,
-            fail_open=snapshot.exporter.traces_fail_open,
-            allow_blocking_in_event_loop=snapshot.exporter.traces_allow_blocking_in_event_loop,
-        ),
-    )
-    set_exporter_policy(
-        "metrics",
-        ExporterPolicy(
-            retries=snapshot.exporter.metrics_retries,
-            backoff_seconds=snapshot.exporter.metrics_backoff_seconds,
-            timeout_seconds=snapshot.exporter.metrics_timeout_seconds,
-            fail_open=snapshot.exporter.metrics_fail_open,
-            allow_blocking_in_event_loop=snapshot.exporter.metrics_allow_blocking_in_event_loop,
-        ),
-    )
-
-
 def apply_runtime_config(config: TelemetryConfig) -> None:
-    """Apply a config snapshot to runtime signal policies."""
-    global _active_config
-    with _lock:
-        snapshot = copy.deepcopy(config)
-        _active_config = snapshot
-    _apply_policies(snapshot)
+    """Apply a config snapshot to runtime signal policies, then publish it.
+
+    Policies first, publication second. Publishing first made the generation
+    visible while the sampling, queue and exporter policies it describes were
+    still being installed, so a concurrent reader could act on a config that
+    was not yet in force.
+    """
+    with coordinator.operations:
+        apply_policies(config)
+        # publish() takes its own copy, so the caller keeps ownership of the
+        # object it passed and cannot mutate the published generation later.
+        coordinator.publish(config, setup_done=coordinator.peek().setup_done)
 
 
 def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
@@ -296,7 +242,7 @@ def _overrides_from_config(cfg: TelemetryConfig) -> RuntimeOverrides:
 
 def _apply_overrides(base: TelemetryConfig, overrides: RuntimeOverrides) -> TelemetryConfig:
     """Merge non-None override fields into a copy of base config."""
-    merged = copy.deepcopy(base)
+    merged = copy_config(base)
     if overrides.sampling is not None:
         merged.sampling = overrides.sampling
     if overrides.backpressure is not None:
@@ -332,10 +278,10 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     When logging config changes, the structlog pipeline is rebuilt so
     level/format/module-level changes take effect immediately.
     """
-    global _active_config
     logging_changed = False  # pragma: no mutate — None is also falsy; equivalent mutation
-    with _lock:
-        base = _active_config if _active_config is not None else TelemetryConfig.from_env()
+    with coordinator.operations:
+        live = coordinator.peek()
+        base = live.config if live.config is not None else TelemetryConfig.from_env()
         if overrides.logging is not None and overrides.logging != base.logging:
             logging_changed = True
         merged = _apply_overrides(base, overrides)
@@ -347,22 +293,24 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
                     "provider-changing logging reconfiguration is unsupported after OpenTelemetry log providers "
                     "are installed. Restart the process and call setup_telemetry() with the new config."
                 )
-        _active_config = merged
-    _apply_policies(merged)
-    if logging_changed:
-        from provide.telemetry.logger.core import (
-            configure_logging,  # pragma: no mutate — lazy import to avoid circular dependency at module load; path is a stable public name
-        )
+        # Everything the new generation promises is installed before the
+        # generation exists. A reader that sees generation N+1 can rely on
+        # N+1's policies and logging pipeline already being in force.
+        apply_policies(merged)
+        if logging_changed:
+            from provide.telemetry.logger.core import (
+                configure_logging,  # pragma: no mutate — lazy import to avoid circular dependency at module load; path is a stable public name
+            )
 
-        configure_logging(merged, force=True)
+            configure_logging(merged, force=True)
+        coordinator.publish(merged, setup_done=live.setup_done)
     return get_runtime_config()
 
 
 def reload_runtime_from_env() -> TelemetryConfig:
     """Reload environment config, apply hot fields, warn on cold-field drift."""
     fresh = TelemetryConfig.from_env()
-    with _lock:
-        current = _active_config
+    current = coordinator.peek().config
     if current is not None:
         changed_cold = [k for k in _COLD_KEYS if getattr(current, k) != getattr(fresh, k)]
         if changed_cold:
@@ -380,7 +328,7 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
     from provide.telemetry.setup import setup_telemetry, shutdown_telemetry
     from provide.telemetry.tracing import provider as tracing_provider
 
-    with _reconfigure_lock:
+    with coordinator.operations:
         target = config or TelemetryConfig.from_env()
         current = get_runtime_config()
         if _provider_config_changed(current, target):
@@ -420,22 +368,28 @@ def _provider_config_changed(current: TelemetryConfig, target: TelemetryConfig) 
 
 
 def get_runtime_config() -> TelemetryConfig:
-    """Return a defensive copy of the active runtime config snapshot."""
-    with _lock:
-        if _active_config is None:
-            return TelemetryConfig.from_env()
-        return copy.deepcopy(_active_config)
+    """Return a defensive copy of the active runtime config snapshot.
+
+    The copy carries ``receipt_sink`` by reference, so a caller that passed a
+    sink to ``setup_telemetry`` gets that same object back and can assert
+    against the receipts it actually receives.
+    """
+    config = coordinator.snapshot().config
+    if config is None:
+        return TelemetryConfig.from_env()
+    return config
 
 
 def get_runtime_status() -> RuntimeStatus:
     """Return runtime/provider status using the shared cross-language shape."""
-    from provide.telemetry import setup as setup_mod
     from provide.telemetry._provider_drain import installed_signals
     from provide.telemetry.health import get_health_snapshot
 
     cfg = get_runtime_config()
-    with setup_mod._lock:
-        setup_done = setup_mod._setup_done
+    # From the generation, not from a lifecycle lock. Status is the call an
+    # operator makes *while* something is wrong, and waiting on the lock would
+    # make it block behind the very shutdown it is being used to observe.
+    setup_done = coordinator.peek().setup_done
     providers = installed_signals()
     return RuntimeStatus(
         setup_done=setup_done,
@@ -457,7 +411,7 @@ def _is_strict_event_name() -> bool:
     Worst case we read a slightly stale config, which is acceptable for
     a boolean configuration flag.
     """
-    cfg = _active_config
+    cfg = coordinator.peek().config
     if cfg is None:
         return False
     return cfg.strict_schema or cfg.event_schema.strict_event_name
@@ -478,7 +432,6 @@ def get_strict_schema() -> bool:
 
 
 def reset_runtime_for_tests() -> None:
-    """Clear the cached runtime config snapshot."""
-    global _active_config
-    with _lock:
-        _active_config = None
+    """Publish an empty generation, clearing the cached runtime config."""
+    with coordinator.operations:
+        coordinator.publish(None, setup_done=coordinator.peek().setup_done)

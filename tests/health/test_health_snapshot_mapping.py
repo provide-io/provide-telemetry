@@ -17,6 +17,7 @@ from provide.telemetry.health import (
     increment_async_blocking_risk,
     increment_dropped,
     increment_emitted,
+    increment_receipt_failures,
     increment_retries,
     record_export_failure,
     record_export_latency,
@@ -129,11 +130,19 @@ class TestHealthSnapshotFieldMapping:
         assert snap.export_failures_traces == 1
         assert snap.export_failures_metrics == 1
 
-    def test_snapshot_has_exactly_25_fields(self) -> None:
-        """Canonical 25-field layout: 8 per signal * 3 + 1 global."""
+    def test_receipt_failures_counts_one_per_call(self) -> None:
+        """Global, not per-signal: a sink refusal is not attributable to a signal."""
+        assert get_health_snapshot().receipt_failures == 0
+        increment_receipt_failures()
+        increment_receipt_failures()
+        assert get_health_snapshot().receipt_failures == 2
+
+    def test_snapshot_has_exactly_26_fields(self) -> None:
+        """Canonical 26-field layout: 8 per signal * 3 + 2 global."""
         from provide.telemetry.health import HealthSnapshot
 
-        assert len(HealthSnapshot._fields) == 25
+        assert len(HealthSnapshot._fields) == 26
+        assert "receipt_failures" in HealthSnapshot._fields
 
 
 # -- reset_health_for_tests --
@@ -212,6 +221,11 @@ class TestResetHealthForTests:
         assert snap.async_blocking_risk_logs == 0
         assert snap.export_failures_logs == 0
         assert snap.export_latency_ms_logs == 0.0
+
+    def test_resets_receipt_failures_to_zero(self) -> None:
+        increment_receipt_failures()
+        reset_health_for_tests()
+        assert get_health_snapshot().receipt_failures == 0
 
     def test_reset_clears_setup_error(self) -> None:
         set_setup_error("broken")

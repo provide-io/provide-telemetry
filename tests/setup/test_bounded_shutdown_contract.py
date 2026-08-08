@@ -24,6 +24,7 @@ import pytest
 
 from provide.telemetry import _provider_drain as drain
 from provide.telemetry import setup as setup_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import ExporterPolicyConfig
 from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.logger import core as logger_core
@@ -81,13 +82,13 @@ def test_a_malformed_environment_falls_back_instead_of_raising(monkeypatch: pyte
 
 def test_shutdown_survives_a_malformed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end form of the above: teardown still happens."""
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setenv("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool")
-    monkeypatch.setattr("provide.telemetry.runtime._active_config", None)
+    coordinator.reset()
 
     setup_mod.shutdown_telemetry()
 
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 # ── every teardown is bounded ──────────────────────────────────────────
@@ -142,7 +143,7 @@ def test_shutdown_does_not_drain_twice(monkeypatch: pytest.MonkeyPatch) -> None:
         def shutdown(self) -> None:
             calls.append("shutdown")
 
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setattr(tracing_provider, "_provider_ref", _CountingProvider())
     monkeypatch.setattr(metrics_provider, "_meter_provider", None)
     monkeypatch.setattr(logger_core, "_otel_log_provider", None)
@@ -165,7 +166,7 @@ def test_three_stalled_providers_share_the_callers_deadline(
     with records still queued. Run together they cost one deadline.
     """
     providers = [_HangingProvider() for _ in range(3)]
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setattr(tracing_provider, "_provider_ref", providers[0])
     monkeypatch.setattr(metrics_provider, "_meter_provider", providers[1])
     monkeypatch.setattr(logger_core, "_otel_log_provider", providers[2])

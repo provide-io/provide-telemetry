@@ -11,7 +11,7 @@ import warnings
 
 import pytest
 
-from provide.telemetry import setup as setup_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.setup import (
     _reset_all_for_tests,
@@ -40,13 +40,13 @@ def test_setup_does_not_raise_on_provider_failure(monkeypatch: pytest.MonkeyPatc
         warnings.simplefilter("always")
         cfg = setup_telemetry()
     assert any("degraded mode" in str(warning.message) for warning in w)
-    # After a failed setup, _setup_done must remain False so a retry can succeed.
-    assert setup_mod._setup_done is False
+    # After a failed setup, the setup latch must remain False so a retry can succeed.
+    assert coordinator.peek().setup_done is False
     assert isinstance(cfg, TelemetryConfig)
 
 
 def test_setup_done_false_after_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_setup_done must remain False after a failed setup so retries are allowed."""
+    """the setup latch must remain False after a failed setup so retries are allowed."""
     _reset_setup_state_for_tests()
     monkeypatch.setattr("provide.telemetry.runtime.apply_runtime_config", lambda _cfg: None)
     monkeypatch.setattr("provide.telemetry.setup.configure_logging", lambda _cfg, **kw: None)
@@ -65,7 +65,7 @@ def test_setup_done_false_after_failure(monkeypatch: pytest.MonkeyPatch) -> None
         warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()
 
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
 
 def test_health_snapshot_reflects_setup_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,8 +123,8 @@ def test_setup_fallback_calls_configure_logging_when_it_was_not_completed(
         setup_telemetry()
     # configure_logging called twice: once failing, once in fallback
     assert log_calls["count"] == 2
-    # configure_logging itself raised, so setup failed — _setup_done must be False
-    assert setup_mod._setup_done is False
+    # configure_logging itself raised, so setup failed — the setup latch must be False
+    assert coordinator.peek().setup_done is False
 
 
 def test_setup_error_cleared_after_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,7 +173,7 @@ def test_retry_after_degraded_setup_reruns_setup(monkeypatch: pytest.MonkeyPatch
         warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()
         setup_telemetry()
-    # Both calls run setup since _setup_done stays False after failure
+    # Both calls run setup since the setup latch stays False after failure
     assert call_count["runtime"] == 2
 
 
@@ -202,7 +202,7 @@ def test_retry_after_failure_with_fixed_config_succeeds(monkeypatch: pytest.Monk
         warnings.simplefilter("ignore", RuntimeWarning)
         setup_telemetry()
 
-    assert setup_mod._setup_done is False
+    assert coordinator.peek().setup_done is False
 
     setup_telemetry()
-    assert setup_mod._setup_done is True
+    assert coordinator.peek().setup_done is True

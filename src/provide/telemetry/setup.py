@@ -15,10 +15,14 @@ __all__ = [
 ]
 
 import logging
-import threading
 import warnings
 from collections.abc import Callable
 
+# Setup, reconfiguration and shutdown are the same kind of operation on the
+# same state, so they all take coordinator.operations. Two independent locks
+# were the defect: neither waited on the other, so a shutdown could tear down
+# providers a concurrent setup had just installed.
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry._runtime_types import SignalDrainOutcome
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
@@ -27,8 +31,6 @@ from provide.telemetry.tracing.provider import _refresh_otel_tracing, setup_trac
 from provide.telemetry.tracing.provider import _reset_tracing_for_tests as _reset_tracing
 
 _logger = logging.getLogger(__name__)
-_lock = threading.Lock()
-_setup_done = False
 
 
 def _rollback(completed: list[str]) -> None:
@@ -60,53 +62,63 @@ def _quiet_otel_sdk_loggers() -> None:
 
 
 def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
+    """Configure telemetry once, idempotently, under the lifecycle lock.
+
+    A repeated call returns the *active* generation's config rather than
+    applying the caller's. It also declines to look at the caller's argument at
+    all, which is the honest version of ignoring it: reading
+    ``TelemetryConfig.from_env()`` first meant a second ``setup_telemetry()``
+    could raise ``ConfigurationError`` over an environment the running process
+    had already decided not to adopt.
+    """
     from provide.telemetry.metrics.provider import _refresh_otel_metrics, setup_metrics
-    from provide.telemetry.runtime import apply_runtime_config
+    from provide.telemetry.runtime import apply_runtime_config, get_runtime_config
     from provide.telemetry.slo import _rebind_slo_instruments, record_red_metrics, record_use_metrics
 
-    global _setup_done
-    cfg = config or TelemetryConfig.from_env()
-    with _lock:
-        if not _setup_done:
-            _quiet_otel_sdk_loggers()
-            apply_runtime_config(cfg)
-            from provide.telemetry.health import set_setup_error
+    with coordinator.operations:
+        if coordinator.peek().setup_done:
+            return get_runtime_config()
+        cfg = config or TelemetryConfig.from_env()
+        _quiet_otel_sdk_loggers()
+        apply_runtime_config(cfg)
+        from provide.telemetry.health import set_setup_error
 
-            completed: list[str] = []
-            try:
-                configure_logging(cfg, force=True)
-                completed.append("configure_logging")
-                _refresh_otel_tracing()
-                _refresh_otel_metrics()
-                setup_tracing(cfg)
-                completed.append("setup_tracing")
-                setup_metrics(cfg)
-                completed.append("setup_metrics")
-                _rebind_slo_instruments()
-            except Exception as exc:
-                _rollback(completed)
-                set_setup_error(str(exc))
-                warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
-                    f"telemetry setup failed, running in degraded mode: {exc}",
-                    RuntimeWarning,
-                    stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
-                )
-                # Always restore logging — rollback may have torn it down above.
-                configure_logging(cfg, force=True)
-            else:
-                set_setup_error(None)  # clear any stale error from a prior failed attempt
-                _setup_done = True
-            if cfg.slo.enable_red_metrics:
-                record_red_metrics("startup", "INIT", 200, 0.0)
-            if cfg.slo.enable_use_metrics:
-                record_use_metrics("startup", 0)
+        completed: list[str] = []
+        try:
+            configure_logging(cfg, force=True)
+            completed.append("configure_logging")
+            _refresh_otel_tracing()
+            _refresh_otel_metrics()
+            setup_tracing(cfg)
+            completed.append("setup_tracing")
+            setup_metrics(cfg)
+            completed.append("setup_metrics")
+            _rebind_slo_instruments()
+        except Exception as exc:
+            _rollback(completed)
+            set_setup_error(str(exc))
+            warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+                f"telemetry setup failed, running in degraded mode: {exc}",
+                RuntimeWarning,
+                stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+            )
+            # Always restore logging — rollback may have torn it down above.
+            configure_logging(cfg, force=True)
+        else:
+            set_setup_error(None)  # clear any stale error from a prior failed attempt
+            # Published last, once every provider is installed: the generation
+            # that says setup_done is the generation whose providers exist.
+            coordinator.publish_setup_state(setup_done=True)
+        if cfg.slo.enable_red_metrics:
+            record_red_metrics("startup", "INIT", 200, 0.0)
+        if cfg.slo.enable_use_metrics:
+            record_use_metrics("startup", 0)
     return cfg
 
 
 def _reset_setup_state_for_tests() -> None:
-    global _setup_done
-    with _lock:
-        _setup_done = False
+    with coordinator.operations:
+        coordinator.publish_setup_state(setup_done=False)
 
 
 def _reset_all_for_tests() -> None:
@@ -120,9 +132,8 @@ def _reset_all_for_tests() -> None:
     from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
     from provide.telemetry.slo import _reset_slo_for_tests as _reset_slo
 
-    global _setup_done
-    with _lock:
-        _setup_done = False
+    with coordinator.operations:
+        coordinator.publish_setup_state(setup_done=False)
     _reset_logging()
     _reset_tracing()
     _reset_metrics(None)
@@ -249,9 +260,14 @@ def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     from provide.telemetry.runtime import reset_runtime_for_tests as _reset_runtime
     from provide.telemetry.sampling import reset_sampling_for_tests as _reset_sampling
 
-    global _setup_done
-    with _lock:
-        _setup_done = False
+    with coordinator.operations:
+        # The stopped generation is published before anything is torn down. An
+        # operator running get_runtime_status() *during* a teardown that is
+        # hanging on an unreachable collector needs to be told telemetry is
+        # stopping, not handed the config of the world being dismantled — and
+        # each per-signal teardown detaches its provider before draining it, so
+        # the status read never queues behind the drain either.
+        coordinator.publish_setup_state(setup_done=False)
         run_drains_together(
             (
                 lambda: shutdown_tracing(timeout_seconds),

@@ -214,20 +214,20 @@ def shutdown_tracing(timeout_seconds: float | None = None) -> None:
     against an unreachable collector an unbounded call here would overrun any
     termination grace period a caller passed a deadline to stay inside.
     """
-    from provide.telemetry._provider_drain import bounded_provider_shutdown, resolve_drain_deadline
+    from provide.telemetry._provider_drain import dispose_detached_provider
 
     global _provider_ref, _provider_configured, _setup_generation
     with _provider_lock:
         _setup_generation += 1
         provider = _provider_ref
-        if provider is None:
-            _provider_configured = False
-            return
-        try:
-            bounded_provider_shutdown(provider, resolve_drain_deadline(timeout_seconds))
-        finally:
-            _provider_ref = None
-            _provider_configured = False
+        # Detached before the drain, not after it. Holding _provider_lock across
+        # a teardown that can spend the whole deadline made every reader of the
+        # provider state — get_runtime_status() among them — wait it out.
+        _provider_ref = None
+        _provider_configured = False
+    if provider is None:
+        return
+    dispose_detached_provider(provider, timeout_seconds)
 
 
 def _reset_tracing_for_tests() -> None:

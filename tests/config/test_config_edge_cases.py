@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from provide.telemetry._masking import redact_config
 from provide.telemetry.config import (
     BackpressureConfig,
     ExporterPolicyConfig,
@@ -22,7 +23,6 @@ from provide.telemetry.config import (
     _parse_env_float,
     _parse_env_int,
     _parse_otlp_headers,
-    redact_config,
 )
 
 # ── _parse_bool edge cases ─────────────────────────────────────────────

@@ -13,6 +13,7 @@ __all__ = [
     "increment_async_blocking_risk",
     "increment_dropped",
     "increment_emitted",
+    "increment_receipt_failures",
     "increment_retries",
     "record_export_failure",
     "record_export_latency",
@@ -27,10 +28,10 @@ Signal = str
 
 
 class HealthSnapshot(NamedTuple):
-    """Canonical 25-field health snapshot.
+    """Canonical 26-field health snapshot.
 
     NamedTuple instead of frozen dataclass for ~3x faster construction
-    (25 positional args vs 25 object.__setattr__ calls).
+    (26 positional args vs 26 object.__setattr__ calls).
     """
 
     emitted_logs: int
@@ -58,6 +59,7 @@ class HealthSnapshot(NamedTuple):
     circuit_open_count_traces: int
     circuit_open_count_metrics: int
     setup_error: str | None
+    receipt_failures: int
 
 
 _lock = threading.Lock()
@@ -68,6 +70,7 @@ _async_blocking_risk: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _export_failures: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _export_latency_ms: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
 _setup_error: str | None = None
+_receipt_failures = 0
 
 
 _VALID_SIGNALS_HEALTH = frozenset({"logs", "traces", "metrics"})
@@ -127,6 +130,20 @@ def record_export_latency(
         _export_latency_ms[sig] = max(0.0, latency_ms)
 
 
+def increment_receipt_failures() -> None:
+    """Count a governance receipt a sink refused or raised on.
+
+    A counter rather than a log line, deliberately: the logger produces
+    redactions, redactions produce receipts, so logging a sink failure would
+    drive an unbounded log -> receipt -> log cycle. Without the counter a sink
+    that silently drops every receipt is indistinguishable from one that
+    delivers them.
+    """
+    global _receipt_failures
+    with _lock:
+        _receipt_failures += 1
+
+
 def set_setup_error(error: str | None) -> None:
     global _setup_error
     with _lock:
@@ -175,12 +192,14 @@ def get_health_snapshot() -> HealthSnapshot:
             circuit_open_count_traces=cs_traces[1],
             circuit_open_count_metrics=cs_metrics[1],
             setup_error=_setup_error,
+            receipt_failures=_receipt_failures,
         )
 
 
 def reset_health_for_tests() -> None:
-    global _setup_error
+    global _setup_error, _receipt_failures
     with _lock:
+        _receipt_failures = 0
         for signal in ("logs", "traces", "metrics"):
             _emitted[signal] = 0
             _dropped[signal] = 0

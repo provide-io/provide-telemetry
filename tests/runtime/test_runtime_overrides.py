@@ -402,14 +402,20 @@ def test_concurrent_reconfigure_does_not_raise(monkeypatch: pytest.MonkeyPatch) 
     assert errors == []
 
 
-def test_reconfigure_lock_exists() -> None:
-    """_reconfigure_lock must exist and be a threading.Lock-compatible object."""
+def test_the_lifecycle_lock_is_reentrant() -> None:
+    """A provider-changing reconfiguration calls shutdown then setup on one thread.
+
+    All three take coordinator.operations, so a non-reentrant lock would
+    deadlock the reconfiguration against itself.
+    """
     import threading
 
-    lock = runtime_mod._reconfigure_lock
-    assert hasattr(lock, "acquire")
-    assert hasattr(lock, "release")
-    assert isinstance(lock, type(threading.Lock()))
+    from provide.telemetry._lifecycle import coordinator
+
+    lock = coordinator.operations
+    assert isinstance(lock, type(threading.RLock()))
+    with lock, lock:
+        pass
 
 
 def test_get_strict_schema_returns_false_by_default() -> None:

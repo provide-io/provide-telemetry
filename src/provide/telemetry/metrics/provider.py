@@ -210,16 +210,16 @@ def shutdown_metrics(timeout_seconds: float | None = None) -> None:
     See :func:`provide.telemetry.tracing.provider.shutdown_tracing` for why the
     bound is not optional.
     """
-    from provide.telemetry._provider_drain import bounded_provider_shutdown, resolve_drain_deadline
+    from provide.telemetry._provider_drain import dispose_detached_provider
 
     global _meter_provider, _setup_generation
     with _meter_lock:
         _setup_generation += 1
         provider = _meter_provider
-        if provider is None:
-            return
-        try:
-            bounded_provider_shutdown(provider, resolve_drain_deadline(timeout_seconds))
-        finally:
-            _meters.clear()
-            _meter_provider = None
+        # Detached before the drain — see shutdown_tracing for why holding the
+        # lock across a bounded teardown is what made readers wait it out.
+        _meters.clear()
+        _meter_provider = None
+    if provider is None:
+        return
+    dispose_detached_provider(provider, timeout_seconds)

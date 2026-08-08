@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING
 from provide.telemetry import _lazy
 
 # ── Eager: core symbols needed by every consumer ────────────────────────────
-from provide.telemetry.config import RuntimeOverrides, TelemetryConfig, redact_config
+from provide.telemetry._masking import redact_config
+from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError, ProviderImmutableError, TelemetryError
 from provide.telemetry.logger import bind_context, clear_context, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id

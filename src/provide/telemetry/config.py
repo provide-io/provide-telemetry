@@ -19,7 +19,6 @@ __all__ = [
     "SecurityConfig",
     "TelemetryConfig",
     "TracingConfig",
-    "redact_config",
 ]
 
 import dataclasses
@@ -27,6 +26,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
 from provide.telemetry._config_validation import parse_duration_float as _parse_duration_float
@@ -40,20 +40,10 @@ from provide.telemetry._masking import _mask_headers as _mask_headers
 from provide.telemetry._masking import _masked_dataclass_repr as _masked_dataclass_repr
 from provide.telemetry.exceptions import ConfigurationError
 
+if TYPE_CHECKING:
+    from provide.telemetry.receipts import ReceiptSink
+
 _logger = logging.getLogger(__name__)
-
-
-def redact_config(config: TelemetryConfig) -> dict[str, object]:
-    """Return config fields as a dict with OTLP secrets masked."""
-    raw = dataclasses.asdict(config)
-    for v in raw.values():
-        if isinstance(v, dict):
-            if "otlp_headers" in v:
-                v["otlp_headers"] = _mask_headers(v["otlp_headers"])
-            if "otlp_endpoint" in v and v["otlp_endpoint"] is not None:
-                v["otlp_endpoint"] = _mask_endpoint_url(v["otlp_endpoint"])
-    return raw
-
 
 _VALID_COLORS = frozenset({"dim", "bold", "red", "green", "yellow", "blue", "cyan", "white", "none"})
 
@@ -215,6 +205,11 @@ class TelemetryConfig:
     exporter: ExporterPolicyConfig = field(default_factory=ExporterPolicyConfig)
     slo: SLOConfig = field(default_factory=SLOConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    # Where governance receipts are delivered. Not configuration *data*: it is a
+    # live object the caller owns, so it is excluded from equality (two configs
+    # that differ only in sink describe the same telemetry) and carried by
+    # reference through every lifecycle copy — see LifecycleCoordinator._copy_config.
+    receipt_sink: ReceiptSink | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         _validate_non_negative(self.pii_max_depth, "pii_max_depth must be >= 0")
@@ -227,6 +222,10 @@ class TelemetryConfig:
         fields_repr = []
         for f in dataclasses.fields(self):
             val = getattr(self, f.name)
+            if f.name == "receipt_sink":
+                # A caller's sink can be anything — a client whose repr carries
+                # a connection string. Report the type, never the object.
+                val = None if val is None else type(val).__name__
             fields_repr.append(f"{f.name}={val!r}")
         return f"{self.__class__.__name__}({', '.join(fields_repr)})"
 

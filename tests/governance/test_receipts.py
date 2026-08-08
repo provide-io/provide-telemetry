@@ -10,13 +10,23 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 
 import pytest
 
 from provide.telemetry import pii as pii_mod
+from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 from provide.telemetry.receipts import (
+    TEST_RECEIPT_CAPACITY,
+    MissingReceiptSinkError,
+    RedactionReceipt,
+    TestReceiptCollector,
+    canonical_json,
+    emit_receipt,
     enable_receipts,
     get_emitted_receipts_for_tests,
+    receipt_timestamp,
+    sign_receipt,
 )
 
 
@@ -49,14 +59,18 @@ def test_receipts_emitted_when_enabled() -> None:
     assert len(r.receipt_id) > 0
 
 
-def test_receipt_original_hash_is_sha256() -> None:
-    """The original_hash field is SHA-256 of the string representation of the value."""
+def test_receipt_original_hash_is_sha256_of_canonical_json() -> None:
+    """original_hash is SHA-256 of the value's RFC 8785 form, not of str(value).
+
+    Hashing the display form makes the string "1" and the integer 1 collide, so
+    a receipt could not say which of the two was redacted.
+    """
     enable_receipts(enabled=True, signing_key=None)
     payload = {"password": "secret123"}  # pragma: allowlist secret
     pii_mod.sanitize_payload(payload, enabled=True)
     receipts = get_emitted_receipts_for_tests()
     assert len(receipts) == 1
-    expected_hash = hashlib.sha256(b"secret123").hexdigest()  # pragma: allowlist secret
+    expected_hash = hashlib.sha256(b'"secret123"').hexdigest()  # pragma: allowlist secret
     assert receipts[0].original_hash == expected_hash
 
 
@@ -121,22 +135,20 @@ def test_receipt_id_is_uuid_format() -> None:
     assert rid[23] == "-"
 
 
-def test_receipts_not_emitted_outside_test_mode() -> None:
-    """enable_receipts works without crash even when _test_mode is False (production path)."""
+def test_production_receipts_go_to_the_configured_sink_not_the_test_collector() -> None:
+    """Outside test mode every receipt is delivered to the caller's sink."""
     import provide.telemetry.receipts as receipts_mod
 
-    # Directly set _test_mode to False to simulate production mode
     with receipts_mod._lock:
         receipts_mod._test_mode = False
 
-    enable_receipts(enabled=True, signing_key=None, service_name="prod-svc")
+    sink = TestReceiptCollector()
+    enable_receipts(enabled=True, signing_key=None, service_name="prod-svc", sink=sink)
     payload = {"password": "secret123"}  # pragma: allowlist secret
-    # Should not raise and should not add to test_receipts
     pii_mod.sanitize_payload(payload, enabled=True)
-    # In non-test mode, receipts are logged, not stored
-    with receipts_mod._lock:
-        assert receipts_mod._test_receipts == []
-    # cleanup
+
+    assert [r.field_path for r in sink.receipts] == ["password"]
+    assert get_emitted_receipts_for_tests() == []
     enable_receipts(enabled=False)
 
 
@@ -178,9 +190,10 @@ def test_receipt_timestamp_is_utc_iso_string() -> None:
     receipts = get_emitted_receipts_for_tests()
     assert len(receipts) == 1
     ts = receipts[0].timestamp
-    assert ts is not None
     assert isinstance(ts, str)
-    assert "+00:00" in ts
+    # Canonical shape: millisecond precision and a literal Z, which is what the
+    # other SDKs emit. isoformat() would give microseconds and "+00:00".
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", ts), ts
 
 
 def test_reset_clears_signing_key_to_none() -> None:
@@ -199,22 +212,200 @@ def test_reset_clears_signing_key_to_none() -> None:
     assert receipts[0].hmac == ""
 
 
-def test_production_mode_log_message_and_extras(caplog: pytest.LogCaptureFixture) -> None:
-    """In production mode, receipt is logged with correct message and extra fields."""
+def test_delivery_never_logs(caplog: pytest.LogCaptureFixture) -> None:
+    """Receipt delivery emits no log record, successful or not.
+
+    The logger produces redactions and redactions produce receipts, so a log
+    line on this path is an unbounded log -> receipt -> log cycle.
+    """
     import provide.telemetry.receipts as receipts_mod
 
     with receipts_mod._lock:
         receipts_mod._test_mode = False
 
-    with caplog.at_level(logging.DEBUG, logger="provide.telemetry.receipts"):
-        enable_receipts(enabled=True, signing_key=None, service_name="log-svc")
+    class _BrokenSink:
+        def emit(self, receipt: object, /) -> bool:
+            raise RuntimeError("sink down")
+
+    reset_health_for_tests()
+    with caplog.at_level(logging.DEBUG):
+        enable_receipts(enabled=True, signing_key=None, service_name="log-svc", sink=_BrokenSink())
         payload = {"password": "secret123"}  # pragma: allowlist secret
         pii_mod.sanitize_payload(payload, enabled=True)
 
-    assert len(caplog.records) >= 1
-    record = caplog.records[0]
-    assert record.message == "provide.pii.redaction_receipt"
-    assert record.receipt_id is not None  # type: ignore
-    assert record.field_path == "password"  # type: ignore
-    # cleanup
+    assert caplog.records == []
+    assert get_health_snapshot().receipt_failures == 1
     enable_receipts(enabled=False)
+
+
+# ── Sinks, failure accounting, and the un-sinked path ────────────────────────
+
+
+def _receipt() -> RedactionReceipt:
+    return sign_receipt("v", receipt_id="r", timestamp="t", field_path="f", action="redact")
+
+
+def test_a_sink_that_returns_false_counts_a_failure() -> None:
+    class _Refusing:
+        def emit(self, receipt: RedactionReceipt, /) -> bool:
+            return False
+
+    reset_health_for_tests()
+    emit_receipt(_receipt(), _Refusing())
+    assert get_health_snapshot().receipt_failures == 1
+
+
+def test_a_sink_that_raises_counts_a_failure_and_does_not_propagate() -> None:
+    class _Broken:
+        def emit(self, receipt: RedactionReceipt, /) -> bool:
+            raise RuntimeError("sink down")
+
+    reset_health_for_tests()
+    emit_receipt(_receipt(), _Broken())
+    assert get_health_snapshot().receipt_failures == 1
+
+
+def test_an_accepting_sink_counts_nothing() -> None:
+    reset_health_for_tests()
+    sink = TestReceiptCollector()
+    emit_receipt(_receipt(), sink)
+    assert get_health_snapshot().receipt_failures == 0
+    assert len(sink.receipts) == 1
+
+
+def test_enabling_receipts_in_production_without_a_sink_is_refused() -> None:
+    """Otherwise a service signs a receipt per redaction and drops every one."""
+    import provide.telemetry.receipts as receipts_mod
+
+    with receipts_mod._lock:
+        receipts_mod._test_mode = False
+
+    with pytest.raises(MissingReceiptSinkError, match="no receipt sink is configured"):
+        enable_receipts(enabled=True, signing_key=None)
+    assert pii_mod._receipt_hook is None
+
+
+def test_disabling_receipts_in_production_needs_no_sink() -> None:
+    import provide.telemetry.receipts as receipts_mod
+
+    with receipts_mod._lock:
+        receipts_mod._test_mode = False
+    enable_receipts(enabled=False)
+    assert pii_mod._receipt_hook is None
+
+
+def test_the_sink_defaults_to_the_one_on_the_active_runtime_config() -> None:
+    import provide.telemetry.receipts as receipts_mod
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.runtime import apply_runtime_config
+
+    sink = TestReceiptCollector()
+    apply_runtime_config(TelemetryConfig(service_name="svc", receipt_sink=sink))
+    with receipts_mod._lock:
+        receipts_mod._test_mode = False
+
+    enable_receipts(enabled=True, signing_key=None)
+    pii_mod.sanitize_payload({"password": "s3cr3t"}, enabled=True)  # pragma: allowlist secret
+
+    assert [r.field_path for r in sink.receipts] == ["password"]
+    enable_receipts(enabled=False)
+
+
+def test_a_hook_left_live_with_no_sink_counts_rather_than_delivering() -> None:
+    """Defence in depth: enable_receipts refuses this, so only a cleared sink reaches it."""
+    import provide.telemetry.receipts as receipts_mod
+
+    enable_receipts(enabled=True, signing_key=None)
+    with receipts_mod._lock:
+        receipts_mod._test_mode = False
+        receipts_mod._sink = None
+    reset_health_for_tests()
+
+    pii_mod.sanitize_payload({"password": "s3cr3t"}, enabled=True)  # pragma: allowlist secret
+
+    assert get_health_snapshot().receipt_failures == 1
+    enable_receipts(enabled=False)
+
+
+def test_the_test_collector_is_bounded_and_drops_its_oldest() -> None:
+    """Only the test collector is capped — a production sink is the caller's own store."""
+    sink = TestReceiptCollector()
+    for index in range(TEST_RECEIPT_CAPACITY + 5):
+        sink.emit(sign_receipt(index, receipt_id=str(index), timestamp="t", field_path="f", action="drop"))
+
+    assert len(sink.receipts) == TEST_RECEIPT_CAPACITY
+    assert sink.receipts[0].receipt_id == "5"
+    assert sink.receipts[-1].receipt_id == str(TEST_RECEIPT_CAPACITY + 4)
+
+
+def test_receipt_timestamp_accepts_a_pinned_instant() -> None:
+    from datetime import UTC, datetime
+
+    moment = datetime(2026, 8, 4, 12, 34, 56, 789_012, tzinfo=UTC)
+    assert receipt_timestamp(moment) == "2026-08-04T12:34:56.789Z"
+
+
+# ── RFC 8785 number and key rendering ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0.0, "0"),
+        (-0.0, "0"),
+        (2.0, "2"),
+        (1.5, "1.5"),
+        (-1.5, "-1.5"),
+        (100.0, "100"),
+        (1e16, "10000000000000000"),
+        (1e21, "1e+21"),
+        (1.5e22, "1.5e+22"),
+        (1e-6, "0.000001"),
+        (1e-7, "1e-7"),
+        (1.5e-7, "1.5e-7"),
+        (float("nan"), "null"),
+        (float("inf"), "null"),
+        (float("-inf"), "null"),
+    ],
+)
+def test_numbers_render_the_way_ecmascript_would(value: float, expected: str) -> None:
+    """JCS is specified against ECMAScript, so repr() is not the answer."""
+    assert canonical_json(value) == expected
+
+
+def test_booleans_are_not_rendered_as_integers() -> None:
+    """bool subclasses int, so an isinstance check alone would print True as 1."""
+    assert canonical_json({"a": True, "b": False, "c": 1, "d": 0}) == '{"a":true,"b":false,"c":1,"d":0}'
+
+
+def test_keys_are_ordered_by_utf16_code_unit() -> None:
+    assert canonical_json({"é": 1, "b": 2, "A": 3, "10": 4}) == '{"10":4,"A":3,"b":2,"é":1}'
+
+
+def test_non_string_keys_are_stringified() -> None:
+    assert canonical_json({2: "a", 10: "b"}) == '{"10":"b","2":"a"}'
+
+
+def test_tuples_canonicalize_as_arrays() -> None:
+    assert canonical_json((1, "a", None)) == '[1,"a",null]'
+
+
+def test_values_json_cannot_represent_become_null() -> None:
+    """Never raises: canonicalization runs inside the redaction hook."""
+    assert canonical_json({"s": {1, 2}, "b": b"x"}) == '{"b":null,"s":null}'
+
+
+def test_a_cycle_canonicalizes_instead_of_recursing_forever() -> None:
+    node: dict[str, object] = {}
+    node["self"] = node
+    assert canonical_json(node) == '{"self":null}'
+
+    items: list[object] = []
+    items.append(items)
+    assert canonical_json(items) == "[null]"
+
+
+def test_a_shared_subtree_is_rendered_at_every_position() -> None:
+    """Only a cycle collapses — the same subtree twice is not a cycle."""
+    shared = {"k": 1}
+    assert canonical_json({"a": shared, "b": shared}) == '{"a":{"k":1},"b":{"k":1}}'

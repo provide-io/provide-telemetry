@@ -58,7 +58,7 @@ def _reset_state() -> None:
 
 def test_parity_health_snapshot_canonical_defaults() -> None:
     snapshot = get_health_snapshot()
-    assert len(snapshot._fields) == 25
+    assert len(snapshot._fields) == 26
     assert snapshot.setup_error is None
     for field_name, value in snapshot._asdict().items():
         if field_name == "setup_error":

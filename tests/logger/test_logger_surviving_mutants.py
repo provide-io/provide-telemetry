@@ -13,7 +13,7 @@ logger/core.py mutants:
   _build_handlers mutmut_13: config arg replaced with None in handler creation
 
 logger/processors.py mutants:
-  _get_active_config mutmut_10: getattr(runtime, "_active_config", None) → getattr(runtime, "_active_config",)
+  _get_active_config mutmut_10: coordinator.peek().config → a stale or substituted generation
   apply_sampling mutmut_1/2/3: fallback lambda value
   render_with_backpressure_extra mutmut_26: ticket dropped or attached incorrectly
 """
@@ -21,13 +21,13 @@ logger/processors.py mutants:
 from __future__ import annotations
 
 import logging
-import sys
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger import core as core_mod
 from provide.telemetry.logger.core import _reset_logging_for_tests
@@ -232,56 +232,42 @@ class TestBuildHandlersConfigArg:
 
 
 class TestGetActiveConfig:
-    """Kill mutmut_10: getattr(runtime, "_active_config", None) → getattr(runtime, "_active_config",).
+    """_get_active_config reads the published lifecycle generation.
 
-    Both forms are equivalent (getattr with no default returns AttributeError if missing,
-    but "_active_config" is always present). The mutation is detectable by asserting:
-    - When runtime module is in sys.modules and _active_config is None, returns None
-    - When runtime module is not in sys.modules, returns None
+    It is the read every log record makes, so it must be the generation itself
+    and not a copy or a mirror that could disagree with it.
     """
 
-    def test_returns_none_when_runtime_not_loaded(self) -> None:
-        """When runtime module is not in sys.modules, returns None."""
+    def test_returns_none_before_any_generation_is_published(self) -> None:
         from provide.telemetry.logger.processors import _get_active_config
 
-        original = sys.modules.pop("provide.telemetry.runtime", None)
-        try:
-            result = _get_active_config()
-            assert result is None
-        finally:
-            if original is not None:
-                sys.modules["provide.telemetry.runtime"] = original
+        coordinator.reset()
+        assert _get_active_config() is None
 
-    def test_returns_active_config_when_set(self) -> None:
-        """When runtime module is loaded and _active_config is set, returns it."""
-        import importlib
-
+    def test_returns_the_published_config_itself(self) -> None:
         from provide.telemetry.logger.processors import _get_active_config
 
-        runtime = importlib.import_module("provide.telemetry.runtime")
-        cfg = TelemetryConfig()
-        original_cfg = runtime._active_config
+        cfg = TelemetryConfig(service_name="published")
+        coordinator.publish(cfg, setup_done=False)
         try:
-            runtime._active_config = cfg  # type: ignore[attr-defined]
-            result = _get_active_config()
-            assert result is cfg
+            live = _get_active_config()
+            assert live is not None
+            assert live.service_name == "published"
+            assert live is coordinator.peek().config
         finally:
-            runtime._active_config = original_cfg  # type: ignore[attr-defined]
+            coordinator.reset()
 
-    def test_returns_none_when_active_config_is_none(self) -> None:
-        """When _active_config is None in the runtime module, returns None."""
-        import importlib
-
+    def test_follows_the_generation_across_a_republication(self) -> None:
         from provide.telemetry.logger.processors import _get_active_config
 
-        runtime = importlib.import_module("provide.telemetry.runtime")
-        original_cfg = runtime._active_config
+        coordinator.publish(TelemetryConfig(service_name="first"), setup_done=False)
+        coordinator.publish(TelemetryConfig(service_name="second"), setup_done=False)
         try:
-            runtime._active_config = None  # type: ignore[attr-defined]
-            result = _get_active_config()
-            assert result is None
+            live = _get_active_config()
+            assert live is not None
+            assert live.service_name == "second"
         finally:
-            runtime._active_config = original_cfg  # type: ignore[attr-defined]
+            coordinator.reset()
 
 
 # ── apply_sampling: fallback lambda and release(ticket) ───────────────────────

@@ -17,20 +17,21 @@ from typing import Any
 
 import structlog
 
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.logger.context import get_context
 from provide.telemetry.schema.events import EventSchemaError, validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
 
 
-def _get_active_config() -> Any | None:
-    """Return the active runtime config without eagerly loading the runtime module."""
-    runtime = sys.modules.get("provide.telemetry.runtime")
-    if runtime is None:
-        return None
-    return getattr(
-        runtime, "_active_config", None
-    )  # pragma: no mutate — sentinel getattr default; "" would be truthy-compatible but semantically identical here
+def _get_active_config() -> TelemetryConfig | None:
+    """Return the published generation's config, or None before the first setup.
+
+    One lock-free attribute load per record: the generation is frozen and
+    published by a single reference assignment, so a processor either sees the
+    whole of the previous config or the whole of the next one.
+    """
+    return coordinator.peek().config
 
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -82,6 +83,12 @@ def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
 _HARDEN_PRIORITY_KEYS: frozenset[str] = frozenset(
     {"event", "level", "timestamp", "trace_id", "span_id", "logger", "logger_name"}
 )
+
+# What a composite hardening refuses to expand becomes. Same marker the PII
+# engine uses for a redacted value (``pii._REDACTED``) and the same one
+# TypeScript's harden() emits, so an operator sees one placeholder rather than
+# one per subsystem.
+_HARDENED_PLACEHOLDER = "***"
 
 TRACE_LEVEL = 5
 
@@ -182,6 +189,13 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         _max_value_length = live.security.max_attr_value_length if live is not None else max_value_length
         _max_attr_count = live.security.max_attr_count if live is not None else max_attr_count
         _max_depth = live.security.max_nesting_depth if live is not None else max_depth
+        # Identity of every composite already traversed *in this record*. A
+        # composite reached a second time — a cycle, or a subtree the caller
+        # shares between two keys — collapses rather than expanding: a cycle is
+        # an infinite serializer and an n-times-shared subtree is an n-fold
+        # blowup, and both arrive from caller-supplied data. Matches
+        # TypeScript's harden(), which carries the same set in a WeakSet.
+        seen: set[int] = set()
 
         def _clean_value(value: object, depth: int) -> object:
             if isinstance(value, str):
@@ -192,9 +206,21 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
                 if too_long:
                     return cleaned[:_max_value_length]
                 return cleaned
-            if isinstance(value, dict) and depth < _max_depth:
-                return {k: _clean_value(v, depth + 1) for k, v in value.items()}
-            if isinstance(value, list) and depth < _max_depth:
+            if isinstance(value, dict | list):
+                # The ceiling is a refusal, not a stop-recursing-but-emit-anyway.
+                # Handing the composite back whole at the limit hardens nothing:
+                # the point of the ceiling is that whatever comes out is
+                # bounded, and passing the original through lets an arbitrarily
+                # deep caller-supplied structure reach the renderer and the OTel
+                # exporter untouched. TypeScript, Go and Rust collapse the same
+                # way, to the same marker.
+                if depth >= _max_depth:
+                    return _HARDENED_PLACEHOLDER
+                if id(value) in seen:
+                    return _HARDENED_PLACEHOLDER
+                seen.add(id(value))
+                if isinstance(value, dict):
+                    return {k: _clean_value(v, depth + 1) for k, v in value.items()}
                 return [
                     _clean_value(item, depth + 1) for item in value
                 ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests

@@ -18,6 +18,7 @@ from provide.telemetry import health as health_mod
 from provide.telemetry import resilience as resilience_mod
 from provide.telemetry import runtime as runtime_mod
 from provide.telemetry import sampling as sampling_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import (
     BackpressureConfig,
     ExporterPolicyConfig,
@@ -33,9 +34,8 @@ def _reset() -> None:
     sampling_mod.reset_sampling_for_tests()
     backpressure_mod.reset_queues_for_tests()
     resilience_mod.reset_resilience_for_tests()
-    # Reset _active_config to None so lazy init is testable
-    with runtime_mod._lock:
-        runtime_mod._active_config = None
+    # Drop back to the pre-setup generation so lazy init is testable.
+    coordinator.reset()
 
 
 def test_apply_runtime_config_sampling_all_signals() -> None:

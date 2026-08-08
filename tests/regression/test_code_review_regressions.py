@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 import structlog
 
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.backpressure import reset_queues_for_tests
 from provide.telemetry.config import TelemetryConfig, _parse_env_float, _parse_env_int
 from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
@@ -63,9 +64,8 @@ class TestApplySamplingDropEvent:
 
 class TestSetupDoneOrdering:
     def test_setup_done_true_even_if_slo_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """If SLO recording fails, _setup_done must already be True."""
+        """If SLO recording fails, the setup latch must already be True."""
         import provide.telemetry.slo as slo_mod
-        from provide.telemetry import setup as setup_mod
         from provide.telemetry.setup import _reset_setup_state_for_tests, setup_telemetry
 
         _reset_setup_state_for_tests()
@@ -78,15 +78,15 @@ class TestSetupDoneOrdering:
         monkeypatch.setattr(slo_mod, "_rebind_slo_instruments", lambda: None)
 
         def _boom_red(*_args: object) -> None:
-            # _setup_done should already be True at this point
-            assert setup_mod._setup_done is True
+            # the setup latch should already be True at this point
+            assert coordinator.peek().setup_done is True
             raise RuntimeError("SLO boom")
 
         monkeypatch.setattr(slo_mod, "record_red_metrics", _boom_red)
         with pytest.raises(RuntimeError, match="SLO boom"):
             setup_telemetry(TelemetryConfig.from_env({"PROVIDE_SLO_ENABLE_RED_METRICS": "true"}))
-        # _setup_done remains True — no provider double-init risk
-        assert setup_mod._setup_done is True
+        # the setup latch remains True — no provider double-init risk
+        assert coordinator.peek().setup_done is True
 
 
 # ── Issue #3: resilience reset race condition ─────────────────────────
@@ -370,33 +370,30 @@ class TestResilienceRetryPathCoverage:
             run_with_resilience("logs", _failing_op)
 
 
-# ── Issue #13: _reset helpers must hold _lock when writing _setup_done ─
+# ── Issue #13: _reset helpers must publish the cleared setup latch ────
 
 
 class TestResetUnderLock:
-    def test_reset_setup_state_holds_lock(self) -> None:
-        """_reset_setup_state_for_tests must hold _lock while writing _setup_done."""
-        from provide.telemetry import setup as setup_mod
-        from provide.telemetry.setup import _lock, _reset_setup_state_for_tests
+    def test_reset_setup_state_publishes_and_releases(self) -> None:
+        """_reset_setup_state_for_tests clears the latch and gives the lock back."""
+        from provide.telemetry.setup import _reset_setup_state_for_tests
 
-        setup_mod._setup_done = True
-        # Acquire lock from another perspective to verify it's not permanently held
+        coordinator.publish_setup_state(setup_done=True)
         _reset_setup_state_for_tests()
-        assert setup_mod._setup_done is False
-        # Lock must be released — this acquire should succeed immediately
-        assert _lock.acquire(timeout=0.1)
-        _lock.release()
 
-    def test_reset_all_holds_lock(self) -> None:
-        """_reset_all_for_tests must hold _lock while writing _setup_done."""
-        from provide.telemetry import setup as setup_mod
-        from provide.telemetry.setup import _lock
+        assert coordinator.peek().setup_done is False
+        # Held past the return, every later lifecycle call would hang.
+        assert coordinator.operations.acquire(timeout=0.1)
+        coordinator.operations.release()
 
-        setup_mod._setup_done = True
+    def test_reset_all_publishes_and_releases(self) -> None:
+        """_reset_all_for_tests clears the latch and gives the lock back."""
+        coordinator.publish_setup_state(setup_done=True)
         _reset_all_for_tests()
-        assert setup_mod._setup_done is False
-        assert _lock.acquire(timeout=0.1)
-        _lock.release()
+
+        assert coordinator.peek().setup_done is False
+        assert coordinator.operations.acquire(timeout=0.1)
+        coordinator.operations.release()
 
 
 # ── Issue #14: traceparent IDs must be normalized to lowercase ─────────

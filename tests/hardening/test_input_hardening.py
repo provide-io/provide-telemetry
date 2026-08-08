@@ -3,7 +3,12 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Tests for security hardening: input poisoning, secret detection, protocol resilience."""
+"""Tests for security hardening: input poisoning, secret detection, protocol resilience.
+
+The nesting-depth ceiling lives in ``test_hardening_depth.py``, split out when
+this module reached the 500-line cap. That ceiling is a cross-language contract
+— TypeScript, Go and Rust pin the same rule — and the reason is recorded there.
+"""
 
 from __future__ import annotations
 
@@ -66,14 +71,6 @@ class TestHardenInputProcessor:
         keys = list(result.keys())
         assert keys == ["a", "b", "c"]
 
-    def test_caps_nesting_depth(self) -> None:
-        processor = harden_input(1024, 64, 1)
-        deep = {"level1": {"level2": {"level3": "deep_value\x00evil"}}}
-        result = processor(None, "", deep)
-        # depth=0 processes level1 (dict at depth < 1 -> recurse)
-        # depth=1 processes level2 (dict at depth NOT < 1 -> returned as-is)
-        assert result["level1"] == {"level2": {"level3": "deep_value\x00evil"}}
-
     def test_non_string_values_pass_through(self) -> None:
         processor = harden_input(1024, 64, 8)
         result = processor(None, "", {"i": 42, "f": 3.14, "b": True, "n": None})
@@ -122,70 +119,6 @@ class TestHardenInputProcessor:
         result = processor(None, "", {"key": "a" * 11})
         assert result["key"] == "a" * 10
         assert len(result["key"]) == 10
-
-    def test_dict_at_max_depth_not_recursed(self) -> None:
-        """Kills: depth < max_depth -> depth <= max_depth boundary mutation for dicts.
-
-        At depth == max_depth, nested dicts should be returned as-is (no cleaning).
-        _processor calls _clean_value(v, 0), so first dict recurse is depth 0 < max.
-        With max_depth=1: depth 0 < 1 recurses, depth 1 NOT < 1 returns as-is.
-        """
-        processor = harden_input(1024, 64, 1)
-        deep = {"a": {"b": "dirty\x01value"}}
-        result = processor(None, "", deep)
-        # _processor: _clean_value({"b": ...}, 0) -> dict at 0 < 1, recurse
-        # _clean_value("dirty...", 1) -> str, cleaned at any depth
-        assert result["a"]["b"] == "dirtyvalue"
-
-        # Now with max_depth=0: dict at depth 0 NOT < 0, returned as-is
-        processor0 = harden_input(1024, 64, 0)
-        result0 = processor0(None, "", {"a": {"b": "dirty\x01value"}})
-        # The dict value at depth 0 is not recursed, returned as-is
-        assert result0["a"] == {"b": "dirty\x01value"}
-
-    def test_dict_just_below_max_depth_is_recursed(self) -> None:
-        """Complement: at depth < max_depth, dicts ARE recursed."""
-        processor = harden_input(1024, 64, 1)
-        data = {"a": "dirty\x01value"}
-        result = processor(None, "", data)
-        # depth 0 < 1: string value cleaned
-        assert result["a"] == "dirtyvalue"
-
-    def test_list_at_max_depth_not_recursed(self) -> None:
-        """Kills: depth < max_depth -> depth <= max_depth for lists.
-
-        At depth == max_depth, nested lists should be returned as-is.
-        """
-        processor = harden_input(1024, 64, 1)
-        data = {"items": ["dirty\x01value"]}
-        result = processor(None, "", data)
-        # depth 0: process outer dict, items is a list at depth 0 < 1: recurse
-        # each list item at depth 1: strings cleaned
-        assert result["items"] == ["dirtyvalue"]
-
-        # Now with max_depth=0: list at depth 0 NOT < 0, returned as-is
-        processor0 = harden_input(1024, 64, 0)
-        result0 = processor0(None, "", {"items": ["dirty\x01value"]})
-        assert result0["items"] == ["dirty\x01value"]
-
-    def test_depth_increment_in_dict_recursion(self) -> None:
-        """Kills: depth + 1 -> depth + 2 or depth - 1 in dict recursion.
-
-        With max_depth=3, we should be able to clean strings at depth 2.
-        If depth increments by 2, depth 1 -> 3 skips cleaning at depth 2.
-        """
-        processor = harden_input(1024, 64, 3)
-        data = {"a": {"b": {"c": "val\x01ue"}}}
-        result = processor(None, "", data)
-        # depth 0 -> 1 -> 2: all < 3, so c's value is cleaned
-        assert result["a"]["b"]["c"] == "value"
-
-    def test_depth_increment_in_list_recursion(self) -> None:
-        """Kills: depth + 1 -> depth + 2 or depth - 1 in list recursion."""
-        processor = harden_input(1024, 64, 3)
-        data = {"items": [{"nested": "val\x01ue"}]}
-        result = processor(None, "", data)
-        assert result["items"][0]["nested"] == "value"
 
     def test_attr_count_zero_disables_limit(self) -> None:
         """Kills: max_attr_count > 0 boundary mutation (>= 0 or > 1).

@@ -8,7 +8,33 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse, urlunparse
+
+if TYPE_CHECKING:
+    from provide.telemetry.config import TelemetryConfig
+
+
+def redact_config(config: TelemetryConfig) -> dict[str, object]:
+    """Return config fields as a dict with OTLP secrets masked."""
+    # asdict() deep-copies every non-dataclass value it meets, which a live
+    # ReceiptSink holding a socket or a database client cannot survive. The
+    # sink is a delivery destination rather than configuration data, so it is
+    # detached for the walk and reported by presence only.
+    sink = config.receipt_sink
+    config.receipt_sink = None
+    try:
+        raw = dataclasses.asdict(config)
+    finally:
+        config.receipt_sink = sink
+    raw["receipt_sink"] = None if sink is None else type(sink).__name__
+    for v in raw.values():
+        if isinstance(v, dict):
+            if "otlp_headers" in v:
+                v["otlp_headers"] = _mask_headers(v["otlp_headers"])
+            if "otlp_endpoint" in v and v["otlp_endpoint"] is not None:
+                v["otlp_endpoint"] = _mask_endpoint_url(v["otlp_endpoint"])
+    return raw
 
 
 def _mask_header_value(value: str) -> str:

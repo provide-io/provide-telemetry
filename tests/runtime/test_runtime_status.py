@@ -10,7 +10,7 @@ import dataclasses
 import pytest
 
 from provide.telemetry import get_logger
-from provide.telemetry import setup as setup_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.logger import core as logger_core
 from provide.telemetry.metrics import provider as metrics_provider
 from provide.telemetry.runtime import get_runtime_status
@@ -53,7 +53,7 @@ def test_get_runtime_status_reports_provider_and_signal_state(monkeypatch: pytes
     class _FakeMeterProvider:
         pass
 
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setattr(logger_core, "_otel_log_provider", _FakeLogProvider())
     monkeypatch.setattr(tracing_provider, "_provider_ref", None)
     monkeypatch.setattr(metrics_provider, "_meter_provider", _FakeMeterProvider())
@@ -117,7 +117,7 @@ def test_get_runtime_status_traces_provider_true(monkeypatch: pytest.MonkeyPatch
     class _FakeTraceProvider:
         pass
 
-    monkeypatch.setattr(setup_mod, "_setup_done", True)
+    coordinator.publish_setup_state(setup_done=True)
     monkeypatch.setattr(tracing_provider, "_provider_ref", _FakeTraceProvider())
 
     status = get_runtime_status()

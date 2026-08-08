@@ -15,6 +15,7 @@ from __future__ import annotations
 __all__ = [
     "bounded_provider_flush",
     "bounded_provider_shutdown",
+    "dispose_detached_provider",
     "flush_logging",
     "flush_metrics",
     "flush_tracing",
@@ -339,6 +340,20 @@ def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
         "shutdown",
         **_SHUTDOWN_DRAIN_OPTS,
     )  # pragma: no mutate
+
+
+def dispose_detached_provider(provider: object, timeout_seconds: float | None) -> bool:
+    """Tear down a provider that has already been taken off the live path.
+
+    Detaching first and disposing here — rather than holding the owning
+    module's lock across the teardown — is what keeps a stalled exporter from
+    blocking readers. ``installed_signals()``, and so ``get_runtime_status()``,
+    takes those same locks, so an unreachable collector used to make "is
+    telemetry up?" hang for the whole shutdown deadline. It also closes the
+    window where a torn-down provider was still reachable: by the time the
+    drain starts, nothing can resolve it any more.
+    """
+    return bounded_provider_shutdown(provider, resolve_drain_deadline(timeout_seconds))
 
 
 def bounded_provider_flush(provider: object, timeout_seconds: float) -> bool:

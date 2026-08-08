@@ -124,13 +124,13 @@ def test_receipt_emitted_with_correct_field_and_action() -> None:
 
 
 @pytest.mark.integration
-def test_receipt_original_hash_matches_sha256() -> None:
-    """Receipt original_hash matches hashlib.sha256('value'.encode()).hexdigest()."""
+def test_receipt_original_hash_matches_sha256_of_canonical_json() -> None:
+    """original_hash is SHA-256 of the JCS form, so "1" and 1 cannot collide."""
     enable_receipts(enabled=True, signing_key=None)
     pii_mod.sanitize_payload({"password": "value"}, enabled=True)  # pragma: allowlist secret
     receipts = get_emitted_receipts_for_tests()
     assert len(receipts) == 1
-    expected = hashlib.sha256(b"value").hexdigest()
+    expected = hashlib.sha256(b'"value"').hexdigest()
     assert receipts[0].original_hash == expected
 
 

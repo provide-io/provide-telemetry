@@ -433,20 +433,20 @@ class TestHardenInputBoundaries:
         result = proc(None, "", event)
         assert len(result) == 3
 
-    def test_depth_zero_does_not_recurse_into_nested_dict(self) -> None:
-        """Kills: depth < max_depth → depth <= max_depth.
+    def test_depth_zero_collapses_a_nested_dict(self) -> None:
+        """Kills: depth >= max_depth → depth > max_depth.
 
-        At max_depth=0: depth=0 < 0 is False → dict not recursed, control chars survive.
-        At max_depth=0 with mutation <=: depth=0 <= 0 is True → dict IS recursed.
+        At max_depth=0: depth=0 >= 0 is True → the dict is refused.
+        With the mutation: depth=0 > 0 is False → the dict IS expanded.
         """
         proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=0)
         event: dict[str, object] = {"event": "x", "nested": {"inner": "\x01dirty"}}
         result = proc(None, "", event)
-        # Nested dict should be returned as-is (no recursion at depth=0 with max_depth=0)
-        assert result["nested"] == {"inner": "\x01dirty"}
+        # At the ceiling the composite becomes the marker — never passed through.
+        assert result["nested"] == "***"
 
     def test_depth_one_recurses_one_level(self) -> None:
-        """Companion — with max_depth=1, depth=0 < 1 is True → recurse and clean."""
+        """Companion — with max_depth=1, depth=0 is below the ceiling → expand and clean."""
         proc = harden_input(max_value_length=100, max_attr_count=0, max_depth=1)
         result = proc(None, "", {"event": "x", "nested": {"inner": "\x01dirty"}})
         assert result["nested"] == {"inner": "dirty"}

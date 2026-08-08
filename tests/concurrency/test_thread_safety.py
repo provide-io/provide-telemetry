@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytest
 
 from provide.telemetry import setup as setup_mod
+from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.backpressure import (
     QueuePolicy,
     QueueTicket,
@@ -364,4 +365,4 @@ class TestSetupConcurrency:
                 f.result()
 
         assert call_count == 1
-        assert setup_mod._setup_done is True
+        assert coordinator.peek().setup_done is True
