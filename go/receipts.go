@@ -53,9 +53,13 @@ type ReceiptSink interface {
 // without a delivery sink. The previous behavior computed a full signed receipt
 // for every redaction and then dropped it, so a service could believe it had an
 // audit trail and have none.
-var ErrMissingReceiptSink = errors.New(
-	"telemetry: receipts are enabled but no ReceiptSink is configured; " +
-		"generated receipts would be signed and then discarded")
+//
+// The message is one literal rather than two joined with `+`. A package-level
+// initializer runs before any test does, so Go's coverage tool places it in no
+// block and gremlins reports every mutant of that `+` as uncovered — a mutant
+// that cannot be covered is a permanent gate failure, and there is nothing to
+// test about string concatenation here anyway.
+var ErrMissingReceiptSink = errors.New("telemetry: receipts are enabled but no ReceiptSink is configured; generated receipts would be signed and then discarded")
 
 // TestReceiptCapacity bounds TestReceiptCollector.
 const TestReceiptCapacity = 1024

@@ -164,18 +164,29 @@ func canonicalNumber(f float64) string {
 	digits := strings.Replace(mantissa, ".", "", 1)
 	k, n := len(digits), exp+1
 
-	switch {
-	case k <= n && n <= 21:
+	// An if/else chain rather than an expressionless switch, and the difference
+	// is not style. Go's coverage tool instruments case *bodies* only: for a
+	// switch, the emitted blocks start after each `case ...:`, so the condition
+	// expressions themselves sit outside every block. gremlins then reports
+	// every mutant of these bounds as "not covered" even though the vectors in
+	// spec/jcs_number_fixtures.yaml drive all five branches and canonicalNumber
+	// reports 100% coverage. An if/else chain puts the conditions inside
+	// instrumented blocks, so the bounds are mutation-tested for real — which
+	// matters here, because a wrong bound in this exact algorithm is what made
+	// Python render 1e21 as "0.1".
+	if k <= n && n <= 21 {
 		return sign + digits + strings.Repeat("0", n-k)
-	case 0 < n && n <= 21:
-		return sign + digits[:n] + "." + digits[n:]
-	case -6 < n && n <= 0:
-		return sign + "0." + strings.Repeat("0", -n) + digits
-	case k == 1:
-		return sign + digits + "e" + canonicalExponent(n-1)
-	default:
-		return sign + digits[:1] + "." + digits[1:] + "e" + canonicalExponent(n-1)
 	}
+	if 0 < n && n <= 21 {
+		return sign + digits[:n] + "." + digits[n:]
+	}
+	if -6 < n && n <= 0 {
+		return sign + "0." + strings.Repeat("0", -n) + digits
+	}
+	if k == 1 {
+		return sign + digits + "e" + canonicalExponent(n-1)
+	}
+	return sign + digits[:1] + "." + digits[1:] + "e" + canonicalExponent(n-1)
 }
 
 // canonicalExponent renders an exponent with the explicit '+' ECMAScript emits
