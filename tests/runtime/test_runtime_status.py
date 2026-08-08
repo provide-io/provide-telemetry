@@ -11,9 +11,17 @@ import pytest
 
 from provide.telemetry import get_logger
 from provide.telemetry._lifecycle import coordinator
+from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
+from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.logger import core as logger_core
 from provide.telemetry.metrics import provider as metrics_provider
-from provide.telemetry.runtime import get_runtime_status
+from provide.telemetry.runtime import (
+    get_runtime_config,
+    get_runtime_status,
+    reconfigure_telemetry,
+    reload_runtime_from_env,
+    update_runtime_config,
+)
 from provide.telemetry.setup import _reset_all_for_tests
 from provide.telemetry.tracing import provider as tracing_provider
 
@@ -138,3 +146,37 @@ def test_get_runtime_status_setup_error_key_name() -> None:
     assert "setup_error" in fields, f"Expected 'setup_error' field, got: {sorted(fields)}"
     assert "XXsetup_errorXX" not in fields
     assert "SETUP_ERROR" not in fields
+
+
+class TestRuntimeWritePathsRequireSetup:
+    """Reconfiguring what was never configured is an error, not an implicit setup.
+
+    All three write paths used to fall back to ``TelemetryConfig.from_env()``,
+    so each quietly performed a first-time setup and then reported
+    ``setup_done`` with no providers installed. Go and C# reject this; the
+    TypeScript equivalent was fixed alongside these.
+    """
+
+    def test_update_runtime_config_refuses_before_setup(self) -> None:
+        _reset_all_for_tests()
+        with pytest.raises(ConfigurationError, match="telemetry not set up"):
+            update_runtime_config(RuntimeOverrides(strict_schema=True))
+        assert get_runtime_status().setup_done is False
+
+    def test_reload_runtime_from_env_refuses_before_setup(self) -> None:
+        _reset_all_for_tests()
+        with pytest.raises(ConfigurationError, match="telemetry not set up"):
+            reload_runtime_from_env()
+        assert get_runtime_status().setup_done is False
+
+    def test_reconfigure_telemetry_refuses_before_setup(self) -> None:
+        _reset_all_for_tests()
+        with pytest.raises(ConfigurationError, match="telemetry not set up"):
+            reconfigure_telemetry(TelemetryConfig(service_name="never-set-up"))
+        assert get_runtime_status().setup_done is False
+
+    def test_reads_still_degrade_rather_than_raise(self) -> None:
+        # The fallback is deliberate on the read path: the drain path must not
+        # raise on a malformed environment.
+        _reset_all_for_tests()
+        assert get_runtime_config() is not None

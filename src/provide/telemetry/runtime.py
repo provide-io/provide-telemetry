@@ -60,7 +60,7 @@ from provide.telemetry._runtime_types import (
     SignalFlushResult,
 )
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
-from provide.telemetry.exceptions import ProviderImmutableError
+from provide.telemetry.exceptions import ConfigurationError, ProviderImmutableError
 
 _logger = logging.getLogger(__name__)
 
@@ -272,6 +272,27 @@ def _logging_provider_config_changed(current: TelemetryConfig, target: Telemetry
     )
 
 
+def _require_live_config() -> TelemetryConfig:
+    """Return the published config, or refuse when telemetry is not set up.
+
+    Reconfiguring something that was never configured is a caller error, not a
+    shorthand for setup. All three runtime write paths used to fall back to
+    ``TelemetryConfig.from_env()`` here, so they quietly performed a first-time
+    setup from whatever the environment happened to hold — and then reported
+    ``setup_done`` with no providers installed and no shutdown owed.
+
+    Reads keep the fallback on purpose: ``get_runtime_config`` and the drain
+    path must not raise on a malformed environment. It is writes that refuse.
+
+    Callers hold ``coordinator.operations``, so this cannot race a concurrent
+    ``setup_telemetry``.
+    """
+    live = coordinator.peek().config
+    if live is None:
+        raise ConfigurationError("telemetry not set up: call setup_telemetry first")
+    return live
+
+
 def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     """Merge overrides into the active config and re-apply hot policies.
 
@@ -280,8 +301,7 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
     """
     logging_changed = False  # pragma: no mutate — None is also falsy; equivalent mutation
     with coordinator.operations:
-        live = coordinator.peek()
-        base = live.config if live.config is not None else TelemetryConfig.from_env()
+        base = _require_live_config()
         if overrides.logging is not None and overrides.logging != base.logging:
             logging_changed = True
         merged = _apply_overrides(base, overrides)
@@ -303,7 +323,7 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
             )
 
             configure_logging(merged, force=True)
-        coordinator.publish(merged, setup_done=live.setup_done)
+        coordinator.publish(merged, setup_done=coordinator.peek().setup_done)
     return get_runtime_config()
 
 
@@ -329,8 +349,11 @@ def reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryCon
     from provide.telemetry.tracing import provider as tracing_provider
 
     with coordinator.operations:
+        # Guarded here as well as in update_runtime_config: the
+        # provider-changed branch below routes through shutdown + setup and
+        # never reaches it.
+        current = _require_live_config()
         target = config or TelemetryConfig.from_env()
-        current = get_runtime_config()
         if _provider_config_changed(current, target):
             if (
                 logger_core._has_real_otel_log_provider()

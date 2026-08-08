@@ -12,6 +12,7 @@ import pytest
 
 from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import BackpressureConfig, ExporterPolicyConfig, SamplingConfig, TelemetryConfig
+from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.setup import (
     _reset_all_for_tests,
     _reset_setup_state_for_tests,
@@ -266,7 +267,15 @@ def test_shutdown_telemetry_resets_runtime_signal_policies(monkeypatch: pytest.M
     assert logs_policy.fail_open is True
 
 
-def test_reconfigure_telemetry_allows_provider_replacement_after_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reconfigure_telemetry_refuses_after_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """After shutdown there is no live config, so reconfigure refuses.
+
+    This used to assert that provider replacement was *allowed* once shutdown
+    had cleared the providers. That claim is still true of the
+    provider-immutability guard, but reconfigure no longer reaches it: with
+    nothing set up, the precondition fires first and the caller is told to use
+    setup_telemetry. Go and C# behave the same way.
+    """
     from provide.telemetry import runtime as runtime_mod
     from provide.telemetry.logger import core as logger_core
     from provide.telemetry.metrics import provider as metrics_provider
@@ -310,10 +319,12 @@ def test_reconfigure_telemetry_allows_provider_replacement_after_shutdown(monkey
     monkeypatch.setattr("provide.telemetry.setup.shutdown_telemetry", _fake_shutdown)
     monkeypatch.setattr("provide.telemetry.setup.setup_telemetry", _fake_setup)
 
-    result = runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="after"))
+    with pytest.raises(ConfigurationError, match="telemetry not set up"):
+        runtime_mod.reconfigure_telemetry(TelemetryConfig(service_name="after"))
 
-    assert called == ["shutdown", "setup"]
-    assert result.service_name == "after"
+    # It refuses before the provider-replacement path, so neither ran.
+    assert called == []
+    assert runtime_mod.get_runtime_status().setup_done is False
 
 
 def test_reset_all_for_tests_sets_setup_done_false(monkeypatch: pytest.MonkeyPatch) -> None:

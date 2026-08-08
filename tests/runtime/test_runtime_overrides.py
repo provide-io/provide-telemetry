@@ -26,6 +26,7 @@ from provide.telemetry.config import (
     SLOConfig,
     TelemetryConfig,
 )
+from provide.telemetry.exceptions import ConfigurationError
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +93,7 @@ def test_runtime_overrides_validates_pii_max_depth() -> None:
 
 def test_update_runtime_config_accepts_overrides() -> None:
     """update_runtime_config accepts RuntimeOverrides and returns TelemetryConfig."""
+    runtime_mod.apply_runtime_config(TelemetryConfig())
     overrides = RuntimeOverrides(
         sampling=SamplingConfig(logs_rate=0.3, traces_rate=0.4, metrics_rate=0.5),
     )
@@ -186,18 +188,27 @@ def test_reload_runtime_from_env_warns_on_cold_change(
 def test_reload_runtime_from_env_no_active_config(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """reload_runtime_from_env works when no config has been applied yet (cold-drift check skipped)."""
+    """reload_runtime_from_env refuses when no config has been applied yet.
+
+    It used to fall back to TelemetryConfig.from_env() and publish a
+    generation, which is an implicit first-time setup on a path whose whole
+    job is to *re*load. Go and C# reject this; TypeScript was fixed alongside.
+    """
     env_cfg = TelemetryConfig(sampling=SamplingConfig(logs_rate=0.7))
     monkeypatch.setattr(
         "provide.telemetry.runtime.TelemetryConfig.from_env",
         classmethod(lambda cls: env_cfg),
     )
 
-    with caplog.at_level(logging.WARNING, logger="provide.telemetry.runtime"):
-        result = runtime_mod.reload_runtime_from_env()
+    with (
+        caplog.at_level(logging.WARNING, logger="provide.telemetry.runtime"),
+        pytest.raises(ConfigurationError, match="telemetry not set up"),
+    ):
+        runtime_mod.reload_runtime_from_env()
 
+    # No cold-drift warning either: it never got far enough to compare.
     assert not any("runtime.cold_field_drift" in record.message for record in caplog.records)
-    assert result.sampling.logs_rate == pytest.approx(0.7)
+    assert runtime_mod.get_runtime_status().setup_done is False
 
 
 def test_reload_runtime_from_env_no_warning_when_cold_unchanged(
@@ -360,6 +371,8 @@ def test_concurrent_reconfigure_does_not_raise(monkeypatch: pytest.MonkeyPatch) 
     import threading
 
     runtime_mod.reset_runtime_for_tests()
+    # reconfigure now requires a live config; give the concurrent callers one.
+    runtime_mod.apply_runtime_config(TelemetryConfig())
     monkeypatch.setattr(
         "provide.telemetry.runtime.TelemetryConfig.from_env",
         classmethod(lambda cls: TelemetryConfig()),
