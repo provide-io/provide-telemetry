@@ -962,6 +962,46 @@ Run:
 
 Expected: all vector and traversal cases pass; race detector is clean.
 
+**As built — the traversal gap was the smaller half of the leak.**
+
+The task describes typed containers escaping PII redaction, and they did: a
+`[]credentials`, a `map[string]string` or a plain struct carried its `Password`
+field straight past an engine that only looked inside `map[string]any` and
+`[]any`. `Harden` now normalizes reflectively before the engine runs.
+
+But the OTel log bridge was wired as a **sibling** of the telemetry handler
+rather than downstream of it, so `slog` handed both the same unprocessed record.
+Every record exported to a backend bypassed consent, schema validation,
+sampling, backpressure, hardening *and* PII redaction. Verified by reverting the
+wiring, where one run prints `password:***` locally and `Password:"s3cr3t"` on
+the bridge. This is the only reading under which "apply hardening before local
+*and* OTel handlers" is satisfiable, and it is strictly larger than the gap the
+task describes.
+
+Two more things the plan does not mention:
+
+- `SecurityConfig.{MaxAttrValueLength, MaxAttrCount, MaxNestingDepth}` were
+  parsed from the environment, validated, covered by tests asserting their
+  values — and read by nothing. They bound log attributes for the first time
+  here. A zero cap means "unset", because a hand-built `TelemetryConfig` carries
+  a zero `SecurityConfig` and a zero depth would redact every attribute.
+- `go/otel/exporters.go`, listed in the file set, needs no change once the
+  bridge is downstream. The genuinely raw entry point is
+  `_otelSpanAdapter.SetAttribute`, which takes an untyped `any` and never
+  reaches the handler chain.
+
+Deviations: the reference-identity set is cumulative rather than path-scoped
+(the plan's `defer delete` would expand shared siblings, diverging from the
+`WeakSet` semantics `typescript/tests/harden.test.ts` pins); empty maps and
+slices are exempt from it, because Go gives every zero-size allocation the same
+address and two unrelated `[]string{}` would otherwise collide; `error` and
+`encoding.TextMarshaler` render as text, but deliberately not `fmt.Stringer`,
+which is implemented widely enough to swallow the very structs this exists to
+traverse.
+
+A separate follow-up removed the exported `Logger` variable entirely — see the
+note under Task 5.
+
 - [ ] **Step 6: Commit Go governance parity**
 
 ```bash
@@ -1335,6 +1375,28 @@ python spec/check_config_parity.py --language rust
 
 Expected: all commands pass and `cargo machete` reports no unused dependency.
 
+**As built — Step 1's expectation was already stale.**
+
+`spec/check_config_parity.py --language rust` passed before anything changed;
+the probe existed and was correct. The real gaps were that no in-repo test
+exercised it, and the dependency graph.
+
+`tracing-opentelemetry` was declared in `[dependencies]` and referenced nowhere.
+`tokio-stream` is now optional behind the `otel` feature, its only consumer.
+`base64` and `mutants` moved to `[dev-dependencies]`.
+
+The probe measures through `TelemetryConfig::from_map` rather than the process
+environment. The example's approach — wiping and rewriting the real environment
+inside `unsafe` blocks — cannot run alongside parallel tests. The example now
+delegates to the library function, so the parity check and the in-repo test
+measure the same thing by construction instead of being two copies that drift.
+
+No new config fields were added. The contract marks `PROVIDE_LOG_INCLUDE_CALLER`,
+`PROVIDE_LOG_SANITIZE` and `PROVIDE_LOG_CODE_ATTRIBUTES` inapplicable to Rust,
+and the three `PROVIDE_LOG_PRETTY_*` variables carry `probe_visible: false`
+because Rust reads them inside the renderer. Adding them would be exactly the
+dead fields Step 4 forbids.
+
 - [ ] **Step 6: Commit Rust config and dependency parity**
 
 ```bash
@@ -1452,6 +1514,33 @@ git diff main...HEAD -- rust/src/resilience_state_tests.rs
 ```
 
 Expected: Rust gates pass and the branch diff for `rust/src/resilience_state_tests.rs` still shows the user's `b2c7af2` assertions (`MAX_EXPORT_ATTEMPTS == 101`, `capped_attempts(250) == 101`) intact and unmodified by this task.
+
+**As built.**
+
+`rust/src/resilience_state_tests.rs` is untouched, as required.
+
+`PROVIDE_SECURITY_MAX_NESTING_DEPTH` had a default, env parsing, validation
+coverage and tests asserting its value, and no consumer anywhere — the same
+dead-knob pattern Go had. Hardening is what finally gives it meaning.
+
+The receipt timestamp was `format!("{:?}", SystemTime::now())`, which put
+`SystemTime { tv_sec: .., tv_nsec: .. }` into a **signed payload**. It now reuses
+`now_iso8601`, the same function the log line uses, so a receipt and the record
+that produced it agree byte for byte. This avoids adding the `time` crate — and
+its `=0.3.36` exact pin, which in a published library is an unresolvable
+conflict for any downstream crate wanting a different `0.3.x`.
+
+Cycle and shared-reference handling has no code in `harden.rs` and should not:
+`serde_json::Value` is an owned tree that can hold neither, and
+`serde_json::Number` cannot be constructed from NaN. Defensive branches would be
+unreachable and would fail the function-coverage gate. The non-finite rule *is*
+implemented, in `jcs::canonical_number`, which is where a caller's `f64` actually
+reaches the contract.
+
+Depth-ceiling behaviour follows TypeScript (collapse to `"***"`), not the
+pass-through Python had. Python was brought into line rather than the other way
+round: a hardening pass that returns an unbounded value at its own limit is not
+hardening.
 
 - [ ] **Step 6: Commit Rust governance parity, leaving the user's test file untouched**
 
