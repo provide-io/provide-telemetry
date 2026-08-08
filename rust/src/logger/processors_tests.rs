@@ -5,6 +5,16 @@ use crate::testing::acquire_test_state_lock;
 use crate::TelemetryConfig;
 use std::collections::BTreeMap;
 
+/// Structural bounds for the direct `harden_input` tests. The depth ceiling is
+/// the shipping default; these cases vary length and width.
+fn limits(max_value_length: usize, max_attr_count: usize) -> HardenLimits {
+    HardenLimits {
+        max_value_length,
+        max_attr_count,
+        max_depth: 8,
+    }
+}
+
 fn make_event(level: &str, message: &str) -> LogEvent {
     LogEvent {
         level: level.to_string(),
@@ -23,7 +33,7 @@ fn harden_input_truncates_long_values() {
     event
         .context
         .insert("long".to_string(), Value::String("x".repeat(2000)));
-    harden_input(&mut event, 100, 64);
+    harden_input(&mut event, limits(100, 64));
     let val = event.context["long"].as_str().unwrap();
     assert!(val.len() <= 103, "value should be truncated + '...'");
     assert!(val.ends_with("..."));
@@ -35,21 +45,10 @@ fn harden_input_truncates_safely_on_multibyte_utf8() {
     event
         .context
         .insert("multi".to_string(), Value::String("ééééé".to_string()));
-    harden_input(&mut event, 5, 64);
+    harden_input(&mut event, limits(5, 64));
     let val = event.context["multi"].as_str().unwrap();
     assert!(val.is_char_boundary(val.len()), "must end at char boundary");
     assert!(val.ends_with("..."));
-}
-
-#[test]
-fn truncate_string_value_handles_mixed_multibyte_boundaries() {
-    let mut value = "éé".to_string();
-    truncate_string_value(&mut value, 1);
-    assert_eq!(value, "...");
-
-    let mut value = "aéz".to_string();
-    truncate_string_value(&mut value, 2);
-    assert_eq!(value, "a...");
 }
 
 #[test]
@@ -59,7 +58,7 @@ fn harden_input_strips_control_chars() {
         "dirty".to_string(),
         Value::String("hello\x00world\ttab\n".to_string()),
     );
-    harden_input(&mut event, 1024, 64);
+    harden_input(&mut event, limits(1024, 64));
     assert_eq!(
         event.context["dirty"].as_str().unwrap(),
         "helloworld\ttab\n"
@@ -74,7 +73,7 @@ fn harden_input_caps_attr_count() {
             .context
             .insert(format!("key_{i:02}"), Value::String(format!("val_{i}")));
     }
-    harden_input(&mut event, 1024, 5);
+    harden_input(&mut event, limits(1024, 5));
     assert_eq!(event.context.len(), 5, "should cap at 5 attributes");
 }
 
@@ -92,7 +91,7 @@ fn harden_input_preserves_priority_keys_when_over_cap() {
     event
         .context
         .insert("service".to_string(), Value::String("svc".to_string()));
-    harden_input(&mut event, 1024, 4);
+    harden_input(&mut event, limits(1024, 4));
     assert_eq!(event.context.len(), 4, "must cap at 4");
     assert!(
         event.context.contains_key("trace_id"),
@@ -236,7 +235,7 @@ fn harden_input_preserves_logger_name_as_priority_key() {
         "logger_name".to_string(),
         Value::String("my.logger".to_string()),
     );
-    harden_input(&mut event, 1024, 3);
+    harden_input(&mut event, limits(1024, 3));
     assert!(
         event.context.contains_key("logger_name"),
         "logger_name must survive attribute capping as a priority key"
@@ -246,14 +245,14 @@ fn harden_input_preserves_logger_name_as_priority_key() {
 #[test]
 fn harden_input_handles_empty_and_non_string_values() {
     let mut event = make_event("INFO", "test");
-    harden_input(&mut event, 16, 4);
+    harden_input(&mut event, limits(16, 4));
     assert!(event.context.is_empty());
 
     event.context.insert(
         "count".to_string(),
         Value::Number(serde_json::Number::from(7)),
     );
-    harden_input(&mut event, 16, 4);
+    harden_input(&mut event, limits(16, 4));
     assert_eq!(event.context.get("count"), Some(&Value::Number(7.into())));
 }
 
@@ -267,7 +266,7 @@ fn harden_input_zero_attr_limit_disables_capping() {
         );
     }
 
-    harden_input(&mut event, 16, 0);
+    harden_input(&mut event, limits(16, 0));
 
     assert_eq!(event.context.len(), 6);
 }
@@ -289,7 +288,7 @@ fn harden_input_skips_priority_keys_encountered_after_non_priority_fill() {
         .context
         .insert("span_id".to_string(), Value::String("span-123".to_string()));
 
-    harden_input(&mut event, 1024, 4);
+    harden_input(&mut event, limits(1024, 4));
 
     assert!(event.context.contains_key("trace_id"));
     assert!(event.context.contains_key("span_id"));
@@ -312,7 +311,7 @@ fn harden_input_skips_priority_keys_during_non_priority_fill_before_limit() {
         .context
         .insert("zz".to_string(), Value::String("zz".to_string()));
 
-    harden_input(&mut event, 1024, 3);
+    harden_input(&mut event, limits(1024, 3));
 
     assert!(event.context.contains_key("logger_name"));
     assert!(event.context.contains_key("alpha"));
@@ -433,10 +432,9 @@ fn runtime_schema_error_returns_none_without_runtime_and_message_with_runtime() 
 }
 
 #[test]
-fn truncate_and_strip_context_helpers_skip_empty_context() {
+fn harden_input_leaves_an_empty_context_empty() {
     let mut event = make_event("INFO", "test");
-    truncate_context_values(&mut event, 8);
-    strip_context_values(&mut event);
+    harden_input(&mut event, limits(8, 4));
     assert!(event.context.is_empty());
 }
 

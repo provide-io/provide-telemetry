@@ -22,6 +22,21 @@ fn health_test_increment_and_latency_roundtrip() {
     assert!((snapshot.export_latency_ms_traces - 12.5).abs() < 1e-9);
 }
 
+/// Without this counter a sink that quietly refuses every receipt looks exactly
+/// like one that delivers them, so the failure has to be visible somewhere the
+/// receipt path itself can reach — and it cannot log.
+#[test]
+fn health_test_receipt_failures_are_counted() {
+    let _guard = acquire_test_state_lock();
+    _reset_health_for_tests();
+
+    assert_eq!(get_health_snapshot().receipt_failures, 0);
+    crate::health::increment_receipt_failures();
+    crate::health::increment_receipt_failures();
+
+    assert_eq!(get_health_snapshot().receipt_failures, 2);
+}
+
 #[test]
 fn health_test_snapshot_reads_all_three_circuit_states() {
     let _guard = acquire_test_state_lock();

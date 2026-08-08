@@ -21,6 +21,11 @@ use crate::slo::reset_slo_for_tests;
 use crate::tracer::set_trace_context;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+/// Observe this SDK's real config defaults and applicability, variable by
+/// variable. Lives here rather than in a probe binary so the executable
+/// contract test and the cross-language parity gate measure the same thing.
+pub use crate::config::probe::{config_defaults_probe, ProbedConfigEntry};
+
 static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().

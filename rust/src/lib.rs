@@ -14,7 +14,9 @@ pub mod consent;
 pub mod context;
 mod errors;
 pub mod fingerprint;
+mod harden;
 pub mod health;
+mod jcs;
 pub mod logger;
 pub mod metrics;
 pub mod otel;
@@ -83,7 +85,10 @@ pub use propagation::{
     bind_propagation_context, extract_w3c_context, parse_baggage, PropagationContext,
 };
 pub use receipts::{
-    enable_receipts, get_emitted_receipts_for_tests, reset_receipts_for_tests, RedactionReceipt,
+    canonical_json, canonical_number, emit_receipt, enable_receipts,
+    get_emitted_receipts_for_tests, receipt_payload, reset_receipts_for_tests, sign_receipt,
+    ReceiptOptions, ReceiptSink, RedactionReceipt, SignReceiptOptions, TestReceiptCollector,
+    TEST_RECEIPT_CAPACITY,
 };
 pub use resilience::{
     get_circuit_state, get_exporter_policy, run_with_resilience, set_exporter_policy,

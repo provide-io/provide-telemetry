@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 mod from_env;
 mod parse;
+pub(crate) mod probe;
 mod redact;
 mod validate;
 

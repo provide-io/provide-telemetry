@@ -27,18 +27,16 @@ otel = [
     "dep:opentelemetry-otlp",
     "dep:opentelemetry-semantic-conventions",
     "dep:reqwest",
-    "dep:tracing-opentelemetry",
+    "dep:tokio-stream",
     "dep:url",
 ]
 # OTLP/gRPC transport. Additive on top of `otel` (which brings HTTP/protobuf).
 otel-grpc = ["otel", "opentelemetry-otlp/grpc-tonic", "dep:http"]
 
 [dependencies]
-base64 = "0.23"
 hmac = "0.12"
 http = { version = "1.1", optional = true, default-features = false, features = ["std"] }
 log = "0.4"
-mutants = "0.0.3"
 opentelemetry = { version = "0.31", optional = true }
 opentelemetry-otlp = { version = "0.31", optional = true, default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs"] }
 opentelemetry_sdk = { version = "0.31", optional = true, features = ["rt-tokio", "logs", "metrics", "trace", "experimental_logs_batch_log_processor_with_async_runtime", "experimental_metrics_periodicreader_with_async_runtime", "experimental_trace_batch_span_processor_with_async_runtime"] }
@@ -52,13 +50,18 @@ serde_json = "1.0"
 sha2 = "0.10"
 thiserror = "2.0"
 tokio = { version = "1.44", features = ["rt", "rt-multi-thread", "sync", "time"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-tracing-opentelemetry = { version = "0.32", optional = true }
+tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
 url = { version = "2", optional = true }
 uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
+# base64 and mutants are here rather than in [dependencies] because nothing a
+# consumer links against uses them: base64 is only reached from the OpenObserve
+# examples, and `mutants::skip` only ever appears under `#[cfg_attr(test, ..)]`,
+# which is off when the crate is built as a dependency.
+base64 = "0.23"
 criterion = { version = "0.8", features = ["html_reports"] }
+mutants = "0.0.3"
 proptest = "1"
 rstest = "0.26"
 serde_yaml = "0.9"

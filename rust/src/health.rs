@@ -34,6 +34,10 @@ pub struct HealthSnapshot {
     pub circuit_open_count_traces: u64,
     pub circuit_open_count_metrics: u64,
     pub setup_error: Option<String>,
+    /// Governance receipts a configured `ReceiptSink` refused or panicked on.
+    /// Without this, a sink that silently drops every receipt is
+    /// indistinguishable from one that delivers them.
+    pub receipt_failures: u64,
 }
 
 static HEALTH: OnceLock<Mutex<HealthSnapshot>> = OnceLock::new();
@@ -107,6 +111,15 @@ pub fn record_export_latency(signal: Signal, latency_ms: f64) {
         Signal::Traces => snapshot.export_latency_ms_traces = latency_ms.max(0.0),
         Signal::Metrics => snapshot.export_latency_ms_metrics = latency_ms.max(0.0),
     }
+}
+
+/// Count a receipt its sink would not take.
+///
+/// Deliberately a counter and not a log line: receipts are produced *by*
+/// redaction, so logging a delivery failure would redact, produce another
+/// receipt, fail again, and never stop.
+pub fn increment_receipt_failures() {
+    crate::_lock::lock(health()).receipt_failures += 1;
 }
 
 pub fn _reset_health_for_tests() {

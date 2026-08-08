@@ -55,7 +55,7 @@ pub fn take_pretty_capture() -> Vec<u8> {
 // Timestamp
 // ---------------------------------------------------------------------------
 
-pub(super) fn now_iso8601() -> String {
+pub(crate) fn now_iso8601() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let d = SystemTime::now()
         .duration_since(UNIX_EPOCH)

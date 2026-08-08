@@ -9,7 +9,7 @@ use provide_telemetry::{
     enable_receipts, get_emitted_receipts_for_tests, register_classification_rule,
     register_pii_rule, reset_receipts_for_tests, sanitize_payload, set_classification_policy,
     set_consent_level, should_allow, ClassificationPolicy, ClassificationRule, ConsentLevel,
-    DataClass, PIIMode, PIIRule,
+    DataClass, PIIMode, PIIRule, ReceiptOptions,
 };
 
 static GOVERNANCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -92,9 +92,15 @@ fn governance_test_receipts_capture_redactions() {
     provide_telemetry::replace_pii_rules(Vec::new());
     register_pii_rule(PIIRule::new(vec!["password".into()], PIIMode::Redact, 0));
 
-    enable_receipts(true, Some("demo-hmac-key"), Some("governance-test"));
+    enable_receipts(ReceiptOptions {
+        enabled: true,
+        signing_key: Some("demo-hmac-key".to_string()),
+        service_name: Some("governance-test".to_string()),
+        ..ReceiptOptions::default()
+    })
+    .expect("test mode collects without a configured sink");
     let _ = sanitize_payload(&json!({"password": "s3cr3t"}), true, 32);
-    enable_receipts(false, None, None);
+    enable_receipts(ReceiptOptions::default()).expect("disabling needs no sink");
 
     let receipts = get_emitted_receipts_for_tests();
     let receipt = receipts.last().expect("expected a redaction receipt");

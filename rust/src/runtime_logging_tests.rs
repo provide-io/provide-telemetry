@@ -182,6 +182,66 @@ fn runtime_test_update_runtime_config_hot_reloads_module_level_override() {
     );
 }
 
+/// A nested array is bounded before anything consumes the record.
+///
+/// The two consumers that matter are the local renderer and the OTel bridge,
+/// and both read the same `LogEvent` the processor chain hands them — so
+/// asserting on the rendered line and on the buffered event together covers
+/// both. The array is deliberately nested past the configured ceiling: before
+/// hardening recursed, only top-level strings were bounded, so this structure
+/// reached the JSON writer and the exporter at full depth.
+#[test]
+fn runtime_test_nested_arrays_are_hardened_before_local_capture_and_export() {
+    let _guard = crate::testing::acquire_test_state_lock();
+    crate::testing::reset_telemetry_state();
+    crate::logger::reset_logging_config_for_tests();
+
+    set_active_config(Some(TelemetryConfig {
+        security: crate::config::SecurityConfig {
+            max_attr_value_length: 1024,
+            max_attr_count: 64,
+            max_nesting_depth: 2,
+        },
+        ..TelemetryConfig::default()
+    }));
+    crate::logger::configure_logging(crate::config::LoggingConfig {
+        level: "DEBUG".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..crate::config::LoggingConfig::default()
+    });
+    crate::logger::enable_json_capture_for_tests();
+
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "rows".to_string(),
+        serde_json::json!([["deep", "deeper"], ["deepest"]]),
+    );
+    crate::logger::get_logger(Some("tests.runtime.harden")).info_fields("harden.probe", &fields);
+
+    let rendered = String::from_utf8(crate::logger::take_json_capture()).expect("utf8");
+    let events = crate::logger::Logger::drain_events_for_tests();
+
+    crate::logger::reset_logging_config_for_tests();
+    crate::testing::reset_telemetry_state();
+
+    // Found by message rather than by position: the fallback buffer is process
+    // global, so a concurrent suite's event can share it.
+    let probe = events
+        .iter()
+        .find(|event| event.message == "harden.probe")
+        .expect("the probe event should have been buffered");
+    assert_eq!(
+        probe.context.get("rows"),
+        Some(&serde_json::json!(["***", "***"])),
+        "the inner arrays must be refused before the record is handed on"
+    );
+    assert!(
+        !rendered.contains("deepest"),
+        "the rendered line must not carry the unbounded value — got: {rendered}"
+    );
+}
+
 /// In fallback mode — no live OTel log provider — the provider-baked logging
 /// fields are still hot: nothing has baked them anywhere yet, so applying them
 /// is safe. The reject path only exists for a live provider (see the

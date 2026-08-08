@@ -3,11 +3,13 @@
 // SPDX-Comment: Part of provide-telemetry.
 //
 
+use std::sync::Arc;
+
 use provide_telemetry::{
-    clear_classification_rules, enable_receipts, get_emitted_receipts_for_tests,
-    register_classification_rules, register_pii_rule, replace_pii_rules, reset_consent_for_tests,
-    reset_receipts_for_tests, sanitize_payload, set_consent_level, should_allow,
-    ClassificationRule, ConsentLevel, DataClass, PIIMode, PIIRule, TelemetryError,
+    clear_classification_rules, enable_receipts, register_classification_rules, register_pii_rule,
+    replace_pii_rules, reset_consent_for_tests, reset_receipts_for_tests, sanitize_payload,
+    set_consent_level, should_allow, ClassificationRule, ConsentLevel, DataClass, PIIMode, PIIRule,
+    ReceiptOptions, TelemetryError, TestReceiptCollector,
 };
 use serde_json::json;
 
@@ -60,12 +62,20 @@ pub fn run_demo() -> Result<DemoSummary, TelemetryError> {
         32,
     );
 
-    enable_receipts(true, Some("demo-hmac-key"), Some("governance-demo"));
+    // Receipts are only worth generating if something takes delivery of them,
+    // so the sink comes first and enabling without one is an error.
+    let collector = Arc::new(TestReceiptCollector::new());
+    enable_receipts(ReceiptOptions {
+        enabled: true,
+        signing_key: Some("demo-hmac-key".to_string()),
+        service_name: Some("governance-demo".to_string()),
+        sink: Some(collector.clone()),
+    })
+    .map_err(|err| TelemetryError::new(err.message))?;
     register_pii_rule(PIIRule::new(vec!["password".into()], PIIMode::Redact, 0));
     let _ = sanitize_payload(&json!({"user": "bob", "password": "s3cr3t"}), true, 32);
-    enable_receipts(false, None, None);
-    let receipts = get_emitted_receipts_for_tests();
-    let receipt = receipts.last().cloned();
+    enable_receipts(ReceiptOptions::default()).map_err(|err| TelemetryError::new(err.message))?;
+    let receipt = collector.receipts().last().cloned();
 
     Ok(DemoSummary {
         full_logs_debug_allowed,

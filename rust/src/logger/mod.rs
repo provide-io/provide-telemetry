@@ -23,6 +23,10 @@ mod pretty;
 mod processors;
 
 use emit::{emit_if_console, emit_if_json, emit_if_otel, emit_if_pretty};
+// Receipts timestamp their records with the same clock and the same rendering
+// the logger uses, so an operator can line a receipt up against the log line
+// that produced it.
+pub(crate) use emit::now_iso8601;
 pub use emit::{
     enable_console_capture_for_tests, enable_json_capture_for_tests,
     enable_pretty_capture_for_tests, take_console_capture, take_json_capture, take_pretty_capture,

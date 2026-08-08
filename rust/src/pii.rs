@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
 use crate::classification::{classify_key, get_classification_policy};
-use crate::receipts::emit_receipt;
+use crate::receipts::record_redaction;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PIIMode {
@@ -244,10 +244,10 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     if let Some(masked) = mask_value(value, &rule.mode, rule.truncate_to) {
                         out.insert(key.clone(), masked);
                     }
-                    emit_receipt(
+                    record_redaction(
                         &child_path.join("."),
                         &format!("{:?}", rule.mode).to_ascii_lowercase(),
-                        &value.to_string(),
+                        value,
                     );
                     continue;
                 }
@@ -259,7 +259,7 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     || is_secret(value)
                 {
                     out.insert(key.clone(), Value::String(REDACTED.to_string()));
-                    emit_receipt(&child_path.join("."), "redact", &value.to_string());
+                    record_redaction(&child_path.join("."), "redact", value);
                     continue;
                 }
 

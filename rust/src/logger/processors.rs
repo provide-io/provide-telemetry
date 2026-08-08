@@ -20,6 +20,7 @@ use serde_json::Value;
 
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
+use crate::harden::{harden_value, HardenLimits};
 use crate::pii::{detect_secret_in_string, sanitize_payload, REDACTED_SENTINEL};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
@@ -31,31 +32,6 @@ fn runtime_config_or_env() -> Option<TelemetryConfig> {
         Some(cfg) => Some(cfg),
         None => TelemetryConfig::from_env().ok(),
     }
-}
-
-fn truncate_string_value(value: &mut String, max_value_length: usize) {
-    if max_value_length == 0 || value.len() <= max_value_length {
-        return;
-    }
-    let cutoff = value
-        .char_indices()
-        .map(|(index, ch)| index + ch.len_utf8())
-        .take_while(|end| *end <= max_value_length)
-        .last()
-        .unwrap_or(0);
-    value.truncate(cutoff);
-    value.push_str("...");
-}
-
-fn should_keep_char(ch: char) -> bool {
-    match ch {
-        '\n' | '\t' => true,
-        _ => !ch.is_control(),
-    }
-}
-
-fn strip_control_chars(value: &mut String) {
-    value.retain(should_keep_char);
 }
 
 fn first_context_string<'a>(event: &'a LogEvent, keys: &[&str]) -> Option<&'a str> {
@@ -72,22 +48,6 @@ fn runtime_schema_error(event: &LogEvent) -> Option<String> {
     match validate_required_keys(&event.context, &cfg.event_schema.required_keys) {
         Ok(()) => None,
         Err(err) => Some(err.message),
-    }
-}
-
-fn truncate_context_values(event: &mut LogEvent, max_value_length: usize) {
-    for value in event.context.values_mut() {
-        if let Value::String(text) = value {
-            truncate_string_value(text, max_value_length);
-        }
-    }
-}
-
-fn strip_context_values(event: &mut LogEvent) {
-    for value in event.context.values_mut() {
-        if let Value::String(text) = value {
-            strip_control_chars(text);
-        }
     }
 }
 
@@ -116,10 +76,13 @@ fn is_priority_key(key: &str) -> bool {
 pub(super) fn process_event(event: &mut LogEvent) {
     let cfg = runtime_config_or_env();
     let pii_max_depth = cfg.as_ref().map_or(8, |c| c.pii_max_depth);
-    let max_attr_value_length = cfg
-        .as_ref()
-        .map_or(1024, |c| c.security.max_attr_value_length);
-    let max_attr_count = cfg.as_ref().map_or(64, |c| c.security.max_attr_count);
+    let limits = HardenLimits {
+        max_value_length: cfg
+            .as_ref()
+            .map_or(1024, |c| c.security.max_attr_value_length),
+        max_attr_count: cfg.as_ref().map_or(64, |c| c.security.max_attr_count),
+        max_depth: cfg.as_ref().map_or(8, |c| c.security.max_nesting_depth),
+    };
 
     // 1. DARS extraction (only when Event metadata is attached)
     extract_dars_fields(event);
@@ -128,7 +91,7 @@ pub(super) fn process_event(event: &mut LogEvent) {
     inject_logger_name(event);
 
     // 3. Harden input
-    harden_input(event, max_attr_value_length, max_attr_count);
+    harden_input(event, limits);
 
     // 4. Error fingerprint
     add_error_fingerprint(event);
@@ -183,11 +146,21 @@ fn inject_logger_name(event: &mut LogEvent) {
     );
 }
 
-/// Truncate long string values, strip control characters, and cap the
-/// number of context attributes.
-fn harden_input(event: &mut LogEvent, max_value_length: usize, max_attr_count: usize) {
-    truncate_context_values(event, max_value_length);
-    strip_context_values(event);
+/// Bound every context value, then cap how many of them survive.
+///
+/// The values are hardened recursively — depth, width and length at every
+/// level — so nothing downstream (PII traversal, receipt canonicalization,
+/// renderers, the OTel bridge) has to defend itself against an unbounded
+/// structure. The top-level key cap is separate from the one inside
+/// [`harden_value`] because it is not a plain first-N: dropping `trace_id` or
+/// `service` to make room for a caller's forty-first keyword argument would
+/// cost more than it saves.
+fn harden_input(event: &mut LogEvent, limits: HardenLimits) {
+    for value in event.context.values_mut() {
+        // Depth 1: the context map itself is the depth-0 composite.
+        *value = harden_value(value, limits, 1);
+    }
+    let max_attr_count = limits.max_attr_count;
     if max_attr_count == 0 {
         return;
     }
