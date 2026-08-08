@@ -180,7 +180,7 @@ describe('observed stages on the real write hook', () => {
 
   it('stops at consent when consent is withheld, and still releases', () => {
     const observed = observeStages(() => {
-      setConsentLevel('none');
+      setConsentLevel('NONE');
     });
     expect(observed).toEqual(['consent']);
     expect(ticketWasReleased()).toBe(true);
