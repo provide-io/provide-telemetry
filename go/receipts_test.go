@@ -8,9 +8,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // resetReceipts resets receipt state and registers cleanup for t.
@@ -18,10 +21,20 @@ func resetReceipts(t *testing.T) {
 	t.Helper()
 	_resetPIIRules()
 	ResetReceiptsForTests()
+	_resetHealth()
 	t.Cleanup(func() {
 		_resetPIIRules()
 		ResetReceiptsForTests()
+		_resetHealth()
 	})
+}
+
+// mustEnableReceipts fails the test if the sink contract rejects opts.
+func mustEnableReceipts(t *testing.T, opts ReceiptOptions) {
+	t.Helper()
+	if err := EnableReceipts(opts); err != nil {
+		t.Fatalf("EnableReceipts(%+v): %v", opts, err)
+	}
 }
 
 // TestReceiptsDisabledByDefault verifies no receipts are emitted before EnableReceipts is called.
@@ -38,7 +51,7 @@ func TestReceiptsDisabledByDefault(t *testing.T) {
 // TestReceiptsEmittedWhenEnabled verifies receipts are generated after EnableReceipts.
 func TestReceiptsEmittedWhenEnabled(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "", "test-svc")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true, ServiceName: "test-svc"})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
@@ -60,14 +73,16 @@ func TestReceiptsEmittedWhenEnabled(t *testing.T) {
 // TestReceiptOriginalHashIsSHA256 verifies the hash is SHA-256 of the original value.
 func TestReceiptOriginalHashIsSHA256(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
 	if len(receipts) != 1 {
 		t.Fatalf("expected 1 receipt, got %d", len(receipts))
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%v", "secret123")))
+	// Canonical JSON, not the %v rendering: the string "1" and the number 1
+	// share a display form and must not share a digest.
+	sum := sha256.Sum256([]byte(`"secret123"`))
 	expected := hex.EncodeToString(sum[:])
 	if receipts[0].OriginalHash != expected {
 		t.Errorf("hash mismatch: expected %q, got %q", expected, receipts[0].OriginalHash)
@@ -77,7 +92,7 @@ func TestReceiptOriginalHashIsSHA256(t *testing.T) {
 // TestReceiptHMACWhenKeyProvided verifies HMAC is computed correctly when a key is set.
 func TestReceiptHMACWhenKeyProvided(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "test-key", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true, SigningKey: "test-key"})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
@@ -101,7 +116,7 @@ func TestReceiptHMACWhenKeyProvided(t *testing.T) {
 // TestReceiptHMACEmptyWhenNoKey verifies HMAC is empty when no signing key is provided.
 func TestReceiptHMACEmptyWhenNoKey(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
@@ -116,7 +131,7 @@ func TestReceiptHMACEmptyWhenNoKey(t *testing.T) {
 // TestReceiptTamperDetection verifies that changing field_path produces a different HMAC.
 func TestReceiptTamperDetection(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "test-key", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true, SigningKey: "test-key"})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
@@ -137,14 +152,14 @@ func TestReceiptTamperDetection(t *testing.T) {
 // TestEnableReceiptsDisabled verifies that EnableReceipts(false,...) unregisters the hook.
 func TestEnableReceiptsDisabled(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true})
 	_piiMu.RLock()
 	hook := _receiptHook
 	_piiMu.RUnlock()
 	if hook == nil {
 		t.Error("expected hook to be set after EnableReceipts(true)")
 	}
-	EnableReceipts(false, "", "")
+	mustEnableReceipts(t, ReceiptOptions{})
 	_piiMu.RLock()
 	hook = _receiptHook
 	_piiMu.RUnlock()
@@ -156,7 +171,7 @@ func TestEnableReceiptsDisabled(t *testing.T) {
 // TestReceiptIDIsUUIDFormat verifies receipt_id has UUID format.
 func TestReceiptIDIsUUIDFormat(t *testing.T) {
 	resetReceipts(t)
-	EnableReceipts(true, "", "")
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true})
 	payload := map[string]any{"password": "secret123"}
 	SanitizePayload(payload, true, 0)
 	receipts := GetEmittedReceiptsForTests()
@@ -173,30 +188,124 @@ func TestReceiptIDIsUUIDFormat(t *testing.T) {
 	}
 }
 
-// TestReceiptsProductionMode verifies production mode logs rather than stores.
-func TestReceiptsProductionMode(t *testing.T) {
-	t.Cleanup(func() {
-		_resetPIIRules()
-		ResetReceiptsForTests()
-	})
-	_resetPIIRules()
-	// Set production mode (test mode off) manually.
+// _enterProductionReceiptMode switches the receipt engine out of test mode for
+// the duration of t, so the sink contract can be exercised as a caller sees it.
+func _enterProductionReceiptMode(t *testing.T) {
+	t.Helper()
+	resetReceipts(t)
 	_receiptsMu.Lock()
-	_receiptsKey = ""
-	_receiptsStore = nil
 	_receiptsTestMode = false
 	_receiptsMu.Unlock()
-	SetReceiptHook(nil)
+}
 
-	EnableReceipts(true, "", "prod-svc")
-	payload := map[string]any{"password": "secret123"}
-	SanitizePayload(payload, true, 0)
-	// In production mode, receipts are logged, not stored.
-	_receiptsMu.RLock()
-	n := len(_receiptsStore)
-	_receiptsMu.RUnlock()
-	if n != 0 {
-		t.Errorf("expected 0 stored receipts in production mode, got %d", n)
+// TestReceiptsProductionMode verifies production receipts reach the configured
+// sink and never the test collector.
+func TestReceiptsProductionMode(t *testing.T) {
+	_enterProductionReceiptMode(t)
+
+	sink := &TestReceiptCollector{}
+	mustEnableReceipts(t, ReceiptOptions{Enabled: true, ServiceName: "prod-svc", Sink: sink})
+	SanitizePayload(map[string]any{"password": "secret123"}, true, 0)
+
+	delivered := sink.Receipts()
+	if len(delivered) != 1 {
+		t.Fatalf("expected 1 receipt at the sink, got %d", len(delivered))
 	}
-	EnableReceipts(false, "", "")
+	if delivered[0].ServiceName != "prod-svc" {
+		t.Errorf("service name: got %q", delivered[0].ServiceName)
+	}
+	if collected := GetEmittedReceiptsForTests(); len(collected) != 0 {
+		t.Errorf("test collector took delivery outside test mode: %d", len(collected))
+	}
+	if got := GetHealthSnapshot().ReceiptFailures; got != 0 {
+		t.Errorf("ReceiptFailures: want 0, got %d", got)
+	}
+}
+
+// TestEnableReceiptsRequiresSinkInProduction pins the contract that enabling
+// receipts without a destination is an error, not a silent discard: a service
+// would otherwise sign an audit record per redaction and drop every one.
+func TestEnableReceiptsRequiresSinkInProduction(t *testing.T) {
+	_enterProductionReceiptMode(t)
+
+	if err := EnableReceipts(ReceiptOptions{Enabled: true, SigningKey: "k"}); !errors.Is(err, ErrMissingReceiptSink) {
+		t.Fatalf("want ErrMissingReceiptSink, got %v", err)
+	}
+	_piiMu.RLock()
+	hook := _receiptHook
+	_piiMu.RUnlock()
+	if hook != nil {
+		t.Error("a rejected EnableReceipts must not register the hook")
+	}
+	// Disabling never needs a sink.
+	if err := EnableReceipts(ReceiptOptions{}); err != nil {
+		t.Fatalf("disabling receipts: %v", err)
+	}
+}
+
+type _rejectingSink struct{}
+
+func (_rejectingSink) Emit(RedactionReceipt) bool { return false }
+
+type _panickingSink struct{}
+
+func (_panickingSink) Emit(RedactionReceipt) bool { panic("sink exploded") }
+
+// TestReceiptSinkFailuresCountIntoHealth covers the three ways a receipt fails
+// to arrive. All three are counted and none of them logs: the logger is what
+// produces redactions, so logging here would be an unbounded cycle.
+func TestReceiptSinkFailuresCountIntoHealth(t *testing.T) {
+	cases := []struct {
+		name string
+		sink ReceiptSink
+	}{
+		{"refusing sink", _rejectingSink{}},
+		{"panicking sink", _panickingSink{}},
+		{"absent sink", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetReceipts(t)
+			emitReceipt(RedactionReceipt{ReceiptID: "r"}, tc.sink)
+			if got := GetHealthSnapshot().ReceiptFailures; got != 1 {
+				t.Fatalf("ReceiptFailures: want 1, got %d", got)
+			}
+		})
+	}
+}
+
+// TestTestReceiptCollectorEvictsOldest pins the cap on the one sink this
+// library owns. A production sink is never capped.
+func TestTestReceiptCollectorEvictsOldest(t *testing.T) {
+	collector := &TestReceiptCollector{}
+	for i := range TestReceiptCapacity + 2 {
+		collector.Emit(RedactionReceipt{ReceiptID: strconv.Itoa(i)})
+	}
+	got := collector.Receipts()
+	if len(got) != TestReceiptCapacity {
+		t.Fatalf("retained %d receipts, want %d", len(got), TestReceiptCapacity)
+	}
+	if got[0].ReceiptID != "2" {
+		t.Errorf("oldest retained receipt: got %q, want %q", got[0].ReceiptID, "2")
+	}
+	if got[len(got)-1].ReceiptID != strconv.Itoa(TestReceiptCapacity+1) {
+		t.Errorf("newest retained receipt: got %q", got[len(got)-1].ReceiptID)
+	}
+	collector.Reset()
+	if n := len(collector.Receipts()); n != 0 {
+		t.Errorf("Reset left %d receipts", n)
+	}
+}
+
+// TestReceiptTimestampIsFixedWidthMillis pins the wire spelling. RFC3339Nano
+// trims trailing zeros, so the same instant would format to different widths
+// depending on its fractional part.
+func TestReceiptTimestampIsFixedWidthMillis(t *testing.T) {
+	at := time.Date(2026, 8, 4, 12, 34, 56, 789000000, time.UTC)
+	if got := _receiptTimestamp(at); got != "2026-08-04T12:34:56.789Z" {
+		t.Errorf("got %q", got)
+	}
+	if got := _receiptTimestamp(time.Date(2026, 8, 4, 12, 34, 56, 0, time.UTC)); got != "2026-08-04T12:34:56.000Z" {
+		t.Errorf("zero fraction: got %q", got)
+	}
 }

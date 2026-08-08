@@ -200,7 +200,12 @@ func (h *_telemetryHandler) applySchema(r slog.Record) error {
 // Python's behaviour where a message containing a secret is emitted as
 // "message": "***".
 func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
-	payload := _attrsToMap(r)
+	// Hardening runs before the rule engine, not after. The engine only looks
+	// inside map[string]any and []any, so a []credentials, a map[string]string
+	// or a plain struct would carry its Password field straight past redaction.
+	// Normalizing first turns every typed container into something the engine
+	// can see into, and bounds depth, width and value length while it is there.
+	payload := _hardenAttrs(_attrsToMap(r), _limitsFromConfig(h.cfg))
 	sanitized := SanitizePayload(payload, h.cfg.Logging.Sanitize, 0)
 
 	message := r.Message
@@ -412,14 +417,19 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 			cfg = liveCfg
 		}
 	}
-	handler := _newTelemetryHandler(_baseLogHandler(cfg), cfg, name)
+	// The OTel bridge is fanned out to from *below* the telemetry handler, not
+	// beside it. As a sibling it received the record the caller passed in, so
+	// every record exported to OTel bypassed consent, schema, sampling,
+	// backpressure, hardening and PII redaction — a password masked in the
+	// local log left the process in the clear.
+	base := _baseLogHandler(cfg)
 	if backend := _activeBackend(); backend != nil {
 		bridgeName := cmp.Or(name, cfg.ServiceName)
 		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
-			handler = newMultiHandler(handler, bridge)
+			base = newMultiHandler(base, bridge)
 		}
 	}
-	return _attachTraceContext(slog.New(handler), ctx)
+	return _attachTraceContext(slog.New(_newTelemetryHandler(base, cfg, name)), ctx)
 }
 
 func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) {

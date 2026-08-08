@@ -17,3 +17,11 @@ func ResetForTests() {
 	_resetCardinalityLimits()
 	_resetSetup()
 }
+
+// ResetPIIRulesForTests clears every custom PII rule and every hook registered
+// on the PII engine, leaving only the built-in sensitive keys and patterns.
+//
+// It is safe to call from external test packages (package telemetry_test).
+func ResetPIIRulesForTests() {
+	_resetPIIRules()
+}

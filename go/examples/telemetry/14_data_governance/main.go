@@ -97,7 +97,17 @@ func demoReceipts() {
 	fmt.Println("── 3. Redaction Receipts ──────────────────────────────────")
 	// ResetReceiptsForTests enables in-process receipt collection (test mode).
 	telemetry.ResetReceiptsForTests()
-	telemetry.EnableReceipts(true, "demo-hmac-key", "governance-demo") //nolint:gosec // demo only
+	// A production caller passes Sink: their own durable destination; without
+	// one EnableReceipts returns ErrMissingReceiptSink rather than signing
+	// receipts nobody will ever read. Test mode substitutes the collector.
+	if err := telemetry.EnableReceipts(telemetry.ReceiptOptions{
+		Enabled:     true,
+		SigningKey:  "demo-hmac-key", //nolint:gosec // demo only
+		ServiceName: "governance-demo",
+	}); err != nil {
+		fmt.Printf("  (receipts unavailable: %v)\n", err)
+		return
+	}
 
 	telemetry.RegisterPIIRule(telemetry.PIIRule{Path: []string{"password"}, Mode: telemetry.PIIModeRedact})
 	telemetry.SanitizePayload(map[string]any{
@@ -120,7 +130,7 @@ func demoReceipts() {
 	} else {
 		fmt.Println("  (no receipts captured)")
 	}
-	telemetry.EnableReceipts(false, "", "")
+	_ = telemetry.EnableReceipts(telemetry.ReceiptOptions{})
 	fmt.Println()
 }
 

@@ -5,7 +5,6 @@ package otel
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
@@ -31,23 +30,35 @@ type _otelSpanAdapter struct {
 
 func (s *_otelSpanAdapter) End() { s.inner.End() }
 
+// SetAttribute bounds a span attribute before it leaves the process.
+//
+// Span attributes arrive as an untyped any straight from the caller and never
+// pass through the logger's handler chain, so this is the only place they can
+// be hardened: an unbounded string, a control character or a self-referential
+// struct is otherwise the exporter's problem.
 func (s *_otelSpanAdapter) SetAttribute(key string, value any) {
-	var kv attribute.KeyValue
-	switch v := value.(type) {
+	s.inner.SetAttributes(_spanAttribute(key, telemetry.Harden(value, telemetry.DefaultLimits())))
+}
+
+// _spanAttribute maps a hardened value onto an OTel attribute type. Hardening
+// has already collapsed every integer to int64 and every float to float64,
+// which is why there is no int or float32 case: neither can arrive any more.
+func _spanAttribute(key string, hardened any) attribute.KeyValue {
+	switch v := hardened.(type) {
 	case bool:
-		kv = attribute.Bool(key, v)
-	case int:
-		kv = attribute.Int64(key, int64(v))
+		return attribute.Bool(key, v)
 	case int64:
-		kv = attribute.Int64(key, v)
+		return attribute.Int64(key, v)
 	case float64:
-		kv = attribute.Float64(key, v)
+		return attribute.Float64(key, v)
 	case string:
-		kv = attribute.String(key, v)
+		return attribute.String(key, v)
 	default:
-		kv = attribute.String(key, fmt.Sprintf("%v", value))
+		// nil, unsigned integers and every composite: OTel has no attribute
+		// type for these, so they travel as canonical JSON rather than as
+		// whatever %v happened to print for the caller's concrete type.
+		return attribute.String(key, telemetry.CanonicalJSON(hardened))
 	}
-	s.inner.SetAttributes(kv)
 }
 
 func (s *_otelSpanAdapter) RecordError(err error) { s.inner.RecordError(err) }

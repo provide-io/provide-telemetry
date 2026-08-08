@@ -9,8 +9,8 @@ import (
 )
 
 // HealthSnapshot holds point-in-time counters for all telemetry signals.
-// The canonical layout has 25 fields: 8 per signal (logs, traces, metrics)
-// plus 1 global field (SetupError).
+// The canonical layout has 26 fields: 8 per signal (logs, traces, metrics)
+// plus 2 global fields (SetupError, ReceiptFailures).
 type HealthSnapshot struct {
 	// Logs (8 fields)
 	LogsEmitted           int64
@@ -42,8 +42,14 @@ type HealthSnapshot struct {
 	MetricsCircuitState      string
 	MetricsCircuitOpenCount  int64
 
-	// Global (1 field)
+	// Global (2 fields)
 	SetupError string
+	// ReceiptFailures counts governance receipts a configured ReceiptSink
+	// refused or panicked on. Without it, a sink that silently drops every
+	// receipt is indistinguishable from one that delivers them — and the
+	// emit path cannot say so by logging, because logging is what produces
+	// receipts in the first place.
+	ReceiptFailures int64
 }
 
 // _signalHealthCounters holds lock-free per-signal counters.
@@ -76,6 +82,7 @@ var (
 	_healthTraces     _signalHealthCounters
 	_healthMetrics    _signalHealthCounters
 	_setupErrorHealth atomic.Value // always stores string
+	_receiptFailures  atomic.Int64
 )
 
 // _healthFor returns the counter set for the given signal.
@@ -126,9 +133,13 @@ func GetHealthSnapshot() HealthSnapshot {
 		MetricsCircuitState:      metricsCS.State,
 		MetricsCircuitOpenCount:  int64(metricsCS.OpenCount),
 
-		SetupError: setupErr,
+		SetupError:      setupErr,
+		ReceiptFailures: _receiptFailures.Load(),
 	}
 }
+
+// _incReceiptFailures records one governance receipt that never reached its sink.
+func _incReceiptFailures() { _receiptFailures.Add(1) }
 
 // _incEmitted increments the emitted counter for the given signal.
 func _incEmitted(signal string) { _healthFor(signal).emitted.Add(1) }
@@ -170,4 +181,5 @@ func _resetHealth() {
 	_healthTraces.reset()
 	_healthMetrics.reset()
 	_setupErrorHealth.Store("")
+	_receiptFailures.Store(0)
 }

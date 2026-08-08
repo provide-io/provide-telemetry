@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // parity_health_test.go validates that the Go HealthSnapshot struct has
-// exactly the 25 canonical fields with correct types and zero-value defaults,
+// exactly the 26 canonical fields with correct types and zero-value defaults,
 // matching the cross-language parity specification.
 
 package telemetry
@@ -14,8 +14,8 @@ import (
 
 func TestParity_Health_CanonicalFieldCount(t *testing.T) {
 	rt := reflect.TypeOf(HealthSnapshot{})
-	if rt.NumField() != 25 {
-		t.Errorf("HealthSnapshot: want 25 canonical fields, got %d", rt.NumField())
+	if rt.NumField() != 26 {
+		t.Errorf("HealthSnapshot: want 26 canonical fields, got %d", rt.NumField())
 	}
 }
 
@@ -33,8 +33,8 @@ func TestParity_Health_CanonicalFieldNames(t *testing.T) {
 		"MetricsEmitted", "MetricsDropped", "MetricsExportFailures",
 		"MetricsRetries", "MetricsExportLatencyMs", "MetricsAsyncBlockingRisk",
 		"MetricsCircuitState", "MetricsCircuitOpenCount",
-		// Global (1)
-		"SetupError",
+		// Global (2)
+		"SetupError", "ReceiptFailures",
 	}
 
 	rt := reflect.TypeOf(HealthSnapshot{})
@@ -119,6 +119,11 @@ func TestParity_Health_DefaultCountersZero(t *testing.T) {
 	// SetupError must be empty.
 	if snap.SetupError != "" {
 		t.Errorf("SetupError: want empty, got %q", snap.SetupError)
+	}
+
+	// ReceiptFailures is the second global counter and resets with the rest.
+	if snap.ReceiptFailures != 0 {
+		t.Errorf("ReceiptFailures: want 0, got %d", snap.ReceiptFailures)
 	}
 }
 

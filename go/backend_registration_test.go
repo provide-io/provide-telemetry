@@ -15,6 +15,7 @@ type _fakeBackend struct {
 	resets       int
 	lastSetupCfg *TelemetryConfig
 	logBody      []string
+	logAttrs     []map[string]any
 	counterAdds  []int64
 	gaugeSets    []float64
 	histRecords  []float64
@@ -47,6 +48,7 @@ func (b *_fakeBackend) ResetForTests() {
 	b.providers = SignalStatus{}
 	b.lastSetupCfg = nil
 	b.logBody = nil
+	b.logAttrs = nil
 	b.counterAdds = nil
 	b.gaugeSets = nil
 	b.histRecords = nil
@@ -112,6 +114,7 @@ func (h *_fakeBackendLogHandler) Enabled(context.Context, slog.Level) bool { ret
 
 func (h *_fakeBackendLogHandler) Handle(_ context.Context, record slog.Record) error {
 	h.backend.logBody = append(h.backend.logBody, h.name+":"+record.Message)
+	h.backend.logAttrs = append(h.backend.logAttrs, _attrsToMap(record))
 	return nil
 }
 
