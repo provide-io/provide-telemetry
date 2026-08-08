@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Canonical JCS number rendering — one vector per branch.
+#
+# RFC 8785 defers number formatting to ECMAScript Number::toString, so
+# JavaScript's JSON.stringify is the normative oracle. These values came from
+# it and were cross-checked against `rfc8785`, an independent Python
+# implementation, with zero disagreements. Agreement between two
+# implementations is what makes them evidence rather than a transcript of one
+# library.
+#
+# spec/receipt_fixtures.yaml already pins seven whole receipts, and every SDK
+# reproduced them on the first try — which is exactly the problem these solve.
+# Seven realistic payloads never reach the exponent thresholds, the
+# significand-trimming path, or the zero-padding branch. Mutation testing found
+# those branches unexercised in Python and Go simultaneously: 28 surviving
+# mutants in Python's _format_number/_format_significand and 16 uncovered ones
+# in Go's canonicaljson.go, all in the same five-way switch.
+#
+# Each case names the branch it covers, so a future reader can tell whether a
+# new implementation has a hole rather than guessing from the value alone.
+#
+# `canonical` is the number rendered alone. `in_object` is it inside
+# {"v": ...}, which catches a serializer that formats correctly in isolation
+# but not in context.
+#
+# Note for implementers on typed languages: JavaScript has a single float64
+# number type. Python's json parses integral literals to int and rfc8785 then
+# rejects 1e20 as outside the safe-integer domain, so a Python consumer of
+# these vectors must parse with parse_int=float to compare like for like.
+
+version: 1
+cases:
+  - id: integer_small
+    branch: "k <= n <= 21: plain integer"
+    canonical: "1"
+    in_object: "{\"v\":1}"
+  - id: integer_zero
+    branch: "k <= n <= 21: zero"
+    canonical: "0"
+    in_object: "{\"v\":0}"
+  - id: integer_negative
+    branch: "k <= n <= 21: sign branch"
+    canonical: "-42"
+    in_object: "{\"v\":-42}"
+  - id: negative_zero_collapses
+    branch: "sign branch must not fire for -0"
+    canonical: "0"
+    in_object: "{\"v\":0}"
+  - id: integer_trailing_zeros
+    branch: "k <= n: zero padding, k=1 n=3"
+    canonical: "100"
+    in_object: "{\"v\":100}"
+  - id: integer_max_plain
+    branch: "n = 22 crosses into exponential"
+    canonical: "1e+21"
+    in_object: "{\"v\":1e+21}"
+  - id: integer_last_plain
+    branch: "n = 21, the last plain integer"
+    canonical: "100000000000000000000"
+    in_object: "{\"v\":100000000000000000000}"
+  - id: fraction_simple
+    branch: "0 < n <= 21: decimal point inside digits"
+    canonical: "1.5"
+    in_object: "{\"v\":1.5}"
+  - id: fraction_many_digits
+    branch: "0 < n <= 21: multi-digit both sides"
+    canonical: "123.456"
+    in_object: "{\"v\":123.456}"
+  - id: fraction_leading_zero
+    branch: "-6 < n <= 0: leading zeros"
+    canonical: "0.001"
+    in_object: "{\"v\":0.001}"
+  - id: fraction_last_leading
+    branch: "n = -5, the last leading-zero form"
+    canonical: "0.000001"
+    in_object: "{\"v\":0.000001}"
+  - id: fraction_1e4
+    branch: "-6 < n <= 0: where .NET R diverges from ECMAScript"
+    canonical: "0.0001"
+    in_object: "{\"v\":0.0001}"
+  - id: fraction_1e5
+    branch: "-6 < n <= 0: .NET R goes exponential here, ECMAScript does not"
+    canonical: "0.00001"
+    in_object: "{\"v\":0.00001}"
+  - id: fraction_multi_small
+    branch: "-6 < n <= 0: multi-digit significand in the same range"
+    canonical: "0.000015"
+    in_object: "{\"v\":0.000015}"
+  - id: exponential_small_single
+    branch: "k == 1 exponential, negative exponent"
+    canonical: "1e-7"
+    in_object: "{\"v\":1e-7}"
+  - id: exponential_large_single
+    branch: "k == 1 exponential, positive exponent"
+    canonical: "1e+22"
+    in_object: "{\"v\":1e+22}"
+  - id: exponential_multi
+    branch: "default: multi-digit exponential"
+    canonical: "1.234e-7"
+    in_object: "{\"v\":1.234e-7}"
+  - id: exponential_multi_large
+    branch: "default: multi-digit, positive exponent"
+    canonical: "1.5e+22"
+    in_object: "{\"v\":1.5e+22}"
+  - id: max_safe_integer
+    branch: "k = n = 16"
+    canonical: "9007199254740991"
+    in_object: "{\"v\":9007199254740991}"
+  - id: float_repr_shortest
+    branch: "shortest round-trip, not 0.1000000000000000055"
+    canonical: "0.1"
+    in_object: "{\"v\":0.1}"
+  - id: float_sum_artifact
+    branch: "renders 0.30000000000000004, not 0.3"
+    canonical: "0.30000000000000004"
+    in_object: "{\"v\":0.30000000000000004}"

@@ -24,7 +24,28 @@ import yaml
 
 from provide.telemetry.receipts import canonical_json, receipt_payload, sign_receipt
 
-_FIXTURES = Path(__file__).parent.parent.parent / "spec" / "receipt_fixtures.yaml"
+
+def _find_fixtures() -> Path:
+    """Locate spec/receipt_fixtures.yaml by walking up, not by counting parents.
+
+    mutmut runs the suite against a copy of the tree under ``mutants/``, which
+    has no ``spec/`` beside it, so a fixed ``parent.parent.parent`` resolves to
+    a path that does not exist and the whole file errors during collection.
+    Walking up until the fixture is found works from either location.
+
+    This file deliberately stays in the mutation run rather than being marked
+    ``tooling`` to dodge the problem: these vectors are the strongest pressure
+    on canonical_json and sign_receipt, and excluding them would quietly hand
+    those functions a free pass.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        fixtures = candidate / "spec" / "receipt_fixtures.yaml"
+        if fixtures.is_file():
+            return fixtures
+    raise RuntimeError("spec/receipt_fixtures.yaml not found in any parent directory")
+
+
+_FIXTURES = _find_fixtures()
 
 
 def _cases() -> list[dict[str, Any]]:

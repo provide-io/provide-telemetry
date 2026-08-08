@@ -22,7 +22,9 @@ def redact_config(config: TelemetryConfig) -> dict[str, object]:
     # sink is a delivery destination rather than configuration data, so it is
     # detached for the walk and reported by presence only.
     sink = config.receipt_sink
-    config.receipt_sink = None
+    # A placeholder nobody reads: raw's entry is replaced below and the field is
+    # restored in `finally`, so any stand-in asdict can copy behaves the same.
+    config.receipt_sink = None  # pragma: no mutate
     try:
         raw = dataclasses.asdict(config)
     finally:

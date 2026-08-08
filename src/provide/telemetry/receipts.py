@@ -133,11 +133,20 @@ def _format_significand(digits: str, n: int) -> str:
         return digits + "0" * (n - k)
     if 0 < n <= 21:
         return digits[:n] + "." + digits[n:]
+    # ECMAScript spells this bound "-6 < n <= 0", and both halves are load
+    # bearing. Dropping "n <= 0" as redundant — on the reasoning that the
+    # branches above consume every positive n — is wrong: they only consume
+    # n <= 21, so n = 22 fell through to here, "0" * -22 produced the empty
+    # string, and 1e21 rendered as "0.1". 1e21, 1e22 and 0.1 then shared one
+    # canonical form and one receipt digest. Restated in full, deliberately.
     if -6 < n <= 0:
         return "0." + "0" * -n + digits
+    # Only n > 21 or n <= -6 reach this, so the exponent is never zero and the
+    # sign flag renders exactly the explicit "+" ECMAScript emits — the same
+    # rule go/canonicaljson.go's canonicalExponent and rust/src/jcs.rs apply.
     exponent = n - 1
     mantissa = digits if k == 1 else digits[0] + "." + digits[1:]
-    return f"{mantissa}e{'+' if exponent > 0 else '-'}{abs(exponent)}"
+    return f"{mantissa}e{exponent:+d}"
 
 
 def _format_number(value: float) -> str:
@@ -150,11 +159,13 @@ def _format_number(value: float) -> str:
     """
     if value == 0:
         return "0"
-    sign = "-" if value < 0 else ""
-    parts = Decimal(repr(abs(value))).as_tuple()
+    parts = Decimal(repr(value)).as_tuple()
+    sign = "-" if parts.sign else ""
     digits = list(parts.digits)
     exponent = int(parts.exponent)
-    while len(digits) > 1 and digits[-1] == 0:
+    # Zero is already gone, so the leading digit is nonzero and the pop
+    # terminates without a length guard.
+    while digits[-1] == 0:
         digits.pop()
         exponent += 1
     text = "".join(str(digit) for digit in digits)
@@ -163,7 +174,21 @@ def _format_number(value: float) -> str:
 
 def _sort_key(key: str) -> bytes:
     """JCS orders object keys by UTF-16 code unit, not by code point."""
-    return key.encode("utf-16-be")
+    # Codec lookup is case-insensitive, so a "UTF-16-BE" mutation selects the
+    # same codec and yields identical bytes.
+    return key.encode("utf-16-be")  # pragma: no mutate
+
+
+def _json_string(text: str) -> str:
+    """Quote and escape a string exactly as ``JSON.stringify`` does.
+
+    This is the one piece of JCS Python gives away for free: ``json.dumps``
+    escapes precisely the set ECMAScript does, so only the ASCII-escaping has
+    to be turned off.
+    """
+    # ensure_ascii is read for truth, so the falsy-mutant (None) is the same
+    # flag value and cannot change a byte of the output.
+    return json.dumps(text, ensure_ascii=False)  # pragma: no mutate
 
 
 def _canonical(value: Any, seen: set[int]) -> str:
@@ -176,7 +201,7 @@ def _canonical(value: Any, seen: set[int]) -> str:
     if value is False:
         return "false"
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
+        return _json_string(value)
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
@@ -204,7 +229,7 @@ def _canonical_mapping(value: Mapping[Any, Any], seen: set[int]) -> str:
         # Rendered names are paired with their values up front: a non-string key
         # canonicalizes under str(key), which is no longer a key of the mapping.
         pairs = sorted(((str(key), item) for key, item in value.items()), key=lambda pair: _sort_key(pair[0]))
-        body = ",".join(f"{json.dumps(name, ensure_ascii=False)}:{_canonical(item, seen)}" for name, item in pairs)
+        body = ",".join(f"{_json_string(name)}:{_canonical(item, seen)}" for name, item in pairs)
         return "{" + body + "}"
     finally:
         seen.discard(id(value))
@@ -294,8 +319,9 @@ def emit_receipt(receipt: RedactionReceipt, sink: ReceiptSink) -> None:
         accepted = sink.emit(receipt)
     except Exception:
         # Counted, never logged, and never re-raised: a sink that raises must
-        # not take the caller's log call down with it.
-        accepted = False
+        # not take the caller's log call down with it. `accepted` is only read
+        # for truth below, so the falsy-mutant (None) counts the same failure.
+        accepted = False  # pragma: no mutate
     if not accepted:
         increment_receipt_failures()
 
@@ -359,6 +385,9 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
         # so the suite never exercises the un-sinked path enable_receipts now
         # rejects.
         sink = _test_collector if _test_mode else _sink
+    # Hoisted out of the call below because a pragma on a continuation line is
+    # ignored; the codec name is an alias, so the mutation cannot change bytes.
+    signing_key = key.encode("utf-8") if key else None  # pragma: no mutate
     receipt = sign_receipt(
         original_value,
         receipt_id=str(uuid.uuid4()),
@@ -366,7 +395,7 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
         field_path=field_path,
         action=action,
         service_name=service_name,
-        key=key.encode("utf-8") if key else None,  # pragma: no mutate — codec alias equivalent
+        key=signing_key,
     )
     if sink is None:
         # enable_receipts refuses this combination, so reaching it means the
@@ -386,7 +415,10 @@ def _reset_receipts_for_tests() -> None:
     with _lock:
         _enabled = False  # pragma: no mutate — test reset; False is the canonical disabled value
         _signing_key = None  # pragma: no mutate — "" is equivalent (both falsy for HMAC check)
-        _sink = None
+        # Hygiene only: the same call latches test mode, and _on_redaction
+        # routes to _test_collector while that holds, so nothing reads _sink
+        # until enable_receipts sets it again.
+        _sink = None  # pragma: no mutate
         _test_collector.receipts.clear()
         _test_mode = True
     pii_mod._receipt_hook = None

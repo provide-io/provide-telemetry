@@ -32,7 +32,11 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from opentelemetry import context as _otel_context
+# Imported as a submodule rather than `from opentelemetry import context`:
+# opentelemetry is a namespace package, and the attribute form does not resolve
+# for a type checker that can actually see the package. CI installs no otel
+# extra before running mypy, so this only shows up locally.
+import opentelemetry.context as _otel_context
 from opentelemetry.context.contextvars_context import ContextVarsRuntimeContext
 
 if TYPE_CHECKING:

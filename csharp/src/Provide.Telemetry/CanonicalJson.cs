@@ -187,6 +187,26 @@ public static class CanonicalJson
             formatted = d.ToString("F0", CultureInfo.InvariantCulture);
             return true;
         }
+
+        // The lower threshold needs the same explicit handling, and did not get
+        // it. ECMAScript stays decimal down to 1e-6 and goes exponential at
+        // 1e-7; .NET's "R" crosses over somewhere between 1e-4 and 1e-5. So
+        // 0.00001 and 0.000001 rendered as "1e-5" and "1e-6" where every other
+        // SDK emits "0.00001" and "0.000001" — distinct strings, so no
+        // collision, but a different receipt digest for the same value. Error
+        // rates, sampling ratios and sub-millisecond durations all live here.
+        var magnitude = Math.Abs(d);
+        if (magnitude < 1e21 && magnitude >= 1e-6)
+        {
+            // "R" is the shortest round-trip form; reshaping it keeps that
+            // guarantee while removing the exponent ECMAScript would not use.
+            var round = d.ToString("R", CultureInfo.InvariantCulture);
+            formatted = round.Contains('E', StringComparison.Ordinal)
+                ? d.ToString("0.#####################", CultureInfo.InvariantCulture)
+                : round;
+            return true;
+        }
+
         formatted = NormalizeExponent(d.ToString("R", CultureInfo.InvariantCulture));
         return true;
     }
