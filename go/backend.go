@@ -161,7 +161,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	if providers.Logs {
 		bridgeName := cfg.ServiceName
 		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
-			Logger = slog.New(newMultiHandler(Logger.Handler(), bridge))
+			_setActiveLogger(slog.New(newMultiHandler(Logger.Handler(), bridge)))
 			slog.SetDefault(Logger)
 		}
 	}

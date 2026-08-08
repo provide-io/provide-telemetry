@@ -785,6 +785,44 @@ Run:
 
 Expected: all tests pass with no data race and old generation copies stay unchanged.
 
+**As built — the race was worse than Step 1 predicted, and one fix was missing:**
+
+1. *There were two independent races, not one.* Step 1 anticipated
+   `_applyHotFields` writing through the published pointer, and `-race`
+   confirmed it five times over: writes to `Logging`, `Sampling` and
+   `EventSchema` concurrent with `_effectiveLevel` ranging over
+   `Logging.ModuleLevels` and `applySchema` reading `EventSchema`, from inside
+   `slog.Logger.Info`. But the detector also found a sixth the plan does not
+   mention — the exported `Logger` package variable itself. `_configureLogger`
+   reassigns it on every reconfiguration while `GetLogger` reads it, and no
+   amount of config immutability fixes a racing variable. Internal reads now go
+   through an `atomic.Pointer[slog.Logger]` (`_setActiveLogger` /
+   `_loadActiveLogger`), with a new `DefaultLogger()` accessor for callers.
+   `Logger` is still assigned in lockstep, so nothing existing breaks.
+2. *`_applyHotFields` was kept, not deleted.* The plan called for removing it;
+   the defect was never the function, it was the argument. It now receives a
+   fresh clone rather than the published pointer, which is a two-line change at
+   the call site, and it stays the single place that knows which blocks are hot
+   and which are baked into a live exporter — knowledge worth keeping in one
+   named function rather than inlining into `ReconfigureTelemetry`.
+3. *Handlers still retain a `*TelemetryConfig`, deliberately.* The plan asked
+   for handlers that retain none. But a handler that re-read the current
+   generation on every call would mean a logger built at time T silently
+   changing behaviour mid-flight, which is the opposite of what
+   `TestConcurrentLoggingAndReconfigureUsesWholeGenerations` names. The pointer
+   a handler holds now belongs to a generation that is never written again, so
+   retention is safe and gives each handler a consistent view for its lifetime.
+4. *`multi_handler.go` and `health.go` needed no changes.* Neither retains
+   config; the plan listed them speculatively.
+
+Publication is the commit point: `SetupTelemetry` publishes only after backend
+wiring succeeds, because that wiring can wrap `Logger` with a bridge handler and
+a generation must never be visible while its logger is still being assembled.
+
+Verified: 511 gremlins mutants killed, 0 lived, 0 uncovered; 100% statement
+coverage; `go test -race ./...` clean in both modules, and the focused
+reconfigure/hot-reload set clean at `-count=20`.
+
 - [ ] **Step 6: Commit immutable Go generations**
 
 ```bash

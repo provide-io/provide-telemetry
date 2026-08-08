@@ -161,19 +161,25 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 
 	// Publish the signal gates before wiring: _setupBackendLocked asks the
 	// backend for Providers(), and the OTel backend gates provider adoption on
-	// them, so they must already reflect this config.
+	// them, so they must already reflect this config. _runtimeCfg is set here
+	// for the same reason — _shutdownDeadlineForLocked reads it — but the
+	// generation is not published until wiring has succeeded, so no emit path
+	// can observe a half-built runtime.
 	_runtimeCfg = cfg
 	_setupDone = true
 	_publishRuntimeGatesLocked()
 
 	// Wire any registered optional backend (for example go/otel).
 	if err := _setupBackendLocked(state, cfg); err != nil {
-		_runtimeCfg = nil
 		_setupDone = false
-		_publishRuntimeGatesLocked()
+		_clearGenerationLocked()
 		return nil, err
 	}
 
+	// Publish last: backend wiring can wrap Logger with a bridge handler, and a
+	// generation must never become visible while its logger is still being
+	// assembled.
+	_publishGenerationLocked(cfg)
 	return cloneTelemetryConfig(cfg), nil
 }
 
@@ -308,8 +314,7 @@ func ShutdownTelemetry(ctx context.Context) error {
 	}
 
 	_setupDone = false
-	_runtimeCfg = nil
-	_publishRuntimeGatesLocked()
+	_clearGenerationLocked()
 
 	err := _shutdownBackendLocked(ctx)
 	SetDefaultTracer(&_noopTracer{})
@@ -345,8 +350,7 @@ func _resetSetup() {
 	_setupMu.Lock()
 	defer _setupMu.Unlock()
 	_setupDone = false
-	_runtimeCfg = nil
-	_publishRuntimeGatesLocked()
+	_clearGenerationLocked()
 	_resetBackendsLocked()
 	SetDefaultTracer(&_noopTracer{})
 	_resetLogger()

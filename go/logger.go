@@ -372,13 +372,13 @@ func _configureLogger(cfg *TelemetryConfig) {
 	if Logger == nil {
 		_preTelemetryDefaultLogger = slog.Default()
 	}
-	Logger = slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, ""))
+	_setActiveLogger(slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, "")))
 	slog.SetDefault(Logger)
 }
 
 // _resetLogger clears the package logger and restores the prior slog default.
 func _resetLogger() {
-	Logger = nil
+	_setActiveLogger(nil)
 	if _preTelemetryDefaultLogger != nil {
 		slog.SetDefault(_preTelemetryDefaultLogger)
 		_preTelemetryDefaultLogger = nil
@@ -400,8 +400,15 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	if !_runtimeSetupDone() {
 		_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
 	}
-	if Logger != nil {
-		if liveCfg, ok := _telemetryConfigFromHandler(Logger.Handler()); ok {
+	// Prefer the published generation; fall back to whatever logger has been
+	// configured without a full setup (the lazy pre-setup path). Neither branch
+	// reads the exported Logger variable directly: _configureLogger reassigns it
+	// on every reconfiguration, and reading a package variable while it is being
+	// written is a race the detector reports. Both sources here are atomics.
+	if gen := _loadGeneration(); gen != nil {
+		cfg = gen.config
+	} else if active := _loadActiveLogger(); active != nil {
+		if liveCfg, ok := _telemetryConfigFromHandler(active.Handler()); ok {
 			cfg = liveCfg
 		}
 	}

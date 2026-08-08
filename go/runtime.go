@@ -91,8 +91,7 @@ func UpdateRuntimeConfig(overrides RuntimeOverrides) error {
 	next := cloneTelemetryConfig(_runtimeCfg)
 	applyRuntimeOverrides(next, overrides)
 	_applyRuntimePolicies(next)
-	_runtimeCfg = next
-	_publishRuntimeGatesLocked()
+	_publishGenerationLocked(next)
 	return nil
 }
 
@@ -131,8 +130,7 @@ func ReloadRuntimeFromEnv() error {
 	next := cloneTelemetryConfig(_runtimeCfg)
 	applyRuntimeOverrides(next, overrides)
 	_applyRuntimePolicies(next)
-	_runtimeCfg = next
-	_publishRuntimeGatesLocked()
+	_publishGenerationLocked(next)
 	return nil
 }
 
@@ -311,10 +309,15 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		return nil, _providerConfigError()
 	}
 
-	// Apply only hot-reloadable fields, preserving cold/provider config.
-	_applyHotFields(_runtimeCfg, target)
-	_applyRuntimePolicies(_runtimeCfg)
-	return cloneTelemetryConfig(_runtimeCfg), nil
+	// Apply only hot-reloadable fields, preserving cold/provider config — onto a
+	// clone, never through the published pointer. Every live slog handler holds
+	// the published *TelemetryConfig, so writing through it raced with each
+	// handler's read of Logging.Level, Logging.ModuleLevels and EventSchema.
+	next := cloneTelemetryConfig(_runtimeCfg)
+	_applyHotFields(next, target)
+	_applyRuntimePolicies(next)
+	_publishGenerationLocked(next)
+	return cloneTelemetryConfig(next), nil
 }
 
 // _providerConfigChanged returns true when reconfiguration would require
