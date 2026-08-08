@@ -9,8 +9,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
+	"os"
 	"runtime"
 	"time"
 
@@ -26,10 +25,11 @@ func heapMB() float64 {
 func stressLogging() {
 	fmt.Println("── Stress: Logging ────────────────────────────────────────")
 	const n = 1_000_000
+	logger := telemetry.GetLogger(context.Background(), "stress")
 	before := heapMB()
 	start := time.Now()
 	for i := range n {
-		telemetry.Logger.Info("stress.log", "i", i)
+		logger.Info("stress.log", "i", i)
 	}
 	elapsed := time.Since(start)
 	after := heapMB()
@@ -169,13 +169,23 @@ func stressTracing() {
 }
 
 func main() {
-	_, err := telemetry.SetupTelemetry()
+	// Silence output before setup rather than replacing the logger after it.
+	// Swapping in a bare slog handler meant this benchmark stopped measuring
+	// the telemetry chain entirely and timed plain stdlib logging instead.
+	// Redirecting the sink keeps the real processor chain in the measurement
+	// and only makes the write free.
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
+		fmt.Println("cannot open", os.DevNull+":", err)
+		return
+	}
+	defer devnull.Close() //nolint:errcheck
+	os.Stderr = devnull
+
+	if _, err := telemetry.SetupTelemetry(); err != nil {
 		fmt.Println("setup failed:", err)
 		return
 	}
-	// Silence logger output for stress tests — prevents I/O from dominating timing.
-	telemetry.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════")

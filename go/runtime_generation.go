@@ -81,7 +81,7 @@ func _publishGenerationLocked(cfg *TelemetryConfig) {
 	_activeGeneration.Store(&runtimeGeneration{
 		number: _generationCounter.Add(1),
 		config: cfg,
-		logger: _loadActiveLogger(),
+		logger: _activeLogger.Load(),
 	})
 }
 
@@ -94,35 +94,35 @@ func _clearGenerationLocked() {
 	_activeGeneration.Store(nil)
 }
 
-// DefaultLogger returns the currently configured logger, or nil before any
-// setup.
+// Logger returns the currently configured logger, or nil before any setup and
+// after shutdown.
 //
-// Prefer this to reading the exported Logger variable from concurrent code: a
-// package variable that reconfiguration reassigns cannot be read safely while
-// it is being written, and the race detector says so. Logger remains for
-// existing callers and single-threaded use.
-func DefaultLogger() *slog.Logger {
+// This was an assignable `var Logger *slog.Logger` until it proved impossible
+// to make race-free: reconfiguration rewrote it while readers read it, and the
+// go/otel module assigned it from another package entirely. Keeping the
+// canonical spec name and moving one pair of parentheses costs callers a
+// character and buys a value that cannot be torn.
+func Logger() *slog.Logger {
 	return _activeLogger.Load()
 }
 
-// _activeLogger mirrors the exported Logger variable as an atomic pointer.
+// _activeLogger holds the configured logger.
 //
-// Logger has always been a plain package variable that _configureLogger
-// reassigns on every setup and reconfiguration. Reading it from GetLogger while
-// that write was in flight is a data race, and the detector reported it as one.
-// Every internal read now goes through this pointer instead; Logger is still
-// assigned in lockstep so existing callers see no change.
+// This used to be an exported `var Logger *slog.Logger` that _configureLogger
+// reassigned on every setup and reconfiguration, which the race detector
+// reported exactly as it looks: GetLogger read it while that write was in
+// flight. A package variable cannot be both publicly assignable and race-free,
+// so it is gone — Logger() is the only way to reach the logger, and the
+// pointer below is the only place it lives.
 var _activeLogger atomic.Pointer[slog.Logger] //nolint:gochecknoglobals
 
-// _setActiveLogger installs l as both the exported variable and the atomic
-// internal reads use. Called with _setupMu held.
-func _setActiveLogger(l *slog.Logger) {
-	Logger = l
+// SetLogger installs l as the logger Logger returns.
+//
+// The write half of the pair. Callers wanting a custom sink — test harnesses,
+// probes — use this; callers wanting a named logger over the configured
+// pipeline use GetLogger.
+//
+// The next setup or reconfiguration rebuilds the logger and overwrites this.
+func SetLogger(l *slog.Logger) {
 	_activeLogger.Store(l)
-}
-
-// _loadActiveLogger returns the configured logger without reading the exported
-// variable, or nil when none has been configured.
-func _loadActiveLogger() *slog.Logger {
-	return _activeLogger.Load()
 }

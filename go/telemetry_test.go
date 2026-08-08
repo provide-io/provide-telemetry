@@ -168,7 +168,7 @@ func TestResetForTests(t *testing.T) {
 	if GetRuntimeConfig() != nil {
 		t.Error("expected nil runtime config after ResetForTests")
 	}
-	if Logger != nil {
+	if Logger() != nil {
 		t.Error("expected nil logger after ResetForTests")
 	}
 }

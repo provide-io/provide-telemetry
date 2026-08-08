@@ -61,7 +61,7 @@ func TestBuildDefaultProviders_ExporterInitErrors(t *testing.T) {
 	_newOTLPLogExporter = func(context.Context, ...otlploghttp.Option) (sdklog.Exporter, error) {
 		return nil, logErr
 	}
-	if lp, err := _buildDefaultLoggerProvider(cfg); !errors.Is(err, logErr) || lp != nil {
+	if lp, err := _buildLoggerProvider(cfg); !errors.Is(err, logErr) || lp != nil {
 		t.Fatalf("expected logger exporter error %v, got lp=%v err=%v", logErr, lp, err)
 	}
 }

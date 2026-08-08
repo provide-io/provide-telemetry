@@ -78,22 +78,22 @@ func TestIsTraceEnabled_WithInfoConfig(t *testing.T) {
 // ── nil Logger guards ────────────────────────────────────────────────────────
 
 func TestIsDebugEnabled_NilLogger(t *testing.T) {
-	orig := Logger
-	Logger = nil
-	t.Cleanup(func() { Logger = orig })
+	orig := Logger()
+	SetLogger(nil)
+	t.Cleanup(func() { SetLogger(orig) })
 
 	if IsDebugEnabled() {
-		t.Error("expected IsDebugEnabled false when Logger is nil")
+		t.Error("expected IsDebugEnabled false with no configured logger")
 	}
 }
 
 func TestIsTraceEnabled_NilLogger(t *testing.T) {
-	orig := Logger
-	Logger = nil
-	t.Cleanup(func() { Logger = orig })
+	orig := Logger()
+	SetLogger(nil)
+	t.Cleanup(func() { SetLogger(orig) })
 
 	if IsTraceEnabled() {
-		t.Error("expected IsTraceEnabled false when Logger is nil")
+		t.Error("expected IsTraceEnabled false with no configured logger")
 	}
 }
 
@@ -187,8 +187,8 @@ func TestConfigureLogger_JSONFormat(t *testing.T) {
 	_configureLogger(cfg)
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
-	if Logger == nil {
-		t.Fatal("Logger is nil after _configureLogger with json format")
+	if Logger() == nil {
+		t.Fatal("no logger configured after _configureLogger with json format")
 	}
 }
 
@@ -198,21 +198,21 @@ func TestConfigureLogger_TextFormat(t *testing.T) {
 	_configureLogger(cfg)
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
-	if Logger == nil {
-		t.Fatal("Logger is nil after _configureLogger with text format")
+	if Logger() == nil {
+		t.Fatal("no logger configured after _configureLogger with text format")
 	}
 }
 
 // ── 12. Logger package var set after _configureLogger ────────────────────────
 
 func TestLoggerPackageVar_SetAfterConfigure(t *testing.T) {
-	prev := Logger
+	prev := Logger()
 	cfg := DefaultTelemetryConfig()
 	_configureLogger(cfg)
-	t.Cleanup(func() { Logger = prev })
+	t.Cleanup(func() { SetLogger(prev) })
 
-	if Logger == nil {
-		t.Fatal("Logger package var not set after _configureLogger")
+	if Logger() == nil {
+		t.Fatal("Logger() still nil after _configureLogger")
 	}
 }
 
@@ -231,9 +231,9 @@ func TestGetLogger_UsesConfiguredLogger(t *testing.T) {
 }
 
 func TestGetLogger_FallbackWhenNilLogger(t *testing.T) {
-	orig := Logger
-	Logger = nil
-	t.Cleanup(func() { Logger = orig })
+	orig := Logger()
+	SetLogger(nil)
+	t.Cleanup(func() { SetLogger(orig) })
 
 	l := GetLogger(context.Background(), "fallback")
 	if l == nil {
@@ -242,10 +242,10 @@ func TestGetLogger_FallbackWhenNilLogger(t *testing.T) {
 }
 
 func TestGetLogger_NonTelemetryHandler(t *testing.T) {
-	orig := Logger
+	orig := Logger()
 	// Set Logger to a plain slog.Logger (not backed by _telemetryHandler)
-	Logger = slog.Default()
-	t.Cleanup(func() { Logger = orig })
+	SetLogger(slog.Default())
+	t.Cleanup(func() { SetLogger(orig) })
 
 	l := GetLogger(context.Background(), "plain")
 	if l == nil {
@@ -254,9 +254,9 @@ func TestGetLogger_NonTelemetryHandler(t *testing.T) {
 }
 
 func TestGetLogger_InvalidEnvFallsBackToDefaultConfig(t *testing.T) {
-	orig := Logger
-	Logger = nil
-	t.Cleanup(func() { Logger = orig })
+	orig := Logger()
+	SetLogger(nil)
+	t.Cleanup(func() { SetLogger(orig) })
 	t.Setenv("PROVIDE_LOG_INCLUDE_TIMESTAMP", "not-a-bool")
 
 	l := GetLogger(context.Background(), "fallback.invalid-env")

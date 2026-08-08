@@ -28,8 +28,8 @@ func _warnIfTracerProviderConflict() {
 	if _, isSDK := existing.(*sdktrace.TracerProvider); isSDK {
 		return
 	}
-	if telemetry.Logger != nil {
-		telemetry.Logger.Warn("otel.tracer_provider_conflict",
+	if logger := telemetry.Logger(); logger != nil {
+		logger.Warn("otel.tracer_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),
 			slog.String("action", "overwriting with provide-telemetry tracer provider"),
 		)
@@ -48,8 +48,8 @@ func _warnIfMeterProviderConflict() {
 	if _, isSDK := existing.(*sdkmetric.MeterProvider); isSDK {
 		return
 	}
-	if telemetry.Logger != nil {
-		telemetry.Logger.Warn("otel.meter_provider_conflict",
+	if logger := telemetry.Logger(); logger != nil {
+		logger.Warn("otel.meter_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),
 			slog.String("action", "overwriting with provide-telemetry meter provider"),
 		)
@@ -68,8 +68,8 @@ func _warnIfLoggerProviderConflict() {
 	if _, isSDK := existing.(*sdklog.LoggerProvider); isSDK {
 		return
 	}
-	if telemetry.Logger != nil {
-		telemetry.Logger.Warn("otel.logger_provider_conflict",
+	if logger := telemetry.Logger(); logger != nil {
+		logger.Warn("otel.logger_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),
 			slog.String("action", "overwriting with provide-telemetry logger provider"),
 		)
@@ -87,8 +87,8 @@ func _setupTracerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 	if provider == nil && cfg.Tracing.OTLPEndpoint != "" {
 		tp, err := _buildDefaultTracerProvider(cfg)
 		if err != nil {
-			if telemetry.Logger != nil {
-				telemetry.Logger.Warn("otel.tracer_provider_init_failed", slog.String("error", err.Error()))
+			if logger := telemetry.Logger(); logger != nil {
+				logger.Warn("otel.tracer_provider_init_failed", slog.String("error", err.Error()))
 			}
 		} else {
 			provider = tp
@@ -113,8 +113,8 @@ func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.Telem
 	if provider == nil && cfg.Metrics.OTLPEndpoint != "" {
 		mp, err := _buildDefaultMeterProvider(cfg)
 		if err != nil {
-			if telemetry.Logger != nil {
-				telemetry.Logger.Warn("otel.meter_provider_init_failed", slog.String("error", err.Error()))
+			if logger := telemetry.Logger(); logger != nil {
+				logger.Warn("otel.meter_provider_init_failed", slog.String("error", err.Error()))
 			}
 		} else {
 			provider = mp
@@ -138,10 +138,10 @@ func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 	// supplied LoggerProvider injected via WithLoggerProvider — that's an
 	// explicit override and shouldn't be silently ignored.
 	if provider == nil && cfg.Logging.OTLPEnabled && cfg.Logging.OTLPEndpoint != "" {
-		lp, err := _buildDefaultLoggerProvider(cfg)
+		lp, err := _buildLoggerProvider(cfg)
 		if err != nil {
-			if telemetry.Logger != nil {
-				telemetry.Logger.Warn("otel.logger_provider_init_failed", slog.String("error", err.Error()))
+			if logger := telemetry.Logger(); logger != nil {
+				logger.Warn("otel.logger_provider_init_failed", slog.String("error", err.Error()))
 			}
 		} else {
 			provider = lp

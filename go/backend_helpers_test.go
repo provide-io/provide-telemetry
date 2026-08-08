@@ -66,9 +66,9 @@ func TestHelperCoverage_BackendAndInstrumentHelpers(t *testing.T) {
 		UnregisterBackend("fake-helper")
 	})
 
-	prevLogger := Logger
-	Logger = nil
-	t.Cleanup(func() { Logger = prevLogger })
+	prevLogger := Logger()
+	SetLogger(nil)
+	t.Cleanup(func() { SetLogger(prevLogger) })
 
 	if err := _setupBackendLocked(&_setupState{}, DefaultTelemetryConfig()); err != nil {
 		t.Fatalf("expected no backend setup error without provider config, got %v", err)

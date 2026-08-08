@@ -15,6 +15,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
@@ -34,7 +35,7 @@ func main() {
 
 	_, err := telemetry.SetupTelemetry()
 	if err != nil {
-		telemetry.Logger.Error("setup failed", "err", err)
+		slog.Error("setup failed", "err", err)
 		return
 	}
 	defer func() { _ = telemetry.ShutdownTelemetry(context.Background()) }()

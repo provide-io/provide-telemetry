@@ -144,7 +144,7 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	SetDefaultTracer(&_noopTracer{})
 	serviceName := cfg.ServiceName
 	_backendTracerName.Store(&serviceName)
-	if Logger == nil {
+	if Logger() == nil {
 		return
 	}
 
@@ -161,8 +161,8 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	if providers.Logs {
 		bridgeName := cfg.ServiceName
 		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
-			_setActiveLogger(slog.New(newMultiHandler(Logger.Handler(), bridge)))
-			slog.SetDefault(Logger)
+			SetLogger(slog.New(newMultiHandler(Logger().Handler(), bridge)))
+			slog.SetDefault(Logger())
 		}
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 )
@@ -28,7 +29,7 @@ func main() {
 	fmt.Println("Setting up telemetry (works with or without OTel)...")
 	cfg, err := telemetry.SetupTelemetry()
 	if err != nil {
-		telemetry.Logger.Error("setup failed", "err", err)
+		slog.Error("setup failed", "err", err)
 		return
 	}
 	defer func() { _ = telemetry.ShutdownTelemetry(context.Background()) }()

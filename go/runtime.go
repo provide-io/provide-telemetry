@@ -257,8 +257,8 @@ func _checkColdDrift(next *TelemetryConfig) {
 	if next.Metrics.Enabled != _runtimeCfg.Metrics.Enabled {
 		drifted = append(drifted, "Metrics.Enabled")
 	}
-	if len(drifted) > 0 && Logger != nil {
-		Logger.Warn("runtime.cold_field_drift",
+	if logger := Logger(); len(drifted) > 0 && logger != nil {
+		logger.Warn("runtime.cold_field_drift",
 			slog.String("fields", strings.Join(drifted, ",")),
 			slog.String("action", "restart required to apply"),
 		)

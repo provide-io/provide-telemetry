@@ -160,20 +160,20 @@ func TestLoadRuntimeGenerationBeforeSetup(t *testing.T) {
 	}
 }
 
-// TestDefaultLoggerTracksConfiguration covers the accessor that exists so
+// TestLoggerTracksConfiguration covers the accessor that exists so
 // concurrent code never has to read the exported Logger variable directly.
-func TestDefaultLoggerTracksConfiguration(t *testing.T) {
+func TestLoggerTracksConfiguration(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
-	if DefaultLogger() != nil {
+	if Logger() != nil {
 		t.Fatal("expected no default logger before setup")
 	}
 
 	if _, err := SetupTelemetry(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	first := DefaultLogger()
+	first := Logger()
 	if first == nil {
 		t.Fatal("expected a default logger after setup")
 	}
@@ -183,12 +183,12 @@ func TestDefaultLoggerTracksConfiguration(t *testing.T) {
 	if _, err := ReconfigureTelemetry(context.Background(), WithConfig(cfg)); err != nil {
 		t.Fatalf("reconfigure failed: %v", err)
 	}
-	if second := DefaultLogger(); second == first {
+	if second := Logger(); second == first {
 		t.Error("expected reconfiguration to publish a rebuilt logger")
 	}
 
 	resetSetupState(t)
-	if DefaultLogger() != nil {
+	if Logger() != nil {
 		t.Error("expected the default logger to be cleared on teardown")
 	}
 }

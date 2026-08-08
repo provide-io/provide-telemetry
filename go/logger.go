@@ -16,9 +16,6 @@ import (
 	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
-// Logger is the package-level default logger. Set by _configureLogger (called from SetupTelemetry).
-var Logger *slog.Logger
-
 // _telemetryHandler is a slog.Handler middleware that implements the full processor chain:
 // context-field merge → standard fields → trace/span IDs → sampling → schema → PII → base handler.
 type _telemetryHandler struct {
@@ -370,23 +367,23 @@ func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger 
 	return logger.With(attrs...)
 }
 
-var _preTelemetryDefaultLogger *slog.Logger
+var _preTelemetryLogger *slog.Logger
 
 // _configureLogger builds the Logger package var from cfg and sets it as slog's default.
 func _configureLogger(cfg *TelemetryConfig) {
-	if Logger == nil {
-		_preTelemetryDefaultLogger = slog.Default()
+	if Logger() == nil {
+		_preTelemetryLogger = slog.Default()
 	}
-	_setActiveLogger(slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, "")))
-	slog.SetDefault(Logger)
+	SetLogger(slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, "")))
+	slog.SetDefault(Logger())
 }
 
 // _resetLogger clears the package logger and restores the prior slog default.
 func _resetLogger() {
-	_setActiveLogger(nil)
-	if _preTelemetryDefaultLogger != nil {
-		slog.SetDefault(_preTelemetryDefaultLogger)
-		_preTelemetryDefaultLogger = nil
+	SetLogger(nil)
+	if _preTelemetryLogger != nil {
+		slog.SetDefault(_preTelemetryLogger)
+		_preTelemetryLogger = nil
 		return
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})))
@@ -406,13 +403,12 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 		_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
 	}
 	// Prefer the published generation; fall back to whatever logger has been
-	// configured without a full setup (the lazy pre-setup path). Neither branch
-	// reads the exported Logger variable directly: _configureLogger reassigns it
-	// on every reconfiguration, and reading a package variable while it is being
-	// written is a race the detector reports. Both sources here are atomics.
+	// configured without a full setup (the lazy pre-setup path). Both sources
+	// are atomics — the exported, caller-assignable Logger variable this
+	// replaced could not be read race-free while reconfiguration wrote it.
 	if gen := _loadGeneration(); gen != nil {
 		cfg = gen.config
-	} else if active := _loadActiveLogger(); active != nil {
+	} else if active := Logger(); active != nil {
 		if liveCfg, ok := _telemetryConfigFromHandler(active.Handler()); ok {
 			cfg = liveCfg
 		}
@@ -448,18 +444,20 @@ func _telemetryConfigFromHandler(handler slog.Handler) (*TelemetryConfig, bool) 
 
 // IsDebugEnabled returns true if the package-level Logger would emit DEBUG records.
 func IsDebugEnabled() bool {
-	if Logger == nil {
+	logger := Logger()
+	if logger == nil {
 		return false
 	}
-	return Logger.Enabled(context.Background(), slog.LevelDebug)
+	return logger.Enabled(context.Background(), slog.LevelDebug)
 }
 
 // IsTraceEnabled returns true if the package-level Logger would emit TRACE records.
 func IsTraceEnabled() bool {
-	if Logger == nil {
+	logger := Logger()
+	if logger == nil {
 		return false
 	}
-	return Logger.Enabled(context.Background(), LevelTrace)
+	return logger.Enabled(context.Background(), LevelTrace)
 }
 
 // applyErrorFingerprint adds error_fingerprint when error attributes are present.

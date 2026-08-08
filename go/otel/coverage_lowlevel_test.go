@@ -193,9 +193,9 @@ func TestCoverageLowLevel_ConflictWarningsWithNilLogger(t *testing.T) {
 		resetSetupState(t)
 	})
 
-	prevLogger := telemetry.Logger
-	telemetry.Logger = nil
-	t.Cleanup(func() { telemetry.Logger = prevLogger })
+	prevLogger := telemetry.Logger()
+	telemetry.SetLogger(nil)
+	t.Cleanup(func() { telemetry.SetLogger(prevLogger) })
 
 	otel.SetTracerProvider(&_thirdPartyTracerProvider{})
 	otel.SetMeterProvider(&_thirdPartyMeterProvider{})
@@ -214,7 +214,7 @@ func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_NoWarnForOwnSDKPr
 	})
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 
 	mp := sdkmetric.NewMeterProvider()
 	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })

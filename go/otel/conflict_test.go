@@ -85,7 +85,7 @@ func TestWarnIfTracerProviderConflict_NoWarnForDefaultGlobal(t *testing.T) {
 	})
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 
 	_warnIfTracerProviderConflict()
 
@@ -107,7 +107,7 @@ func TestWarnIfTracerProviderConflict_NoWarnForOwnSDKProvider(t *testing.T) {
 	otel.SetTracerProvider(sdkTP)
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 
 	_warnIfTracerProviderConflict()
 
@@ -125,7 +125,7 @@ func TestWarnIfTracerProviderConflict_WarnsForThirdParty(t *testing.T) {
 
 	otel.SetTracerProvider(&_thirdPartyTracerProvider{})
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 
 	_warnIfTracerProviderConflict()
 
@@ -147,7 +147,7 @@ func TestWarnIfTracerProviderConflict_NoWarnWhenProviderAlreadyOwned(t *testing.
 	t.Cleanup(func() { _ = _otelTracerProvider.Shutdown(context.Background()) })
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 
 	_warnIfTracerProviderConflict()
 
@@ -165,7 +165,7 @@ func TestWarnIfMeterProviderConflict_RecognisesDefaultAndThirdParty(t *testing.T
 
 	otel.SetMeterProvider(&_globalDelegatingMeterProvider{})
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 	_warnIfMeterProviderConflict()
 	if strings.Contains(h.buf.String(), "conflict") {
 		t.Fatalf("unexpected conflict warning for global meter provider: %s", h.buf.String())
@@ -190,7 +190,7 @@ func TestWarnIfMeterProviderConflict_NoWarnWhenProviderAlreadyOwned(t *testing.T
 	t.Cleanup(func() { _ = _otelMeterProvider.Shutdown(context.Background()) })
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 	_warnIfMeterProviderConflict()
 
 	if strings.Contains(h.buf.String(), "conflict") {
@@ -207,7 +207,7 @@ func TestWarnIfLoggerProviderConflict_RecognisesDefaultAndThirdParty(t *testing.
 
 	logglobal.SetLoggerProvider(&_globalDelegatingLoggerProvider{})
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 	_warnIfLoggerProviderConflict()
 	if strings.Contains(h.buf.String(), "conflict") {
 		t.Fatalf("unexpected conflict warning for global logger provider: %s", h.buf.String())
@@ -232,7 +232,7 @@ func TestWarnIfLoggerProviderConflict_NoWarnWhenProviderAlreadyOwned(t *testing.
 	t.Cleanup(func() { _ = _otelLoggerProvider.Shutdown(context.Background()) })
 
 	h := newCaptureHandler(slog.LevelWarn)
-	telemetry.Logger = slog.New(h)
+	telemetry.SetLogger(slog.New(h))
 	_warnIfLoggerProviderConflict()
 
 	if strings.Contains(h.buf.String(), "conflict") {
@@ -247,7 +247,7 @@ func TestWarnConflictHelpers_NoLogger_NoPanic(t *testing.T) {
 		resetSetupState(t)
 	})
 
-	telemetry.Logger = nil
+	telemetry.SetLogger(nil)
 	otel.SetTracerProvider(&_thirdPartyTracerProvider{})
 	otel.SetMeterProvider(&_thirdPartyMeterProvider{})
 	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})

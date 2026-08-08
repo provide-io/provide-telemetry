@@ -125,7 +125,7 @@ func main() {
 
 	for i := range 5 {
 		if err := emit(ctx, i); err != nil {
-			telemetry.Logger.Error("emit failed", "err", err)
+			telemetry.Logger().Error("emit failed", "err", err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

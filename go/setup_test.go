@@ -82,7 +82,7 @@ func TestShutdownTelemetryResetsState(t *testing.T) {
 	if cfg != nil {
 		t.Error("expected nil config after shutdown")
 	}
-	if Logger != nil {
+	if Logger() != nil {
 		t.Error("expected package logger to be nil after shutdown")
 	}
 	if slog.Default() != prevDefault {
@@ -128,7 +128,7 @@ func TestShutdownTelemetryClearsLazyLoggerState(t *testing.T) {
 		t.Fatalf("shutdown failed: %v", err)
 	}
 
-	if Logger != nil {
+	if Logger() != nil {
 		t.Fatal("expected lazy logger state to be cleared by shutdown")
 	}
 	if slog.Default() != prevDefault {

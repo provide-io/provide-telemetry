@@ -1034,8 +1034,13 @@ language_overrides:
       accepted_kinds: [type]
       note: "Go exports Histogram as interface type; NewHistogram() is the constructor"
     - spec_name: logger
-      accepted_kinds: [instance]
-      note: "Go exports Logger as *slog.Logger instance"
+      accepted_kinds: [function]
+      note: >-
+        Go exports Logger() as an accessor, not an instance. It was an
+        assignable *slog.Logger variable until that proved impossible to make
+        race-free: reconfiguration rewrote it while readers read it, and the
+        go/otel module assigned it from another package. SetLogger() is the
+        write half.
   rust:
     - spec_name: trace
       accepted_kinds: [function]

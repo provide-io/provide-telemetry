@@ -195,9 +195,9 @@ func TestReloadRuntimeFromEnv_WarnsOnColdFieldDrift(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	prev := Logger
-	Logger = slog.New(slog.NewJSONHandler(&buf, nil))
-	t.Cleanup(func() { Logger = prev })
+	prev := Logger()
+	SetLogger(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { SetLogger(prev) })
 
 	t.Setenv("PROVIDE_TELEMETRY_SERVICE_NAME", "drifted-service")
 

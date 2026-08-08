@@ -64,7 +64,7 @@ func main() {
 	ctx := context.Background()
 	// Batch one — only a working flush can deliver this, since we never shut down.
 	if err := telemetry.Trace(ctx, "integration.flush.span", func(spanCtx context.Context) error {
-		telemetry.Logger.InfoContext(spanCtx, "integration.flush.log", "suite", "flush")
+		telemetry.Logger().InfoContext(spanCtx, "integration.flush.log", "suite", "flush")
 		requests.Add(spanCtx, 1, slog.String("suite", "flush"))
 		return nil
 	}); err != nil {
@@ -85,7 +85,7 @@ func main() {
 	}
 
 	if err := telemetry.Trace(ctx, "integration.flush.after.span", func(spanCtx context.Context) error {
-		telemetry.Logger.InfoContext(spanCtx, "integration.flush.after.log", "suite", "flush-after")
+		telemetry.Logger().InfoContext(spanCtx, "integration.flush.after.log", "suite", "flush-after")
 		requests.Add(spanCtx, 1, slog.String("suite", "flush-after"))
 		return nil
 	}); err != nil {

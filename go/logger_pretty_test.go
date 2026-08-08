@@ -415,7 +415,7 @@ func TestConfigureLogger_PrettyFormatNonTTY(t *testing.T) {
 	_configureLogger(cfg)
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
-	Logger.Info("pretty.event.name")
+	Logger().Info("pretty.event.name")
 	_ = w.Close()
 
 	var buf bytes.Buffer

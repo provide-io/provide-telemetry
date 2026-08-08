@@ -144,7 +144,7 @@ func main() {
 	ctx := context.Background()
 	for i := range 5 {
 		if err := doWork(ctx, runID, i); err != nil {
-			telemetry.Logger.Error("work failed", "err", err)
+			telemetry.Logger().Error("work failed", "err", err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

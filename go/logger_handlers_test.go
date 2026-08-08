@@ -412,7 +412,7 @@ func TestConfigureLogger_JSONFormat_ProducesJSON(t *testing.T) {
 	_configureLogger(cfg)
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
-	Logger.Info("format check")
+	Logger().Info("format check")
 	_ = w.Close()
 
 	var buf bytes.Buffer
@@ -440,7 +440,7 @@ func TestConfigureLogger_JSONFormat_OmitsTimestampWhenDisabled(t *testing.T) {
 	_configureLogger(cfg)
 	t.Cleanup(func() { _configureLogger(DefaultTelemetryConfig()) })
 
-	Logger.Info("no timestamp please")
+	Logger().Info("no timestamp please")
 	_ = w.Close()
 
 	var buf bytes.Buffer

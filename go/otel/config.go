@@ -188,7 +188,7 @@ func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.Mete
 	), nil
 }
 
-func _buildDefaultLoggerProvider(cfg *telemetry.TelemetryConfig) (*sdklog.LoggerProvider, error) {
+func _buildLoggerProvider(cfg *telemetry.TelemetryConfig) (*sdklog.LoggerProvider, error) {
 	logsURL, err := _validatedSignalEndpointURL(cfg.Logging.OTLPEndpoint, "/v1/logs")
 	if err != nil {
 		return nil, err

@@ -62,8 +62,8 @@ func TestShutdownTelemetry_BoundedWhenLogsEndpointUnreachable(t *testing.T) {
 	// record in its queue at shutdown time. Without this the queue is empty
 	// and ForceFlush short-circuits — the bounding code we're testing never
 	// fires.
-	if telemetry.Logger != nil {
-		telemetry.Logger.Info("shutdown_unreachable_probe")
+	if logger := telemetry.Logger(); logger != nil {
+		logger.Info("shutdown_unreachable_probe")
 	}
 
 	start := time.Now()
