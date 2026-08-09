@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"context"
 	"sync"
 	"testing"
 )
@@ -119,22 +120,42 @@ func TestRecordExportLatency(t *testing.T) {
 	}
 }
 
-func TestIncAsyncBlockingRisk(t *testing.T) {
+// A full emit-flush-shutdown cycle must leave the async-blocking-risk counters
+// at zero — including the drains, which are the calls that park the caller's
+// goroutine and would be where any incrementer had to live.
+//
+// This is the deliberate outcome documented on HealthSnapshot, not an
+// oversight: Go has no runtime a blocking export can stall, and no predicate
+// with which to detect one. The assertion is here so that anyone who does add
+// an incrementer has to come back and rewrite that reasoning rather than
+// quietly diverging from it.
+func TestAsyncBlockingRiskStaysZeroThroughAFullCycle(t *testing.T) {
 	_resetHealth()
 	t.Cleanup(_resetHealth)
 
-	_incAsyncBlockingRisk(signalLogs)
-	_incAsyncBlockingRisk(signalTraces)
-	_incAsyncBlockingRisk(signalMetrics)
+	ctx := context.Background()
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("SetupTelemetry: %v", err)
+	}
+	t.Cleanup(func() { _ = ShutdownTelemetry(context.Background()) })
+
+	GetLogger(ctx, "async-blocking-risk").Info("emitted before the drain")
+	if err := FlushTelemetry(ctx); err != nil {
+		t.Fatalf("FlushTelemetry: %v", err)
+	}
+	if err := ShutdownTelemetry(ctx); err != nil {
+		t.Fatalf("ShutdownTelemetry: %v", err)
+	}
+
 	snap := GetHealthSnapshot()
-	if snap.LogsAsyncBlockingRisk != 1 {
-		t.Errorf("LogsAsyncBlockingRisk: want 1, got %d", snap.LogsAsyncBlockingRisk)
+	if snap.LogsAsyncBlockingRisk != 0 {
+		t.Errorf("LogsAsyncBlockingRisk: want 0, got %d", snap.LogsAsyncBlockingRisk)
 	}
-	if snap.TracesAsyncBlockingRisk != 1 {
-		t.Errorf("TracesAsyncBlockingRisk: want 1, got %d", snap.TracesAsyncBlockingRisk)
+	if snap.TracesAsyncBlockingRisk != 0 {
+		t.Errorf("TracesAsyncBlockingRisk: want 0, got %d", snap.TracesAsyncBlockingRisk)
 	}
-	if snap.MetricsAsyncBlockingRisk != 1 {
-		t.Errorf("MetricsAsyncBlockingRisk: want 1, got %d", snap.MetricsAsyncBlockingRisk)
+	if snap.MetricsAsyncBlockingRisk != 0 {
+		t.Errorf("MetricsAsyncBlockingRisk: want 0, got %d", snap.MetricsAsyncBlockingRisk)
 	}
 }
 

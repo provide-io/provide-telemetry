@@ -5,6 +5,7 @@
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
+use crate::sampling::Signal;
 
 pub(crate) mod adopt;
 #[cfg(feature = "otel")]
@@ -85,7 +86,44 @@ pub(crate) struct SignalDrains {
     pub metrics: bool,
 }
 
+/// Count, per signal we own, a drain that is about to park the calling thread
+/// while that thread belongs to an async runtime.
+///
+/// The Rust reading of `async_blocking_risk_*`. `flush_telemetry` and
+/// `shutdown_telemetry` are synchronous by signature, so an async application
+/// calls them from inside an `async fn` and the whole drain runs on a Tokio
+/// worker: the scoped drain threads below are spawned *and joined* here, so
+/// every other task that worker was driving stops until the slowest signal
+/// returns or its deadline expires. That is the same hazard Python counts for a
+/// blocking export on an asyncio loop and .NET counts for a thread carrying a
+/// `SynchronizationContext`, and `Handle::try_current` is how Tokio lets us ask.
+///
+/// It has to be asked *here*, on the caller's thread and before the drain
+/// starts: inside the drain workers the answer is always "no runtime", which is
+/// exactly why the drain primitives themselves cannot see this.
+///
+/// Only signals with a provider of ours are counted — [`owned_signals`]. A
+/// signal we never drain cannot have stalled anything, so counting it would
+/// make the metric unusable for finding which exporter is the slow one.
+fn note_blocking_drain() {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    let owned = owned_signals();
+    if owned.logs {
+        crate::health::increment_async_blocking_risk(Signal::Logs);
+    }
+    if owned.traces {
+        crate::health::increment_async_blocking_risk(Signal::Traces);
+    }
+    if owned.metrics {
+        crate::health::increment_async_blocking_risk(Signal::Metrics);
+    }
+}
+
 pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains {
+    note_blocking_drain();
+
     #[cfg(feature = "otel")]
     {
         // Drain the three together. Evaluated one field at a time they each take
@@ -178,6 +216,9 @@ pub(crate) fn metrics_provider_effective() -> bool {
 /// [`flush_otel_by_signal`] does: in sequence they each take the whole deadline,
 /// so a caller's termination grace period would cover only a third of the work.
 pub(crate) fn shutdown_otel(timeout_seconds: Option<f64>) {
+    // Before anything is torn down: owned_signals() must still see the providers
+    // this teardown is about to take out of their slots.
+    note_blocking_drain();
     // Adopted providers belong to the host: drop the assertion, shut nothing down.
     adopt::release_adopted_providers();
     #[cfg(feature = "otel")]
@@ -236,3 +277,7 @@ mod mod_tests;
 #[cfg(all(test, feature = "otel"))]
 #[path = "bounded_flush_tests.rs"]
 mod bounded_flush_tests;
+
+#[cfg(all(test, feature = "otel"))]
+#[path = "async_blocking_risk_tests.rs"]
+mod async_blocking_risk_tests;

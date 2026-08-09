@@ -33,6 +33,7 @@ export {
   _getRegisteredProviders,
   _markProvidersRegistered,
   _setLogsProviderInstalled,
+  _signalForProvider,
   _storeRegisteredProviders,
   type ShutdownableProvider,
   type SignalName,

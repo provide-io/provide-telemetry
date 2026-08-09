@@ -3,7 +3,8 @@
 
 /**
  * Internal self-observability counters — mirrors Python provide.telemetry.health.
- * Canonical 25-field layout: 8 per signal (logs, traces, metrics) + 1 global.
+ * Canonical 26-field layout: 8 per signal (logs, traces, metrics) + 2 global
+ * (setupError, receiptFailures).
  */
 
 export interface HealthSnapshot {
@@ -179,6 +180,15 @@ export function _retriesField(signal: string): 'retriesLogs' | 'retriesTraces' |
   if (signal === 'traces') return 'retriesTraces';
   if (signal === 'metrics') return 'retriesMetrics';
   return 'retriesLogs';
+}
+
+/** Map a signal name to the per-signal async-blocking-risk field. */
+export function _asyncBlockingRiskField(
+  signal: string,
+): 'asyncBlockingRiskLogs' | 'asyncBlockingRiskTraces' | 'asyncBlockingRiskMetrics' {
+  if (signal === 'traces') return 'asyncBlockingRiskTraces';
+  if (signal === 'metrics') return 'asyncBlockingRiskMetrics';
+  return 'asyncBlockingRiskLogs';
 }
 
 /** Map a signal name to the per-signal export latency field. */

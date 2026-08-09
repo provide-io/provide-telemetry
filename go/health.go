@@ -11,6 +11,29 @@ import (
 // HealthSnapshot holds point-in-time counters for all telemetry signals.
 // The canonical layout has 26 fields: 8 per signal (logs, traces, metrics)
 // plus 2 global fields (SetupError, ReceiptFailures).
+//
+// *AsyncBlockingRisk is always zero in Go, and structurally so.
+//
+// The field counts exports that blocked a runtime where blocking is harmful:
+// an asyncio loop in Python, a thread carrying a SynchronizationContext in
+// .NET, a Tokio worker in Rust, the single event loop in Node. Each of those
+// runtimes multiplexes many logical tasks onto one thread of execution, so one
+// task that parks it stops all the others — and each exposes a way to ask
+// whether you are standing on one.
+//
+// Go has neither half of that. Goroutines are the unit of concurrency and the
+// scheduler detaches an M from its P across a blocking syscall, so a goroutine
+// parked in FlushTelemetry costs one goroutine — a few kilobytes of stack —
+// and nothing else stops. There is correspondingly no runtime predicate to
+// test: no equivalent of asyncio.get_running_loop, SynchronizationContext.
+// Current or tokio Handle::try_current exists, because there is no state for
+// one to report. Cancellation here travels by context.Context, which
+// FlushTelemetry and ShutdownTelemetry already honor.
+//
+// The field stays in the struct because the 26-field HealthSnapshot is a
+// cross-language contract and a consumer reading it must find the same shape in
+// every SDK. It has no incrementer because a counter Go could only move from a
+// test is worse than an honest zero.
 type HealthSnapshot struct {
 	// Logs (8 fields)
 	LogsEmitted           int64
@@ -60,8 +83,11 @@ type _signalHealthCounters struct {
 	dropped        atomic.Int64
 	exportFailures atomic.Int64
 	retries        atomic.Int64
-	asyncBlocking  atomic.Int64
-	latencyMs      atomic.Uint64 // math.Float64bits of latest latency
+	// Never incremented — see HealthSnapshot on why Go's async-blocking-risk
+	// counters are structurally zero. Kept so the snapshot keeps its canonical
+	// shape and so reset/read stay symmetric with every other counter.
+	asyncBlocking atomic.Int64
+	latencyMs     atomic.Uint64 // math.Float64bits of latest latency
 }
 
 func (c *_signalHealthCounters) reset() {
@@ -157,9 +183,6 @@ func _incRetries(signal string) { _healthFor(signal).retries.Add(1) }
 func _recordExportLatencyForSignal(signal string, ms float64) {
 	_healthFor(signal).latencyMs.Store(math.Float64bits(ms))
 }
-
-// _incAsyncBlockingRisk increments the async blocking risk counter for a signal.
-func _incAsyncBlockingRisk(signal string) { _healthFor(signal).asyncBlocking.Add(1) }
 
 // _setSetupError records a setup-time error message.
 func _setSetupError(msg string) { _setupErrorHealth.Store(msg) }

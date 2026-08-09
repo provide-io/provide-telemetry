@@ -23,9 +23,11 @@ import { _clearProviderState } from './runtime.js';
 import {
   _getProvidersBySignal,
   _getRegisteredProviders,
+  _signalForProvider,
   type ShutdownableProvider,
   type SignalName,
 } from './provider-registry.js';
+import { _asyncBlockingRiskField, _incrementHealth } from './health.js';
 import { _resetRootLogger } from './logger.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { dynImportOtel } from './otel-dynimport.js';
@@ -95,6 +97,63 @@ function deadlineRemaining(timeoutMs: number): () => number {
   return () => Math.max(0, timeoutMs - (Date.now() - startedAt));
 }
 
+/**
+ * How long a provider call may hold the event loop before it counts as having
+ * blocked it.
+ *
+ * 50ms is the long-task threshold browsers and Node profilers use: under it a
+ * stall is indistinguishable from ordinary scheduling noise; over it, timers,
+ * I/O callbacks and request handlers are all visibly late.
+ */
+const LONG_TASK_MS = 50;
+
+/**
+ * Count a provider call that held the event loop, per signal.
+ *
+ * Node's reading of `async_blocking_risk_*`. There is no "am I on an event
+ * loop?" question to ask here the way Python asks asyncio and .NET asks
+ * `SynchronizationContext` — in Node the answer is always yes, every line of
+ * this module already runs on the loop. What varies is whether a call *blocks*
+ * it, and everything this module awaits yields. The provider calls do not:
+ * `forceFlush()` and `shutdown()` are ordinary functions that run synchronously
+ * until they return a Promise, and an OTLP exporter serializes its whole
+ * pending batch in that prelude. That serialization is the one blocking call
+ * this drain path can reach, and while it runs nothing else on the loop does —
+ * not the request handlers, and not the deadline timer meant to bound this very
+ * flush.
+ *
+ * Only the synchronous span is measured. Time the returned Promise spends
+ * pending is the exporter waiting on a socket, which is exactly what the loop
+ * is for and is already reported as export latency.
+ */
+function recordBlockingRisk(provider: ShutdownableProvider, syncMs: number): void {
+  if (syncMs < LONG_TASK_MS) return;
+  const signal = _signalForProvider(provider);
+  // An untagged or foreign provider has no recorded signal. Charging its stall
+  // to logs would invent an attribution, and pointing an operator at the wrong
+  // exporter is worse than not pointing at one.
+  if (!signal) return;
+  _incrementHealth(_asyncBlockingRiskField(signal));
+}
+
+/**
+ * Invoke one provider phase, timing the part of it that runs synchronously.
+ *
+ * The timer brackets the call itself, not the await: everything between these
+ * two `Date.now()` reads happened before the event loop got its next turn.
+ */
+function callProviderPhase(
+  provider: ShutdownableProvider,
+  phase: () => Promise<void>,
+): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    return phase();
+  } finally {
+    recordBlockingRisk(provider, Date.now() - startedAt);
+  }
+}
+
 async function flushAndShutdownProvider(
   provider: ShutdownableProvider,
   timeoutMs: number,
@@ -111,9 +170,14 @@ async function flushAndShutdownProvider(
   const remaining = deadlineRemaining(timeoutMs);
   // Skip-when-undefined paths use explicit `if` guards (not `?.()`) so a
   // Stryker mutation that drops the optional chain becomes a hard TypeError
-  // observable to the calling test.
-  if (provider.forceFlush) {
-    const flushed = await raceWithDeadline(provider.forceFlush(), remaining());
+  // observable to the calling test. The method is hoisted to a local first so
+  // its narrowing survives into the callProviderPhase closure.
+  const forceFlush = provider.forceFlush;
+  if (forceFlush) {
+    const flushed = await raceWithDeadline(
+      callProviderPhase(provider, () => forceFlush.call(provider)),
+      remaining(),
+    );
     if (!flushed) {
       console.warn(
         `[provide/telemetry] provider forceFlush exceeded ${timeoutMs}ms deadline; abandoning background flush`,
@@ -125,12 +189,16 @@ async function flushAndShutdownProvider(
       return;
     }
   }
-  // Stryker disable next-line ConditionalExpression: flipping `if (provider.shutdown)`
+  const shutdown = provider.shutdown;
+  // Stryker disable next-line ConditionalExpression: flipping `if (shutdown)`
   // to `if (true)` would call `undefined()` when shutdown is missing — but
   // the TypeError is swallowed by Promise.allSettled in shutdownTelemetry,
   // so the mutation has no observable effect on any test assertion.
-  if (provider.shutdown) {
-    const stopped = await raceWithDeadline(provider.shutdown(), remaining());
+  if (shutdown) {
+    const stopped = await raceWithDeadline(
+      callProviderPhase(provider, () => shutdown.call(provider)),
+      remaining(),
+    );
     if (!stopped) {
       console.warn(
         `[provide/telemetry] provider shutdown exceeded ${timeoutMs}ms deadline; abandoning background shutdown`,
@@ -159,10 +227,11 @@ async function flushProviderOutcome(
   provider: ShutdownableProvider,
   timeoutMs: number,
 ): Promise<FlushOutcome> {
-  if (!provider.forceFlush) return 'flushed';
+  const forceFlush = provider.forceFlush;
+  if (!forceFlush) return 'flushed';
   let flush: Promise<void>;
   try {
-    flush = provider.forceFlush();
+    flush = callProviderPhase(provider, () => forceFlush.call(provider));
   } catch (err: unknown) {
     // A synchronously-throwing forceFlush is the same broken exporter as a
     // rejecting one; without this catch it would reject this call instead.

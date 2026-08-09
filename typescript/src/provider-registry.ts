@@ -71,6 +71,21 @@ export function _getProvidersBySignal(): Partial<Record<SignalName, Shutdownable
   return bySignal;
 }
 
+/**
+ * The signal a registered provider drains, or undefined when it has no tag.
+ *
+ * Identity lookup over the same positional arrays `_getProvidersBySignal` walks,
+ * so it answers only for providers `_storeRegisteredProviders` was handed.
+ * A provider that is not ours, or one registered without a signal tag, has no
+ * answer here — and undefined is the honest one, since nothing recorded which
+ * exporter it belongs to.
+ */
+export function _signalForProvider(provider: ShutdownableProvider): SignalName | undefined {
+  const index = _registeredProviders.indexOf(provider);
+  if (index < 0) return undefined;
+  return _providerSignals[index];
+}
+
 /** Called by registerOtelProviders once providers are live. */
 export function _markProvidersRegistered(): void {
   _providersRegistered = true;

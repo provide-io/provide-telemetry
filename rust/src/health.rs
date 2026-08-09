@@ -113,6 +113,23 @@ pub fn record_export_latency(signal: Signal, latency_ms: f64) {
     }
 }
 
+/// Count one export that parked a thread it should not have parked.
+///
+/// The Rust reading of `async_blocking_risk_*`: `flush_telemetry` and
+/// `shutdown_telemetry` are synchronous, so the caller's thread waits for the
+/// drain. On an ordinary thread that costs nothing but the caller's own time.
+/// On a Tokio worker it stalls the executor — every other task multiplexed onto
+/// that worker stops until the drain returns — which is the same hazard
+/// Python counts when a blocking export runs on an asyncio loop.
+pub fn increment_async_blocking_risk(signal: Signal) {
+    let mut snapshot = crate::_lock::lock(health());
+    match signal {
+        Signal::Logs => snapshot.async_blocking_risk_logs += 1,
+        Signal::Traces => snapshot.async_blocking_risk_traces += 1,
+        Signal::Metrics => snapshot.async_blocking_risk_metrics += 1,
+    }
+}
+
 /// Count a receipt its sink would not take.
 ///
 /// Deliberately a counter and not a log line: receipts are produced *by*
