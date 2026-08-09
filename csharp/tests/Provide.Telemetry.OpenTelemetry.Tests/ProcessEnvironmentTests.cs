@@ -116,6 +116,67 @@ public class ProcessEnvironmentTests
         Assert.Throws<ConfigurationError>(() => Endpoints.BuildSignalUri("not a url", "logs"));
     }
 
+    /// <summary>
+    /// The ten shapes Python's <c>validate_otlp_endpoint</c> and Go's
+    /// <c>_validatedSignalEndpointURL</c> refuse. Four of them —
+    /// <c>ftp://</c>, port <c>0</c>, the empty port, and the empty port behind
+    /// an explicit <c>/v1/</c> path — used to be accepted here, which meant a
+    /// misconfigured collector URL reached the exporter as a live target
+    /// instead of failing the signal.
+    /// </summary>
+    [Theory]
+    [InlineData("not-a-url")]                 // no scheme separator
+    [InlineData("collector:4318")]            // a bare colon is not a scheme separator
+    [InlineData("ftp://collector:4318")]      // scheme outside {http, https}
+    [InlineData("http://")]                   // no host
+    [InlineData("http://:4318")]              // port without a host
+    [InlineData("http://host:bad")]           // non-numeric port
+    [InlineData("http://host:-1")]            // negative port
+    [InlineData("http://host:0")]             // port 0 is not a listenable port
+    [InlineData("http://host:99999")]         // above the 16-bit range
+    [InlineData("http://host:")]              // colon present, port empty
+    [InlineData("http://host:/v1/traces")]    // same, on the explicit-path branch
+    public void MalformedEndpointsAreRefusedAtExporterConstruction(string endpoint)
+    {
+        var error = Assert.Throws<ConfigurationError>(
+            () => Endpoints.BuildSignalUri(endpoint, "traces"));
+        Assert.Equal($"invalid OTLP endpoint: {endpoint}", error.Message);
+    }
+
+    /// <summary>
+    /// The shapes that must keep working. <c>https</c> is here because a scheme
+    /// check that only admitted <c>http</c> would pass every test above.
+    /// </summary>
+    [Theory]
+    [InlineData("http://host", "http://host/v1/traces")]
+    [InlineData("https://collector.example", "https://collector.example/v1/traces")]
+    [InlineData("HTTPS://collector.example", "https://collector.example/v1/traces")]
+    [InlineData("http://host:65535", "http://host:65535/v1/traces")]
+    [InlineData("http://host:1", "http://host:1/v1/traces")]
+    // The colons inside an IPv6 literal are the address, not a port separator.
+    [InlineData("http://[::1]", "http://[::1]/v1/traces")]
+    [InlineData("http://[::1]:4318", "http://[::1]:4318/v1/traces")]
+    // Userinfo colons are credentials, not a port. Python rejects this shape;
+    // Go accepts it, and Go is the one that is right.
+    [InlineData("https://user:pw@host/v1/traces", "https://user:pw@host/v1/traces")]
+    public void WellFormedEndpointsSurviveValidation(string endpoint, string expected)
+    {
+        Assert.Equal(expected, Endpoints.BuildSignalUri(endpoint, "traces").ToString());
+    }
+
+    /// <summary>
+    /// A shape the raw-text rules admit but <see cref="Uri"/> still refuses —
+    /// the unterminated IPv6 bracket that <c>spec/_runtime_probe.py</c> feeds
+    /// the SDK to assert it degrades rather than crashes.
+    /// </summary>
+    [Fact]
+    public void AnEndpointUriRefusesIsReportedAsAConfigurationError()
+    {
+        var error = Assert.Throws<ConfigurationError>(
+            () => Endpoints.BuildSignalUri("http://[", "traces"));
+        Assert.Equal("invalid OTLP endpoint: http://[", error.Message);
+    }
+
     [Fact]
     public void AnUnsetEndpointNormalizesToNull()
     {

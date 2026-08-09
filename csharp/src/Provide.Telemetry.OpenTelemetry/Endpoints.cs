@@ -38,18 +38,91 @@ internal static class Endpoints
     }
 
     /// <summary>
-    /// Append the per-signal path unless the endpoint already names one.
+    /// Append the per-signal path unless the endpoint already names one, and
+    /// refuse a URL the other SDKs would refuse.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Config parsing deliberately does not validate the endpoint — it carries
+    /// whatever the environment said, exactly as Python's
+    /// <c>TelemetryConfig.from_env</c> does, so a malformed value degrades at
+    /// export time rather than crashing startup. This is the layer that Python
+    /// guards with <c>validate_otlp_endpoint</c> and Go with
+    /// <c>_validatedSignalEndpointURL</c>, so the same four rules apply here:
+    /// an <c>http</c>/<c>https</c> scheme, a non-empty host, and a port that is
+    /// either absent or an integer in 1..65535.
+    /// </para>
+    /// <para>
+    /// The shape is checked against the raw text before <see cref="Uri"/> sees
+    /// it. <c>Uri.TryCreate</c> already rejects three of these shapes on its
+    /// own — <c>http://host:bad</c>, <c>:-1</c> and <c>:99999</c> — but accepts
+    /// <c>ftp://</c>, <c>:0</c> and the empty port, so validating afterwards
+    /// would leave the rules that matter unreachable and untestable.
+    /// </para>
+    /// <para>
+    /// Userinfo is stripped before the port is read. Python scans the whole
+    /// netloc for a colon and so rejects <c>https://user:pw@host/v1/logs</c>,
+    /// which Go accepts; Go is right, because that colon separates credentials,
+    /// not a port. Matching Go here is a deliberate choice not to copy a bug.
+    /// </para>
+    /// </remarks>
     internal static Uri BuildSignalUri(string endpoint, string signal)
     {
         var trimmed = endpoint.TrimEnd('/');
-        if (trimmed.Contains("/v1/", StringComparison.OrdinalIgnoreCase)) return new Uri(trimmed);
-        if (!Uri.TryCreate($"{trimmed}/v1/{signal}", UriKind.Absolute, out var uri))
+        var target = trimmed.Contains("/v1/", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"{trimmed}/v1/{signal}";
+        // Checked against `trimmed`, not `target`: by this point `target` always
+        // carries a "/v1/..." path, so validating it would make the
+        // no-path-at-all branch unreachable — and "http://host" with no path is
+        // the common case.
+        ValidateShape(trimmed, endpoint);
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var uri))
         {
             throw new ConfigurationError($"invalid OTLP endpoint: {endpoint}");
         }
         return uri;
     }
+
+    private static readonly char[] AuthorityTerminators = ['/', '?', '#'];
+
+    /// <summary>
+    /// Enforce the scheme, host and port rules on the raw endpoint text.
+    /// </summary>
+    private static void ValidateShape(string target, string endpoint)
+    {
+        var schemeEnd = target.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd < 0) throw Invalid(endpoint);
+        var scheme = target[..schemeEnd];
+        if (!scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
+            && !scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+        {
+            throw Invalid(endpoint);
+        }
+
+        var rest = target[(schemeEnd + 3)..];
+        var authorityEnd = rest.IndexOfAny(AuthorityTerminators);
+        var authority = authorityEnd < 0 ? rest : rest[..authorityEnd];
+        var at = authority.LastIndexOf('@');
+        var hostPort = at < 0 ? authority : authority[(at + 1)..];
+
+        // Only a colon after the closing bracket can be a port separator; the
+        // ones inside "[::1]" are the address itself.
+        var afterBracket = hostPort[(hostPort.LastIndexOf(']') + 1)..];
+        var colon = afterBracket.LastIndexOf(':');
+        var hostLength = colon < 0 ? hostPort.Length : hostPort.Length - (afterBracket.Length - colon);
+        if (hostLength == 0) throw Invalid(endpoint);
+        if (colon < 0) return;
+
+        var port = afterBracket[(colon + 1)..];
+        if (!int.TryParse(port, out var parsed) || parsed < 1 || parsed > 65535)
+        {
+            throw Invalid(endpoint);
+        }
+    }
+
+    private static ConfigurationError Invalid(string endpoint) =>
+        new($"invalid OTLP endpoint: {endpoint}");
 
     /// <summary>
     /// Render headers as the exporter's comma-separated form.

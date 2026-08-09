@@ -142,13 +142,16 @@ public class ParityOtherTests
     }
 
     [Theory]
-    // Known divergence from the fixture, recorded rather than hidden. Parsing
-    // soft-validates: a value that is not a URI at all, or whose port is
-    // malformed, is carried through and fails later in the exporter's fail-open
-    // path instead of at startup. Python rejects all of these in
-    // validate_otlp_endpoint. Of these, "not-a-url" and "http://host:bad" are
-    // still refused at provider registration by Endpoints.BuildSignalUri;
-    // "http://host:0" and "http://host:" are not refused anywhere.
+    // Parsing soft-validates on purpose, and this pins that it keeps doing so.
+    // A value that is not a URI at all, or whose port is malformed, is carried
+    // through the config layer unchanged and refused later, at exporter
+    // construction, via the exporter's fail-open path. Python behaves
+    // identically: validate_otlp_endpoint guards the exporter, not
+    // TelemetryConfig.from_env, which accepts every string below.
+    //
+    // All four are refused by Endpoints.BuildSignalUri — see
+    // MalformedEndpointsAreRefusedAtExporterConstruction, which covers the same
+    // shapes at the layer that is supposed to catch them.
     [InlineData("not-a-url")]
     [InlineData("http://host:bad")]
     [InlineData("http://host:0")]
