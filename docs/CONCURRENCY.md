@@ -7,23 +7,25 @@ initialisation sequence, see [`INTERNALS.md`](INTERNALS.md).
 
 ## Shared invariants
 
-The four runtimes (Python, TypeScript, Go, Rust) agree on three invariants:
+The five runtimes (Python, TypeScript, Go, Rust, C#) agree on three invariants:
 
 1. **Context is async-local everywhere; never stored in a process-global
    after setup.** Trace IDs, session IDs, request IDs, baggage, and
    propagation state live in async-local containers (`contextvars`,
    `AsyncLocalStorage`, Go `context.Context` values, Rust guards over
-   task-local / thread-local snapshots). Process-global storage is used
-   only for policy (sampling, backpressure, consent, cardinality) and
-   setup/lifecycle flags.
+   task-local / thread-local snapshots, .NET `AsyncLocal<T>`).
+   Process-global storage is used only for policy (sampling, backpressure,
+   consent, cardinality) and setup/lifecycle flags.
 2. **Setup is idempotent and serialised.** Each runtime guards its
    `setup_telemetry` / `setupTelemetry` / `SetupTelemetry` coordinator with
    a mutex so concurrent calls collapse to a single installation.
 3. **Provider-changing reconfiguration cannot be hot-swapped once the
-   upstream OpenTelemetry provider is installed.** All four runtimes
+   upstream OpenTelemetry provider is installed.** All five runtimes
    communicate this by requiring a process restart for provider swaps;
    policy (sampling rate, queue depth, exporter timeouts) is always
-   hot-reloadable.
+   hot-reloadable. Go, Rust, TypeScript, and C# gate the refusal on
+   liveness: with no provider actually installed, nothing has baked the
+   old value in, so the change is applied rather than rejected.
 
 ## Python
 
@@ -168,17 +170,53 @@ cannot be safely swapped after spans are in flight.
   reconfiguration requires a process restart — just like the other
   runtimes.
 
+## C#
+
+- Lifecycle state is a single immutable `LifecycleGeneration` record published
+  under one `lock (Gate)` in `csharp/src/Provide.Telemetry/Setup.cs`. Status
+  reads take one reference to one generation, so `GetRuntimeStatus()` can never
+  report a config from one lifecycle alongside provider flags from another.
+- Draining happens outside the lifecycle lock. `ShutdownTelemetry()` swaps the
+  generation to `null` under the gate and then calls `backend.Shutdown(deadline)`
+  unlocked, so a collector timeout does not block concurrent
+  `GetRuntimeStatus()` calls for its duration. `OpenTelemetryBackend` applies the
+  same rule internally: providers are detached under `_gate`, disposed outside it.
+- The drain deadline is absolute and computed once per call, then shared by every
+  signal, so a ten-second `ShutdownTelemetry()` with three installed providers
+  costs ten seconds, not thirty. `ProviderDrains.Run` starts all drains together
+  and abandons — rather than cancels — any that outlive the deadline.
+- Context propagation uses `AsyncLocal<T>` (`Context.cs`) for bound fields, trace
+  context, propagation context, and session ID. `PushContext()` and
+  `PushTraceContext()` return `IDisposable` scopes that restore the predecessor
+  value on dispose, giving the same nesting semantics as Rust's RAII guards;
+  `BindContext()` / `SetTraceContext()` remain available for the flat case.
+- Host-provider adoption is three `Volatile` ints in `TelemetryBackendRegistry`,
+  written by the host via `MarkHostProviders(...)` and read on the status path —
+  asserted, not detected, for the reason given in the Capability Matrix. The
+  marks deliberately survive our own provider teardown.
+- Policy state (sampling, backpressure, cardinality, resilience, classification)
+  each lives behind its own `static readonly object Gate`, held only long enough
+  to copy out or mutate the relevant struct. Health counters use `Interlocked`
+  and an `AtomicDouble` compare-exchange loop instead, because they are written
+  on the emit path.
+
 ## Cross-cutting notes
 
 - No runtime uses unbounded queues. Backpressure caps are configurable but
   enforced under the owning subsystem's lock, so the "full queue" decision
   is always consistent with the ticket count.
 - Shutdown is ordered: tracing → metrics → logging → runtime reset →
-  executor shutdown. Each step is independently lock-protected.
+  executor shutdown. Each step is independently lock-protected. C# is the
+  exception and does it on purpose: its three provider drains are started
+  together against one shared absolute deadline (`ProviderDrains.Run`), so
+  ordering is not observable and the wall-clock cost is one budget rather
+  than a multiple of it.
 - Tests that reset module-level singletons use `importlib.reload` (Python),
   Jest module-reset hooks (TypeScript), fresh `TestMain` helpers (Go),
-  and `#[cfg(test)]` resetters (Rust). Never touch the locks directly; use
-  the documented `_reset_*_for_tests` helpers.
+  `#[cfg(test)]` resetters (Rust), and `Testing.ResetForTests()` inside the
+  `[CollectionDefinition("Telemetry", DisableParallelization = true)]` xUnit
+  collection (C#). Never touch the locks directly; use the documented
+  `_reset_*_for_tests` helpers.
 
 For the initialisation ordering and the processor-chain order, see
 [`INTERNALS.md`](INTERNALS.md) — this document intentionally does not

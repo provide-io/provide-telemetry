@@ -4,7 +4,7 @@
 
 This roadmap turns the repo's parity goal into a concrete work plan. It is
 biased toward developer experience: users should be able to move between
-Python, TypeScript, Go, and Rust without relearning telemetry semantics.
+Python, TypeScript, Go, Rust, and C# without relearning telemetry semantics.
 
 ## Status
 
@@ -22,7 +22,7 @@ criteria rather than an untriaged backlog.
 The target is:
 
 - one semantic contract
-- four idiomatic facades
+- five idiomatic facades
 - one shared parity test suite that checks behavior, not just exported symbols
 
 ## Principles
@@ -37,7 +37,7 @@ The target is:
 
 The main ongoing focus is keeping the achieved contract from drifting:
 
-- preserve one semantic contract across Python, TypeScript, Go, and Rust
+- preserve one semantic contract across Python, TypeScript, Go, Rust, and C#
 - keep optional OTLP paths honest about dependency and feature-gate boundaries
 - extend shared parity probes whenever new user-visible behavior is added
 - keep docs aligned with what the runtime-status and parity suites actually
@@ -51,13 +51,13 @@ The main ongoing focus is keeping the achieved contract from drifting:
 - Align Rust strict-schema behavior with the cross-language contract.
 - Parse and enforce Rust `required_keys` the same way as the other languages.
 - Make Rust hardening UTF-8 safe when truncating string values.
-- Standardize error fingerprint rules across all four languages.
+- Standardize error fingerprint rules across all five languages.
 - Fix any feature-gated build failures in advertised Rust `otel` paths.
 
 Acceptance criteria:
 
 - The same log event with the same config is accepted or dropped identically in
-  all four languages.
+  all five languages.
 - `cargo test --manifest-path rust/Cargo.toml`
 - `cargo test --manifest-path rust/Cargo.toml --features otel`
 - `uv run python spec/validate_conformance.py`
@@ -65,11 +65,11 @@ Acceptance criteria:
 
 all pass.
 
-### P0b. Close Rust Facade Gaps
+### P0b. Close Rust and C# Facade Gaps
 
-Known gaps where the Rust crate lacks a feature that Python, TypeScript, and
-Go already ship. These are tracked here instead of under P1 because they are
-missing surface area, not drift between existing surfaces.
+Known gaps where a language lacks a feature the others already ship. These are
+tracked here instead of under P1 because they are missing surface area, not
+drift between existing surfaces.
 
 - **ASGI/HTTP request-lifecycle middleware (P1 priority).** Python's
   `provide.telemetry.asgi.TelemetryMiddleware`, the TypeScript middleware, and
@@ -79,32 +79,41 @@ missing surface area, not drift between existing surfaces.
   blocks, but users must wire them into axum/hyper handlers by hand. Ship a
   `provide_telemetry::asgi`-equivalent crate module (or a sibling
   `provide-telemetry-axum` facade) that wraps these primitives into a
-  `tower::Layer`.
-- **Pretty log renderer (P2 priority).** `PROVIDE_LOG_FORMAT=pretty` is honored
-  by Python, TypeScript, and Go and produces an ANSI-coloured multi-line
-  renderer. Rust's `rust/src/logger/emit.rs` only branches on `console` and
-  `json`; `pretty` silently falls back to `console`. Implement the pretty
-  renderer with configurable colors to match the other languages' output.
+  `tower::Layer`. C# is in the same position with the same building blocks
+  (`ExtractW3CContext()`, `Context.PushContext()`, `Context.PushTraceContext()`)
+  and no ASP.NET Core middleware or `IApplicationBuilder` extension to wrap
+  them.
+- **Pretty log renderer (P2 priority).** `PROVIDE_LOG_FORMAT=pretty` produces an
+  ANSI-coloured renderer in Python, TypeScript, Go and Rust — Rust's shipped as
+  `rust/src/logger/pretty.rs`, closing the gap this bullet originally
+  tracked. C# is now the outlier: `Logger.Render` treats `pretty` as
+  quoted key=value text with no ANSI, no TTY check and no
+  `PROVIDE_LOG_PRETTY_FIELDS` support, and its `LoggingConfig.PrettyKeyColor` /
+  `PrettyValueColor` / `PrettyFields` properties are read by nothing. Either
+  implement the renderer or drop the unread properties — a config surface that
+  accepts values and ignores them is worse than an honest absence.
 - **Metrics fallback export on shutdown (P3 priority).** When the `otel`
   feature is off, Rust accumulates counter/gauge/histogram state in-process
-  and drops it on shutdown. Python flushes a JSON snapshot of the fallback
-  state to stderr during `shutdown_telemetry()`
-  (`src/provide/telemetry/metrics/fallback.py`). Decide whether Rust, Go, and
-  TypeScript should adopt the same stderr-JSON fallback or whether this
-  becomes a documented Python-only convenience.
+  and drops it on shutdown; C#'s core-only package does the same. Python
+  flushes a JSON snapshot of the fallback state to stderr during
+  `shutdown_telemetry()` (`src/provide/telemetry/metrics/fallback.py`). Decide
+  whether Rust, Go, TypeScript, and C# should adopt the same stderr-JSON
+  fallback or whether this becomes a documented Python-only convenience.
 
 Acceptance criteria:
 
-- A Rust axum service can install a single `TelemetryLayer` and observe the
-  same request-lifecycle telemetry as the Python ASGI middleware.
-- `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in Rust.
+- A Rust axum service can install a single `TelemetryLayer`, and an ASP.NET Core
+  application a single middleware, and each observes the same
+  request-lifecycle telemetry as the Python ASGI middleware.
+- `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in C#, or the
+  unread pretty-colour properties are removed from the C# config.
 - In-process metric state is either exported or documented as a known drop on
-  shutdown across all four languages.
+  shutdown across all five languages.
 
 ### P1. Eliminate Public Facade Drift
 
 - Make `get_logger()`, `get_tracer()`, and `get_meter()` mean the same thing in
-  all four languages.
+  all five languages.
 - Ensure lazy-init behavior is consistent with explicit setup for the common
   path.
 - Decide whether test helpers such as buffer loggers are full telemetry-path
@@ -181,7 +190,7 @@ Acceptance criteria:
 
 Parity should only be claimed when all of the following are true:
 
-- Shared semantic behavior is aligned across Python, TypeScript, Go, and Rust.
+- Shared semantic behavior is aligned across Python, TypeScript, Go, Rust, and C#.
 - Public facades have equivalent meaning.
 - Advertised optional features compile, run, and pass CI.
 - Known differences are intentional, idiomatic, and documented.

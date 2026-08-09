@@ -46,12 +46,20 @@ The multiplier lives in `baselines/perf-<lang>.json`:
 ## Running the gate locally
 
 ```bash
-make perf              # all four languages
+make perf              # Python, TypeScript, Go, Rust — not C#
 make perf-python       # one language
 make perf-typescript
 make perf-go
 make perf-rust
 ```
+
+**C# has no performance budget gate.** There is no `make perf-csharp`, no
+`baselines/perf-csharp.json`, and `ci-csharp.yml` runs no
+`performance-smoke` job — so `make perf` covers four of the five languages.
+A C# hot-path regression is not caught by this gate; the C# implementation is
+guarded by its coverage floor and the cross-language parity harnesses instead.
+Closing the gap means a C# benchmark runner emitting the same per-op timing
+JSON the other four do, plus a seeded baseline bucket.
 
 Local runs use the OS bucket matching your machine. M-series Macs hit
 `macos-arm64`, GitHub macOS runners hit `macos-arm64` too, Linux dev boxes

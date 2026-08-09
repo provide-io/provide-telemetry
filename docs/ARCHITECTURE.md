@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Unified telemetry facade across the repo's Python, TypeScript, Go, and Rust implementations.
+- Unified telemetry facade across the repo's Python, TypeScript, Go, Rust, and C# implementations.
 - Safe defaults with optional OpenTelemetry runtime integration.
 - Strict event naming and schema validation for consistent analytics.
 - Predictable behavior under async workloads.
@@ -190,8 +190,10 @@ flowchart TD
 
 ## Governance Modules
 
-Governance is part of the mandatory API surface in all four languages:
+Governance is part of the mandatory API surface in all five languages:
 `classification`, `consent`, and `receipts` are always linked and loaded by default.
+`spec/validate_conformance.py` enforces this through `_GOVERNANCE_LANGUAGES`,
+which lists Python, TypeScript, Go, Rust, and C#.
 Core signal paths (logging, tracing, metrics, schema handling, health, resilience)
 still execute when governance policies are permissive.
 
@@ -202,5 +204,5 @@ Governance symbols are marked `required: true` in `spec/telemetry-api.yaml`.
 - Unit tests with branch coverage for all local logic and fallback paths.
 - Optional-extras tests to validate real OTel imports.
 - Integration smoke test with local OTLP collector (manual/nightly CI).
-- Python, TypeScript, Go, and Rust each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`.
+- Python, TypeScript, Go, Rust, and C# each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`, and C# builds its solution with `-warnaserror`.
 - Strip-governance verification artifacts were removed; this parity slice now validates governance always-on behavior.

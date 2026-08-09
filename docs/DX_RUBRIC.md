@@ -4,7 +4,7 @@
 
 This rubric defines what "delightful and consistent" means for a polyglot
 telemetry library. It is intended to guide design reviews, release readiness,
-and parity work across Python, TypeScript, Go, and Rust.
+and parity work across Python, TypeScript, Go, Rust, and C#.
 
 The goal is not identical syntax. The goal is identical user intent and
 predictable observable behavior, expressed through idiomatic APIs in each
@@ -51,6 +51,8 @@ Maximum score: `16`
 - TypeScript feels Node/browser-native.
 - Go feels explicit and `context.Context`-oriented.
 - Rust feels typed, RAII-based, and feature-gated where appropriate.
+- C# feels `AsyncLocal`-scoped and `IDisposable`-oriented, with the exporter
+  dependency isolated in a separate package.
 - Language-specific affordances are additive rather than semantic forks.
 
 ### 4. Safe Defaults
@@ -90,7 +92,7 @@ Maximum score: `16`
 Use these questions during review:
 
 1. Can a user predict what happens without reading implementation code?
-2. Does the same config produce the same outcome in all four languages?
+2. Does the same config produce the same outcome in all five languages?
 3. Are the common paths easy, and are the advanced paths discoverable?
 4. Are invalid states surfaced clearly instead of silently degraded?
 5. Are all advertised feature combinations exercised in CI?

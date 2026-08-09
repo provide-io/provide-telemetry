@@ -4,7 +4,7 @@ How provide-telemetry works under the hood. For contributors and advanced users 
 
 ## Polyglot Note
 
-The Python modules below remain the behavioral reference, but the repo now also carries a Rust crate under `rust/`. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
+The Python modules below remain the behavioral reference, but the repo also carries TypeScript, Go, Rust, and C# implementations. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
 
 - `bind_context(...) -> ContextGuard`
 - `bind_session_context(...) -> ContextGuard`
@@ -12,6 +12,8 @@ The Python modules below remain the behavioral reference, but the repo now also 
 - `bind_propagation_context(...) -> PropagationGuard`
 
 Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
+
+C# reaches the same place through `AsyncLocal<T>` plus `IDisposable` scopes — `Context.PushContext(...)` and `Context.PushTraceContext(...)` capture the predecessor value and restore it on dispose, so a `using` block nests the way a Rust guard does. The flat `BindContext` / `SetTraceContext` setters remain for callers that do not need restoration. C# also splits its packages rather than its features: `Provide.Telemetry` is BCL-only and names no OpenTelemetry type, and `Provide.Telemetry.OpenTelemetry` supplies delivery behind the `ITelemetryBackend` seam, registered once via `OpenTelemetryBackendRegistration.Register()`.
 
 ## Structlog Processor Pipeline
 
@@ -102,6 +104,7 @@ The resilience layer wraps export operations with retry, timeout, and circuit-br
 | TypeScript | `resilience.ts` + `resilient-exporter.ts` | Per-export: callback-based exporters are wrapped so each batch runs under the policy. |
 | Go         | `resilience.go` + `resilient_exporter.go` | Per-export: `ExportSpans`/`Export` delegate through `RunWithResilience`. |
 | Rust       | `resilience.rs` + `otel/resilient.rs` | Per-export: `ResilientSpanExporter`, `ResilientLogExporter`, and `ResilientMetricExporter` wrap the OTLP exporters so every batch export runs the retry/timeout/circuit-breaker loop against the same shared `POLICIES` and `CIRCUITS` state as `run_with_resilience`. |
+| C#         | `ResilienceExecutor.cs` + `ResilientExporter.cs` | Per-**drain**, not per-batch: the policy runs around the provider's `ForceFlush`, which is the only call this SDK makes that can fail against the network. Individual batch exports inside OTel's own `BatchExportProcessor` are not wrapped. The per-attempt budget is the absolute deadline supplied by `FlushTelemetry` / `ShutdownTelemetry`, not `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS`, which survives only as the `> 0` gate deciding whether the circuit breaker is consulted. |
 
 ### Timeout Execution
 
@@ -149,7 +152,7 @@ Each signal degrades independently:
 
 ### PII Engine
 
-The PII engine (`pii.py` in Python; mirrored in `pii.ts`, `piicore` package in Go, and `pii.rs` in Rust) processes log payloads in three passes:
+The PII engine (`pii.py` in Python; mirrored in `pii.ts`, the `piicore` package in Go, `pii.rs` in Rust, and `Pii.cs` in C#) processes log payloads in three passes:
 
 1. **Custom path rules**: Each `PIIRule` specifies a `path` (tuple of key segments, with `"*"` as wildcard) and a `mode`:
    - `"drop"` — remove the value entirely

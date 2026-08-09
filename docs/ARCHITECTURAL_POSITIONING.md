@@ -6,7 +6,7 @@ As of April 14, 2026, this is the practical comparison for `provide-telemetry` v
 
 | Option | What It Is | Choose When | Avoid When | Migration Cost | Lock-in |
 |---|---|---|---|---|---|
-| `provide-telemetry` | A house telemetry facade and policy layer over logs, traces, metrics, plus schema, PII, backpressure, and runtime controls across Python, TypeScript, Go, and Rust. Evidence: shared facade in `src/provide/telemetry/__init__.py`, lifecycle in `src/provide/telemetry/setup.py`, parity contract in `spec/telemetry-api.yaml`. | You want one internal standard across languages, you want policy built in, and you are willing to own the abstraction. | You want to stay close to ecosystem standards, want vendor support out of the box, or do not want to maintain semantic parity yourself. | Medium to high if you are already on raw OTel or a vendor SDK, because you have to adopt this API and its conventions. | Medium vendor lock-in, high internal-platform lock-in. You are not tied to a vendor, but you are tied to your own facade. |
+| `provide-telemetry` | A house telemetry facade and policy layer over logs, traces, metrics, plus schema, PII, backpressure, and runtime controls across Python, TypeScript, Go, Rust, and C#. Evidence: shared facade in `src/provide/telemetry/__init__.py`, lifecycle in `src/provide/telemetry/setup.py`, parity contract in `spec/telemetry-api.yaml`. | You want one internal standard across languages, you want policy built in, and you are willing to own the abstraction. | You want to stay close to ecosystem standards, want vendor support out of the box, or do not want to maintain semantic parity yourself. | Medium to high if you are already on raw OTel or a vendor SDK, because you have to adopt this API and its conventions. | Medium vendor lock-in, high internal-platform lock-in. You are not tied to a vendor, but you are tied to your own facade. |
 | OpenTelemetry directly | Vendor-neutral observability standard for traces, metrics, and logs, with Collector and broad vendor support. | You want the industry standard, maximum portability, and direct access to the real primitives. | You want a single high-level API across languages with org-specific defaults already encoded. | Medium because OTel is flexible but you must assemble conventions, wrappers, and policy yourself. | Low. This is the least locked-in path. |
 | Datadog | Full observability platform with agent, APM, logs, metrics, service map, and single-step instrumentation. | You want fast time-to-value, auto-instrumentation, a managed platform, and deep UI and product integration. | You want a vendor-neutral contract or do not want an agent and platform dependency in the middle of your telemetry model. | Low to medium for adoption if you accept the platform; high to leave later if you lean into Datadog-native features. | High. Strong product and workflow lock-in. |
 | Sentry | Error-monitoring-first platform that also does tracing and spans. | Your center of gravity is exceptions, app debugging, and trace-linked incident investigation rather than building a telemetry standard. | You want a broad backend-service observability contract with first-class logs and metrics policy across multiple languages under one custom API. | Low to medium if you mainly need errors plus tracing; higher if you expect it to replace a full internal telemetry platform. | Medium to high. Less infrastructure-heavy than Datadog, but still a vendor model. |
@@ -48,7 +48,7 @@ My blunt recommendation: shrink it, not keep it as-is and not replace it with a 
 
 - Ambitious runtime reconfiguration
 - Governance is mandatory in all supported runtime surfaces; no optional build variants remain.
-- Duplicated custom behavior that sits far above raw OTel in four languages
+- Duplicated custom behavior that sits far above raw OTel in five languages
 
 ### Why
 
@@ -62,7 +62,7 @@ Its weakest asset is also clear:
 
 That second part is where cost and fragility start to dominate:
 
-- Four implementations means semantic drift risk.
+- Five implementations means semantic drift risk.
 - Global mutable runtime state makes correctness harder.
 - Advanced behaviors like hot reload and multi-runtime consistency are where the architecture is already showing cracks.
 
@@ -75,7 +75,7 @@ Keep the broader design only if all of these are true:
 - You have a real multi-language estate: at least three active languages in production.
 - You have multiple teams who need one contract more than they need raw flexibility.
 - You have compliance or privacy requirements that justify built-in policy.
-- You have at least one dedicated owner who can maintain parity across Python, TypeScript, Go, and Rust.
+- You have at least one dedicated owner who can maintain parity across Python, TypeScript, Go, Rust, and C#.
 
 If that is the environment, this repo is defensible.
 
@@ -94,7 +94,7 @@ That is the path I would choose here.
 Replace it with direct OTel plus a much smaller helper package if:
 
 - You are mostly one language, maybe two.
-- You do not need a custom contract across all four languages.
+- You do not need a custom contract across all five languages.
 - You do not want to own semantic parity forever.
 - Standards alignment matters more than framework-level opinion.
 

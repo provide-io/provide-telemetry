@@ -44,9 +44,17 @@ drift per language, so each language publishes off its own trigger:
 | TypeScript (npm) | push of a `typescript/vX.Y.Z` tag | No |
 | Rust (crates.io) | push of a `rust/vX.Y.Z` tag | No |
 | Go (pkg.go.dev) | push of `go/vX.Y.Z` / `go/otel/vX.Y.Z` tags | No |
+| C# (not yet published) | push of a `csharp/vX.Y.Z` tag | No |
+
+**C# builds but does not publish.** The `build-csharp` job version-checks, builds with
+`-warnaserror`, tests, packs *both* `Provide.Telemetry` and
+`Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were produced, and uploads them
+as the `csharp-packages` workflow artifact. There is no `dotnet nuget push` step and no
+`publish-csharp` job, so a `csharp/vX.Y.Z` tag produces artifacts to download, not a NuGet
+release. Pushing to NuGet is a manual step until that job exists.
 
 Cutting a release for one language never touches the others — pushing `typescript/v0.5.2` publishes
-npm only; it does not build, test, or publish Python/Rust/Go, and does not require or create a
+npm only; it does not build, test, or publish Python/Rust/Go/C#, and does not require or create a
 GitHub Release. Tag only the languages that actually changed.
 
 Go CI is intentionally split the same way:

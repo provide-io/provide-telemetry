@@ -203,10 +203,14 @@ framework default  <  OTEL_* env  <  explicit config
 - **Additive env keys always merge.** Non-identity keys (`host.name`,
   `service.instance.id`, `k8s.*`, …) are always attached.
 
-This ladder is identical across Python, TypeScript, Go, and Rust — all four emit
-the same attribute keys — and the shared `resource_precedence` contract in
+This ladder is identical across Python, TypeScript, Go, Rust, and C# — all five
+emit the same attribute keys (`service.name`, `deployment.environment`,
+`service.version`) — and the shared `resource_precedence` contract in
 `spec/behavioral_fixtures.yaml` pins the "explicit = differs from default" gate
-that every implementation applies.
+that every implementation applies. C#'s builder is
+`csharp/src/Provide.Telemetry/ResourceBuilder.cs`, and its
+`ResourcePrecedence_ServiceNameFromEnv` test is the C# entry for the
+`resource_precedence` category in `spec/fixture_test_ids.yaml`.
 
 ## Parsing Notes
 

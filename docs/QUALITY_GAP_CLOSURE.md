@@ -14,6 +14,16 @@ gates: line coverage alone is not treated as evidence that behavior is useful.
   packages.
 - [x] Rust enforces zero uncovered executable lines and 100% covered functions
   with `cargo llvm-cov`.
+
+C# is a deliberate, recorded exception to the 100% rule and is therefore not
+listed above as a checked box. `.github/workflows/ci-csharp.yml` merges every
+Cobertura report the run produces — both test projects instrument the core
+assembly, so neither report is complete alone — and enforces floors of 99% line
+and 97% branch, ratcheted up and never down. The measured figures at the time
+the floors were set were 99.60% line and 97.94% branch across 685 tests. What is
+left uncovered is the circuit breaker's half-open transitions, which need a
+30-second cooldown to elapse and would need an injectable clock to reach, plus
+defensive null-coalescing arms and lock double-checks that only a race can take.
 - [x] Public `TelemetryRuntime` lifecycle behavior is exercised directly:
   construction, startup success and degradation, immutable snapshots,
   provider-aware flush results, successful and rejected reconfiguration,
@@ -29,7 +39,7 @@ are what prevent assertion-free execution from satisfying the quality policy.
 
 - [x] The executable contract defines 24 mandatory fixture categories.
 - [x] `spec/fixture_test_ids.yaml` maps every category to a concrete test ID in
-  Python, TypeScript, Go, and Rust: 96 mappings in total.
+  Python, TypeScript, Go, Rust, and C#: 120 mappings in total.
 - [x] `spec/check_fixture_test_ids.py` rejects missing languages, categories,
   duplicate IDs, and references that cannot be found in the relevant test
   corpus.
@@ -45,7 +55,10 @@ the strict coverage and parity runners must also pass.
 
 ## 3. Mutation testing
 
-- [x] Python rejects timeouts and enforces a 95% mutation score.
+- [x] Python requires a clean run: `scripts/run_mutation_gate.py`'s `_is_clean()`
+  fails on any survivor, timeout, suspicious, or no-tests result. The
+  `--min-mutation-score 95` floor CI passes is an additional guard against a
+  short total, not the bar — a run at 99% with one survivor still fails.
 - [x] TypeScript enforces a 95% core mutation score and an 80% OTLP transport
   score.
 - [x] Go requires both 100% mutation efficacy and 100% mutant coverage for the
@@ -62,6 +75,15 @@ the strict coverage and parity runners must also pass.
   policy change.
 - [x] Mutation-tool configuration and CI thresholds have repository tests so a
   later workflow edit cannot silently weaken the policy.
+
+C# is **not yet on this list**. A Stryker.NET gate is being stood up
+(`csharp/stryker-config.json`, plus the C# change filters in
+`.github/workflows/ci-mutation.yml`), but until a blocking C# job runs and
+reports, there is no established C# kill rate. Do not quote one here. An
+unmeasured language has no score, and writing a plausible number next to it is
+exactly the failure mode this checklist exists to prevent. Add the row — with
+its real threshold and what the threshold actually enforces — when the job
+blocks.
 
 ## Closure rule
 

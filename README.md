@@ -1,10 +1,11 @@
 # Provide Telemetry
 
-Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, and Rust. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`).
+Unified telemetry library for structured logging, distributed tracing, and metrics across Python, TypeScript, Go, Rust, and C#. Graceful OTel degradation — works without OpenTelemetry installed, activates full OTLP export (traces, metrics, logs) when the OTel SDK is present. Rust requires the `otel` cargo feature (`cargo build --features otel`); C# requires the separate `Provide.Telemetry.OpenTelemetry` package plus a one-time `OpenTelemetryBackendRegistration.Register()` call.
 
 [![🐍 CI — Python](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-python.yml)
 [![🟦 CI — TypeScript](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-typescript.yml)
 [![🐹 CI — Go](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-go.yml)
+[![🟣 CI — C#](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-csharp.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/ci-csharp.yml)
 [![🔒 CodeQL](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml/badge.svg)](https://github.com/provide-io/provide-telemetry/actions/workflows/codeql.yml)
 
 ## Install
@@ -27,6 +28,13 @@ npm install @provide-io/telemetry             # core (pino + @opentelemetry/api)
 ```bash
 cargo add provide-telemetry
 cargo add provide-telemetry --features otel
+```
+
+**C#:**
+
+```bash
+dotnet add package Provide.Telemetry                  # core, BCL-only — no OpenTelemetry dependency
+dotnet add package Provide.Telemetry.OpenTelemetry    # + OTLP delivery for all three signals
 ```
 
 ## Quick Start
@@ -63,7 +71,7 @@ log.info({ event: 'app.start.ok', requestId: 'req-1' });
 await shutdownTelemetry();
 ```
 
-All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration.
+All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration; the C# packages live in `csharp/` and offer the same scoped restoration through `IDisposable` context scopes over `AsyncLocal<T>`. See the [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) for the differences that are real — notably that C# ships no ANSI pretty renderer and no HTTP request-lifecycle middleware.
 
 **On wire-format parity**: local JSON logs use a canonical snake_case envelope across implementations (`timestamp`, `level`, `message`, `logger_name`, `service`, `env`, `version`, `trace_id`, `span_id`, plus event fields). The parity harness in `spec/` also normalizes legacy OTel keys (`service.name`, `service.env`, `service.version`, `trace.id`, `span.id`) when present to keep comparisons stable for older emit paths.
 
@@ -115,7 +123,7 @@ All implementations export equivalent APIs (signatures vary per language idiom):
 | Health | `get_health_snapshot()` |
 | Runtime | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) | [C# packages](https://github.com/provide-io/provide-telemetry/blob/main/csharp/README.md)
 
 ## Polyglot Architecture
 
@@ -125,16 +133,17 @@ provide-telemetry/
   typescript/             # TypeScript package (@provide-io/telemetry)
   go/                     # Go module (github.com/provide-io/provide-telemetry/go)
   rust/                   # Rust crate (provide-telemetry)
+  csharp/                 # .NET packages (Provide.Telemetry, Provide.Telemetry.OpenTelemetry)
   spec/                   # Canonical API spec — all languages validate against it
   e2e/                    # Cross-language E2E tests (W3C trace propagation)
 ```
 
-A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, Go, and Rust exports conform to it. Cross-language distributed tracing is tested end-to-end via W3C `traceparent` propagation.
+A shared `spec/telemetry-api.yaml` defines the required API surface. CI validates that Python, TypeScript, Go, Rust, and C# exports conform to it, and all five run the shared behavioral, contract, config, and runtime probes in `spec/`. The `e2e/` distributed-tracing suite, which propagates a real W3C `traceparent` between two live services, currently covers Python, TypeScript, Go, and Rust — C# is not yet wired into it.
 
 ## Quality
 
-- Coverage gates: full 100% gates (Python, TypeScript, Go, Rust) with language-appropriate threshold interpretation.
-- Python runs mutmut with a 95% minimum threshold and rejects timeouts; Go requires both 100% gremlins efficacy and 100% mutant coverage; TypeScript uses Stryker with a 95% core break threshold plus an 80% OTLP transport ratchet; Rust requires a 100% cargo-mutants kill rate whenever Rust implementation or test code changes.
+- Coverage gates: full 100% gates for Python, TypeScript, Go, and Rust, with language-appropriate threshold interpretation. C# is the one exception, and a recorded one: `ci-csharp.yml` merges every Cobertura report the run emits and enforces floors of 99% line / 97% branch (measured 99.60% / 97.94% across 685 tests), ratcheted up and never down.
+- Python runs mutmut and fails on any survivor, timeout, suspicious, or no-tests result — the 95% score floor is an extra guard, not the bar; Go requires both 100% gremlins efficacy and 100% mutant coverage; TypeScript uses Stryker with a 95% core break threshold plus an 80% OTLP transport ratchet; Rust requires a 100% cargo-mutants kill rate across eight blocking shards whenever Rust implementation or test code changes. **C# has no established mutation score yet** — a Stryker.NET gate is being stood up, but until a blocking C# job runs there is no number to quote.
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning
 - SHA-pinned third-party GitHub Actions
@@ -158,6 +167,7 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 - [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
 - [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
 - [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) — Rust-specific source and examples
+- [C# README](https://github.com/provide-io/provide-telemetry/blob/main/csharp/README.md) — the two-package split and C#-specific usage
 - [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for the polyglot repo
 
 ## License

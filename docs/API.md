@@ -8,9 +8,9 @@ from provide.telemetry import setup_telemetry, get_logger, trace
 
 Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
 
-This document is the shared semantic contract for Python, TypeScript, Go, and
-Rust. Names and signatures vary by language, but the behavioral guarantees
-described here are the parity target.
+This document is the shared semantic contract for Python, TypeScript, Go,
+Rust, and C#. Names and signatures vary by language, but the behavioral
+guarantees described here are the parity target.
 
 ## Setup and Lifecycle
 
@@ -53,6 +53,7 @@ Signature and return shape are idiomatic per language:
 | TypeScript | `flushTelemetry(timeoutMs?: number): Promise<boolean>` | `timeoutMs` |
 | Go | `FlushTelemetry(ctx context.Context) error` | via `ctx` deadline |
 | Rust | `flush_telemetry() -> Result<(), TelemetryError>` | config only |
+| C# | `FlushTelemetry(TimeSpan? timeout = null) -> FlushResult` | `timeout`, as one absolute deadline shared by every signal |
 
 Where the SDK reports a drain as incomplete rather than raising — OTel Python's
 `force_flush()` returning `False` is the case that exists today — that counts as
@@ -103,8 +104,8 @@ use.
 
 > **Per-language behavior before setup:** Python and TypeScript return a config
 > snapshot derived from environment variables even before `setup_telemetry()` is
-> called. Go returns `nil` and Rust returns `None` until explicit setup — callers
-> must check for nil/None before accessing config fields.
+> called. Go returns `nil`, Rust returns `None`, and C# returns `null` until
+> explicit setup — callers must check before accessing config fields.
 
 ### `get_runtime_status() -> RuntimeStatus`
 
@@ -121,8 +122,8 @@ Return runtime/provider state using the shared cross-language shape:
 ```
 
 Field names follow each language's normal casing conventions (`setup_done` in
-Python/Rust, `setupDone` in TypeScript, `SetupDone` in Go), but the semantic
-shape is the same.
+Python/Rust, `setupDone` in TypeScript, `SetupDone` in Go and C#), but the
+semantic shape is the same.
 
 Semantics:
 
@@ -344,7 +345,7 @@ slot acquired from the queue.
 
 ### Cross-language scope of backpressure
 
-Tickets bound the **full in-process emit path** in all four languages
+Tickets bound the **full in-process emit path** in all five languages
 (consent → sampling → ticket → ... → release), including renderer work and
 handler/exporter I/O.
 
@@ -354,6 +355,7 @@ handler/exporter I/O.
 | Go | Deferred — at end of handler chain |
 | Rust | After `emit_event()` returns |
 | Python | After the stdlib logging handler fanout returns |
+| C# | In the `finally` of `SignalPipeline.Process`, after local render and backend delivery |
 
 ## Exporter Resilience Policies
 
@@ -403,7 +405,7 @@ Return the current PII rules as an immutable tuple.
 
 ### `register_secret_pattern(name: str, pattern: re.Pattern[str]) -> None`
 
-Register a custom regex used by the value-based secret detector. Built-in patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs; this hook lets callers add organization-specific token shapes (e.g. internal API key prefixes). Registered patterns apply to both structured payload values and the free-form log message string when `sanitize=true`. Re-registering an existing `name` replaces the previous pattern. Mirrored in TypeScript (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), and Rust (`pii::register_secret_pattern`).
+Register a custom regex used by the value-based secret detector. Built-in patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs; this hook lets callers add organization-specific token shapes (e.g. internal API key prefixes). Registered patterns apply to both structured payload values and the free-form log message string when `sanitize=true`. Re-registering an existing `name` replaces the previous pattern. Mirrored in TypeScript (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), Rust (`pii::register_secret_pattern`), and C# (`Pii.RegisterSecretPattern`).
 
 ### `get_secret_patterns() -> tuple[tuple[str, re.Pattern[str]], ...]`
 
@@ -438,7 +440,7 @@ Remove all cardinality limits and reset seen-value tracking.
 
 NamedTuple with per-signal counters:
 
-Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across Python, TypeScript, Go, and Rust:
+Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across Python, TypeScript, Go, Rust, and C#:
 
 - `emitted_{logs,traces,metrics}` — events accepted and forwarded
 - `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
@@ -449,6 +451,11 @@ Canonical 25-field layout (8 per signal × 3 signals + 1 global), shared across 
 - `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half_open"`
 - `circuit_open_count_{logs,traces,metrics}` — number of times circuit has opened
 - `setup_error` — error message from `setup_telemetry()`, or `None`
+- `receipt_failures` — redaction receipts the sink refused or faulted on
+
+C# populates every field except `async_blocking_risk_{logs,traces,metrics}`,
+which is always zero because C# ships no event-loop blocking guard — see the
+Failure Behavior section of [`OPERATIONS.md`](OPERATIONS.md).
 
 ### `get_health_snapshot() -> HealthSnapshot`
 
