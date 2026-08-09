@@ -280,12 +280,26 @@ jobs:
       # exits 0 even when asked for an impossible 101%, so these steps passed
       # unconditionally before the wrapper. The flags are kept for the numbers
       # they print in the log.
+      #
+      # --timeout-coefficient=100, not the 30 this used to carry. The wrapper
+      # fails on a timed-out mutant, and rightly so — an abandoned mutant was
+      # never decided, so counting it as killed would be a guess. But the root
+      # package runs in 0.445s, which at 30 gave each mutant ~13s, and two
+      # mutants sit just past that: negating the exporter-validation guards in
+      # runtime_validate.go:30 and config_env_exporter.go:100 lets an invalid
+      # policy reach live code, and the tests then spend real time in retry
+      # backoff. Two consecutive local runs each timed out on one of those two,
+      # a different one each time, so the gate failed on jitter rather than on
+      # anything about the code. At 100 both are decided and killed: 610
+      # mutants, lived=0 not_covered=0 timed_out=0, efficacy and mutator
+      # coverage 100.00%. This raises how long a mutant may take to be judged;
+      # it does not lower the bar, which is still zero survivors.
       - name: Run gremlins mutation tests for root package (100% kill rate required)
         run: |
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
-            --timeout-coefficient=30 \
+            --timeout-coefficient=100 \
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
             --coverpkg="github.com/provide-io/provide-telemetry/go" \
@@ -306,7 +320,7 @@ jobs:
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
-            --timeout-coefficient=30 \
+            --timeout-coefficient=100 \
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
             --exclude-files="mutation_constants.go" \
@@ -320,7 +334,7 @@ jobs:
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
-            --timeout-coefficient=30 \
+            --timeout-coefficient=100 \
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
             --exclude-files="cmd/flush_collector_probe/" \
