@@ -62,10 +62,16 @@ public static class Sampling
             sampled = Random.Shared.NextDouble() < rate;
         }
 
-        if (!sampled)
-        {
-            Health.RecordDropped(signal);
-        }
+        // No Health.RecordDropped here. SignalPipeline.Admit rejects through
+        // Reject(), which records the drop, so recording it here too counted a
+        // sampled-out signal twice where a consent rejection counted once —
+        // against SignalPipeline's own contract that admission accounting
+        // happens exactly once. Backpressure.TryAcquire was moved off this
+        // pattern for the same reason; sampling was missed.
+        //
+        // A caller invoking ShouldSample directly (PublicApi.ShouldSample) is
+        // asking the sampler a question, not admitting a signal, and no longer
+        // moves the counter.
         return sampled;
     }
 
