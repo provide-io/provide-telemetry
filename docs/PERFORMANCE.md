@@ -46,20 +46,13 @@ The multiplier lives in `baselines/perf-<lang>.json`:
 ## Running the gate locally
 
 ```bash
-make perf              # Python, TypeScript, Go, Rust — not C#
+make perf              # Python, TypeScript, Go, Rust, C#
 make perf-python       # one language
 make perf-typescript
 make perf-go
 make perf-rust
+make perf-csharp
 ```
-
-**C# has no performance budget gate.** There is no `make perf-csharp`, no
-`baselines/perf-csharp.json`, and `ci-csharp.yml` runs no
-`performance-smoke` job — so `make perf` covers four of the five languages.
-A C# hot-path regression is not caught by this gate; the C# implementation is
-guarded by its coverage floor and the cross-language parity harnesses instead.
-Closing the gap means a C# benchmark runner emitting the same per-op timing
-JSON the other four do, plus a seeded baseline bucket.
 
 Local runs use the OS bucket matching your machine. M-series Macs hit
 `macos-arm64`, GitHub macOS runners hit `macos-arm64` too, Linux dev boxes
@@ -98,6 +91,7 @@ Each language's runner emits per-operation timings:
 | TypeScript | `typescript/scripts/perf-smoke.ts --emit-json` | `{op_name: ns_per_op, …}` |
 | Go | `go test -bench=.` (parsed by `scripts/parse_go_bench.py`) | `{operation, ns_per_op}` lines |
 | Rust | `cargo bench` (parsed by `scripts/parse_criterion.py`) | `{operation, ns_per_op}` lines |
+| C# | `csharp/perf/Provide.Telemetry.Perf --emit-json` | `{op_name: ns_per_op, …}` |
 
 To add a benchmark, append it to the language's runner. New ops appear in
 the gate's output as `missing_baseline_entries` (non-fatal) until you seed
@@ -120,6 +114,26 @@ For finer-grained perf work, use the language-native tools directly:
 * TypeScript: `vitest bench` or `tinybench`
 * Go: `benchstat` over `go test -bench` results
 * Rust: criterion's full report mode (without `--quick`)
+* C#: BenchmarkDotNet
 
 These produce richer data for investigation but are not appropriate as
 CI gates.
+
+## Why the C# runner is hand-rolled
+
+`csharp/perf/Provide.Telemetry.Perf` is a plain timing loop rather than a
+BenchmarkDotNet harness, for the same reason the Python and TypeScript runners
+are: the gate consumes one number per operation and compares it against a 5×
+budget, so BenchmarkDotNet's statistics would be precision nobody reads, paid
+for with a per-benchmark process launch on three runner OSes. It also keeps the
+benchmark building from the same dependency set as the SDK itself. Reach for
+BenchmarkDotNet when you are optimising a specific path, not when you are
+gating one.
+
+The project turns **tiered compilation off**
+(`<TieredCompilation>false</TieredCompilation>`). .NET re-JITs hot methods on a
+background thread, and whether that compile lands before a measurement loop
+ends is a race — with the default settings the sanitize timings came out
+bimodal across identical runs (~440 ns vs ~1320 ns for `sanitize_small_ns`, a
+3× swing owing nothing to the SDK). With it off, repeated runs on the same
+build agree to within ~15%.

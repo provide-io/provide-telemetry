@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Provide.Telemetry\Provide.Telemetry.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Tiered compilation off. It is on by default and re-JITs hot methods on
+         a BACKGROUND thread, so whether a given loop runs as tier-0 or tier-1
+         code is a race against that compile finishing. Measured with it on,
+         the sanitize timings came out bimodal across otherwise identical runs
+         (~440ns vs ~1320ns for sanitize_small, ~5.0us vs ~12.9us for
+         sanitize_large): a 3x swing that has nothing to do with the SDK and
+         would either flake the gate or force a tolerance so wide it caught
+         nothing. Off, every method is fully optimised on first call. -->
+    <TieredCompilation>false</TieredCompilation>
+    <!-- A tight allocating loop on 16 cores under Server GC measures heap
+         topology, not the SDK; workstation non-concurrent GC keeps collections
+         on the measured thread where they belong. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+</Project>

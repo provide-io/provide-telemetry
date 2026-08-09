@@ -1,0 +1,20 @@
+{
+  "_about": "Per-operation perf budgets in nanoseconds for the C# implementation. measured = `make perf-baseline-csharp` (dotnet run -c Release --project csharp/perf/Provide.Telemetry.Perf -- --iterations 300000 --runs 5 --emit-json). baseline_ns is the median of the runner's own per-run medians across seven consecutive invocations; tolerance_multiplier sets the budget = baseline_ns * tolerance_multiplier. Uniform 5.0 as in perf-go.json and perf-rust.json. The runner disables tiered compilation, which makes it the most reproducible of the five: those seven invocations spread only 1.10x-1.14x on every op, on a host that was running other work at the time. 5.0 is therefore not a fit to the observed noise but the house convention, kept because this bucket was seeded on a 16-core developer workstation (.NET 10.0.302) rather than on the ubuntu-latest runner it will be compared against, and different hardware can legitimately differ by 2x. Reseed from a CI log and tightening toward 3.0 becomes defensible. macos-arm64 and windows-x86_64 are intentionally empty: perf_check.py exits 0 with a hint for a missing bucket, so the first CI run on those runners prints the numbers to paste in.",
+  "linux-x86_64": {
+    "event_name_ns":          {"baseline_ns": 35,   "tolerance_multiplier": 5.0},
+    "should_sample_ns":       {"baseline_ns": 33,   "tolerance_multiplier": 5.0},
+    "sanitize_small_ns":      {"baseline_ns": 827,  "tolerance_multiplier": 5.0},
+    "sanitize_large_ns":      {"baseline_ns": 8488, "tolerance_multiplier": 5.0},
+    "sanitize_disabled_ns":   {"baseline_ns": 217,  "tolerance_multiplier": 5.0},
+    "logger_info_ns":         {"baseline_ns": 3538, "tolerance_multiplier": 5.0},
+    "trace_span_ns":          {"baseline_ns": 200,  "tolerance_multiplier": 5.0},
+    "counter_add_ns":         {"baseline_ns": 87,   "tolerance_multiplier": 5.0},
+    "gauge_set_ns":           {"baseline_ns": 87,   "tolerance_multiplier": 5.0},
+    "histogram_record_ns":    {"baseline_ns": 97,   "tolerance_multiplier": 5.0},
+    "health_snapshot_ns":     {"baseline_ns": 197,  "tolerance_multiplier": 5.0},
+    "extract_w3c_context_ns": {"baseline_ns": 353,  "tolerance_multiplier": 5.0},
+    "try_acquire_release_ns": {"baseline_ns": 26,   "tolerance_multiplier": 5.0}
+  },
+  "macos-arm64": {},
+  "windows-x86_64": {}
+}

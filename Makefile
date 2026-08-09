@@ -1,4 +1,4 @@
-.PHONY: test lint security memray memray-flamegraph memray-analyze memray-baseline perf-smoke perf perf-python perf-typescript perf-go perf-rust perf-baseline-python perf-baseline-typescript perf-baseline-go perf-baseline-rust bench bench-python bench-typescript bench-go stress stress-typescript stress-go
+.PHONY: test lint security memray memray-flamegraph memray-analyze memray-baseline perf-smoke perf perf-python perf-typescript perf-go perf-rust perf-csharp perf-baseline-python perf-baseline-typescript perf-baseline-go perf-baseline-rust perf-baseline-csharp bench bench-python bench-typescript bench-go stress stress-typescript stress-go
 
 MEMRAY_OUTPUT_DIR ?= memray-output
 
@@ -43,11 +43,17 @@ perf-smoke: ## Run Python performance smoke benchmarks in report-only mode; pref
 # the output through scripts/perf_check.py, which compares the measurements
 # against baselines/perf-<lang>.json for the host's OS bucket. Fails with exit
 # code 1 if any operation exceeds its budget (baseline_ns * tolerance_multiplier).
-# `perf` runs all four sequentially. `perf-baseline-<lang>` prints fresh
+# `perf` runs all five sequentially. `perf-baseline-<lang>` prints fresh
 # measurements WITHOUT comparison — copy the JSON into the baseline file by
 # hand to seed or refresh a bucket.
+#
+# The C# runner is a project rather than a script, so its build is a separate
+# recipe line: MSBuild writes progress to stdout, and folding it into the
+# pipeline would feed build chatter to perf_check.py instead of measurements.
+CSHARP_PERF_PROJECT := perf/Provide.Telemetry.Perf/Provide.Telemetry.Perf.csproj
+DOTNET_QUIET := DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
-perf: perf-python perf-typescript perf-go perf-rust ## Run perf-budget gate for all four languages
+perf: perf-python perf-typescript perf-go perf-rust perf-csharp ## Run perf-budget gate for all five languages
 
 perf-python: ## Run perf-budget gate for Python only
 	uv run python scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json | uv run python scripts/perf_check.py --lang python
@@ -61,6 +67,10 @@ perf-go: ## Run perf-budget gate for Go only
 perf-rust: ## Run perf-budget gate for Rust only
 	cd rust && cargo bench --bench hot_path -- --quick | uv run --project .. python ../scripts/parse_criterion.py | uv run --project .. python ../scripts/perf_check.py --lang rust
 
+perf-csharp: ## Run perf-budget gate for C# only
+	cd csharp && $(DOTNET_QUIET) dotnet build $(CSHARP_PERF_PROJECT) -c Release -warnaserror -m:1 -v:quiet --nologo
+	cd csharp && $(DOTNET_QUIET) dotnet run --no-build -c Release --project $(CSHARP_PERF_PROJECT) -- --iterations 300000 --runs 5 --emit-json | uv run --project .. python ../scripts/perf_check.py --lang csharp
+
 perf-baseline-python: ## Print fresh Python perf measurements (paste into baselines/perf-python.json)
 	uv run python scripts/run_performance_smoke.py --iterations 300000 --runs 5 --emit-json
 
@@ -72,6 +82,10 @@ perf-baseline-go: ## Print fresh Go perf measurements (paste into baselines/perf
 
 perf-baseline-rust: ## Print fresh Rust perf measurements (paste into baselines/perf-rust.json)
 	cd rust && cargo bench --bench hot_path -- --quick | uv run --project .. python ../scripts/parse_criterion.py
+
+perf-baseline-csharp: ## Print fresh C# perf measurements (paste into baselines/perf-csharp.json)
+	cd csharp && $(DOTNET_QUIET) dotnet build $(CSHARP_PERF_PROJECT) -c Release -warnaserror -m:1 -v:quiet --nologo
+	cd csharp && $(DOTNET_QUIET) dotnet run --no-build -c Release --project $(CSHARP_PERF_PROJECT) -- --iterations 300000 --runs 5 --emit-json
 
 bench: ## Run benchmarks for all languages side-by-side
 	./scripts/bench.sh all

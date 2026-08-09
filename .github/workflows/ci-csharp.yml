@@ -86,3 +86,34 @@ jobs:
           if line_rate < 99 or branch_rate < 97:
               sys.exit("FAIL: coverage fell below the recorded baseline")
           EOF
+
+  performance-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: csharp
+        shell: bash
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      # uv provides a consistent Python invocation across the three runner OSes
+      # for the perf_check.py step, exactly as the Go and Rust perf jobs do.
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8
+        with:
+          python-version: "3.11"
+      # Built as its own step, not folded into the gate command: MSBuild writes
+      # progress to stdout and would otherwise be piped into perf_check.py in
+      # place of the measurements.
+      - name: Build benchmark runner
+        run: dotnet build perf/Provide.Telemetry.Perf/Provide.Telemetry.Perf.csproj -c Release -warnaserror
+      # Compares each per-op timing against baselines/perf-csharp.json for this
+      # runner's OS bucket. macos-arm64 and windows-x86_64 are unseeded, so
+      # those legs exit 0 with a hint printing the numbers to paste in.
+      - name: Run perf gate
+        run: dotnet run --no-build -c Release --project perf/Provide.Telemetry.Perf/Provide.Telemetry.Perf.csproj -- --iterations 300000 --runs 5 --emit-json | uv run --no-project python ../scripts/perf_check.py --lang csharp
