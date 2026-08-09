@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.CLI/Stryker.CLI/schema.json",
+  "//": [
+    "JSON has no comment syntax, so the rationale lives in this ignored key.",
+    "Stryker reads only the 'stryker-config' node; everything here is inert.",
+    "",
+    "SCOPE. Solution mode is used rather than a single -p project because two",
+    "projects are owned and both must be mutated. Stryker mutates exactly the",
+    "projects referenced by the test projects listed below -- Provide.Telemetry",
+    "and Provide.Telemetry.OpenTelemetry. The probes, examples and consumer",
+    "smoke projects are in the solution but no test project references them, so",
+    "they are never mutated and need no exclusion entry.",
+    "",
+    "MEASURED BASELINE (2026-08-08, Stryker.NET 4.16.0, .NET SDK 10.0.302):",
+    "  2168 mutants created; 366 ignored (block already covered), 146 compile",
+    "  error, leaving 1656 scored.",
+    "  killed 1305 | survived 316 | timeout 10 | no-coverage 25",
+    "  final mutation score 79.41 %  (33m29s wall clock at concurrency 2)",
+    "Split by project: core 81.0 % (1197 killed / 1490 scored),",
+    "OpenTelemetry 65.1 % (108 killed / 166 scored).",
+    "",
+    "THRESHOLD. break is 78, deliberately below the 79.41 % measured, not at",
+    "100. A threshold above the real score is a gate that fails on green and",
+    "gets disabled; the ~1.4pp of slack (about 23 mutants) absorbs the 10",
+    "timeout-classified mutants in ResilienceExecutor/Atomics, whose",
+    "classification depends on host load and would otherwise flip the gate on a",
+    "busy runner. Ratchet break upward as survivors are killed, never down.",
+    "",
+    "RAISING IT. The survivors are dominated by missing assertions, not by",
+    "defects: default-value string literals on DTO properties (Types.cs,",
+    "Config.cs), env-var name literals whose lookups are only exercised through",
+    "their defaults (ConfigEnv.cs), per-signal OTLP path and log-level literals",
+    "(OpenTelemetryBackend.cs), and the SLO metric names (Governance.cs). Two",
+    "systematic classes are equivalent mutants that no test can kill:",
+    "ConfigureAwait(false) -> (true), which is a no-op without a synchronization",
+    "context, and comparisons whose two sides agree on every reachable value.",
+    "The circuit breaker's half-open block is the largest genuinely uncovered",
+    "region (10 no-coverage mutants in Resilience.cs) and needs an injectable",
+    "clock to reach, the same blocker the coverage floor in ci-csharp.yml",
+    "records. Roughly: asserting the literal-valued surfaces would move this",
+    "past 90; the breaker needs a design change first."
+  ],
+  "stryker-config": {
+    "solution": "Provide.Telemetry.sln",
+    "test-projects": [
+      "tests/Provide.Telemetry.Tests/Provide.Telemetry.Tests.csproj",
+      "tests/Provide.Telemetry.OpenTelemetry.Tests/Provide.Telemetry.OpenTelemetry.Tests.csproj"
+    ],
+    "mutate": [
+      "**/*.cs",
+      "!**/obj/**/*.cs",
+      "!**/bin/**/*.cs"
+    ],
+    "concurrency": 2,
+    "reporters": [
+      "progress",
+      "html",
+      "json"
+    ],
+    "thresholds": {
+      "high": 90,
+      "low": 80,
+      "break": 78
+    }
+  }
+}

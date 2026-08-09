@@ -12,3 +12,7 @@ TestResults/
 *.snupkg
 project.lock.json
 artifacts/
+
+# Stryker.NET writes its HTML/JSON mutation reports here when --output is not
+# given. The reports are per-run artifacts, not source.
+StrykerOutput/

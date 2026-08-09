@@ -21,6 +21,10 @@ on:
       - "typescript/stryker.config.mjs"
       - "typescript/stryker.otel.config.mjs"
       - "go/**"
+      - "csharp/src/**"
+      - "csharp/tests/**"
+      - "csharp/stryker-config.json"
+      - "csharp/.config/dotnet-tools.json"
       - ".github/workflows/ci-mutation.yml"
   pull_request:
     branches: [main]
@@ -42,6 +46,10 @@ on:
       - "typescript/stryker.config.mjs"
       - "typescript/stryker.otel.config.mjs"
       - "go/**"
+      - "csharp/src/**"
+      - "csharp/tests/**"
+      - "csharp/stryker-config.json"
+      - "csharp/.config/dotnet-tools.json"
       - ".github/workflows/ci-mutation.yml"
   workflow_dispatch:
   # Nightly and manual runs exercise every language even when no relevant diff
@@ -60,6 +68,7 @@ jobs:
       typescript: ${{ steps.filter.outputs.typescript }}
       rust: ${{ steps.filter.outputs.rust }}
       go: ${{ steps.filter.outputs.go }}
+      csharp: ${{ steps.filter.outputs.csharp }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
         with:
@@ -74,12 +83,14 @@ jobs:
           typescript=false
           rust=false
           go=false
+          csharp=false
 
           if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             python=true
             typescript=true
             rust=true
             go=true
+            csharp=true
           else
             base="${{ github.event.before }}"
             head="${{ github.sha }}"
@@ -130,6 +141,15 @@ jobs:
               case "${changed_file}" in
                 go/*) go=true ;;
               esac
+
+              # Only the two mutated projects, their tests, and the Stryker
+              # configuration/tool pin affect the C# score. Probes, examples and
+              # consumer smoke projects are in the solution but are not mutated.
+              case "${changed_file}" in
+                csharp/src/*|csharp/tests/*|csharp/stryker-config.json|csharp/.config/dotnet-tools.json)
+                  csharp=true
+                  ;;
+              esac
             done <<< "${changed_files}"
           fi
 
@@ -138,6 +158,7 @@ jobs:
             echo "typescript=${typescript}"
             echo "rust=${rust}"
             echo "go=${go}"
+            echo "csharp=${csharp}"
           } >> "${GITHUB_OUTPUT}"
 
   python-mutation:
@@ -305,3 +326,47 @@ jobs:
             --exclude-files="cmd/flush_collector_probe/" \
             --exclude-files="examples/" \
             .
+
+  csharp-mutation:
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    # The measured baseline is 33 minutes of wall clock at concurrency 2 on a
+    # workstation; a shared runner is slower, and a hang would otherwise burn
+    # the six-hour default.
+    timeout-minutes: 120
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      # The Stryker version is pinned in csharp/.config/dotnet-tools.json rather
+      # than installed ad hoc, so the score this job reports is reproducible: a
+      # new Stryker minor adds mutators, which moves the denominator and would
+      # look like a regression against a fixed threshold.
+      - name: Restore pinned local tools
+        run: dotnet tool restore
+      # Stryker builds the solution itself, but building first surfaces a
+      # compile break as a build failure rather than as "Stryker failed to
+      # mutate your project", and keeps the warnings-as-errors contract that
+      # ci-csharp.yml enforces applying to the mutation job too.
+      - name: Build (warnings as errors)
+        run: dotnet build Provide.Telemetry.sln -warnaserror -m:1
+      # Thresholds live in csharp/stryker-config.json (break 78 against a
+      # measured 79.41 % on 2026-08-08) together with the reasoning for that
+      # number and what it would take to raise it. Unlike the Go gate, no
+      # wrapper script is needed: Stryker exits 2 of its own accord when the
+      # score falls below break, which the falsifiability check on this gate
+      # confirmed by weakening a single assertion.
+      - name: Run Stryker.NET mutation tests
+        run: dotnet stryker --skip-version-check
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: csharp-mutation-report
+          path: csharp/StrykerOutput/**/reports/mutation-report.html
+          if-no-files-found: ignore

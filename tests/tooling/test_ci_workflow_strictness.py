@@ -188,7 +188,31 @@ def test_python_mutation_threshold_matches_documented_regression_floor() -> None
     readme = README.read_text(encoding="utf-8")
 
     assert "--min-mutation-score 95" in workflow
-    assert "Python runs mutmut with a 95% minimum threshold and rejects timeouts" in readme
+    # The README used to say Python "runs mutmut with a 95% minimum threshold",
+    # which understated the gate: _is_clean() rejects any survivor, timeout,
+    # suspicious or no-tests result, and the 95% floor is an additional guard
+    # that a run at 99% still fails. Pin the accurate wording.
+    assert "fails on any survivor, timeout, suspicious, or no-tests result" in readme
+    assert "the 95% score floor is an extra guard, not the bar" in readme
+
+
+def test_csharp_mutation_threshold_matches_the_measured_baseline() -> None:
+    """C#'s Stryker threshold must be a measured number, not an aspiration.
+
+    Every other language's threshold in this repo reflects reality. A break
+    threshold above the real score is a gate that fails on unchanged code and
+    gets disabled, which is how a suite ends up with no mutation coverage at
+    all while appearing to have one.
+    """
+    import json
+
+    config = json.loads((REPO_ROOT / "csharp" / "stryker-config.json").read_text(encoding="utf-8"))
+    thresholds = config.get("stryker-config", config)["thresholds"]
+    readme = README.read_text(encoding="utf-8")
+
+    assert thresholds["break"] == 78
+    assert "break threshold of 78" in readme
+    assert "79.41%" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:
