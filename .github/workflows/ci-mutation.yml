@@ -211,7 +211,17 @@ jobs:
           # worker count alone does not limit the child Cargo/Nextest processes.
           CARGO_BUILD_JOBS: "1"
           NEXTEST_TEST_THREADS: "1"
-        run: cargo mutants --all-features --test-tool nextest --shard "${{ matrix.shard }}" -j 1 --jobserver-tasks 1 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
+        # --in-place, not the default copy-to-scratch. Three tests read
+        # spec/*.yaml through concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/…"),
+        # which resolves at compile time — inside a copied crate that path does
+        # not exist, cargo test fails in the unmutated tree, and cargo-mutants
+        # exits having tested zero mutants. It reports that as an error, but it
+        # is easy to read as a pass in a log. Testing in the source tree lets
+        # those tests find the spec they are validating against.
+        #
+        # -j is dropped because cargo-mutants refuses it alongside --in-place;
+        # CARGO_BUILD_JOBS and NEXTEST_TEST_THREADS above already bound fan-out.
+        run: cargo mutants --in-place --all-features --test-tool nextest --shard "${{ matrix.shard }}" --jobserver-tasks 1 --no-shuffle --minimum-test-timeout 300 --timeout-multiplier 4
 
   go-mutation:
     needs: changes

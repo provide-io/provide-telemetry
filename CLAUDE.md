@@ -47,9 +47,16 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 
 > npx stryker run --concurrency 2
 > go test -p 2 ./...                                            # seeds only; add -fuzz deliberately
 > go test -run FuzzX -fuzz FuzzX -fuzztime 30s -parallel 2 .
-> cargo mutants -j 1 --shard 1/8                                # shard rather than run whole
-> #   ...and point TMPDIR at real disk: cargo-mutants copies the crate and builds
-> #   it per mutant, which exhausts a 14G /tmp tmpfs and dies with EDQUOT.
+> cargo mutants --in-place --all-features --shard 1/8            # shard rather than run whole
+> #   --in-place is required, not an optimisation: three Rust tests read
+> #   spec/*.yaml through concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/…"),
+> #   which resolves at compile time. In cargo-mutants' default scratch copy
+> #   that path does not exist, cargo test fails in the unmutated tree, and the
+> #   run tests zero mutants. --in-place also rejects -j; bound fan-out with
+> #   CARGO_BUILD_JOBS=1 and NEXTEST_TEST_THREADS=1 instead.
+> #   ...and if you do run it out-of-place for some reason, point TMPDIR at real
+> #   disk: cargo-mutants copies the crate and builds it per mutant, which
+> #   exhausts a 14G /tmp tmpfs and dies with EDQUOT.
 > #   TMPDIR=~/.cache/cargo-mutants-tmp cargo mutants ...
 > uv run pytest -p no:xdist ...                                 # serial when running alongside anything
 > ```

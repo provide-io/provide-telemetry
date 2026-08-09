@@ -148,7 +148,29 @@ def test_rust_mutation_workflow_bounds_compiler_and_test_parallelism() -> None:
 
     assert 'CARGO_BUILD_JOBS: "1"' in workflow
     assert 'NEXTEST_TEST_THREADS: "1"' in workflow
-    assert '--shard "${{ matrix.shard }}" -j 1 --jobserver-tasks 1' in workflow
+    assert "--jobserver-tasks 1" in workflow
+    assert '--shard "${{ matrix.shard }}"' in workflow
+
+    # cargo-mutants rejects -j alongside --in-place, so fan-out is bounded by
+    # the two environment variables and --jobserver-tasks instead. Asserting
+    # the literal flag string would pin an incompatible pair.
+    assert " -j 1" not in workflow
+
+
+def test_rust_mutation_runs_in_place_so_spec_reading_tests_can_find_the_spec() -> None:
+    """cargo-mutants must not copy the crate to a scratch directory.
+
+    config_applicability.rs, receipt_fixtures.rs and jcs_number_fixtures.rs all
+    locate the spec with ``concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/…")``,
+    which resolves at compile time. Inside a copied crate that path does not
+    exist, so ``cargo test`` fails in the unmutated tree and cargo-mutants
+    exits having tested zero mutants — a broken gate that reads as a red build
+    for the wrong reason, and would read as a pass to anyone skimming for
+    "0 survivors".
+    """
+    workflow = CI_MUTATION.read_text(encoding="utf-8")
+
+    assert "cargo mutants --in-place" in workflow
 
 
 def test_typescript_mutation_threshold_matches_documented_regression_floor() -> None:
