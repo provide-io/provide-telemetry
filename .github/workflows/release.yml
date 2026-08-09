@@ -191,6 +191,57 @@ jobs:
           name: rust-package
           path: rust/target/package/*.crate
 
+  build-csharp:
+    # Run only on a csharp/vX.Y.Z tag push, matching how the Rust and npm jobs
+    # decouple their patch versions from the Python GitHub Release.
+    #
+    # Two packages, not one. The OTel-free core and the
+    # Provide.Telemetry.OpenTelemetry integration are separately shippable, and
+    # an application that upgrades without installing the integration silently
+    # gets no OTLP export. Packing only the core would make that the default
+    # experience.
+    if: startsWith(github.ref, 'refs/tags/csharp/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v4
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      - name: Verify the tag matches both project versions
+        # A release whose assembly identity disagrees with its package version
+        # is the failure check_version_sync.py was extended to catch; catching
+        # it here too means a mistagged release cannot reach a registry.
+        run: uv run --directory .. python scripts/check_version_sync.py
+      - name: Build (warnings as errors)
+        run: dotnet build Provide.Telemetry.sln -warnaserror -m:1 -c Release
+      - name: Run tests
+        run: dotnet test Provide.Telemetry.sln --no-build -m:1 -c Release
+      - name: Pack both packages
+        run: |
+          dotnet pack src/Provide.Telemetry/Provide.Telemetry.csproj \
+            --no-build -c Release -o ../nupkg
+          dotnet pack src/Provide.Telemetry.OpenTelemetry/Provide.Telemetry.OpenTelemetry.csproj \
+            --no-build -c Release -o ../nupkg
+      - name: Verify both packages were produced
+        # An empty or single-package directory means the split silently
+        # regressed; fail here rather than publishing half a release.
+        run: |
+          count=$(ls ../nupkg/*.nupkg 2>/dev/null | wc -l)
+          ls -la ../nupkg || true
+          if [ "$count" -lt 2 ]; then
+            echo "expected 2 .nupkg files, found ${count}" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: csharp-packages
+          path: nupkg/*.nupkg
+
   publish-npm:
     needs: build-npm
     if: startsWith(github.ref, 'refs/tags/typescript/')
