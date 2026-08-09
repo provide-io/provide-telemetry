@@ -95,14 +95,71 @@ public class ParityOtherTests
         }
     }
 
-    [Fact]
-    public void EndpointValidation_Invalid()
+    // spec/behavioral_fixtures.yaml endpoint_validation. The seven "valid"
+    // endpoints must all survive parsing; of the "invalid" ones this layer
+    // rejects the schemes an OTLP client could never speak, and echoes the value
+    // so an operator can see which of the three endpoints failed and why. The
+    // shape and port cases in that fixture are not enforced here — see the
+    // known-gap test below.
+    [Theory]
+    [InlineData("http://localhost:4318")]
+    [InlineData("https://collector.example.com")]
+    [InlineData("http://host:4318/v1/traces")]
+    [InlineData("http://host")]
+    [InlineData("http://[::1]:4318")]
+    [InlineData("http://[::1]")]
+    [InlineData("https://otel.example.com:4317/v1/metrics")]
+    public void EndpointValidation_Valid(string endpoint)
     {
-        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", "ftp://collector.example/otlp");
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
         try
         {
             Testing.ResetForTests();
-            Assert.Throws<ConfigurationError>(() => ConfigEnv.ConfigFromEnv());
+            Assert.Equal(endpoint, ConfigEnv.ConfigFromEnv().Tracing.OtlpEndpoint);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", null);
+        }
+    }
+
+    [Theory]
+    [InlineData("ftp://collector.example/otlp")]
+    [InlineData("file:///tmp/spans")]
+    public void EndpointValidation_Invalid(string endpoint)
+    {
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+        try
+        {
+            Testing.ResetForTests();
+            var error = Assert.Throws<ConfigurationError>(() => ConfigEnv.ConfigFromEnv());
+            Assert.Equal($"invalid OTLP endpoint: {endpoint}", error.Message);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", null);
+        }
+    }
+
+    [Theory]
+    // Known divergence from the fixture, recorded rather than hidden. Parsing
+    // soft-validates: a value that is not a URI at all, or whose port is
+    // malformed, is carried through and fails later in the exporter's fail-open
+    // path instead of at startup. Python rejects all of these in
+    // validate_otlp_endpoint. Of these, "not-a-url" and "http://host:bad" are
+    // still refused at provider registration by Endpoints.BuildSignalUri;
+    // "http://host:0" and "http://host:" are not refused anywhere.
+    [InlineData("not-a-url")]
+    [InlineData("http://host:bad")]
+    [InlineData("http://host:0")]
+    [InlineData("http://host:")]
+    public void EndpointValidation_KnownGap_MalformedShapesSurviveParsing(string endpoint)
+    {
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+        try
+        {
+            Testing.ResetForTests();
+            Assert.Equal(endpoint, ConfigEnv.ConfigFromEnv().Tracing.OtlpEndpoint);
         }
         finally
         {

@@ -48,13 +48,27 @@ public class ParityGuardsTests
         });
     }
 
-    [Fact]
-    public void ExplicitConfigRetries_AboveCeiling_RejectedAtSetup()
+    private static void SetRetries(TelemetryConfig cfg, string signal, int retries)
+    {
+        if (signal == "Logs") cfg.Exporter.LogsRetries = retries;
+        else if (signal == "Traces") cfg.Exporter.TracesRetries = retries;
+        else cfg.Exporter.MetricsRetries = retries;
+    }
+
+    [Theory]
+    // One signal at a time: with two of the three over the ceiling, a deleted
+    // check for the third still throws on its neighbour's behalf and the gap is
+    // invisible. The field name in the message is what tells an operator which
+    // of the three they set wrong, so it is asserted, not just the type.
+    [InlineData("Logs")]
+    [InlineData("Traces")]
+    [InlineData("Metrics")]
+    public void ExplicitConfigRetries_AboveCeiling_RejectedAtSetup(string signal)
     {
         var cfg = TelemetryConfig.Default();
-        cfg.Exporter.TracesRetries = 101;
+        SetRetries(cfg, signal, 101);
         var ex = Assert.Throws<ConfigurationError>(() => ProvideTelemetry.SetupTelemetry(cfg));
-        Assert.Equal("Exporter.TracesRetries must be at most 100, got 101", ex.Message);
+        Assert.Equal($"Exporter.{signal}Retries must be at most 100, got 101", ex.Message);
         Assert.False(ProvideTelemetry.GetRuntimeStatus().SetupDone);
     }
 
@@ -67,14 +81,17 @@ public class ParityGuardsTests
         Assert.Equal(100, installed.Exporter.LogsRetries);
     }
 
-    [Fact]
-    public void ExplicitConfigRetries_AboveCeiling_RejectedAtReconfigure()
+    [Theory]
+    [InlineData("Logs")]
+    [InlineData("Traces")]
+    [InlineData("Metrics")]
+    public void ExplicitConfigRetries_AboveCeiling_RejectedAtReconfigure(string signal)
     {
         ProvideTelemetry.SetupTelemetry();
         var cfg = ProvideTelemetry.GetRuntimeConfig()!;
-        cfg.Exporter.MetricsRetries = 101;
+        SetRetries(cfg, signal, 101);
         var ex = Assert.Throws<ConfigurationError>(() => ProvideTelemetry.ReconfigureTelemetry(cfg));
-        Assert.Equal("Exporter.MetricsRetries must be at most 100, got 101", ex.Message);
+        Assert.Equal($"Exporter.{signal}Retries must be at most 100, got 101", ex.Message);
     }
 
     [Fact]

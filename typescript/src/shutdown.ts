@@ -127,6 +127,10 @@ const LONG_TASK_MS = 50;
  * is for and is already reported as export latency.
  */
 function recordBlockingRisk(provider: ShutdownableProvider, syncMs: number): void {
+  // Stryker disable next-line EqualityOperator: `<` vs `<=` differs only when a
+  // provider blocks for exactly LONG_TASK_MS, which no timing-based test can
+  // produce on demand — the boundary is wall-clock, not a value we choose. The
+  // threshold itself is pinned by the tests either side of it.
   if (syncMs < LONG_TASK_MS) return;
   const signal = _signalForProvider(provider);
   // An untagged or foreign provider has no recorded signal. Charging its stall

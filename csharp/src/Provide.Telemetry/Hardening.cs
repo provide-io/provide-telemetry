@@ -32,7 +32,16 @@ internal static class Hardening
     private static object? Normalize(object? value, HashSet<object> seen, int depth, int maxDepth)
     {
         if (value is null) return null;
-        if (depth > maxDepth) return Pii.Redacted;
+        // At the ceiling, not one past it: a value that *reaches* maxDepth is
+        // refused. This is the rule typescript/src/harden.ts, go/harden.go and
+        // rust/src/harden.rs enforce, and the check sits where harden.ts's does
+        // — ahead of the type dispatch, so it bounds scalars as well as
+        // composites. C# used to allow one extra level, which made the same
+        // PROVIDE_LOG_PII_MAX_DEPTH produce a deeper tree here than in any other
+        // runtime; handing a composite back at its own limit hardens nothing,
+        // and the renderer and the OTLP exporter downstream walk every level of
+        // whatever leaves this stage.
+        if (depth >= maxDepth) return Pii.Redacted;
 
         var composite = IsComposite(value);
         // A structure that reaches itself would otherwise recurse until the

@@ -171,6 +171,40 @@ public class ConfigEnvParsingTests : IDisposable
         Assert.Equal($"invalid OTLP endpoint: {endpoint}", error.Message);
     }
 
+    [Theory]
+    // Each signal is validated by a call of its own, and only a per-signal
+    // variable reaches one in isolation: driven through the shared
+    // OTEL_EXPORTER_OTLP_ENDPOINT all three see the same bad value, so any two
+    // of the checks cover for a missing third and a deleted one is invisible.
+    [InlineData("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")]
+    [InlineData("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")]
+    [InlineData("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")]
+    public void Endpoints_EachSignalIsValidatedOnItsOwn(string variable)
+    {
+        Set(variable, "ftp://collector.example:4318");
+
+        var error = Assert.Throws<ConfigurationError>(() => ConfigEnv.ConfigFromEnv());
+        Assert.Equal("invalid OTLP endpoint: ftp://collector.example:4318", error.Message);
+    }
+
+    [Fact]
+    public void Endpoints_PerSignalOverridesLandOnTheirOwnSignal()
+    {
+        // The premise the theory above depends on: each variable reaches exactly
+        // one signal, so a rejection driven through one of them names one of the
+        // three validation calls and no other.
+        Set("OTEL_EXPORTER_OTLP_ENDPOINT", "http://shared:4318");
+        Set("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "http://logs:4318");
+        Set("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://traces:4318");
+
+        var config = ConfigEnv.ConfigFromEnv();
+
+        Assert.Equal("http://logs:4318", config.Logging.OtlpEndpoint);
+        Assert.Equal("http://traces:4318", config.Tracing.OtlpEndpoint);
+        // Metrics has no override of its own, so it inherits the shared value.
+        Assert.Equal("http://shared:4318", config.Metrics.OtlpEndpoint);
+    }
+
     // ── RedactConfig ─────────────────────────────────────────────────────────
 
     [Fact]

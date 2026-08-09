@@ -81,9 +81,11 @@ export function _getProvidersBySignal(): Partial<Record<SignalName, Shutdownable
  * exporter it belongs to.
  */
 export function _signalForProvider(provider: ShutdownableProvider): SignalName | undefined {
-  const index = _registeredProviders.indexOf(provider);
-  if (index < 0) return undefined;
-  return _providerSignals[index];
+  // No `index < 0` guard: indexOf returns -1 for a provider we never stored,
+  // and _providerSignals[-1] is already undefined, so the guard could not
+  // change the answer. Keeping it would only add a branch no test can
+  // distinguish — mutation testing flagged it as exactly that.
+  return _providerSignals[_registeredProviders.indexOf(provider)];
 }
 
 /** Called by registerOtelProviders once providers are live. */
