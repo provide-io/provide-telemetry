@@ -210,8 +210,56 @@ def test_wait_for_generation_wakes_on_publication() -> None:
 
 
 def test_wait_for_generation_gives_up_at_its_timeout() -> None:
+    """Waited from a worker, because the failure being pinned is "never returns".
+
+    ``timeout`` is the whole promise of this call — a supervisor waiting on a
+    hot reload that never lands has to get control back — so a dropped or
+    ``None`` timeout is not a wrong answer but a hang, and asserting it from the
+    test's own thread would hang the suite rather than fail it. The worker is
+    released afterwards so nothing is left blocked on the coordinator.
+    """
     coordinator = LifecycleCoordinator()
-    assert coordinator.wait_for_generation(after=0, timeout=0.01) is None
+    seen: list[LifecycleGeneration | None] = []
+    waiter = threading.Thread(target=lambda: seen.append(coordinator.wait_for_generation(after=0, timeout=0.01)))
+    waiter.daemon = True
+    waiter.start()
+    waiter.join(_WAIT)
+    returned = not waiter.is_alive()
+    if not returned:
+        # Publishing is the only thing that wakes a wait with no deadline.
+        coordinator.publish(TelemetryConfig(), setup_done=False)
+        waiter.join(_WAIT)
+
+    assert returned, "wait_for_generation ignored its timeout and blocked"
+    assert seen == [None]
+
+
+def test_a_fresh_coordinator_serializes_operations_re_entrantly() -> None:
+    """``operations`` is a real re-entrant lock from the first construction.
+
+    Re-entrant because a reconfiguration that has to tear down and set back up
+    takes it again from inside itself; a plain Lock deadlocks there. And it has
+    to serialize: a second thread must not enter while the first holds it, which
+    is what stops a shutdown from tearing down providers a concurrent setup just
+    installed.
+    """
+    coordinator = LifecycleCoordinator()
+    entered_while_held = threading.Event()
+
+    def _contend() -> None:
+        with coordinator.operations:
+            entered_while_held.set()
+
+    with coordinator.operations:
+        assert coordinator.operations.acquire(timeout=_WAIT), "operations is not re-entrant"
+        coordinator.operations.release()
+
+        contender = threading.Thread(target=_contend, daemon=True)
+        contender.start()
+        assert not entered_while_held.wait(0.05), "operations did not exclude a second thread"
+
+    contender.join(_WAIT)
+    assert entered_while_held.is_set()
 
 
 def test_one_lock_serializes_setup_against_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:

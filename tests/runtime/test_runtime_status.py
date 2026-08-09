@@ -16,6 +16,7 @@ from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.logger import core as logger_core
 from provide.telemetry.metrics import provider as metrics_provider
 from provide.telemetry.runtime import (
+    apply_runtime_config,
     get_runtime_config,
     get_runtime_status,
     reconfigure_telemetry,
@@ -175,8 +176,59 @@ class TestRuntimeWritePathsRequireSetup:
             reconfigure_telemetry(TelemetryConfig(service_name="never-set-up"))
         assert get_runtime_status().setup_done is False
 
+    def test_the_refusal_names_the_call_that_fixes_it(self) -> None:
+        """Whole message, not a substring: it is a caller's only instruction.
+
+        This lands on someone who thinks telemetry is running, so the message
+        has to say both what is wrong and which call puts it right. Matching on
+        "telemetry not set up" alone would let the remedy fall out of the text
+        and still pass, leaving a diagnosis with no next step.
+        """
+        _reset_all_for_tests()
+        with pytest.raises(ConfigurationError) as raised:
+            update_runtime_config(RuntimeOverrides(strict_schema=True))
+        assert str(raised.value) == "telemetry not set up: call setup_telemetry first"
+
     def test_reads_still_degrade_rather_than_raise(self) -> None:
         # The fallback is deliberate on the read path: the drain path must not
         # raise on a malformed environment.
         _reset_all_for_tests()
         assert get_runtime_config() is not None
+
+
+class TestWritePathsPreserveTheSetupLatch:
+    """A hot update reconfigures telemetry; it does not un-set-up telemetry.
+
+    ``setup_done`` is what ``get_runtime_status()`` reports and what a health
+    check reads, and each write path republishes the whole generation — so a
+    path that rebuilt the generation without carrying the latch forward would
+    make a routine sampling change report a process that was never set up, with
+    providers installed and a shutdown owed.
+    """
+
+    def test_apply_runtime_config_carries_setup_done_forward(self) -> None:
+        _reset_all_for_tests()
+        coordinator.publish(TelemetryConfig(service_name="svc"), setup_done=True)
+
+        apply_runtime_config(TelemetryConfig(service_name="svc", pii_max_depth=4))
+
+        assert coordinator.peek().setup_done is True
+        assert get_runtime_status().setup_done is True
+
+    def test_update_runtime_config_carries_setup_done_forward(self) -> None:
+        _reset_all_for_tests()
+        coordinator.publish(TelemetryConfig(service_name="svc"), setup_done=True)
+
+        update_runtime_config(RuntimeOverrides(strict_schema=True))
+
+        assert coordinator.peek().setup_done is True
+        assert get_runtime_status().setup_done is True
+
+    def test_a_write_before_setup_leaves_the_latch_down(self) -> None:
+        """The other direction: carrying it forward must not invent a True."""
+        _reset_all_for_tests()
+        coordinator.publish(TelemetryConfig(service_name="svc"), setup_done=False)
+
+        apply_runtime_config(TelemetryConfig(service_name="svc", pii_max_depth=4))
+
+        assert coordinator.peek().setup_done is False

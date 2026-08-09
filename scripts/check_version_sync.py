@@ -174,12 +174,54 @@ def _csharp_version() -> str | None:
     version_file = _REPO_ROOT / "csharp" / "VERSION"
     if version_file.exists():
         return version_file.read_text(encoding="utf-8").strip() or None
-    csproj = _REPO_ROOT / "csharp" / "src" / "Provide.Telemetry" / "Provide.Telemetry.csproj"
+    return _csproj_package_version("Provide.Telemetry")
+
+
+def _csproj_package_version(project: str) -> str | None:
+    """Read <Version> from one C# project file."""
+    csproj = _REPO_ROOT / "csharp" / "src" / project / f"{project}.csproj"
     if not csproj.exists():
         return None
-    text = csproj.read_text(encoding="utf-8")
-    match = re.search(r"<Version>([^<]+)</Version>", text)
+    match = re.search(r"<Version>([^<]+)</Version>", csproj.read_text(encoding="utf-8"))
     return match.group(1) if match else None
+
+
+def _csharp_otel_version() -> str | None:
+    """Read <Version> from the OpenTelemetry integration package.
+
+    The package split made C# two shippable artifacts. csharp/VERSION
+    short-circuits _csharp_version before any project file is read, so without
+    this the integration package's version was never checked against anything
+    and could ship out of step with the core it wraps.
+    """
+    return _csproj_package_version("Provide.Telemetry.OpenTelemetry")
+
+
+def csharp_assembly_identity_errors() -> list[str]:
+    """Report C# projects whose assembly identity disagrees with their package version.
+
+    NuGet ships <Version>; the CLR binds and diagnostics report
+    <AssemblyVersion>. Both C# projects declared <Version>0.7.0</Version> beside
+    <AssemblyVersion>0.6.0.0</AssemblyVersion>, so a 0.7.0 package loaded as
+    0.6.0.0 — and the checker never noticed because it only ever read
+    <Version>. The integration project inherited the mismatch by being copied
+    from the core one.
+    """
+    problems: list[str] = []
+    for project in ("Provide.Telemetry", "Provide.Telemetry.OpenTelemetry"):
+        csproj = _REPO_ROOT / "csharp" / "src" / project / f"{project}.csproj"
+        if not csproj.exists():
+            continue
+        text = csproj.read_text(encoding="utf-8")
+        package = re.search(r"<Version>([^<]+)</Version>", text)
+        if package is None:
+            continue
+        expected = f"{package.group(1)}.0"
+        for element in ("AssemblyVersion", "FileVersion"):
+            found = re.search(rf"<{element}>([^<]+)</{element}>", text)
+            if found is not None and found.group(1) != expected:
+                problems.append(f"{project}: <{element}> is {found.group(1)}, expected {expected} to match <Version>")
+    return problems
 
 
 # Modules that MUST be present in any valid polyglot checkout. A missing or
@@ -202,6 +244,9 @@ OPTIONAL_MODULES: dict[str, _VersionReader] = {
     "go/internal": _go_internal_version,
     "go/logger": _go_logger_version,
     "go/otel": _go_otel_version,
+    # Optional for the same reason go/otel is: the OpenTelemetry integration is a
+    # separate shippable artifact, and a core-only checkout legitimately lacks it.
+    "csharp/otel": _csharp_otel_version,
 }
 
 
@@ -262,6 +307,10 @@ def main(argv: list[str] | None = None) -> int:
     errors: list[str] = []
     _check_modules(canonical, REQUIRED_MODULES, required=True, strict=args.strict, errors=errors)
     _check_modules(canonical, OPTIONAL_MODULES, required=False, strict=args.strict, errors=errors)
+
+    for problem in csharp_assembly_identity_errors():
+        print(f"  csharp assembly identity: {problem}")
+        errors.append(problem)
 
     ts_package = _typescript_package_version()
     ts_runtime = _typescript_runtime_version()

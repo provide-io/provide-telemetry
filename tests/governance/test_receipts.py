@@ -10,7 +10,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import os
 import re
+import time
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -339,10 +342,49 @@ def test_the_test_collector_is_bounded_and_drops_its_oldest() -> None:
 
 
 def test_receipt_timestamp_accepts_a_pinned_instant() -> None:
-    from datetime import UTC, datetime
-
     moment = datetime(2026, 8, 4, 12, 34, 56, 789_012, tzinfo=UTC)
     assert receipt_timestamp(moment) == "2026-08-04T12:34:56.789Z"
+
+
+def test_receipt_timestamp_is_utc_whatever_the_host_timezone_is() -> None:
+    """The trailing Z is a claim, so the clock behind it has to be UTC.
+
+    A default of ``datetime.now()`` reads the host's local zone and still spells
+    the result ``Z``, which on a machine outside UTC backdates or postdates every
+    receipt in the audit trail by the local offset — silently, and only on that
+    machine. Pinned here with the process forced seven hours off UTC.
+    """
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = "XYZ-07"  # POSIX spelling for "local time is UTC+7".
+    time.tzset()
+    try:
+        before = datetime.now(UTC)
+        stamped = receipt_timestamp()
+        after = datetime.now(UTC)
+    finally:
+        if original is None:
+            del os.environ["TZ"]
+        else:
+            os.environ["TZ"] = original
+        time.tzset()
+
+    parsed = datetime.strptime(stamped, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
+    # A second of slack for the strftime truncation, against a seven-hour skew.
+    assert before - timedelta(seconds=1) <= parsed <= after + timedelta(seconds=1)
+
+
+def test_the_missing_sink_error_names_every_way_out() -> None:
+    """Diagnosis plus all three remedies — the caller cannot act on half of it.
+
+    Asserted whole rather than by substring: this message is the only thing a
+    service owner sees at the moment receipts refuse to start, and losing the
+    remedies to a rewording would leave them a complaint with no next step.
+    """
+    assert str(MissingReceiptSinkError()) == (
+        "receipts are enabled but no receipt sink is configured; generated receipts "
+        "would be signed and then discarded. Pass sink=..., set "
+        "TelemetryConfig.receipt_sink, or disable receipts."
+    )
 
 
 # ── RFC 8785 number and key rendering ───────────────────────────────────────
@@ -382,6 +424,39 @@ def test_keys_are_ordered_by_utf16_code_unit() -> None:
     assert canonical_json({"é": 1, "b": 2, "A": 3, "10": 4}) == '{"10":4,"A":3,"b":2,"é":1}'
 
 
+def test_key_order_is_utf16_code_unit_order_where_it_differs_from_code_point_order() -> None:
+    """RFC 8785 section 3.2.3's own example, which exists to separate the two.
+
+    Every key in the test above is BMP, and BMP keys sort the same either way,
+    so a plain ``sorted()`` passes it and still disagrees with the other SDKs
+    here. U+1F600 encodes as the surrogate pair D83D DE00, so by
+    UTF-16 code unit it precedes U+FB33; by code point it follows it. Sorting by
+    code point swaps the last two members and changes the receipt digest of any
+    payload carrying an astral key.
+    """
+    assert canonical_json(
+        {
+            "€": "Euro Sign",
+            "\r": "Carriage Return",
+            "דּ": "Hebrew Letter Dalet With Dagesh",
+            "}": "Right Curly Bracket",
+            ",": "Comma",
+            "\U0001f600": "Emoji: Grinning Face",
+            "\u0080": "Control",
+            "ö": "Latin Small Letter O With Diaeresis",
+        }
+    ) == (
+        '{"\\r":"Carriage Return",'
+        '",":"Comma",'
+        '"}":"Right Curly Bracket",'
+        '"\u0080":"Control",'
+        '"ö":"Latin Small Letter O With Diaeresis",'
+        '"€":"Euro Sign",'
+        '"\U0001f600":"Emoji: Grinning Face",'
+        '"דּ":"Hebrew Letter Dalet With Dagesh"}'
+    )
+
+
 def test_non_string_keys_are_stringified() -> None:
     assert canonical_json({2: "a", 10: "b"}) == '{"10":"b","2":"a"}'
 
@@ -409,3 +484,17 @@ def test_a_shared_subtree_is_rendered_at_every_position() -> None:
     """Only a cycle collapses — the same subtree twice is not a cycle."""
     shared = {"k": 1}
     assert canonical_json({"a": shared, "b": shared}) == '{"a":{"k":1},"b":{"k":1}}'
+
+
+def test_a_shared_list_is_rendered_at_every_position() -> None:
+    """Same rule for sequences, and it is the exit from the walk that enforces it.
+
+    The cycle guard adds each composite's identity on the way in and has to drop
+    it again on the way out. A guard that only ever adds turns the second and
+    every later appearance of one list into ``null``, so a payload holding the
+    same list twice — the natural shape when a caller reuses a constant — loses
+    a copy from its receipt digest.
+    """
+    shared = [1, 2]
+    assert canonical_json([shared, shared]) == "[[1,2],[1,2]]"
+    assert canonical_json({"a": shared, "b": shared}) == '{"a":[1,2],"b":[1,2]}'

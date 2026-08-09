@@ -24,6 +24,7 @@ from provide.telemetry.config import (
     _parse_env_int,
     _parse_otlp_headers,
 )
+from provide.telemetry.receipts import RedactionReceipt
 
 # ── _parse_bool edge cases ─────────────────────────────────────────────
 
@@ -336,6 +337,13 @@ class TestCrossFieldInteractions:
 # ── redact_config ─────────────────────────────────────────────────────────────
 
 
+class _NamedSink:
+    """A receipt sink that exists to be recognised by its class name."""
+
+    def emit(self, receipt: RedactionReceipt, /) -> bool:
+        return True
+
+
 class TestRedactConfig:
     def test_primitive_fields_pass_through(self) -> None:
         cfg = TelemetryConfig.from_env({"PROVIDE_TELEMETRY_SERVICE_NAME": "svc"})
@@ -382,3 +390,29 @@ class TestRedactConfig:
         endpoint = result["tracing"]["otlp_endpoint"]  # type: ignore
         assert endpoint is not None, "masked endpoint must not be None"
         assert "otel.example.com" in str(endpoint), "original host must be preserved after masking"
+
+    def test_receipt_sink_is_reported_by_type_and_survives_the_walk(self) -> None:
+        """The sink is detached for asdict() and must come back, named not copied.
+
+        ``dataclasses.asdict`` deep-copies everything that is not a dataclass,
+        which a live sink holding a socket or a database handle cannot survive —
+        so the field is set aside for the walk. Two things have to hold on the
+        way out. The caller's config must still carry *their* sink, because
+        ``emit_receipt`` delivers to the object on the config and a redaction
+        walk that dropped it would silently stop the audit trail. And the report
+        must name the sink's type, since "a sink is configured" is the one fact
+        this diagnostic exists to convey; ``None`` there reads as "receipts are
+        going nowhere" when they are going somewhere.
+        """
+        sink = _NamedSink()
+        cfg = TelemetryConfig(receipt_sink=sink)
+
+        result = redact_config(cfg)
+
+        assert result["receipt_sink"] == "_NamedSink"
+        assert cfg.receipt_sink is sink
+
+    def test_no_receipt_sink_is_reported_as_none(self) -> None:
+        cfg = TelemetryConfig()
+        assert redact_config(cfg)["receipt_sink"] is None
+        assert cfg.receipt_sink is None

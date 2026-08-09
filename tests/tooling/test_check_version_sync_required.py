@@ -112,3 +112,48 @@ def test_required_and_optional_modules_categorized() -> None:
     assert set(module.REQUIRED_MODULES) >= {"python", "typescript/package", "go", "rust"}
     assert "go/internal" in module.OPTIONAL_MODULES
     assert "typescript/lockfile" in module.OPTIONAL_MODULES
+
+
+class TestCSharpArtifacts:
+    """The package split made C# two shippable artifacts, not one.
+
+    ``csharp/VERSION`` short-circuits the C# reader before any project file is
+    opened, so the integration package's version was never compared to
+    anything. And nothing looked at assembly identity at all: both projects
+    shipped ``<Version>0.7.0</Version>`` beside
+    ``<AssemblyVersion>0.6.0.0</AssemblyVersion>``, so a 0.7.0 NuGet package
+    loaded and reported itself as 0.6.0.0.
+    """
+
+    def test_both_csharp_packages_are_checked(self) -> None:
+        from scripts.check_version_sync import OPTIONAL_MODULES, REQUIRED_MODULES
+
+        assert "csharp" in REQUIRED_MODULES
+        # Optional for the same reason go/otel is: the integration package is a
+        # separate artifact and a core-only checkout legitimately lacks it.
+        assert "csharp/otel" in OPTIONAL_MODULES
+
+    def test_assembly_identity_matches_the_package_version(self) -> None:
+        from scripts.check_version_sync import csharp_assembly_identity_errors
+
+        assert csharp_assembly_identity_errors() == []
+
+    def test_a_drifted_assembly_version_is_reported(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Guard against the check silently passing because it found no files:
+        # point it at a tree that definitely has the drift and require a report.
+        import scripts.check_version_sync as mod
+
+        project = tmp_path / "csharp" / "src" / "Provide.Telemetry"
+        project.mkdir(parents=True)
+        (project / "Provide.Telemetry.csproj").write_text(
+            "<Project><PropertyGroup>"
+            "<Version>0.9.0</Version>"
+            "<AssemblyVersion>0.6.0.0</AssemblyVersion>"
+            "<FileVersion>0.9.0.0</FileVersion>"
+            "</PropertyGroup></Project>",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(mod, "_REPO_ROOT", tmp_path)
+        problems = mod.csharp_assembly_identity_errors()
+        assert len(problems) == 1
+        assert "<AssemblyVersion> is 0.6.0.0, expected 0.9.0.0" in problems[0]
