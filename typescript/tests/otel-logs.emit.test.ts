@@ -170,6 +170,10 @@ describe('emitLogRecord', () => {
     } as never);
     emitLogRecord({ level: 99, message: 'unknown', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(9);
+    // The name says INFO, and INFO is two fields: the number and the text the
+    // collector displays. Asserting only the number left the text fallback free
+    // to become the empty string.
+    expect(loggerStub.emit.mock.calls[0][0].severityText).toBe('INFO');
   });
 
   it('falls back to event field when message is absent', async () => {

@@ -78,17 +78,21 @@ const _ENDPOINT_FIELDS = ['otlpLogsEndpoint', 'otlpTracesEndpoint', 'otlpMetrics
  * suppressed: forcing one false leaves a secret unmasked, and forcing one true
  * writes an `undefined` key onto a config that did not carry the field at all
  * (asserted with an own-property check in config-redact.presence.test.ts).
+ *
+ * The header guards used to also require `Object.keys(...).length > 0`. That
+ * clause bought nothing — `maskHeaders({})` is `{}` — while leaving the empty
+ * map in the result aliased to the caller's own object, so a later write to the
+ * config showed up inside an already-captured "safe to log" snapshot. Dropping
+ * it makes every header map in the result a copy, in every branch.
  */
 export function redactConfig(config: TelemetryConfig): Record<string, unknown> {
   const result: Record<string, unknown> = { ...config };
-  // Stryker disable next-line EqualityOperator: length is never negative — `> 0` vs `>= 0` only differ at length 0, where maskHeaders({}) produces the same {} the spread already put there
-  if (config.otlpHeaders && Object.keys(config.otlpHeaders).length > 0) {
+  if (config.otlpHeaders) {
     result.otlpHeaders = maskHeaders(config.otlpHeaders);
   }
   for (const field of _HEADER_FIELDS) {
     const hdrs = config[field];
-    // Stryker disable next-line EqualityOperator: see above — length 0 masks to the same {}
-    if (hdrs && Object.keys(hdrs).length > 0) {
+    if (hdrs) {
       result[field] = maskHeaders(hdrs);
     }
   }

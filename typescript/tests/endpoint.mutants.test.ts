@@ -54,14 +54,6 @@ describe('validateOtlpEndpoint — error messages include the endpoint text', ()
     expect(msg).toContain(endpoint);
     expect(msg).toMatch(/invalid OTLP endpoint/);
   });
-
-  it('hostname-empty error (L26) keeps generic "invalid OTLP endpoint" text', () => {
-    // We cannot easily construct a URL that parses with empty hostname without
-    // stubbing globals (covered in endpoint.test.ts), but we still pin the
-    // template for the other paths above.
-    // This test is informational: existing coverage kills L26:34 already.
-    expect(true).toBe(true);
-  });
 });
 
 describe('validateOtlpEndpoint — protocol check (L22)', () => {

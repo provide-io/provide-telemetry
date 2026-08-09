@@ -12,16 +12,16 @@ import { ConfigurationError } from './exceptions.js';
  * Throws ConfigurationError for malformed endpoints.
  * Returns the endpoint unchanged if valid.
  *
- * Stryker reports the `!parsed.hostname` and port-range guards below as
- * survivors — and the hostname guard's throw body additionally as NoCoverage.
- * They are neither: forcing either guard to `false` and running the suite
- * fails it (hand-verified again 2026-08-04; the hostname mutation fails one
- * test). Stryker lists the covering tests in each mutant's `coveredBy` and
- * reports testsCompleted > 0, so it ran them and did not observe the failure
- * — the same false negative in its per-test result attribution that
- * config-redact.ts documents for its presence guards. Deliberately not
- * suppressed: the guards are load-bearing, and a suppression would hide a
- * real regression if one ever landed here.
+ * There is deliberately no `!parsed.hostname` guard. `http:` and `https:` are
+ * "special schemes" in the WHATWG URL Standard, and its host parser refuses an
+ * empty host for those: `new URL('https://')`, `'http://?q'`, `'http://#f'` and
+ * `'http://user:pw@/'` all throw, and `'http:///a/b'` re-parses `a` as the host
+ * rather than yielding an empty one. Anything that reaches this point therefore
+ * already has a non-empty hostname. The guard that used to sit here could only
+ * be reached by a test that replaced globalThis.URL with a fake whose hostname
+ * getter returned '' — which proves something about the fake, not about any
+ * endpoint a caller can pass. Removed rather than suppressed, so the mutation
+ * report stops carrying a survivor plus two uncovered lines for dead code.
  */
 export function validateOtlpEndpoint(endpoint: string): string {
   let parsed: URL;
@@ -31,9 +31,6 @@ export function validateOtlpEndpoint(endpoint: string): string {
     throw new ConfigurationError(`invalid OTLP endpoint: ${JSON.stringify(endpoint)}`);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new ConfigurationError(`invalid OTLP endpoint: ${JSON.stringify(endpoint)}`);
-  }
-  if (!parsed.hostname) {
     throw new ConfigurationError(`invalid OTLP endpoint: ${JSON.stringify(endpoint)}`);
   }
   // Detect explicit empty port — "http://host:" has port="" in URL spec but the

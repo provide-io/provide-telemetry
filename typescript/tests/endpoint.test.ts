@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import { validateOtlpEndpoint } from '../src/endpoint.js';
 import { ConfigurationError } from '../src/exceptions.js';
@@ -94,23 +94,25 @@ const allFixtures = YAML.parse(readFileSync(fixturesPath, 'utf-8')) as {
 };
 const endpointFixtures = allFixtures.endpoint_validation;
 
-describe('validateOtlpEndpoint — empty hostname via mocked URL', () => {
-  it('rejects endpoint where URL parses but hostname is empty', () => {
-    // The WHATWG URL spec prevents http/https URLs with empty hostnames, so we mock
-    // the URL constructor to simulate a URL that parses successfully but has no hostname.
-    const OrigURL = globalThis.URL;
-    vi.stubGlobal('URL', function (input: string) {
-      const u = new OrigURL(input);
-      if (input === 'http://fakematch/') {
-        Object.defineProperty(u, 'hostname', { get: () => '' });
-      }
-      return u;
-    });
-    try {
-      expect(() => validateOtlpEndpoint('http://fakematch/')).toThrow(/invalid OTLP endpoint/);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+describe('validateOtlpEndpoint — an http(s) URL always has a host', () => {
+  // This replaces a test that stubbed globalThis.URL with a fake whose hostname
+  // getter returned '' so the (now removed) empty-hostname guard could be
+  // reached. It asserted a property of the fake. These cases assert the real
+  // one: for the special schemes we accept, the platform's own parser rejects
+  // an empty host, so no caller-supplied endpoint can carry one.
+  it.each(['https://', 'http://', 'http://?q=1', 'http://#frag', 'http://user:pw@/'])(
+    'the URL parser itself rejects %s, so validation reports it invalid',
+    (endpoint) => {
+      expect(() => new URL(endpoint)).toThrow();
+      expect(() => validateOtlpEndpoint(endpoint)).toThrow(ConfigurationError);
+    },
+  );
+
+  it('an empty authority is re-parsed as the host rather than left empty', () => {
+    // "http:///a/b" is the closest thing to an empty host the parser accepts:
+    // it promotes the first path segment to the host instead of yielding ''.
+    expect(new URL('http:///a/b').hostname).toBe('a');
+    expect(validateOtlpEndpoint('http:///a/b')).toBe('http:///a/b');
   });
 });
 

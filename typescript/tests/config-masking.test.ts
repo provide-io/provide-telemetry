@@ -72,12 +72,19 @@ describe('redactConfig', () => {
     expect(result.otlpEndpoint).toBeUndefined();
   });
 
-  it('does not modify empty otlpHeaders object', () => {
-    const cfg = {
-      otlpHeaders: {},
-    } as Partial<TelemetryConfig> as TelemetryConfig;
+  it("returns an empty otlpHeaders map as a copy, not the caller's object", () => {
+    const otlpHeaders: Record<string, string> = {};
+    const cfg = { otlpHeaders } as Partial<TelemetryConfig> as TelemetryConfig;
     const result = redactConfig(cfg);
-    // empty headers object passes through unchanged (no keys to mask)
+    expect(result.otlpHeaders).toEqual({});
+    // The previous version of this test asserted only `toEqual({})`, which is
+    // true whether or not redactConfig looked at the map at all — it named the
+    // behaviour and checked nothing. What actually matters is that the redacted
+    // snapshot is a copy: the empty map was the one branch that used to alias
+    // the caller's object, so a header written after redaction appeared inside
+    // an already-captured "safe to log" record.
+    expect(result.otlpHeaders).not.toBe(otlpHeaders);
+    otlpHeaders['authorization'] = 'written-after-redaction'; // pragma: allowlist secret
     expect(result.otlpHeaders).toEqual({});
   });
 
@@ -128,13 +135,18 @@ describe('redactConfig', () => {
     expect(result.otlpMetricsHeaders).toBeUndefined();
   });
 
-  it('does not mask per-signal headers when field is empty object', () => {
-    const cfg = {
-      otlpLogsHeaders: {},
-    } as Partial<TelemetryConfig> as TelemetryConfig;
-    const result = redactConfig(cfg);
-    expect(result.otlpLogsHeaders).toEqual({});
-  });
+  it.each(['otlpLogsHeaders', 'otlpTracesHeaders', 'otlpMetricsHeaders'] as const)(
+    'returns an empty %s map as a copy, not the caller’s object',
+    (field) => {
+      const headers: Record<string, string> = {};
+      const cfg = { [field]: headers } as Partial<TelemetryConfig> as TelemetryConfig;
+      const result = redactConfig(cfg);
+      expect(result[field]).toEqual({});
+      expect(result[field]).not.toBe(headers);
+      headers['authorization'] = 'written-after-redaction'; // pragma: allowlist secret
+      expect(result[field]).toEqual({});
+    },
+  );
 
   it('masks per-signal logs endpoint credentials', () => {
     const cfg = {

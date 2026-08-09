@@ -16,14 +16,19 @@ export interface SamplingPolicy {
 const DEFAULT_POLICY: SamplingPolicy = { defaultRate: 1.0 };
 let _policies: Record<string, SamplingPolicy> = {};
 
-// Stryker reports the 'metrics' entry as a survivor. It is not: blanking it
-// and running the suite fails 130 tests (hand-verified 2026-08-04) — the same
-// per-test attribution false negative endpoint.ts documents. Not suppressed:
-// the signal-name set is the API contract.
-const VALID_SIGNALS = new Set(['logs', 'traces', 'metrics']);
-
+/**
+ * The three signal names the sampling API accepts.
+ *
+ * Spelled as literal comparisons inside the function rather than a module-level
+ * `Set`: a Set is built once at import time, before any test has started, so
+ * Stryker's per-test coverage attributes a mutation of its members to no test
+ * at all and reports the 'metrics' entry as a survivor even though blanking it
+ * fails ~130 tests. Inside the function the same literals are re-evaluated on
+ * every call, which is honest to the mutation report — and for three entries a
+ * chain of `!==` is no slower than a hash lookup.
+ */
 function _validateSignal(signal: string): void {
-  if (!VALID_SIGNALS.has(signal)) {
+  if (signal !== 'logs' && signal !== 'metrics' && signal !== 'traces') {
     throw new ConfigurationError(
       `unknown signal "${signal}", expected one of [logs, metrics, traces]`,
     );

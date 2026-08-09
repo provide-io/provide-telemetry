@@ -68,9 +68,12 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
 
   const headers = cfg.otlpHeaders ?? {};
   const sharedEndpoint = normalizeEndpoint(cfg.otlpEndpoint);
-  const logsEndpoint =
-    normalizeEndpoint(cfg.otlpLogsEndpoint) ??
-    (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/logs') : undefined);
+  // Resolved the way setupOtelLogProvider resolves it, and deliberately without
+  // the /v1/logs suffix: the logs URL is composed and validated in there, so a
+  // second copy of it here would be duplicate work whose only consumers are two
+  // truthiness checks. Composing it anyway made the suffix unobservable, which
+  // is a mutation-report survivor and, worse, an invitation to edit one copy.
+  const logsEndpoint = normalizeEndpoint(cfg.otlpLogsEndpoint) ?? sharedEndpoint;
   const tracesEndpoint =
     normalizeEndpoint(cfg.otlpTracesEndpoint) ??
     (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/traces') : undefined);

@@ -265,10 +265,10 @@ describe('shouldSample — health counter double-counting fix', () => {
   });
 });
 
-describe('VALID_SIGNALS covers every canonical signal', () => {
-  // Each name in the set is load-bearing on its own: dropping one makes that
-  // signal's policy unsettable while the other two keep working, so a test that
-  // only exercises `logs` leaves the other two entries unpinned.
+describe('signal validation accepts every canonical signal', () => {
+  // Each name in _validateSignal is load-bearing on its own: dropping one makes
+  // that signal's policy unsettable while the other two keep working, so a test
+  // that only exercises `logs` leaves the other two names unpinned.
   it.each(['logs', 'traces', 'metrics'])('accepts %s', (signal) => {
     expect(() => setSamplingPolicy(signal, { defaultRate: 0.5 })).not.toThrow();
     expect(getSamplingPolicy(signal).defaultRate).toBe(0.5);
