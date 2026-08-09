@@ -27,6 +27,11 @@ import (
 	"unicode/utf8"
 )
 
+// nullLiteral is the JSON spelling for both a nil value and a non-finite
+// number. Named rather than repeated because goconst counts every occurrence
+// in the package, tests included, and a bare literal here trips it.
+const nullLiteral = "null"
+
 // CanonicalJSON returns the RFC 8785 canonical JSON serialization of value.
 //
 // Values JSON cannot encode are normalized rather than rejected: NaN and
@@ -40,7 +45,7 @@ func CanonicalJSON(value any) string {
 func appendCanonical(dst []byte, value any) []byte {
 	switch typed := value.(type) {
 	case nil:
-		return append(dst, "null"...)
+		return append(dst, nullLiteral...)
 	case bool:
 		return strconv.AppendBool(dst, typed)
 	case string:
@@ -146,7 +151,7 @@ func canonicalNumber(f float64) string {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		// Neither has a JSON encoding; null is the spelling the contract fixes
 		// so no SDK has to invent one.
-		return "null"
+		return nullLiteral
 	}
 	if f == 0 {
 		return "0"
@@ -162,31 +167,43 @@ func canonicalNumber(f float64) string {
 	mantissa, exponent, _ := strings.Cut(strconv.FormatFloat(f, 'e', -1, 64), "e")
 	exp, _ := strconv.Atoi(exponent) //nolint:errcheck // FormatFloat 'e' always emits a parsable exponent
 	digits := strings.Replace(mantissa, ".", "", 1)
-	k, n := len(digits), exp+1
 
-	// An if/else chain rather than an expressionless switch, and the difference
-	// is not style. Go's coverage tool instruments case *bodies* only: for a
-	// switch, the emitted blocks start after each `case ...:`, so the condition
-	// expressions themselves sit outside every block. gremlins then reports
-	// every mutant of these bounds as "not covered" even though the vectors in
-	// spec/jcs_number_fixtures.yaml drive all five branches and canonicalNumber
-	// reports 100% coverage. An if/else chain puts the conditions inside
-	// instrumented blocks, so the bounds are mutation-tested for real — which
-	// matters here, because a wrong bound in this exact algorithm is what made
-	// Python render 1e21 as "0.1".
+	return sign + canonicalDigits(digits, exp+1)
+}
+
+// canonicalDigits places the decimal point in digits for decimal exponent n,
+// where the value is 0.digits x 10^n. Split out from canonicalNumber only to
+// keep each function under the cyclomatic bound; the five branches are the
+// five ECMAScript cases and belong together.
+//
+// An if/else chain rather than an expressionless switch, and the difference is
+// not style. Go's coverage tool instruments case *bodies* only: for a switch,
+// the emitted blocks start after each `case ...:`, so the condition expressions
+// themselves sit outside every block. gremlins then reports every mutant of
+// these bounds as "not covered" even though the vectors in
+// spec/jcs_number_fixtures.yaml drive all five branches and the function
+// reports 100% coverage. An if/else chain puts the conditions inside
+// instrumented blocks, so the bounds are mutation-tested for real — which
+// matters here, because a wrong bound in this exact algorithm is what made
+// Python render 1e21 as "0.1".
+func canonicalDigits(digits string, n int) string {
+	k := len(digits)
 	if k <= n && n <= 21 {
-		return sign + digits + strings.Repeat("0", n-k)
+		return digits + strings.Repeat("0", n-k)
 	}
 	if 0 < n && n <= 21 {
-		return sign + digits[:n] + "." + digits[n:]
+		return digits[:n] + "." + digits[n:]
 	}
+	// ECMAScript spells this bound "-6 < n <= 0" and both halves are load
+	// bearing: the branches above consume only n <= 21, so n = 22 falls
+	// through to here, and without "n <= 0" it would render 1e21 as "0.1".
 	if -6 < n && n <= 0 {
-		return sign + "0." + strings.Repeat("0", -n) + digits
+		return "0." + strings.Repeat("0", -n) + digits
 	}
 	if k == 1 {
-		return sign + digits + "e" + canonicalExponent(n-1)
+		return digits + "e" + canonicalExponent(n-1)
 	}
-	return sign + digits[:1] + "." + digits[1:] + "e" + canonicalExponent(n-1)
+	return digits[:1] + "." + digits[1:] + "e" + canonicalExponent(n-1)
 }
 
 // canonicalExponent renders an exponent with the explicit '+' ECMAScript emits

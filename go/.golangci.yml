@@ -19,6 +19,14 @@ linters:
   settings:
     gocyclo:
       min-complexity: 10
+    exhaustive:
+      # A switch with a default is exhaustive. Every reflect.Kind switch in
+      # harden.go names the kinds it handles and sends the rest to a default
+      # that redacts, which is the point: chan, func, complex and
+      # unsafe.Pointer have no JSON shape. Without this, the linter demands
+      # all 26 kinds be spelled out, and the only way to satisfy it is a
+      # 20-case list that says exactly what the default already says.
+      default-signifies-exhaustive: true
   exclusions:
     rules:
       - linters:

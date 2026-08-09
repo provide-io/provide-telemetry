@@ -110,23 +110,9 @@ func Harden(value any, limits Limits) any {
 // suite pins the shared-sibling case, so the bound has to be the walk rather
 // than the current path for the two SDKs to agree.
 func hardenValue(v reflect.Value, seen map[visit]struct{}, depth int, limits Limits) any {
-	for v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
-		if v.IsNil() {
-			return nil
-		}
-		if v.Kind() == reflect.Pointer {
-			if _repeatReference(visit{v.Type(), v.Pointer()}, seen) {
-				return Redacted
-			}
-			// Self-description is checked on the pointer as well as on the
-			// pointee: error and MarshalText are normally declared on the
-			// pointer receiver, and *errors.errorString keeps its message in
-			// an unexported field — dereferencing first loses it entirely.
-			if text, ok := _hardenAsText(v, limits); ok {
-				return text
-			}
-		}
-		v = v.Elem()
+	v, early, decided := _followReferences(v, seen, limits)
+	if decided {
+		return early
 	}
 	if !v.IsValid() {
 		return nil
@@ -138,6 +124,39 @@ func hardenValue(v reflect.Value, seen map[visit]struct{}, depth int, limits Lim
 		return text
 	}
 	return hardenKind(v, seen, depth, limits)
+}
+
+// _followReferences walks pointers and interfaces down to the value they reach.
+//
+// Split out of hardenValue only to keep it under the cyclomatic bound. The
+// third result reports that the walk itself settled the answer — a nil
+// reference, a second crossing of the same pointer, or a self-describing one —
+// in which case the second result is that answer and the returned value must
+// not be used.
+func _followReferences(
+	v reflect.Value,
+	seen map[visit]struct{},
+	limits Limits,
+) (reflect.Value, any, bool) {
+	for v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return v, nil, true
+		}
+		if v.Kind() == reflect.Pointer {
+			if _repeatReference(visit{v.Type(), v.Pointer()}, seen) {
+				return v, Redacted, true
+			}
+			// Self-description is checked on the pointer as well as on the
+			// pointee: error and MarshalText are normally declared on the
+			// pointer receiver, and *errors.errorString keeps its message in
+			// an unexported field — dereferencing first loses it entirely.
+			if text, ok := _hardenAsText(v, limits); ok {
+				return v, text, true
+			}
+		}
+		v = v.Elem()
+	}
+	return v, nil, false
 }
 
 // _repeatReference records id and reports whether the walk had already crossed it.

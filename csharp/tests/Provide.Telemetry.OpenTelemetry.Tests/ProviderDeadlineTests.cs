@@ -61,12 +61,33 @@ public class ProviderDeadlineTests
         // never answers. Overlapping them keeps the whole operation inside one.
         var drains = new BlockingDrains(TimeSpan.FromSeconds(5));
         var result = new FlushResult();
+
+        // Each drain parks a pool thread for the whole budget, so all three must
+        // already be running for the overlap to be observable. The pool starts
+        // with ProcessorCount workers and injects further ones on a timer
+        // measured in hundreds of milliseconds; on a 2-core CI runner the third
+        // drain had not been dispatched before the budget expired, and the test
+        // failed with "observed 1 concurrent drains" while the code under test
+        // was correct. Raising the floor removes the ramp-up without touching
+        // what is being asserted.
+        ThreadPool.GetMinThreads(out var workers, out var completionPorts);
+        ThreadPool.SetMinThreads(Math.Max(workers, 8), completionPorts);
         var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            // 500ms rather than 100ms for the same reason: the assertion is that
+            // three 5s drains cost one budget instead of 15s, and a budget an
+            // order of magnitude above the scheduler's jitter tests that just as
+            // sharply while leaving no room for a slow dispatch to decide it.
+            ProviderDrains.Run(drains.Drains, DateTimeOffset.UtcNow.AddMilliseconds(500), result);
+            stopwatch.Stop();
+        }
+        finally
+        {
+            ThreadPool.SetMinThreads(workers, completionPorts);
+        }
 
-        ProviderDrains.Run(drains.Drains, DateTimeOffset.UtcNow.AddMilliseconds(100), result);
-        stopwatch.Stop();
-
-        Assert.InRange(stopwatch.Elapsed.TotalMilliseconds, 50, 2000);
+        Assert.InRange(stopwatch.Elapsed.TotalMilliseconds, 50, 3000);
         Assert.True(drains.MaximumConcurrent >= 3, $"observed {drains.MaximumConcurrent} concurrent drains");
     }
 
