@@ -7,12 +7,16 @@ on:
       - "ci/**"
       - "VERSION"
       - ".github/workflows/ci-go.yml"
+      - "baselines/perf-go.json"
+      - "scripts/perf_check.py"
   pull_request:
     paths:
       - "go/**"
       - "ci/**"
       - "VERSION"
       - ".github/workflows/ci-go.yml"
+      - "baselines/perf-go.json"
+      - "scripts/perf_check.py"
   workflow_dispatch:
 
 permissions:

@@ -7,12 +7,16 @@ on:
       - "spec/**"
       - "VERSION"
       - ".github/workflows/ci-rust.yml"
+      - "baselines/perf-rust.json"
+      - "scripts/perf_check.py"
   pull_request:
     paths:
       - "rust/**"
       - "spec/**"
       - "VERSION"
       - ".github/workflows/ci-rust.yml"
+      - "baselines/perf-rust.json"
+      - "scripts/perf_check.py"
   workflow_dispatch:
 
 permissions:

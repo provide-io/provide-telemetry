@@ -6,11 +6,15 @@ on:
       - "csharp/**"
       - "VERSION"
       - ".github/workflows/ci-csharp.yml"
+      - "baselines/perf-csharp.json"
+      - "scripts/perf_check.py"
   pull_request:
     paths:
       - "csharp/**"
       - "VERSION"
       - ".github/workflows/ci-csharp.yml"
+      - "baselines/perf-csharp.json"
+      - "scripts/perf_check.py"
   workflow_dispatch:
 
 permissions:
