@@ -231,9 +231,14 @@ class TestExecFailureDetection:
     records "the tests detected this mutant". The run then reports 100% and
     exits 0 while some mutants were never actually tested.
 
-    Observed at ~110 occurrences in a 4767-mutant run. Replaying the identical
-    argument list standalone exited 0, so the trigger is the forked-child
-    context rather than the arguments.
+    Observed at 110 occurrences in a 4767-mutant run: two parametrize ids held
+    raw CR/LF, pytest re-escaped them on its second in-process collection, and
+    the ids mutmut had recorded during the first one no longer matched anything.
+    Replaying the argument list in a fresh process exited 0, which is why the
+    forked child looked like the culprit — the real difference was that mutmut's
+    process had already collected once. The ids are fixed at the source (see
+    tests/tooling/test_parametrize_id_stability.py); this counter remains as the
+    backstop for the next unearned kill, whatever causes it.
     """
 
     def test_counts_one_failure_per_occurrence(self) -> None:

@@ -60,10 +60,14 @@ def _mutmut_env() -> dict[str, str]:
 # mutant". Every such mutant is therefore counted as killed without a test ever
 # having run against it, and the run still reports 100% and exits 0.
 #
-# We cannot fix mutmut from here, but we can refuse to certify a run that
-# contained them. Observed at ~110 occurrences in a 4767-mutant run (2.3%),
-# reproducibly, while replaying the identical argument list standalone exited 0
-# — so the trigger is mutmut's forked-child context, not the arguments.
+# The one occurrence found so far (110 mutants of 4767) was a node id that is
+# not stable across two collections in the same interpreter: pytest re-escapes a
+# parametrize id it has already escaped, so the ids mutmut recorded during its
+# first (stats) collection stopped matching on every later pytest.main() call,
+# and pytest exited 4 with "not found". That is fixed at the source — see
+# tests/tooling/test_parametrize_id_stability.py, which fails the suite if such
+# an id reappears. This counter stays as the backstop: it cannot repair a run,
+# but it refuses to certify one whose kills were never earned.
 _EXEC_FAILURE_MARKER = "BadTestExecutionCommandsException"
 
 

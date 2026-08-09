@@ -107,6 +107,16 @@ def test_attribute_keys_are_also_hardened() -> None:
 # ── endpoint URLs ───────────────────────────────────────────────────────────
 
 
+# The ids are spelled out rather than derived from the endpoint, because two of
+# these endpoints carry raw CR/LF. pytest escapes a parametrize id and stores the
+# escaped string back on the mark, so a *second* collection in the same
+# interpreter escapes it again and the node id changes from `...host\nX...` to
+# `...host\\nX...`. mutmut calls pytest.main() repeatedly in one process and
+# replays the ids recorded by its first collection, so those replays stopped
+# matching, pytest exited 4, and mutmut scored the mutant as killed without
+# running a test. Any id containing a control character, a backslash or a
+# non-ASCII character has the same problem — see
+# tests/tooling/test_parametrize_id_stability.py.
 @pytest.mark.parametrize(
     "endpoint",
     [
@@ -121,7 +131,18 @@ def test_attribute_keys_are_also_hardened() -> None:
         "http://host:notaport",
         "http://host:",
     ],
-    ids=lambda e: e[:28],
+    ids=[
+        "file-scheme",
+        "javascript-scheme",
+        "gopher-scheme",
+        "data-scheme",
+        "ftp-scheme",
+        "crlf-header-smuggling",
+        "lf-header-smuggling",
+        "ipv6-port-out-of-range",
+        "non-numeric-port",
+        "empty-port",
+    ],
 )
 def test_hostile_endpoints_are_rejected(endpoint: str) -> None:
     """Only http/https may reach the exporter, and never with embedded CRLF.

@@ -35,10 +35,25 @@ _RESOURCE = _FIXTURES["resource_precedence"]
 _ALL_IDENTITY_KEYS = set(_RESOURCE["keys"].values())
 
 
+def _stable_id(description: str) -> str:
+    """Return an id that survives being collected twice in one interpreter.
+
+    pytest escapes a parametrize id and stores the escaped string back on the
+    mark, so a second collection in the same process escapes it again: an id
+    holding a non-ASCII character (the fixture descriptions use "->") or a
+    backslash comes back as `\\u2192` the first time and `\\\\u2192` after that.
+    mutmut calls pytest.main() repeatedly and replays the ids from its first
+    collection, so an unstable id makes pytest exit 4 and mutmut record a kill
+    no test ever earned. Fold both classes of character out here — the fixture
+    file is shared with the other languages, so its text is not ours to change.
+    """
+    return description.encode("ascii", "replace").decode("ascii").replace("\\", "/")
+
+
 @pytest.mark.parametrize(
     "case",
     _RESOURCE["cases"],
-    ids=[c["description"] for c in _RESOURCE["cases"]],
+    ids=[_stable_id(str(c["description"])) for c in _RESOURCE["cases"]],
 )
 def test_parity_resource_precedence_explicit_keys(case: dict[str, object]) -> None:
     fields = cast("dict[str, str]", case["config"])
