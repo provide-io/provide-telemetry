@@ -40,6 +40,8 @@ internal static class ProviderDrains
             .Select(drain => (drain.Signal, Task: ResilientExporter.DrainAsync(drain, deadline)))
             .ToArray();
 
+        RecordBlockingRisk(drains);
+
         var budget = deadline - DateTimeOffset.UtcNow;
         // Task.WhenAll cannot be waited with a negative TimeSpan, and an expired
         // deadline still has one in-flight attempt per signal by contract, so a
@@ -50,6 +52,28 @@ internal static class ProviderDrains
         foreach (var (signal, task) in running)
         {
             Apply(result, signal, task);
+        }
+    }
+
+    /// <summary>
+    /// Record, per signal, that this drain is about to park the caller's thread.
+    /// </summary>
+    /// <remarks>
+    /// The <c>Wait</c> above is synchronous by design — <c>FlushTelemetry</c> and
+    /// <c>ShutdownTelemetry</c> are synchronous APIs — and blocking is harmless
+    /// on a pool thread. It is not harmless on a thread carrying a
+    /// <see cref="SynchronizationContext"/>: a UI message pump or a classic
+    /// ASP.NET request thread parked here is the .NET shape of the asyncio
+    /// hazard <c>async_blocking_risk_*</c> exists to count. The check is made on
+    /// the calling thread, before the wait, because that is the only thread
+    /// whose context is the caller's.
+    /// </remarks>
+    private static void RecordBlockingRisk(IReadOnlyList<ProviderDrain> drains)
+    {
+        if (SynchronizationContext.Current is null) return;
+        foreach (var drain in drains)
+        {
+            Health.IncrementAsyncBlockingRisk(drain.Signal);
         }
     }
 

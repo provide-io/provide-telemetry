@@ -26,7 +26,11 @@ internal sealed class AtomicDouble
 
     public void Add(double value)
     {
-        long before, after;
+        // Seeded rather than left to the loop body: the body is the only
+        // assignment, so a mutant of it leaves both locals unassigned at the
+        // CompareExchange and the file stops compiling, which drops every mutant
+        // in this type out of the score instead of scoring them.
+        long before = 0, after = 0;
         do
         {
             before = Interlocked.Read(ref _bits);

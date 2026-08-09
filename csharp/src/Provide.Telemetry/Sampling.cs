@@ -48,19 +48,13 @@ public static class Sampling
             rate = over;
         }
 
-        bool sampled;
-        if (rate <= 0.0)
-        {
-            sampled = false;
-        }
-        else if (rate >= 1.0)
-        {
-            sampled = true;
-        }
-        else
-        {
-            sampled = Random.Shared.NextDouble() < rate;
-        }
+        // One expression rather than a local assigned in three branches: the
+        // branch form left `sampled` definitely-unassigned under mutation, so
+        // the file stopped compiling and the whole type dropped out of the
+        // mutation score. Both boundaries are still explicit — a rate at or
+        // below zero never samples, a rate at or above one always does, and only
+        // the interval between them draws.
+        var sampled = rate > 0.0 && (rate >= 1.0 || Random.Shared.NextDouble() < rate);
 
         // No Health.RecordDropped here. SignalPipeline.Admit rejects through
         // Reject(), which records the drop, so recording it here too counted a

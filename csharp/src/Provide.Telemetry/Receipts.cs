@@ -173,8 +173,8 @@ public static class Receipts
     internal static void RecordAll(IReadOnlyList<PendingRedaction> redactions)
     {
         if (redactions.Count == 0) return;
-        string signingKey, serviceName;
-        IReceiptSink? sink;
+        string signingKey = "", serviceName = "";
+        IReceiptSink? sink = null;
         lock (Gate)
         {
             if (!_enabled) return;

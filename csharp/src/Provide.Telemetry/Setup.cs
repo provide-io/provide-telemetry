@@ -24,15 +24,7 @@ public static class Setup
             // Idempotent: first call wins; later calls ignore config args.
             if (_generation is not null) return _generation.Config.Clone();
 
-            TelemetryConfig cfg;
-            try
-            {
-                cfg = config?.Clone() ?? ConfigEnv.ConfigFromEnv();
-            }
-            catch (Exception ex) when (ex is not ConfigurationError)
-            {
-                throw new ConfigurationError(ex.Message, ex);
-            }
+            var cfg = ResolveConfig(config);
 
             // The env path validated as it parsed; an explicit config has been
             // through no parser, so nothing has range-checked it yet.
@@ -48,13 +40,40 @@ public static class Setup
         }
     }
 
+    /// <summary>
+    /// Clone the caller's config, or build one from the environment.
+    /// </summary>
+    /// <remarks>
+    /// A method rather than a <c>try</c> around a bare local: assigning inside
+    /// the <c>try</c> left <c>cfg</c> only conditionally assigned, so the
+    /// mutation gate could not compile a single mutant of the whole
+    /// <c>SetupTelemetry</c> body and scored none of it. Returning from each
+    /// branch removes the definite-assignment edge without changing behaviour.
+    /// </remarks>
+    private static TelemetryConfig ResolveConfig(TelemetryConfig? config)
+    {
+        try
+        {
+            return config?.Clone() ?? ConfigEnv.ConfigFromEnv();
+        }
+        catch (Exception ex) when (ex is not ConfigurationError)
+        {
+            throw new ConfigurationError(ex.Message, ex);
+        }
+    }
+
     public static void ShutdownTelemetry()
     {
         // The deadline is computed once, before the lock, and shared by every
         // signal drain: a caller asking for ten seconds gets ten, not ten per
         // installed provider.
         var deadline = DateTimeOffset.UtcNow + DefaultDrainTimeout;
-        ITelemetryBackend? backend;
+        // Initialized at the declaration, not only inside the lock: a local that
+        // is assigned in exactly one place is one a mutation of that place turns
+        // into a compile error, which silently excludes the whole method from
+        // the mutation score. Every local in this file is definitely assigned
+        // before its block for that reason.
+        ITelemetryBackend? backend = null;
         lock (Gate)
         {
             backend = _generation?.Backend;
@@ -73,7 +92,7 @@ public static class Setup
     {
         var budget = timeout ?? DefaultDrainTimeout;
         var deadline = DateTimeOffset.UtcNow + (budget > TimeSpan.Zero ? budget : TimeSpan.Zero);
-        ITelemetryBackend? backend;
+        ITelemetryBackend? backend = null;
         lock (Gate)
         {
             backend = _generation?.Backend;
@@ -102,22 +121,35 @@ public static class Setup
         }
     }
 
-    public static RuntimeStatus GetRuntimeStatus()
+    /// <summary>Everything <see cref="GetRuntimeStatus"/> reads, from one generation.</summary>
+    private readonly record struct StatusView(
+        TelemetryConfig Config, bool SetupDone, ProviderFlags Owned, string Error);
+
+    /// <summary>
+    /// One read of one immutable generation.
+    /// </summary>
+    /// <remarks>
+    /// Status could otherwise report a config from one lifecycle alongside
+    /// provider flags from another. Returning the four values as a record
+    /// instead of assigning four locals inside the lock also keeps them
+    /// definitely assigned, so a mutant of any one of these reads compiles.
+    /// </remarks>
+    private static StatusView ReadStatusView()
     {
-        TelemetryConfig cfg;
-        bool setupDone;
-        ProviderFlags owned;
-        string err;
-        // One read of one immutable generation: status can no longer report a
-        // config from one lifecycle alongside provider flags from another.
         lock (Gate)
         {
             var generation = _generation;
-            setupDone = generation is not null;
-            cfg = generation?.Config.Clone() ?? SafeConfigFromEnv();
-            owned = generation?.Providers ?? ProviderFlags.None;
-            err = _setupError;
+            return new StatusView(
+                generation?.Config.Clone() ?? SafeConfigFromEnv(),
+                generation is not null,
+                generation?.Providers ?? ProviderFlags.None,
+                _setupError);
         }
+    }
+
+    public static RuntimeStatus GetRuntimeStatus()
+    {
+        var (cfg, setupDone, owned, err) = ReadStatusView();
 
         var host = TelemetryBackendRegistry.HostProviders;
         // Providers report owned OR host-adopted installations. When a signal is
@@ -219,11 +251,13 @@ public static class Setup
         {
             if (_generation is not null) return;
             Consent.LoadConsentFromEnv();
-            TelemetryConfig cfg;
+            // SafeConfigFromEnv swallows its own faults, so only backend
+            // construction below can throw here — which lets cfg be assigned at
+            // its declaration rather than in two branches of a try/catch.
+            var cfg = SafeConfigFromEnv();
             ITelemetryBackend? backend = null;
             try
             {
-                cfg = SafeConfigFromEnv();
                 // Providers install only when endpoints are configured, so a
                 // lazy start against an unconfigured environment degrades to the
                 // in-process fallbacks rather than failing.
@@ -261,7 +295,7 @@ public static class Setup
 
     internal static void ResetForTests()
     {
-        ITelemetryBackend? backend;
+        ITelemetryBackend? backend = null;
         lock (Gate)
         {
             backend = _generation?.Backend;
@@ -295,29 +329,24 @@ public static class Setup
             TracesMaxSize = cfg.Backpressure.TracesMaxSize,
             MetricsMaxSize = cfg.Backpressure.MetricsMaxSize,
         });
+        // Only the two fields config carries. Backoff and timeout keep the
+        // ExporterPolicy defaults — the schema's zero backoff and the ten-second
+        // breaker window — instead of being overwritten from a config object the
+        // contract gives no way to populate.
         Resilience.SetExporterPolicy(Signals.Logs, new ExporterPolicy
         {
             Retries = cfg.Exporter.LogsRetries,
-            BackoffSeconds = cfg.Exporter.LogsBackoffSeconds,
-            TimeoutSeconds = cfg.Exporter.LogsTimeoutSeconds,
             FailOpen = cfg.Exporter.LogsFailOpen,
-            AllowBlockingInEventLoop = cfg.Exporter.LogsAllowBlockingInEventLoop,
         });
         Resilience.SetExporterPolicy(Signals.Traces, new ExporterPolicy
         {
             Retries = cfg.Exporter.TracesRetries,
-            BackoffSeconds = cfg.Exporter.TracesBackoffSeconds,
-            TimeoutSeconds = cfg.Exporter.TracesTimeoutSeconds,
             FailOpen = cfg.Exporter.TracesFailOpen,
-            AllowBlockingInEventLoop = cfg.Exporter.TracesAllowBlockingInEventLoop,
         });
         Resilience.SetExporterPolicy(Signals.Metrics, new ExporterPolicy
         {
             Retries = cfg.Exporter.MetricsRetries,
-            BackoffSeconds = cfg.Exporter.MetricsBackoffSeconds,
-            TimeoutSeconds = cfg.Exporter.MetricsTimeoutSeconds,
             FailOpen = cfg.Exporter.MetricsFailOpen,
-            AllowBlockingInEventLoop = cfg.Exporter.MetricsAllowBlockingInEventLoop,
         });
         Schema.SetStrictSchema(cfg.StrictSchema || cfg.EventSchema.StrictEventName);
     }

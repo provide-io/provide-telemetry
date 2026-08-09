@@ -212,7 +212,7 @@ def test_csharp_mutation_threshold_matches_the_measured_baseline() -> None:
 
     assert thresholds["break"] == 78
     assert "break threshold of 78" in readme
-    assert "79.41%" in readme
+    assert "79.14%" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:

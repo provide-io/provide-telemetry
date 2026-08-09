@@ -87,6 +87,22 @@ public static class Health
         Interlocked.Increment(ref For(signal).Retries);
 
     /// <summary>
+    /// Count one export that blocked a thread which must not be blocked.
+    /// </summary>
+    /// <remarks>
+    /// Python raises this counter when a blocking export runs on an asyncio
+    /// event loop. .NET has no such loop, but it has the same hazard under a
+    /// different name: a <see cref="SynchronizationContext"/> — a UI message
+    /// pump, a classic ASP.NET request thread — is the thread a synchronous
+    /// drain must not park on. <c>ProviderDrains.Run</c> is the one place this
+    /// SDK blocks a caller's thread, so that is where the risk is recorded. A
+    /// console app or an ASP.NET Core host installs no context and reads zero,
+    /// which is the ordinary answer rather than an unreachable one.
+    /// </remarks>
+    internal static void IncrementAsyncBlockingRisk(string signal) =>
+        Interlocked.Increment(ref For(signal).AsyncBlockingRisk);
+
+    /// <summary>
     /// Record the wall-clock cost of one export attempt.
     /// </summary>
     /// <remarks>

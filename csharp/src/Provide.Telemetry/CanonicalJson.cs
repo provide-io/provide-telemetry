@@ -146,7 +146,11 @@ public static class CanonicalJson
     private static bool TryFormatNumber(object value, out string formatted)
     {
         formatted = "";
-        double d;
+        // Seeded rather than assigned only in the switch arms below: an arm is
+        // the sole assignment on its path, so mutating one left d
+        // definitely-unassigned at the first read and the file stopped
+        // compiling, taking every mutant in this type out of the score with it.
+        var d = 0.0;
         switch (value)
         {
             case sbyte or byte or short or ushort or int or uint or long:

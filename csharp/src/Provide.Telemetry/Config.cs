@@ -16,9 +16,11 @@ public sealed class LoggingConfig
     public bool OtlpEnabled { get; set; } = true;
     public Dictionary<string, string> OtlpHeaders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool LogCodeAttributes { get; set; }
-    public string PrettyKeyColor { get; set; } = "dim";
-    public string PrettyValueColor { get; set; } = "";
-    public List<string> PrettyFields { get; set; } = new();
+    // No PrettyKeyColor/PrettyValueColor/PrettyFields here. config_defaults in
+    // spec/telemetry-api.yaml lists PROVIDE_LOG_PRETTY_* for python, typescript,
+    // go and rust only, and this SDK's pretty renderer emits quoted key=value
+    // with no ANSI at all. Carrying the properties made "pretty" look colour
+    // configurable in C#, which is a worse answer than not offering the knob.
     public Dictionary<string, string> ModuleLevels { get; set; } = new(StringComparer.Ordinal);
 }
 
@@ -57,25 +59,31 @@ public sealed class BackpressureConfig
     public int MetricsMaxSize { get; set; }
 }
 
+/// <summary>
+/// The exporter knobs this SDK is given, per signal.
+/// </summary>
+/// <remarks>
+/// Exactly the two <c>config_defaults</c> entries in
+/// <c>spec/telemetry-api.yaml</c> whose <c>applicability</c> names csharp:
+/// <c>PROVIDE_EXPORTER_*_RETRIES</c> and <c>PROVIDE_EXPORTER_*_FAIL_OPEN</c>.
+/// Backoff, timeout and allow-blocking-event-loop were carried here too and
+/// pushed into <see cref="ExporterPolicy"/> on every setup, which is how a 0.5s
+/// backoff kept overriding the schema's zero that <see cref="ExporterPolicy"/>
+/// deliberately defaults to, and how a caller could set a <c>TimeoutSeconds</c>
+/// the exporters never applied. Backoff and timeout remain on the live policy,
+/// where <c>SetExporterPolicy</c> reaches them; the config object no longer
+/// offers knobs the contract does not give C#.
+/// </remarks>
 public sealed class ExporterPolicyConfig
 {
     public int LogsRetries { get; set; }
-    public double LogsBackoffSeconds { get; set; } = 0.5;
-    public double LogsTimeoutSeconds { get; set; } = 10.0;
     public bool LogsFailOpen { get; set; } = true;
-    public bool LogsAllowBlockingInEventLoop { get; set; }
 
     public int TracesRetries { get; set; }
-    public double TracesBackoffSeconds { get; set; } = 0.5;
-    public double TracesTimeoutSeconds { get; set; } = 10.0;
     public bool TracesFailOpen { get; set; } = true;
-    public bool TracesAllowBlockingInEventLoop { get; set; }
 
     public int MetricsRetries { get; set; }
-    public double MetricsBackoffSeconds { get; set; } = 0.5;
-    public double MetricsTimeoutSeconds { get; set; } = 10.0;
     public bool MetricsFailOpen { get; set; } = true;
-    public bool MetricsAllowBlockingInEventLoop { get; set; }
 }
 
 public sealed class SloConfig
@@ -139,9 +147,6 @@ public sealed class TelemetryConfig
                 OtlpEnabled = Logging.OtlpEnabled,
                 OtlpHeaders = new Dictionary<string, string>(Logging.OtlpHeaders, StringComparer.OrdinalIgnoreCase),
                 LogCodeAttributes = Logging.LogCodeAttributes,
-                PrettyKeyColor = Logging.PrettyKeyColor,
-                PrettyValueColor = Logging.PrettyValueColor,
-                PrettyFields = new List<string>(Logging.PrettyFields),
                 ModuleLevels = new Dictionary<string, string>(Logging.ModuleLevels, StringComparer.Ordinal),
             },
             Tracing = new TracingConfig
@@ -177,20 +182,11 @@ public sealed class TelemetryConfig
             Exporter = new ExporterPolicyConfig
             {
                 LogsRetries = Exporter.LogsRetries,
-                LogsBackoffSeconds = Exporter.LogsBackoffSeconds,
-                LogsTimeoutSeconds = Exporter.LogsTimeoutSeconds,
                 LogsFailOpen = Exporter.LogsFailOpen,
-                LogsAllowBlockingInEventLoop = Exporter.LogsAllowBlockingInEventLoop,
                 TracesRetries = Exporter.TracesRetries,
-                TracesBackoffSeconds = Exporter.TracesBackoffSeconds,
-                TracesTimeoutSeconds = Exporter.TracesTimeoutSeconds,
                 TracesFailOpen = Exporter.TracesFailOpen,
-                TracesAllowBlockingInEventLoop = Exporter.TracesAllowBlockingInEventLoop,
                 MetricsRetries = Exporter.MetricsRetries,
-                MetricsBackoffSeconds = Exporter.MetricsBackoffSeconds,
-                MetricsTimeoutSeconds = Exporter.MetricsTimeoutSeconds,
                 MetricsFailOpen = Exporter.MetricsFailOpen,
-                MetricsAllowBlockingInEventLoop = Exporter.MetricsAllowBlockingInEventLoop,
             },
             Slo = new SloConfig { EnableRed = Slo.EnableRed, EnableUse = Slo.EnableUse },
             Security = new SecurityConfig { EndpointValidation = Security.EndpointValidation },

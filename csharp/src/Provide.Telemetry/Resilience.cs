@@ -86,7 +86,6 @@ public static class Resilience
                 BackoffSeconds = Math.Max(0, policy.BackoffSeconds),
                 TimeoutSeconds = Math.Max(0, policy.TimeoutSeconds),
                 FailOpen = policy.FailOpen,
-                AllowBlockingInEventLoop = policy.AllowBlockingInEventLoop,
             };
         }
     }
@@ -103,7 +102,6 @@ public static class Resilience
                 BackoffSeconds = p.BackoffSeconds,
                 TimeoutSeconds = p.TimeoutSeconds,
                 FailOpen = p.FailOpen,
-                AllowBlockingInEventLoop = p.AllowBlockingInEventLoop,
             };
         }
     }

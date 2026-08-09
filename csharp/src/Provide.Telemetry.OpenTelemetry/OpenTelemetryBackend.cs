@@ -165,7 +165,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     public void EmitLog(CanonicalLogRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
-        ILogger? logger;
+        ILogger? logger = null;
         lock (_gate)
         {
             if (!Providers.Logs || _otelLogger is null) return;
@@ -224,21 +224,31 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     /// </remarks>
     private FlushResult Drain(DateTimeOffset deadline, bool detach)
     {
-        List<ProviderDrain> drains;
-        ProviderFlags owned;
-        lock (_gate)
-        {
-            owned = Providers;
-            drains = CollectDrains();
-            // Detaching first means a concurrent emit stops reaching a provider
-            // that is about to be disposed; the drain below still holds the
-            // local references it needs to finish.
-            if (detach) Providers = ProviderFlags.None;
-        }
+        var (drains, owned) = TakeDrains(detach);
 
         var result = FlushResults.Undrained(owned, TelemetryBackendRegistry.HostProviders);
         ProviderDrains.Run(drains, deadline, result);
         return result;
+    }
+
+    /// <summary>
+    /// Take the drains and the owned flags under one lock.
+    /// </summary>
+    /// <remarks>
+    /// Detaching first means a concurrent emit stops reaching a provider that is
+    /// about to be disposed; the returned drains still hold the references they
+    /// need to finish. Returning the pair keeps both values definitely assigned,
+    /// so a mutant of either read compiles and gets scored.
+    /// </remarks>
+    private (List<ProviderDrain> Drains, ProviderFlags Owned) TakeDrains(bool detach)
+    {
+        lock (_gate)
+        {
+            var owned = Providers;
+            var drains = CollectDrains();
+            if (detach) Providers = ProviderFlags.None;
+            return (drains, owned);
+        }
     }
 
     private List<ProviderDrain> CollectDrains()
@@ -270,10 +280,10 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
 
     private void DisposeDetached()
     {
-        TracerProvider? tracerProvider;
-        MeterProvider? meterProvider;
-        ActivitySource? activitySource;
-        Meter? meter;
+        TracerProvider? tracerProvider = null;
+        MeterProvider? meterProvider = null;
+        ActivitySource? activitySource = null;
+        Meter? meter = null;
         lock (_gate)
         {
             (tracerProvider, meterProvider) = (_tracerProvider, _meterProvider);
@@ -295,7 +305,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
 
     private void DisposeLogPipeline()
     {
-        ServiceProvider? services;
+        ServiceProvider? services = null;
         lock (_gate)
         {
             services = _logServices;

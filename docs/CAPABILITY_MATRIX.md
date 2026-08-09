@@ -120,9 +120,12 @@ Notes:
   `console` leaves them bare — but it emits no ANSI, does not consult whether
   stderr is a TTY, and does not honour `PROVIDE_LOG_PRETTY_FIELDS`. The
   `LoggingConfig.PrettyKeyColor` / `PrettyValueColor` / `PrettyFields`
-  properties exist on the C# config object and are copied by `Clone()`, but
-  nothing populates them from the environment and no renderer reads them.
-  Treat them as reserved, not as configuration.
+  properties used to exist on the C# config object and be copied by `Clone()`
+  while nothing populated them and no renderer read them. They are gone:
+  `spec/telemetry-api.yaml` scopes `PROVIDE_LOG_PRETTY_*` to Python,
+  TypeScript, Go and Rust, so a C# caller could set them and change nothing.
+  An absent property is honest; a present one that is ignored reads as
+  support.
 - Metrics fallback export: without the `otel` feature, Rust's metrics
   accumulate in-process (`rust/src/metrics.rs`) but are never exported.
   Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a

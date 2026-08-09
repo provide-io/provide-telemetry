@@ -99,17 +99,29 @@ public static class Pii
     {
         if (!enabled) return (hardened, Array.Empty<PendingRedaction>());
 
-        List<PIIRule> rules;
-        Dictionary<string, Regex> custom;
-        lock (Gate)
-        {
-            rules = _rules.Select(CloneRule).ToList();
-            custom = new Dictionary<string, Regex>(CustomSecrets, StringComparer.Ordinal);
-        }
+        var (rules, custom) = SnapshotRules();
 
         var redactions = new List<PendingRedaction>();
         var context = new SanitizeContext(rules, custom, redactions);
         return (SanitizeMap(hardened, context, Array.Empty<string>()), redactions);
+    }
+
+    /// <summary>Copy the registered rules and custom patterns under the lock.</summary>
+    /// <remarks>
+    /// A pass works from a snapshot so a concurrent <c>RegisterPIIRule</c> cannot
+    /// change the rule set halfway through one payload. Returning the pair rather
+    /// than assigning two locals inside the lock also leaves nothing
+    /// conditionally assigned: a mutant of either copy compiles instead of
+    /// taking the whole type out of the mutation score.
+    /// </remarks>
+    private static (List<PIIRule> Rules, Dictionary<string, Regex> Custom) SnapshotRules()
+    {
+        lock (Gate)
+        {
+            return (
+                _rules.Select(CloneRule).ToList(),
+                new Dictionary<string, Regex>(CustomSecrets, StringComparer.Ordinal));
+        }
     }
 
     /// <summary>Rules, patterns and the receipt log for one sanitize pass.</summary>
@@ -125,8 +137,7 @@ public static class Pii
         {
             if (re.IsMatch(text)) return true;
         }
-        Dictionary<string, Regex> custom;
-        lock (Gate) { custom = new Dictionary<string, Regex>(CustomSecrets, StringComparer.Ordinal); }
+        var (_, custom) = SnapshotRules();
         foreach (var re in custom.Values)
         {
             if (re.IsMatch(text)) return true;

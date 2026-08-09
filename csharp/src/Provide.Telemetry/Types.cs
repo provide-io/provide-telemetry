@@ -26,14 +26,32 @@ public sealed class QueuePolicy
 /// <c>spec/telemetry-api.yaml</c>. They used to be 3 and 0.5s, so a C# service
 /// that set no exporter environment at all retried four times where the other
 /// four SDKs tried once.
+/// <para>
+/// There is no <c>AllowBlockingInEventLoop</c>. Python and Go carry one because
+/// <c>run_with_resilience</c> can find itself on an event loop and has to decide
+/// whether to block it; .NET has no such loop to guard, so the field was only
+/// ever stored, cloned and handed back by <c>GetExporterPolicy</c> without a
+/// single decision reading it.
+/// </para>
 /// </remarks>
 public sealed class ExporterPolicy
 {
     public int Retries { get; set; }
     public double BackoffSeconds { get; set; }
+
+    /// <summary>
+    /// Per-signal export deadline; zero or less disables the circuit breaker.
+    /// </summary>
+    /// <remarks>
+    /// The <c>&gt; 0</c> reading is Python's (<c>resilience.py:190</c>): with no
+    /// timeout there is no pool to saturate and so nothing for the breaker to
+    /// shed. Settable only through <c>SetExporterPolicy</c> — the spec gives C#
+    /// no <c>PROVIDE_EXPORTER_*_TIMEOUT_SECONDS</c> variable, so
+    /// <see cref="ExporterPolicyConfig"/> offers no way in.
+    /// </remarks>
     public double TimeoutSeconds { get; set; } = 10.0;
+
     public bool FailOpen { get; set; } = true;
-    public bool AllowBlockingInEventLoop { get; set; }
 }
 
 public sealed class CardinalityLimit

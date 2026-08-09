@@ -110,7 +110,6 @@ public class PublicApiAliasTests : IDisposable
             BackoffSeconds = 1.5,
             TimeoutSeconds = 2.5,
             FailOpen = false,
-            AllowBlockingInEventLoop = true,
         });
 
         var viaFacade = ProvideTelemetry.GetExporterPolicy(Signals.Traces);
@@ -119,7 +118,6 @@ public class PublicApiAliasTests : IDisposable
         Assert.Equal(1.5, viaFacade.BackoffSeconds);
         Assert.Equal(2.5, viaFacade.TimeoutSeconds);
         Assert.False(viaFacade.FailOpen);
-        Assert.True(viaFacade.AllowBlockingInEventLoop);
         Assert.Equal(4, Resilience.GetExporterPolicy(Signals.Traces).Retries);
         // Untouched signals keep the schema defaults.
         Assert.Equal(0, ProvideTelemetry.GetExporterPolicy(Signals.Logs).Retries);

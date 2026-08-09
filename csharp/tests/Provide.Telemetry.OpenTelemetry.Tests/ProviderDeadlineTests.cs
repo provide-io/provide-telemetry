@@ -112,6 +112,61 @@ public class ProviderDeadlineTests
         Assert.False(result.Logs.TimedOut);
     }
 
+    /// <summary>
+    /// The drain blocks its caller, so a caller that must not be blocked is
+    /// counted — the .NET reading of async_blocking_risk_*.
+    /// </summary>
+    [Fact]
+    public void DrainingFromASynchronizationContextCountsAsAsyncBlockingRisk()
+    {
+        var original = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+            var drains = new[]
+            {
+                new ProviderDrain(Signals.Logs, _ => true),
+                new ProviderDrain(Signals.Traces, _ => true),
+            };
+
+            ProviderDrains.Run(drains, DateTimeOffset.UtcNow.AddSeconds(5), new FlushResult());
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        var health = ProvideTelemetry.GetHealthSnapshot();
+        Assert.Equal(1, health.LogsAsyncBlockingRisk);
+        Assert.Equal(1, health.TracesAsyncBlockingRisk);
+        // Metrics was never drained, so nothing blocked on its behalf.
+        Assert.Equal(0, health.MetricsAsyncBlockingRisk);
+    }
+
+    /// <summary>
+    /// No context means no thread that blocking would starve — a console host or
+    /// an ASP.NET Core request, which is the ordinary case.
+    /// </summary>
+    [Fact]
+    public void DrainingWithoutASynchronizationContextCountsNoRisk()
+    {
+        var original = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            ProviderDrains.Run(
+                new[] { new ProviderDrain(Signals.Logs, _ => true) },
+                DateTimeOffset.UtcNow.AddSeconds(5),
+                new FlushResult());
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        Assert.Equal(0, ProvideTelemetry.GetHealthSnapshot().LogsAsyncBlockingRisk);
+    }
+
     [Fact]
     public void ShutdownReturnsWithinOneDeadlineAgainstADeadCollector()
     {

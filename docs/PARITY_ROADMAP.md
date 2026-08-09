@@ -88,10 +88,12 @@ drift between existing surfaces.
   `rust/src/logger/pretty.rs`, closing the gap this bullet originally
   tracked. C# is now the outlier: `Logger.Render` treats `pretty` as
   quoted key=value text with no ANSI, no TTY check and no
-  `PROVIDE_LOG_PRETTY_FIELDS` support, and its `LoggingConfig.PrettyKeyColor` /
-  `PrettyValueColor` / `PrettyFields` properties are read by nothing. Either
-  implement the renderer or drop the unread properties — a config surface that
-  accepts values and ignores them is worse than an honest absence.
+  `PROVIDE_LOG_PRETTY_FIELDS` support. Its unread
+  `LoggingConfig.PrettyKeyColor` / `PrettyValueColor` / `PrettyFields`
+  properties have been dropped rather than wired up, because the contract does
+  not grant C# those variables — `spec/telemetry-api.yaml` scopes
+  `PROVIDE_LOG_PRETTY_*` to the other four. Implementing the renderer remains
+  open; the misleading config surface does not.
 - **Metrics fallback export on shutdown (P3 priority).** When the `otel`
   feature is off, Rust accumulates counter/gauge/histogram state in-process
   and drops it on shutdown; C#'s core-only package does the same. Python
