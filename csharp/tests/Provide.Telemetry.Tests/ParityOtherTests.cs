@@ -95,12 +95,12 @@ public class ParityOtherTests
         }
     }
 
-    // spec/behavioral_fixtures.yaml endpoint_validation. The seven "valid"
+    // spec/behavioral_fixtures.yaml endpoint_validation. The nine "valid"
     // endpoints must all survive parsing; of the "invalid" ones this layer
     // rejects the schemes an OTLP client could never speak, and echoes the value
     // so an operator can see which of the three endpoints failed and why. The
-    // shape and port cases in that fixture are not enforced here — see the
-    // known-gap test below.
+    // shape and port cases in that fixture are enforced one layer down, at
+    // exporter construction — see the soft-parsing test below.
     [Theory]
     [InlineData("http://localhost:4318")]
     [InlineData("https://collector.example.com")]
@@ -109,6 +109,8 @@ public class ParityOtherTests
     [InlineData("http://[::1]:4318")]
     [InlineData("http://[::1]")]
     [InlineData("https://otel.example.com:4317/v1/metrics")]
+    [InlineData("https://user:pw@collector.example/v1/logs")]
+    [InlineData("https://user:pw@collector.example:4318/v1/logs")]
     public void EndpointValidation_Valid(string endpoint)
     {
         Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);

@@ -93,12 +93,18 @@ pub(super) fn validate_endpoint(endpoint: &str) -> Result<(), TelemetryError> {
     // url::Url rejects non-numeric and out-of-range ports during parsing.
     // However, it silently accepts empty ports ("http://host:" → port=None).
     // Detect by checking for a trailing colon in the authority after any
-    // IPv6 bracket (avoids false positives from [::1] colons).
+    // IPv6 bracket (avoids false positives from [::1] colons) and after any
+    // userinfo (avoids them from the colon in "user:pw@host", which separates
+    // credentials rather than a host from a port). Without the userinfo strip
+    // this rejected every credentialed endpoint that did not also name an
+    // explicit port. Go never had the bug because net/url keeps User out of
+    // Host; Python, Rust and TypeScript all scanned the whole authority.
     if parsed.port().is_none() {
         let authority = &endpoint[parsed.scheme().len() + 3..]; // skip "scheme://"
-        let after_bracket = authority.rsplit(']').next().unwrap_or(authority);
-        let host_port = after_bracket.split('/').next().unwrap_or("");
-        if host_port.contains(':') {
+        let host_port_path = authority.split('/').next().unwrap_or("");
+        let host_port = host_port_path.rsplit('@').next().unwrap_or(host_port_path);
+        let after_bracket = host_port.rsplit(']').next().unwrap_or(host_port);
+        if after_bracket.contains(':') {
             return Err(TelemetryError::new(format!(
                 "invalid OTLP endpoint (empty port): {endpoint:?}",
             )));
@@ -285,6 +291,10 @@ mod tests {
             "http://[::1]:4318",
             "http://[::1]",
             "https://otel.example.com:4317/v1/metrics",
+            // The portless form is the regression: the empty-port scan used to
+            // read the userinfo colon as a port separator.
+            "https://user:pw@collector.example/v1/logs",
+            "https://user:pw@collector.example:4318/v1/logs",
         ];
         for ep in valid {
             assert!(

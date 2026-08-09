@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
+import { specFixturePath } from './support/spec-fixtures.js';
 import { validateOtlpEndpoint } from '../src/endpoint.js';
 import { ConfigurationError } from '../src/exceptions.js';
 
@@ -88,7 +88,7 @@ interface EndpointFixtures {
   invalid: EndpointCase[];
 }
 
-const fixturesPath = resolve(__dirname, '../../spec/behavioral_fixtures.yaml');
+const fixturesPath = specFixturePath('behavioral_fixtures.yaml');
 const allFixtures = YAML.parse(readFileSync(fixturesPath, 'utf-8')) as {
   endpoint_validation: EndpointFixtures;
 };

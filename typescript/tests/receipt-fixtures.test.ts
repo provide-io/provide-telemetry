@@ -10,9 +10,9 @@
 // evidence of agreement, not of self-consistency.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { specFixturePath } from './support/spec-fixtures.js';
 import { hmacSha256Hex, sha256Hex } from '../src/hash.js';
 import { canonicalJson, receiptPayload, signReceipt } from '../src/receipts.js';
 
@@ -31,7 +31,7 @@ interface ReceiptVector {
   signature: string;
 }
 
-const FIXTURES = resolve(__dirname, '../../spec/receipt_fixtures.yaml');
+const FIXTURES = specFixturePath('receipt_fixtures.yaml');
 const vectors = (parse(readFileSync(FIXTURES, 'utf8')) as { cases: ReceiptVector[] }).cases;
 const enc = new TextEncoder();
 

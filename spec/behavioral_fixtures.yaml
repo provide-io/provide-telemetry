@@ -492,6 +492,16 @@ endpoint_validation:
       description: "IPv6 without port"
     - endpoint: "https://otel.example.com:4317/v1/metrics"
       description: "HTTPS with port and path"
+    # The colon in userinfo separates credentials, not a host from a port.
+    # The portless form is the one that regressed: Python, Rust and TypeScript
+    # each scanned the whole authority for a colon when the parsed port was
+    # absent, so a credentialed collector URL without an explicit port was
+    # refused as an "empty port". Go was always correct here because net/url
+    # keeps User out of Host. Both forms are pinned so no SDK can drift back.
+    - endpoint: "https://user:pw@collector.example/v1/logs"
+      description: "credentials without port"
+    - endpoint: "https://user:pw@collector.example:4318/v1/logs"
+      description: "credentials with port"
 
   invalid:
     - endpoint: ""

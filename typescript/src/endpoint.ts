@@ -42,7 +42,14 @@ export function validateOtlpEndpoint(endpoint: string): string {
     // an empty-port form. The simplest reliable check: if the raw endpoint (after scheme)
     // contains a colon followed only by "/" or end-of-string after the host, the port is empty.
     const afterScheme = endpoint.slice(parsed.protocol.length + 2); // strip "scheme//"
-    const hostPart = afterScheme.split('/')[0]; // "host:" or "host" or "[::1]:" or "[::1]"
+    const authority = afterScheme.split('/')[0]; // "host:" or "host" or "[::1]:" or "[::1]"
+    // Userinfo is dropped first: in "user:pw@host" the colon separates
+    // credentials, not a host from a port, so scanning the whole authority
+    // rejected every credentialed endpoint without an explicit port. Go never
+    // had this bug (net/url keeps User out of Host); Python, Rust and this
+    // file all did. lastIndexOf returns -1 when there is no "@", so the slice
+    // degenerates to slice(0) and leaves a plain authority untouched.
+    const hostPart = authority.slice(authority.lastIndexOf('@') + 1);
     // For IPv6 addresses like "[::1]", colons are inside brackets and do not
     // indicate a port segment. Only flag an empty port when the colon appears
     // after the closing bracket (IPv6) or after a bare hostname (IPv4/name).

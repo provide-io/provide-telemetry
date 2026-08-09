@@ -16,9 +16,9 @@
 // receipt, a rendered record, a returned ticket.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
+import { specFixturePath } from './support/spec-fixtures.js';
 import { _resetBackpressureForTests, setQueuePolicy, tryAcquire } from '../src/backpressure.js';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import { resetConsentForTests, setConsentLevel } from '../src/consent.js';
@@ -38,7 +38,7 @@ interface PipelineCase {
   expected: string[];
 }
 
-const FIXTURES = resolve(__dirname, '../../spec/pipeline_fixtures.yaml');
+const FIXTURES = specFixturePath('pipeline_fixtures.yaml');
 const fixture = parse(readFileSync(FIXTURES, 'utf8')) as {
   events: string[];
   cases: PipelineCase[];

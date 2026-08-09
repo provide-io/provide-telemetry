@@ -21,7 +21,14 @@ def _check_port(parsed: ParseResult, endpoint: str) -> None:
     if port is not None and port not in _VALID_PORT_RANGE:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
     # "http://host:" — colon present but urlparse sets port=None.
-    # rsplit on "]" avoids false positives from IPv6 colons.
+    # rsplit on "]" avoids false positives from IPv6 colons, and rpartition on
+    # "@" avoids them from userinfo: in "user:pw@host" the colon separates
+    # credentials, not a host from a port. Without the rpartition this rejected
+    # every credentialed endpoint that did not also name an explicit port —
+    # "https://user:pw@collector.example/v1/logs" failed with "invalid OTLP
+    # endpoint port", which is both wrong and misleading. Go never had the bug
+    # because net/url keeps User out of Host; Python, Rust and TypeScript all
+    # scanned the whole authority and all three had it.
     #
     # No maxsplit, and no `# pragma: no mutate`. Taking [-1] makes maxsplit
     # unobservable, so passing one only created mutants that were equivalent
@@ -31,7 +38,8 @@ def _check_port(parsed: ParseResult, endpoint: str) -> None:
     # the argument gone, split/rsplit are genuinely indistinguishable here (the
     # last segment is the same either way) and everything mutmut still generates
     # is killable — see test_endpoint_ipv6_without_port_is_accepted.
-    after_bracket = parsed.netloc.rsplit("]")[-1]
+    host_port = parsed.netloc.rpartition("@")[2]
+    after_bracket = host_port.rsplit("]")[-1]
     if port is None and ":" in after_bracket:
         raise ValueError(f"invalid OTLP endpoint port: {endpoint!r}")
 
