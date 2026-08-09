@@ -129,24 +129,31 @@ class TestReceiptCollector:
 def _format_significand(digits: str, n: int) -> str:
     """Render ECMAScript's (digits, n) decimal form, per Number::toString."""
     k = len(digits)
-    if k <= n <= 21:
+    # ECMAScript writes three plain forms, guarded by "k <= n <= 21",
+    # "0 < n <= 21" and "-6 < n <= 0"; between them they cover exactly
+    # -6 < n <= 21 and nothing else is plain. Testing that union once, up
+    # front, rather than repeating "n <= 21" on two branches and "n <= 0" on a
+    # third, leaves one bound per branch and no bound that some earlier branch
+    # has already made unreachable.
+    #
+    # The two thresholds are load bearing in both directions. Letting n = 22
+    # reach a plain form is the bug that shipped: "0" * -22 produced the empty
+    # string, 1e21 rendered as "0.1", and 1e21, 1e22 and 0.1 then shared one
+    # canonical form and one receipt digest. Pushing n = 21 the other way, into
+    # the exponential form, would spell 1e20 as "1e+20" where every other SDK
+    # writes it out in full. spec/jcs_number_fixtures.yaml pins both edges.
+    if n > 21 or n <= -6:
+        # The exponent is never zero here, so the sign flag renders exactly the
+        # explicit "+" ECMAScript emits — the same rule go/canonicaljson.go's
+        # canonicalExponent and rust/src/jcs.rs apply.
+        exponent = n - 1
+        mantissa = digits if k == 1 else digits[0] + "." + digits[1:]
+        return f"{mantissa}e{exponent:+d}"
+    if n >= k:
         return digits + "0" * (n - k)
-    if 0 < n <= 21:
+    if n > 0:
         return digits[:n] + "." + digits[n:]
-    # ECMAScript spells this bound "-6 < n <= 0", and both halves are load
-    # bearing. Dropping "n <= 0" as redundant — on the reasoning that the
-    # branches above consume every positive n — is wrong: they only consume
-    # n <= 21, so n = 22 fell through to here, "0" * -22 produced the empty
-    # string, and 1e21 rendered as "0.1". 1e21, 1e22 and 0.1 then shared one
-    # canonical form and one receipt digest. Restated in full, deliberately.
-    if -6 < n <= 0:
-        return "0." + "0" * -n + digits
-    # Only n > 21 or n <= -6 reach this, so the exponent is never zero and the
-    # sign flag renders exactly the explicit "+" ECMAScript emits — the same
-    # rule go/canonicaljson.go's canonicalExponent and rust/src/jcs.rs apply.
-    exponent = n - 1
-    mantissa = digits if k == 1 else digits[0] + "." + digits[1:]
-    return f"{mantissa}e{exponent:+d}"
+    return "0." + "0" * -n + digits
 
 
 def _format_number(value: float) -> str:

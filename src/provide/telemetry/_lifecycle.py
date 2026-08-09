@@ -74,7 +74,12 @@ class LifecycleCoordinator:
     __slots__ = ("_condition", "_generation", "_operations")
 
     def __init__(self) -> None:
-        self._condition = threading.Condition(threading.RLock())
+        # Condition builds itself an RLock when handed no lock, and re-entrancy
+        # is exactly what this needs: publish_setup_state() calls publish()
+        # while already holding it. Constructing that RLock here to pass in
+        # would be a second spelling of the same default, reading as a decision
+        # a reader then has to check rather than one.
+        self._condition = threading.Condition()
         self._operations = threading.RLock()
         self._generation = _INITIAL
 
