@@ -2395,7 +2395,7 @@ uv run python scripts/check_max_loc.py --max-lines 500
 uv run python scripts/check_spdx_headers.py
 uv run pytest -q
 uv run coverage run -m pytest -q && uv run coverage report --fail-under=100
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --max-children 2
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --max-children 2 --min-mutation-score 95
 npm --prefix typescript test && npm --prefix typescript run lint && npm --prefix typescript run typecheck && npm --prefix typescript run build
 (cd typescript && npx stryker run --concurrency 2)
 (cd typescript && npx stryker run stryker.otel.config.mjs --concurrency 2)

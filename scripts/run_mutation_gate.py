@@ -53,11 +53,38 @@ def _mutmut_env() -> dict[str, str]:
     return env
 
 
-def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+# mutmut raises this when its per-mutant pytest invocation exits 4 (usage
+# error). The raise happens inside the forked child, before ``os._exit(result)``,
+# so the child dies on an uncaught exception with a nonzero status — and a
+# nonzero child status is exactly how mutmut records "the tests detected this
+# mutant". Every such mutant is therefore counted as killed without a test ever
+# having run against it, and the run still reports 100% and exits 0.
+#
+# We cannot fix mutmut from here, but we can refuse to certify a run that
+# contained them. Observed at ~110 occurrences in a 4767-mutant run (2.3%),
+# reproducibly, while replaying the identical argument list standalone exited 0
+# — so the trigger is mutmut's forked-child context, not the arguments.
+_EXEC_FAILURE_MARKER = "BadTestExecutionCommandsException"
+
+
+def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> str:
+    """Run *cmd*, streaming its output, and return what it printed."""
     print("+", " ".join(cmd))
-    completed = subprocess.run(cmd, check=False, env=env)
+    completed = subprocess.run(cmd, check=False, env=env, capture_output=True, text=True)  # nosec
+    output = (completed.stdout or "") + (completed.stderr or "")
+    print(output, end="")
     if completed.returncode != 0:
         raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}")
+    return output
+
+
+def count_exec_failures(output: str) -> int:
+    """Count mutants whose test command failed to run.
+
+    The marker appears twice per occurrence — once in the traceback frame and
+    once in the raised message — so the raw match count is halved.
+    """
+    return output.count(_EXEC_FAILURE_MARKER) // 2
 
 
 def _seed_mutants_config() -> None:
@@ -114,15 +141,26 @@ def run_mutation_gate(
         children = max_children if attempt == 1 else 1
         print(f"Running mutation attempt {attempt}/{attempts} with max-children={children}")
 
-        _run(_uv_mutmut_cmd(python_version, "run", "--max-children", str(children)), env=mutation_env)
+        run_output = _run(_uv_mutmut_cmd(python_version, "run", "--max-children", str(children)), env=mutation_env)
         _run(_uv_mutmut_cmd(python_version, "export-cicd-stats"), env=mutation_env)
         last_stats = _read_stats(stats_path)
         score = _mutation_score(last_stats)
+        exec_failures = count_exec_failures(run_output)
         print(f"mutation_score={score:.2f}")
         print(json.dumps(last_stats, indent=2, sort_keys=True))
+        if exec_failures:
+            print(f"exec_failures={exec_failures} (mutants counted as killed without a test running)")
 
-        if _is_clean(last_stats) and score >= min_mutation_score:
+        if _is_clean(last_stats) and score >= min_mutation_score and exec_failures == 0:
             return last_stats
+        if exec_failures and attempt == attempts:
+            raise RuntimeError(
+                f"mutation gate failed: {exec_failures} mutant(s) had their pytest invocation "
+                "fail to execute. mutmut counts a child that dies on an uncaught "
+                "BadTestExecutionCommandsException as killed, because it exits nonzero — so "
+                f"those {exec_failures} results are unearned and the reported score "
+                f"({score:.2f}) is that much too high."
+            )
         if attempt < attempts:
             print("Mutation gate not clean; retrying in single-worker mode.")
 

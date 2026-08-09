@@ -88,12 +88,13 @@ def test_run_mutation_gate_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch
     ]
     calls: list[list[str]] = []
 
-    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> str:
         assert env is not None
         calls.append(cmd)
         if "export-cicd-stats" in cmd:
             stats_path.parent.mkdir(exist_ok=True)
             stats_path.write_text(json.dumps(states.pop(0)), encoding="utf-8")
+        return ""
 
     monkeypatch.setattr(gate, "_run", _fake_run)
     result = gate.run_mutation_gate("3.11", max_children=4, retries=1, min_mutation_score=80.0)
@@ -118,11 +119,12 @@ def test_run_mutation_gate_fails_when_stats_never_clean(monkeypatch: pytest.Monk
         "check_was_interrupted_by_user": 0,
     }
 
-    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> str:
         assert env is not None
         if "export-cicd-stats" in cmd:
             stats_path.parent.mkdir(exist_ok=True)
             stats_path.write_text(json.dumps(bad_stats), encoding="utf-8")
+        return ""
 
     monkeypatch.setattr(gate, "_run", _fake_run)
     with pytest.raises(RuntimeError, match="mutation gate failed"):
@@ -145,11 +147,12 @@ def test_run_mutation_gate_fails_when_score_too_low(monkeypatch: pytest.MonkeyPa
         "check_was_interrupted_by_user": 0,
     }
 
-    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+    def _fake_run(cmd: list[str], *, env: dict[str, str] | None = None) -> str:
         assert env is not None
         if "export-cicd-stats" in cmd:
             stats_path.parent.mkdir(exist_ok=True)
             stats_path.write_text(json.dumps(low_score_stats), encoding="utf-8")
+        return ""
 
     monkeypatch.setattr(gate, "_run", _fake_run)
     with pytest.raises(RuntimeError, match="min_required"):
@@ -175,14 +178,22 @@ def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None
     captured: dict[str, object] = {}
 
     def _fake_subprocess_run(
-        cmd: list[str], *, check: bool, env: dict[str, str] | None
+        cmd: list[str],
+        *,
+        check: bool,
+        env: dict[str, str] | None,
+        capture_output: bool = False,
+        text: bool = False,
     ) -> object:  # pragma: no cover - closure
         captured["cmd"] = cmd
         captured["check"] = check
         captured["env"] = env
+        captured["capture_output"] = capture_output
 
         class _Done:
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         return _Done()
 
@@ -208,3 +219,47 @@ def test_main_uses_default_python_mutation_threshold(monkeypatch: pytest.MonkeyP
         ),
     )
     assert gate.main() == 0
+
+
+class TestExecFailureDetection:
+    """A mutant whose test command never ran must not count as killed.
+
+    mutmut raises BadTestExecutionCommandsException inside the forked child
+    when its per-mutant pytest invocation exits 4 (usage error). The raise
+    happens before ``os._exit(result)``, so the child dies on an uncaught
+    exception with a nonzero status — and nonzero is precisely how mutmut
+    records "the tests detected this mutant". The run then reports 100% and
+    exits 0 while some mutants were never actually tested.
+
+    Observed at ~110 occurrences in a 4767-mutant run. Replaying the identical
+    argument list standalone exited 0, so the trigger is the forked-child
+    context rather than the arguments.
+    """
+
+    def test_counts_one_failure_per_occurrence(self) -> None:
+        from scripts.run_mutation_gate import count_exec_failures
+
+        # The marker appears twice per occurrence: once in the traceback frame
+        # and once in the raised message.
+        one = (
+            '  File "mutmut/__main__.py", line 416, in execute_pytest\n'
+            "    raise BadTestExecutionCommandsException(params)\n"
+            "mutmut.__main__.BadTestExecutionCommandsException: Failed to run pytest\n"
+        )
+        assert count_exec_failures(one) == 1
+        assert count_exec_failures(one * 3) == 3
+
+    def test_a_clean_run_counts_none(self) -> None:
+        from scripts.run_mutation_gate import count_exec_failures
+
+        assert count_exec_failures("2734 passed, 43 skipped\nmutation_score=100.00\n") == 0
+
+    def test_the_marker_is_the_one_mutmut_actually_raises(self) -> None:
+        # Guard against the marker drifting from mutmut's real exception name,
+        # which would make this check silently stop detecting anything — the
+        # same class of failure it exists to catch.
+        import mutmut.__main__ as mutmut_main
+
+        from scripts.run_mutation_gate import _EXEC_FAILURE_MARKER
+
+        assert hasattr(mutmut_main, _EXEC_FAILURE_MARKER)
