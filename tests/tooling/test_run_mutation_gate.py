@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -259,10 +260,19 @@ class TestExecFailureDetection:
 
         assert count_exec_failures("2734 passed, 43 skipped\nmutation_score=100.00\n") == 0
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="mutmut forks to run mutants, so it is POSIX-only; importing its __main__ exits on Windows",
+    )
     def test_the_marker_is_the_one_mutmut_actually_raises(self) -> None:
         # Guard against the marker drifting from mutmut's real exception name,
         # which would make this check silently stop detecting anything — the
         # same class of failure it exists to catch.
+        #
+        # Skipped rather than made portable: importing mutmut.__main__ on
+        # Windows raises SystemExit and takes the whole test session with it,
+        # which is not something importorskip can catch. The mutation gate runs
+        # on Linux only, so that is where the drift can matter.
         import mutmut.__main__ as mutmut_main
 
         from scripts.run_mutation_gate import _EXEC_FAILURE_MARKER
