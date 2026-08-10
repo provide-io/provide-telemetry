@@ -63,6 +63,37 @@ def test_load_failure_result_reaches_signal_branch_not_valueerror(signal: str) -
     assert result is not None
 
 
+def test_load_failure_result_resolves_the_logs_enum_from_the_module_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The logs branch must hand the export module's own namespace to the resolver.
+
+    Faking the module tree makes the branch runnable without the otel extra, so
+    mutants that break the namespace handoff (`vars(_logs_export)` → `None` /
+    `vars(None)`) crash here instead of hiding behind the lazy import.
+    """
+    import sys
+    import types
+
+    class _LogExportResult:
+        FAILURE = "failure-sentinel"
+
+    export_mod = types.ModuleType("opentelemetry.sdk._logs.export")
+    setattr(export_mod, "LogExportResult", _LogExportResult)  # noqa: B010
+    logs_mod = types.ModuleType("opentelemetry.sdk._logs")
+    setattr(logs_mod, "export", export_mod)  # noqa: B010
+    sdk_mod = types.ModuleType("opentelemetry.sdk")
+    setattr(sdk_mod, "_logs", logs_mod)  # noqa: B010
+    otel_mod = types.ModuleType("opentelemetry")
+    setattr(otel_mod, "sdk", sdk_mod)  # noqa: B010
+    monkeypatch.setitem(sys.modules, "opentelemetry", otel_mod)
+    monkeypatch.setitem(sys.modules, "opentelemetry.sdk", sdk_mod)
+    monkeypatch.setitem(sys.modules, "opentelemetry.sdk._logs", logs_mod)
+    monkeypatch.setitem(sys.modules, "opentelemetry.sdk._logs.export", export_mod)
+
+    assert _load_failure_result("logs") == "failure-sentinel"
+
+
 def test_export_forwards_kwargs_to_inner_exporter() -> None:
     """Mutant: `lambda: inner_export(*args, )` drops kwargs. Pin: any
     kwargs supplied to the wrapper propagate to the inner exporter.

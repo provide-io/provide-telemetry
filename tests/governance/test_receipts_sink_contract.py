@@ -24,6 +24,7 @@ from provide.telemetry.health import get_health_snapshot, reset_health_for_tests
 from provide.telemetry.receipts import (
     LoggingReceiptSink,
     MissingReceiptSinkError,
+    RedactionReceipt,
     TestReceiptCollector,
     enable_receipts,
     get_emitted_receipts_for_tests,
@@ -101,6 +102,29 @@ def test_logging_receipt_sink_delivers_each_receipt_as_a_debug_line(
     assert "action=redact" in message
     assert "s3cr3t" not in message  # only the hash travels, never the value
     enable_receipts(enabled=False)
+
+
+def test_logging_receipt_sink_line_carries_every_receipt_field(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The whole line, exactly — a dropped field is an audit record missing data."""
+    receipt = RedactionReceipt(
+        receipt_id="rid-1",
+        timestamp="2026-08-10T00:00:00+00:00",
+        service_name="svc",
+        field_path="user.password",
+        action="redact",
+        original_hash="hash-abc",
+        hmac="mac-def",
+    )
+    with caplog.at_level(logging.DEBUG, logger=_RECEIPTS_LOGGER):
+        assert LoggingReceiptSink().emit(receipt) is True
+
+    [record] = _receipts_records(caplog)
+    assert record.getMessage() == (
+        "telemetry.receipt id=rid-1 ts=2026-08-10T00:00:00+00:00 "
+        "field=user.password action=redact hash=hash-abc hmac=mac-def"
+    )
 
 
 def test_logging_receipt_sink_counts_no_failures() -> None:

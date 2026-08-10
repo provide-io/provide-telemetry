@@ -129,6 +129,9 @@ def test_tracer_provider_receives_the_resource_without_a_sampler(monkeypatch: An
     monkeypatch.setattr(tp_mod, "_provider_configured", False)
 
     sentinel_resource = object()
+    # The mutation venv omits the otel extra, and every OTel component this
+    # path touches is stubbed below — the flag is the only real-OTel read left.
+    monkeypatch.setattr(tp_mod, "_HAS_OTEL", True)
     monkeypatch.setattr(tp_mod, "_load_otel_tracing_components", lambda: (None, _FakeProvider, None, None))
     monkeypatch.setattr(tp_mod, "_load_otel_trace_api", lambda: object())
     monkeypatch.setattr("provide.telemetry._otel.build_otel_trace_sampler", lambda rate: None)
@@ -143,6 +146,50 @@ def test_tracer_provider_receives_the_resource_without_a_sampler(monkeypatch: An
     assert seen, "the provider must be constructed"
     assert seen[0].get("resource") is sentinel_resource
     assert "sampler" not in seen[0], "no sampler was available for this run"
+
+
+def test_setup_tracing_builds_the_sampler_from_the_min_of_both_rates(monkeypatch: Any) -> None:
+    """effective_rate must be min(sampling.traces_rate, tracing.sample_rate).
+
+    A wrong rate silently over- or under-samples every live span; the builder
+    receiving None disables SDK sampling entirely.
+    """
+    from provide.telemetry.config import SamplingConfig, TelemetryConfig, TracingConfig
+    from provide.telemetry.tracing import provider as tp_mod
+
+    seen: list[dict[str, Any]] = []
+    rates: list[object] = []
+    sampler_sentinel = object()
+
+    class _FakeProvider:
+        def __init__(self, **kw: Any) -> None:
+            seen.append(kw)
+
+        def add_span_processor(self, _p: object) -> None:
+            return None
+
+    def _build_sampler(rate: object) -> object:
+        rates.append(rate)
+        return sampler_sentinel
+
+    tp_mod.shutdown_tracing()
+    monkeypatch.setattr(tp_mod, "_provider_configured", False)
+    # The mutation venv omits the otel extra; every OTel read below is stubbed.
+    monkeypatch.setattr(tp_mod, "_HAS_OTEL", True)
+    monkeypatch.setattr(tp_mod, "_load_otel_tracing_components", lambda: (None, _FakeProvider, None, None))
+    monkeypatch.setattr(tp_mod, "_load_otel_trace_api", lambda: object())
+    monkeypatch.setattr("provide.telemetry._otel.build_otel_trace_sampler", _build_sampler)
+    monkeypatch.setattr(tp_mod, "build_resource", lambda cfg, cls: object())
+
+    cfg = TelemetryConfig(
+        sampling=SamplingConfig(traces_rate=0.25),
+        tracing=TracingConfig(sample_rate=0.5),
+    )
+    with contextlib.suppress(Exception):
+        tp_mod.setup_tracing(cfg)
+
+    assert rates == [0.25], "the sampler must be built from min(0.25, 0.5)"
+    assert seen and seen[0].get("sampler") is sampler_sentinel
 
 
 @pytest.fixture(autouse=True)
