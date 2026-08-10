@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -31,6 +32,14 @@ from provide.telemetry.receipts import (
     receipt_timestamp,
     sign_receipt,
 )
+
+# time.tzset() is POSIX-only. Windows has no runtime API to rezone a live
+# process, and mypy targeting Windows types the time module without the
+# attribute at all — which is what turned the Windows quality job red while
+# every Linux job stayed green. Bound through getattr so the module type-checks
+# on either platform, and skipped where it is absent rather than quietly
+# passing a test that never changed the zone.
+_TZSET: Callable[[], None] | None = getattr(time, "tzset", None)
 
 
 @pytest.fixture(autouse=True)
@@ -346,6 +355,7 @@ def test_receipt_timestamp_accepts_a_pinned_instant() -> None:
     assert receipt_timestamp(moment) == "2026-08-04T12:34:56.789Z"
 
 
+@pytest.mark.skipif(_TZSET is None, reason="time.tzset is POSIX-only; Windows cannot rezone a live process")
 def test_receipt_timestamp_is_utc_whatever_the_host_timezone_is() -> None:
     """The trailing Z is a claim, so the clock behind it has to be UTC.
 
@@ -354,9 +364,10 @@ def test_receipt_timestamp_is_utc_whatever_the_host_timezone_is() -> None:
     receipt in the audit trail by the local offset — silently, and only on that
     machine. Pinned here with the process forced seven hours off UTC.
     """
+    assert _TZSET is not None  # guaranteed by the skipif; narrows the type
     original = os.environ.get("TZ")
     os.environ["TZ"] = "XYZ-07"  # POSIX spelling for "local time is UTC+7".
-    time.tzset()
+    _TZSET()
     try:
         before = datetime.now(UTC)
         stamped = receipt_timestamp()
@@ -366,7 +377,7 @@ def test_receipt_timestamp_is_utc_whatever_the_host_timezone_is() -> None:
             del os.environ["TZ"]
         else:
             os.environ["TZ"] = original
-        time.tzset()
+        _TZSET()
 
     parsed = datetime.strptime(stamped, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
     # A second of slack for the strftime truncation, against a seven-hour skew.

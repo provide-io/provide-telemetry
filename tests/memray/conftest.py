@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -91,3 +92,28 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     with _BASELINE_PATH.open("w") as f:
         json.dump(existing, f, indent=2, sort_keys=True)
         f.write("\n")
+
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+@pytest.fixture(scope="session")
+def parse_total_allocations() -> Callable[[str], int]:
+    """Read "Total allocations" out of ``memray stats`` output.
+
+    memray >= 1.15 emits the label in ANSI bold and puts the count on the *next*
+    line, so the previous ``r"Total allocations:\s+([\d,]+)"`` could not match:
+    ``\s`` does not cross the reset sequence that sits between them. Older
+    memray printed both inline, which is why CI parsed this fine while every
+    local run failed with "Could not parse allocations" — the whole memray suite
+    was unrunnable on a current install, so a regression could only ever be
+    caught after merging to main.
+    """
+
+    def _parse(stdout: str) -> int:
+        plain = _ANSI_ESCAPE.sub("", stdout)
+        match = re.search(r"Total allocations:\s*([\d,]+)", plain)
+        assert match, f"Could not parse allocations from memray stats:\n{stdout}"
+        return int(match.group(1).replace(",", ""))
+
+    return _parse

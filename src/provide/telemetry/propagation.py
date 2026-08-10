@@ -40,9 +40,11 @@ _OTEL_TOKEN_FIELD = "otel_token"  # noqa: S105 - a snapshot dict key, not a cred
 _BAGGAGE_KEYS_FIELD = "_baggage_keys"  # pragma: no mutate
 _BAGGAGE_PRIOR_FIELD = "_baggage_prior"  # pragma: no mutate
 
-# RFC 7230 token, which the W3C Baggage spec requires of keys. Excludes control
-# characters, whitespace and separators — see parse_baggage for why that matters.
-_BAGGAGE_TOKEN_RE = _re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# RFC 7230 token characters, which the W3C Baggage spec requires of keys.
+# Excludes control characters, whitespace and separators — see parse_baggage for
+# why that matters, and for why this is a character set rather than the compiled
+# pattern it replaced.
+_BAGGAGE_TOKEN_CHARS = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"  # noqa: S105 - an allowed-character set, not a credential  # pragma: no mutate
 # C0/C1 controls except TAB, stripped from baggage values.
 _CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
@@ -152,8 +154,29 @@ def parse_baggage(raw: str) -> dict[str, str]:
             continue
         key, _, value = kv.partition("=")
         key = key.strip()
-        if key and _BAGGAGE_TOKEN_RE.fullmatch(key):
-            result[key] = _CONTROL_CHARS_RE.sub("", value.strip())
+        # str.strip removes every leading and trailing character in the set, so
+        # the result is empty exactly when every character is a token character
+        # — the same answer fullmatch gave, at one C call and no match object.
+        # This runs per baggage member on the inbound request path, where
+        # fullmatch was allocating 4.8M objects across the stress profile.
+        if key and not key.strip(_BAGGAGE_TOKEN_CHARS):
+            stripped = value.strip()
+            # Touch the regex only for a value that could contain a stripped
+            # character. str.isprintable is a C-level scan that allocates
+            # nothing and is False for every code point in the class above, so
+            # a True answer rules them all out.
+            #
+            # No second search() before the sub(): sub() on a value with no
+            # match returns it unchanged, so the pre-check could only ever save
+            # work, never change the answer — which made `and` and `or` between
+            # the two indistinguishable, an equivalent mutant with no test that
+            # could kill it. It also saved nothing, because search() costs about
+            # what sub() does. The false positives left here — TAB, which the
+            # class deliberately keeps, and the Unicode format characters — are
+            # rare enough to pay full price.
+            if not stripped.isprintable():
+                stripped = _CONTROL_CHARS_RE.sub("", stripped)
+            result[key] = stripped
     return result
 
 

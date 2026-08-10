@@ -114,3 +114,28 @@ path = [
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The C# tree's build and config files, covered the same way go/ and
+# typescript/ already cover theirs. MSBuild and solution files are generated
+# and rewritten by dotnet tooling, which does not preserve a leading comment,
+# and the JSON ones have no comment syntax at all — so the header lives here
+# rather than in each file. Annotated rather than excluded, so they still carry
+# a license.
+#
+# This whole block was missing: the C# tree was added while `reuse lint` only
+# ran from the Python workflow, which is limited to pushes on main, so no
+# branch build ever checked it.
+[[annotations]]
+path = [
+  "csharp/.config/dotnet-tools.json",
+  "csharp/.gitignore",
+  "csharp/Directory.Build.props",
+  "csharp/Provide.Telemetry.sln",
+  "csharp/README.md",
+  "csharp/VERSION",
+  "csharp/stryker-config.json",
+  "csharp/examples/README.md",
+  "csharp/**/*.csproj",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
+SPDX-License-Identifier = "Apache-2.0"

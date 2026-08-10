@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess  # nosec
 from collections.abc import Callable
 from pathlib import Path
@@ -22,8 +21,25 @@ def test_sampling_stress(
     memray_baseline: dict[str, int],
     assert_allocation_within_threshold: Callable[..., None],
     project_root: Path,
+    parse_total_allocations: Callable[[str], int],
 ) -> None:
-    """Stress test sampling decisions with memray profiling."""
+    """Stress test sampling decisions with memray profiling.
+
+    This bucket measures imports more than it measures sampling. The script runs
+    500k decisions and the whole process still allocates under 10k times,
+    because the sampling path allocates essentially nothing — so the total is
+    dominated by module import: dataclasses._create_fn, importlib's bytecode
+    compile and attrs class building account for most of it.
+
+    That makes the 15% tolerance largely a dependency-drift detector. The
+    baseline was reseeded from 7474 to 9524 when it failed at +27% with both
+    sampling.py and the stress script byte-identical to main; the growth was in
+    what the imports cost, not in the code under test. Read a future failure the
+    same way — check whether the top allocating locations are in
+    provide.telemetry before calling it a regression. It still earns its place
+    as a canary: if sampling ever starts allocating per decision, 500k
+    iterations will bury the import noise and this will fail loudly.
+    """
     script_path = project_root / "scripts" / "memray" / "memray_sampling_stress.py"
     output_bin = memray_output_dir / "memray_sampling_stress.bin"
 
@@ -44,9 +60,7 @@ def test_sampling_stress(
     )
     assert stats_result.returncode == 0, f"memray stats failed: {stats_result.stderr}"
 
-    match = re.search(r"Total allocations:\s+([\d,]+)", stats_result.stdout)
-    assert match, f"Could not parse allocations from memray stats:\n{stats_result.stdout}"
-    total_allocations = int(match.group(1).replace(",", ""))
+    total_allocations = parse_total_allocations(stats_result.stdout)
 
     baseline = memray_baseline.get("sampling_total_allocations")
     assert_allocation_within_threshold(baseline, total_allocations, "sampling")

@@ -5,6 +5,6 @@
   "metrics_total_allocations": 9632,
   "pii_total_allocations": 407485,
   "propagation_total_allocations": 808652,
-  "sampling_total_allocations": 7474,
+  "sampling_total_allocations": 9524,
   "tracing_total_allocations": 9411
 }
