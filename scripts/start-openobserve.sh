@@ -16,13 +16,36 @@
 OPENOBSERVE_USER="${OPENOBSERVE_USER:-admin@provide.test}"
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-Complexpass#123}"
 OPENOBSERVE_URL="${OPENOBSERVE_URL:-http://localhost:5080/api/default}"
-# Data is kept in a named Docker volume (not a host bind mount). A host bind mount
-# of "${PWD}/.openobserve-data" fails on Docker Desktop for macOS with
-# "error while creating mount source path ... mkdir <repo>: file exists" — a
-# virtiofs/gRPC-FUSE quirk that leaves the container stuck in "Created". A named
-# volume sidesteps host file-sharing entirely and persists across restarts.
-# Wipe it with: docker volume rm "${OPENOBSERVE_VOLUME:-openobserve-dev-data}"
-OPENOBSERVE_VOLUME="${OPENOBSERVE_VOLUME:-openobserve-dev-data}"
+# Data is kept in a host bind mount under the repo, NOT a named Docker volume.
+# Rationale: a named volume lives inside the VM's disk image (e.g. colima's
+# ~/.colima/_lima/_disks/colima/datadisk). That image is sparse — it inflates as
+# the volume grows but never shrinks when data is deleted, so reclaiming space
+# needs a manual `fstrim` inside the VM. A host bind keeps the data on the host
+# filesystem: visible, and freed the instant the directory is removed.
+#
+# The "mkdir <repo>: file exists" bind failure happens because `-v` makes the
+# daemon RECURSIVELY create the source path, and virtiofs (colima/Docker Desktop)
+# chokes trying to mkdir an already-existing parent. Fix: `mkdir -p` the dir here,
+# then mount with `--mount type=bind` — which requires the source to exist and
+# never tries to create it, so the buggy recursive mkdir is skipped entirely.
+#
+# The bind source is also canonicalized to its physical, symlink-free path: a
+# VM-backed runtime (e.g. colima) mounts host paths by their real location, so a
+# source still containing a symlink — common when a repo is symlinked onto another
+# volume — won't resolve inside the VM. That volume must itself be shared into the
+# VM (for colima, add it under `mounts:` in ~/.colima/<profile>/colima.yaml and
+# `colima restart`). Override the location with OPENOBSERVE_DATA_DIR.
+# Wipe it with: rm -rf "${OPENOBSERVE_DATA_DIR}"
+
+# Resolve a directory to its physical, symlink-free absolute path.
+_physical_dir() {
+  CDPATH= cd -P -- "$1" && pwd -P
+}
+
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+OPENOBSERVE_DATA_DIR="${OPENOBSERVE_DATA_DIR:-${REPO_ROOT}/.openobserve-data}"
+mkdir -p "${OPENOBSERVE_DATA_DIR}"
+OPENOBSERVE_DATA_DIR=$(_physical_dir "${OPENOBSERVE_DATA_DIR}")
 
 # Stop any container currently bound to port 5080.
 EXISTING=$(docker ps -q --filter "publish=5080")
@@ -37,7 +60,7 @@ fi
 
 docker run --detach \
   --name openobserve-dev \
-  -v "${OPENOBSERVE_VOLUME}:/data" \
+  --mount "type=bind,source=${OPENOBSERVE_DATA_DIR},target=/data" \
   -e ZO_DATA_DIR="/data" \
   -p 5080:5080 \
   -e ZO_ROOT_USER_EMAIL="${OPENOBSERVE_USER}" \
