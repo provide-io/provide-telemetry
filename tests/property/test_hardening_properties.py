@@ -16,10 +16,11 @@ from provide.telemetry.pii import _detect_secret_in_value
 
 @given(st.text(max_size=5000))
 def test_output_values_always_bounded(text: str) -> None:
-    """After harden_input, no string exceeds max_value_length."""
+    """After harden_input, no string exceeds max_value_length plus the marker."""
     processor = harden_input(100, 64, 8)
     result = processor(None, "", {"key": text})
-    assert len(result["key"]) <= 100
+    # A truncated value carries the cross-SDK "..." marker after the cap.
+    assert len(result["key"]) <= 100 + len("...")
 
 
 @given(st.text(max_size=500))

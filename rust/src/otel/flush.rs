@@ -16,10 +16,10 @@ use super::{logs, metrics, traces};
 /// Force-flush the installed provider, leaving it installed and usable.
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
-/// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline or the exporter
-/// rejected it.
-pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> bool {
+/// rather than taken, so telemetry keeps working afterwards. Reports `TimedOut`
+/// when the flush was abandoned at the bounded-shutdown deadline and `Failed`
+/// when the exporter rejected it inside the deadline.
+pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> super::DrainOutcome {
     let provider = {
         let guard = crate::_lock::lock(logs::logger_provider_slot());
         guard
@@ -27,7 +27,7 @@ pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> bool {
             .map(|installed| Arc::clone(&installed.provider))
     };
     let Some(provider) = provider else {
-        return true;
+        return super::DrainOutcome::Drained;
     };
 
     super::bounded_flush("logs", timeout_seconds, move || {
@@ -38,10 +38,10 @@ pub(crate) fn flush_logger_provider(timeout_seconds: Option<f64>) -> bool {
 /// Force-flush the installed provider, leaving it installed and usable.
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
-/// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline or the exporter
-/// rejected it.
-pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> bool {
+/// rather than taken, so telemetry keeps working afterwards. Reports `TimedOut`
+/// when the flush was abandoned at the bounded-shutdown deadline and `Failed`
+/// when the exporter rejected it inside the deadline.
+pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> super::DrainOutcome {
     let provider = {
         let guard = crate::_lock::lock(traces::tracer_provider_slot());
         guard
@@ -49,7 +49,7 @@ pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> bool {
             .map(|installed| Arc::clone(&installed.provider))
     };
     let Some(provider) = provider else {
-        return true;
+        return super::DrainOutcome::Drained;
     };
 
     super::bounded_flush("traces", timeout_seconds, move || {
@@ -60,10 +60,10 @@ pub(crate) fn flush_tracer_provider(timeout_seconds: Option<f64>) -> bool {
 /// Force-flush the installed provider, leaving it installed and usable.
 ///
 /// The drain half of the shutdown path: the provider is cloned out of its slot
-/// rather than taken, so telemetry keeps working afterwards. Returns false when
-/// the flush was abandoned at the bounded-shutdown deadline or the exporter
-/// rejected it.
-pub(crate) fn flush_meter_provider(timeout_seconds: Option<f64>) -> bool {
+/// rather than taken, so telemetry keeps working afterwards. Reports `TimedOut`
+/// when the flush was abandoned at the bounded-shutdown deadline and `Failed`
+/// when the exporter rejected it inside the deadline.
+pub(crate) fn flush_meter_provider(timeout_seconds: Option<f64>) -> super::DrainOutcome {
     let provider = {
         let guard = crate::_lock::lock(metrics::meter_provider_slot());
         guard
@@ -71,7 +71,7 @@ pub(crate) fn flush_meter_provider(timeout_seconds: Option<f64>) -> bool {
             .map(|installed| Arc::clone(&installed.provider))
     };
     let Some(provider) = provider else {
-        return true;
+        return super::DrainOutcome::Drained;
     };
 
     super::bounded_flush("metrics", timeout_seconds, move || {
@@ -195,9 +195,18 @@ mod tests {
         let _guard = acquire_test_state_lock();
         reset_telemetry_state();
 
-        assert!(flush_logger_provider(None));
-        assert!(flush_tracer_provider(None));
-        assert!(flush_meter_provider(None));
+        assert_eq!(
+            flush_logger_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_tracer_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_meter_provider(None),
+            super::super::DrainOutcome::Drained
+        );
     }
 
     #[test]
@@ -210,7 +219,12 @@ mod tests {
             .build();
         logs::install_logger_provider_for_tests(provider);
 
-        assert!(!flush_logger_provider(None));
+        // The processor rejected the drain within the deadline: Failed, never
+        // TimedOut — nothing expired.
+        assert_eq!(
+            flush_logger_provider(None),
+            super::super::DrainOutcome::Failed
+        );
         reset_telemetry_state();
     }
 
@@ -233,7 +247,10 @@ mod tests {
             .add(1, &[]);
         metrics::install_meter_provider_for_tests(provider);
 
-        assert!(!flush_meter_provider(None));
+        assert_eq!(
+            flush_meter_provider(None),
+            super::super::DrainOutcome::Failed
+        );
         reset_telemetry_state();
     }
 
@@ -269,6 +286,30 @@ mod tests {
 
         released.store(true, Ordering::Release);
         crate::runtime::set_active_config(None);
+        reset_telemetry_state();
+    }
+
+    /// The aggregate entry point keeps the same distinction the facade does:
+    /// an exporter that rejected the drain inside the deadline is reported as
+    /// a failure, not as a deadline the operator should go tune.
+    #[test]
+    fn flush_telemetry_reports_an_in_deadline_rejection_as_a_failure() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        let provider = SdkLoggerProvider::builder()
+            .with_log_processor(FlushErrorLogProcessor)
+            .build();
+        logs::install_logger_provider_for_tests(provider);
+
+        let err = crate::flush_telemetry(None)
+            .expect_err("a drain the exporter rejected must report Err");
+        assert!(
+            err.message.contains("rejected") && !err.message.contains("deadline"),
+            "unexpected message: {}",
+            err.message
+        );
+
         reset_telemetry_state();
     }
 
@@ -309,6 +350,40 @@ mod tests {
         );
 
         released.store(true, Ordering::Release);
+        crate::runtime::set_active_config(None);
+        reset_telemetry_state();
+    }
+
+    /// An exporter that rejects the drain *inside* the deadline is a failure,
+    /// not a timeout: `rt.flush(None)` must report it as such, and its error
+    /// must not claim a deadline was exceeded when nothing expired. Python,
+    /// Go and TypeScript all populate `failed` for this case.
+    #[test]
+    fn runtime_facade_flush_reports_an_in_deadline_rejection_as_failed() {
+        let _guard = acquire_test_state_lock();
+        reset_telemetry_state();
+
+        let provider = SdkLoggerProvider::builder()
+            .with_log_processor(FlushErrorLogProcessor)
+            .build();
+        logs::install_logger_provider_for_tests(provider);
+        crate::runtime::set_active_config(Some(TelemetryConfig::default()));
+
+        let runtime = crate::runtime::TelemetryRuntime::new();
+        let err = runtime
+            .flush(None)
+            .expect_err("an owned drain the exporter rejected must surface as Err");
+        assert!(
+            err.message.contains("rejected"),
+            "the failure must be reported as a rejection: {}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("deadline"),
+            "an in-deadline rejection must not claim a deadline was exceeded: {}",
+            err.message
+        );
+
         crate::runtime::set_active_config(None);
         reset_telemetry_state();
     }
@@ -380,10 +455,19 @@ mod tests {
         let _ = super::super::metrics::install_meter_provider(&cfg, resource.clone());
         let _ = super::super::logs::install_logger_provider(&cfg, resource);
 
-        // Each returns true: the drain completed inside the bounded deadline.
-        assert!(flush_tracer_provider(None));
-        assert!(flush_meter_provider(None));
-        assert!(flush_logger_provider(None));
+        // Each drains: the flush completed inside the bounded deadline.
+        assert_eq!(
+            flush_tracer_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_meter_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_logger_provider(None),
+            super::super::DrainOutcome::Drained
+        );
 
         // Still installed — that is the whole point of flush over shutdown.
         assert!(super::super::traces::tracer_provider_installed());
@@ -391,9 +475,18 @@ mod tests {
         assert!(super::super::logs::logger_provider_installed());
 
         // And repeatable.
-        assert!(flush_tracer_provider(None));
-        assert!(flush_meter_provider(None));
-        assert!(flush_logger_provider(None));
+        assert_eq!(
+            flush_tracer_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_meter_provider(None),
+            super::super::DrainOutcome::Drained
+        );
+        assert_eq!(
+            flush_logger_provider(None),
+            super::super::DrainOutcome::Drained
+        );
 
         reset_telemetry_state();
     }

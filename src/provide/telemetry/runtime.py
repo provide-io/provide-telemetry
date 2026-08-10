@@ -96,9 +96,13 @@ class TelemetryRuntime:
         from provide.telemetry.setup import shutdown_telemetry
 
         # timeout bounds the drain; teardown is local work that always completes,
-        # so the terminal state is STOPPED either way (matches Go/Rust/TypeScript).
-        shutdown_telemetry(timeout_seconds=timeout)
-        self._state = RuntimeState.STOPPED
+        # so the terminal state is STOPPED either way (matches Go/Rust/TypeScript)
+        # — including when a drain raises, which shutdown_telemetry re-raises
+        # after its own cleanup has finished.
+        try:
+            shutdown_telemetry(timeout_seconds=timeout)
+        finally:
+            self._state = RuntimeState.STOPPED
 
     def flush(self, timeout: float | None = None) -> FlushResult:
         from provide.telemetry._provider_drain import installed_signals, owned_signals

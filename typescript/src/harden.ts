@@ -30,6 +30,18 @@ import { DEFAULT_MAX_DEPTH, REDACTED } from './pii.js';
 // eslint-disable-next-line no-control-regex -- stripping control characters is the point
 const _CONTROL_CHARS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 
+/**
+ * Control characters stripped from hardened object keys.
+ *
+ * Keys are rendered bare by the pretty renderer, so unlike values they cannot
+ * keep TAB/LF/CR either: any of the three splits or misaligns the rendered
+ * line — a key containing `"\n2026-08-10 [error] ..."` forges a second,
+ * attacker-controlled log record. The range is character-for-character the one
+ * Python's `_harden_keys` uses (`logger/processors.py:_CONTROL_CHAR_KEY_RE`).
+ */
+// eslint-disable-next-line no-control-regex -- stripping control characters is the point
+const _KEY_CONTROL_CHARS = /[\x00-\x1f\x7f]/g;
+
 /** Default caps, matching TelemetryConfig's security defaults. */
 const _DEFAULT_MAX_VALUE_LENGTH = 1024;
 const _DEFAULT_MAX_ATTR_COUNT = 64;
@@ -73,9 +85,13 @@ function _hardenScalar(value: unknown, maxValueLength: number): unknown {
     const cleaned = value.replace(_CONTROL_CHARS, '');
     return cleaned.length > maxValueLength ? cleaned.slice(0, maxValueLength) + '...' : cleaned;
   }
-  // null, undefined, boolean and finite numbers survive as themselves; every
-  // other primitive (bigint, symbol) has no JSON form.
-  if (typeof value === 'number') return Number.isFinite(value) ? value : REDACTED;
+  // null, undefined, boolean and numbers survive as themselves — including
+  // NaN and ±Infinity, which Python's harden_input and Go's hardenScalar also
+  // pass through untouched. Redacting them here diverged the exported value
+  // *and* the receipt digest per SDK; canonicalization is where they become
+  // `null`, the spelling the receipt fixtures fix. Every other primitive
+  // (bigint, symbol) has no JSON form.
+  if (typeof value === 'number') return value;
   if (value === null || value === undefined || typeof value === 'boolean') return value;
   return REDACTED;
 }
@@ -105,7 +121,21 @@ function _harden(
   const kept = maxAttrCount > 0 ? keys.slice(0, maxAttrCount) : keys;
   const result: Record<string, unknown> = {};
   for (const key of kept) {
-    result[key] = _harden(source[key], maxValueLength, maxAttrCount, maxDepth, depth + 1, seen);
+    // Keys are hardened as well as values, at every level, mirroring Python's
+    // _harden_keys. Cleaning is many-to-one ("trace_i\x00d" and "trace_id"
+    // both come out as "trace_id"), and Object.keys never yields duplicates,
+    // so an untouched key colliding with an occupied slot always means a
+    // sanitized key squatted there first: a key that needed cleaning never
+    // displaces one already present, and a key that needed no cleaning always
+    // reclaims its slot — re-assignment keeps the original insertion position,
+    // so reclaiming does not reorder the record. Two sanitized keys that
+    // collide keep the first, which is arbitrary but loses no genuine field.
+    const name = key.replace(_KEY_CONTROL_CHARS, '');
+    // hasOwnProperty rather than `name in result`: a key cleaned down to
+    // "toString" must collide with a genuine "toString" field, not with
+    // Object.prototype.
+    if (Object.prototype.hasOwnProperty.call(result, name) && name !== key) continue;
+    result[name] = _harden(source[key], maxValueLength, maxAttrCount, maxDepth, depth + 1, seen);
   }
   return result;
 }

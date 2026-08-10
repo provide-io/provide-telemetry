@@ -90,6 +90,12 @@ _HARDEN_PRIORITY_KEYS: frozenset[str] = frozenset(
 # one per subsystem.
 _HARDENED_PLACEHOLDER = "***"
 
+# Appended after the length cap when a value was actually truncated, so a
+# capped value is distinguishable from one that happened to end at the limit.
+# The same three characters Go (piicore.TruncationSuffix), TypeScript and Rust
+# append after the same cap.
+_TRUNCATION_SUFFIX = "..."
+
 TRACE_LEVEL = 5
 
 # Fast lowercase level → numeric lookup (avoids normalize + getLevelName per message)
@@ -199,12 +205,13 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 
         def _clean_value(value: object, depth: int) -> object:
             if isinstance(value, str):
+                # Strip first, truncate second, mark last — the cross-SDK
+                # order. Cleaning after the cap could shorten a value back
+                # under the limit and leave the marker on a value that no
+                # longer needed one.
                 cleaned = _CONTROL_CHAR_RE.sub("", value)
-                # `>=` is equivalent: slicing a value already at the limit to
-                # [:limit] returns the identical string.
-                too_long = len(cleaned) > _max_value_length  # pragma: no mutate
-                if too_long:
-                    return cleaned[:_max_value_length]
+                if len(cleaned) > _max_value_length:
+                    return cleaned[:_max_value_length] + _TRUNCATION_SUFFIX
                 return cleaned
             if isinstance(value, dict | list):
                 # The ceiling is a refusal, not a stop-recursing-but-emit-anyway.
@@ -220,7 +227,11 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
                     return _HARDENED_PLACEHOLDER
                 seen.add(id(value))
                 if isinstance(value, dict):
-                    return {k: _clean_value(v, depth + 1) for k, v in value.items()}
+                    # Nested keys are cleaned with the same collision policy as
+                    # the top level: Go, TypeScript and Rust harden keys at
+                    # every depth, and a nested dirty key would diverge the
+                    # exported payload (and any receipt digest) from theirs.
+                    return {k: _clean_value(v, depth + 1) for k, v in _harden_keys(value).items()}
                 return [
                     _clean_value(item, depth + 1) for item in value
                 ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests

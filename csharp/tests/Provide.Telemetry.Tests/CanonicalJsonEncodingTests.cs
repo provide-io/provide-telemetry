@@ -149,6 +149,76 @@ public class CanonicalJsonEncodingTests
         Assert.Equal("0", CanonicalJson.Serialize(-0.0));
     }
 
+    [Theory]
+    // Integral doubles above 2^53 must print ECMAScript's shortest-round-trip
+    // digits zero-padded, not the exact binary expansion: "F0" spells the first
+    // value 123456789012345683968, a digest no other SDK ever computes.
+    [InlineData(123456789012345678901.0, "123456789012345680000")]
+    [InlineData(18446744073709551616.0, "18446744073709552000")] // 2^64
+    [InlineData(1e20, "100000000000000000000")] // n = 21, the last plain integer
+    [InlineData(1e21, "1e+21")] // n = 22 crosses into exponent form
+    public void LargeIntegralDoublesUseShortestRoundTripDigits(double value, string expected)
+    {
+        Assert.Equal(expected, CanonicalJson.Serialize(value));
+    }
+
+    [Theory]
+    // Sub-1e-4 values needing 16-17 significant digits: the old
+    // "0.###…" custom-format fallback capped at 15 and re-rounded the first
+    // vector to 0.00000123456789012346, which does not round-trip.
+    [InlineData(1.2345678901234567e-6, "0.0000012345678901234567")]
+    [InlineData(1e-6, "0.000001")] // the last plain-decimal magnitude
+    [InlineData(1e-7, "1e-7")] // exponent form starts here
+    [InlineData(0.1, "0.1")]
+    public void SmallFractionsKeepEveryRoundTripDigit(double value, string expected)
+    {
+        Assert.Equal(expected, CanonicalJson.Serialize(value));
+    }
+
+    [Fact]
+    public void ASelfReferentialDictionarySerializesTheCycleAsNull()
+    {
+        // Recursion into a cycle dies in an uncatchable StackOverflowException;
+        // the revisited composite must short-circuit instead. Null, not "***":
+        // this is the canonicalization backstop, mirroring receipts.py.
+        var cycle = new Dictionary<string, object?>();
+        cycle["self"] = cycle;
+        Assert.Equal("""{"self":null}""", CanonicalJson.Serialize(cycle));
+    }
+
+    [Fact]
+    public void ASelfReferentialListSerializesTheCycleAsNull()
+    {
+        var cycle = new List<object?>();
+        cycle.Add(cycle);
+        Assert.Equal("[null]", CanonicalJson.Serialize(cycle));
+    }
+
+    [Fact]
+    public void MutualRecursionBetweenAMapAndAListSerializesTheCycleAsNull()
+    {
+        var holder = new Dictionary<string, object?>();
+        var items = new List<object?> { holder };
+        holder["items"] = items;
+        Assert.Equal("""{"items":[null]}""", CanonicalJson.Serialize(holder));
+    }
+
+    [Fact]
+    public void ASharedAcyclicSubtreeSerializesFullyAtEveryOccurrence()
+    {
+        // The guard is path-scoped — a value leaves the set when its subtree
+        // completes — so sharing is not mistaken for a cycle. (Hardening's
+        // walk-scoped rule is the opposite by design; by the time values reach
+        // canonicalization through the pipeline, hardening has already
+        // collapsed the second occurrence.)
+        var shared = new Dictionary<string, object?> { ["k"] = "v" };
+        var payload = new Dictionary<string, object?> { ["a"] = shared, ["b"] = shared };
+        Assert.Equal("""{"a":{"k":"v"},"b":{"k":"v"}}""", CanonicalJson.Serialize(payload));
+
+        var sharedList = new List<object?> { 1 };
+        Assert.Equal("[[1],[1]]", CanonicalJson.Serialize(new List<object?> { sharedList, sharedList }));
+    }
+
     [Fact]
     public void NestedContainersRecurseThroughEveryBranch()
     {

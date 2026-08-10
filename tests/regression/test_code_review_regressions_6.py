@@ -131,7 +131,7 @@ class TestF3ProcessorLiveConfig:
         # Change max_attr_value_length via runtime
         runtime_mod.update_runtime_config(RuntimeOverrides(security=SecurityConfig(max_attr_value_length=5)))
         result = proc(None, "", {"event": "x", "key": "hello!"})  # 6 chars
-        assert result["key"] == "hello"  # truncated to 5
+        assert result["key"] == "hello..."  # truncated to 5, then marked
 
     def test_harden_input_falls_back_when_no_active_config(self) -> None:
         """When _active_config is None, factory-captured values are used."""
@@ -141,7 +141,7 @@ class TestF3ProcessorLiveConfig:
         runtime_mod.reset_runtime_for_tests()
         proc = harden_input(max_value_length=5, max_attr_count=0, max_depth=8)
         result = proc(None, "", {"event": "x", "key": "hello!"})
-        assert result["key"] == "hello"  # truncated to factory value 5
+        assert result["key"] == "hello..."  # truncated to factory value 5, marked
 
     def test_sanitize_sensitive_fields_reads_live_pii_max_depth(self) -> None:
         from provide.telemetry.logger.processors import sanitize_sensitive_fields

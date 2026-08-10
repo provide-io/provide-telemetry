@@ -20,6 +20,7 @@ package telemetry
 
 import (
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,10 +40,17 @@ const nullLiteral = "null"
 // redaction sentinel. Canonicalization runs inside the redaction hook, so
 // returning an error here would turn a log call into a failure.
 func CanonicalJSON(value any) string {
-	return string(appendCanonical(make([]byte, 0, 64), value))
+	return string(appendCanonical(make([]byte, 0, 64), value, make(map[visit]struct{})))
 }
 
-func appendCanonical(dst []byte, value any) []byte {
+// appendCanonical serializes one value. path carries the identity of every
+// composite currently being serialized above this point: a composite reached
+// again while still open is a cycle and serializes as null rather than
+// recursing until stack exhaustion. The guard is path-scoped — an identity is
+// removed when its subtree completes — so a shared acyclic subtree serializes
+// fully at every occurrence. Both halves mirror receipts.py's _canonical
+// exactly; the digest of a shared subtree must not differ between SDKs.
+func appendCanonical(dst []byte, value any, path map[visit]struct{}) []byte {
 	switch typed := value.(type) {
 	case nil:
 		return append(dst, nullLiteral...)
@@ -57,18 +65,38 @@ func appendCanonical(dst []byte, value any) []byte {
 	case float64:
 		return append(dst, canonicalNumber(typed)...)
 	case map[string]any:
-		return appendCanonicalObject(dst, typed)
+		return appendCanonicalObject(dst, typed, path)
 	case []any:
-		return appendCanonicalArray(dst, typed)
+		return appendCanonicalArray(dst, typed, path)
 	default:
 		// Hardening reduces any Go value to exactly the cases above, so this
 		// recurses at most once. It runs unlimited: a digest must not depend on
 		// how long or how wide the value was, only on what it contained.
-		return appendCanonical(dst, Harden(value, _unlimited()))
+		return appendCanonical(dst, Harden(value, _unlimited()), path)
 	}
 }
 
-func appendCanonicalObject(dst []byte, obj map[string]any) []byte {
+// _pathIdentity returns the identity a composite is tracked under on the
+// current serialization path. Empty composites are exempt: they have no
+// children to recurse into, so they cannot close a cycle, and Go hands every
+// zero-size allocation the same address — tracking them would misreport two
+// unrelated empty slices as one value.
+func _pathIdentity(value any) (visit, bool) {
+	v := reflect.ValueOf(value)
+	if v.Len() == 0 {
+		return visit{}, false
+	}
+	return visit{v.Type(), v.Pointer()}, true
+}
+
+func appendCanonicalObject(dst []byte, obj map[string]any, path map[visit]struct{}) []byte {
+	if id, tracked := _pathIdentity(obj); tracked {
+		if _, cyclic := path[id]; cyclic {
+			return append(dst, nullLiteral...)
+		}
+		path[id] = struct{}{}
+		defer delete(path, id)
+	}
 	keys := make([]string, 0, len(obj))
 	for key := range obj {
 		keys = append(keys, key)
@@ -84,18 +112,25 @@ func appendCanonicalObject(dst []byte, obj map[string]any) []byte {
 		}
 		dst = appendCanonicalString(dst, key)
 		dst = append(dst, ':')
-		dst = appendCanonical(dst, obj[key])
+		dst = appendCanonical(dst, obj[key], path)
 	}
 	return append(dst, '}')
 }
 
-func appendCanonicalArray(dst []byte, items []any) []byte {
+func appendCanonicalArray(dst []byte, items []any, path map[visit]struct{}) []byte {
+	if id, tracked := _pathIdentity(items); tracked {
+		if _, cyclic := path[id]; cyclic {
+			return append(dst, nullLiteral...)
+		}
+		path[id] = struct{}{}
+		defer delete(path, id)
+	}
 	dst = append(dst, '[')
 	for i, item := range items {
 		if i > 0 {
 			dst = append(dst, ',')
 		}
-		dst = appendCanonical(dst, item)
+		dst = appendCanonical(dst, item, path)
 	}
 	return append(dst, ']')
 }

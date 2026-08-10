@@ -434,3 +434,27 @@ func TestConfigureLogger_PrettyFormatNonTTY(t *testing.T) {
 		t.Errorf("expected service.name field: %q", out)
 	}
 }
+
+// The pretty renderer emits keys bare (wrap(k, ...)), so before keys were
+// hardened, a caller-controlled key containing "\n2026-08-10 [error] ..."
+// rendered as a second, forged log line. The full telemetry chain over the
+// pretty handler must now emit exactly one line for such a record.
+func TestPrettyHandler_HardenedKeysCannotForgeASecondLine(t *testing.T) {
+	setupFullSampling(t)
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+	var buf bytes.Buffer
+	logger := slog.New(_newTelemetryHandler(newPrettyHandlerWithColors(&buf, cfg, false), cfg, ""))
+
+	forged := "x\n2026-08-10 [error] payment.failed amount=9999"
+	logger.Info("payment.ok", forged, "1")
+
+	out := buf.String()
+	if strings.Count(out, "\n") != 1 || !strings.HasSuffix(out, "\n") {
+		t.Fatalf("forged key split the rendered output: %q", out)
+	}
+	if !strings.Contains(out, "x2026-08-10 [error] payment.failed amount=9999=") {
+		t.Fatalf("expected the cleaned key on the single line: %q", out)
+	}
+}

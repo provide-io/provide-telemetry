@@ -252,6 +252,9 @@ def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
     runs ``force_flush`` then ``shutdown`` under the same deadline, so draining
     first would export each signal twice and roughly double the wall time
     against a slow collector.
+
+    A drain that raises does not abort the teardown: the runtime resets always
+    complete first, and the first drain error is then re-raised to the caller.
     """
     from provide.telemetry._provider_drain import run_drains_together
     from provide.telemetry.backpressure import reset_queues_for_tests as _reset_queues
@@ -268,14 +271,22 @@ def shutdown_telemetry(timeout_seconds: float | None = None) -> None:
         # each per-signal teardown detaches its provider before draining it, so
         # the status read never queues behind the drain either.
         coordinator.publish_setup_state(setup_done=False)
-        run_drains_together(
-            (
-                lambda: shutdown_tracing(timeout_seconds),
-                lambda: shutdown_metrics(timeout_seconds),
-                lambda: shutdown_logging(timeout_seconds),
+        try:
+            run_drains_together(
+                (
+                    lambda: shutdown_tracing(timeout_seconds),
+                    lambda: shutdown_metrics(timeout_seconds),
+                    lambda: shutdown_logging(timeout_seconds),
+                )
             )
-        )
-        _reset_runtime()
-        _reset_sampling()
-        _reset_queues()
-        _reset_resilience()
+        finally:
+            # The resets are local work that must complete even when a drain
+            # raised (bad auth header, TLS failure): every per-signal teardown
+            # above has already detached its provider, so skipping them would
+            # leave stale runtime policies behind a teardown that did happen.
+            # The first drain error still propagates once cleanup is done —
+            # cleanup completes first, the error is not swallowed.
+            _reset_runtime()
+            _reset_sampling()
+            _reset_queues()
+            _reset_resilience()

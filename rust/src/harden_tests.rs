@@ -21,15 +21,157 @@ fn harden_test_scalars_pass_through_unchanged() {
 }
 
 #[test]
-fn harden_test_strings_are_truncated_then_stripped_at_every_level() {
+fn harden_test_strings_are_stripped_then_truncated_at_every_level() {
     let hardened = harden_value(
         &json!({ "a": { "b": "line\u{0}break-and-more" } }),
         LIMITS,
         0,
     );
 
-    // Truncated to 8 bytes ("line\0bre") and marked, then the NUL is dropped.
-    assert_eq!(hardened, json!({ "a": { "b": "linebre..." } }));
+    // The NUL is dropped first, then the cleaned value is cut at 8 bytes and
+    // marked — the cap counts characters a reader will actually see.
+    assert_eq!(hardened, json!({ "a": { "b": "linebrea..." } }));
+}
+
+/// The order is observable, not cosmetic: truncating first lets a
+/// control-heavy prefix spend the whole budget, collapsing the value to just
+/// the marker. Python/Go/TS strip first; Rust must agree.
+#[test]
+fn harden_test_controls_are_stripped_before_the_cap_is_applied() {
+    let noisy = format!("{}payload-that-matters", "\u{0}".repeat(32));
+
+    // Truncate-first would keep only 8 NULs, strip them, and emit "...".
+    assert_eq!(harden_value(&json!(noisy), LIMITS, 0), json!("payload-..."));
+}
+
+/// CR survives hardening: `\r\n` line endings are legitimate content, and
+/// Python, Go and TypeScript all preserve them. Stripping `\r` only in Rust
+/// would diverge attribute values and governance-receipt digests across SDKs.
+#[test]
+fn harden_test_carriage_returns_tabs_and_newlines_are_preserved() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+
+    assert_eq!(
+        harden_value(&json!("line1\r\nline2\tend\r"), limits, 0),
+        json!("line1\r\nline2\tend\r")
+    );
+}
+
+/// C1 controls (U+0080–U+009F) are outside the stripped set — Python's regex
+/// stops at `\x7f`, so NEL (U+0085) and CSI (U+009B) must pass through here
+/// too. This is why `char::is_control()` cannot be used.
+#[test]
+fn harden_test_c1_controls_are_preserved() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+
+    assert_eq!(
+        harden_value(&json!("a\u{85}b\u{9b}c\u{80}d\u{9f}e"), limits, 0),
+        json!("a\u{85}b\u{9b}c\u{80}d\u{9f}e")
+    );
+}
+
+/// The full stripped set: C0 minus TAB/LF/CR, plus DEL. Character for
+/// character the set Python's `_CONTROL_CHAR_RE` compiles.
+#[test]
+fn harden_test_the_stripped_set_is_c0_minus_whitespace_plus_del() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+    let dirty: String = ('\u{0}'..='\u{8}')
+        .chain(['\u{b}', '\u{c}'])
+        .chain('\u{e}'..='\u{1f}')
+        .chain(['\u{7f}'])
+        .flat_map(|ch| ['x', ch])
+        .chain(['x'])
+        .collect();
+
+    let stripped = "x".repeat(dirty.chars().filter(|ch| *ch == 'x').count());
+    assert_eq!(harden_value(&json!(dirty), limits, 0), json!(stripped));
+}
+
+/// Map keys are cleaned with the *key* set (`[\x00-\x1f\x7f]`): keys are
+/// rendered bare, so even TAB/LF/CR — legitimate in a value — split or
+/// misalign the rendered line when they appear in a key.
+#[test]
+fn harden_test_control_characters_in_keys_are_stripped() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+    let forged = json!({
+        "amount\n2026-08-10 [error] payment.failed": 9999,
+        "ta\tb\rkey\u{7f}": true,
+    });
+
+    assert_eq!(
+        harden_value(&forged, limits, 0),
+        json!({ "amount2026-08-10 [error] payment.failed": 9999, "tabkey": true })
+    );
+}
+
+#[test]
+fn harden_test_nested_map_keys_are_cleaned_too() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+    let nested = json!({ "outer": { "in\u{1}ner": { "deep\nest": 1 } } });
+
+    assert_eq!(
+        harden_value(&nested, limits, 0),
+        json!({ "outer": { "inner": { "deepest": 1 } } })
+    );
+}
+
+/// Cleaning is many-to-one: a sanitized key must never displace the genuine
+/// field it collides with, in either iteration order. `"trace_i\x00d"` sorts
+/// before `"trace_id"` and `"zz\n"` sorts after `"zz"`, so together the two
+/// maps cover the squatter-first and verbatim-first orders.
+#[test]
+fn harden_test_a_sanitized_key_never_displaces_a_verbatim_one() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+
+    let squatter_first = json!({ "trace_i\u{0}d": "forged", "trace_id": "real" });
+    assert_eq!(
+        harden_value(&squatter_first, limits, 0),
+        json!({ "trace_id": "real" })
+    );
+
+    let verbatim_first = json!({ "zz": "real", "zz\n": "forged" });
+    assert_eq!(
+        harden_value(&verbatim_first, limits, 0),
+        json!({ "zz": "real" })
+    );
+}
+
+/// Two sanitized keys that collide keep the first — arbitrary, but a genuine
+/// field is never lost to the tie-break.
+#[test]
+fn harden_test_two_sanitized_colliding_keys_keep_the_first() {
+    let limits = HardenLimits {
+        max_value_length: 0,
+        ..LIMITS
+    };
+
+    // "k\u{0}ey" sorts before "k\u{1}ey"; both clean to "key".
+    assert_eq!(
+        harden_value(
+            &json!({ "k\u{0}ey": "first", "k\u{1}ey": "second" }),
+            limits,
+            0
+        ),
+        json!({ "key": "first" })
+    );
 }
 
 /// Truncation cuts on a character boundary, never mid-codepoint — otherwise a

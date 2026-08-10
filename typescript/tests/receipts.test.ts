@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { harden } from '../src/harden.js';
 import { _resetHealthForTests, getHealthSnapshot } from '../src/health.js';
 import { hmacSha256Hex, sha256Hex } from '../src/hash.js';
 import { sanitizePayload, resetPiiRulesForTests, registerPiiRule } from '../src/pii.js';
@@ -271,6 +272,23 @@ describe('signReceipt defaults', () => {
     });
     expect(receipt.serviceName).toBe('billing');
   });
+
+  it('hashes non-finite numbers as the null spelling, so digests agree across SDKs', () => {
+    const opts = {
+      receiptId: 'r-1',
+      timestamp: '2026-08-10T00:00:00.000Z',
+      fieldPath: 'metrics.ratio',
+      action: 'redact',
+    };
+    const nullHash = signReceipt(null, opts).originalHash;
+    expect(signReceipt(Number.NaN, opts).originalHash).toBe(nullHash);
+    expect(signReceipt(Number.POSITIVE_INFINITY, opts).originalHash).toBe(nullHash);
+    expect(signReceipt(Number.NEGATIVE_INFINITY, opts).originalHash).toBe(nullHash);
+    // Hardening passes non-finite numbers through unchanged (it no longer
+    // redacts them to '***'), so a hardened value signs to the same digest —
+    // in every SDK, not just this one.
+    expect(signReceipt(harden(Number.NaN), opts).originalHash).toBe(nullHash);
+  });
 });
 
 describe('canonicalJson', () => {
@@ -314,6 +332,36 @@ describe('canonicalJson', () => {
 
   it('recurses through nested arrays and objects', () => {
     expect(canonicalJson({ b: [{ d: 1, c: 2 }], a: null })).toBe('{"a":null,"b":[{"c":2,"d":1}]}');
+  });
+
+  it('serializes a self-referential object as null instead of recursing to a RangeError', () => {
+    // Mirrors Python receipts._canonical: a composite already on the current
+    // serialization path spells null, the same spelling every other
+    // JSON-unencodable value gets.
+    const cyclic: Record<string, unknown> = { name: 'root' };
+    cyclic['self'] = cyclic;
+    expect(canonicalJson(cyclic)).toBe('{"name":"root","self":null}');
+  });
+
+  it('serializes an array cycle as null', () => {
+    const arr: unknown[] = [1];
+    arr.push(arr);
+    expect(canonicalJson(arr)).toBe('[1,null]');
+  });
+
+  it('serializes an indirect cycle at the point it closes', () => {
+    const inner: Record<string, unknown> = {};
+    const outer = { inner };
+    inner['back'] = outer;
+    expect(canonicalJson(outer)).toBe('{"inner":{"back":null}}');
+  });
+
+  it('serializes a shared acyclic subtree fully at every occurrence', () => {
+    // The guard is path-scoped: a value leaves the set when its subtree
+    // completes, so sharing is not mistaken for a cycle.
+    const shared = { k: 1 };
+    expect(canonicalJson({ a: shared, b: shared })).toBe('{"a":{"k":1},"b":{"k":1}}');
+    expect(canonicalJson([shared, shared])).toBe('[{"k":1},{"k":1}]');
   });
 });
 

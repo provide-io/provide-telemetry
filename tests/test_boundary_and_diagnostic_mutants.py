@@ -131,7 +131,7 @@ def test_value_at_exactly_the_length_limit_is_not_truncated() -> None:
     exact = "a" * limit
 
     assert _harden({"v": exact}, max_value_length=limit)["v"] == exact
-    assert _harden({"v": "a" * (limit + 1)}, max_value_length=limit)["v"] == exact
+    assert _harden({"v": "a" * (limit + 1)}, max_value_length=limit)["v"] == exact + "..."
 
 
 def test_attr_count_at_exactly_the_limit_is_not_truncated() -> None:

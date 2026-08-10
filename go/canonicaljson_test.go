@@ -109,6 +109,45 @@ func TestCanonicalJSONNormalizesArbitraryValues(t *testing.T) {
 	}
 }
 
+// TestCanonicalJSONGuardsCycles pins the cycle guard: a composite reached again
+// while still being serialized above this point emits null instead of recursing
+// until stack exhaustion — the spelling receipts.py's _canonical fixes.
+func TestCanonicalJSONGuardsCycles(t *testing.T) {
+	direct := map[string]any{}
+	direct["self"] = direct
+	if got := CanonicalJSON(direct); got != `{"self":null}` {
+		t.Errorf("map cycle: got %s, want {\"self\":null}", got)
+	}
+
+	sliceCycle := make([]any, 1)
+	sliceCycle[0] = sliceCycle
+	if got := CanonicalJSON(sliceCycle); got != `[null]` {
+		t.Errorf("slice cycle: got %s, want [null]", got)
+	}
+
+	indirect := map[string]any{}
+	indirect["list"] = []any{indirect}
+	if got := CanonicalJSON(indirect); got != `{"list":[null]}` {
+		t.Errorf("indirect cycle: got %s, want {\"list\":[null]}", got)
+	}
+}
+
+// TestCanonicalJSONSerializesSharedSubtreesFully is the other half of the
+// guard's contract: it is path-scoped, so an acyclic subtree reached twice
+// serializes in full at every occurrence rather than degrading to null the
+// second time. Python's receipts.py discards a composite from its seen set
+// when the subtree completes; the digests must agree.
+func TestCanonicalJSONSerializesSharedSubtreesFully(t *testing.T) {
+	shared := map[string]any{"x": int64(1)}
+	if got := CanonicalJSON(map[string]any{"a": shared, "b": shared}); got != `{"a":{"x":1},"b":{"x":1}}` {
+		t.Errorf("shared map: got %s", got)
+	}
+	sharedList := []any{int64(2)}
+	if got := CanonicalJSON(map[string]any{"a": sharedList, "b": sharedList}); got != `{"a":[2],"b":[2]}` {
+		t.Errorf("shared slice: got %s", got)
+	}
+}
+
 // TestCompareUTF16OrdersSurrogatesBelowBMPTail is the one place Go's natural
 // string order disagrees with JCS: an astral character encodes to a surrogate
 // pair starting at 0xD800, so UTF-16 sorts it below U+E000..U+FFFF while UTF-8

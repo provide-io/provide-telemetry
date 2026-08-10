@@ -87,6 +87,28 @@ describe('shutdownTelemetry', () => {
     expect(provider.shutdown).toHaveBeenCalledOnce();
   });
 
+  it('still calls shutdown when forceFlush throws synchronously', async () => {
+    // Without the catch in flushAndShutdownProvider, the sync throw escapes
+    // callProviderPhase (try/finally, no catch) before the shutdown phase,
+    // Promise.allSettled swallows it, and the provider's sockets, timers and
+    // queues leak. The failure is reported the way flushProviderOutcome
+    // reports the same broken exporter.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider: ShutdownableProvider = {
+      forceFlush: vi.fn().mockImplementation(() => {
+        throw new Error('sync exporter break');
+      }),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    };
+    _storeRegisteredProviders([provider]);
+    await expect(shutdownTelemetry()).resolves.toBeUndefined();
+    expect(provider.shutdown).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      '[provide/telemetry] provider forceFlush failed: Error: sync exporter break',
+    );
+    warn.mockRestore();
+  });
+
   it('calls shutdown on all providers even when one shutdown rejects', async () => {
     const a: ShutdownableProvider = {
       shutdown: vi.fn().mockRejectedValue(new Error('a failed')),

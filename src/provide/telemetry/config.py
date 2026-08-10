@@ -32,6 +32,7 @@ from urllib.parse import unquote
 from provide.telemetry._config_validation import parse_duration_float as _parse_duration_float
 from provide.telemetry._config_validation import parse_env_retries as _parse_env_retries
 from provide.telemetry._config_validation import resolve_otlp_endpoint as _resolve_otlp_endpoint
+from provide.telemetry._config_validation import validate_exporter_floats as _validate_exporter_floats
 from provide.telemetry._config_validation import validate_retries_ceiling as _validate_retries_ceiling
 from provide.telemetry._config_validation import warn_on_endpoint_shadowing as _warn_on_endpoint_shadowing
 from provide.telemetry._masking import _mask_endpoint_url as _mask_endpoint_url
@@ -151,6 +152,7 @@ class ExporterPolicyConfig:
         _validate_retries_ceiling(self.logs_retries, "logs_retries")
         _validate_retries_ceiling(self.traces_retries, "traces_retries")
         _validate_retries_ceiling(self.metrics_retries, "metrics_retries")
+        _validate_exporter_floats(self)
 
 
 @dataclass(slots=True)

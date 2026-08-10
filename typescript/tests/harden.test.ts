@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { harden, hardenRecord } from '../src/harden.js';
 import { resetPiiRulesForTests, sanitizePayload } from '../src/pii.js';
+import { formatPretty } from '../src/pretty.js';
 
 describe('harden — cycles and repeated subtrees', () => {
   it('redacts arrays, objects, and cycles before capture', () => {
@@ -67,12 +68,20 @@ describe('harden — scalar bounds', () => {
     expect(harden({ s: '\u0001\u0002abcd' }, { maxValueLength: 4 })).toEqual({ s: 'abcd' });
   });
 
-  it('collapses non-finite numbers, which have no JSON form', () => {
-    expect(harden({ a: Number.NaN, b: Number.POSITIVE_INFINITY, c: 1.5 })).toEqual({
-      a: '***',
-      b: '***',
-      c: 1.5,
-    });
+  it('passes non-finite numbers through unchanged, matching Python and Go', () => {
+    // harden_input and hardenScalar both leave NaN/±Infinity alone; the null
+    // spelling belongs to canonicalization, not hardening. Redacting them here
+    // diverged both the exported value and the receipt digest per SDK.
+    const out = harden({
+      a: Number.NaN,
+      b: Number.POSITIVE_INFINITY,
+      c: Number.NEGATIVE_INFINITY,
+      d: 1.5,
+    }) as Record<string, unknown>;
+    expect(out['a']).toBeNaN();
+    expect(out['b']).toBe(Number.POSITIVE_INFINITY);
+    expect(out['c']).toBe(Number.NEGATIVE_INFINITY);
+    expect(out['d']).toBe(1.5);
   });
 
   it('preserves null, undefined, booleans, and array order', () => {
@@ -129,6 +138,57 @@ describe('harden — structural bounds', () => {
     const bare = Object.create(null) as Record<string, unknown>;
     bare['a'] = 1;
     expect(harden(bare)).toEqual({ a: 1 });
+  });
+});
+
+describe('harden — key hardening', () => {
+  it('strips control characters from keys, including TAB, LF, and CR', () => {
+    // Values keep TAB/LF/CR; keys cannot — the pretty renderer emits keys
+    // bare, so any of the three splits or misaligns the rendered line.
+    expect(harden({ 'a\tb\nc\rd\u0000e\u001ff': 1 })).toEqual({ abcdef: 1 });
+  });
+
+  it('cleans keys of nested objects, not only the top level', () => {
+    expect(harden({ outer: { 'in\nner': [{ 'de\u0007ep': 2 }] } })).toEqual({
+      outer: { inner: [{ deep: 2 }] },
+    });
+  });
+
+  it('never lets a sanitized key displace a genuine key already present', () => {
+    // Cleaning is many-to-one: "trace_i\x00d" also comes out as "trace_id".
+    // A plain rebuild would let the forged late key replace the real bound
+    // value and correlate the record to an attacker-chosen trace.
+    expect(harden({ trace_id: 'real', 'trace_i\u0000d': 'evil' })).toEqual({ trace_id: 'real' });
+  });
+
+  it('lets a verbatim key reclaim its slot from a sanitized squatter, in place', () => {
+    const out = harden({ 'trace_i\u0000d': 'evil', trace_id: 'real', z: 1 }) as Record<
+      string,
+      unknown
+    >;
+    expect(out).toEqual({ trace_id: 'real', z: 1 });
+    // Re-assignment keeps the original insertion position, so reclaiming does
+    // not reorder the record.
+    expect(Object.keys(out)).toEqual(['trace_id', 'z']);
+  });
+
+  it('keeps the first of two sanitized keys that collide', () => {
+    expect(harden({ 'a\u0000': 1, 'a\u0001': 2 })).toEqual({ a: 1 });
+  });
+
+  it('stops a newline-bearing key from forging a second pretty log line', () => {
+    const record: Record<string, unknown> = {
+      level: 30,
+      time: 0,
+      event: 'checkout.started',
+      '\n2026-08-10 [error] payment.failed amount=9999': 'x',
+    };
+    hardenRecord(record);
+    const line = formatPretty(record, false);
+    expect(line).not.toContain('\n');
+    // The forged text survives as inert content on the same line, not as a
+    // second record.
+    expect(line).toContain('payment.failed');
   });
 });
 

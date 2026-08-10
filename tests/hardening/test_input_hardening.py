@@ -42,7 +42,15 @@ class TestHardenInputProcessor:
     def test_truncates_string_values_at_max_value_length(self) -> None:
         processor = harden_input(10, 64, 8)
         result = processor(None, "", {"key": "a" * 50})
-        assert result["key"] == "a" * 10
+        # Cross-SDK contract: strip, truncate to the cap, then mark with "...".
+        assert result["key"] == "a" * 10 + "..."
+
+    def test_default_cap_truncates_to_1024_plus_marker(self) -> None:
+        """Parity pin: a 1024-char prefix + "..." = 1027 total, matching Go/TS/Rust."""
+        processor = harden_input(1024, 64, 8)
+        result = processor(None, "", {"key": "x" * 2000})
+        assert result["key"] == "x" * 1024 + "..."
+        assert len(result["key"]) == 1027
 
     def test_strips_null_bytes(self) -> None:
         processor = harden_input(1024, 64, 8)
@@ -90,8 +98,8 @@ class TestHardenInputProcessor:
         processor = harden_input(5, 64, 8)
         # 3 clean chars + 2 control chars + 5 clean chars = 10 total, 8 after strip
         result = processor(None, "", {"key": "abc\x00\x01defgh"})
-        # After strip: "abcdefgh" (8 chars), truncated to 5
-        assert result["key"] == "abcde"
+        # After strip: "abcdefgh" (8 chars), truncated to 5, then marked
+        assert result["key"] == "abcde..."
 
     def test_control_char_sub_replacement_is_empty(self) -> None:
         """Kills mutant replacing sub("", value) -> sub("X", value) or similar.
@@ -114,11 +122,12 @@ class TestHardenInputProcessor:
         assert len(result["key"]) == 10
 
     def test_string_one_over_max_is_truncated(self) -> None:
-        """Complement: string one over the limit IS truncated."""
+        """Complement: string one over the limit IS truncated, and marked."""
         processor = harden_input(10, 64, 8)
         result = processor(None, "", {"key": "a" * 11})
-        assert result["key"] == "a" * 10
-        assert len(result["key"]) == 10
+        assert result["key"] == "a" * 10 + "..."
+        # Go/TS/Rust parity: the marker sits after the cap, so cap + 3.
+        assert len(result["key"]) == 13
 
     def test_attr_count_zero_disables_limit(self) -> None:
         """Kills: max_attr_count > 0 boundary mutation (>= 0 or > 1).

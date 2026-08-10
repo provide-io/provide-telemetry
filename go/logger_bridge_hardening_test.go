@@ -6,6 +6,7 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"reflect"
 	"testing"
 )
@@ -55,5 +56,53 @@ func TestBackendBridgeReceivesHardenedRedactedRecords(t *testing.T) {
 	want := map[string]any{"password": Redacted, "public": "ok"}
 	if !reflect.DeepEqual(want, rows[0]) {
 		t.Fatalf("bridged row: got %#v, want %#v", rows[0], want)
+	}
+}
+
+// TestDefaultLoggerBridgeReceivesHardenedRedactedRecords is the sibling of the
+// GetLogger test above for the package-level Logger()/slog.Default() path.
+// _wireBackendBindingsLocked used to wire the bridge as a sibling of the
+// telemetry handler — newMultiHandler(Logger().Handler(), bridge) — so records
+// logged through slog.Default() were handed to the backend raw: no consent, no
+// module log level, no sampling, no backpressure, no hardening, no PII
+// redaction. The console line showed password="***" while the plaintext secret
+// left for the OTLP collector.
+func TestDefaultLoggerBridgeReceivesHardenedRedactedRecords(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	backend := &_fakeBackend{}
+	previous, replaced := RegisterBackend("default-bridge-hardening", backend)
+	t.Cleanup(func() {
+		if replaced {
+			RegisterBackend("default-bridge-hardening", previous)
+		} else {
+			UnregisterBackend("default-bridge-hardening")
+		}
+	})
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	// A record the policy chain suppresses (default level is INFO) must never
+	// reach the bridge. The bridge's own Enabled() always answers true, so as
+	// a sibling it exported exactly these records.
+	slog.Debug("suppressed", "password", "s3cr3t")
+	if len(backend.logAttrs) != 0 {
+		t.Fatalf("a level-suppressed record reached the bridge: %#v", backend.logAttrs)
+	}
+
+	slog.Info("export", "password", "s3cr3t", "public", "ok")
+	if len(backend.logAttrs) != 1 {
+		t.Fatalf("expected 1 bridged record, got %d", len(backend.logAttrs))
+	}
+	got := backend.logAttrs[0]
+	if got["password"] != Redacted {
+		t.Fatalf("the bridge saw the plaintext secret: %#v", got["password"])
+	}
+	if got["public"] != "ok" {
+		t.Fatalf("public value was altered: %#v", got["public"])
 	}
 }

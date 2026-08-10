@@ -59,9 +59,35 @@ fn otel_test_drain_deadline_passes_through_and_clamps() {
 #[cfg(feature = "otel")]
 #[test]
 fn otel_test_bounded_flush_survives_a_non_finite_caller_timeout() {
-    assert!(bounded_flush("logs", Some(f64::NAN), || true));
-    assert!(bounded_flush("traces", Some(f64::INFINITY), || true));
-    assert!(!bounded_flush("metrics", Some(f64::MAX), || false));
+    assert_eq!(
+        bounded_flush("logs", Some(f64::NAN), || true),
+        DrainOutcome::Drained
+    );
+    assert_eq!(
+        bounded_flush("traces", Some(f64::INFINITY), || true),
+        DrainOutcome::Drained
+    );
+    assert_eq!(
+        bounded_flush("metrics", Some(f64::MAX), || false),
+        DrainOutcome::Failed
+    );
+}
+
+/// The aggregate a caller of `flush_otel` acts on: a deadline expiry outranks
+/// an in-deadline rejection, and either outranks a clean drain.
+#[test]
+fn otel_test_worst_outcome_ranks_timeout_over_failure_over_drained() {
+    let outcomes = |logs, traces, metrics| SignalDrainOutcomes {
+        logs,
+        traces,
+        metrics,
+    };
+    use DrainOutcome::{Drained, Failed, TimedOut};
+    assert_eq!(outcomes(Drained, Drained, Drained).worst(), Drained);
+    assert_eq!(outcomes(Drained, Failed, Drained).worst(), Failed);
+    assert_eq!(outcomes(Failed, Drained, TimedOut).worst(), TimedOut);
+    assert_eq!(outcomes(TimedOut, Drained, Drained).worst(), TimedOut);
+    assert_eq!(outcomes(Drained, Drained, Failed).worst(), Failed);
 }
 
 #[cfg(not(feature = "otel"))]

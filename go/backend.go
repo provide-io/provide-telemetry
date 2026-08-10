@@ -161,7 +161,16 @@ func _wireBackendBindingsLocked(cfg *TelemetryConfig) {
 	if providers.Logs {
 		bridgeName := cfg.ServiceName
 		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
-			SetLogger(slog.New(newMultiHandler(Logger().Handler(), bridge)))
+			// The bridge fans out from *below* the telemetry handler, exactly
+			// as GetLogger wires it. As a sibling of the telemetry handler —
+			// newMultiHandler(Logger().Handler(), bridge) — it received the
+			// record the caller passed in, so everything exported through the
+			// package-level Logger()/slog.Default() bypassed consent, module
+			// log level, schema, sampling, backpressure, hardening and PII
+			// redaction: the console line showed password="***" while the
+			// plaintext secret left for the OTLP collector.
+			base := newMultiHandler(_baseLogHandler(cfg), bridge)
+			SetLogger(slog.New(_newTelemetryHandler(base, cfg, "")))
 			slog.SetDefault(Logger())
 		}
 	}

@@ -387,6 +387,49 @@ func TestFlush_NotInstalledWinsOverNotOwned(t *testing.T) {
 	}
 }
 
+// A backend that implements Providers() but neither FlushableBackend nor
+// PerSignalFlushableBackend drains nothing: FlushTelemetryBySignal answers
+// (nil, false) and FlushTelemetry returns nil without touching a queue.
+// Mapping installed + setupDone + nil error to Flushed froze a serverless
+// caller on a false assurance; every installed signal must report the honest
+// not-drained outcome, which is the NotOwned spelling — installed, but not
+// drainable by us.
+func TestFlush_NeverClaimsFlushedForABackendWithoutFlushSupport(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+
+	backend := &_fakeBackend{}
+	backend.providers = SignalStatus{Logs: true, Traces: true, Metrics: true}
+	previous, replaced := RegisterBackend("no-flush-support", backend)
+	t.Cleanup(func() {
+		if replaced {
+			RegisterBackend("no-flush-support", previous)
+		} else {
+			UnregisterBackend("no-flush-support")
+		}
+	})
+
+	rt := NewTelemetryRuntime(context.Background())
+	if _, err := rt.Start(context.Background(), WithConfig(DefaultTelemetryConfig())); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	result, err := rt.Flush(context.Background())
+	if err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	for name, sig := range map[string]SignalFlushResult{
+		"logs": result.Logs, "traces": result.Traces, "metrics": result.Metrics,
+	} {
+		if sig.Flushed {
+			t.Fatalf("%s claims Flushed although nothing was drained: %+v", name, sig)
+		}
+		if !sig.NotOwned || sig.NotInstalled || sig.TimedOut || sig.Failed {
+			t.Fatalf("expected %s NotOwned only, got %+v", name, sig)
+		}
+	}
+}
+
 // _joinSignalErrors hands a lone error back untouched so FlushTelemetry's
 // documented `== context.DeadlineExceeded` still matches.
 func TestJoinSignalErrors(t *testing.T) {

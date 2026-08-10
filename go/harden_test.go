@@ -284,6 +284,80 @@ func TestHardenCollapsesRepeatedSubtrees(t *testing.T) {
 	}
 }
 
+// TestHardenCleansMapKeys closes the key half of the log-forging hole: values
+// were cleaned but map keys passed through verbatim, and the pretty renderer
+// emits keys bare — a key containing "\n2026-08-10 [error] ..." forged a
+// second attacker-controlled line. Keys use the stricter strip set (Python's
+// _CONTROL_CHAR_KEY_RE): unlike values they cannot keep TAB/LF/CR either.
+func TestHardenCleansMapKeys(t *testing.T) {
+	got := Harden(map[string]any{
+		"a\nb":                       1,
+		"c\x00d":                     2,
+		"e\tf\rg":                    3,
+		"\x7fh":                      4,
+		"\n2026-08-10 [error] forge": 5,
+	}, DefaultLimits())
+	want := map[string]any{
+		"ab":                       int64(1),
+		"cd":                       int64(2),
+		"efg":                      int64(3),
+		"h":                        int64(4),
+		"2026-08-10 [error] forge": int64(5),
+	}
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
+
+// TestHardenKeyCollisionsNeverDisplaceAVerbatimKey mirrors Python's
+// _harden_keys: cleaning is many-to-one, and a forwarded payload key like
+// "trace_i\x00d" must never replace the genuine "trace_id" — in either
+// insertion order — or a record could be correlated to an attacker-chosen
+// trace. Two sanitized keys that collide keep the first in sorted order.
+func TestHardenKeyCollisionsNeverDisplaceAVerbatimKey(t *testing.T) {
+	limits := DefaultLimits()
+	cases := []struct {
+		name  string
+		input map[string]any
+		want  map[string]any
+	}{
+		// "trace_i\x00d" sorts before "trace_id": the sanitized key lands
+		// first and the verbatim key must reclaim its name.
+		{"verbatim reclaims from a sanitized squatter",
+			map[string]any{"trace_i\x00d": "evil", "trace_id": "real"},
+			map[string]any{"trace_id": "real"}},
+		// "trace_id\x00" sorts after "trace_id": the verbatim key is already
+		// present and the sanitized key must not displace it.
+		{"sanitized never displaces verbatim",
+			map[string]any{"trace_id": "real", "trace_id\x00": "evil"},
+			map[string]any{"trace_id": "real"}},
+		{"two sanitized keys keep the first in sorted order",
+			map[string]any{"k\x00": "first", "k\x01": "second"},
+			map[string]any{"k": "first"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Harden(tc.input, limits); !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("got %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHardenKeyReclaimStillWorksAtTheAttributeCap pins why the cap skips
+// instead of breaking: a verbatim key sorted after the cap was reached must
+// still take its name back from a sanitized squatter — a replacement, not a
+// growth — while genuinely new keys stay dropped.
+func TestHardenKeyReclaimStillWorksAtTheAttributeCap(t *testing.T) {
+	limits := Limits{MaxDepth: 8, MaxValueLength: 0, MaxAttrCount: 2}
+	// Sorted order: "\x00b" (→ "b", sanitized), "a", then verbatim "b" and "c".
+	got := Harden(map[string]any{"\x00b": "evil", "a": 1, "b": "real", "c": 2}, limits)
+	want := map[string]any{"b": "real", "a": int64(1)}
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
+
 // TestHardenDoesNotConflateEmptyContainers guards the one way pointer identity
 // lies: Go gives every zero-size allocation the same address, so two unrelated
 // empty slices look like the same reference.

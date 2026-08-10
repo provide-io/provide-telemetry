@@ -38,13 +38,19 @@ fn blocked_until_for(
 #[test]
 fn a_failed_drain_is_reported_as_failure() {
     let _guard = crate::testing::acquire_test_state_lock();
-    assert!(!bounded_flush("traces", None, || false));
+    assert_eq!(
+        bounded_flush("traces", None, || false),
+        DrainOutcome::Failed
+    );
 }
 
 #[test]
 fn a_successful_drain_is_reported_as_success() {
     let _guard = crate::testing::acquire_test_state_lock();
-    assert!(bounded_flush("traces", None, || true));
+    assert_eq!(
+        bounded_flush("traces", None, || true),
+        DrainOutcome::Drained
+    );
 }
 
 /// A drain still running at the deadline is abandoned and reported as a
@@ -65,7 +71,10 @@ fn a_drain_abandoned_at_the_deadline_is_reported_as_failure() {
     crate::runtime::set_active_config(Some(cfg));
 
     let released = Arc::new(AtomicBool::new(false));
-    assert!(!bounded_flush("metrics", None, blocked_until(&released)));
+    assert_eq!(
+        bounded_flush("metrics", None, blocked_until(&released)),
+        DrainOutcome::TimedOut
+    );
     assert_eq!(
         abandoned_worker_count_for_tests(),
         1,
@@ -102,7 +111,10 @@ fn a_zero_configured_deadline_abandons_the_drain_immediately() {
 
     let released = Arc::new(AtomicBool::new(false));
     let started = Instant::now();
-    assert!(!bounded_flush("logs", None, blocked_until(&released)));
+    assert_eq!(
+        bounded_flush("logs", None, blocked_until(&released)),
+        DrainOutcome::TimedOut
+    );
     assert!(
         started.elapsed() < Duration::from_millis(200),
         "a zero budget must not wait for the drain"
@@ -126,8 +138,9 @@ fn a_non_positive_caller_deadline_abandons_the_drain_immediately() {
     for deadline in [0.0, -1.0] {
         let released = Arc::new(AtomicBool::new(false));
         let started = Instant::now();
-        assert!(
-            !bounded_flush("traces", Some(deadline), blocked_until(&released)),
+        assert_eq!(
+            bounded_flush("traces", Some(deadline), blocked_until(&released)),
+            DrainOutcome::TimedOut,
             "flush({deadline}) must report the drain abandoned"
         );
         assert!(
@@ -145,7 +158,10 @@ fn a_non_positive_caller_deadline_abandons_the_drain_immediately() {
 #[test]
 fn a_small_positive_deadline_still_drains() {
     let _guard = crate::testing::acquire_test_state_lock();
-    assert!(bounded_flush("logs", Some(0.5), || true));
+    assert_eq!(
+        bounded_flush("logs", Some(0.5), || true),
+        DrainOutcome::Drained
+    );
 }
 
 /// The whole point of the guard: these arguments used to panic inside
@@ -154,9 +170,20 @@ fn a_small_positive_deadline_still_drains() {
 #[test]
 fn bounded_flush_survives_a_non_finite_caller_timeout() {
     let _guard = crate::testing::acquire_test_state_lock();
-    assert!(bounded_flush("logs", Some(f64::NAN), || true));
-    assert!(bounded_flush("traces", Some(f64::INFINITY), || true));
-    assert!(!bounded_flush("metrics", Some(f64::MAX), || false));
+    assert_eq!(
+        bounded_flush("logs", Some(f64::NAN), || true),
+        DrainOutcome::Drained
+    );
+    assert_eq!(
+        bounded_flush("traces", Some(f64::INFINITY), || true),
+        DrainOutcome::Drained
+    );
+    // An unbounded drain that completed and was rejected failed — nothing
+    // expired, so it must never read as a timeout.
+    assert_eq!(
+        bounded_flush("metrics", Some(f64::MAX), || false),
+        DrainOutcome::Failed
+    );
 }
 
 /// At the OS thread limit the spawn fails; the drain must run inline instead
@@ -169,18 +196,14 @@ fn a_failed_spawn_falls_back_to_an_inline_drain() {
     let failing_spawn = |_name: String, _job: Box<dyn FnOnce() + Send + 'static>| {
         Err(std::io::Error::other("thread limit reached"))
     };
-    assert!(bounded_flush_with(
-        "logs",
-        Some(5.0),
-        || true,
-        failing_spawn
-    ));
-    assert!(!bounded_flush_with(
-        "logs",
-        Some(5.0),
-        || false,
-        failing_spawn
-    ));
+    assert_eq!(
+        bounded_flush_with("logs", Some(5.0), || true, failing_spawn),
+        DrainOutcome::Drained
+    );
+    assert_eq!(
+        bounded_flush_with("logs", Some(5.0), || false, failing_spawn),
+        DrainOutcome::Failed
+    );
 }
 
 /// The teardown counterpart: a failed spawn tears down inline, on the calling
@@ -216,24 +239,31 @@ fn a_saturated_budget_declines_flush_but_never_teardown() {
     // Strand workers up to the cap.
     let released = Arc::new(AtomicBool::new(false));
     for n in 0..8 {
-        assert!(
-            !bounded_flush(
+        assert_eq!(
+            bounded_flush(
                 "logs",
                 Some(0.01),
                 blocked_until_for(&released, Duration::from_secs(3))
             ),
-            "stranding flush {n} must report failure"
+            DrainOutcome::TimedOut,
+            "stranding flush {n} must report an abandoned drain"
         );
     }
     assert_eq!(abandoned_worker_count_for_tests(), 8);
 
-    // The ninth flush declines: reported failed, and the drain never ran.
+    // The ninth flush declines: the drain never ran, and the outcome is
+    // TimedOut — the records are hostage to the earlier deadline expiries
+    // that saturated the budget, matching what Python's `_drain_signal`
+    // reports for a declined drain.
     let ran = Arc::new(AtomicBool::new(false));
     let ran_flag = Arc::clone(&ran);
-    assert!(!bounded_flush("logs", Some(5.0), move || {
-        ran_flag.store(true, Ordering::Release);
-        true
-    }));
+    assert_eq!(
+        bounded_flush("logs", Some(5.0), move || {
+            ran_flag.store(true, Ordering::Release);
+            true
+        }),
+        DrainOutcome::TimedOut
+    );
     assert!(
         !ran.load(Ordering::Acquire),
         "a declined flush must not strand another worker"
@@ -356,9 +386,12 @@ fn stalled_drains_run_together_share_one_deadline() {
         let logs = scope.spawn(|| bounded_flush("logs", None, blocked_until(&released)));
         let traces = scope.spawn(|| bounded_flush("traces", None, blocked_until(&released)));
         let metrics = bounded_flush("metrics", None, blocked_until(&released));
-        assert!(!logs.join().expect("logs worker"));
-        assert!(!traces.join().expect("traces worker"));
-        assert!(!metrics);
+        assert_eq!(logs.join().expect("logs worker"), DrainOutcome::TimedOut);
+        assert_eq!(
+            traces.join().expect("traces worker"),
+            DrainOutcome::TimedOut
+        );
+        assert_eq!(metrics, DrainOutcome::TimedOut);
     });
     let elapsed = started.elapsed();
     released.store(true, Ordering::Release);

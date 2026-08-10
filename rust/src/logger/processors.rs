@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
-use crate::harden::{harden_value, HardenLimits};
+use crate::harden::{clean_key, cleaned_key_claims_slot, harden_value, HardenLimits};
 use crate::pii::{detect_secret_in_string, sanitize_payload, REDACTED_SENTINEL};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
@@ -160,7 +160,45 @@ fn harden_input(event: &mut LogEvent, limits: HardenLimits) {
         // Depth 1: the context map itself is the depth-0 composite.
         *value = harden_value(value, limits, 1);
     }
-    let max_attr_count = limits.max_attr_count;
+    cap_attr_count(event, limits.max_attr_count);
+    // Top-level keys are hardened as well as values, after the cap — the same
+    // order as Python's `harden_input`. [`harden_value`] cleans the keys of
+    // *nested* maps, but the context map's own keys — the ones the pretty
+    // renderer emits bare as `key=value` — never pass through it, so a key
+    // containing "\n2026-08-10 [error] ..." would forge a second,
+    // attacker-controlled log line. Mirrors Python's `_harden_keys`.
+    harden_keys(&mut event.context);
+}
+
+/// Rebuild the context under cleaned keys, resolving collisions safely.
+///
+/// Cleaning is many-to-one, and the collision policy
+/// ([`cleaned_key_claims_slot`]) is what keeps a forged `"trace_i\x00d"`
+/// payload key from replacing the genuine `trace_id` and correlating the
+/// record to an attacker-chosen trace.
+fn harden_keys(context: &mut BTreeMap<String, Value>) {
+    use std::collections::BTreeSet;
+    let original = std::mem::take(context);
+    let mut verbatim: BTreeSet<String> = BTreeSet::new();
+    for (key, value) in original {
+        let name = clean_key(&key);
+        let untouched = name == key;
+        if !cleaned_key_claims_slot(
+            context.contains_key(&name),
+            untouched,
+            verbatim.contains(&name),
+        ) {
+            continue;
+        }
+        context.insert(name.clone(), value);
+        if untouched {
+            verbatim.insert(name);
+        }
+    }
+}
+
+/// Cap how many top-level keys survive, keeping priority fields first.
+fn cap_attr_count(event: &mut LogEvent, max_attr_count: usize) {
     if max_attr_count == 0 {
         return;
     }
@@ -281,3 +319,7 @@ mod message_pii_tests;
 #[cfg(test)]
 #[path = "processors_edge_tests.rs"]
 mod edge_tests;
+
+#[cfg(test)]
+#[path = "processors_key_hardening_tests.rs"]
+mod key_hardening_tests;

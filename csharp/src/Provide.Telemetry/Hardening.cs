@@ -43,11 +43,17 @@ internal static class Hardening
         // whatever leaves this stage.
         if (depth >= maxDepth) return Pii.Redacted;
 
-        var composite = IsComposite(value);
-        // A structure that reaches itself would otherwise recurse until the
-        // stack ran out. The value is on the current path, not merely seen
-        // before, so a shared (but acyclic) sub-object is still traversed.
-        if (composite && !seen.Add(value)) return Pii.Redacted;
+        // The seen set is walk-scoped: created once per record and never
+        // drained, so a composite encountered twice anywhere in the walk — a
+        // cycle, or an acyclic subtree shared between two keys — collapses to
+        // the redaction placeholder at its second occurrence. This is the rule
+        // every other SDK applies: Python's harden_input (pinned by
+        // test_a_subtree_shared_between_two_keys_is_expanded_once),
+        // typescript/src/harden.ts's never-deleted WeakSet, and go/harden.go's
+        // never-removed identity set. An n-times-shared subtree would otherwise
+        // expand n-fold here and once everywhere else, diverging both the
+        // payload and its receipt digest.
+        if (IsComposite(value) && !seen.Add(value)) return Pii.Redacted;
 
         try
         {
@@ -59,10 +65,6 @@ internal static class Hardening
             // must not fault the caller's log call. Redacting is the safe
             // answer: nothing is known about the value, so nothing is shown.
             return Pii.Redacted;
-        }
-        finally
-        {
-            if (composite) seen.Remove(value);
         }
     }
 

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{RuntimeOverrides, TelemetryConfig};
 use crate::errors::TelemetryError;
+use crate::otel::DrainOutcome;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignalStatus {
@@ -86,15 +87,20 @@ pub type runtime_status = RuntimeStatus;
 
 /// True when any owned signal's drain was abandoned at its deadline.
 ///
-/// Only `timed_out` can be set for a signal we installed and drained, so this
-/// is exactly "an owned drain did not complete" — `not_installed` and
-/// `not_owned` signals have nothing of ours to lose and are not failures.
+/// `not_installed` and `not_owned` signals have nothing of ours to lose and
+/// are not failures.
 fn any_owned_drain_abandoned(result: &FlushResult) -> bool {
     result.logs.timed_out || result.traces.timed_out || result.metrics.timed_out
 }
 
-/// One signal's flush outcome, from what is installed, what we own, and whether
-/// it drained.
+/// True when any owned signal's drain completed but was rejected by its
+/// exporter — the `failed` half of the abandoned/failed split.
+fn any_owned_drain_rejected(result: &FlushResult) -> bool {
+    result.logs.failed || result.traces.failed || result.metrics.failed
+}
+
+/// One signal's flush outcome, from what is installed, what we own, and what
+/// its drain reported.
 ///
 /// A free function rather than a closure inside `flush` so it is reachable
 /// without a live provider: in a build with no OTel providers installed, only
@@ -104,8 +110,11 @@ fn any_owned_drain_abandoned(result: &FlushResult) -> bool {
 /// A signal with no provider has nothing to drain. A signal whose provider was
 /// adopted from the OTel globals belongs to the host — we leave it alone, so
 /// calling it `flushed` would claim records are out while they sit in the
-/// host's batch processor.
-fn signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalFlushResult {
+/// host's batch processor. An owned drain carries the three-way outcome
+/// through: `flushed`, `failed` (the exporter rejected the drain inside the
+/// deadline) or `timed_out` (abandoned at the deadline) — the same split
+/// Python, Go and TypeScript populate.
+fn signal_flush_result(installed: bool, owned: bool, outcome: DrainOutcome) -> SignalFlushResult {
     if !installed {
         return SignalFlushResult {
             not_installed: true,
@@ -119,8 +128,9 @@ fn signal_flush_result(installed: bool, owned: bool, drained: bool) -> SignalFlu
         };
     }
     SignalFlushResult {
-        flushed: drained,
-        timed_out: !drained,
+        flushed: outcome == DrainOutcome::Drained,
+        timed_out: outcome == DrainOutcome::TimedOut,
+        failed: outcome == DrainOutcome::Failed,
         ..SignalFlushResult::default()
     }
 }
@@ -180,10 +190,13 @@ impl TelemetryRuntime {
     /// `not_owned` (the host's to drain, so we leave it alone); the rest carry
     /// the result of their own drain, not an aggregate of all three.
     ///
-    /// Returns `Err` when any owned signal was abandoned at the deadline, so
+    /// Returns `Err` when any owned signal's records may still be queued —
+    /// abandoned at the deadline, or rejected by its exporter inside it — so
     /// `rt.flush(None)?` before a freeze fails loudly instead of freezing with
     /// records still queued — the contract `setup::flush_telemetry` has always
-    /// had. Inspect the `FlushResult` on `Ok` for per-signal detail.
+    /// had. The two error messages stay distinct: an exporter that rejected
+    /// the drain in milliseconds never exceeded any deadline. Inspect the
+    /// `FlushResult` on `Ok` for per-signal detail.
     pub fn flush(&self, timeout_seconds: Option<f64>) -> Result<FlushResult, TelemetryError> {
         let providers = crate::runtime::get_runtime_status().providers;
         let owned = crate::otel::owned_signals();
@@ -196,6 +209,11 @@ impl TelemetryRuntime {
         if any_owned_drain_abandoned(&result) {
             return Err(TelemetryError::new(
                 "telemetry flush exceeded its deadline; records may not have been exported",
+            ));
+        }
+        if any_owned_drain_rejected(&result) {
+            return Err(TelemetryError::new(
+                "telemetry flush failed: an exporter rejected the drain; records may not have been exported",
             ));
         }
         Ok(result)
@@ -262,7 +280,10 @@ impl TelemetryRuntime {
 
 #[cfg(test)]
 mod signal_flush_result_tests {
-    use super::{any_owned_drain_abandoned, signal_flush_result, FlushResult, SignalFlushResult};
+    use super::{
+        any_owned_drain_abandoned, any_owned_drain_rejected, signal_flush_result, DrainOutcome,
+        FlushResult, SignalFlushResult,
+    };
 
     fn drained() -> SignalFlushResult {
         SignalFlushResult {
@@ -323,14 +344,15 @@ mod signal_flush_result_tests {
     }
 
     /// The full truth table. Each row is a distinct answer a caller acts on:
-    /// nothing to drain, not ours to drain, drained, or missed the deadline.
+    /// nothing to drain, not ours to drain, drained, rejected by the exporter,
+    /// or missed the deadline.
     #[test]
     fn covers_every_combination() {
-        let cases: [(bool, bool, bool, SignalFlushResult); 5] = [
+        let cases: [(bool, bool, DrainOutcome, SignalFlushResult); 6] = [
             (
                 false,
                 false,
-                true,
+                DrainOutcome::Drained,
                 SignalFlushResult {
                     not_installed: true,
                     ..SignalFlushResult::default()
@@ -339,7 +361,7 @@ mod signal_flush_result_tests {
             (
                 false,
                 true,
-                true,
+                DrainOutcome::Drained,
                 SignalFlushResult {
                     not_installed: true,
                     ..SignalFlushResult::default()
@@ -348,7 +370,7 @@ mod signal_flush_result_tests {
             (
                 true,
                 false,
-                true,
+                DrainOutcome::Drained,
                 SignalFlushResult {
                     not_owned: true,
                     ..SignalFlushResult::default()
@@ -357,7 +379,7 @@ mod signal_flush_result_tests {
             (
                 true,
                 true,
-                true,
+                DrainOutcome::Drained,
                 SignalFlushResult {
                     flushed: true,
                     ..SignalFlushResult::default()
@@ -366,7 +388,16 @@ mod signal_flush_result_tests {
             (
                 true,
                 true,
-                false,
+                DrainOutcome::Failed,
+                SignalFlushResult {
+                    failed: true,
+                    ..SignalFlushResult::default()
+                },
+            ),
+            (
+                true,
+                true,
+                DrainOutcome::TimedOut,
                 SignalFlushResult {
                     timed_out: true,
                     ..SignalFlushResult::default()
@@ -374,11 +405,11 @@ mod signal_flush_result_tests {
             ),
         ];
 
-        for (installed, owned, drained, want) in cases {
-            let got = signal_flush_result(installed, owned, drained);
+        for (installed, owned, outcome, want) in cases {
+            let got = signal_flush_result(installed, owned, outcome);
             assert_eq!(
                 got, want,
-                "installed={installed} owned={owned} drained={drained}"
+                "installed={installed} owned={owned} outcome={outcome:?}"
             );
         }
     }
@@ -387,7 +418,7 @@ mod signal_flush_result_tests {
     /// not "the host's to drain", it is simply absent.
     #[test]
     fn not_installed_takes_precedence_over_not_owned() {
-        let got = signal_flush_result(false, false, false);
+        let got = signal_flush_result(false, false, DrainOutcome::TimedOut);
         assert!(got.not_installed);
         assert!(!got.not_owned);
         assert!(!got.flushed);
@@ -398,9 +429,49 @@ mod signal_flush_result_tests {
     /// flushed — the distinction a caller checks before a serverless freeze.
     #[test]
     fn a_missed_deadline_is_never_reported_as_flushed() {
-        let got = signal_flush_result(true, true, false);
+        let got = signal_flush_result(true, true, DrainOutcome::TimedOut);
         assert!(!got.flushed);
         assert!(got.timed_out);
         assert!(!got.failed);
+    }
+
+    /// An exporter that rejected the drain inside the deadline is failed and
+    /// only failed: reporting it timed_out sends an operator tuning timeouts
+    /// when the fix is a bad auth header or an unreachable collector.
+    #[test]
+    fn an_in_deadline_rejection_is_failed_never_timed_out() {
+        let got = signal_flush_result(true, true, DrainOutcome::Failed);
+        assert!(!got.flushed);
+        assert!(!got.timed_out);
+        assert!(got.failed);
+    }
+
+    /// The rejected check is per signal, like the abandoned one: a single
+    /// rejecting exporter must turn `flush()` into an error.
+    #[test]
+    fn one_rejected_signal_is_enough_to_report_a_rejected_drain() {
+        let clean = FlushResult {
+            logs: drained(),
+            traces: drained(),
+            metrics: drained(),
+        };
+        assert!(!any_owned_drain_rejected(&clean));
+
+        let rejected = SignalFlushResult {
+            failed: true,
+            ..SignalFlushResult::default()
+        };
+        for signal in ["logs", "traces", "metrics"] {
+            let mut result = clean.clone();
+            match signal {
+                "logs" => result.logs = rejected,
+                "traces" => result.traces = rejected,
+                _ => result.metrics = rejected,
+            }
+            assert!(
+                any_owned_drain_rejected(&result),
+                "a rejected {signal} drain must be reported"
+            );
+        }
     }
 }

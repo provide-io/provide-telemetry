@@ -293,11 +293,35 @@ func hardenString(s string, limits Limits) string {
 	return string(runes[:limits.MaxValueLength]) + piicore.TruncationSuffix
 }
 
-// hardenMap normalizes a map to map[string]any.
+// _cleanKey strips every control character from an attribute key.
+//
+// Keys need a stricter set than values: hardenString lets TAB, LF and CR
+// survive because they are legitimate content in a message or stack trace, but
+// the pretty renderer emits keys bare, so any of the three splits or misaligns
+// the rendered line — a key containing "\n2026-08-10 [error] ..." forges a
+// second, attacker-controlled log line. The strip set is character for
+// character Python's _CONTROL_CHAR_KEY_RE ([\x00-\x1f\x7f]).
+func _cleanKey(key string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, key)
+}
+
+// hardenMap normalizes a map to map[string]any under cleaned keys.
 //
 // Keys are visited in sorted order so that the attribute cap keeps the same
 // subset every time: Go randomizes map iteration, and a cap applied to a random
 // order would drop a different field on every record.
+//
+// Cleaning is many-to-one: "trace_i\x00d" and "trace_id" both come out as
+// "trace_id", and letting the sanitized one win would let a forwarded payload
+// key displace a genuine field. Mirroring Python's _harden_keys: a key that
+// needed cleaning never displaces one already present, a key that needed no
+// cleaning always reclaims its name from a sanitized one that got there first,
+// and two sanitized keys that collide keep the first (here, in sorted order).
 func hardenMap(v reflect.Value, seen map[visit]struct{}, depth int, limits Limits) any {
 	if v.Type().Key().Kind() != reflect.String {
 		// JSON has no encoding for a non-string key, and inventing one (the
@@ -309,11 +333,25 @@ func hardenMap(v reflect.Value, seen map[visit]struct{}, depth int, limits Limit
 		return strings.Compare(a.String(), b.String())
 	})
 	out := make(map[string]any, len(keys))
+	verbatim := make(map[string]struct{}, len(keys))
 	for _, key := range keys {
-		if limits.MaxAttrCount > 0 && len(out) >= limits.MaxAttrCount {
-			break
+		text := key.String()
+		name := _cleanKey(text)
+		untouched := name == text
+		if _, taken := out[name]; taken {
+			if _, keptVerbatim := verbatim[name]; !untouched || keptVerbatim {
+				continue
+			}
+		} else if limits.MaxAttrCount > 0 && len(out) >= limits.MaxAttrCount {
+			// Skip rather than break: a verbatim key sorted after the cap was
+			// reached must still reclaim its name from a sanitized squatter,
+			// which replaces an entry rather than growing the map.
+			continue
 		}
-		out[key.String()] = hardenValue(v.MapIndex(key), seen, depth+1, limits)
+		out[name] = hardenValue(v.MapIndex(key), seen, depth+1, limits)
+		if untouched {
+			verbatim[name] = struct{}{}
+		}
 	}
 	return out
 }

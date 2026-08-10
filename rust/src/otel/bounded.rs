@@ -11,6 +11,8 @@ use std::io;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
+use super::DrainOutcome;
+
 /// Ceiling applied to a drain deadline. Past this a "bounded" drain is not
 /// bounding anything, and it keeps the value well inside what
 /// `Duration::from_secs_f64` can represent.
@@ -216,19 +218,35 @@ pub(crate) fn bounded_teardown_with<F, S>(
 /// Run `flush` under the bounded-shutdown deadline, on a detached worker when
 /// one applies. `flush` reports whether the export succeeded.
 ///
-/// Returns false when the deadline expired and the worker was abandoned, and
-/// also when the drain finished but failed — both mean records may still be
-/// sitting in the exporter's queue, which is what the caller needs to know.
+/// The outcome keeps the deadline expiry and the in-deadline rejection apart:
+/// [`DrainOutcome::TimedOut`] when the worker was abandoned at the deadline,
+/// [`DrainOutcome::Failed`] when the drain finished in time but the exporter
+/// rejected it. Both mean records may still be sitting in the exporter's
+/// queue, but a caller alerting on the distinction — Python's
+/// `"timed_out"`/`"failed"`, Go's `context.DeadlineExceeded` check — must not
+/// see the two collapsed.
 ///
 /// Past [`MAX_ABANDONED_WORKERS`] stranded workers the flush declines to start
-/// another and reports the drain as failed, which is what it is — flush runs
-/// per request boundary, so against an unreachable collector it would
-/// otherwise strand a thread per call until the process hits its thread limit.
-pub(crate) fn bounded_flush<F>(signal: &str, timeout_seconds: Option<f64>, flush: F) -> bool
+/// another — flush runs per request boundary, so against an unreachable
+/// collector it would otherwise strand a thread per call until the process
+/// hits its thread limit. A declined drain reports [`DrainOutcome::TimedOut`],
+/// matching Python, where the decline surfaces through the same `False` its
+/// `_drain_signal` maps to `"timed_out"`: the records are hostage to the
+/// earlier deadline expiries that saturated the budget.
+pub(crate) fn bounded_flush<F>(signal: &str, timeout_seconds: Option<f64>, flush: F) -> DrainOutcome
 where
     F: FnOnce() -> bool + Send + 'static,
 {
     bounded_flush_with(signal, timeout_seconds, flush, spawn_worker)
+}
+
+/// Map the report of a drain that ran to completion — no deadline expired.
+fn completed_drain_outcome(exported: bool) -> DrainOutcome {
+    if exported {
+        DrainOutcome::Drained
+    } else {
+        DrainOutcome::Failed
+    }
 }
 
 pub(crate) fn bounded_flush_with<F, S>(
@@ -236,7 +254,7 @@ pub(crate) fn bounded_flush_with<F, S>(
     timeout_seconds: Option<f64>,
     flush: F,
     spawn: S,
-) -> bool
+) -> DrainOutcome
 where
     F: FnOnce() -> bool + Send + 'static,
     S: FnOnce(String, Box<dyn FnOnce() + Send + 'static>) -> SpawnResult,
@@ -245,15 +263,17 @@ where
     // a budget (a SIGTERM handler, a request boundary) can bound this call.
     let timeout_secs = timeout_seconds.unwrap_or_else(configured_drain_seconds);
 
-    // No usable bound (NaN or infinity) — do the synchronous drain.
+    // No usable bound (NaN or infinity) — do the synchronous drain. It ran to
+    // completion, so the only outcomes are drained and failed: a deadline that
+    // does not exist cannot expire.
     let Some(timeout) = drain_deadline(timeout_secs) else {
-        return flush();
+        return completed_drain_outcome(flush());
     };
     if drain_budget_saturated(abandoned_worker_count()) {
         eprintln!(
             "provide_telemetry: {signal} flush skipped: {MAX_ABANDONED_WORKERS} earlier drain workers are still pending against an unresponsive exporter",
         );
-        return false;
+        return DrainOutcome::TimedOut;
     }
     let (tx, rx) = mpsc::channel();
     let acct = Arc::new(Mutex::new(DrainAccounting {
@@ -279,17 +299,19 @@ where
         eprintln!(
             "provide_telemetry: {signal} flush worker could not be spawned; draining inline without a deadline",
         );
-        return run_leftover_job(&job)
-            .expect("flush job is present: the failed spawn never ran it");
+        return completed_drain_outcome(
+            run_leftover_job(&job).expect("flush job is present: the failed spawn never ran it"),
+        );
     }
 
     match rx.recv_timeout(timeout) {
-        Ok(true) => true,
-        // The drain finished in time but the exporter rejected it: reporting Ok
-        // here would tell a caller its records are out when they are not.
+        Ok(true) => DrainOutcome::Drained,
+        // The drain finished in time but the exporter rejected it: reporting
+        // Drained here would tell a caller its records are out when they are
+        // not, and TimedOut would claim a deadline expired when nothing did.
         Ok(false) => {
             eprintln!("provide_telemetry: {signal} flush failed");
-            false
+            DrainOutcome::Failed
         }
         Err(_) => {
             note_worker_abandoned(&acct);
@@ -297,7 +319,7 @@ where
                 "provide_telemetry: {signal} flush exceeded {:.3}s deadline; abandoning background flush",
                 timeout.as_secs_f64(),
             );
-            false
+            DrainOutcome::TimedOut
         }
     }
 }

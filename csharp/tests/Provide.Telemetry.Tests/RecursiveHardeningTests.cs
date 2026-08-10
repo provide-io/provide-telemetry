@@ -126,15 +126,48 @@ public class RecursiveHardeningTests
     }
 
     [Fact]
-    public void SharedButAcyclicSubtreesAreStillTraversed()
+    public void ASubtreeSharedBetweenTwoKeysIsExpandedOnce()
     {
-        // Cycle detection tracks the current path, not everything ever seen: a
-        // value referenced twice is not a cycle and must not be redacted.
-        var shared = new Dictionary<string, object?> { ["kept"] = "visible" };
+        // The seen set is walk-scoped, not path-scoped: the second occurrence
+        // of the same composite anywhere in the walk collapses to the
+        // placeholder. Matches Python's
+        // test_a_subtree_shared_between_two_keys_is_expanded_once, TypeScript's
+        // never-deleted WeakSet, and Go's never-removed identity set — an
+        // n-times-shared subtree must not expand n-fold.
+        var shared = new Dictionary<string, object?> { ["k"] = "v" };
         var payload = new Dictionary<string, object?> { ["a"] = shared, ["b"] = shared };
         var hardened = (Dictionary<string, object?>)Pii.Harden(payload)!;
-        Assert.Equal("visible", ((Dictionary<string, object?>)hardened["a"]!)["kept"]);
-        Assert.Equal("visible", ((Dictionary<string, object?>)hardened["b"]!)["kept"]);
+        Assert.Equal("v", ((Dictionary<string, object?>)hardened["a"]!)["k"]);
+        Assert.Equal(Pii.Redacted, hardened["b"]);
+    }
+
+    [Fact]
+    public void SharedSubtreeMaskingIsPerWalkNotPerProcess()
+    {
+        // The identity set is created per Harden call: a subtree already seen
+        // by one walk must expand fully in the next.
+        var shared = new Dictionary<string, object?> { ["k"] = "v" };
+        var first = (Dictionary<string, object?>)Pii.Harden(
+            new Dictionary<string, object?> { ["a"] = shared })!;
+        var second = (Dictionary<string, object?>)Pii.Harden(
+            new Dictionary<string, object?> { ["a"] = shared })!;
+        Assert.Equal("v", ((Dictionary<string, object?>)first["a"]!)["k"]);
+        Assert.Equal("v", ((Dictionary<string, object?>)second["a"]!)["k"]);
+    }
+
+    [Fact]
+    public void MaskingIsByIdentityNotEquality()
+    {
+        // Two distinct subtrees that merely look alike both survive: the set
+        // compares references, not values.
+        var payload = new Dictionary<string, object?>
+        {
+            ["a"] = new Dictionary<string, object?> { ["k"] = "v" },
+            ["b"] = new Dictionary<string, object?> { ["k"] = "v" },
+        };
+        var hardened = (Dictionary<string, object?>)Pii.Harden(payload)!;
+        Assert.Equal("v", ((Dictionary<string, object?>)hardened["a"]!)["k"]);
+        Assert.Equal("v", ((Dictionary<string, object?>)hardened["b"]!)["k"]);
     }
 
     [Fact]

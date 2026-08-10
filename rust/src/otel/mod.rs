@@ -63,22 +63,65 @@ pub(crate) use bounded::drain_deadline;
 #[cfg(feature = "otel")]
 pub(crate) use bounded::{bounded_flush, bounded_teardown};
 
+/// What one bounded drain reported.
+///
+/// Three outcomes, not two: an exporter that rejected the drain in
+/// milliseconds (bad auth header, TLS failure) never timed anything out, and a
+/// caller alerting on the distinction must not see the two collapsed. The same
+/// split Python's `SignalDrainOutcome` ("flushed"/"timed_out"/"failed"), Go's
+/// `errors.Is(err, context.DeadlineExceeded)` branch and TypeScript's
+/// `'timedOut' | 'failed'` report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DrainOutcome {
+    /// The drain completed inside the deadline and the exporter accepted it —
+    /// or there was nothing installed to drain.
+    Drained,
+    /// The drain completed inside the deadline but the exporter rejected it.
+    Failed,
+    /// The drain was abandoned at the deadline with records still queued.
+    TimedOut,
+}
+
 /// Force-flush every installed provider, leaving them installed.
 ///
-/// Returns false when any signal was abandoned at the deadline. Every signal
-/// gets its attempt regardless — one stalled exporter must not deny the others
-/// their drain.
-pub(crate) fn flush_otel(timeout_seconds: Option<f64>) -> bool {
-    let per_signal = flush_otel_by_signal(timeout_seconds);
-    per_signal.logs && per_signal.traces && per_signal.metrics
+/// Collapses the per-signal outcomes to the worst one for callers that only
+/// want "did everything get out". Every signal gets its attempt regardless —
+/// one stalled exporter must not deny the others their drain.
+pub(crate) fn flush_otel(timeout_seconds: Option<f64>) -> DrainOutcome {
+    flush_otel_by_signal(timeout_seconds).worst()
 }
 
 /// One drain outcome per signal.
 ///
 /// The signals drain against three potentially different endpoints, so an
 /// unreachable logs collector says nothing about traces and metrics. Collapsing
-/// them to a single bool — which [`flush_otel`] still does for its own callers —
-/// makes a facade report every signal as failed when one was.
+/// them — which [`flush_otel`] still does for its own callers — makes a facade
+/// report every signal as failed when one was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SignalDrainOutcomes {
+    pub logs: DrainOutcome,
+    pub traces: DrainOutcome,
+    pub metrics: DrainOutcome,
+}
+
+impl SignalDrainOutcomes {
+    /// The single outcome an aggregate caller acts on. A deadline expiry
+    /// outranks an in-deadline rejection — it is the one that means the
+    /// caller's budget is spent — and either outranks a clean drain.
+    pub(crate) fn worst(self) -> DrainOutcome {
+        let signals = [self.logs, self.traces, self.metrics];
+        if signals.contains(&DrainOutcome::TimedOut) {
+            return DrainOutcome::TimedOut;
+        }
+        if signals.contains(&DrainOutcome::Failed) {
+            return DrainOutcome::Failed;
+        }
+        DrainOutcome::Drained
+    }
+}
+
+/// Which of the three signals answered `true` to a per-signal question —
+/// today, "did we install this signal's provider" ([`owned_signals`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SignalDrains {
     pub logs: bool,
@@ -121,7 +164,7 @@ fn note_blocking_drain() {
     }
 }
 
-pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains {
+pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrainOutcomes {
     note_blocking_drain();
 
     #[cfg(feature = "otel")]
@@ -144,7 +187,7 @@ pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains
                 .name("provide-traces-drain".to_string())
                 .spawn_scoped(scope, drain_traces);
             let metrics = flush::flush_meter_provider(timeout_seconds);
-            SignalDrains {
+            SignalDrainOutcomes {
                 logs: bounded::join_or_inline(logs, drain_logs),
                 traces: bounded::join_or_inline(traces, drain_traces),
                 metrics,
@@ -155,10 +198,10 @@ pub(crate) fn flush_otel_by_signal(timeout_seconds: Option<f64>) -> SignalDrains
     #[cfg(not(feature = "otel"))]
     {
         let _ = timeout_seconds;
-        SignalDrains {
-            logs: true,
-            traces: true,
-            metrics: true,
+        SignalDrainOutcomes {
+            logs: DrainOutcome::Drained,
+            traces: DrainOutcome::Drained,
+            metrics: DrainOutcome::Drained,
         }
     }
 }

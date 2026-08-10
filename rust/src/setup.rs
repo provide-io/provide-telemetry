@@ -76,12 +76,18 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
 /// uses the configured one. Matches Python's `flush_telemetry(timeout_seconds)`,
 /// TypeScript's `flushTelemetry(timeoutMs)` and Go's context deadline.
 pub fn flush_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryError> {
-    if flush_otel(timeout_seconds) {
-        return Ok(());
+    match flush_otel(timeout_seconds) {
+        crate::otel::DrainOutcome::Drained => Ok(()),
+        // The exporter answered inside the deadline and said no — claiming the
+        // deadline was exceeded would send an operator tuning timeouts when
+        // the fix is a bad auth header or an unreachable collector.
+        crate::otel::DrainOutcome::Failed => Err(TelemetryError::new(
+            "telemetry flush failed: an exporter rejected the drain; records may not have been exported",
+        )),
+        crate::otel::DrainOutcome::TimedOut => Err(TelemetryError::new(
+            "telemetry flush exceeded its deadline; records may not have been exported",
+        )),
     }
-    Err(TelemetryError::new(
-        "telemetry flush exceeded its deadline; records may not have been exported",
-    ))
 }
 
 /// Flush and tear down providers, then clear local runtime state.

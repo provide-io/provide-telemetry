@@ -154,7 +154,10 @@ func (rt *TelemetryRuntime) Reconfigure(ctx context.Context, cfg *TelemetryConfi
 // unreachable collector says nothing about the other two.
 //
 // Backends that do not implement PerSignalFlushableBackend can only answer in
-// aggregate, and every installed signal then carries the same outcome.
+// aggregate, and every installed signal then carries the same outcome. A
+// backend that implements neither flush interface cannot answer at all: every
+// installed signal reports NotOwned, because Flushed would tell a caller its
+// records are out while they sit undrained in the backend's queue.
 func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
 	status := GetRuntimeStatus()
 	providers := status.Providers
@@ -163,6 +166,9 @@ func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
 	if !granular {
 		err = FlushTelemetry(ctx)
 	}
+	// A type assertion on a nil interface is simply false, so an absent
+	// backend needs no separate case.
+	_, flushable := _activeBackend().(FlushableBackend)
 	signal := func(name string, installed bool) SignalFlushResult {
 		if !installed {
 			return SignalFlushResult{NotInstalled: true}
@@ -174,6 +180,15 @@ func (rt *TelemetryRuntime) Flush(ctx context.Context) (*FlushResult, error) {
 		// succeeded". Calling that Flushed would tell a caller its records are
 		// out while they sit in the host's batch processor.
 		if !status.SetupDone {
+			return SignalFlushResult{NotOwned: true}
+		}
+		if !granular && !flushable {
+			// The registered backend implements neither FlushableBackend nor
+			// PerSignalFlushableBackend, so both flush entry points returned
+			// nil without draining anything. installed + setupDone + nil error
+			// must not map to Flushed here — the records are still queued, the
+			// exact misreport NotOwned exists to prevent: installed, but not
+			// drainable by us.
 			return SignalFlushResult{NotOwned: true}
 		}
 		drainErr := err

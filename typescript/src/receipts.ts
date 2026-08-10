@@ -83,8 +83,19 @@ export class TestReceiptCollector implements ReceiptSink {
  * spelling `spec/receipt_fixtures.yaml`'s non_finite_normalization case fixes
  * for every SDK. `undefined` normalizes the same way rather than vanishing,
  * because a key that disappears would change the hashed structure.
+ *
+ * A composite reached twice on one path — a cycle — canonicalizes to `null`
+ * rather than recursing to a RangeError. The guard is path-scoped (a value
+ * leaves the set when its subtree completes), so a shared *acyclic* subtree
+ * serializes fully at every occurrence — Python's `receipts._canonical`
+ * carries the same set the same way. Hardening replaces cycles with `'***'`
+ * before they get here; this is the backstop for a direct call.
  */
 export function canonicalJson(value: unknown): string {
+  return _canonical(value, new Set<object>());
+}
+
+function _canonical(value: unknown, path: Set<object>): string {
   // Non-finite numbers need no branch: JSON.stringify already renders NaN and
   // ±Infinity as `null`, which is exactly the spelling the fixture fixes.
   // bigint is handled here rather than left to JSON.stringify, which throws a
@@ -99,16 +110,21 @@ export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
+  if (path.has(value)) return 'null';
+  path.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => _canonical(item, path)).join(',')}]`;
+    }
+    const source = value as Record<string, unknown>;
+    const body = Object.keys(source)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${_canonical(source[key], path)}`)
+      .join(',');
+    return `{${body}}`;
+  } finally {
+    path.delete(value);
   }
-  const entries = Object.keys(value as Record<string, unknown>).sort();
-  const body = entries
-    .map(
-      (key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`,
-    )
-    .join(',');
-  return `{${body}}`;
 }
 
 /** The canonical receipt payload, in the byte order every SDK signs. */

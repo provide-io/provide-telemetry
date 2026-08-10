@@ -16,14 +16,21 @@ __all__ = [
     "parse_duration_float",
     "parse_env_retries",
     "resolve_otlp_endpoint",
+    "validate_exporter_floats",
+    "validate_finite_non_negative",
     "validate_retries_ceiling",
     "warn_on_endpoint_shadowing",
 ]
 
+import math
 import warnings
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from provide.telemetry.exceptions import ConfigurationError
+
+if TYPE_CHECKING:
+    from provide.telemetry.config import ExporterPolicyConfig
 
 # Upper bound on any *_timeout_seconds or *_backoff_seconds config value.
 # 3600s (one hour) is already far outside any healthy exporter deadline; values
@@ -58,6 +65,39 @@ def parse_env_retries(value: str, field: str) -> int:
         raise ConfigurationError(f"invalid integer for {field}: {value!r}") from None
     validate_retries_ceiling(parsed, field)
     return parsed
+
+
+# The six backoff/timeout floats on ExporterPolicyConfig, validated together in
+# its __post_init__. The same six Go's validateNonNegativeFloatFinite covers.
+_EXPORTER_FLOAT_FIELDS: tuple[str, ...] = (
+    "logs_backoff_seconds",
+    "traces_backoff_seconds",
+    "metrics_backoff_seconds",
+    "logs_timeout_seconds",
+    "traces_timeout_seconds",
+    "metrics_timeout_seconds",
+)
+
+
+def validate_finite_non_negative(value: float, field: str) -> None:
+    """Reject NaN, the infinities and negatives, naming the offending field.
+
+    NaN slips through plain range checks — ``max(0.0, nan)`` is ``0.0``, which
+    silently disables the export deadline, and every NaN backoff comparison is
+    False, which drops the retry loop's sleep. Go
+    (``validateNonNegativeFloatFinite``), TypeScript (``Number.isFinite``) and
+    Rust (``require_non_negative``) reject the same values.
+    """
+    if not math.isfinite(value):
+        raise ConfigurationError(f"{field} must be finite, got {value}")
+    if value < 0.0:
+        raise ConfigurationError(f"{field} must be >= 0, got {value}")
+
+
+def validate_exporter_floats(policy: ExporterPolicyConfig) -> None:
+    """Validate every backoff/timeout float on an :class:`ExporterPolicyConfig`."""
+    for field in _EXPORTER_FLOAT_FIELDS:
+        validate_finite_non_negative(getattr(policy, field), field)
 
 
 def parse_duration_float(value: str, field: str) -> float:

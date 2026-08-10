@@ -95,3 +95,37 @@ def test_the_reclaimed_slot_keeps_its_original_position() -> None:
 def test_non_string_keys_are_stringified_and_deduplicated() -> None:
     mixed: dict[Any, Any] = {1: "int", "1": "str"}
     assert _harden_keys(mixed) == {"1": "int"}
+
+
+def test_nested_dict_keys_are_cleaned_at_every_depth() -> None:
+    """Go, TypeScript and Rust clean keys at every level; Python must match.
+
+    A dirty nested key would diverge the exported payload (and any receipt
+    digest) from the other SDKs, and a newline in it forges a second rendered
+    line just as a top-level key would.
+    """
+    proc = _processor()
+    forged = "x\n2026-08-10 [error] payment.failed amount=9999"
+
+    result = proc(None, "info", {"outer": {forged: 1, "in\x00ner": {"de\x7fep": 2}}})
+
+    assert result == {"outer": {"x2026-08-10 [error] payment.failed amount=9999": 1, "inner": {"deep": 2}}}
+
+
+def test_nested_collision_never_displaces_a_verbatim_key() -> None:
+    """The top-level collision policy applies inside nested dicts too."""
+    proc = _processor()
+
+    first = proc(None, "info", {"outer": {"ab": "genuine", "a\x00b": "FORGED"}})
+    second = proc(None, "info", {"outer": {"a\x00b": "FORGED", "ab": "genuine"}})
+
+    assert first["outer"] == {"ab": "genuine"}
+    assert second["outer"] == {"ab": "genuine"}
+
+
+def test_dict_inside_a_list_has_its_keys_cleaned() -> None:
+    proc = _processor()
+
+    result = proc(None, "info", {"items": [{"k\x01ey": 1}]})
+
+    assert result == {"items": [{"key": 1}]}

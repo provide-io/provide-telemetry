@@ -200,3 +200,64 @@ class TestExportRetriesCeiling:
         assert make(MAX_EXPORT_RETRIES).__class__ is ExporterPolicyConfig
         with pytest.raises(ConfigurationError, match=f"{field} must be at most 100, got 101"):
             make(MAX_EXPORT_RETRIES + 1)
+
+
+# ---------------------------------------------------------------------------
+# ExporterPolicyConfig backoff/timeout floats: finite and non-negative
+# ---------------------------------------------------------------------------
+
+
+class TestExporterFloatValidation:
+    """NaN/inf/negative backoff and timeout floats are rejected at construction.
+
+    NaN otherwise slips through every range check — ``max(0.0, nan)`` is 0.0,
+    which silently disables the export deadline, and NaN backoff comparisons
+    drop the retry loop's sleep. Go, TypeScript and Rust reject the same
+    values, so a shared config fails the same way in every language.
+    """
+
+    def test_nan_timeout_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match="logs_timeout_seconds must be finite, got nan"):
+            ExporterPolicyConfig(logs_timeout_seconds=float("nan"))
+
+    def test_inf_backoff_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match="traces_backoff_seconds must be finite, got inf"):
+            ExporterPolicyConfig(traces_backoff_seconds=float("inf"))
+
+    def test_negative_inf_timeout_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match="metrics_timeout_seconds must be finite, got -inf"):
+            ExporterPolicyConfig(metrics_timeout_seconds=float("-inf"))
+
+    def test_negative_backoff_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match=r"logs_backoff_seconds must be >= 0, got -5\.0"):
+            ExporterPolicyConfig(logs_backoff_seconds=-5.0)
+
+    def test_negative_timeout_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match=r"traces_timeout_seconds must be >= 0, got -0\.1"):
+            ExporterPolicyConfig(traces_timeout_seconds=-0.1)
+
+    def test_zero_boundary_accepted(self) -> None:
+        cfg = ExporterPolicyConfig(logs_timeout_seconds=0.0, metrics_backoff_seconds=0.0)
+        assert cfg.logs_timeout_seconds == 0.0
+        assert cfg.metrics_backoff_seconds == 0.0
+
+    def test_nan_from_env_is_rejected_by_the_dataclass(self) -> None:
+        """parse_duration_float's range checks are all False for NaN, so the
+        dataclass __post_init__ is the gate that catches an env ``nan``."""
+        with pytest.raises(ConfigurationError, match="logs_timeout_seconds must be finite"):
+            TelemetryConfig.from_env({"PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS": "nan"})
+
+    @pytest.mark.parametrize(
+        ("field", "make"),
+        [
+            ("logs_backoff_seconds", lambda v: ExporterPolicyConfig(logs_backoff_seconds=v)),
+            ("traces_backoff_seconds", lambda v: ExporterPolicyConfig(traces_backoff_seconds=v)),
+            ("metrics_backoff_seconds", lambda v: ExporterPolicyConfig(metrics_backoff_seconds=v)),
+            ("logs_timeout_seconds", lambda v: ExporterPolicyConfig(logs_timeout_seconds=v)),
+            ("traces_timeout_seconds", lambda v: ExporterPolicyConfig(traces_timeout_seconds=v)),
+            ("metrics_timeout_seconds", lambda v: ExporterPolicyConfig(metrics_timeout_seconds=v)),
+        ],
+    )
+    def test_every_float_field_is_validated(self, field: str, make: Callable[[float], ExporterPolicyConfig]) -> None:
+        with pytest.raises(ConfigurationError, match=f"{field} must be finite"):
+            make(float("nan"))

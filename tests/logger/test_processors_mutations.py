@@ -407,10 +407,10 @@ class TestHardenInputBoundaries:
         assert result["key"] == "hello"  # not truncated
 
     def test_string_one_over_max_length_truncated(self) -> None:
-        """Companion to above — confirms truncation does fire at len+1."""
+        """Companion to above — confirms truncation does fire at len+1, marked."""
         proc = harden_input(max_value_length=5, max_attr_count=0, max_depth=5)
         result = proc(None, "", {"event": "x", "key": "hello!"})  # 6 chars
-        assert result["key"] == "hello"
+        assert result["key"] == "hello..."
 
     def test_max_attr_count_zero_keeps_all_attributes(self) -> None:
         """Kills: max_attr_count > 0 → >= 0 (would truncate even with count=0)."""

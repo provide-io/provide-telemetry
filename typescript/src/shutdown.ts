@@ -178,10 +178,21 @@ async function flushAndShutdownProvider(
   // its narrowing survives into the callProviderPhase closure.
   const forceFlush = provider.forceFlush;
   if (forceFlush) {
-    const flushed = await raceWithDeadline(
-      callProviderPhase(provider, () => forceFlush.call(provider)),
-      remaining(),
-    );
+    let flush: Promise<void>;
+    try {
+      flush = callProviderPhase(provider, () => forceFlush.call(provider));
+    } catch (err: unknown) {
+      // A synchronously-throwing forceFlush is the same broken exporter as a
+      // rejecting one, which the race below already treats as settled. Without
+      // this catch (the same one flushProviderOutcome carries) the throw would
+      // escape callProviderPhase — try/finally, no catch — before the shutdown
+      // phase ran, Promise.allSettled would swallow it, and the provider's
+      // queues and sockets would leak. Warn like flushProviderOutcome does,
+      // then fall through so teardown still runs.
+      console.warn(`[provide/telemetry] provider forceFlush failed: ${String(err)}`);
+      flush = Promise.resolve();
+    }
+    const flushed = await raceWithDeadline(flush, remaining());
     if (!flushed) {
       console.warn(
         `[provide/telemetry] provider forceFlush exceeded ${timeoutMs}ms deadline; abandoning background flush`,

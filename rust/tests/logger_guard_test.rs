@@ -356,6 +356,8 @@ fn logger_public_paths_cover_secret_message_truncation_strict_schema_and_empty_t
 
     assert_eq!(events[1].context.get("logger_name"), None);
     assert_eq!(events[1].context.get("alpha"), Some(&json!("abcde...")));
-    assert_eq!(events[1].context.get("beta"), Some(&json!("line...")));
+    // Strip-then-truncate: the NUL is dropped before the 5-byte cap is
+    // applied, so the cap counts characters a reader will actually see.
+    assert_eq!(events[1].context.get("beta"), Some(&json!("lineb...")));
     assert!(events[1].context.contains_key("_schema_error"));
 }
