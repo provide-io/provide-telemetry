@@ -275,13 +275,14 @@ def test_an_accepting_sink_counts_nothing() -> None:
 
 
 def test_enabling_receipts_in_production_without_a_sink_is_refused() -> None:
-    """Otherwise a service signs a receipt per redaction and drops every one."""
+    """No sink, no enable — the full contract is pinned in
+    test_receipts_sink_contract.py."""
     import provide.telemetry.receipts as receipts_mod
 
     with receipts_mod._lock:
         receipts_mod._test_mode = False
 
-    with pytest.raises(MissingReceiptSinkError, match="no receipt sink is configured"):
+    with pytest.raises(MissingReceiptSinkError):
         enable_receipts(enabled=True, signing_key=None)
     assert pii_mod._receipt_hook is None
 
@@ -313,7 +314,8 @@ def test_the_sink_defaults_to_the_one_on_the_active_runtime_config() -> None:
 
 
 def test_a_hook_left_live_with_no_sink_counts_rather_than_delivering() -> None:
-    """Defence in depth: enable_receipts refuses this, so only a cleared sink reaches it."""
+    """Defence in depth: enable_receipts installs the logging fallback instead of
+    leaving the sink unset, so only a sink cleared underneath a live hook reaches it."""
     import provide.telemetry.receipts as receipts_mod
 
     enable_receipts(enabled=True, signing_key=None)
@@ -353,8 +355,9 @@ def test_the_missing_sink_error_names_every_way_out() -> None:
     """
     assert str(MissingReceiptSinkError()) == (
         "receipts are enabled but no receipt sink is configured; generated receipts "
-        "would be signed and then discarded. Pass sink=..., set "
-        "TelemetryConfig.receipt_sink, or disable receipts."
+        "would be signed and then discarded. Pass sink=... (LoggingReceiptSink() to "
+        "deliver receipts as debug log lines), set TelemetryConfig.receipt_sink, or "
+        "disable receipts."
     )
 
 

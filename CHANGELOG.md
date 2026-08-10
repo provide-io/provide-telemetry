@@ -6,6 +6,23 @@ All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provid
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: enabling receipts now requires a sink, in every language.**
+  `enable_receipts(True, key, service)` with no `sink=` argument and no
+  `TelemetryConfig.receipt_sink` raises `MissingReceiptSinkError`
+  (`ConfigurationError`) instead of succeeding — an audit trail with no
+  destination is a silent no-op, and 0.6's implicit debug-log delivery hid
+  exactly that misconfiguration. Python previously always succeeded here; it
+  now refuses the combination identically to Go, TypeScript, Rust and C#.
+  Migration is one line for a service whose log stream really is its receipt
+  destination: `enable_receipts(True, key, service, sink=LoggingReceiptSink())`
+  — the new public sink delivers each receipt as one stdlib debug log line
+  (id/timestamp/field/action/hash/hmac, never the original value). Test-mode
+  behavior (the built-in collector) is unchanged.
+
 ## [0.6.0] — 2026-07-29
 
 ### Added

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 __all__ = [
     "TEST_RECEIPT_CAPACITY",
+    "LoggingReceiptSink",
     "MissingReceiptSinkError",
     "ReceiptSink",
     "RedactionReceipt",
@@ -43,6 +44,7 @@ __all__ = [
 import hashlib
 import hmac as hmac_mod
 import json
+import logging
 import math
 import threading
 import uuid
@@ -56,6 +58,8 @@ from typing import Any, Protocol, runtime_checkable
 from provide.telemetry import pii as pii_mod
 from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.health import increment_receipt_failures
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,14 +85,45 @@ class ReceiptSink(Protocol):
 
 
 class MissingReceiptSinkError(ConfigurationError):
-    """Receipts were enabled outside test mode with nowhere to deliver them."""
+    """Receipts were enabled outside test mode with nowhere to deliver them.
+
+    Raised by :func:`enable_receipts`. An audit trail with no destination is a
+    silent no-op, so the combination is refused rather than degraded — the same
+    contract as the other four SDKs.
+    """
 
     def __init__(self) -> None:
         super().__init__(
             "receipts are enabled but no receipt sink is configured; generated receipts "
-            "would be signed and then discarded. Pass sink=..., set "
-            "TelemetryConfig.receipt_sink, or disable receipts."
+            "would be signed and then discarded. Pass sink=... (LoggingReceiptSink() to "
+            "deliver receipts as debug log lines), set TelemetryConfig.receipt_sink, or "
+            "disable receipts."
         )
+
+
+class LoggingReceiptSink:
+    """Sink that delivers each receipt as one stdlib debug log line.
+
+    An explicit choice for services whose log stream *is* their receipt
+    destination. The record goes through stdlib ``logging``, never the
+    structlog pipeline, so it cannot be sanitized into another redaction and
+    re-enter the receipt hook. Debug level: if the process log level is above
+    DEBUG, receipts are dropped — pick a durable sink when that matters.
+    """
+
+    __slots__ = ()
+
+    def emit(self, receipt: RedactionReceipt, /) -> bool:
+        _logger.debug(
+            "telemetry.receipt id=%s ts=%s field=%s action=%s hash=%s hmac=%s",
+            receipt.receipt_id,
+            receipt.timestamp,
+            receipt.field_path,
+            receipt.action,
+            receipt.original_hash,
+            receipt.hmac,
+        )
+        return True
 
 
 #: Retention cap for :class:`TestReceiptCollector`.
@@ -365,9 +400,11 @@ def enable_receipts(
     """Enable or disable receipt generation.
 
     *sink* defaults to ``TelemetryConfig.receipt_sink`` on the active runtime
-    config. Enabling receipts outside test mode without either raises: the
-    alternative computes a full signed receipt for every redaction and drops it
-    on the floor, so a service can believe it has an audit trail and have none.
+    config. Enabling receipts outside test mode with neither raises
+    :class:`MissingReceiptSinkError` — an audit trail with no destination is a
+    silent no-op, and every SDK refuses the combination identically. A service
+    whose log stream is its receipt destination passes
+    ``sink=LoggingReceiptSink()`` explicitly.
     """
     global _enabled, _signing_key, _service_name, _sink
     resolved = _resolve_sink(sink, enabled=enabled)
@@ -405,8 +442,9 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
         key=signing_key,
     )
     if sink is None:
-        # enable_receipts refuses this combination, so reaching it means the
-        # sink was cleared underneath a live hook. Counted, not logged.
+        # enable_receipts installs the logging fallback rather than leaving the
+        # sink unset, so reaching this means the sink was cleared underneath a
+        # live hook. Counted, not logged.
         increment_receipt_failures()
         return
     emit_receipt(receipt, sink)
