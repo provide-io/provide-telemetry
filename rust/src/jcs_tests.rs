@@ -33,6 +33,9 @@ fn jcs_test_escapes_follow_json_stringify() {
         canonical_json(&json!("\u{01}\u{1f}\u{7f}")),
         "\"\\u0001\\u001f\u{7f}\""
     );
+    // U+0020 is the first character past the escape boundary: a space renders
+    // literally, never in the four-hex-digit escaped form.
+    assert_eq!(canonical_json(&json!("a b")), "\"a b\"");
 }
 
 /// Key order is by UTF-16 code unit, not by Unicode scalar value. An astral

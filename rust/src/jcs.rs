@@ -107,7 +107,10 @@ pub fn canonical_number(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
-    if value < 0.0 {
+    // A sign predicate rather than `< 0.0`: -0.0 already returned above, so
+    // the two agree everywhere this line can see, and the predicate leaves no
+    // boundary for an equivalent `<=` mutant to hide in.
+    if value.is_sign_negative() {
         return format!("-{}", canonical_number(-value));
     }
 
@@ -143,7 +146,10 @@ fn render_digits(digits: &str, significant: i32, point: i32) -> String {
     }
     let exponent = point - 1;
     // A negative exponent already carries its sign; a positive one does not.
-    let sign = if exponent < 0 { "" } else { "+" };
+    // `is_negative()` rather than `< 0`: a zero exponent means point == 1,
+    // which the plain-decimal branches above always claim, so the boundary an
+    // `<=` mutant would move is unreachable here.
+    let sign = if exponent.is_negative() { "" } else { "+" };
     if significant == 1 {
         return format!("{digits}e{sign}{exponent}");
     }
