@@ -16,7 +16,6 @@ import pytest
 from provide.telemetry.asgi import middleware as middleware_mod
 from provide.telemetry.asgi.middleware import (
     TelemetryMiddleware,
-    _extract_baggage_value,
     _resolve_route,
 )
 
@@ -348,55 +347,3 @@ class TestWebSocketMessageType:
         mw = TelemetryMiddleware(app, auto_slo=True)
         await mw({"type": "http", "path": "/tea", "method": "GET", "headers": []}, _noop_receive, _noop_send)
         assert recorded[0]["status_code"] == 418
-
-
-# ── _extract_baggage_value: key stripping and value handling ──────────
-
-
-class TestExtractBaggageValue:
-    def test_strips_whitespace_from_baggage_key(self) -> None:
-        """Kills: k.strip() == key → k == key.
-
-        W3C baggage allows whitespace around keys. A mutant removing .strip()
-        would fail to match 'session_id' because k would be ' session_id '.
-        """
-        scope: dict[str, object] = {"headers": [(b"baggage", b" session_id = abc123 ")]}
-        result = _extract_baggage_value(scope, "session_id")
-        assert result == "abc123"
-
-    def test_empty_baggage_value_returns_none_not_empty_string(self) -> None:
-        """Kills: val if val else None → val if val else '' (or just `return val`)."""
-        scope: dict[str, object] = {"headers": [(b"baggage", b"session_id=")]}
-        result = _extract_baggage_value(scope, "session_id")
-        assert result is None
-
-    def test_strips_w3c_properties_after_semicolon(self) -> None:
-        """Kills: partition(';')[0] → partition(',')[0] or [1].
-
-        W3C baggage: 'key=value;prop=propval' — semicolon-delimited metadata
-        should be stripped so only 'key=value' remains.
-        """
-        scope: dict[str, object] = {"headers": [(b"baggage", b"session_id=abc123;ttl=30")]}
-        result = _extract_baggage_value(scope, "session_id")
-        assert result == "abc123"
-
-    def test_finds_key_in_multi_pair_baggage_header(self) -> None:
-        """Kills: raw.split(',') → raw.split(';') — wrong split char for pairs.
-
-        Multiple baggage pairs are comma-separated. A mutant splitting on ';'
-        would treat the whole header as one pair and fail to find the key.
-        """
-        scope: dict[str, object] = {"headers": [(b"baggage", b"other=x,session_id=target_val,more=y")]}
-        result = _extract_baggage_value(scope, "session_id")
-        assert result == "target_val"
-
-    def test_value_with_equals_sign_uses_partition_not_rpartition(self) -> None:
-        """Kills: partition('=') → rpartition('=') (mutmut_18).
-
-        When a baggage value itself contains '=', partition (left-to-right) correctly
-        returns the key before the FIRST '='. rpartition (right-to-left) would return
-        the part before the LAST '=', making k='session_id=abc' which doesn't match.
-        """
-        scope: dict[str, object] = {"headers": [(b"baggage", b"session_id=abc=def")]}
-        result = _extract_baggage_value(scope, "session_id")
-        assert result == "abc=def"

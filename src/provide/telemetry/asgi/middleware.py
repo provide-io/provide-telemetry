@@ -17,7 +17,12 @@ from provide.telemetry.cardinality import register_cardinality_limit
 from provide.telemetry.headers import get_header
 from provide.telemetry.logger.context import bind_context, bind_session_context, reset_context, save_context
 from provide.telemetry.logger.core import get_logger
-from provide.telemetry.propagation import bind_propagation_context, clear_propagation_context, extract_w3c_context
+from provide.telemetry.propagation import (
+    bind_propagation_context,
+    clear_propagation_context,
+    extract_w3c_context,
+    parse_baggage,
+)
 from provide.telemetry.schema.events import event_name
 from provide.telemetry.slo import record_red_metrics
 
@@ -44,16 +49,21 @@ class TelemetryMiddleware:
             await self.app(scope, receive, send)
             return
 
+        w3c_context = extract_w3c_context(scope)
         request_id = _extract_header(scope, b"x-request-id") or uuid.uuid4().hex
         session_id = _extract_header(scope, b"x-session-id")
-        # Also check W3C baggage for session_id propagation.
-        if session_id is None:
-            session_id = _extract_baggage_value(scope, "session_id")
+        # Also check W3C baggage for session_id propagation — through the
+        # guarded context, never the raw header: extract_w3c_context enforces
+        # the 8 KiB baggage cap and parse_baggage enforces token keys and
+        # strips control characters. Scanning the raw header here would let an
+        # oversized hostile baggage buy an unbounded split before the guard.
+        if session_id is None and w3c_context.baggage is not None:
+            session_id = parse_baggage(w3c_context.baggage).get("session_id") or None
         ctx_token = save_context()
         bind_context(request_id=request_id)
         if session_id is not None:
             bind_session_context(session_id)
-        bind_propagation_context(extract_w3c_context(scope))
+        bind_propagation_context(w3c_context)
         status_code = 500
         started = time.perf_counter()
 
@@ -122,18 +132,3 @@ def _resolve_route(scope: Scope) -> str:
 
 def _extract_header(scope: Scope, key: bytes) -> str | None:
     return get_header(scope, key)
-
-
-def _extract_baggage_value(scope: Scope, key: str) -> str | None:
-    """Extract a value from the W3C baggage header."""
-    raw = get_header(scope, b"baggage")
-    if raw is None:
-        return None
-    for pair in raw.split(","):
-        # Strip W3C baggage properties (e.g. key=value;prop=val)
-        kv = pair.strip().partition(";")[0]
-        k, _, v = kv.partition("=")
-        if k.strip() == key:
-            val = v.strip()
-            return val if val else None
-    return None

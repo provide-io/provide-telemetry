@@ -44,6 +44,73 @@ async def test_middleware_extracts_session_from_baggage(monkeypatch: pytest.Monk
     assert captured_session == ["bag-sess-1"]
 
 
+async def _run_baggage_request(monkeypatch: pytest.MonkeyPatch, baggage: bytes, captured_session: list[str]) -> None:
+    monkeypatch.setattr(middleware_mod, "bind_session_context", lambda sid: captured_session.append(sid))
+    monkeypatch.setattr(middleware_mod, "bind_context", lambda **kw: None)
+
+    async def send(_: dict[str, Any]) -> None:
+        return None
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "noop"}
+
+    async def app(scope: dict[str, Any], _recv: Any, _send: Any) -> None:
+        assert scope["type"] == "http"
+
+    middleware = TelemetryMiddleware(app)
+    await middleware({"type": "http", "headers": [(b"baggage", baggage)]}, receive, send)
+
+
+@pytest.mark.asyncio
+async def test_middleware_oversized_baggage_binds_no_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A baggage header past the 8 KiB guard must not be scanned for a session.
+
+    The guard lives in extract_w3c_context; the session lookup must run on the
+    guarded value, not on the raw header.
+    """
+    captured_session: list[str] = []
+    oversized = b"session_id=evil," + b"k=" + b"v" * 8192
+    await _run_baggage_request(monkeypatch, oversized, captured_session)
+    assert captured_session == []
+
+
+@pytest.mark.asyncio
+async def test_middleware_session_key_with_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_session: list[str] = []
+    await _run_baggage_request(monkeypatch, b" session_id = abc123 ", captured_session)
+    assert captured_session == ["abc123"]
+
+
+@pytest.mark.asyncio
+async def test_middleware_empty_session_value_binds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_session: list[str] = []
+    await _run_baggage_request(monkeypatch, b"session_id=", captured_session)
+    assert captured_session == []
+
+
+@pytest.mark.asyncio
+async def test_middleware_session_properties_after_semicolon_stripped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_session: list[str] = []
+    await _run_baggage_request(monkeypatch, b"session_id=abc123;ttl=30", captured_session)
+    assert captured_session == ["abc123"]
+
+
+@pytest.mark.asyncio
+async def test_middleware_session_found_among_multiple_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_session: list[str] = []
+    await _run_baggage_request(monkeypatch, b"other=x,session_id=target_val,more=y", captured_session)
+    assert captured_session == ["target_val"]
+
+
+@pytest.mark.asyncio
+async def test_middleware_session_value_containing_equals(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_session: list[str] = []
+    await _run_baggage_request(monkeypatch, b"session_id=abc=def", captured_session)
+    assert captured_session == ["abc=def"]
+
+
 @pytest.mark.asyncio
 async def test_middleware_prefers_x_session_id_over_baggage(monkeypatch: pytest.MonkeyPatch) -> None:
     """x-session-id header takes priority over W3C baggage session_id."""
