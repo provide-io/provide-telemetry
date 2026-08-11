@@ -147,7 +147,7 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
         return _REDACTED
     if mode == "hash":
         # Codec lookup is case-insensitive, so an "UTF-8" mutation is equivalent.
-        encoded = str(value).encode("utf-8")  # pragma: no mutate
+        encoded = str(value).encode("utf-8")  # pragma: no mutate — codec alias; 'UTF-8' selects the identical codec
         return hashlib.sha256(
             encoded
         ).hexdigest()[
@@ -166,7 +166,7 @@ def _match(path: tuple[str, ...], target: tuple[str, ...]) -> bool:
     # The length guard above means zip can never see a ragged pair, so every
     # mutation of `strict` here is provably equivalent. Kept as True to document
     # the invariant. The pragma needs a single-line statement to take effect.
-    pairs = zip(path, target, strict=True)  # pragma: no mutate
+    pairs = zip(path, target, strict=True)  # pragma: no mutate — length guard above means zip is never ragged
     return all(part == "*" or part == elem for part, elem in pairs)
 
 
@@ -228,7 +228,7 @@ def _apply_default_sensitive_key_redaction(
                 else:
                     output[key] = _REDACTED
                     if receipt_hook is not None:
-                        joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate
+                        joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate — cast is identity
                         receipt_hook(
                             joined,
                             "redact",
@@ -237,7 +237,7 @@ def _apply_default_sensitive_key_redaction(
             elif isinstance(value, str) and _detect_secret_in_value(value):
                 output[key] = _REDACTED
                 if receipt_hook is not None:
-                    joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate
+                    joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate — cast is identity
                     receipt_hook(
                         joined,
                         "redact",
@@ -317,13 +317,13 @@ def sanitize_payload(
     if classification_hook is not None and isinstance(cleaned, dict):
         # typing.cast returns its second argument unchanged at runtime, so every
         # mutation of the type argument is provably equivalent.
-        items = list(cast(Any, cleaned).items())  # pragma: no mutate
+        items = list(cast(Any, cleaned).items())  # pragma: no mutate — cast returns its argument unchanged at runtime
         for key, value in items:
             label = classification_hook(key, value)
             if label is not None:
                 # The fallback is only ever compared against "drop" and the
                 # mask actions, so any other string is provably equivalent.
-                default_action = "pass"  # pragma: no mutate
+                default_action = "pass"  # pragma: no mutate — only compared against 'drop' and the mask actions; any other string is equivalent
                 action = policy_fn(label) if policy_fn is not None else default_action
                 if action == "drop":
                     del cleaned[key]

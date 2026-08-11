@@ -52,10 +52,10 @@ def get_consent_level() -> ConsentLevel:
 #
 # Placeholder for a missing level: "" and any other string absent from
 # _LOG_LEVEL_ORDER resolve to the same lookup miss.
-_MISSING_LEVEL_PLACEHOLDER = ""  # pragma: no mutate
+_MISSING_LEVEL_PLACEHOLDER = ""  # pragma: no mutate — any string absent from _LOG_LEVEL_ORDER is the same lookup miss
 # Miss sentinel: 0 and 1 both sit below every threshold this is compared
 # against (WARNING=3, ERROR=4).
-_UNKNOWN_LEVEL_RANK = 0  # pragma: no mutate
+_UNKNOWN_LEVEL_RANK = 0  # pragma: no mutate — 0 and 1 both rank below every consent threshold (WARNING=3, ERROR=4)
 
 
 def _rank(log_level: str | None) -> int:
@@ -87,7 +87,7 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
 # of it yields a string ConsentLevel() rejects, leaving the already-FULL default
 # in place. The env var *name* and the `.upper()` on the read are not equivalent
 # and stay mutable.
-_DEFAULT_CONSENT_LEVEL = "FULL"  # pragma: no mutate
+_DEFAULT_CONSENT_LEVEL = "FULL"  # pragma: no mutate — upper-cased with the env value; any other literal is rejected by ConsentLevel, leaving the FULL default
 
 
 def _load_consent_from_env() -> None:

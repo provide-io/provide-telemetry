@@ -82,4 +82,4 @@ def make_otel_logging_handler(
         handler = sdk_logs_mod.LoggingHandler(level=level, logger_provider=provider)
         # cast() returns its second argument unchanged at runtime, so mutating
         # the type argument cannot be observed.
-        return cast(logging.Handler, handler)  # pragma: no mutate
+        return cast(logging.Handler, handler)  # pragma: no mutate — cast returns its argument unchanged at runtime

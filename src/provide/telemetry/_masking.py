@@ -24,7 +24,7 @@ def redact_config(config: TelemetryConfig) -> dict[str, object]:
     sink = config.receipt_sink
     # A placeholder nobody reads: raw's entry is replaced below and the field is
     # restored in `finally`, so any stand-in asdict can copy behaves the same.
-    config.receipt_sink = None  # pragma: no mutate
+    config.receipt_sink = None  # pragma: no mutate — placeholder never read; the entry is replaced below and the real sink restored in finally
     try:
         raw = dataclasses.asdict(config)
     finally:

@@ -243,7 +243,7 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 
         # `>=` is equivalent: at exactly the limit the rebuild keeps every key,
         # and dict equality ignores the reordering it introduces.
-        over_budget = _max_attr_count > 0 and len(event_dict) > _max_attr_count  # pragma: no mutate
+        over_budget = _max_attr_count > 0 and len(event_dict) > _max_attr_count  # pragma: no mutate — see above
         if over_budget:
             # Preserve control/telemetry fields first, then fill with user payload.
             # Simple first-N truncation would silently drop level, trace_id, etc.

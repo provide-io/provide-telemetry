@@ -18,8 +18,8 @@ from typing import Any
 # line, including the argument-removal mutants that turn a decode into a
 # TypeError and the `"XXutf-8XX"` mutant that raises LookupError past the
 # UnicodeDecodeError handler.
-_PRIMARY_CODEC = "utf-8"  # pragma: no mutate
-_FALLBACK_CODEC = "latin-1"  # pragma: no mutate
+_PRIMARY_CODEC = "utf-8"  # pragma: no mutate — codec alias; any casing selects the identical codec
+_FALLBACK_CODEC = "latin-1"  # pragma: no mutate — codec alias; any casing selects the identical codec
 
 
 def get_header(scope: dict[str, Any], key: bytes) -> str | None:

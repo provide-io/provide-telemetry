@@ -76,23 +76,23 @@ def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
 
 # structlog_level never exceeds CRITICAL, so this entry's `<` test never fires:
 # the key is unreachable and every mutation of it is equivalent.
-_CRITICAL_KEY = "critical"  # pragma: no mutate
+_CRITICAL_KEY = "critical"  # pragma: no mutate — unreachable table key; structlog_level never exceeds CRITICAL
 
 
 def _iso_timestamper() -> Any:
     """structlog resolves the format name case-insensitively."""
-    return structlog.processors.TimeStamper(fmt="iso")  # pragma: no mutate
+    return structlog.processors.TimeStamper(fmt="iso")  # pragma: no mutate — format name is case-insensitive
 
 
 def _plain_console_renderer() -> Any:
     """colors=None is falsy exactly like colors=False."""
-    return structlog.dev.ConsoleRenderer(colors=False)  # pragma: no mutate
+    return structlog.dev.ConsoleRenderer(colors=False)  # pragma: no mutate — colors=None is falsy like False
 
 
 def _get_level(level: str) -> int:
     # addLevelName registers TRACE, so getLevelName below resolves it anyway —
     # this fast path is a shortcut, making mutations of the literal equivalent.
-    is_trace = level == "TRACE"  # pragma: no mutate
+    is_trace = level == "TRACE"  # pragma: no mutate — shortcut only; getLevelName resolves TRACE anyway
     if is_trace:
         return TRACE
     mapped = logging.getLevelName(level)
@@ -262,7 +262,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         )  # pragma: no mutate — INFO default only reached for strings already validated upstream
         # Folding to a minimum: reassigning an equal value is a no-op, so `<` and
         # `<=` produce the same effective_level for every input.
-        lowers = module_numeric < effective_level  # pragma: no mutate
+        lowers = module_numeric < effective_level  # pragma: no mutate — equal reassign is a no-op; < and <= agree
         if lowers:
             effective_level = module_numeric
 

@@ -220,7 +220,7 @@ def _sort_key(key: str) -> bytes:
     """JCS orders object keys by UTF-16 code unit, not by code point."""
     # Codec lookup is case-insensitive, so a "UTF-16-BE" mutation selects the
     # same codec and yields identical bytes.
-    return key.encode("utf-16-be")  # pragma: no mutate
+    return key.encode("utf-16-be")  # pragma: no mutate — codec alias; any casing yields identical UTF-16-BE bytes
 
 
 def _json_string(text: str) -> str:
@@ -232,7 +232,7 @@ def _json_string(text: str) -> str:
     """
     # ensure_ascii is read for truth, so the falsy-mutant (None) is the same
     # flag value and cannot change a byte of the output.
-    return json.dumps(text, ensure_ascii=False)  # pragma: no mutate
+    return json.dumps(text, ensure_ascii=False)  # pragma: no mutate — falsy mutant is the same flag
 
 
 def _canonical(value: Any, seen: set[int]) -> str:
@@ -332,7 +332,7 @@ def sign_receipt(
     """
     # Codec lookup is case-insensitive, so an "UTF-8" mutation selects the same
     # codec and produces an identical digest.
-    canonical = canonical_json(value).encode("utf-8")  # pragma: no mutate
+    canonical = canonical_json(value).encode("utf-8")  # pragma: no mutate — codec alias; identical digest
     original_hash = hashlib.sha256(canonical).hexdigest()
     signature = ""
     if key:
@@ -365,7 +365,7 @@ def emit_receipt(receipt: RedactionReceipt, sink: ReceiptSink) -> None:
         # Counted, never logged, and never re-raised: a sink that raises must
         # not take the caller's log call down with it. `accepted` is only read
         # for truth below, so the falsy-mutant (None) counts the same failure.
-        accepted = False  # pragma: no mutate
+        accepted = False  # pragma: no mutate — read for truth only; the falsy mutant None counts the same failure
     if not accepted:
         increment_receipt_failures()
 
@@ -433,7 +433,7 @@ def _on_redaction(field_path: str, action: str, original_value: Any) -> None:
         sink = _test_collector if _test_mode else _sink
     # Hoisted out of the call below because a pragma on a continuation line is
     # ignored; the codec name is an alias, so the mutation cannot change bytes.
-    signing_key = key.encode("utf-8") if key else None  # pragma: no mutate
+    signing_key = key.encode("utf-8") if key else None  # pragma: no mutate — codec alias
     receipt = sign_receipt(
         original_value,
         receipt_id=str(uuid.uuid4()),
@@ -465,7 +465,7 @@ def _reset_receipts_for_tests() -> None:
         # Hygiene only: the same call latches test mode, and _on_redaction
         # routes to _test_collector while that holds, so nothing reads _sink
         # until enable_receipts sets it again.
-        _sink = None  # pragma: no mutate
+        _sink = None  # pragma: no mutate — hygiene only; test mode routes to _test_collector and nothing reads _sink until enable_receipts resets it
         _test_collector.receipts.clear()
         _test_mode = True
     pii_mod._receipt_hook = None

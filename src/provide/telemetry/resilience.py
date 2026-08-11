@@ -310,7 +310,7 @@ def _run_attempt_with_timeout(
     # None and False take the identical non-blocking path — provably equivalent.
     # The pragma must sit on a single-line statement to take effect: mutmut
     # ignores a trailing pragma on a continuation line of a multi-line call.
-    acquired = sem.acquire(blocking=False)  # pragma: no mutate
+    acquired = sem.acquire(blocking=False)  # pragma: no mutate — None and False take the same path
     if not acquired:
         # Pending queue is full — raise so the retry loop treats this as a
         # failure and honors policy.fail_open rather than returning a silent

@@ -59,6 +59,16 @@ def test_bare_pragma_is_flagged(tmp_path: Path) -> None:
     assert [(v.path, v.lineno) for v in violations] == [(f, 1)]
 
 
+def test_backtick_quoted_pragma_in_prose_is_not_flagged(tmp_path: Path) -> None:
+    # A comment that *mentions* the pragma in backticks documents a deliberate
+    # absence — it suppresses nothing, so it needs no reason.
+    _write(
+        tmp_path / "prose.py",
+        "# No maxsplit, and no `# pragma: no mutate`. Taking [-1] makes it\n# unobservable.\nx = 1\n",
+    )
+    assert scan_paths([tmp_path], kinds=["no mutate"]) == []
+
+
 def test_em_dash_reason_is_accepted(tmp_path: Path) -> None:
     _write(tmp_path / "em.py", "x = 1  # pragma: no mutate — sentinel default\n")
     assert scan_paths([tmp_path], kinds=["no mutate"]) == []

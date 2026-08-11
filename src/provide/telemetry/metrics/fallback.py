@@ -186,8 +186,8 @@ class Histogram:
         self.total: float = 0.0
         # float() parses the sentinel names case-insensitively, so "INF"/"-INF"
         # are the identical value.
-        self.min: float = float("inf")  # pragma: no mutate
-        self.max: float = float("-inf")  # pragma: no mutate
+        self.min: float = float("inf")  # pragma: no mutate — float parses 'INF' case-insensitively to the same value
+        self.max: float = float("-inf")  # pragma: no mutate — float parses '-INF' case-insensitively to the same value
 
     def _resolve_otel(self) -> Any | None:
         if self._resolved:
@@ -226,10 +226,10 @@ class Histogram:
                 self.total += value
                 # Reassigning an equal value is a no-op, so `<` and `<=` produce
                 # the same min for every sequence of records.
-                is_new_min = value < self.min  # pragma: no mutate
+                is_new_min = value < self.min  # pragma: no mutate — equal reassign is a no-op; < and <= agree
                 if is_new_min:
                     self.min = value
-                is_new_max = value > self.max  # pragma: no mutate
+                is_new_max = value > self.max  # pragma: no mutate — equal reassign is a no-op; > and >= agree
                 if is_new_max:
                     self.max = value
             increment_emitted("metrics")

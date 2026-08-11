@@ -181,7 +181,7 @@ def run_drains_together(drains: tuple[Callable[[], None], ...]) -> None:
         runner = _guarded(drain)
         # Operator-visible thread name; asserted by
         # test_teardown_threads_are_named_for_operator_visibility.
-        name = "provide-provider-teardown"  # pragma: no mutate
+        name = "provide-provider-teardown"  # pragma: no mutate — operator-facing thread name; pinned by the thread-naming test, literal mutants are diagnostic-only
         worker = threading.Thread(target=runner, name=name, daemon=True)
         try:
             worker.start()
@@ -339,7 +339,7 @@ def bounded_provider_shutdown(provider: object, timeout_seconds: float) -> bool:
         "provide-provider-shutdown",
         "shutdown",
         **_SHUTDOWN_DRAIN_OPTS,
-    )  # pragma: no mutate
+    )  # pragma: no mutate — verbatim delegation; the name/action labels are operator-facing diagnostics pinned by the bounded-shutdown contract tests
 
 
 def dispose_detached_provider(provider: object, timeout_seconds: float | None) -> bool:

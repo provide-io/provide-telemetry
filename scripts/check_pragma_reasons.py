@@ -86,6 +86,11 @@ def _line_has_bare_pragma(line: str, regex: re.Pattern[str]) -> bool:
     match = regex.search(line)
     if match is None:
         return False
+    # Prose that *mentions* the pragma in backticks (e.g. "and no `# pragma:
+    # no mutate`.") documents a deliberate absence — it suppresses nothing and
+    # needs no reason.
+    if match.start() > 0 and line[match.start() - 1] == "`":
+        return False
     reason = _extract_trailing_reason(line, match)
     return reason == ""
 

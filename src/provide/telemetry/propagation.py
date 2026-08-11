@@ -36,15 +36,19 @@ from provide.telemetry.tracing.context import (
 # whole statement: mutmut ignores a trailing pragma on an element inside a
 # multi-line dict literal. Every use is symmetric (written then read through the
 # same constant), so the literal text itself is unobservable.
-_OTEL_TOKEN_FIELD = "otel_token"  # noqa: S105 - a snapshot dict key, not a credential  # pragma: no mutate
-_BAGGAGE_KEYS_FIELD = "_baggage_keys"  # pragma: no mutate
-_BAGGAGE_PRIOR_FIELD = "_baggage_prior"  # pragma: no mutate
+_OTEL_TOKEN_FIELD = "otel_token"  # noqa: S105 - a snapshot dict key, not a credential  # pragma: no mutate — symmetric snapshot key, written and read through the same constant
+_BAGGAGE_KEYS_FIELD = (
+    "_baggage_keys"  # pragma: no mutate — symmetric snapshot key, written and read through the same constant
+)
+_BAGGAGE_PRIOR_FIELD = (
+    "_baggage_prior"  # pragma: no mutate — symmetric snapshot key, written and read through the same constant
+)
 
 # RFC 7230 token characters, which the W3C Baggage spec requires of keys.
 # Excludes control characters, whitespace and separators — see parse_baggage for
 # why that matters, and for why this is a character set rather than the compiled
 # pattern it replaced.
-_BAGGAGE_TOKEN_CHARS = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"  # noqa: S105 - an allowed-character set, not a credential  # pragma: no mutate
+_BAGGAGE_TOKEN_CHARS = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"  # noqa: S105 - an allowed-character set, not a credential  # pragma: no mutate — mutmut's XX-wrapping adds characters already in the set, and strip() reads it as a set, not a sequence
 # C0/C1 controls except TAB, stripped from baggage values.
 _CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
@@ -113,9 +117,11 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     # A traceparent is a fixed 55 characters, so nothing at or beyond this bound
     # can ever parse: the boundary (> vs >=) and the replacement value (None vs
     # any other falsy) both fold to the same (None, None) parse result.
-    oversized = bool(raw_traceparent) and len(raw_traceparent or "") > _MAX_HEADER_LENGTH  # pragma: no mutate
+    oversized = (
+        bool(raw_traceparent) and len(raw_traceparent or "") > _MAX_HEADER_LENGTH
+    )  # pragma: no mutate — a traceparent is fixed 55 chars, so the boundary and replacement mutants fold to the same (None, None) parse
     if oversized:
-        raw_traceparent = None  # pragma: no mutate
+        raw_traceparent = None  # pragma: no mutate — any falsy replacement parses to (None, None) identically
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
@@ -127,7 +133,7 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     trace_id, span_id = _parse_traceparent(raw_traceparent)
     # _parse_traceparent yields both ids or neither, never one, so `and` and `or`
     # cannot be told apart by any input.
-    both_parsed = trace_id is not None and span_id is not None  # pragma: no mutate
+    both_parsed = trace_id is not None and span_id is not None  # pragma: no mutate — and/or agree here
     traceparent = raw_traceparent if both_parsed else None
     return PropagationContext(
         traceparent=traceparent,
@@ -156,7 +162,11 @@ def parse_baggage(raw: str) -> dict[str, str]:
     for member in raw.split(","):
         # Taking [0] makes maxsplit irrelevant: the text before the first ";" is
         # identical for every maxsplit >= 1.
-        kv = member.split(";", 1)[0]  # pragma: no mutate
+        kv = member.split(
+            ";", 1
+        )[
+            0
+        ]  # pragma: no mutate — taking [0] makes maxsplit irrelevant; the text before the first ';' is identical for every maxsplit >= 1
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")
@@ -297,7 +307,9 @@ def _narrow_id(value: object) -> str | None:
     every mutation here equivalent. Kept as its own single-line return because
     mutmut only honours the pragma on a whole one-line statement.
     """
-    return value if isinstance(value, str) or value is None else None  # pragma: no mutate
+    return (
+        value if isinstance(value, str) or value is None else None
+    )  # pragma: no mutate — the guard and the else branch return the same value for every real input
 
 
 def clear_propagation_context() -> None:
