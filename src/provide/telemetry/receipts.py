@@ -115,7 +115,9 @@ class LoggingReceiptSink:
 
     def emit(self, receipt: RedactionReceipt, /) -> bool:
         _logger.debug(
-            "telemetry.receipt id=%s ts=%s field=%s action=%s hash=%s hmac=%s",
+            # This is a stdlib-logging format string, deliberately not an event
+            # name: the record bypasses the structlog pipeline (see class doc).
+            "telemetry.receipt id=%s ts=%s field=%s action=%s hash=%s hmac=%s",  # event-literal: allow
             receipt.receipt_id,
             receipt.timestamp,
             receipt.field_path,

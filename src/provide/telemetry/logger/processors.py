@@ -13,7 +13,7 @@ import re
 import sys
 import traceback
 import types
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -231,7 +231,11 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
                     # the top level: Go, TypeScript and Rust harden keys at
                     # every depth, and a nested dirty key would diverge the
                     # exported payload (and any receipt digest) from theirs.
-                    return {k: _clean_value(v, depth + 1) for k, v in _harden_keys(value).items()}
+                    # cast: ty narrows the Any-typed value to dict[Unknown, Unknown],
+                    # which its invariant-dict rule rejects for the dict[str, Any] param.
+                    return {
+                        k: _clean_value(v, depth + 1) for k, v in _harden_keys(cast("dict[str, Any]", value)).items()
+                    }
                 return [
                     _clean_value(item, depth + 1) for item in value
                 ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests

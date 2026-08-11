@@ -97,6 +97,59 @@ def test_event_literal_check_flags_invalid_characters(tmp_path: Path) -> None:
     assert "invalid event literal" in violations[0]
 
 
+def test_event_literal_check_honors_allow_marker_on_call_line(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "allowed.py"
+    file_path.write_text(
+        "def run(log):\n    log.debug('diag id=%s', 1)  # event-literal: allow\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert violations == []
+
+
+def test_event_literal_check_honors_allow_marker_on_literal_line(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "allowed_multiline.py"
+    file_path.write_text(
+        "def run(log):\n    log.debug(\n        'diag id=%s',  # event-literal: allow\n        1,\n    )\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert violations == []
+
+
+def test_event_literal_check_still_flags_unmarked_invalid_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "unmarked.py"
+    file_path.write_text(
+        "def run(log):\n    log.debug('diag id=%s', 1)\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert len(violations) == 1
+    assert "invalid event literal" in violations[0]
+
+
+def test_event_literal_check_ignores_marker_on_unrelated_line(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    root.mkdir()
+    file_path = root / "unrelated_marker.py"
+    file_path.write_text(
+        "# event-literal: allow\ndef run(log):\n    log.debug('diag id=%s', 1)\n",
+        encoding="utf-8",
+    )
+
+    violations = find_event_literal_violations([root], set())
+    assert len(violations) == 1
+
+
 def test_event_literal_check_ignores_non_literal_dynamic_event(tmp_path: Path) -> None:
     root = tmp_path / "src"
     root.mkdir()

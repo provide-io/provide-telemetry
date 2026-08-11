@@ -25,6 +25,10 @@ _DEFAULT_EXCLUDE_PARTS = {
 _SEG = r"[a-z][a-z0-9_]*"
 _EVENT_RE = re.compile(rf"^{_SEG}(?:\.{_SEG})*$")
 _LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "trace"}
+# Deliberate exemption marker for log calls whose first argument is not an
+# event name (e.g. a stdlib-logging format string). Honored on the call line
+# or on the string literal's own line.
+_ALLOW_MARKER = "# event-literal: allow"
 
 
 def _iter_python_files(roots: Iterable[Path], exclude_parts: set[str]) -> Iterable[Path]:
@@ -38,13 +42,17 @@ def _iter_python_files(roots: Iterable[Path], exclude_parts: set[str]) -> Iterab
                 yield path
 
 
-def _first_string_arg(node: ast.Call) -> str | None:
+def _first_string_arg(node: ast.Call) -> tuple[str, int] | None:
     if not node.args:
         return None
     first = node.args[0]
     if isinstance(first, ast.Constant) and isinstance(first.value, str):
-        return first.value
+        return (first.value, first.lineno)
     return None
+
+
+def _has_allow_marker(lines: list[str], line_numbers: set[int]) -> bool:
+    return any(_ALLOW_MARKER in lines[lineno - 1] for lineno in line_numbers if 0 < lineno <= len(lines))
 
 
 def _is_log_call(node: ast.Call) -> bool:
@@ -55,14 +63,20 @@ def find_event_literal_violations(roots: Iterable[Path], exclude_parts: set[str]
     violations: list[str] = []
     for path in sorted(_iter_python_files(roots, exclude_parts)):
         source = path.read_text(encoding="utf-8")
+        lines = source.splitlines()
         tree = ast.parse(source, filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not _is_log_call(node):
                 continue
-            literal = _first_string_arg(node)
-            if literal is None or _EVENT_RE.match(literal):
+            first_arg = _first_string_arg(node)
+            if first_arg is None:
+                continue
+            literal, literal_lineno = first_arg
+            if _EVENT_RE.match(literal):
                 continue
             line = getattr(node, "lineno", 1)
+            if _has_allow_marker(lines, {line, literal_lineno}):
+                continue
             col = getattr(node, "col_offset", 0) + 1
             violations.append(f"{path}:{line}:{col}: invalid event literal: {literal!r}")
     return violations
