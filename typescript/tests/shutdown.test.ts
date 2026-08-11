@@ -127,8 +127,14 @@ describe('shutdownTelemetry', () => {
       shutdown: vi.fn().mockResolvedValue(undefined),
     };
     _storeRegisteredProviders([provider]);
+    // Silence is part of the contract: entering the flush phase anyway would
+    // throw on the missing method and surface as a bogus "forceFlush failed"
+    // warning through the sync-throw catch.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(shutdownTelemetry()).resolves.toBeUndefined();
     expect(provider.shutdown).toHaveBeenCalledOnce();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('works with a provider that has no shutdown method', async () => {
