@@ -5,6 +5,17 @@
 # cargo-mutants reads `.cargo/mutants.toml` by default from the crate root:
 # https://mutants.rs/config-file.html
 #
+# The auto timeout is 5x the unmutated baseline, and that is too tight for
+# mutants that break the export-health observations: every polling test in
+# tests/otlp_runtime_test.rs then burns its full wait_for_export_health
+# deadline plus its fixed sleeps, and the aggregate run blows a cap derived
+# from the healthy suite's runtime. On a fast machine (20s baseline -> 99s
+# cap) three health.rs mutants timed out undecided; at 15x all are decided
+# and killed. Same reasoning as the Go gate's --timeout-coefficient=100:
+# this raises how long a mutant may take to be judged, not the bar, which is
+# still zero survivors.
+timeout_multiplier = 15.0
+
 # Equivalent mutations: excluded because the mutated code is
 # behaviourally identical to the original.
 exclude_re = [

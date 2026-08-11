@@ -66,6 +66,27 @@ fn health_test_snapshot_ignores_missing_circuit_states() {
     assert_eq!(snapshot.circuit_state_traces, "");
     assert_eq!(snapshot.circuit_state_metrics, "");
 }
+
+/// Each signal's counter must actually add — a stuck-at-zero counter reports
+/// "no executor ever stalled" forever, which is the one lie this counter
+/// exists to prevent.
+#[test]
+fn health_test_async_blocking_risk_increments_per_signal() {
+    let _guard = acquire_test_state_lock();
+    _reset_health_for_tests();
+
+    crate::health::increment_async_blocking_risk(Signal::Logs);
+    crate::health::increment_async_blocking_risk(Signal::Traces);
+    crate::health::increment_async_blocking_risk(Signal::Traces);
+    crate::health::increment_async_blocking_risk(Signal::Metrics);
+    crate::health::increment_async_blocking_risk(Signal::Metrics);
+    crate::health::increment_async_blocking_risk(Signal::Metrics);
+
+    let snapshot = get_health_snapshot();
+    assert_eq!(snapshot.async_blocking_risk_logs, 1);
+    assert_eq!(snapshot.async_blocking_risk_traces, 2);
+    assert_eq!(snapshot.async_blocking_risk_metrics, 3);
+}
 // SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
