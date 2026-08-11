@@ -130,13 +130,65 @@ public sealed class Logger
     private static string FormatText(
         IReadOnlyDictionary<string, object?> output, CanonicalLogRecord record, string quote)
     {
+        // Every caller-influenced fragment goes through EscapeControl: the
+        // console and pretty renderers are line-oriented, so a raw CR/LF here
+        // forges an entire additional record, ESC rewrites the operator's
+        // terminal, and NUL truncates the line for downstream tooling. JSON
+        // output is protected by the serializer and takes the other branch.
+        var escapeQuotes = quote.Length > 0;
         var extras = string.Join(" ", output
             .Where(kv => kv.Key is not ("level" or "message" or "timestamp"))
-            .Select(kv => $"{kv.Key}={quote}{kv.Value}{quote}"));
+            .Select(kv =>
+                $"{EscapeControl($"{kv.Key}", escapeQuotes: false)}=" +
+                $"{quote}{EscapeControl($"{kv.Value}", escapeQuotes)}{quote}"));
         var ts = output.TryGetValue("timestamp", out var t) ? t + " " : "";
+        var eventText = EscapeControl(record.Event, escapeQuotes: false);
         return string.IsNullOrEmpty(extras)
-            ? $"{ts}[{record.Level}] {record.Event}"
-            : $"{ts}[{record.Level}] {record.Event} {extras}";
+            ? $"{ts}[{record.Level}] {eventText}"
+            : $"{ts}[{record.Level}] {eventText} {extras}";
+    }
+
+    /// <summary>
+    /// Escape C0 control characters and DEL into backslash sequences, keeping
+    /// the rendered record on exactly one physical line. When
+    /// <paramref name="escapeQuotes"/> is set (pretty mode), embedded quotes
+    /// are escaped too so they cannot terminate the surrounding quoting.
+    /// </summary>
+    private static string EscapeControl(string text, bool escapeQuotes)
+    {
+        var needsWork = false;
+        foreach (var c in text)
+        {
+            if (c < '\x20' || c == '\x7f' || (escapeQuotes && c == '"'))
+            {
+                needsWork = true;
+                break;
+            }
+        }
+        if (!needsWork) return text;
+
+        var builder = new System.Text.StringBuilder(text.Length + 8);
+        foreach (var c in text)
+        {
+            switch (c)
+            {
+                case '\n': builder.Append("\\n"); break;
+                case '\r': builder.Append("\\r"); break;
+                case '\t': builder.Append("\\t"); break;
+                case '"' when escapeQuotes: builder.Append("\\\""); break;
+                default:
+                    if (c < '\x20' || c == '\x7f')
+                    {
+                        builder.Append("\\u").Append(((int)c).ToString("x4", System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        builder.Append(c);
+                    }
+                    break;
+            }
+        }
+        return builder.ToString();
     }
 
     private static string EffectiveLevel(string name, TelemetryConfig cfg)
