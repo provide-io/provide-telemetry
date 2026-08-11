@@ -129,7 +129,10 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         catch
         {
             if (!config.Exporter.LogsFailOpen) throw;
-            DisposeLogPipeline();
+            // Nothing has been emitted through a pipeline that failed to
+            // install, so there is nothing to drain: an already-expired
+            // deadline tears it down without waiting.
+            DisposeLogPipeline(DateTimeOffset.UtcNow);
             return false;
         }
     }
@@ -205,7 +208,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     public void Shutdown(DateTimeOffset deadline)
     {
         Drain(deadline, detach: true);
-        DisposeDetached();
+        DisposeDetached(deadline);
     }
 
     /// <summary>
@@ -278,7 +281,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         return drains;
     }
 
-    private void DisposeDetached()
+    private void DisposeDetached(DateTimeOffset deadline)
     {
         TracerProvider? tracerProvider = null;
         MeterProvider? meterProvider = null;
@@ -296,24 +299,47 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         // Disposed outside the lock: TracerProvider.Dispose drains its batch
         // processor, and holding the gate through that would block every
         // concurrent GetTracer for the duration of a network timeout.
+        //
+        // Bounded Shutdown before each Dispose: provider disposal drains the
+        // batch processor on OTel's own default timeout, which ignores the
+        // deadline this call advertised — against an unreachable collector the
+        // caller waited seconds after their budget had expired. A provider
+        // whose Shutdown has already run disposes without draining again, so
+        // the explicit deadline-clamped Shutdown makes the Dispose cheap. An
+        // expired deadline clamps to 0ms, which OTel treats as "don't wait" —
+        // preserving the Dispose() path's documented one-attempt rule, which
+        // lives in the Drain that precedes this method, not here.
+        Swallow(() => tracerProvider?.Shutdown(RemainingMs(deadline)));
         Swallow(() => tracerProvider?.Dispose());
+        Swallow(() => meterProvider?.Shutdown(RemainingMs(deadline)));
         Swallow(() => meterProvider?.Dispose());
         Swallow(() => activitySource?.Dispose());
         Swallow(() => meter?.Dispose());
-        DisposeLogPipeline();
+        DisposeLogPipeline(deadline);
     }
 
-    private void DisposeLogPipeline()
+    private void DisposeLogPipeline(DateTimeOffset deadline)
     {
         ServiceProvider? services = null;
+        LoggerProvider? loggerProvider = null;
         lock (_gate)
         {
             services = _logServices;
+            loggerProvider = _loggerProvider;
             _logServices = null;
             _loggerProvider = null;
             _otelLogger = null;
         }
+        Swallow(() => loggerProvider?.Shutdown(RemainingMs(deadline)));
         Swallow(() => services?.Dispose());
+    }
+
+    /// <summary>Milliseconds left until <paramref name="deadline"/>, clamped to [0, int.MaxValue].</summary>
+    private static int RemainingMs(DateTimeOffset deadline)
+    {
+        var remaining = (deadline - DateTimeOffset.UtcNow).TotalMilliseconds;
+        if (remaining <= 0) return 0;
+        return remaining >= int.MaxValue ? int.MaxValue : (int)remaining;
     }
 
     // Teardown runs on the shutdown path, where the caller has already decided

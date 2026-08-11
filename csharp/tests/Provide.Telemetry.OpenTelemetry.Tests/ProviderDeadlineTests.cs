@@ -209,6 +209,43 @@ public class ProviderDeadlineTests
     }
 
     [Fact]
+    public void ProviderDisposalIsBoundedByTheSameShutdownDeadline()
+    {
+        // The advertised shutdown budget must cover the whole path, including
+        // provider disposal: TracerProvider.Dispose drains its batch processor
+        // against the exporter, and against a black-hole collector that drain
+        // used to run on OTel's own default timeout, long after the deadline
+        // the caller was promised had passed.
+        var config = TelemetryConfig.Default();
+        config.ServiceName = "deadline-suite";
+        // A reserved-discard address: connections hang rather than being refused.
+        config.Tracing.OtlpEndpoint = "http://192.0.2.1:4318";
+        config.Metrics.OtlpEndpoint = "http://192.0.2.1:4318";
+        config.Logging.OtlpEndpoint = "http://192.0.2.1:4318";
+        var backend = new OpenTelemetryBackend(config);
+        backend.EmitLog(new CanonicalLogRecord(
+            DateTimeOffset.UtcNow,
+            Level: "INFO",
+            Event: "deadline.disposal.probe",
+            ServiceName: "deadline-suite",
+            Environment: null,
+            TraceId: null,
+            SpanId: null,
+            ErrorFingerprint: null,
+            Attributes: new Dictionary<string, object?>()));
+
+        var stopwatch = Stopwatch.StartNew();
+        backend.Shutdown(DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(500));
+        backend.Dispose();
+        stopwatch.Stop();
+
+        // Generous headroom over the 500ms budget for scheduler jitter — the
+        // regression this pins was multi-second (OTel's per-processor default
+        // shutdown timeouts stacking after the deadline had already expired).
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"bounded shutdown took {stopwatch.Elapsed}");
+    }
+
+    [Fact]
     public void FlushPreservesInstalledProvidersAndShutdownDetachesThem()
     {
         OpenTelemetryBackendRegistration.Register();
