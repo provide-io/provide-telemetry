@@ -25,6 +25,15 @@ namespace Provide.Telemetry;
 /// </remarks>
 internal static class Hardening
 {
+    /// <summary>
+    /// Element budget for a single hardened sequence. Caller collections in
+    /// every other runtime arrive materialized, but an IEnumerable here can be
+    /// lazy — infinite, or merely enormous — and hardening must terminate with
+    /// bounded output either way. Truncation is visible: the element after the
+    /// budget is the redaction sentinel, never a silent cut.
+    /// </summary>
+    public const int MaxSequenceElements = 1000;
+
     /// <summary>Reduce a value to dictionaries, lists and scalars.</summary>
     public static object? Harden(object? value, int maxDepth) =>
         Normalize(value, new HashSet<object>(ReferenceEqualityComparer.Instance), 0, maxDepth);
@@ -59,11 +68,14 @@ internal static class Hardening
         {
             return NormalizeInspectable(value, seen, depth, maxDepth);
         }
-        catch (Exception error) when (error is NotSupportedException or TargetInvocationException)
+        catch (Exception error) when (error is not OutOfMemoryException)
         {
-            // A property getter that throws, or a type that refuses reflection,
-            // must not fault the caller's log call. Redacting is the safe
-            // answer: nothing is known about the value, so nothing is shown.
+            // A property getter that throws, a type that refuses reflection,
+            // or an enumerator that fails at acquisition, MoveNext or Current
+            // — with any exception type, not a curated pair — must not fault
+            // the caller's log call. Redacting is the safe answer: nothing is
+            // known about the value, so nothing is shown. Only OOM propagates;
+            // swallowing it would hide real memory exhaustion.
             return Pii.Redacted;
         }
     }
@@ -119,7 +131,15 @@ internal static class Hardening
     private static List<object?> FromSequence(IEnumerable sequence, HashSet<object> seen, int depth, int maxDepth)
     {
         var result = new List<object?>();
-        foreach (var item in sequence) result.Add(Normalize(item, seen, depth + 1, maxDepth));
+        foreach (var item in sequence)
+        {
+            if (result.Count >= MaxSequenceElements)
+            {
+                result.Add(Pii.Redacted);
+                break;
+            }
+            result.Add(Normalize(item, seen, depth + 1, maxDepth));
+        }
         return result;
     }
 
