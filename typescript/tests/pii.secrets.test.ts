@@ -293,6 +293,52 @@ describe('sanitize — non-string values NOT treated as secrets (kills typeof gu
   });
 });
 
+describe('registerSecretPattern — stateful-flag patterns stay deterministic', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  it('a g-flag pattern detects the same value on every consecutive call', () => {
+    registerSecretPattern('global-pat', /CUSTOMSECRETVALUE1234/g);
+    const value = 'CUSTOMSECRETVALUE1234'; // pragma: allowlist secret
+    const results = [1, 2, 3, 4].map(() => _detectSecretInValue(value));
+    expect(results).toEqual([true, true, true, true]);
+  });
+
+  it('a y-flag pattern detects the same value on every consecutive call', () => {
+    registerSecretPattern('sticky-pat', /CUSTOMSTICKYVALUE1234/y);
+    const value = 'CUSTOMSTICKYVALUE1234'; // pragma: allowlist secret
+    const results = [1, 2, 3, 4].map(() => _detectSecretInValue(value));
+    expect(results).toEqual([true, true, true, true]);
+  });
+
+  it('a g-flag pattern redacts the same secret in two sibling fields', () => {
+    registerSecretPattern('global-pat', /CUSTOMSECRETVALUE1234/g);
+    const value = 'CUSTOMSECRETVALUE1234'; // pragma: allowlist secret
+    const payload: Record<string, unknown> = { first: value, second: value };
+    sanitizePayload(payload);
+    expect(payload['first']).toBe('***');
+    expect(payload['second']).toBe('***');
+  });
+
+  it('a g-flag pattern redacts the same secret across nested levels', () => {
+    registerSecretPattern('global-pat', /CUSTOMSECRETVALUE1234/g);
+    const value = 'CUSTOMSECRETVALUE1234'; // pragma: allowlist secret
+    const payload: Record<string, unknown> = { outer: value, nested: { inner: value } };
+    sanitizePayload(payload);
+    expect(payload['outer']).toBe('***');
+    expect((payload['nested'] as Record<string, unknown>)['inner']).toBe('***');
+  });
+
+  it('the stored clone drops only g and y, keeping source and other flags', () => {
+    registerSecretPattern('flags-pat', /customsecretvalue1234/giy);
+    const stored = getSecretPatterns().find((p) => p.name === 'flags-pat');
+    expect(stored).toBeDefined();
+    expect(stored?.pattern.source).toBe('customsecretvalue1234');
+    expect(stored?.pattern.flags).toBe('i');
+    expect(_detectSecretInValue('CUSTOMSECRETVALUE1234')).toBe(true);
+    expect(_detectSecretInValue('CUSTOMSECRETVALUE1234')).toBe(true);
+  });
+});
+
 describe('registerSecretPattern — custom secret detection', () => {
   afterEach(() => resetPiiRulesForTests());
 

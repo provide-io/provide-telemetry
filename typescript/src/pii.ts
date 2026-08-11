@@ -64,7 +64,11 @@ const _customSecretPatterns: Map<string, RegExp> = new Map();
  * The name is for diagnostics only.
  */
 export function registerSecretPattern(name: string, pattern: RegExp): void {
-  _customSecretPatterns.set(name, pattern);
+  // g/y make RegExp.test stateful through lastIndex, so a matching value would
+  // be detected only on alternate calls. Detection is a containment check —
+  // dropping the flags preserves the match semantics and removes the state.
+  const flags = pattern.flags.replace(/[gy]/g, '');
+  _customSecretPatterns.set(name, new RegExp(pattern.source, flags));
 }
 
 /**
