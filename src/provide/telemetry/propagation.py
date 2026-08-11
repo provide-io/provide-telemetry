@@ -50,6 +50,11 @@ _CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
 _MAX_HEADER_LENGTH = 512
 _MAX_TRACESTATE_PAIRS = 32
+# One W3C tracestate list member: OWS, a key (lcalpha/digit start, then the
+# spec's key characters, multi-tenant "@" included), "=", a value of printable
+# ASCII minus comma and equals, OWS. Anchored per member; extract and inject
+# both refuse the whole header when any member fails.
+_TRACESTATE_MEMBER_RE = _re.compile(r"[ \t]*[a-z0-9][a-z0-9_\-*/@]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]*[ \t]*\Z")
 _MAX_BAGGAGE_LENGTH = 8192
 _TRACE_ID_LENGTH = 32
 _SPAN_ID_LENGTH = 16
@@ -114,6 +119,8 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
     if tracestate and tracestate.count(",") + 1 > _MAX_TRACESTATE_PAIRS:
+        tracestate = None
+    if tracestate and not _is_forwardable_tracestate(tracestate):
         tracestate = None
     if baggage and len(baggage) > _MAX_BAGGAGE_LENGTH:
         baggage = None
@@ -180,6 +187,18 @@ def parse_baggage(raw: str) -> dict[str, str]:
     return result
 
 
+def _is_forwardable_tracestate(value: str) -> bool:
+    """True when every tracestate list member fits the W3C grammar.
+
+    A security boundary, not pedantry: the bound value is written verbatim
+    into an outbound HTTP header by the no-OTel injection fallback, so a
+    control character here (``\\r\\n`` especially) is header injection at the
+    next hop. Checked at extraction and again immediately before injection,
+    because application code can bind ``tracestate`` directly.
+    """
+    return all(_TRACESTATE_MEMBER_RE.match(member) for member in value.split(","))
+
+
 def _is_injectable_id(value: str | None, length: int) -> bool:
     """Validate a trace/span ID for outbound injection.
 
@@ -213,7 +232,7 @@ def inject_traceparent(headers: MutableMapping[str, str]) -> MutableMapping[str,
         return headers
     headers["traceparent"] = f"00-{trace_id}-{span_id}-01"
     tracestate = get_context().get("tracestate")
-    if isinstance(tracestate, str) and tracestate:
+    if isinstance(tracestate, str) and tracestate and _is_forwardable_tracestate(tracestate):
         headers["tracestate"] = tracestate
     return headers
 

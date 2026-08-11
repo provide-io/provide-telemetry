@@ -137,6 +137,24 @@ class TestInjectTracestateForwarding:
         headers = inject_traceparent({})
         assert "tracestate" not in headers
 
+    def test_crlf_bearing_bound_tracestate_not_forwarded(self) -> None:
+        """A hostile bound value must not reach an outbound header.
+
+        Extraction drops malformed tracestate, but the contextvar can be bound
+        directly by application code — the injection side revalidates.
+        """
+        set_trace_context(_TRACE_ID, _SPAN_ID)
+        bind_context(tracestate="vendor=value\r\nx-injected: yes")
+        headers = inject_traceparent({})
+        assert "tracestate" not in headers
+        assert headers["traceparent"] == f"00-{_TRACE_ID}-{_SPAN_ID}-01"
+
+    def test_grammarless_bound_tracestate_not_forwarded(self) -> None:
+        set_trace_context(_TRACE_ID, _SPAN_ID)
+        bind_context(tracestate="no-equals-sign")
+        headers = inject_traceparent({})
+        assert "tracestate" not in headers
+
     def test_no_traceparent_means_no_tracestate(self) -> None:
         """tracestate must never be emitted without a traceparent."""
         bind_context(tracestate="vendor=value")
