@@ -193,5 +193,8 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
 - `VERSION` contains major.minor only (e.g. `0.3`); each language tracks patch independently.
 - `e2e/` — cross-language E2E tests.
-- Language directories: `typescript/`, `go/`, `rust/` — each self-contained with own build config.
+- Language directories: `typescript/`, `go/`, `rust/`, `csharp/` — each self-contained with own build config.
 - Python stays at repo root (`src/`, `pyproject.toml`, `tests/`).
+- C# (`csharp/`): `Provide.Telemetry` core package + `Provide.Telemetry.OpenTelemetry` OTLP backend,
+  xUnit tests under `csharp/tests/`, Stryker mutation config in `csharp/stryker-config.json`.
+  Run tests with `dotnet test` from `csharp/`.

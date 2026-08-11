@@ -4,10 +4,10 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Run behavioral parity tests across all four language implementations.
+"""Run behavioral parity tests across all five language implementations.
 
 Each language has its own parity test suite that validates the same
-spec/behavioral_fixtures.yaml contracts. This script runs all four suites
+spec/behavioral_fixtures.yaml contracts. This script runs all five suites
 and reports a unified pass/fail matrix.
 
 By default both output-format probes (--check-output) and contract DSL probes

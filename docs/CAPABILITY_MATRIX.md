@@ -30,7 +30,7 @@ Legend:
 | Browser log capture / React helpers | no | idiomatic | no | no | no | idiomatic language difference |
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | last-reading | capability difference — see notes |
 | Counter / gauge / histogram values readable from the instrument | core | core | concrete type only | core | core | core guaranteed; Go's exported `Histogram` interface declares only `Record` |
-| ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | core | core | missing | missing | known gap |
+| ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | missing | missing | missing | missing | known gap — Python only |
 | `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | no ANSI | core guaranteed in four languages — see notes |
 | Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | no | capability difference — see notes |
 
@@ -95,15 +95,13 @@ Notes:
   is consistent across all five languages (per-series last reading); only the
   in-process `.value()` accessor differs. Cross-language comparisons of the
   aggregate accessor are not supported.
-- ASGI/HTTP middleware: Python ships `provide.telemetry.asgi.TelemetryMiddleware`
-  (`src/provide/telemetry/asgi/middleware.py`) and TypeScript and Go ship
-  equivalent request-lifecycle middleware. Rust does not provide a pre-built
-  axum/hyper middleware, and C# ships no ASP.NET Core middleware or
-  `IHostBuilder` extension; in both, users must bind and clear context manually
-  inside handlers — `bind_context()` / `clear_context()` in Rust,
-  `Context.PushContext()` / `Context.PushTraceContext()` in C# — and extract
-  W3C traceparent/tracestate via `extract_w3c_context()` /
-  `ExtractW3CContext()`.
+- ASGI/HTTP middleware: only Python ships a pre-built request-lifecycle
+  middleware, `provide.telemetry.asgi.TelemetryMiddleware`
+  (`src/provide/telemetry/asgi/middleware.py`). TypeScript, Go, Rust and C#
+  do not; their READMEs show the manual pattern instead — extract W3C context
+  via `extractW3CContext()` / `ExtractW3CContext()` / `extract_w3c_context()`,
+  bind it with the language's context helpers at request start, and clear it
+  at request end.
 - Pretty log rendering: Python, TypeScript, Go, and Rust honour
   `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Python's lives in
   `src/provide/telemetry/logger/pretty.py`, TypeScript's in

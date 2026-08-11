@@ -71,18 +71,18 @@ Known gaps where a language lacks a feature the others already ship. These are
 tracked here instead of under P1 because they are missing surface area, not
 drift between existing surfaces.
 
-- **ASGI/HTTP request-lifecycle middleware (P1 priority).** Python's
-  `provide.telemetry.asgi.TelemetryMiddleware`, the TypeScript middleware, and
-  the Go `httpmw` package each bind request/session context, extract W3C
-  traceparent/tracestate and baggage, and clear context on response. Rust has
-  `extract_w3c_context()` and `bind_context()` / `clear_context()` building
-  blocks, but users must wire them into axum/hyper handlers by hand. Ship a
-  `provide_telemetry::asgi`-equivalent crate module (or a sibling
-  `provide-telemetry-axum` facade) that wraps these primitives into a
-  `tower::Layer`. C# is in the same position with the same building blocks
-  (`ExtractW3CContext()`, `Context.PushContext()`, `Context.PushTraceContext()`)
-  and no ASP.NET Core middleware or `IApplicationBuilder` extension to wrap
-  them.
+- **ASGI/HTTP request-lifecycle middleware (P1 priority).** Only Python ships
+  one: `provide.telemetry.asgi.TelemetryMiddleware` binds request/session
+  context, extracts W3C traceparent/tracestate and baggage, and clears context
+  on response. Every other runtime has the building blocks but no wrapper —
+  TypeScript (`extractW3CContext()` + context helpers, see
+  `typescript/README.md`), Go (`ExtractW3CContext` + explicit contexts, see
+  `go/README.md`), Rust (`extract_w3c_context()` and `bind_context()` /
+  `clear_context()`), and C# (`ExtractW3CContext()`, `Context.PushContext()`,
+  `Context.PushTraceContext()`). Ship an Express/Koa-style middleware for
+  TypeScript, an `httpmw` package for Go, a `tower::Layer` crate module for
+  Rust, and an ASP.NET Core middleware / `IApplicationBuilder` extension for
+  C#.
 - **Pretty log renderer (P2 priority).** `PROVIDE_LOG_FORMAT=pretty` produces an
   ANSI-coloured renderer in Python, TypeScript, Go and Rust — Rust's shipped as
   `rust/src/logger/pretty.rs`, closing the gap this bullet originally
