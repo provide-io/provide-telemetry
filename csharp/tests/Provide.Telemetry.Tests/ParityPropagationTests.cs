@@ -133,4 +133,56 @@ public class ParityPropagationTests
         Assert.Equal("", pc.SpanID);
         Assert.Equal("", pc.Traceparent);
     }
+
+    // ── propagation_tracestate_grammar ───────────────────────────────────────
+    // A tracestate that passes the length and pair-count guards must also fit
+    // the W3C list-member grammar; one bad member discards the whole header.
+
+    [Theory]
+    [InlineData("vendor=value\r\nx-injected: yes")]
+    [InlineData("vendor=va\u001b[31mlue")]
+    [InlineData("vendorvalue")]
+    [InlineData("vendor=ok,bad\r\nmember=x")]
+    [InlineData("Vendor=x")]
+    [InlineData(",")]
+    [InlineData("vendor=a=b")]
+    public void PropagationTracestateGrammar_InvalidMember_Discarded(string tracestate)
+    {
+        var pc = ProvideTelemetry.ExtractW3CContext(
+            new Dictionary<string, string> { ["tracestate"] = tracestate });
+        Assert.Equal("", pc.Tracestate);
+    }
+
+    [Fact]
+    public void PropagationTracestateGrammar_KeyAt257Chars_Discarded()
+    {
+        var state = new string('a', 257) + "=x";
+        var pc = ProvideTelemetry.ExtractW3CContext(
+            new Dictionary<string, string> { ["tracestate"] = state });
+        Assert.Equal("", pc.Tracestate);
+    }
+
+    [Theory]
+    [InlineData("congo=t61rcWkgMzE,rojo=00f067aa0ba902b7")]
+    [InlineData("congo=t61, rojo=00f")]
+    [InlineData("congo=t61,\trojo=00f")]
+    [InlineData("az3@rojo=00f067aa")]
+    [InlineData("k_e-y*a/b@c=1")]
+    [InlineData("0key=x")]
+    [InlineData("vendor=")]
+    public void PropagationTracestateGrammar_ValidMember_Kept(string tracestate)
+    {
+        var pc = ProvideTelemetry.ExtractW3CContext(
+            new Dictionary<string, string> { ["tracestate"] = tracestate });
+        Assert.Equal(tracestate, pc.Tracestate);
+    }
+
+    [Fact]
+    public void PropagationTracestateGrammar_KeyAt256Chars_Kept()
+    {
+        var state = new string('a', 256) + "=x";
+        var pc = ProvideTelemetry.ExtractW3CContext(
+            new Dictionary<string, string> { ["tracestate"] = state });
+        Assert.Equal(state, pc.Tracestate);
+    }
 }

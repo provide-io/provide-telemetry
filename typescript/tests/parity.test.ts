@@ -309,6 +309,41 @@ describe('parity: sampling_rate_bounds', () => {
 // extra hyphen-separated segment beyond the canonical 4-part W3C form must be
 // rejected; returned context has neither traceId nor spanId.
 
+// ── Propagation Tracestate Grammar ──────────────────────────────────────────
+
+describe('parity: propagation_tracestate_grammar', () => {
+  const validTraceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+  const extractTracestate = (tracestate: string): string | undefined =>
+    extractW3cContext({ traceparent: validTraceparent, tracestate }).tracestate;
+
+  it.each([
+    ['CRLF-bearing member', 'vendor=value\r\nx-injected: yes'],
+    ['ANSI-escape-bearing member', 'vendor=va\x1b[31mlue'],
+    ['member without equals sign', 'vendorvalue'],
+    ['one invalid member', 'vendor=ok,bad\r\nmember=x'],
+    ['uppercase key', 'Vendor=x'],
+    ['comma-only header', ','],
+    ['257-char key', 'a'.repeat(257) + '=x'],
+    ['value containing equals', 'vendor=a=b'],
+  ])('%s is discarded', (_name, tracestate) => {
+    expect(extractTracestate(tracestate)).toBeUndefined();
+  });
+
+  it.each([
+    ['every key special character', 'k_e-y*a/b@c=1'],
+    ['digit-first key', '0key=x'],
+    ['valid multi-member header', 'congo=t61rcWkgMzE,rojo=00f067aa0ba902b7'],
+    ['OWS after the comma', 'congo=t61, rojo=00f'],
+    ['tab OWS after the comma', 'congo=t61,\trojo=00f'],
+    ['multi-tenant at-sign key', 'az3@rojo=00f067aa'],
+    ['empty value', 'vendor='],
+    ['256-char key', 'a'.repeat(256) + '=x'],
+  ])('%s is kept', (_name, tracestate) => {
+    expect(extractTracestate(tracestate)).toBe(tracestate);
+  });
+});
+
 describe('parity: propagation_oversized_traceparent', () => {
   it('traceparent with trailing 5th segment is rejected', () => {
     const tp = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra';

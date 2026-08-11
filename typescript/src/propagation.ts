@@ -150,6 +150,28 @@ function _ensureStore(): PropagationStore {
 }
 // Stryker restore ConditionalExpression,BlockStatement,ArrayDeclaration
 
+/**
+ * True when every tracestate list member fits the W3C grammar: OWS, a key
+ * starting with lcalpha/digit followed by up to 255 of the spec's key
+ * characters (multi-tenant "@" included), "=", a value of printable ASCII
+ * minus comma and equals, OWS. One bad member discards the whole header.
+ *
+ * A security boundary, not pedantry: a kept tracestate is forwarded verbatim
+ * into outbound headers (and the OTel carrier), so a surviving control
+ * character — CR/LF especially — is header injection at the next hop. Mirrors
+ * Python's `_is_forwardable_tracestate` (parity category:
+ * propagation_tracestate_grammar).
+ *
+ * The pattern lives inside the function, not at module level, for the same
+ * reason as isBaggageToken: a module-level regex is a static mutant Stryker
+ * can never kill, and this is a security boundary that must stay genuinely
+ * covered.
+ */
+function isForwardableTracestate(value: string): boolean {
+  const member = /^[ \t]*[a-z0-9][a-z0-9_\-*/@]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]*[ \t]*$/;
+  return value.split(',').every((part) => member.test(part));
+}
+
 function _parseTraceparent(value: string): { traceId?: string; spanId?: string } {
   const parts = value.split('-');
   if (parts.length !== 4) return {};
@@ -236,6 +258,8 @@ export function extractW3cContext(headers: Record<string, string>): PropagationC
     if (tracestate.length > MAX_HEADER_LENGTH) {
       tracestate = undefined;
     } else if (tracestate.split(',').length > MAX_TRACESTATE_PAIRS) {
+      tracestate = undefined;
+    } else if (!isForwardableTracestate(tracestate)) {
       tracestate = undefined;
     }
   }

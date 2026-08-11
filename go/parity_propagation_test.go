@@ -109,3 +109,47 @@ func TestParity_Propagation_OversizedTraceparent_Rejected(t *testing.T) {
 		t.Errorf("malformed traceparent must also clear Traceparent for cross-language parity, got %q", pc.Traceparent)
 	}
 }
+
+// ── Propagation Tracestate Grammar ───────────────────────────────────────────
+// Parity category: propagation_tracestate_grammar — a tracestate that passes
+// the length and pair-count guards must also fit the W3C list-member grammar;
+// one bad member discards the whole header.
+
+func TestParity_Propagation_TracestateGrammar(t *testing.T) {
+	cases := []struct {
+		name       string
+		tracestate string
+		kept       bool
+	}{
+		{"crlf member discarded", "vendor=value\r\nx-injected: yes", false},
+		{"ansi escape discarded", "vendor=va\x1b[31mlue", false},
+		{"missing equals discarded", "vendorvalue", false},
+		{"one invalid member discards all", "vendor=ok,bad\r\nmember=x", false},
+		{"uppercase key discarded", "Vendor=x", false},
+		{"comma only discarded", ",", false},
+		{"257-char key discarded", strings.Repeat("a", 257) + "=x", false},
+		{"value with equals discarded", "vendor=a=b", false},
+		{"key specials kept", "k_e-y*a/b@c=1", true},
+		{"digit-first key kept", "0key=x", true},
+		{"valid multi-member kept", "congo=t61rcWkgMzE,rojo=00f067aa0ba902b7", true},
+		{"ows after comma kept", "congo=t61, rojo=00f", true},
+		{"tab ows kept", "congo=t61,\trojo=00f", true},
+		{"multi-tenant key kept", "az3@rojo=00f067aa", true},
+		{"empty value kept", "vendor=", true},
+		{"256-char key kept", strings.Repeat("a", 256) + "=x", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := http.Header{}
+			headers.Set("Traceparent", validTraceparent())
+			headers.Set("Tracestate", tc.tracestate)
+			pc := ExtractW3CContext(headers)
+			if tc.kept && pc.Tracestate != tc.tracestate {
+				t.Errorf("expected tracestate kept, got %q", pc.Tracestate)
+			}
+			if !tc.kept && pc.Tracestate != "" {
+				t.Errorf("expected tracestate discarded, got %q", pc.Tracestate)
+			}
+		})
+	}
+}

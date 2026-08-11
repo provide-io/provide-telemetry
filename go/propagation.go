@@ -125,8 +125,9 @@ func _guardSize(s string, maxBytes int) string {
 	return s
 }
 
-// _guardTracestateSize discards tracestate if it exceeds _maxTracestateBytes bytes
-// or contains more than _maxTracestatePairs comma-separated pairs.
+// _guardTracestateSize discards tracestate if it exceeds _maxTracestateBytes bytes,
+// contains more than _maxTracestatePairs comma-separated pairs, or fails the
+// W3C list-member grammar.
 func _guardTracestateSize(s string) string {
 	s = _guardSize(s, _maxTracestateBytes)
 	if s == "" {
@@ -136,7 +137,33 @@ func _guardTracestateSize(s string) string {
 	if len(pairs) >= _maxTracestatePairs+1 {
 		return ""
 	}
+	if !_isForwardableTracestate(s) {
+		return ""
+	}
 	return s
+}
+
+// _tracestateMemberRe is one W3C tracestate list member: OWS, a key starting
+// with lcalpha/digit followed by up to 255 of the spec's key characters
+// (multi-tenant "@" included), "=", a value of printable ASCII minus comma and
+// equals, OWS. Interpreted string for the same gremlins reason as
+// _baggageTokenRe above.
+var _tracestateMemberRe = regexp.MustCompile("^[ \\t]*[a-z0-9][a-z0-9_\\-*/@]{0,255}=[\\x20-\\x2b\\x2d-\\x3c\\x3e-\\x7e]*[ \\t]*$")
+
+// _isForwardableTracestate reports whether every tracestate list member fits
+// the W3C grammar. One bad member discards the whole header. This is a
+// security boundary, not pedantry: a kept tracestate is forwarded verbatim
+// into outbound headers by runtimes that inject it, so a surviving control
+// character (CR/LF especially) is header injection at the next hop. Mirrors
+// Python's _is_forwardable_tracestate (parity category:
+// propagation_tracestate_grammar).
+func _isForwardableTracestate(s string) bool {
+	for _, member := range strings.Split(s, ",") {
+		if !_tracestateMemberRe.MatchString(member) {
+			return false
+		}
+	}
+	return true
 }
 
 // _parseTraceparent parses a traceparent header value and returns traceID and spanID.

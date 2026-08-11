@@ -117,6 +117,42 @@ fn parse_traceparent(value: Option<&str>) -> (Option<String>, Option<String>, Op
     )
 }
 
+/// True when every tracestate list member fits the W3C grammar: OWS, a key
+/// starting with lcalpha/digit followed by up to 255 of the spec's key
+/// characters (multi-tenant `@` included), `=`, a value of printable ASCII
+/// minus comma and equals, OWS. One bad member discards the whole header.
+///
+/// A security boundary, not pedantry: a kept tracestate is forwarded verbatim
+/// into outbound headers by runtimes that inject it, so a surviving control
+/// character (CR/LF especially) is header injection at the next hop. Mirrors
+/// Python's `_is_forwardable_tracestate` (parity category:
+/// `propagation_tracestate_grammar`).
+fn is_forwardable_tracestate(value: &str) -> bool {
+    value.split(',').all(is_tracestate_member)
+}
+
+fn is_tracestate_member(member: &str) -> bool {
+    let trimmed = member.trim_matches([' ', '\t']);
+    let Some((key, val)) = trimmed.split_once('=') else {
+        return false;
+    };
+    if key.is_empty() || key.len() > 256 {
+        return false;
+    }
+    let mut chars = key.chars();
+    let first = chars.next().expect("key checked non-empty");
+    if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
+        return false;
+    }
+    if !chars.all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-' | '*' | '/' | '@')
+    }) {
+        return false;
+    }
+    val.chars()
+        .all(|c| matches!(c, '\x20'..='\x2b' | '\x2d'..='\x3c' | '\x3e'..='\x7e'))
+}
+
 pub fn extract_w3c_context(
     traceparent: Option<&str>,
     tracestate: Option<&str>,
@@ -124,7 +160,10 @@ pub fn extract_w3c_context(
 ) -> PropagationContext {
     let traceparent = traceparent.filter(|value| value.len() <= MAX_HEADER_LENGTH);
     let tracestate = tracestate.and_then(|value| {
-        if value.len() > MAX_HEADER_LENGTH || value.split(',').count() > MAX_TRACESTATE_PAIRS {
+        if value.len() > MAX_HEADER_LENGTH
+            || value.split(',').count() > MAX_TRACESTATE_PAIRS
+            || !is_forwardable_tracestate(value)
+        {
             None
         } else {
             Some(value.to_string())

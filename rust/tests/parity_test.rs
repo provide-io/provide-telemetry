@@ -365,6 +365,51 @@ fn parity_test_propagation_oversized_traceparent_rejected() {
     );
 }
 
+// ── Propagation Tracestate Grammar ──────────────────────────────────────────
+// Parity category: propagation_tracestate_grammar — a tracestate that passes
+// the length and pair-count guards must also fit the W3C list-member grammar;
+// one bad member discards the whole header.
+
+#[test]
+fn parity_test_propagation_tracestate_grammar_matches_fixture() {
+    let tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    let key_256 = format!("{}=x", "a".repeat(256));
+    let key_257 = format!("{}=x", "a".repeat(257));
+    let cases: Vec<(&str, bool)> = vec![
+        ("vendor=value\r\nx-injected: yes", false),
+        ("vendor=va\x1b[31mlue", false),
+        ("vendorvalue", false),
+        ("vendor=ok,bad\r\nmember=x", false),
+        ("Vendor=x", false),
+        (",", false),
+        (&key_257, false),
+        ("vendor=a=b", false),
+        ("k_e-y*a/b@c=1", true),
+        ("0key=x", true),
+        ("congo=t61rcWkgMzE,rojo=00f067aa0ba902b7", true),
+        ("congo=t61, rojo=00f", true),
+        ("congo=t61,\trojo=00f", true),
+        ("az3@rojo=00f067aa", true),
+        ("vendor=", true),
+        (&key_256, true),
+    ];
+    for (tracestate, kept) in cases {
+        let ctx = extract_w3c_context(Some(tp), Some(tracestate), None);
+        if kept {
+            assert_eq!(
+                ctx.tracestate.as_deref(),
+                Some(tracestate),
+                "expected kept: {tracestate:?}"
+            );
+        } else {
+            assert!(
+                ctx.tracestate.is_none(),
+                "expected discarded: {tracestate:?}"
+            );
+        }
+    }
+}
+
 // ── Cardinality Saturation ──────────────────────────────────────────────────
 // Parity category: cardinality_saturation — once register_cardinality_limit
 // with max_values=3 is in effect for a key, the 4th distinct value for that

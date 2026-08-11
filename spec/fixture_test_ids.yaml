@@ -133,6 +133,12 @@ fixture_test_ids:
     go: TestParity_Sampling_RateBounds_NegativeClampsToZero
     rust: parity_test_sampling_rate_bounds_negative_clamps_to_zero
     csharp: SamplingRateBounds_FixtureCases_Clamp
+  propagation_tracestate_grammar:
+    python: test_parity_propagation_tracestate_grammar_cases
+    typescript: "parity: propagation_tracestate_grammar"
+    go: TestParity_Propagation_TracestateGrammar
+    rust: parity_test_propagation_tracestate_grammar_matches_fixture
+    csharp: PropagationTracestateGrammar_InvalidMember_Discarded
   propagation_oversized_traceparent:
     python: test_parity_propagation_oversized_traceparent_rejected
     typescript: "parity: propagation_oversized_traceparent"

@@ -26,6 +26,13 @@ public static class Propagation
         @"[\x00-\x08\x0a-\x1f\x7f]",
         RegexOptions.Compiled);
 
+    // One W3C tracestate list member: OWS, a key starting with lcalpha/digit
+    // followed by up to 255 of the spec's key characters (multi-tenant "@"
+    // included), "=", a value of printable ASCII minus comma and equals, OWS.
+    private static readonly Regex TracestateMemberRe = new(
+        @"^[ \t]*[a-z0-9][a-z0-9_\-*/@]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]*[ \t]*$",
+        RegexOptions.Compiled);
+
     public static PropagationContext ExtractW3CContext(IEnumerable<KeyValuePair<string, string>> headers)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -122,7 +129,14 @@ public static class Propagation
         if (string.IsNullOrEmpty(s)) return "";
         if (System.Text.Encoding.UTF8.GetByteCount(s) > MaxTracestateBytes) return "";
         var pairs = s.Split(',');
-        return pairs.Length > MaxTracestatePairs ? "" : s;
+        if (pairs.Length > MaxTracestatePairs) return "";
+        // Grammar check after the size guards: one bad member discards the
+        // whole header. This is a security boundary, not pedantry — a kept
+        // tracestate is forwarded verbatim into outbound headers by runtimes
+        // that inject it, so a surviving control character (CR/LF especially)
+        // is header injection at the next hop. Mirrors Python's
+        // _is_forwardable_tracestate (parity: propagation_tracestate_grammar).
+        return pairs.All(member => TracestateMemberRe.IsMatch(member)) ? s : "";
     }
 
     private static (string traceId, string spanId) ParseTraceparent(string tp)

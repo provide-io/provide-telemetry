@@ -325,6 +325,48 @@ def test_parity_propagation_oversized_traceparent_rejected() -> None:
     assert ctx.traceparent is None
 
 
+# ── Propagation Tracestate Grammar ───────────────────────────────────────────
+# Parity category: propagation_tracestate_grammar — a tracestate that passes
+# the length and pair-count guards must also fit the W3C list-member grammar;
+# one bad member discards the whole header. Security boundary: a kept
+# tracestate is forwarded verbatim into outbound headers by runtimes that
+# inject it.
+
+
+@pytest.mark.parametrize(
+    ("tracestate", "kept"),
+    [
+        ("vendor=value\r\nx-injected: yes", False),
+        ("vendor=va\x1b[31mlue", False),
+        ("vendorvalue", False),
+        ("vendor=ok,bad\r\nmember=x", False),
+        ("Vendor=x", False),
+        (",", False),
+        ("a" * 257 + "=x", False),
+        ("vendor=a=b", False),
+        ("k_e-y*a/b@c=1", True),
+        ("0key=x", True),
+        ("congo=t61rcWkgMzE,rojo=00f067aa0ba902b7", True),
+        ("congo=t61, rojo=00f", True),
+        ("congo=t61,\trojo=00f", True),
+        ("az3@rojo=00f067aa", True),
+        ("vendor=", True),
+        ("a" * 256 + "=x", True),
+    ],
+)
+def test_parity_propagation_tracestate_grammar_cases(tracestate: str, kept: bool) -> None:
+    scope = _make_scope(
+        [
+            (b"traceparent", _valid_traceparent().encode()),
+            (b"tracestate", tracestate.encode()),
+        ]
+    )
+    ctx = extract_w3c_context(scope)
+    assert (ctx.tracestate == tracestate) is kept
+    if not kept:
+        assert ctx.tracestate is None
+
+
 # ── Cardinality Saturation ───────────────────────────────────────────────────
 # Parity category: cardinality_saturation — after register_cardinality_limit
 # with max_values=3, the 4th distinct value for the same key is replaced by

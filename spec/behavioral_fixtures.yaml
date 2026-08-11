@@ -146,6 +146,66 @@ propagation_guards:
     length: 8193
     expected_action: "discard"
 
+propagation_tracestate_grammar:
+  description: >
+    A tracestate header that passes the length and pair-count guards must also
+    fit the W3C tracestate list-member grammar before it may be kept: each
+    comma-separated member is OWS, a key starting with lcalpha/digit followed
+    by up to 255 of [a-z0-9_-*/@], "=", a value of printable ASCII minus comma
+    and equals, OWS. One bad member discards the whole header. This is a
+    security boundary, not pedantry: a kept tracestate is forwarded verbatim
+    into outbound HTTP headers by runtimes that inject it, so a surviving
+    control character (CR/LF especially) is header injection at the next hop.
+  cases:
+    - description: "CRLF-bearing member is discarded"
+      tracestate: "vendor=value\r\nx-injected: yes"
+      expected_action: "discard"
+    - description: "ANSI-escape-bearing member is discarded"
+      tracestate: "vendor=va\x1b[31mlue"
+      expected_action: "discard"
+    - description: "member without equals sign is discarded"
+      tracestate: "vendorvalue"
+      expected_action: "discard"
+    - description: "one invalid member discards the whole header"
+      tracestate: "vendor=ok,bad\r\nmember=x"
+      expected_action: "discard"
+    - description: "uppercase key is discarded"
+      tracestate: "Vendor=x"
+      expected_action: "discard"
+    - description: "comma-only header is discarded"
+      tracestate: ","
+      expected_action: "discard"
+    - description: "257-char key is discarded"
+      tracestate_key_length: 257
+      expected_action: "discard"
+    - description: "value containing equals is discarded"
+      tracestate: "vendor=a=b"
+      expected_action: "discard"
+    - description: "every key special character is kept"
+      tracestate: "k_e-y*a/b@c=1"
+      expected_action: "accept"
+    - description: "digit-first key is kept"
+      tracestate: "0key=x"
+      expected_action: "accept"
+    - description: "valid multi-member header is kept"
+      tracestate: "congo=t61rcWkgMzE,rojo=00f067aa0ba902b7"
+      expected_action: "accept"
+    - description: "OWS after the comma is kept"
+      tracestate: "congo=t61, rojo=00f"
+      expected_action: "accept"
+    - description: "tab OWS after the comma is kept"
+      tracestate: "congo=t61,\trojo=00f"
+      expected_action: "accept"
+    - description: "multi-tenant at-sign key is kept"
+      tracestate: "az3@rojo=00f067aa"
+      expected_action: "accept"
+    - description: "empty value is kept"
+      tracestate: "vendor="
+      expected_action: "accept"
+    - description: "256-char key is kept"
+      tracestate_key_length: 256
+      expected_action: "accept"
+
 config_headers:
   - description: "plus sign preserved as literal (not space)"
     input: "Authorization=Bearer+token"
