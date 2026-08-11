@@ -143,14 +143,14 @@ internal static class ReceiptVectors
         switch (node)
         {
             case YamlMappingNode map:
-            {
-                var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-                foreach (var (key, value) in map.Children)
                 {
-                    result[((YamlScalarNode)key).Value!] = Convert(value);
+                    var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+                    foreach (var (key, value) in map.Children)
+                    {
+                        result[((YamlScalarNode)key).Value!] = Convert(value);
+                    }
+                    return result;
                 }
-                return result;
-            }
             case YamlSequenceNode sequence:
                 return sequence.Children.Select(Convert).ToList();
             case YamlScalarNode scalar:

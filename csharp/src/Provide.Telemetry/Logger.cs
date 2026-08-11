@@ -209,8 +209,13 @@ public sealed class Logger
 
     private static readonly Dictionary<string, int> Rank = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["TRACE"] = 0, ["DEBUG"] = 10, ["INFO"] = 20,
-        ["WARN"] = 30, ["WARNING"] = 30, ["ERROR"] = 40, ["CRITICAL"] = 50,
+        ["TRACE"] = 0,
+        ["DEBUG"] = 10,
+        ["INFO"] = 20,
+        ["WARN"] = 30,
+        ["WARNING"] = 30,
+        ["ERROR"] = 40,
+        ["CRITICAL"] = 50,
     };
 
     private static bool LevelEnabled(string messageLevel, string configured)

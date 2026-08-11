@@ -89,19 +89,19 @@ static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<st
             variables[s.Into ?? "flush"] = new Dictionary<string, object?> { ["ok"] = true };
             break;
         case "bind_propagation":
-        {
-            var headers = new Dictionary<string, string>();
-            if (!string.IsNullOrEmpty(s.Traceparent)) headers["traceparent"] = s.Traceparent!;
-            if (!string.IsNullOrEmpty(s.Baggage)) headers["baggage"] = s.Baggage!;
-            var pc = ProvideTelemetry.ExtractW3CContext(headers);
-            // Re-apply preserved bound fields after propagation overlay.
-            ProvideTelemetry.BindPropagationContext(pc);
-            if (boundFields.Count > 0)
             {
-                ProvideTelemetry.BindContext(boundFields);
+                var headers = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(s.Traceparent)) headers["traceparent"] = s.Traceparent!;
+                if (!string.IsNullOrEmpty(s.Baggage)) headers["baggage"] = s.Baggage!;
+                var pc = ProvideTelemetry.ExtractW3CContext(headers);
+                // Re-apply preserved bound fields after propagation overlay.
+                ProvideTelemetry.BindPropagationContext(pc);
+                if (boundFields.Count > 0)
+                {
+                    ProvideTelemetry.BindContext(boundFields);
+                }
+                break;
             }
-            break;
-        }
         case "clear_propagation":
             // Clear only propagation-derived state; restore bound fields.
             Context.ClearContext();
@@ -111,15 +111,15 @@ static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<st
             }
             break;
         case "get_trace_context":
-        {
-            var tc = ProvideTelemetry.GetTraceContext();
-            variables[s.Into ?? "tc"] = new Dictionary<string, object?>
             {
-                ["trace_id"] = tc.TraceId,
-                ["span_id"] = tc.SpanId,
-            };
-            break;
-        }
+                var tc = ProvideTelemetry.GetTraceContext();
+                variables[s.Into ?? "tc"] = new Dictionary<string, object?>
+                {
+                    ["trace_id"] = tc.TraceId,
+                    ["span_id"] = tc.SpanId,
+                };
+                break;
+            }
         case "bind_context":
             if (s.Fields is not null)
             {
@@ -131,52 +131,52 @@ static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<st
             }
             break;
         case "emit_log":
-        {
-            var sw = new StringWriter();
-            var orig = Console.Error;
-            Console.SetError(sw);
-            var fields = s.Fields?.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
-            ProvideTelemetry.GetLogger("probe").Info(s.Message ?? "event", fields);
-            Console.SetError(orig);
-            variables["__log_buffer"] = sw.ToString();
-            break;
-        }
+            {
+                var sw = new StringWriter();
+                var orig = Console.Error;
+                Console.SetError(sw);
+                var fields = s.Fields?.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+                ProvideTelemetry.GetLogger("probe").Info(s.Message ?? "event", fields);
+                Console.SetError(orig);
+                variables["__log_buffer"] = sw.ToString();
+                break;
+            }
         case "capture_log":
-        {
-            var buf = variables.GetValueOrDefault("__log_buffer")?.ToString() ?? "";
-            Dictionary<string, object?>? parsed = null;
-            foreach (var line in buf.Split('\n'))
             {
-                var t = line.Trim();
-                if (!t.StartsWith('{')) continue;
-                try
+                var buf = variables.GetValueOrDefault("__log_buffer")?.ToString() ?? "";
+                Dictionary<string, object?>? parsed = null;
+                foreach (var line in buf.Split('\n'))
                 {
-                    parsed = JsonSerializer.Deserialize<Dictionary<string, object?>>(t);
-                    break;
+                    var t = line.Trim();
+                    if (!t.StartsWith('{')) continue;
+                    try
+                    {
+                        parsed = JsonSerializer.Deserialize<Dictionary<string, object?>>(t);
+                        break;
+                    }
+                    catch { /* next */ }
                 }
-                catch { /* next */ }
+                parsed ??= new Dictionary<string, object?>();
+                // Normalise dotted OTel-style keys to contract snake_case.
+                if (parsed.TryGetValue("trace.id", out var tid))
+                {
+                    parsed["trace_id"] = tid is JsonElement je ? je.GetString() : tid;
+                    parsed.Remove("trace.id");
+                }
+                if (parsed.TryGetValue("span.id", out var sid))
+                {
+                    parsed["span_id"] = sid is JsonElement je2 ? je2.GetString() : sid;
+                    parsed.Remove("span.id");
+                }
+                // Unwrap JsonElement values for path resolution
+                var plain = new Dictionary<string, object?>();
+                foreach (var (k, v) in parsed)
+                {
+                    plain[k] = Unwrap(v);
+                }
+                variables[s.Into ?? "log"] = plain;
+                break;
             }
-            parsed ??= new Dictionary<string, object?>();
-            // Normalise dotted OTel-style keys to contract snake_case.
-            if (parsed.TryGetValue("trace.id", out var tid))
-            {
-                parsed["trace_id"] = tid is JsonElement je ? je.GetString() : tid;
-                parsed.Remove("trace.id");
-            }
-            if (parsed.TryGetValue("span.id", out var sid))
-            {
-                parsed["span_id"] = sid is JsonElement je2 ? je2.GetString() : sid;
-                parsed.Remove("span.id");
-            }
-            // Unwrap JsonElement values for path resolution
-            var plain = new Dictionary<string, object?>();
-            foreach (var (k, v) in parsed)
-            {
-                plain[k] = Unwrap(v);
-            }
-            variables[s.Into ?? "log"] = plain;
-            break;
-        }
         case "register_secret_pattern":
             if (!string.IsNullOrEmpty(s.Name) && !string.IsNullOrEmpty(s.Pattern))
             {
@@ -187,20 +187,20 @@ static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<st
             variables[s.Into ?? "sampled"] = ProvideTelemetry.ShouldSample("logs", s.Name ?? "evt");
             break;
         case "get_runtime_status":
-        {
-            var st = ProvideTelemetry.GetRuntimeStatus();
-            var cfg = ProvideTelemetry.GetRuntimeConfig();
-            variables[s.Into ?? "status"] = new Dictionary<string, object?>
             {
-                ["active"] = st.SetupDone,
-                ["service_name"] = cfg?.ServiceName ?? "",
-                ["setup_done"] = st.SetupDone,
-                ["logs"] = st.Signals.Logs,
-                ["traces"] = st.Signals.Traces,
-                ["metrics"] = st.Signals.Metrics,
-            };
-            break;
-        }
+                var st = ProvideTelemetry.GetRuntimeStatus();
+                var cfg = ProvideTelemetry.GetRuntimeConfig();
+                variables[s.Into ?? "status"] = new Dictionary<string, object?>
+                {
+                    ["active"] = st.SetupDone,
+                    ["service_name"] = cfg?.ServiceName ?? "",
+                    ["setup_done"] = st.SetupDone,
+                    ["logs"] = st.Signals.Logs,
+                    ["traces"] = st.Signals.Traces,
+                    ["metrics"] = st.Signals.Metrics,
+                };
+                break;
+            }
         default:
             break;
     }

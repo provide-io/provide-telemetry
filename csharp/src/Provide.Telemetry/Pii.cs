@@ -258,14 +258,14 @@ public static class Pii
                 context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Hash, value));
                 return (true, HashValue(value));
             case PiiModes.Truncate:
-            {
-                var text = value is string s
-                    ? s
-                    : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
-                if (truncateTo <= 0 || text.Length <= truncateTo) return (true, text);
-                context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Truncate, value));
-                return (true, text[..truncateTo] + TruncationSuffix);
-            }
+                {
+                    var text = value is string s
+                        ? s
+                        : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+                    if (truncateTo <= 0 || text.Length <= truncateTo) return (true, text);
+                    context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Truncate, value));
+                    return (true, text[..truncateTo] + TruncationSuffix);
+                }
             case PiiModes.Pass:
                 return (true, value);
             default:

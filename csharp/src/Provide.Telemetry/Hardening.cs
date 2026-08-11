@@ -148,23 +148,23 @@ internal static class Hardening
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-                foreach (var property in element.EnumerateObject())
                 {
-                    result[property.Name] = Normalize(property.Value, seen, depth + 1, maxDepth);
+                    var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        result[property.Name] = Normalize(property.Value, seen, depth + 1, maxDepth);
+                    }
+                    return result;
                 }
-                return result;
-            }
             case JsonValueKind.Array:
-            {
-                var result = new List<object?>();
-                foreach (var item in element.EnumerateArray())
                 {
-                    result.Add(Normalize(item, seen, depth + 1, maxDepth));
+                    var result = new List<object?>();
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        result.Add(Normalize(item, seen, depth + 1, maxDepth));
+                    }
+                    return result;
                 }
-                return result;
-            }
             case JsonValueKind.String:
                 return element.GetString();
             case JsonValueKind.Number:

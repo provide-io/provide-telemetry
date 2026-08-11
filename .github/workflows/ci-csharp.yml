@@ -31,6 +31,8 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
         with:
           dotnet-version: "10.0.x"
+      - name: Check formatting
+        run: dotnet format Provide.Telemetry.sln --verify-no-changes
       - name: Build (warnings as errors)
         run: dotnet build Provide.Telemetry.sln -warnaserror
       # The OpenObserve E2E test self-skips when OPENOBSERVE_* env vars are
