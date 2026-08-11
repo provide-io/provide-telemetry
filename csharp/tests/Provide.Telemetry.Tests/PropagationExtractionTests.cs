@@ -92,6 +92,36 @@ public class PropagationExtractionTests
         Assert.Equal("", pc.Traceparent);
     }
 
+    [Theory]
+    [InlineData("ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")]
+    [InlineData("FF-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")]
+    public void ExtractW3CContext_RejectsTheReservedVersionFf(string header)
+    {
+        // W3C trace-context forbids version ff: trusting it would adopt a
+        // trace identity from an invalid header. Python rejects it too.
+        var pc = Propagation.ExtractW3CContext(
+            new Dictionary<string, string> { ["traceparent"] = header });
+
+        Assert.Equal("", pc.TraceID);
+        Assert.Equal("", pc.SpanID);
+        Assert.Equal("", pc.Traceparent);
+    }
+
+    [Theory]
+    [InlineData(" 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")]
+    [InlineData("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01 ")]
+    [InlineData("\t00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")]
+    public void ExtractW3CContext_RejectsSurroundingWhitespace(string header)
+    {
+        // The header is a fixed 55-character token; tolerating whitespace here
+        // diverged from every other runtime, which all reject it.
+        var pc = Propagation.ExtractW3CContext(
+            new Dictionary<string, string> { ["traceparent"] = header });
+
+        Assert.Equal("", pc.TraceID);
+        Assert.Equal("", pc.SpanID);
+    }
+
     [Fact]
     public void ExtractW3CContext_UppercaseHexIsNormalisedToLowercase()
     {

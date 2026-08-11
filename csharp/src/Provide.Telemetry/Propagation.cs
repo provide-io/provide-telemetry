@@ -127,9 +127,14 @@ public static class Propagation
 
     private static (string traceId, string spanId) ParseTraceparent(string tp)
     {
+        // No Trim(): the header is a fixed-width token and every other runtime
+        // rejects surrounding whitespace, so tolerating it here was drift.
         if (string.IsNullOrEmpty(tp)) return ("", "");
-        var m = TraceparentRe.Match(tp.Trim());
+        var m = TraceparentRe.Match(tp);
         if (!m.Success) return ("", "");
+        // Version ff is reserved and must not be trusted (W3C trace-context
+        // §versioning); Python's _parse_traceparent rejects it the same way.
+        if (m.Groups[1].Value.Equals("ff", StringComparison.OrdinalIgnoreCase)) return ("", "");
         var traceId = m.Groups[2].Value.ToLowerInvariant();
         var spanId = m.Groups[3].Value.ToLowerInvariant();
         if (traceId.All(c => c == '0') || spanId.All(c => c == '0')) return ("", "");
