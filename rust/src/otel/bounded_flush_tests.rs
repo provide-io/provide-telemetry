@@ -342,13 +342,17 @@ fn a_teardown_abandoned_at_the_deadline_returns_to_the_caller() {
     bounded_teardown("traces", Some(0.05), move || {
         // Independently bounded so a comparison mutant fails this assertion
         // promptly rather than stranding the test inside a synchronous drain.
-        let _ = release_rx.recv_timeout(Duration::from_millis(250));
+        let _ = release_rx.recv_timeout(Duration::from_secs(2));
     });
     let elapsed = started.elapsed();
     let _ = release_tx.send(());
 
+    // The margins are wide on purpose: an abandoned teardown returns around
+    // the 0.05s deadline while waiting for the worker takes the full 2s, and
+    // a loaded 2-core CI runner can add hundreds of ms of scheduling latency —
+    // a 200ms bound failed the *unmutated* baseline there, aborting the shard.
     assert!(
-        elapsed < Duration::from_millis(200),
+        elapsed < Duration::from_secs(1),
         "teardown ran {elapsed:?} past a 0.05s deadline"
     );
     assert_eq!(
