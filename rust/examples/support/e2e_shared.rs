@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use opentelemetry::global;
@@ -81,7 +82,29 @@ pub fn traces_endpoint_from_env() -> Result<String, String> {
     Err("OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is required".to_string())
 }
 
+// The OTLP exporter uses reqwest's *async* client (Cargo.toml:
+// `reqwest-client`), and SimpleSpanProcessor drives each export with
+// futures_executor::block_on — reqwest's sockets and timeout need an ambient
+// tokio reactor at poll time or they panic with "no reactor running". These
+// examples are synchronous binaries, so permanently enter a process-lifetime
+// runtime context on the calling thread; the runtime's worker threads drive
+// the reactor while the export blocks. All span end/flush/shutdown calls must
+// happen on the thread that called init_tracer_provider.
+fn enter_export_runtime() {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    let runtime = RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name("e2e-otlp-export")
+            .build()
+            .expect("failed to build tokio runtime for OTLP export")
+    });
+    std::mem::forget(runtime.enter());
+}
+
 pub fn init_tracer_provider(_service_name: &str) -> Result<SdkTracerProvider, String> {
+    enter_export_runtime();
     let endpoint = traces_endpoint_from_env()?;
     let headers = env::var("OTEL_EXPORTER_OTLP_HEADERS")
         .map(|value| parse_headers_env(&value))
