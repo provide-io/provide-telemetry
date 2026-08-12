@@ -115,12 +115,11 @@ def extract_w3c_context(scope: dict[str, Any]) -> PropagationContext:
     tracestate = _extract_header(scope, b"tracestate")
     baggage = _extract_header(scope, b"baggage")
     # A traceparent is a fixed 55 characters, so nothing at or beyond this bound
-    # can ever parse: the boundary (> vs >=) and the replacement value (None vs
-    # any other falsy) both fold to the same (None, None) parse result.
-    oversized = (
-        bool(raw_traceparent) and len(raw_traceparent or "") > _MAX_HEADER_LENGTH
-    )  # pragma: no mutate — a traceparent is fixed 55 chars, so the boundary and replacement mutants fold to the same (None, None) parse
-    if oversized:
+    # can ever parse: the boundary (> vs >=) and the None replacement both fold
+    # to the same (None, None) parse result. Each guard stays on one line under
+    # 120 columns: mutmut only honours the pragma on a whole one-line statement,
+    # and ruff format re-wraps anything longer, orphaning the pragma.
+    if raw_traceparent and len(raw_traceparent) > _MAX_HEADER_LENGTH:  # pragma: no mutate — ≥bound never parses
         raw_traceparent = None  # pragma: no mutate — any falsy replacement parses to (None, None) identically
     if tracestate and len(tracestate) > _MAX_HEADER_LENGTH:
         tracestate = None
@@ -161,12 +160,8 @@ def parse_baggage(raw: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for member in raw.split(","):
         # Taking [0] makes maxsplit irrelevant: the text before the first ";" is
-        # identical for every maxsplit >= 1.
-        kv = member.split(
-            ";", 1
-        )[
-            0
-        ]  # pragma: no mutate — taking [0] makes maxsplit irrelevant; the text before the first ';' is identical for every maxsplit >= 1
+        # identical for every maxsplit >= 1. One line so the pragma is honoured.
+        kv = member.split(";", 1)[0]  # pragma: no mutate — taking [0] makes maxsplit irrelevant
         if "=" not in kv:
             continue
         key, _, value = kv.partition("=")
@@ -307,9 +302,7 @@ def _narrow_id(value: object) -> str | None:
     every mutation here equivalent. Kept as its own single-line return because
     mutmut only honours the pragma on a whole one-line statement.
     """
-    return (
-        value if isinstance(value, str) or value is None else None
-    )  # pragma: no mutate — the guard and the else branch return the same value for every real input
+    return value if isinstance(value, str) or value is None else None  # pragma: no mutate — guard and else agree
 
 
 def clear_propagation_context() -> None:

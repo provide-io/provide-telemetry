@@ -233,9 +233,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
                     # exported payload (and any receipt digest) from theirs.
                     # cast: ty narrows the Any-typed value to dict[Unknown, Unknown],
                     # which its invariant-dict rule rejects for the dict[str, Any] param.
-                    return {
-                        k: _clean_value(v, depth + 1) for k, v in _harden_keys(cast("dict[str, Any]", value)).items()
-                    }
+                    # Hoisted out of the comprehension so the pragma lands on a whole
+                    # one-line statement — mutmut ignores it anywhere else.
+                    hardened = _harden_keys(cast("dict[str, Any]", value))  # pragma: no mutate — cast erased at runtime
+                    return {k: _clean_value(v, depth + 1) for k, v in hardened.items()}
                 return [
                     _clean_value(item, depth + 1) for item in value
                 ]  # pragma: no mutate — list-comp traversal; element ordering asserted by nested-list tests
