@@ -133,9 +133,9 @@ fn default_in_variable_units(baseline: &str, probe_value: &str, observed: &str) 
     ) else {
         return baseline.to_string();
     };
-    if probed == 0.0 || obs == 0.0 {
-        return baseline.to_string();
-    }
+    // No zero guard needed before the division: a zero probed or observed
+    // value yields ±inf, NaN or 0.0 for scale, and every one of those is
+    // rejected below (NaN and ±inf via `fract() != 0.0`, which is NaN-true).
     let scale = obs / probed;
     if scale == 1.0 || scale <= 0.0 || scale.fract() != 0.0 {
         return baseline.to_string();

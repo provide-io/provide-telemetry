@@ -33,6 +33,50 @@ fn blocked_until_for(
     }
 }
 
+/// The helper itself must honor its release flag: a closure handed an
+/// already-released flag returns promptly instead of sitting out its full
+/// ceiling. Pins the `&&` in the wait loop — as `||` the helper ignores the
+/// flag and every caller silently waits the whole cap.
+#[test]
+fn the_blocked_until_helper_returns_promptly_once_released() {
+    let released = Arc::new(AtomicBool::new(true));
+    let job = blocked_until_for(&released, Duration::from_secs(5));
+    let started = Instant::now();
+    assert!(job());
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "a released worker must not wait out its cap"
+    );
+}
+
+/// The reset helper must actually clear the shared budget. nextest runs each
+/// test in its own process, so a no-op reset would never leak between tests —
+/// this is the one place the reset's effect is observable.
+#[test]
+fn resetting_the_abandoned_worker_budget_clears_it() {
+    let _guard = crate::testing::acquire_test_state_lock();
+    _reset_abandoned_workers_for_tests();
+
+    let released = Arc::new(AtomicBool::new(false));
+    assert_eq!(
+        bounded_flush(
+            "logs",
+            Some(0.01),
+            blocked_until_for(&released, Duration::from_secs(3))
+        ),
+        DrainOutcome::TimedOut
+    );
+    assert_eq!(abandoned_worker_count_for_tests(), 1);
+
+    _reset_abandoned_workers_for_tests();
+    assert_eq!(
+        abandoned_worker_count_for_tests(),
+        0,
+        "reset must clear the stranded-worker budget"
+    );
+    released.store(true, Ordering::Release);
+}
+
 /// A drain that finished in time but failed must not report success — the
 /// caller is deciding whether its records are safely out.
 #[test]

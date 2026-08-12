@@ -45,4 +45,10 @@ exclude_re = [
     # identical for all inputs — no test can distinguish `>` from `>=` here.
     'src/propagation.rs:96:24: replace > with >= in extract_w3c_context',
     'src/propagation.rs:96:24: replace > with == in extract_w3c_context',
+    # bounded_flush_tests.rs blocked_until_for: the wait loop's `elapsed < cap`
+    # vs `<=` differs only when elapsed equals the cap to the nanosecond — one
+    # extra 5ms sleep at most, indistinguishable from scheduler noise. (The
+    # file is a #[cfg(test)] module, but cargo-mutants does not honor the cfg
+    # gate on #[path]-included modules, so its helpers are mutated like src.)
+    'replace < with <= in blocked_until_for',
 ]

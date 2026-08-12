@@ -93,6 +93,28 @@ fn probe_test_scaled_defaults_are_expressed_in_variable_units() {
     // Zero on either side would divide the measurement away.
     assert_eq!(default_in_variable_units("10", "0", "5"), "10");
     assert_eq!(default_in_variable_units("10", "3", "0"), "10");
+    assert_eq!(default_in_variable_units("10", "0", "0"), "10");
     // A fractional result keeps its fraction rather than truncating to an int.
     assert_eq!(default_in_variable_units("5", "1", "2"), "2.5");
+}
+
+/// Integer typing must hold across the whole JSON integer range: a negative
+/// value is only `is_i64`, a value above `i64::MAX` is only `is_u64`, and
+/// both must flatten as "int" — only a true fraction is "float".
+#[test]
+fn probe_test_flatten_types_every_json_integer_shape_as_int() {
+    let mut out = BTreeMap::new();
+    let value = serde_json::json!({
+        "neg": -3,
+        "big": 9_223_372_036_854_775_808_u64,
+        "frac": 1.5,
+    });
+    flatten(&value, "", &mut out);
+
+    assert_eq!(out["neg"], ("-3".to_string(), "int".to_string()));
+    assert_eq!(
+        out["big"],
+        ("9223372036854775808".to_string(), "int".to_string())
+    );
+    assert_eq!(out["frac"], ("1.5".to_string(), "float".to_string()));
 }
