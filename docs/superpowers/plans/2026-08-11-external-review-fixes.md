@@ -94,6 +94,7 @@ Also verify `_GENERATED_PATTERNS` contains no `g`/`y` flags (grep the generated 
 ```python
 _TRACESTATE_MEMBER_RE = re.compile(r"^[ \t]*[a-z0-9][a-z0-9_\-*/@]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]*[ \t]*$")
 
+
 def _is_forwardable_tracestate(value: str) -> bool:
     """True when every list member fits the W3C tracestate grammar closely
     enough to forward. This is a security boundary: a control character here
