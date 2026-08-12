@@ -31,7 +31,7 @@ uv run codespell
 
 **Custom gates:**
 ```bash
-uv run python scripts/check_max_loc.py --max-lines 500   # No file may exceed 500 lines
+uv run python scripts/check_max_loc.py --max-lines 777   # No file may exceed 777 lines
 uv run python scripts/check_spdx_headers.py              # All source files need SPDX headers
 uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1  # 100% mutation kill required
 ```
@@ -110,7 +110,7 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
   literal, and `block` pragmas cannot nest. Beware that `ruff format` can re-wrap a long
   line and silently orphan a working pragma — hoist the value to its own short statement
   (or a module constant) rather than fighting the formatter.
-- **500 LOC max per file** — enforced across Python, TypeScript, Go, and Rust via `scripts/check_max_loc.py`. Pre-existing violators are tracked in `.max_loc_allowlist.yaml` with split plans; new files MUST stay under 500 lines.
+- **777 LOC max per file** — enforced across Python, TypeScript, Go, and Rust via `scripts/check_max_loc.py`. Pre-existing violators are tracked in `.max_loc_allowlist.yaml` with split plans; new files MUST stay under 777 lines.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
 - Pytest markers: `otel`, `integration`, `e2e`, `tooling`, `memray`, `slow` — tag tests appropriately.

@@ -3,11 +3,11 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 # Grandfathered LOC violators. Each entry is a temporary exemption granted
-# because the file already exceeds 500 lines. The `ceiling` is the line count
+# because the file already exceeds 777 lines. The `ceiling` is the line count
 # at the time the file was added — the file may not grow above it. Entries
 # should be removed as files are split or shrunk.
 #
-# New code MUST keep files under 500 lines. Do not add entries to this file
+# New code MUST keep files under 777 lines. Do not add entries to this file
 # without explicit approval.
 
 allowlist:

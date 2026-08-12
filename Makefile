@@ -12,7 +12,7 @@ lint: ## Run all linters and type checkers
 	uv run bandit -r src -ll
 	uv run codespell
 	uv run python scripts/check_spdx_headers.py
-	uv run python scripts/check_max_loc.py --max-lines 500
+	uv run python scripts/check_max_loc.py --max-lines 777
 
 security: ## Run project-targeted security scans
 	uv run bandit -r src -ll

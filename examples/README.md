@@ -1,8 +1,5 @@
 # Examples
 
-SPDX-License-Identifier: Apache-2.0
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-
 ## Telemetry
 
 Event naming in examples follows the DA(R)S pattern: 3 segments (domain.action.status) or 4 segments (domain.action.resource.status).

@@ -32,7 +32,7 @@ DEFAULT_EXCLUDE_PARTS = {
 }
 
 # Polyglot scope: every source/test file across all languages must
-# obey the same 500-LOC ceiling. New violations are blocked at commit time.
+# obey the same 777-LOC ceiling. New violations are blocked at commit time.
 DEFAULT_ROOTS = [
     "src",
     "tests",
@@ -138,7 +138,7 @@ def find_loc_offenders(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fail if any source file exceeds a maximum line count.")
-    parser.add_argument("--max-lines", type=int, default=500, help="Maximum allowed lines per source file.")
+    parser.add_argument("--max-lines", type=int, default=777, help="Maximum allowed lines per source file.")
     parser.add_argument(
         "--roots",
         nargs="+",

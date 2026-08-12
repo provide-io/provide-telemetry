@@ -1,8 +1,3 @@
-<!--
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-SPDX-License-Identifier: Apache-2.0
--->
-
 # provide-telemetry/go
 
 Structured logging + OpenTelemetry traces and metrics for Go — feature parity

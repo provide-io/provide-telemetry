@@ -1,8 +1,5 @@
 # provide-telemetry/rust
 
-SPDX-License-Identifier: Apache-2.0
-SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-
 Structured logging + OpenTelemetry traces and metrics for Rust — feature
 parity with the [`provide-telemetry`](https://pypi.org/p/provide-telemetry)
 Python, TypeScript, and Go packages.
