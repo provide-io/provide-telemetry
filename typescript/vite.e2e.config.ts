@@ -11,10 +11,57 @@
  *   E2E_OTLP_ENDPOINT   — OTLP base URL  (e.g. http://localhost:5080/api/default)
  *   E2E_BACKEND_PORT    — Python backend port (e.g. 18765)
  */
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+// Every optional peer dep that src/otel-dynimport.ts may load at runtime.
+// Keep in sync with the dynImportOtel() call sites in src/.
+const OTEL_PEER_DEPS = [
+  '@opentelemetry/api-logs',
+  '@opentelemetry/context-async-hooks',
+  '@opentelemetry/exporter-logs-otlp-http',
+  '@opentelemetry/exporter-metrics-otlp-http',
+  '@opentelemetry/exporter-trace-otlp-http',
+  '@opentelemetry/resources',
+  '@opentelemetry/sdk-logs',
+  '@opentelemetry/sdk-metrics',
+  '@opentelemetry/sdk-trace-base',
+];
+
+// dynImportOtel() routes optional imports through a *variable* specifier so
+// bundlers cannot statically resolve them (see src/otel-dynimport.ts). That
+// also defeats Vite's dev-server import rewriting, so the browser receives a
+// bare specifier it cannot resolve and OTel setup silently no-ops. For the
+// E2E page only, replace the module body with a literal-specifier switch that
+// Vite can rewrite and prebundle.
+function dynImportShim(): Plugin {
+  const cases = OTEL_PEER_DEPS.map(
+    (pkg) => `    case '${pkg}': return import('${pkg}');`,
+  ).join('\n');
+  return {
+    name: 'e2e-otel-dynimport-shim',
+    enforce: 'pre',
+    transform(_code: string, id: string) {
+      if (!id.replace(/\?.*$/, '').endsWith('/src/otel-dynimport.ts')) {
+        return null;
+      }
+      return [
+        '// eslint-disable-next-line @typescript-eslint/no-explicit-any',
+        'export function dynImportOtel(pkg: string): Promise<any> {',
+        '  switch (pkg) {',
+        cases,
+        '    default:',
+        "      return Promise.reject(new Error(`unshimmed optional dep: ${pkg}`));",
+        '  }',
+        '}',
+        '',
+      ].join('\n');
+    },
+  };
+}
 
 export default defineConfig({
   root: 'e2e-browser',
+  plugins: [dynImportShim()],
   server: {
     host: '127.0.0.1',
     fs: {
