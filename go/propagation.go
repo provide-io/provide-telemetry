@@ -146,9 +146,9 @@ func _guardTracestateSize(s string) string {
 // _tracestateMemberRe is one W3C tracestate list member: OWS, a key starting
 // with lcalpha/digit followed by up to 255 of the spec's key characters
 // (multi-tenant "@" included), "=", a value of printable ASCII minus comma and
-// equals, OWS. Interpreted string for the same gremlins reason as
-// _baggageTokenRe above.
-var _tracestateMemberRe = regexp.MustCompile("^[ \\t]*[a-z0-9][a-z0-9_\\-*/@]{0,255}=[\\x20-\\x2b\\x2d-\\x3c\\x3e-\\x7e]*[ \\t]*$")
+// equals, OWS. Unlike _baggageTokenRe this pattern contains no backtick, so a
+// raw string needs no splice and the gremlins concern doesn't apply.
+var _tracestateMemberRe = regexp.MustCompile(`^[ \t]*[a-z0-9][a-z0-9_\-*/@]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]*[ \t]*$`)
 
 // _isForwardableTracestate reports whether every tracestate list member fits
 // the W3C grammar. One bad member discards the whole header. This is a
