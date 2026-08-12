@@ -14,6 +14,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.tooling
 
@@ -54,7 +55,10 @@ def test_fixture_test_ids_resolve_for_every_language() -> None:
         cwd=str(_REPO_ROOT),
     )
     assert result.returncode == 0, result.stderr
-    assert "24 categories x 5 languages" in result.stdout
+    # Derive the expected count from the same file the script counts, so
+    # adding a fixture category doesn't silently stale this assertion.
+    fixtures = yaml.safe_load((_REPO_ROOT / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8"))
+    assert f"{len(fixtures)} categories x 5 languages" in result.stdout
 
 
 def test_check_fixture_coverage_outputs_all_yaml_categories() -> None:
