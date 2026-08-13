@@ -163,6 +163,38 @@ Release steps:
 5. `cargo publish` has no skip-existing behavior — republishing an already-used version hard-fails
    the job, so `Cargo.toml` must actually change before tagging.
 
+### C# (NuGet)
+
+Decoupled from Python — no GitHub Release involved, tag push publishes directly.
+
+Prerequisites (one-time setup, completed 2026-08-13):
+- NuGet.org organizations: `provide.io` (package owner) and `provide-io`
+  (defensive reservation of the GitHub/npm spelling — intentionally empty).
+- A NuGet.org trusted publishing policy on the admin profile
+  (`livingstaccato`, referenced by the `user:` input of `NuGet/login` in
+  `release.yml`): package owner `provide.io`, repository owner `provide-io`,
+  repository `provide-telemetry`, workflow `release.yml`, environment `nuget`
+  (OIDC — no API-key secret; NuGet.org marks stored API keys "not
+  recommended").
+- The `nuget` environment in GitHub repo Settings → Environments (auto-created
+  on first run; add protection rules there if wanted). The name must match the
+  policy's environment field or the OIDC exchange is refused.
+- After the first publish, request `Provide.` package ID prefix reservation
+  for the `provide.io` org — see the NuGet docs' ID-prefix-reservation
+  process. Reservation is not required to publish; it adds the verified
+  checkmark and blocks third-party `Provide.*` uploads.
+
+Release steps:
+1. Bump `<Version>` in both `csharp/src/*/*.csproj` files to share root
+   `VERSION`'s major.minor — `scripts/check_version_sync.py` verifies both
+   packages and the assembly identity.
+2. Push tag `csharp/vX.Y.Z`.
+3. `build-csharp` builds `-warnaserror`, tests, packs both packages, and fails
+   unless exactly two `.nupkg`s were produced.
+4. `publish-nuget` exchanges the GitHub OIDC token for a short-lived API key
+   (`NuGet/login`) and pushes both packages with `--skip-duplicate`, so a
+   re-run of a partially published tag is idempotent.
+
 ### Go (pkg.go.dev)
 
 Go modules publish automatically when a git tag is pushed — no explicit upload step.
