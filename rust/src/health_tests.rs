@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
 use super::*;
 
 use crate::resilience::{_clear_resilience_state_for_tests, _reset_resilience_for_tests};

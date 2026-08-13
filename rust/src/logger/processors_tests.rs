@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-Comment: Part of provide-telemetry.
+//
 use super::*;
 use crate::runtime::set_active_config;
 use crate::setup::{setup_telemetry, shutdown_telemetry};

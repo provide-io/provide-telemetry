@@ -5,7 +5,7 @@
 #
 
 # REUSE-IgnoreStart
-"""Validate canonical SPDX headers on Python and Go source files.
+"""Validate canonical SPDX headers on Python, Go, Rust and C# source files.
 
 Beyond checking header *presence*, this script also parses each file's
 `SPDX-License-Identifier:` line and rejects any value that is not in the
@@ -28,7 +28,12 @@ if str(SCRIPT_DIR) not in sys.path:
 from spdx_headers import EXCLUDED_DIRS as _BASE_EXCLUDED_DIRS  # noqa: E402
 from spdx_headers import has_go_canonical_header as _has_go_spdx_header  # noqa: E402
 
-_EXCLUDED_DIRS = _BASE_EXCLUDED_DIRS | {"vendor"}
+_EXCLUDED_DIRS = _BASE_EXCLUDED_DIRS | {"vendor", "target", "obj", "bin"}
+
+# Languages whose sources open with `//` comment headers, checked with the
+# same two-line canonical block as Go. TypeScript is deliberately absent: it
+# is gated separately in ci-typescript.yml.
+_SLASH_COMMENT_GLOBS = ("*.go", "*.rs", "*.cs")
 
 # Allowlist of SPDX license identifiers that are valid for this repository.
 # Keep this list small and explicit — adding a new identifier is a policy
@@ -41,12 +46,13 @@ _SPDX_LICENSE_LINE = re.compile(r"SPDX-License-Identifier:\s*(\S+)")
 # REUSE-IgnoreEnd
 
 
-def _find_go_files(root: Path) -> list[Path]:
+def _find_slash_comment_files(root: Path) -> list[Path]:
     files: list[Path] = []
-    for path in root.rglob("*.go"):
-        if any(part in _EXCLUDED_DIRS for part in path.parts):
-            continue
-        files.append(path)
+    for glob in _SLASH_COMMENT_GLOBS:
+        for path in root.rglob(glob):
+            if any(part in _EXCLUDED_DIRS for part in path.parts):
+                continue
+            files.append(path)
     return sorted(files)
 
 
@@ -98,14 +104,14 @@ def find_noncompliant_files(root: Path) -> tuple[list[Path], list[tuple[Path, st
     for path in find_python_files(root):
         text = path.read_text(encoding="utf-8")
         _check(path, has_canonical_header(text))
-    for path in _find_go_files(root):
+    for path in _find_slash_comment_files(root):
         text = path.read_text(encoding="utf-8")
         _check(path, _has_go_spdx_header(text))
     return missing, invalid
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check canonical SPDX headers (Python + Go).")
+    parser = argparse.ArgumentParser(description="Check canonical SPDX headers (Python, Go, Rust, C#).")
     parser.add_argument("--root", type=Path, default=Path("."))
     args = parser.parse_args()
 
@@ -123,7 +129,7 @@ def main() -> int:
                 print(f"  {path}: {bad!r}")
         print("Run: uv run python scripts/normalize_spdx_headers.py")
         return 1
-    print("SPDX header check passed: all Python and Go files are compliant.")
+    print("SPDX header check passed: all Python, Go, Rust and C# files are compliant.")
     return 0
 
 
