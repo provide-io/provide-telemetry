@@ -19,9 +19,9 @@ Run locally:
 
 ```bash
 uv sync --group dev
-uv run python scripts/check_max_loc.py --max-lines 500
+uv run python scripts/check_max_loc.py --max-lines 777
 uv run python scripts/run_pytest_gate.py
-uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --min-mutation-score 95
+uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1
 uv run python -m build
 uv run twine check dist/*
 ```

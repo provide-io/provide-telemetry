@@ -25,7 +25,9 @@ NuGet `Provide.Telemetry` — share a version number.
   its canonical log envelope is byte-identical to Python's. It ships with its
   own CI workflow, benchmark suite with seeded perf budgets, a Stryker mutation
   gate that was proven able to fail, and release packaging that produces and
-  verifies both `.nupkg`s. First NuGet release.
+  verifies both `.nupkg`s before publishing them to NuGet.org via trusted
+  publishing (OIDC — no stored API key), under the `provide.io` organization.
+  First NuGet release.
 - **tracestate is now validated against the W3C list-member grammar in every
   runtime.** Python was the only one validating beyond length and pair count,
   so the other four kept — and where applicable forwarded — a header whose
