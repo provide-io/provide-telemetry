@@ -5,8 +5,9 @@ on:
     # Language-scoped tags publish that language independently of the others —
     # patch versions legitimately drift per scripts/check_version_sync.py (only
     # major.minor is required to match root VERSION). Go module tags trigger
-    # consumer-resolution verification; typescript/rust tags publish directly
-    # to their registries. None of these require a GitHub Release object.
+    # consumer-resolution verification; typescript/rust/csharp tags publish
+    # directly to their registries. None of these require a GitHub Release
+    # object.
     # Python remains the one language released via GitHub Release creation
     # below (root VERSION is Python's version, read directly by pyproject.toml).
     tags:
@@ -14,6 +15,7 @@ on:
       - 'go/otel/v*'
       - 'typescript/v*'
       - 'rust/v*'
+      - 'csharp/v*'
   release:
     types: [published]
   workflow_dispatch:
@@ -314,6 +316,46 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
         run: cargo publish --locked
+
+  publish-nuget:
+    needs: build-csharp
+    if: startsWith(github.ref, 'refs/tags/csharp/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required for NuGet.org trusted publishing (OIDC — no stored API key)
+      id-token: write
+    environment:
+      # Must match the environment name on the NuGet.org trusted publishing
+      # policy (nuget.org → Trusted Publishing → release-provide-telemetry).
+      name: nuget
+      url: https://www.nuget.org/packages/Provide.Telemetry
+    steps:
+      # Publish exactly the bytes build-csharp built, tested and counted —
+      # no rebuild between verification and the registry.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: csharp-packages
+          path: nupkg
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      # Exchange the GitHub OIDC token for a short-lived NuGet.org API key.
+      # `user` is the NuGet.org profile the trusted publishing policy is
+      # defined on; the policy's package owner is the provide.io organization,
+      # so both Provide.Telemetry packages publish under the org.
+      - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841  # v1.2.0
+        id: nuget-login
+        with:
+          user: livingstaccato
+      - name: Publish both packages to NuGet.org
+        # --skip-duplicate makes a re-run of a partially published tag
+        # idempotent instead of failing on the package that already landed.
+        run: |
+          dotnet nuget push "nupkg/*.nupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
   sign-and-upload:
     # Python-only: signs and attaches the wheel/sdist to the GitHub Release.
