@@ -1,0 +1,64 @@
+# Rust Changelog
+
+Releases of the crates.io package `provide-telemetry`. The root `CHANGELOG.md`
+covers all five languages; this file covers only what shipped to crates.io.
+Versions 0.5.x and 0.6.0 predate this file — see the root changelog for what
+they contained.
+
+---
+
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: the facade takes optional arguments.**
+  `setup_telemetry(Option<TelemetryConfig>)`, `flush_telemetry(Option<f64>)`
+  and `shutdown_telemetry(Option<f64>)` — there was previously no way to
+  inject a config or bound a drain from Rust at any layer, capabilities the
+  other SDKs all had. The caller's deadline threads into the bounded drain
+  and overrides the configured one; shutdown drains under it before teardown.
+- **BREAKING: receipts are canonical and need a sink.**
+  `enable_receipts(bool, Option<&str>, Option<&str>)` becomes
+  `enable_receipts(ReceiptOptions) -> Result<(), ConfigurationError>`;
+  enabling receipts without a sink is an error rather than signing one per
+  redaction and discarding it. `receipts::emit_receipt` is repurposed from
+  the redaction hook to sink delivery with failure accounting (the hook is
+  now crate-private and takes a `serde_json::Value` — pre-stringifying was
+  the bug). `original_hash` is SHA-256 over RFC 8785 canonical JSON rather
+  than `Value::to_string()`, so every previously issued receipt hashes
+  differently; all seven `spec/receipt_fixtures.yaml` vectors reproduce
+  byte-for-byte. `HealthSnapshot` gains `receipt_failures` (25 → 26 fields,
+  breaks exhaustive struct literals), and the receipt timestamp is
+  fixed-width UTC instead of `SystemTime`'s debug format.
+
+### Fixed
+
+- **Drain outcomes are honest.** The bounded drains no longer panic, a
+  zero-second budget times out instead of hanging, and an in-deadline
+  exporter rejection reports `failed` rather than `timed_out`.
+- **`ProviderImmutableError` is actually produced.** The type was declared
+  but no code path returned it; the rejection path now does, via a
+  `TelemetryErrorKind` callers can branch on.
+- **Baggage keys are RFC 7230 tokens.** A newline inside an inbound baggage
+  key could forge a log record through the bare-key render path;
+  `parse_baggage` rejects non-token keys and strips control characters from
+  values, and hardening covers keys as well as values.
+- **`tracestate` is validated against the W3C list-member grammar**; one bad
+  member discards the whole header instead of forwarding CRLF to the next
+  hop.
+- **Control stripping matches the other SDKs** — exactly the C0/C1 classes
+  the others strip, applied before truncation rather than after.
+- **Credentialed OTLP endpoints are accepted** — the userinfo colon in
+  `https://user:pw@collector.example` was read as an empty-port separator
+  and the endpoint refused.
+
+### Added
+
+- **`async_blocking_risk` counters move.** `Handle::try_current()` on the
+  caller's thread detects a synchronous `flush_telemetry`/
+  `shutdown_telemetry` parked on a Tokio worker — measured on the caller's
+  thread, not inside the drain primitives, which offload to fresh OS threads
+  where the check is always negative.
+- **Propagation fuzzing** via proptest over traceparent/tracestate/baggage
+  with the shared cross-language invariants (no panic on any bytes, hex
+  all-or-nothing ids, token keys, control-free values).

@@ -5,6 +5,72 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: `telemetry.Logger` is now `telemetry.Logger()`**, with
+  `SetLogger()` as the write half. The variable could not be both publicly
+  assignable and race-free: `_configureLogger` reassigned it on every setup
+  and reconfiguration while `GetLogger` read it, and the `go/otel` module
+  assigned it from another package. Both halves now go through one atomic.
+  The 13 examples that called `telemetry.Logger.Error` on the setup-failure
+  path — precisely when no logger exists — use stdlib `slog` there instead.
+- **BREAKING: `EnableReceipts` takes a `ReceiptOptions` struct** — the old
+  `(bool, string, string)` form could not express a sink or return an error,
+  and enabling receipts without a sink is now an error rather than signing
+  one per redaction and discarding it. `original_hash` is SHA-256 over
+  RFC 8785 canonical JSON rather than `fmt.Sprintf("%v")` (which collapsed
+  the number `1` and the string `"1"` to one digest); all seven vectors in
+  `spec/receipt_fixtures.yaml` reproduce byte-for-byte. `HealthSnapshot`
+  gains `ReceiptFailures` (25 → 26 fields, breaks exhaustive literals), and
+  the receipt timestamp is fixed-width `2006-01-02T15:04:05.000Z` instead of
+  `RFC3339Nano`, which trims trailing zeros and formats one instant to
+  varying widths.
+- **BREAKING: `ReconfigureResult` converges on the cross-language shape** —
+  `applied`/`previous`/`current`/`state`/`error`, dropping the `status` field
+  that always duplicated `state`, with JSON tags so it round-trips with the
+  other SDKs' output.
+- **`_incAsyncBlockingRisk` is deleted.** Go has no event loop and no runtime
+  predicate to detect one — a goroutine parked in `FlushTelemetry` costs one
+  goroutine and blocks nothing — so the three `async_blocking_risk` counters
+  are pinned at zero by a real setup/emit/flush/shutdown test, and the fields
+  stay only as cross-language contract.
+
+### Fixed
+
+- **OTLP-exported log records now pass through the telemetry pipeline.** The
+  OTel log bridge was a sibling of the telemetry handler rather than
+  downstream of it, so every exported record bypassed consent, schema
+  validation, sampling, backpressure, hardening and PII redaction — a
+  password masked locally left the process in the clear on the bridge.
+- **Typed values are hardened.** PII traversal handled exactly
+  `map[string]any` and `[]any`; a `[]credentials`, a `map[string]string` or a
+  plain struct carried its `Password` field to the log verbatim. Hardening
+  now normalizes reflectively (string-keyed maps, exported struct fields by
+  JSON name, arrays/slices in order), collapses cycles and repeated
+  references to `"***"`, and `SecurityConfig`'s three caps — previously
+  parsed, validated and read by nothing — now bound log attributes.
+- **Runtime state is published as immutable generations.** Reconfiguration
+  previously wrote hot config blocks through the same pointer every live
+  `slog` handler retained — six `-race` reports across the read paths. A
+  generation (config plus the logger built from it) is now swapped under one
+  atomic store and never written again.
+- **Baggage keys are RFC 7230 tokens.** An inbound baggage key became a
+  log-attribute key verbatim, and a newline in a key let a remote caller
+  fabricate a log record. `ParseBaggage` rejects non-token keys and strips
+  control characters from values; `HardenInput` hardens keys as well as
+  values.
+- **`tracestate` is validated against the W3C list-member grammar** — one bad
+  member (CRLF, control characters, missing `=`, oversized key) discards the
+  whole header instead of forwarding it.
+- **Facade defects:** `UpdateConfig` discarded its config and returned nil;
+  `Reconfigure` dropped config/options/context and re-read the environment;
+  `Flush` collapsed one aggregate error onto all three signals and now
+  reports `NotOwned` — never `Flushed` — for a backend without a flush
+  interface; `ProviderImmutableError` is a distinct type rather than an alias
+  of `ConfigurationError` (its `As` method keeps legacy matches working).
+
 ## [0.6.1] — 2026-07-30
 
 No functional change. `go` and `go/otel` are identical to 0.6.0 apart from the

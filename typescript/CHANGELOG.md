@@ -1,7 +1,7 @@
 # Changelog
 
 Releases of the npm package `@provide-io/telemetry`. The root `CHANGELOG.md`
-covers all four languages; this file covers only what shipped to npm.
+covers all five languages; this file covers only what shipped to npm.
 
 Two things to know when reading it:
 
@@ -13,6 +13,67 @@ Two things to know when reading it:
   here in version order, out of chronological order, because that is what a
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
+
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: receipts are canonically hashed and actually HMAC-signed.**
+  The signature was `sha256("key|payload")` — a length-extendable keyed
+  digest, not an HMAC — and could not reproduce any cross-language vector.
+  It is now real HMAC-SHA256 (RFC 2104, checked against RFC 4231 vectors),
+  and `original_hash` is SHA-256 over RFC 8785 canonical JSON, so every
+  previously issued receipt verifies differently. `HealthSnapshot` gains
+  `receiptFailures` (25 → 26 fields), and enabling receipts without a sink
+  throws `MissingReceiptSinkError` instead of silently discarding the audit
+  trail.
+- **BREAKING: `reconfigureTelemetry` throws when telemetry is not set up.**
+  It previously fell back to the environment and performed an implicit
+  first-time setup — reporting `setupDone` with no providers registered, the
+  exact state `requireActiveConfig()` already refused for
+  `updateRuntimeConfig`.
+
+### Fixed
+
+- **Concurrent requests shared log context and trace IDs in the published
+  ESM package.** `context.ts` and `tracing.ts` acquired `AsyncLocalStorage`
+  with a bare `require()` at module scope; the package declares
+  `"type": "module"`, so in the shipped artifact the `require` was
+  undefined, the try/catch swallowed the `ReferenceError`, and both modules
+  fell back to one module-level store. Vitest and tsx load the package as
+  CJS and could never see it; a packed-tarball test now pins the ESM
+  behavior.
+- **A custom secret pattern with a `g`/`y` flag alternated between detecting
+  and leaking** the same secret on consecutive calls (`RegExp.test` advances
+  `lastIndex`). Patterns are stored as stateless clones.
+- **Baggage keys are RFC 7230 tokens.** A newline inside an inbound baggage
+  key split one console log line into two, letting a remote caller fabricate
+  a log record. `parseBaggage` rejects non-token keys and strips control
+  characters from values; `hardenInput` hardens keys as well as values.
+- **`tracestate` is validated against the W3C list-member grammar**; one bad
+  member discards the whole header instead of forwarding CRLF to the next
+  hop.
+- **Facade defects:** `flush()` reported success for signals with no
+  provider installed (`[].every()` is vacuously true) and now reports
+  per-provider outcomes; a synchronously throwing `forceFlush` no longer
+  skips that provider's `shutdown()`; `shutdown()` set STOPPING/STOPPED in
+  the inverted order; `getTracer(name)` discarded the name, collapsing every
+  span into one instrumentation scope; `shutdown(timeoutMs)` now forwards
+  the deadline it accepted; `getLogger`/`getMeter` accept the documented
+  no-argument form again.
+- **Credentialed OTLP endpoints are accepted** — the userinfo colon in
+  `https://user:pw@collector.example` was read as an empty-port separator
+  and the endpoint refused.
+
+### Added
+
+- **`async_blocking_risk` counters move.** The synchronous span of a
+  provider's `forceFlush`/`shutdown` is measured against the 50ms long-task
+  threshold; time a returned Promise spends pending is socket wait and is
+  not counted.
+- **Propagation fuzzing** via fast-check over traceparent/tracestate/baggage
+  with the shared cross-language invariants (no throw on any bytes, hex
+  all-or-nothing ids, token keys, control-free values).
 
 ## [0.6.0] — 2026-07-29
 

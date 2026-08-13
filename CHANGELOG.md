@@ -2,26 +2,211 @@
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-All packages (`provide-telemetry` / `@provide-io/telemetry` / `github.com/provide-io/provide-telemetry/go`) share a version number.
+All packages — PyPI `provide-telemetry`, npm `@provide-io/telemetry`,
+`github.com/provide-io/provide-telemetry/go`, crates.io `provide-telemetry`,
+NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
 ## [Unreleased]
 
+### Added
+
+- **C# — the fifth SDK.** `Provide.Telemetry` is a dependency-free core
+  (`dotnet list package --include-transitive` reports none): logging, tracing,
+  metrics, W3C propagation, PII/secret redaction, cardinality guards,
+  backpressure, resilience, SLO helpers, governance receipts and the 26-field
+  health snapshot, at full parity with the other four languages. OTLP export
+  lives in a second package, `Provide.Telemetry.OpenTelemetry` — an application
+  calls `OpenTelemetryBackendRegistration.Register()` before setup, exactly the
+  side-effect-import pattern Go's `go/otel` module uses. Parity is evidence,
+  not intent: C# passes spec conformance, every behavioral-fixture category,
+  the cross-language contract harness and the shared receipt/JCS vectors, and
+  its canonical log envelope is byte-identical to Python's. It ships with its
+  own CI workflow, benchmark suite with seeded perf budgets, a Stryker mutation
+  gate that was proven able to fail, and release packaging that produces and
+  verifies both `.nupkg`s. First NuGet release.
+- **tracestate is now validated against the W3C list-member grammar in every
+  runtime.** Python was the only one validating beyond length and pair count,
+  so the other four kept — and where applicable forwarded — a header whose
+  member carried CRLF or other control characters: header injection at the
+  next hop. All five now apply the same grammar (OWS, lcalpha/digit-first key
+  of ≤256 chars with multi-tenant `@`, `=`, printable-ASCII value minus comma
+  and equals), and one bad member discards the whole header. Pinned by a new
+  16-case `propagation_tracestate_grammar` fixture category mirrored into all
+  five parity suites.
+- **`async_blocking_risk` now moves in every runtime that can detect the
+  condition.** It is one of the 26 canonical health fields and could not
+  increment in three of five SDKs. Rust detects a blocking drain on a Tokio
+  worker via `Handle::try_current()` on the caller's thread; TypeScript
+  measures the synchronous span of a provider's `forceFlush`/`shutdown`
+  against the 50ms long-task threshold; C# fires on a present
+  `SynchronizationContext`. Go provably cannot detect it — a goroutine parked
+  in a drain costs one goroutine and blocks nothing — so its incrementer is
+  deleted and a test pins all three counters at zero, keeping the field only
+  as cross-language contract.
+- **Propagation fuzzing in all four established runtimes.** W3C headers are
+  the only network-supplied input this library takes, and fuzzing was
+  config-focused before. Each runtime now fuzzes
+  traceparent/tracestate/baggage with the same invariants: no
+  panic/raise/throw on any bytes; parsed ids are well-formed hex, never
+  all-zero, and all-or-nothing as a pair; baggage keys are RFC 7230 tokens and
+  values carry no control characters. Go's existing fuzz targets were
+  strengthened to the same invariants and exercised at 3.3M executions.
+
 ### Changed
 
-- **BREAKING: enabling receipts now requires a sink, in every language.**
-  `enable_receipts(True, key, service)` with no `sink=` argument and no
-  `TelemetryConfig.receipt_sink` raises `MissingReceiptSinkError`
-  (`ConfigurationError`) instead of succeeding — an audit trail with no
-  destination is a silent no-op, and 0.6's implicit debug-log delivery hid
-  exactly that misconfiguration. Python previously always succeeded here; it
-  now refuses the combination identically to Go, TypeScript, Rust and C#.
-  Migration is one line for a service whose log stream really is its receipt
-  destination: `enable_receipts(True, key, service, sink=LoggingReceiptSink())`
-  — the new public sink delivers each receipt as one stdlib debug log line
-  (id/timestamp/field/action/hash/hmac, never the original value). Test-mode
-  behavior (the built-in collector) is unchanged.
+- **BREAKING: receipts are canonical, and enabling them requires a sink — in
+  every language.** Four changes land together:
+  - `original_hash` is SHA-256 over RFC 8785 canonical JSON (JCS) instead of
+    each language's default stringification (`str(value)`,
+    `fmt.Sprintf("%v")`, `Value::to_string()`), so the number `1` and the
+    string `"1"` no longer share a digest. Every previously issued receipt
+    hashes differently now. Seven shared vectors in
+    `spec/receipt_fixtures.yaml` reproduce byte-for-byte — canonical JSON,
+    hash, payload and signature — in all five SDKs.
+  - TypeScript's signature is real HMAC-SHA256 (RFC 2104, checked against
+    RFC 4231 vectors). It was `sha256("key|payload")` — a length-extendable
+    keyed digest that could not reproduce any cross-language vector.
+  - `HealthSnapshot` gains `receipt_failures` (25 → 26 fields; breaks
+    exhaustive struct literals in Go and Rust). Sink delivery sits behind a
+    panic/exception boundary and failures are counted, never logged — the
+    logger produces redactions and redactions produce receipts, so reporting
+    a sink failure through the logger is an unbounded cycle.
+  - Enabling receipts without a sink is refused everywhere:
+    `enable_receipts(True, key, service)` with no `sink=` and no
+    `TelemetryConfig.receipt_sink` raises `MissingReceiptSinkError`
+    (`ConfigurationError`) instead of succeeding — an audit trail with no
+    destination is a silent no-op, and 0.6's implicit debug-log delivery hid
+    exactly that misconfiguration. Go and Rust move to option structs
+    (`ReceiptOptions`) because the old positional forms could not carry a
+    sink or return an error. Migration is one line for a service whose log
+    stream really is its receipt destination:
+    `enable_receipts(True, key, service, sink=LoggingReceiptSink())` — the
+    new public sink delivers each receipt as one stdlib debug log line
+    (id/timestamp/field/action/hash/hmac, never the original value).
+    Test-mode behavior (the built-in collector) is unchanged.
+- **BREAKING: runtime write paths require a live config.** Python's
+  `update_runtime_config`, `reload_runtime_from_env` and
+  `reconfigure_telemetry`, and TypeScript's `reconfigureTelemetry`, raise
+  `ConfigurationError`/throw when telemetry is not set up, where they
+  previously performed an implicit first-time setup from whatever the
+  environment happened to hold — and reported setup done with no providers
+  installed and no shutdown owed. Go always refused this; C# now does; reads
+  (`get_runtime_config`, the drain paths) deliberately keep their fallback.
+- **BREAKING (Go): `telemetry.Logger` is now `telemetry.Logger()`**, with
+  `SetLogger()` as the write half. The variable could not be both publicly
+  assignable and race-free — the race detector reported `_configureLogger`
+  reassigning it during reconfiguration while `GetLogger` read it, with the
+  `go/otel` module writing it from another package. Both halves now share one
+  atomic. Relatedly, Go runtime state is published as immutable generations:
+  config plus the logger built from it, swapped under one atomic store and
+  never written again, which is what removed six `-race` reports from the
+  hot-reload path without putting a mutex on every log call.
+- **BREAKING (Rust): the facade takes optional arguments.**
+  `setup_telemetry(Option<TelemetryConfig>)`,
+  `flush_telemetry(Option<f64>)` and `shutdown_telemetry(Option<f64>)` — there
+  was previously no way to inject a config or bound a drain from Rust at any
+  layer, capabilities Python, TypeScript and Go all had. The caller's deadline
+  threads into the bounded drain and overrides the configured one; shutdown
+  drains under it before teardown. `enable_receipts` becomes
+  `enable_receipts(ReceiptOptions) -> Result<(), ConfigurationError>`, and the
+  receipt timestamp is fixed-width UTC instead of `SystemTime`'s debug format.
+- **BREAKING: `ReconfigureResult` has one shape.** It differed in all four
+  languages; converged on `applied`/`previous`/`current`/`state`/`error`,
+  dropping the `status` field that always duplicated `state`. Go's struct
+  gains JSON tags so it round-trips with Rust's serde output.
+- **Python: the lifecycle is serialized.** Setup, reconfigure, update, reload
+  and shutdown run through one coordinator that publishes immutable
+  generations under a condition variable — setup and reconfigure previously
+  took different locks over the same state, so a reader could observe a torn
+  runtime. Config snapshots deep-copy everything except the receipt sink
+  (cloning a sink that holds a socket either delivers receipts to a copy the
+  caller never sees, or raises outright).
+
+### Fixed
+
+- **Security: a W3C baggage key from an inbound request could forge a log
+  record.** All four established runtimes shared the flaw: `harden_input`
+  sanitized values but never keys, and the console renderer (the default
+  `PROVIDE_LOG_FORMAT`) quotes values while emitting keys bare — so a newline
+  inside a baggage key split one log call into two rendered lines, letting a
+  remote caller fabricate an arbitrary log record such as a fake
+  `[critical] security.breach` line. Fixed at both layers in each language:
+  `parse_baggage` now requires RFC 7230 token keys (which the W3C Baggage spec
+  already mandates) and strips control characters from values, and
+  `harden_input` hardens keys as well as values. Injection suites now cover
+  every untrusted surface: log attributes, OTLP endpoint URLs, W3C headers,
+  and PII/secret scanning (ReDoS).
+- **Go: OTLP-exported log records now pass through the telemetry pipeline.**
+  The OTel log bridge was wired as a sibling of the telemetry handler, not
+  downstream of it, so every record exported to a backend bypassed consent,
+  schema validation, sampling, backpressure, hardening and PII redaction — a
+  password masked as `***` in the local log left the process in the clear on
+  the bridge. The bridge now receives what the local sink receives. In the
+  same family: PII traversal handled only `map[string]any` and `[]any`, so a
+  `[]credentials` or a struct carried its `Password` field to the log
+  verbatim; hardening now normalizes typed maps, structs, arrays and slices
+  reflectively, with cycles and repeated references collapsing to `"***"`.
+  `SecurityConfig`'s three caps, previously parsed and read by nothing, now
+  actually bound log attributes.
+- **TypeScript: concurrent requests shared log context and trace IDs in the
+  published ESM package.** `context.ts` and `tracing.ts` acquired
+  `AsyncLocalStorage` with a bare `require()` at module scope; the package
+  declares `"type": "module"`, so in the shipped artifact the `require` was
+  undefined, the surrounding try/catch swallowed it, and both modules fell
+  back to a single module-level store. Vitest and tsx load the package as CJS
+  and could never see it; a packed-tarball test now pins the ESM behavior.
+- **TypeScript: a custom secret pattern with a `g`/`y` flag alternated
+  between detecting and leaking** the same secret on consecutive calls
+  (`RegExp.test` advances `lastIndex`). Patterns are stored as stateless
+  clones.
+- **Credentialed OTLP endpoints are accepted.** Python, Rust and TypeScript
+  each read the userinfo colon in `https://user:pw@collector.example` as an
+  empty-port separator and refused the endpoint (Go and C# were correct).
+  All three strip userinfo before the port scan; both URL forms are pinned in
+  the shared behavioral fixtures.
+- **Python: two JCS number-rendering bugs collapsed distinct receipts.**
+  `1e21` and `1e22` both rendered as `"0.1"` — an exponent-branch bound
+  excluded values it was claimed to cover — so `0.1`, `1e21` and `1e22`
+  shared one canonical form and one SHA-256, strictly worse than the
+  stringification that canonicalization replaced. The bound is restated in
+  full, and `spec/jcs_number_fixtures.yaml` now pins 21 vectors (one per
+  formatter branch, generated by `JSON.stringify`, cross-checked against
+  `rfc8785`) executed by all five SDKs.
+- **The facade parity sweep.** A max-effort cross-language review of the
+  runtime surface found and fixed, among others: Python's documented
+  `get_logger()` raised `TypeError` (name became mandatory during the parity
+  work); Go's `UpdateConfig` discarded its config, `Reconfigure` dropped
+  config/options/context and re-read the environment, and `Flush` collapsed
+  one aggregate error onto all three signals; TypeScript's `flush()` reported
+  success for signals with no provider installed, `shutdown()` inverted the
+  STOPPING/STOPPED order, and `getTracer(name)` discarded the name,
+  collapsing every span into one instrumentation scope; Python and TypeScript
+  accepted a `shutdown(timeout)` deadline they never forwarded, so a SIGTERM
+  handler's budget did not bound the drain; `ProviderImmutableError` is a
+  distinct type in Go (it aliased `ConfigurationError`, so a
+  restart-on-immutable handler matched ordinary config errors) and Rust now
+  actually produces it.
+- **Drain outcomes are honest in every language.** Rust's bounded drains no
+  longer panic, a zero budget times out instead of hanging, and an
+  in-deadline exporter rejection reports `failed` rather than `timed_out`;
+  TypeScript reports per-provider flush outcomes, and a synchronously
+  throwing `forceFlush` no longer skips that provider's `shutdown()`; Go's
+  `Flush` reports `NotOwned` — never `Flushed` — for a backend without a
+  flush interface; Python's `shutdown_telemetry` always runs its resets and
+  reaches `STOPPED`, then re-raises the first drain error.
+- **Hardening agrees across the five SDKs.** Composite values at the depth
+  ceiling collapse to `"***"` everywhere (Python handed them back unchanged —
+  an unbounded value returned by the hardening pass is not hardening); map
+  and attribute keys are hardened at every depth with shared collision
+  semantics; canonical JSON serialization guards against cycles by emitting
+  `null` (matching Python) while shared acyclic subtrees still serialize;
+  Rust strips exactly the C0/C1 controls the others strip and strips before
+  truncating; Python appends the cross-SDK `"..."` truncation marker;
+  TypeScript passes `NaN`/`±Infinity` through hardening and canonicalization
+  spells them `null`; Python validates all six exporter backoff/timeout
+  floats as finite and non-negative, matching the rest.
 
 ## [0.6.0] — 2026-07-29
 
