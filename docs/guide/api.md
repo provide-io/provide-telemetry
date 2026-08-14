@@ -504,7 +504,7 @@ All config models are `@dataclass(slots=True)` and are constructed via `Telemetr
 - **`SLOConfig`** — RED/USE metrics toggles, error taxonomy
 - **`SecurityConfig`** — secret detection patterns, header size guards, protocol limits
 
-See [Configuration Reference](CONFIGURATION.md) for the environment variables that drive each field.
+See [Configuration Reference](configuration.md) for the environment variables that drive each field.
 
 ## Rust Notes
 

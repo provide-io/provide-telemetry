@@ -2,8 +2,8 @@
 
 This document is the cross-language reference for how `provide-telemetry`
 keeps state consistent under concurrent access. For the higher-level runtime
-architecture, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for the
-initialisation sequence, see [`INTERNALS.md`](INTERNALS.md).
+architecture, see [`ARCHITECTURE.md`](architecture.md); for the
+initialisation sequence, see [`INTERNALS.md`](internals.md).
 
 ## Shared invariants
 
@@ -219,5 +219,5 @@ cannot be safely swapped after spans are in flight.
   `_reset_*_for_tests` helpers.
 
 For the initialisation ordering and the processor-chain order, see
-[`INTERNALS.md`](INTERNALS.md) — this document intentionally does not
+[`INTERNALS.md`](internals.md) — this document intentionally does not
 duplicate that content.
