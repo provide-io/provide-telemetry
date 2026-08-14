@@ -126,7 +126,7 @@ jobs:
           dotnet-version: "10.0.x"
       # uv provides a consistent Python invocation across the three runner OSes
       # for the perf_check.py step, exactly as the Go and Rust perf jobs do.
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: "3.11"
       # Built as its own step, not folded into the gate command: MSBuild writes

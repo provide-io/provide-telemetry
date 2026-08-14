@@ -35,7 +35,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v4
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: "3.11"
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
@@ -76,7 +76,7 @@ jobs:
     needs: publish-testpypi
     runs-on: ubuntu-24.04
     steps:
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: "3.11"
           enable-cache: false
@@ -216,7 +216,7 @@ jobs:
           dotnet-version: "10.0.x"
       # The version-sync check below runs through uv, which runner images do
       # not carry — without this step it dies with exit 127 (uv: not found).
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: "3.11"
       - name: Verify the tag matches both project versions
