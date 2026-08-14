@@ -180,6 +180,13 @@ jobs:
       - name: Run govulncheck
         # Scan the library package only — examples are demo code, not library, and their
         # transitive TLS usage should not block library releases.
+        env:
+          # setup-go resolves from actions/go-versions, which lags go.dev
+          # releases — 1.26.6 shipped the GO-2026-5972 fix while the manifest
+          # still topped out at 1.26.5, so check-latest alone cannot reach the
+          # patched stdlib. GOTOOLCHAIN fetches the pinned toolchain straight
+          # from go.dev. Bump it whenever a stdlib vuln fix lands.
+          GOTOOLCHAIN: go1.26.6
         run: govulncheck .
 
   vet:
