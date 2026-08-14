@@ -32,7 +32,7 @@ Legend:
 | Counter / gauge / histogram values readable from the instrument | core | core | concrete type only | core | core | core guaranteed; Go's exported `Histogram` interface declares only `Record` |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | missing | missing | missing | missing | known gap — Python only |
 | `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | no ANSI | core guaranteed in four languages — see notes |
-| Metrics fallback export on shutdown when OTel is unavailable | stderr JSON | no | no | no | no | capability difference — see notes |
+| Metrics fallback export on shutdown when OTel is unavailable | no | no | no | no | no | uniform — fallback state drops on shutdown in every language; see notes |
 
 Notes:
 
@@ -124,10 +124,12 @@ Notes:
   TypeScript, Go and Rust, so a C# caller could set them and change nothing.
   An absent property is honest; a present one that is ignored reads as
   support.
-- Metrics fallback export: without the `otel` feature, Rust's metrics
-  accumulate in-process (`rust/src/metrics.rs`) but are never exported.
-  Python's fallback (`src/provide/telemetry/metrics/fallback.py`) flushes a
-  JSON snapshot to stderr on shutdown. TypeScript, Go, and C# behave like Rust
-  in this regard: C#'s `FallbackCounter` / `FallbackGauge` / `FallbackHistogram`
-  hold their values for readback and `ShutdownTelemetry` drains only the
-  backend, so an unexported fallback metric is simply discarded at exit.
+- Metrics fallback export: when no OTel backend is installed, fallback
+  counter/gauge/histogram state accumulates in-process and is dropped at
+  shutdown — identically in all five languages. (This entry previously
+  claimed Python flushes a stderr JSON snapshot during `shutdown_telemetry()`;
+  no such flush exists in `src/provide/telemetry/metrics/fallback.py` or
+  anywhere in the package's history — the claim described code that never
+  shipped.) The uniform drop is the contract: a caller who needs the final
+  values reads the instruments or `get_health_snapshot()` before shutting
+  down.

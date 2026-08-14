@@ -94,13 +94,15 @@ drift between existing surfaces.
   not grant C# those variables — `spec/telemetry-api.yaml` scopes
   `PROVIDE_LOG_PRETTY_*` to the other four. Implementing the renderer remains
   open; the misleading config surface does not.
-- **Metrics fallback export on shutdown (P3 priority).** When the `otel`
-  feature is off, Rust accumulates counter/gauge/histogram state in-process
-  and drops it on shutdown; C#'s core-only package does the same. Python
-  flushes a JSON snapshot of the fallback state to stderr during
-  `shutdown_telemetry()` (`src/provide/telemetry/metrics/fallback.py`). Decide
-  whether Rust, Go, TypeScript, and C# should adopt the same stderr-JSON
-  fallback or whether this becomes a documented Python-only convenience.
+- **Metrics fallback export on shutdown — resolved 2026-08-13.** This item
+  asked whether the other languages should adopt Python's stderr JSON snapshot
+  of fallback metric state at shutdown. Investigation found the premise false:
+  no such flush exists in `src/provide/telemetry/metrics/fallback.py`, and
+  `git log -S` finds none in the package's history — the claim described code
+  that never shipped. All five languages already behave identically: fallback
+  state is dropped on shutdown. That uniform drop is now the documented
+  contract (see the capability matrix); a caller who needs the final values
+  reads the instruments or the health snapshot before shutting down.
 
 Acceptance criteria:
 
@@ -109,8 +111,8 @@ Acceptance criteria:
   request-lifecycle telemetry as the Python ASGI middleware.
 - `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in C#, or the
   unread pretty-colour properties are removed from the C# config.
-- In-process metric state is either exported or documented as a known drop on
-  shutdown across all five languages.
+- In-process metric state is documented as a known, uniform drop on shutdown
+  across all five languages (met — see the capability matrix).
 
 ### P1. Eliminate Public Facade Drift
 
