@@ -83,17 +83,15 @@ drift between existing surfaces.
   TypeScript, an `httpmw` package for Go, a `tower::Layer` crate module for
   Rust, and an ASP.NET Core middleware / `IApplicationBuilder` extension for
   C#.
-- **Pretty log renderer (P2 priority).** `PROVIDE_LOG_FORMAT=pretty` produces an
-  ANSI-coloured renderer in Python, TypeScript, Go and Rust — Rust's shipped as
-  `rust/src/logger/pretty.rs`, closing the gap this bullet originally
-  tracked. C# is now the outlier: `Logger.Render` treats `pretty` as
-  quoted key=value text with no ANSI, no TTY check and no
-  `PROVIDE_LOG_PRETTY_FIELDS` support. Its unread
-  `LoggingConfig.PrettyKeyColor` / `PrettyValueColor` / `PrettyFields`
-  properties have been dropped rather than wired up, because the contract does
-  not grant C# those variables — `spec/telemetry-api.yaml` scopes
-  `PROVIDE_LOG_PRETTY_*` to the other four. Implementing the renderer remains
-  open; the misleading config surface does not.
+- **Pretty log renderer — resolved 2026-08-13.** `PROVIDE_LOG_FORMAT=pretty`
+  now produces an ANSI-coloured renderer in all five languages. Rust's shipped
+  as `rust/src/logger/pretty.rs`, C#'s as
+  `csharp/src/Provide.Telemetry/PrettyRenderer.cs`: the shared line layout
+  (dim timestamp, severity-coloured level padded to nine columns, dim keys),
+  colors only when stderr is a real terminal. C# keeps its quoted-value
+  escaping and deliberately does not read `PROVIDE_LOG_PRETTY_*` — the spec
+  scopes those variables to the other four languages, so C# renders with the
+  spec's defaults.
 - **Metrics fallback export on shutdown — resolved 2026-08-13.** This item
   asked whether the other languages should adopt Python's stderr JSON snapshot
   of fallback metric state at shutdown. Investigation found the premise false:
@@ -102,15 +100,19 @@ drift between existing surfaces.
   that never shipped. All five languages already behave identically: fallback
   state is dropped on shutdown. That uniform drop is now the documented
   contract (see the capability matrix); a caller who needs the final values
-  reads the instruments or the health snapshot before shutting down.
+  reads the instruments or the health snapshot before shutting down. If a
+  shutdown export ever becomes wanted, spec it as an opt-in, env-gated dump
+  in all five languages at once — an unconditional stderr write would surprise
+  every non-OTel process, and a single-language convenience is how this item's
+  phantom claim got written in the first place.
 
 Acceptance criteria:
 
 - A Rust axum service can install a single `TelemetryLayer`, and an ASP.NET Core
   application a single middleware, and each observes the same
   request-lifecycle telemetry as the Python ASGI middleware.
-- `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in C#, or the
-  unread pretty-colour properties are removed from the C# config.
+- `PROVIDE_LOG_FORMAT=pretty` produces ANSI-coloured output in C# (met), and
+  the unread pretty-colour properties stay removed from the C# config (met).
 - In-process metric state is documented as a known, uniform drop on shutdown
   across all five languages (met — see the capability matrix).
 

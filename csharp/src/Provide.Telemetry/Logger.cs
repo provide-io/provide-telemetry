@@ -123,24 +123,26 @@ public sealed class Logger
         {
             return JsonSerializer.Serialize(output);
         }
-        var quote = string.Equals(cfg.Logging.Format, "pretty", StringComparison.OrdinalIgnoreCase) ? "\"" : "";
-        return FormatText(output, record, quote);
+        if (string.Equals(cfg.Logging.Format, "pretty", StringComparison.OrdinalIgnoreCase))
+        {
+            return PrettyRenderer.Render(output, record);
+        }
+        return FormatText(output, record);
     }
 
     private static string FormatText(
-        IReadOnlyDictionary<string, object?> output, CanonicalLogRecord record, string quote)
+        IReadOnlyDictionary<string, object?> output, CanonicalLogRecord record)
     {
         // Every caller-influenced fragment goes through EscapeControl: the
         // console and pretty renderers are line-oriented, so a raw CR/LF here
         // forges an entire additional record, ESC rewrites the operator's
         // terminal, and NUL truncates the line for downstream tooling. JSON
         // output is protected by the serializer and takes the other branch.
-        var escapeQuotes = quote.Length > 0;
         var extras = string.Join(" ", output
             .Where(kv => kv.Key is not ("level" or "message" or "timestamp"))
             .Select(kv =>
                 $"{EscapeControl($"{kv.Key}", escapeQuotes: false)}=" +
-                $"{quote}{EscapeControl($"{kv.Value}", escapeQuotes)}{quote}"));
+                $"{EscapeControl($"{kv.Value}", escapeQuotes: false)}"));
         var ts = output.TryGetValue("timestamp", out var t) ? t + " " : "";
         var eventText = EscapeControl(record.Event, escapeQuotes: false);
         return string.IsNullOrEmpty(extras)
@@ -154,7 +156,7 @@ public sealed class Logger
     /// <paramref name="escapeQuotes"/> is set (pretty mode), embedded quotes
     /// are escaped too so they cannot terminate the surrounding quoting.
     /// </summary>
-    private static string EscapeControl(string text, bool escapeQuotes)
+    internal static string EscapeControl(string text, bool escapeQuotes)
     {
         var needsWork = false;
         foreach (var c in text)

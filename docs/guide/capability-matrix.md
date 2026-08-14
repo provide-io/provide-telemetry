@@ -31,7 +31,7 @@ Legend:
 | `Gauge.value` returns aggregate across all attribute sets | aggregate | last-reading | last-reading | last-reading | last-reading | capability difference — see notes |
 | Counter / gauge / histogram values readable from the instrument | core | core | concrete type only | core | core | core guaranteed; Go's exported `Histogram` interface declares only `Record` |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | missing | missing | missing | missing | known gap — Python only |
-| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | no ANSI | core guaranteed in four languages — see notes |
+| `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | core | core guaranteed — C# uses fixed colors, see notes |
 | Metrics fallback export on shutdown when OTel is unavailable | no | no | no | no | no | uniform — fallback state drops on shutdown in every language; see notes |
 
 Notes:
@@ -113,17 +113,16 @@ Notes:
   pairs). The Go row covers the root
   `github.com/provide-io/provide-telemetry/go` package; compatibility
   subpackages intentionally expose narrower surfaces.
-  **C# does not have this renderer.** `PROVIDE_LOG_FORMAT=pretty` is accepted
-  and produces a distinct output — `Logger.Render` quotes the values, where
-  `console` leaves them bare — but it emits no ANSI, does not consult whether
-  stderr is a TTY, and does not honour `PROVIDE_LOG_PRETTY_FIELDS`. The
-  `LoggingConfig.PrettyKeyColor` / `PrettyValueColor` / `PrettyFields`
-  properties used to exist on the C# config object and be copied by `Clone()`
-  while nothing populated them and no renderer read them. They are gone:
-  `spec/telemetry-api.yaml` scopes `PROVIDE_LOG_PRETTY_*` to Python,
-  TypeScript, Go and Rust, so a C# caller could set them and change nothing.
-  An absent property is honest; a present one that is ignored reads as
-  support.
+  **C# renders the same shape with fixed colors**
+  (`csharp/src/Provide.Telemetry/PrettyRenderer.cs`): dim timestamp,
+  severity-colored level padded to nine columns, dim keys, quoted escaped
+  values, ANSI only when the process stderr is a real terminal. What it does
+  not do is read `PROVIDE_LOG_PRETTY_KEY_COLOR` / `PRETTY_VALUE_COLOR` /
+  `PRETTY_FIELDS` — `spec/telemetry-api.yaml` scopes those variables to
+  Python, TypeScript, Go and Rust, so C# uses the spec's defaults (dim keys,
+  uncolored values, all fields). The former `LoggingConfig.PrettyKeyColor` /
+  `PrettyValueColor` / `PrettyFields` properties stay deleted for the same
+  reason: a property the contract does not grant reads as support.
 - Metrics fallback export: when no OTel backend is installed, fallback
   counter/gauge/histogram state accumulates in-process and is dropped at
   shutdown — identically in all five languages. (This entry previously

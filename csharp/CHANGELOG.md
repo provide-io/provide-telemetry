@@ -11,7 +11,9 @@ languages; this file covers only what shipped to NuGet.
 First release.
 
 - **`Provide.Telemetry`** is a dependency-free core —
-  `dotnet list package --include-transitive` reports none. Logging, tracing,
+  `dotnet list package --include-transitive` reports none. Logging with
+  console, JSON and ANSI pretty renderers (severity-colored, TTY-detected,
+  matching the other four languages' layout), tracing,
   metrics, W3C propagation with full tracestate grammar validation,
   PII/secret redaction with recursive hardening, cardinality guards,
   backpressure, resilience (retries, timeouts, circuit breaker), SLO helpers,
