@@ -90,6 +90,27 @@ public class PrettyRendererTests : IDisposable
         Assert.DoesNotContain('\x1b', line);
         Assert.StartsWith("[info     ] order.create.ok ", line);
         Assert.Contains("count=\"3\"", line);
+        // The envelope's own level/message/timestamp entries render in their
+        // dedicated positions, never as key=value extras.
+        Assert.DoesNotContain("level=", line);
+        Assert.DoesNotContain("message=", line);
+        Assert.DoesNotContain("timestamp=", line);
+    }
+
+    [Fact]
+    public void MessageAndKeyPositionsDoNotEscapeQuotes()
+    {
+        // Only quoted *values* escape embedded quotes; the message and the
+        // bare keys keep them raw, exactly like the console renderer.
+        var cfg = Setup.GetRuntimeConfig() ?? TelemetryConfig.Default();
+        var record = CanonicalLogRecord.Create(
+            DateTimeOffset.UtcNow, "INFO", "or\"der.create.ok", "fmt", cfg, "", "",
+            new Dictionary<string, object?>(StringComparer.Ordinal) { ["q\"k"] = 1 }, null);
+
+        var line = PrettyRenderer.Render(record.ToWireEnvelope(false), record, colors: false);
+
+        Assert.Contains(" or\"der.create.ok ", line);
+        Assert.Contains("q\"k=\"1\"", line);
     }
 
     [Fact]
@@ -113,6 +134,11 @@ public class PrettyRendererTests : IDisposable
         var line = PrettyRenderer.Render(output, record, colors: true);
 
         Assert.StartsWith($"{PrettyRenderer.AnsiDim}{ts}{PrettyRenderer.AnsiReset} [", line);
+        // Colorless render: nothing sits between a leaked key and its '=', so
+        // this also proves the envelope's timestamp never renders as an extra.
+        var plain = PrettyRenderer.Render(output, record, colors: false);
+        Assert.StartsWith($"{ts} [", plain);
+        Assert.DoesNotContain("timestamp=", plain);
     }
 
     [Fact]

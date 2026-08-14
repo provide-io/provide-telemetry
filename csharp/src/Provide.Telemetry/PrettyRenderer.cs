@@ -49,9 +49,9 @@ internal static class PrettyRenderer
 
     private static string FormatLevel(string level, bool colors)
     {
+        // PadRight never truncates, so an over-long level needs no guard.
         var lower = level.ToLowerInvariant();
-        var padded = lower.Length < LevelPad ? lower.PadRight(LevelPad) : lower;
-        return $"[{Wrap(padded, LevelColor(lower), colors)}]";
+        return $"[{Wrap(lower.PadRight(LevelPad), LevelColor(lower), colors)}]";
     }
 
     /// <summary>Render one pretty line with an explicit color flag (test seam).</summary>
