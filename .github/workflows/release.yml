@@ -214,6 +214,11 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
         with:
           dotnet-version: "10.0.x"
+      # The version-sync check below runs through uv, which runner images do
+      # not carry — without this step it dies with exit 127 (uv: not found).
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8
+        with:
+          python-version: "3.11"
       - name: Verify the tag matches both project versions
         # A release whose assembly identity disagrees with its package version
         # is the failure check_version_sync.py was extended to catch; catching
