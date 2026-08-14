@@ -39,7 +39,7 @@ public class PrettyRendererTests : IDisposable
         var cfg = Setup.GetRuntimeConfig() ?? TelemetryConfig.Default();
         var record = CanonicalLogRecord.Create(
             DateTimeOffset.UtcNow, level, "order.create.ok", "fmt", cfg,
-            null, null,
+            "", "",
             payload ?? new Dictionary<string, object?>(StringComparer.Ordinal), null);
         return (record.ToWireEnvelope(includeTimestamp), record);
     }
