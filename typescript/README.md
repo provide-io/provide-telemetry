@@ -347,14 +347,14 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_LOG_OTLP_ENABLED` | `true` | Enable OTLP log export (independent of PROVIDE_TRACE_ENABLED / PROVIDE_METRICS_ENABLED; set false to skip OTLP handler even when OTEL_EXPORTER_OTLP_ENDPOINT is set) |
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing provider (falls back to no-op when false) |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) applied to the OTel SDK ParentBased(TraceIdRatioBased) sampler (and facade when no live provider); combined via min() with PROVIDE_SAMPLING_TRACES_RATE |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Shared OTLP endpoint (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | — | Shared OTLP headers (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Per-signal OTLP endpoint for logs |
-| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | Per-signal OTLP headers for logs |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Per-signal OTLP endpoint for traces |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | — | Per-signal OTLP headers for traces |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Per-signal OTLP endpoint for metrics |
-| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | — | Per-signal OTLP headers for metrics |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `""` | Shared OTLP endpoint (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | `""` | Shared OTLP headers (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | `""` | Per-signal OTLP endpoint for logs |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | `""` | Per-signal OTLP headers for logs |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `""` | Per-signal OTLP endpoint for traces |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | `""` | Per-signal OTLP headers for traces |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `""` | Per-signal OTLP endpoint for metrics |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: typescript_summary -->
 
 ### Pretty renderer

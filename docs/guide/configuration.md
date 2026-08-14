@@ -70,14 +70,14 @@ These follow the [OpenTelemetry specification](https://opentelemetry.io/docs/spe
 <!-- BEGIN GENERATED CONFIG: otlp -->
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | str | None | Shared OTLP endpoint (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | str | None | Shared OTLP headers (fallback for all signals) |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | str | None | Per-signal OTLP endpoint for logs |
-| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | str | None | Per-signal OTLP headers for logs |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | str | None | Per-signal OTLP endpoint for traces |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | str | None | Per-signal OTLP headers for traces |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | str | None | Per-signal OTLP endpoint for metrics |
-| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | str | None | Per-signal OTLP headers for metrics |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | str | `""` | Shared OTLP endpoint (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | str | `""` | Shared OTLP headers (fallback for all signals) |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | str | `""` | Per-signal OTLP endpoint for logs |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | str | `""` | Per-signal OTLP headers for logs |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | str | `""` | Per-signal OTLP endpoint for traces |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | str | `""` | Per-signal OTLP headers for traces |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | str | `""` | Per-signal OTLP endpoint for metrics |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | str | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: otlp -->
 
 ## Sampling
