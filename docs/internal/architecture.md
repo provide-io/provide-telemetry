@@ -125,11 +125,18 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     [*] --> Uninitialized
-    Uninitialized --> Ready: setup_telemetry() [lock]
-    Ready --> Uninitialized: shutdown_telemetry() [lock]
+    Uninitialized --> Ready: setup_telemetry() [lifecycle coordinator]
     Ready --> Ready: setup_telemetry() [idempotent, no-op]
-    Ready --> Ready: update_runtime_config() [hot reload]
+    Ready --> Ready: update_runtime_config() [hot reload, live config required]
+    Ready --> Stopped: shutdown_telemetry() [bounded drain, resets always run]
+    Stopped --> Ready: setup_telemetry() [re-setup]
 ```
+
+The `RuntimeState` enum carries the seven-state vocabulary shared with Go,
+Rust, TypeScript and C# (`local` / `starting` / `ready` / `degraded` /
+`reconfiguring` / `stopping` / `stopped`); Python's runtime reports `ready`
+and `stopped` and reserves the rest for parity with runtimes that surface
+intermediate states.
 
 ## Resilience Flow
 
@@ -157,11 +164,22 @@ flowchart TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `__init__.py` | Public API facade, 76 exports |
+| `__init__.py` | Public API facade, 108 exports (declarations only) |
+| `_lazy.py` | PEP 562 symbol registry the facade resolves through |
 | `setup.py` | Lock-protected init/shutdown coordinator with rollback |
 | `config.py` | Pydantic-free dataclass config, env var parsing |
-| `runtime.py` | Hot-reload API, provider-change detection |
-| `logger/core.py` | Structlog pipeline, handler construction, OTel log export |
+| `_config_validation.py` | Env-parsing validation helpers for `config.py` |
+| `runtime.py` | Hot-reload API, provider-change detection, `TelemetryRuntime` |
+| `_lifecycle.py` | Lifecycle coordinator publishing immutable runtime generations |
+| `_runtime_types.py` | `RuntimeState` / `FlushResult` / `ReconfigureResult` shared shapes |
+| `_runtime_policies.py` | Applies sampling/backpressure/exporter policy blocks |
+| `_provider_drain.py` | Per-signal provider drain with honest per-signal outcomes |
+| `_endpoint.py` | OTLP endpoint validation and credential masking |
+| `_masking.py` | Masks OTLP credentials in config representations |
+| `_resource.py` | OTel resource precedence ladder (default < `OTEL_*` env < config) |
+| `_otel.py` | Lazy OTel import helpers, W3C context attach/inject |
+| `logger/core.py` | Structlog pipeline, handler construction |
+| `logger/_otel_logs.py` | Stateless OTel log-provider wiring |
 | `logger/context.py` | Contextvars for request/session context |
 | `logger/processors.py` | Processor chain: schema, sampling, PII, standard fields |
 | `logger/pretty.py` | Pretty renderer with configurable colors |
@@ -187,6 +205,7 @@ flowchart TD
 | `exceptions.py` | TelemetryError, ConfigurationError |
 | `asgi/middleware.py` | ASGI middleware for request context |
 | `asgi/websocket.py` | WebSocket context helpers |
+| `testing.py` | pytest plugin for per-test telemetry isolation |
 
 ## Governance Modules
 
