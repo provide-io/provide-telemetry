@@ -50,48 +50,7 @@ jobs:
       # defensive null-coalescing arms and lock double-checks only a race can
       # take, plus DI-shape lambda arms in the OTel drain wiring.
       - name: Enforce coverage floor
-        run: |
-          python3 - "$RUNNER_TEMP/cscov" <<'EOF'
-          import glob, re, sys, xml.etree.ElementTree as ET
-          from collections import defaultdict
-
-          # Both test projects instrument the core assembly, so each emits its
-          # own report and neither is complete on its own. Reading just one --
-          # the directories are random GUIDs, so "just one" means whichever
-          # sorts last -- was a coin flip between a 68% report and a 32% one.
-          # Merge every report and take the union: a line is covered if any
-          # suite reached it.
-          reports = glob.glob(f"{sys.argv[1]}/**/coverage.cobertura.xml", recursive=True)
-          if not reports:
-              sys.exit("FAIL: no coverage.cobertura.xml produced")
-
-          lines = defaultdict(dict)  # source file -> line number -> (hits, covered, total)
-          for report in reports:
-              for cls in ET.parse(report).getroot().iter("class"):
-                  filename = cls.get("filename") or ""
-                  if "Provide.Telemetry" not in filename:
-                      continue
-                  for line in cls.iter("line"):
-                      number = int(line.get("number"))
-                      hits = int(line.get("hits"))
-                      fraction = re.search(r"\((\d+)/(\d+)\)", line.get("condition-coverage") or "")
-                      covered, total = (int(fraction[1]), int(fraction[2])) if fraction else (0, 0)
-                      previous = lines[filename].get(number, (0, 0, 0))
-                      lines[filename][number] = (
-                          max(previous[0], hits), max(previous[1], covered), max(previous[2], total))
-
-          measured = [entry for file_lines in lines.values() for entry in file_lines.values()]
-          if not measured:
-              sys.exit("FAIL: no Provide.Telemetry classes found in the coverage reports")
-          line_rate = sum(1 for hits, _, _ in measured if hits) / len(measured) * 100
-          branch_total = sum(total for _, _, total in measured)
-          branch_rate = sum(covered for _, covered, _ in measured) / branch_total * 100
-
-          print(f"{len(lines)} files, {len(measured)} lines, {branch_total} branches")
-          print(f"line: {line_rate:.2f}% (floor 100), branch: {branch_rate:.2f}% (floor 98)")
-          if line_rate < 100 or branch_rate < 98:
-              sys.exit("FAIL: coverage fell below the recorded baseline")
-          EOF
+        run: python3 ../ci/check_csharp_coverage.py "$RUNNER_TEMP/cscov" --line-floor 100 --branch-floor 98
 
   examples-smoke:
     runs-on: ubuntu-latest
