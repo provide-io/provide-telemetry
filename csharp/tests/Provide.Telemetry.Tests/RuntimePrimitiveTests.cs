@@ -44,6 +44,32 @@ public class RuntimePrimitiveTests
         Assert.NotNull(Backpressure.TryAcquire(Signals.Logs));
     }
 
+    [Theory]
+    [InlineData(Signals.Logs)]
+    [InlineData(Signals.Traces)]
+    [InlineData(Signals.Metrics)]
+    public void EverySignalReportsItsBoundAndRunsTheFullTicketCycle(string signal)
+    {
+        // Each signal arm pinned deterministically: the metrics arm of
+        // MaxSize was covered only incidentally, so the coverage gate's
+        // verdict depended on which environment's test ordering ran it.
+        Backpressure.SetQueuePolicy(new QueuePolicy
+        {
+            LogsMaxSize = signal == Signals.Logs ? 1 : 0,
+            TracesMaxSize = signal == Signals.Traces ? 1 : 0,
+            MetricsMaxSize = signal == Signals.Metrics ? 1 : 0,
+        });
+
+        Assert.Equal(1, Backpressure.MaxSize(signal));
+
+        var ticket = Backpressure.TryAcquire(signal);
+        Assert.NotNull(ticket);
+        Assert.Null(Backpressure.TryAcquire(signal));
+
+        Backpressure.Release(ticket);
+        Assert.NotNull(Backpressure.TryAcquire(signal));
+    }
+
     [Fact]
     public void ReleasingATicketTwiceReturnsOnlyOneSlot()
     {
