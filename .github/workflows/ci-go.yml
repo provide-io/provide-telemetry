@@ -157,6 +157,11 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: "1.26"
+          # Without this, "1.26" resolves to the runner image's cached patch
+          # release. govulncheck then reports already-fixed stdlib vulns as
+          # blocking (GO-2026-5972 fired on cached 1.26.5 after 1.26.6 shipped
+          # the fix), so the vuln scanner must always run the newest patch.
+          check-latest: true
       - name: Generate temporary go.work
         shell: bash
         run: |
