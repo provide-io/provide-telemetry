@@ -7,7 +7,7 @@ they contained.
 
 ---
 
-## [Unreleased]
+## [0.7.0] — 2026-08-14
 
 ### Changed
 

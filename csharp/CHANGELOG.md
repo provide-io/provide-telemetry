@@ -6,7 +6,7 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
-## [Unreleased]
+## [0.7.0] — 2026-08-14
 
 First release.
 

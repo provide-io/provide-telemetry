@@ -14,7 +14,7 @@ Two things to know when reading it:
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
 
-## [Unreleased]
+## [0.7.0] — 2026-08-14
 
 ### Changed
 
