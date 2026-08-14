@@ -165,7 +165,7 @@ Acceptance criteria:
 
 ### P4. Tighten Documentation and Positioning
 
-- Treat `docs/API.md` as the shared semantic contract, not just an index of
+- Treat `docs/guide/api.md` as the shared semantic contract, not just an index of
   exports.
 - Keep language READMEs focused on syntax, setup, and caveats.
 - Document every known gap as either:

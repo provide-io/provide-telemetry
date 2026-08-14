@@ -193,7 +193,7 @@ func TestHandlerStandardFieldsInOutput(t *testing.T) {
 // TestHandlerRequiredKeysMissing verifies that a record missing required keys
 // is annotated with _schema_error rather than dropped — matching the root
 // telemetry package's contract and the cross-language standard documented in
-// docs/CAPABILITY_MATRIX.md ("Required-key rejection emits _schema_error
+// docs/guide/capability-matrix.md ("Required-key rejection emits _schema_error
 // instead of dropping the record"). Kills CONDITIONALS_NEGATION at the
 // applySchema call-site.
 func TestHandlerRequiredKeysMissing(t *testing.T) {

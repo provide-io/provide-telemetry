@@ -3,7 +3,7 @@
 
 /**
  * Parity: RuntimeOverrides.logging brings TypeScript in line with Python's
- * hot-reload contract (docs/API.md, docs/INTERNALS.md).  updateRuntimeConfig
+ * hot-reload contract (docs/guide/api.md, docs/internal/internals.md).  updateRuntimeConfig
  * and reloadRuntimeFromEnv must re-apply log level, format, and module levels
  * without a provider restart. Provider-changing fields are NOT affected.
  */

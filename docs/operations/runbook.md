@@ -7,17 +7,17 @@
 - Event schema validation: disabled by default (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=false`)
 - Strict schema mode: off by default (`PROVIDE_TELEMETRY_STRICT_SCHEMA=false`)
 
-See also: [`docs/PRODUCTION_PROFILES.md`](PRODUCTION_PROFILES.md) for strict/compat/high-throughput presets.
+See also: [`docs/operations/production-profiles.md`](production-profiles.md) for strict/compat/high-throughput presets.
 
 ## Core Environment Variables
 
 All environment variables with types, defaults, and descriptions are documented in the
-[Configuration Reference](CONFIGURATION.md). The most commonly set variables are
+[Configuration Reference](../guide/configuration.md). The most commonly set variables are
 `PROVIDE_TELEMETRY_SERVICE_NAME`, `PROVIDE_LOG_LEVEL`, and `PROVIDE_LOG_FORMAT`.
 
 ## Event Naming Policy
 
-Canonical naming rules and examples live in [`docs/CONVENTIONS.md`](CONVENTIONS.md).
+Canonical naming rules and examples live in [`docs/guide/conventions.md`](../guide/conventions.md).
 Operationally, keep strict validation enabled unless you are in an explicit migration window.
 
 ## Failure Behavior
@@ -26,7 +26,7 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 - Invalid event names with strict event mode enabled: log processors annotate `_schema_error`; direct schema helpers like `event()`, `event_name()`, and `validate_event_name()` raise `EventSchemaError`.
 - Missing required keys: log processors annotate `_schema_error` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode); `validate_required_keys()` raises directly.
 - Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers; in Python, TypeScript, Go, and Rust a runtime guard forces fail-fast unless explicit `*_ALLOW_BLOCKING_EVENT_LOOP=true`, and a suppressed call is counted in `async_blocking_risk_*`. **C# has no such guard**: `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP` is parsed and reported by `GetExporterPolicy`, but nothing consults it, and `async_blocking_risk_*` is always zero. C#'s drains run on the thread pool via `ResilientExporter.DrainAsync`, so the practical exposure is different from a blocked event loop, but the setting is not a control.
-- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced at exporter construction and per-batch export across four of the five runtimes (Python, TypeScript, Go, Rust). See `docs/INTERNALS.md` Resilience table for the per-language module references. Timed-out attempts count as failures and follow the retry/fail-open policy. **C# bounds exports differently**: the OTLP exporters are built without an explicit timeout (`Endpoints.Apply` sets endpoint, protocol and headers only), and the per-attempt budget comes from the absolute deadline `FlushTelemetry(timeout)` / `ShutdownTelemetry()` computes — default ten seconds, shared by every signal so three installed providers cost one budget, not three. `TimeoutSeconds` in C# survives only as the gate that decides whether the circuit breaker is consulted at all (`ResilienceExecutor`, matching Python's `TimeoutSeconds > 0` rule). To bound a C# export, pass the timeout to `FlushTelemetry`; setting `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` will not do it.
+- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced at exporter construction and per-batch export across four of the five runtimes (Python, TypeScript, Go, Rust). See `docs/internal/internals.md` Resilience table for the per-language module references. Timed-out attempts count as failures and follow the retry/fail-open policy. **C# bounds exports differently**: the OTLP exporters are built without an explicit timeout (`Endpoints.Apply` sets endpoint, protocol and headers only), and the per-attempt budget comes from the absolute deadline `FlushTelemetry(timeout)` / `ShutdownTelemetry()` computes — default ten seconds, shared by every signal so three installed providers cost one budget, not three. `TimeoutSeconds` in C# survives only as the gate that decides whether the circuit breaker is consulted at all (`ResilienceExecutor`, matching Python's `TimeoutSeconds > 0` rule). To bound a C# export, pass the timeout to `FlushTelemetry`; setting `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` will not do it.
 - Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
 
 ## Lifecycle

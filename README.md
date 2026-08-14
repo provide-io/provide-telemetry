@@ -71,7 +71,7 @@ log.info({ event: 'app.start.ok', requestId: 'req-1' });
 await shutdownTelemetry();
 ```
 
-All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration; the C# packages live in `csharp/` and offer the same scoped restoration through `IDisposable` context scopes over `AsyncLocal<T>`. See the [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) for the differences that are real — notably that C# ships no ANSI pretty renderer and no HTTP request-lifecycle middleware.
+All implementations share the same API surface, event naming conventions, and configuration environment variables. The Rust crate lives in `rust/` and uses guard-based context binding for task-safe restoration; the C# packages live in `csharp/` and offer the same scoped restoration through `IDisposable` context scopes over `AsyncLocal<T>`. See the [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/capability-matrix.md) for the differences that are real — notably that C# ships no ANSI pretty renderer and no HTTP request-lifecycle middleware.
 
 **On wire-format parity**: local JSON logs use a canonical snake_case envelope across implementations (`timestamp`, `level`, `message`, `logger_name`, `service`, `env`, `version`, `trace_id`, `span_id`, plus event fields). The parity harness in `spec/` also normalizes legacy OTel keys (`service.name`, `service.env`, `service.version`, `trace.id`, `span.id`) when present to keep comparisons stable for older emit paths.
 
@@ -89,7 +89,7 @@ All runtime config is via environment variables:
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable OTel metrics |
 
-See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) for all 60+ environment variables.
+See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md) for all 60+ environment variables.
 
 ## Event Naming
 
@@ -106,7 +106,7 @@ log.info(event("auth", "login", "failed"), reason="bad_password")
 log.info({ event: 'auth.login.success', userId: 'u-123' });
 ```
 
-See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) for full naming rules.
+See [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/conventions.md) for full naming rules.
 
 ## API Surface
 
@@ -123,7 +123,7 @@ All implementations export equivalent APIs (signatures vary per language idiom):
 | Health | `get_health_snapshot()` |
 | Runtime | `get_runtime_config()`, `get_runtime_status()`, `update_runtime_config()`, `reconfigure_telemetry()`, `reload_runtime_from_env()` |
 
-Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) | [C# packages](https://github.com/provide-io/provide-telemetry/blob/main/csharp/README.md)
+Full reference: [Python API](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/api.md) | [TypeScript API](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) | [Go API](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) | [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) | [C# packages](https://github.com/provide-io/provide-telemetry/blob/main/csharp/README.md)
 
 ## Polyglot Architecture
 
@@ -152,21 +152,30 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Documentation
 
-- [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONFIGURATION.md) — all environment variables
-- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/API.md) — shared semantic contract and Python-centered examples
-- [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/CAPABILITY_MATRIX.md) — core guarantees vs feature-gated or idiomatic differences
-- [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/ARCHITECTURE.md) — component design and data flow
-- [Developer Experience Rubric](https://github.com/provide-io/provide-telemetry/blob/main/docs/DX_RUBRIC.md) — criteria for cross-language consistency and usability
-- [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/INTERNALS.md) — implementation details
-- [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/CONVENTIONS.md) — event naming and schema rules
-- [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/OPERATIONS.md) — troubleshooting and CQ matrix
-- [Quality Gap-to-Closure Checklist](https://github.com/provide-io/provide-telemetry/blob/main/docs/QUALITY_GAP_CLOSURE.md) — auditable coverage, fixture, and mutation gates
-- [Polyglot Parity Roadmap](https://github.com/provide-io/provide-telemetry/blob/main/docs/PARITY_ROADMAP.md) — prioritized work to reach true behavioral parity
-- [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/PRODUCTION_PROFILES.md) — recommended configs
-- [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/RELEASE.md) — versioning and publishing
+Start at the [documentation map](https://github.com/provide-io/provide-telemetry/blob/main/docs/README.md), organized by audience:
+
+Using the library — [`docs/guide/`](https://github.com/provide-io/provide-telemetry/tree/main/docs/guide):
+- [API Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/api.md) — shared semantic contract and Python-centered examples
+- [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md) — all environment variables
+- [Capability Matrix](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/capability-matrix.md) — core guarantees vs feature-gated or idiomatic differences
+- [Conventions](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/conventions.md) — event naming and schema rules
+
+Running services on it — [`docs/operations/`](https://github.com/provide-io/provide-telemetry/tree/main/docs/operations):
+- [Operations Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/operations/runbook.md) — troubleshooting and CQ matrix
+- [Production Profiles](https://github.com/provide-io/provide-telemetry/blob/main/docs/operations/production-profiles.md) — recommended configs
+- [Release Runbook](https://github.com/provide-io/provide-telemetry/blob/main/docs/operations/release.md) — versioning and publishing
+
+Working on the repo — [`docs/internal/`](https://github.com/provide-io/provide-telemetry/tree/main/docs/internal):
+- [Architecture](https://github.com/provide-io/provide-telemetry/blob/main/docs/internal/architecture.md) — component design and data flow
+- [Internals](https://github.com/provide-io/provide-telemetry/blob/main/docs/internal/internals.md) — implementation details
+- [Polyglot Parity Roadmap](https://github.com/provide-io/provide-telemetry/blob/main/docs/internal/parity.md) — the parity contract and its open gaps
+- [Quality Gates](https://github.com/provide-io/provide-telemetry/blob/main/docs/internal/quality-gates.md) — performance budgets, mutation exemptions, fuzzing
+
+Per language:
 - [TypeScript README](https://github.com/provide-io/provide-telemetry/blob/main/typescript/README.md) — TypeScript-specific docs
 - [Go README](https://github.com/provide-io/provide-telemetry/blob/main/go/README.md) — Go-specific docs
 - [Rust crate](https://github.com/provide-io/provide-telemetry/tree/main/rust) — Rust-specific source and examples
+- [C# packages](https://github.com/provide-io/provide-telemetry/tree/main/csharp) — C#-specific source and tests
 - [C# README](https://github.com/provide-io/provide-telemetry/blob/main/csharp/README.md) — the two-package split and C#-specific usage
 - [Examples](https://github.com/provide-io/provide-telemetry/blob/main/examples/README.md) — runnable examples for the polyglot repo
 

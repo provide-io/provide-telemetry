@@ -183,7 +183,7 @@ func TestUpdateRuntimeConfig_LoggingOverride_ValidatesPIIMaxDepth(t *testing.T) 
 // behaviour: LogFormatPretty is accepted by the config layer but the
 // underlying renderer is slog's text handler — identical to
 // LogFormatConsole. A dedicated ANSI renderer is a future enhancement;
-// see docs/CAPABILITY_MATRIX.md entry "PROVIDE_LOG_FORMAT=pretty renderer"
+// see docs/guide/capability-matrix.md entry "PROVIDE_LOG_FORMAT=pretty renderer"
 // (listed as same-as-console for Go). This regression test fails if the
 // two renderers ever diverge without the matrix being updated in the
 // same change.

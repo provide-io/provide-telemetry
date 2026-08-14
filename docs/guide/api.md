@@ -249,7 +249,7 @@ e.status  # "success"
 
 ### `EventRecord` (TypeScript)
 
-TypeScript equivalent for structured event creation. See the [TypeScript README](../typescript/README.md) for usage.
+TypeScript equivalent for structured event creation. See the [TypeScript README](../../typescript/README.md) for usage.
 
 ## ASGI Integration
 
@@ -455,7 +455,7 @@ Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across 
 
 C# populates every field except `async_blocking_risk_{logs,traces,metrics}`,
 which is always zero because C# ships no event-loop blocking guard — see the
-Failure Behavior section of [`OPERATIONS.md`](OPERATIONS.md).
+Failure Behavior section of [`OPERATIONS.md`](../operations/runbook.md).
 
 ### `get_health_snapshot() -> HealthSnapshot`
 

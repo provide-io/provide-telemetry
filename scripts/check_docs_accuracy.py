@@ -163,7 +163,7 @@ def _claim_violations(path: Path, content: str) -> list[str]:
 
 def _architecture_diagram_violations(path: Path, content: str) -> list[str]:
     violations: list[str] = []
-    if path.name != "ARCHITECTURE.md":
+    if path.name != "architecture.md":
         return violations
     mermaid_blocks = content.count("```mermaid")
     if mermaid_blocks < 5:

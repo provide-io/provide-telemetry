@@ -38,10 +38,10 @@ def _write_file(path: Path, content: str) -> None:
 def test_check_docs_passes_for_valid_docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_file(
         tmp_path / "README.md",
-        "# Project\n\nSee [Architecture](docs/ARCHITECTURE.md#architecture).\n",
+        "# Project\n\nSee [Architecture](docs/internal/architecture.md#architecture).\n",
     )
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         (
             "# Architecture\n\n"
             "## Component Flow\n\n"
@@ -62,9 +62,9 @@ def test_check_docs_passes_for_valid_docs(tmp_path: Path, monkeypatch: pytest.Mo
 
 
 def test_check_docs_flags_missing_anchor(tmp_path: Path) -> None:
-    _write_file(tmp_path / "README.md", "# Project\n\nSee [Arch](docs/ARCHITECTURE.md#missing).\n")
+    _write_file(tmp_path / "README.md", "# Project\n\nSee [Arch](docs/internal/architecture.md#missing).\n")
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
     )
     violations = checker.check_docs(tmp_path)
@@ -74,7 +74,7 @@ def test_check_docs_flags_missing_anchor(tmp_path: Path) -> None:
 def test_check_docs_flags_inaccurate_fallback_phrase(tmp_path: Path) -> None:
     _write_file(tmp_path / "README.md", "# Project\n\nno-op tracing/metrics continue without exceptions\n")
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n")
@@ -87,7 +87,7 @@ def test_check_docs_flags_mutation_command_without_threshold(tmp_path: Path) -> 
         tmp_path / "README.md", "# Project\n\nuv run python scripts/run_mutation_gate.py --python-version 3.11\n"
     )
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n")
@@ -101,7 +101,7 @@ def test_check_docs_accepts_documented_python_mutation_floor(tmp_path: Path) -> 
         "# Project\n\nuv run python scripts/run_mutation_gate.py --python-version 3.11 --min-mutation-score 95\n",
     )
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n")
@@ -117,7 +117,7 @@ def test_check_docs_flags_python_mutation_threshold_below_floor(tmp_path: Path) 
         "# Project\n\nuv run python scripts/run_mutation_gate.py --python-version 3.11 --min-mutation-score 94.9\n",
     )
     _write_file(
-        tmp_path / "docs/ARCHITECTURE.md",
+        tmp_path / "docs/internal/architecture.md",
         "# Architecture\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n",
     )
     _write_file(tmp_path / "examples/README.md", "# Examples\n")

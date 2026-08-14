@@ -120,7 +120,7 @@ def test_setup_then_shutdown_then_setup_rebuilds_package_local_state_with_fake_s
     `shutdown_telemetry()` — the real SDK installs providers via one-shot
     globals (trace.set_tracer_provider, metrics.set_meter_provider,
     logs.set_logger_provider) and a process restart remains the supported way
-    to install a fresh provider after teardown. See `docs/OPERATIONS.md`
+    to install a fresh provider after teardown. See `docs/operations/runbook.md`
     §Lifecycle for the operator-facing guarantee.
     """
     _reset_all_for_tests()

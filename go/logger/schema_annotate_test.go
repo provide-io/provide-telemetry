@@ -16,7 +16,7 @@ import (
 // validation failures on the event name annotate the emitted record with
 // _schema_error rather than silently dropping it. This matches the parent
 // telemetry package (see go/logger.go:applySchema call-site) and the
-// cross-language contract documented in docs/CAPABILITY_MATRIX.md:
+// cross-language contract documented in docs/guide/capability-matrix.md:
 // "Strict-schema rejection emits _schema_error instead of dropping the
 // record".
 func TestHandlerSchemaAnnotatesEventNameViolation(t *testing.T) {

@@ -3,7 +3,7 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-"""Drift guard: every parsed env var must appear in docs/CONFIGURATION.md."""
+"""Drift guard: every parsed env var must appear in docs/guide/configuration.md."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _CONFIG_SOURCES = (
     _ROOT / "src" / "provide" / "telemetry" / "config.py",
     _ROOT / "src" / "provide" / "telemetry" / "_config_validation.py",
 )
-_CONFIG_MD = _ROOT / "docs" / "CONFIGURATION.md"
+_CONFIG_MD = _ROOT / "docs" / "guide" / "configuration.md"
 
 # Matches env var string literals used in from_env(), including helper-call
 # arguments such as _resolve_otlp_endpoint(..., "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", ...).

@@ -2281,7 +2281,7 @@ git commit -m "feat(csharp): connect resilient exporters and bounded drains"
 - Modify: `.github/workflows/release.yml`
 - Modify: `README.md`
 - Modify: `csharp/README.md`
-- Modify: `docs/CAPABILITY_MATRIX.md`
+- Modify: `docs/guide/capability-matrix.md`
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**

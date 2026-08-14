@@ -200,7 +200,7 @@ Delete `_extract_baggage_value`. Note behavior tightening: session keys must now
 ### Task 9: Docs corrections (finding 9 + bonus)
 
 **Files:**
-- Modify: `docs/CAPABILITY_MATRIX.md:33,98-101` (middleware TS/Go → missing/known gap)
+- Modify: `docs/guide/capability-matrix.md:33,98-101` (middleware TS/Go → missing/known gap)
 - Modify: `spec/run_behavioral_parity.py:7` docstring four → five
 - Modify: `CLAUDE.md` (add C# to polyglot structure; five languages)
 

@@ -39,7 +39,7 @@ import { dynImportOtel } from './otel-dynimport.js';
 import { wrapResilientExporter } from './resilient-exporter.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
-// entirely (safe no-export path per docs/ARCHITECTURE.md).
+// entirely (safe no-export path per docs/internal/architecture.md).
 import {
   type ShutdownableProvider,
   _areProvidersRegistered,

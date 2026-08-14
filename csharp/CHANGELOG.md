@@ -31,4 +31,4 @@ First release.
   and packs both packages, then exchanges the GitHub OIDC token for a
   short-lived NuGet.org API key — no stored publish credential exists. Both
   packages are owned by the `provide.io` organization; see
-  `docs/RELEASE.md` for the full path.
+  `docs/operations/release.md` for the full path.

@@ -1,6 +1,6 @@
 # Continuous coverage-guided fuzz of go/ config parsing and redaction.
 # GitHub-hosted runners = continuous cloud at CI scale (same engine family
-# as OSS-Fuzz native Go targets; see docs/go-fuzzing.md for OSS-Fuzz fleet).
+# as OSS-Fuzz native Go targets; see docs/internal/quality-gates.md for OSS-Fuzz fleet).
 name: 🐹 CI — Go fuzz
 
 on:

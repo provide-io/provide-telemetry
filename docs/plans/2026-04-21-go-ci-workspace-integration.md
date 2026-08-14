@@ -110,7 +110,7 @@ Expected: the job completes successfully with local source resolution.
 
 **Files:**
 - Modify: `.github/workflows/release.yml`
-- Modify: `docs/RELEASE.md`
+- Modify: `docs/operations/release.md`
 - Test: `act -W .github/workflows/release.yml push -j verify-go-consumer-direct -e /tmp/act-release-tag.json`
 
 - [ ] **Step 1: Expand Go tag triggers in `release.yml`**

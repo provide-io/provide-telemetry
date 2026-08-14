@@ -322,7 +322,7 @@ RUST_TEST_THREADS=1 cargo llvm-cov --all-targets --all-features --ignore-filenam
 Hot-path benchmarks (`benches/hot_path.rs`) run on every CI push as the
 `performance-smoke` job, comparing per-op measurements against
 `baselines/perf-rust.json` for the runner's OS bucket. Locally:
-`make perf-rust`. See [`docs/PERFORMANCE.md`](../docs/PERFORMANCE.md) for
+`make perf-rust`. See [`docs/internal/quality-gates.md`](../docs/internal/quality-gates.md) for
 the gate's design (5x default tolerance, OS-tagged baselines) and how to
 seed or refresh entries.
 

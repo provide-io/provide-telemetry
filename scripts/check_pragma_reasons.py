@@ -138,7 +138,7 @@ def _format_violation(v: Violation, repo_root: Path) -> str:
 def _guidance(kind: str) -> str:
     return (
         f"Add a reason after the pragma: `# pragma: {kind} — <why>`. "
-        "See docs/MUTATION_EXEMPTIONS.md for the exemption policy."
+        "See docs/internal/quality-gates.md for the exemption policy."
     )
 
 

@@ -19,7 +19,7 @@ SPEC_PATH = REPO_ROOT / "spec" / "telemetry-api.yaml"
 
 # Files that contain marker comments for generated tables.
 TARGET_FILES: dict[str, Path] = {
-    "configuration": REPO_ROOT / "docs" / "CONFIGURATION.md",
+    "configuration": REPO_ROOT / "docs" / "guide" / "configuration.md",
     "typescript": REPO_ROOT / "typescript" / "README.md",
 }
 
@@ -110,7 +110,7 @@ def process_configuration_md(
     *,
     check: bool,
 ) -> bool:
-    """Update docs/CONFIGURATION.md. Returns True if content changed."""
+    """Update docs/guide/configuration.md. Returns True if content changed."""
     content = path.read_text()
     updated = content
     for section, vars_list in defaults.items():
@@ -152,7 +152,7 @@ def main() -> None:
     defaults = load_config_defaults(SPEC_PATH)
     any_changed = False
 
-    # docs/CONFIGURATION.md
+    # docs/guide/configuration.md
     cfg_path = TARGET_FILES["configuration"]
     if cfg_path.exists():
         print(f"Processing {cfg_path.relative_to(REPO_ROOT)}")

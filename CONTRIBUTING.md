@@ -4,60 +4,49 @@
 
 - **Python**: [uv](https://docs.astral.sh/uv/) (manages Python versions and virtualenvs)
 - **TypeScript**: Node.js 22+, npm
+- **Go**: Go 1.22+
+- **Rust**: stable toolchain via rustup
+- **C#**: .NET SDK 10
 - **Docker** (for local OpenObserve stack)
+
+Only the languages you touch need their toolchains installed; CI runs all five.
 
 ## Setup
 
-### Python
-
 ```bash
-uv sync --group dev                   # Base dev deps
+uv sync --group dev                   # Python base dev deps
 uv sync --group dev --extra otel      # Include OpenTelemetry extras
+cd typescript && npm install          # TypeScript
 ```
 
-### TypeScript
-
-```bash
-cd typescript
-npm install
-```
+Go, Rust, and C# resolve their dependencies on first build (`go build`,
+`cargo build`, `dotnet build`).
 
 ## Running tests
 
-### Python
-
 ```bash
-uv run python scripts/run_pytest_gate.py                  # Full suite (100% branch coverage enforced)
+uv run python scripts/run_pytest_gate.py                  # Python (100% branch coverage enforced)
 uv run python scripts/run_pytest_gate.py -k "test_name"   # Single test
 uv run python scripts/run_pytest_gate.py -m otel --no-cov # OTel-specific tests
+cd typescript && npm test                                 # TypeScript
+cd go && go test ./... && cd otel && go test ./...        # Go (both modules)
+cargo test --manifest-path rust/Cargo.toml --all-features # Rust
+cd csharp && dotnet test                                  # C#
 ```
 
-### TypeScript
-
-```bash
-cd typescript
-npm test              # Full suite
-npm run test:coverage # With coverage report
-```
-
-Both languages enforce **100% branch coverage**.
+Python, TypeScript, and Go enforce **100% branch coverage**; Rust enforces
+100% covered functions and zero uncovered lines via `cargo llvm-cov`; C#
+enforces ratcheted floors (99% line / 97% branch) in `ci-csharp.yml`.
 
 ## Code style
 
-### Python
-
 ```bash
-uv run ruff format --check .   # Formatting
-uv run ruff check .            # Linting
-uv run mypy src tests          # Type checking (strict mode)
-```
-
-### TypeScript
-
-```bash
-cd typescript
-npx eslint .
-npx prettier --check .
+uv run ruff format --check . && uv run ruff check .   # Python format + lint
+uv run mypy src tests                                 # Python types (strict)
+cd typescript && npx eslint . && npx prettier --check .
+gofmt -l go/ && go vet ./...                          # Go (run inside go/)
+cargo clippy --manifest-path rust/Cargo.toml --all-features
+cd csharp && dotnet format --verify-no-changes
 ```
 
 ## Quality gates
@@ -66,11 +55,32 @@ Every PR must pass these gates in CI:
 
 | Gate | Command |
 |------|---------|
-| Mutation testing | `uv run python scripts/run_mutation_gate.py` — 100% kill score required |
-| SPDX headers | `uv run python scripts/check_spdx_headers.py` — Apache-2.0 on all source files |
+| Mutation testing | `uv run python scripts/run_mutation_gate.py --min-mutation-score 95` — zero survivors required in every language (mutmut / Stryker / gremlins / cargo-mutants / Stryker.NET) |
+| SPDX headers | `uv run python scripts/check_spdx_headers.py` — Apache-2.0 on all Python, Go, Rust, and C# sources (TypeScript is checked in `ci-typescript.yml`) |
+| REUSE compliance | `uvx reuse lint` — every file carries or is annotated with licensing info |
 | Spelling | `uv run codespell` |
 | Security scan | `uv run bandit -r src -ll` |
-| Max LOC | `uv run python scripts/check_max_loc.py --max-lines 500` — no file over 500 lines |
+| Dependency audit | `uv run python -m pip_audit --path .` |
+| Max LOC | `uv run python scripts/check_max_loc.py --max-lines 777` — no source file over 777 lines |
+| Version sync | `uv run python scripts/check_version_sync.py` — all languages share `VERSION`'s major.minor |
+| Docs accuracy | `uv run python scripts/check_docs_accuracy.py` — documented claims must match the tree |
+
+## SPDX policy
+
+Python files must start with:
+
+1. optional shebang
+2. `SPDX-FileCopyrightText`
+3. `SPDX-License-Identifier`
+4. `SPDX-Comment`
+5. `#` separator line
+6. blank line
+
+Go, Rust, and C# files start with the same block in `//` comments (first two
+lines checked). Use `uv run python scripts/normalize_spdx_headers.py` to
+auto-fix and `uv run python scripts/check_spdx_headers.py` to validate.
+Markdown files carry no SPDX headers; they are covered by `REUSE.toml`
+annotations instead.
 
 ## Commit message format
 
@@ -87,16 +97,22 @@ refactor: extract PII rule engine into dedicated module
 
 1. Branch from `main`.
 2. Ensure all CI gates pass (coverage, mutation, lint, SPDX, codespell, bandit).
-3. Keep language parity -- changes to the API surface must be reflected in both Python and TypeScript per `spec/telemetry-api.yaml`.
+3. Keep language parity — changes to the API surface must be reflected in all
+   five languages per `spec/telemetry-api.yaml`, or the spec's applicability
+   lists must record why a language is exempt.
 4. Request review. Squash-merge when approved.
 
 ## Adding a new feature
 
 1. Update `spec/telemetry-api.yaml` with the new API surface.
-2. Implement in Python (`src/provide/telemetry/`) with tests in `tests/`.
-3. Implement in TypeScript (`typescript/src/`) with tests in `typescript/test/`.
-4. Run conformance validation: `uv run python spec/validate_conformance.py`.
-5. Ensure both languages pass all quality gates before opening a PR.
+2. Implement in Python (`src/provide/telemetry/`) first — Python is the
+   behavioral reference — with tests in `tests/`.
+3. Implement in TypeScript (`typescript/src/`), Go (`go/`), Rust (`rust/src/`),
+   and C# (`csharp/src/`), each with tests.
+4. Add or extend shared fixtures in `spec/` so the behavior is pinned in every
+   language, and register test IDs in `spec/fixture_test_ids.yaml`.
+5. Run conformance validation: `uv run python spec/validate_conformance.py`.
+6. Ensure all languages pass their quality gates before opening a PR.
 
 ## Running OpenObserve locally
 
