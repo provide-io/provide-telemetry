@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
-using System.Diagnostics;
-
 namespace Provide.Telemetry;
 
 /// <summary>How an export call ended.</summary>
@@ -50,6 +48,14 @@ public static class Resilience
 
     /// <summary>Upper bound on the exponential cooldown.</summary>
     internal const double CircuitMaxCooldownSeconds = 1024.0;
+
+    /// <summary>
+    /// Timestamp source for the breaker cooldown. Tests substitute a fake so
+    /// the half-open transitions — otherwise reachable only by letting a real
+    /// 30-second-plus cooldown elapse — can be driven deterministically.
+    /// <see cref="Reset"/> restores the system clock.
+    /// </summary>
+    internal static TimeProvider Clock = TimeProvider.System;
 
     private static readonly object Gate = new();
     private static readonly Dictionary<string, ExporterPolicy> Policies = new(StringComparer.Ordinal)
@@ -151,6 +157,7 @@ public static class Resilience
     {
         lock (Gate)
         {
+            Clock = TimeProvider.System;
             foreach (var k in new[] { Signals.Logs, Signals.Traces, Signals.Metrics })
             {
                 Policies[k] = new ExporterPolicy();
@@ -204,12 +211,10 @@ public static class Resilience
             if (_halfOpenProbing)
             {
                 _halfOpenProbing = false;
-                _consecutiveTimeouts = 0;
                 // Decay rather than reset: the cooldown is exponential in
                 // OpenCount, so one good probe shortens the next wait instead of
                 // erasing the history of an exporter that keeps failing.
                 OpenCount = Math.Max(0, OpenCount - 1);
-                return;
             }
             _consecutiveTimeouts = 0;
         }
@@ -234,14 +239,14 @@ public static class Resilience
         private void Trip()
         {
             OpenCount++;
-            _trippedAtTicks = Stopwatch.GetTimestamp();
+            _trippedAtTicks = Clock.GetTimestamp();
         }
 
         private TimeSpan CooldownRemaining()
         {
             var cooldown = Math.Min(
                 CircuitBaseCooldownSeconds * Math.Pow(2, OpenCount), CircuitMaxCooldownSeconds);
-            var elapsed = Stopwatch.GetElapsedTime(_trippedAtTicks);
+            var elapsed = Clock.GetElapsedTime(_trippedAtTicks);
             return TimeSpan.FromSeconds(cooldown) - elapsed;
         }
     }

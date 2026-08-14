@@ -335,7 +335,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     }
 
     /// <summary>Milliseconds left until <paramref name="deadline"/>, clamped to [0, int.MaxValue].</summary>
-    private static int RemainingMs(DateTimeOffset deadline)
+    internal static int RemainingMs(DateTimeOffset deadline)
     {
         var remaining = (deadline - DateTimeOffset.UtcNow).TotalMilliseconds;
         if (remaining <= 0) return 0;
@@ -345,7 +345,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     // Teardown runs on the shutdown path, where the caller has already decided
     // to stop caring about telemetry; an exporter that throws while closing must
     // not take the application's shutdown with it.
-    private static void Swallow(Action action)
+    internal static void Swallow(Action action)
     {
         try { action(); }
         catch { /* teardown is best-effort */ }

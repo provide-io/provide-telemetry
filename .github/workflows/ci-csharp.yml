@@ -42,13 +42,13 @@ jobs:
           dotnet test Provide.Telemetry.sln --no-build
           --collect:"XPlat Code Coverage"
           --results-directory "$RUNNER_TEMP/cscov"
-      # Floors are the measured coverage of the whole run (2026-08-08:
-      # 99.60% line, 97.94% branch across 685 tests), floored to integers with a
-      # little headroom — ratchet them up, never down. What is left uncovered is
-      # the circuit breaker's half-open transitions, which need a 30-second
-      # cooldown to elapse and would need an injectable clock to reach, plus a
-      # handful of defensive null-coalescing arms and lock double-checks that
-      # only a race can take.
+      # Floors ratchet up, never down. Line is 100 exact (measured 2026-08-14:
+      # 100.00% across 831 tests) — the former exception, the circuit breaker's
+      # half-open transitions, is closed by the Resilience.Clock TimeProvider
+      # seam, and the teardown guard is unit-tested directly. Branch floor is
+      # 98 under a measured 98.20%: the remaining partial branches are
+      # defensive null-coalescing arms and lock double-checks only a race can
+      # take, plus DI-shape lambda arms in the OTel drain wiring.
       - name: Enforce coverage floor
         run: |
           python3 - "$RUNNER_TEMP/cscov" <<'EOF'
@@ -88,8 +88,8 @@ jobs:
           branch_rate = sum(covered for _, covered, _ in measured) / branch_total * 100
 
           print(f"{len(lines)} files, {len(measured)} lines, {branch_total} branches")
-          print(f"line: {line_rate:.2f}% (floor 99), branch: {branch_rate:.2f}% (floor 97)")
-          if line_rate < 99 or branch_rate < 97:
+          print(f"line: {line_rate:.2f}% (floor 100), branch: {branch_rate:.2f}% (floor 98)")
+          if line_rate < 100 or branch_rate < 98:
               sys.exit("FAIL: coverage fell below the recorded baseline")
           EOF
 
