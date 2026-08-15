@@ -185,7 +185,7 @@ public static class Consent
 
     internal static void Reset() => SetConsentLevel(ConsentLevel.Full);
 
-    private static int LogOrder(string logLevel) =>
+    internal static int LogOrder(string logLevel) =>
         LogLevelOrder.TryGetValue(logLevel ?? "", out var o) ? o : 0;
 }
 

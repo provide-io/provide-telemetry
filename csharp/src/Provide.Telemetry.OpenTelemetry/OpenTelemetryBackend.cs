@@ -192,7 +192,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         }
     }
 
-    private static LogLevel MapLevel(string level) => level.ToUpperInvariant() switch
+    internal static LogLevel MapLevel(string level) => level.ToUpperInvariant() switch
     {
         "TRACE" => LogLevel.Trace,
         "DEBUG" => LogLevel.Debug,

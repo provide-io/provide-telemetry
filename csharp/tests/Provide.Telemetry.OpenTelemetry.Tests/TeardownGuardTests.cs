@@ -54,4 +54,26 @@ public class TeardownGuardTests
 
         Assert.InRange(ms, 1, 10_000);
     }
+
+    [Fact]
+    public void TheBackendRefusesANullConfig()
+    {
+        Assert.Throws<ArgumentNullException>(() => new OpenTelemetryBackend(null!));
+    }
+
+    [Theory]
+    [InlineData("TRACE", Microsoft.Extensions.Logging.LogLevel.Trace)]
+    [InlineData("trace", Microsoft.Extensions.Logging.LogLevel.Trace)]
+    [InlineData("DEBUG", Microsoft.Extensions.Logging.LogLevel.Debug)]
+    [InlineData("INFO", Microsoft.Extensions.Logging.LogLevel.Information)]
+    [InlineData("WARN", Microsoft.Extensions.Logging.LogLevel.Warning)]
+    [InlineData("WARNING", Microsoft.Extensions.Logging.LogLevel.Warning)]
+    [InlineData("ERROR", Microsoft.Extensions.Logging.LogLevel.Error)]
+    [InlineData("CRITICAL", Microsoft.Extensions.Logging.LogLevel.Critical)]
+    [InlineData("bogus", Microsoft.Extensions.Logging.LogLevel.Information)]
+    public void EveryCanonicalLevelMapsToItsBridgeLevel(
+        string level, Microsoft.Extensions.Logging.LogLevel expected)
+    {
+        Assert.Equal(expected, OpenTelemetryBackend.MapLevel(level));
+    }
 }
