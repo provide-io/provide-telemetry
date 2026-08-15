@@ -152,10 +152,11 @@ public static class ConfigEnv
 
     private static void ValidateEndpoint(string endpoint)
     {
-        if (string.IsNullOrWhiteSpace(endpoint)) return;
-        // Soft-validate only: clearly non-URI values are left for exporter fail-open
-        // paths (graceful degradation). Hard-reject only impossible schemes that
-        // would never be attempted by an HTTP OTLP client.
+        // Soft-validate only: empty, whitespace and clearly non-URI values all
+        // fall through TryCreate below and are left for exporter fail-open
+        // paths (graceful degradation) — no separate empty-string fast path,
+        // which would be an unkillable equivalent mutant. Hard-reject only
+        // impossible schemes that would never be attempted by an OTLP client.
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
         {
             return; // exporter init will fail-open
@@ -201,10 +202,15 @@ public static class ConfigEnv
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(raw)) return result;
-        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        // No split options: empty segments fall out at the eq guard and the
+        // per-piece Trim calls below already do the trimming, so options here
+        // would be redundant fast-paths (and unkillable equivalent mutants).
+        foreach (var part in raw.Split(','))
         {
+            // eq == 0 needs no branch of its own: an empty name falls to the
+            // name-length guard below, which skips it identically.
             var eq = part.IndexOf('=');
-            if (eq <= 0) continue;
+            if (eq < 0) continue;
             var name = PercentDecode(part[..eq].Trim());
             if (name.Length == 0) continue;
             result[name] = PercentDecode(part[(eq + 1)..].Trim());
