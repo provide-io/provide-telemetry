@@ -35,7 +35,14 @@ def _exc_info_with_sentinel() -> Any:
 
 
 def _render(renderer: Any) -> str:
-    event: dict[str, Any] = {"event": "op.fail.error", "exc_info": _exc_info_with_sentinel()}
+    # The level key matters: ConsoleRenderer(colors=True) styles it with
+    # ANSI, so its presence is what lets the no-escape assertion kill a
+    # colors mutant in every venv — the otel-less mutation venv included.
+    event: dict[str, Any] = {
+        "event": "op.fail.error",
+        "level": "error",
+        "exc_info": _exc_info_with_sentinel(),
+    }
     # structlog's renderer contract: (logger, method_name, event_dict) -> str.
     out = renderer(None, "error", event)
     assert isinstance(out, str)
