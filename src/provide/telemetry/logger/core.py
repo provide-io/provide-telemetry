@@ -91,14 +91,14 @@ def _plain_console_renderer() -> Any:
     default (RichTracebackFormatter(show_locals=True)) renders local
     variables from every frame in a traceback, which can leak sensitive
     values through logger.error(..., exc_info=True). Both kwargs are held
-    by tests/logger/test_console_locals_leak.py — the pragma this call
-    used to carry stopped working the moment it went multi-line, which is
-    how its mutants surfaced as survivors.
+    by tests/logger/test_console_locals_leak.py. The call takes **kwargs
+    because mutmut nulls any literal keyword argument at its call site —
+    colors=None is falsy like False, an equivalent mutant no test can
+    kill, and a pragma cannot reach a continuation line.
     """
-    return structlog.dev.ConsoleRenderer(
-        colors=False,
-        exception_formatter=structlog.dev.plain_traceback,
-    )
+    kwargs: dict[str, Any] = {"colors": False}  # pragma: no mutate — a None value is falsy like False
+    kwargs["exception_formatter"] = structlog.dev.plain_traceback
+    return structlog.dev.ConsoleRenderer(**kwargs)
 
 
 def _get_level(level: str) -> int:
