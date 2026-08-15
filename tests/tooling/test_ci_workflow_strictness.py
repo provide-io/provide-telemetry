@@ -210,9 +210,9 @@ def test_csharp_mutation_threshold_matches_the_measured_baseline() -> None:
     thresholds = config.get("stryker-config", config)["thresholds"]
     readme = README.read_text(encoding="utf-8")
 
-    assert thresholds["break"] == 79
-    assert "break threshold of 79" in readme
-    assert "80.10%" in readme
+    assert thresholds["break"] == 84
+    assert "break threshold of 84" in readme
+    assert "85.84%" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:

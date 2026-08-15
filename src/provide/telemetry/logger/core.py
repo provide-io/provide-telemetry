@@ -85,14 +85,17 @@ def _iso_timestamper() -> Any:
 
 
 def _plain_console_renderer() -> Any:
-    """colors=None is falsy exactly like colors=False.
+    """Emergency renderer: colorless, and plain tracebacks only.
 
     exception_formatter is pinned to plain_traceback because structlog's
     default (RichTracebackFormatter(show_locals=True)) renders local
     variables from every frame in a traceback, which can leak sensitive
-    values through logger.error(..., exc_info=True).
+    values through logger.error(..., exc_info=True). Both kwargs are held
+    by tests/logger/test_console_locals_leak.py — the pragma this call
+    used to carry stopped working the moment it went multi-line, which is
+    how its mutants surfaced as survivors.
     """
-    return structlog.dev.ConsoleRenderer(  # pragma: no mutate — colors=None is falsy like False
+    return structlog.dev.ConsoleRenderer(
         colors=False,
         exception_formatter=structlog.dev.plain_traceback,
     )

@@ -101,7 +101,11 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uvx reuse lint
+      # uv run, not uvx: uvx floats to the newest reuse release, and reuse's
+      # latest split charset detection into an extra — the bare tool now
+      # crashes with NoEncodingModuleError before linting anything. The
+      # dev-group pin is deterministic.
+      - run: uv run reuse lint
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run codespell
 
