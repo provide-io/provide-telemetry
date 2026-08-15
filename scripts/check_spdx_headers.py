@@ -4,7 +4,6 @@
 # SPDX-Comment: Part of provide-telemetry.
 #
 
-# REUSE-IgnoreStart
 """Validate canonical SPDX headers on Python, Go, Rust and C# source files.
 
 Beyond checking header *presence*, this script also parses each file's

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-Comment: Part of provide-telemetry.
 #
+
 """Merge the C# cobertura reports and enforce the coverage floors.
 
 Both test projects instrument the core assembly, so each emits its own
