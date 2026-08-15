@@ -373,8 +373,8 @@ jobs:
       # ci-csharp.yml enforces applying to the mutation job too.
       - name: Build (warnings as errors)
         run: dotnet build Provide.Telemetry.sln -warnaserror -m:1
-      # Thresholds live in csharp/stryker-config.json (break 78 against a
-      # measured 79.41 % on 2026-08-08) together with the reasoning for that
+      # Thresholds live in csharp/stryker-config.json (break 84 against a
+      # measured 85.84 % on 2026-08-14) together with the reasoning for that
       # number and what it would take to raise it. Unlike the Go gate, no
       # wrapper script is needed: Stryker exits 2 of its own accord when the
       # score falls below break, which the falsifiability check on this gate
