@@ -40,12 +40,12 @@
     "mutants that never existed rather than mutants being hidden -- CanonicalJson",
     "still scores 100 killed of 107, and Pii 98 of 110.",
     "",
-    "THRESHOLD. break is 84, deliberately below the 85.84 % measured",
-    "(2026-08-14, 1566 killed / 248 survived / 16 timeout of 1830 scored), not",
+    "THRESHOLD. break is 85, deliberately below the 86.81 % measured",
+    "(2026-08-15, 1578 killed / 231 survived / 21 timeout of 1830 scored), not",
     "at 100. A threshold above the real score is a gate that fails on green and",
     "gets disabled; the ~1.8pp of slack (about 33 mutants) covers roughly twice",
-    "the timeout band -- 15-16 mutants whose kill/timeout classification",
-    "depends on host load. Ratchet break upward as survivors are killed, never",
+    "the timeout band -- 16-21 mutants whose kill/timeout classification",
+    "depends on host load, widened by the wire tests' real HTTP latency. Ratchet break upward as survivors are killed, never",
     "down. History: 79.41 -> 79.14 (Setup.cs mutants that used to be discarded",
     "became countable) -> 80.10 (endpoint, hardening-depth and retries-ceiling",
     "clusters) -> 85.84 (config/DTO/redaction literal sweep, governance table",
@@ -54,7 +54,9 @@
     "breaker's Resilience.Clock seam taking Resilience.cs itself to zero",
     "survivors; four equivalent mutants were removed structurally --",
     "ValidateEndpoint's empty fast path, ParseHeaders' split options and eq",
-    "boundary, RecordSuccess's return -- rather than suppressed).",
+    "boundary, RecordSuccess's return -- rather than suppressed) -> 86.81",
+    "(FakeOtlpCollector: per-signal paths, headers, exporter option booleans,",
+    "SLO names and the shutdown drain became wire-assertable).",
     "",
     "RAISING IT FURTHER. What remains is mostly observable only on the OTLP",
     "wire or in states tests cannot reach: OpenTelemetryBackend.cs (49) is the",
@@ -87,8 +89,8 @@
     ],
     "thresholds": {
       "high": 90,
-      "low": 85,
-      "break": 84
+      "low": 86,
+      "break": 85
     }
   }
 }
