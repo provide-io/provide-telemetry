@@ -61,7 +61,7 @@ def test_configure_logging_console_renderer_respects_tty(monkeypatch: pytest.Mon
     captured: list[bool | None] = []
 
     class _ConsoleRenderer:
-        def __init__(self, *, colors: bool | None) -> None:
+        def __init__(self, *, colors: bool | None, exception_formatter: Any = None) -> None:
             captured.append(colors)
 
     core_mod_any = cast(Any, core_mod)

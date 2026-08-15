@@ -44,7 +44,7 @@ def configure_caplog_for_structlog(**overrides: Any) -> None:
     defaults: dict[str, Any] = {
         "processors": [
             structlog.stdlib.add_log_level,
-            structlog.dev.ConsoleRenderer(colors=False),
+            structlog.dev.ConsoleRenderer(colors=False, exception_formatter=structlog.dev.plain_traceback),
         ],
         "wrapper_class": structlog.make_filtering_bound_logger(0),
         "logger_factory": structlog.stdlib.LoggerFactory(),

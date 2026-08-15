@@ -85,8 +85,17 @@ def _iso_timestamper() -> Any:
 
 
 def _plain_console_renderer() -> Any:
-    """colors=None is falsy exactly like colors=False."""
-    return structlog.dev.ConsoleRenderer(colors=False)  # pragma: no mutate — colors=None is falsy like False
+    """colors=None is falsy exactly like colors=False.
+
+    exception_formatter is pinned to plain_traceback because structlog's
+    default (RichTracebackFormatter(show_locals=True)) renders local
+    variables from every frame in a traceback, which can leak sensitive
+    values through logger.error(..., exc_info=True).
+    """
+    return structlog.dev.ConsoleRenderer(  # pragma: no mutate — colors=None is falsy like False
+        colors=False,
+        exception_formatter=structlog.dev.plain_traceback,
+    )
 
 
 def _get_level(level: str) -> int:
@@ -340,7 +349,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
             fields=config.logging.pretty_fields,  # pragma: no mutate — field list plumbing; exact sequence asserted by pretty render tests
         )
     else:
-        renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
+        # exception_formatter pinned to plain_traceback — structlog's default
+        # (RichTracebackFormatter(show_locals=True)) renders frame locals,
+        # which can leak sensitive values via logger.error(..., exc_info=True).
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=sys.stderr.isatty(), exception_formatter=structlog.dev.plain_traceback
+        )
 
     processors.append(render_with_backpressure_extra(renderer))
 
