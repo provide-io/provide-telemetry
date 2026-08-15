@@ -8,6 +8,26 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [0.7.1] — 2026-08-15
+
+Python only. The other languages remain on 0.7.0 — their renderers already
+pin plain tracebacks or have no rich-formatter dependency to fall into.
+
+### Fixed
+
+- **`logger.error(..., exc_info=True)` no longer renders frame locals.**
+  structlog's default exception formatter is
+  `RichTracebackFormatter(show_locals=True)`, which prints the local
+  variables of every frame in a traceback — a secret held in any local
+  along the raising path leaked into rendered output. All three
+  `ConsoleRenderer` construction sites (the default console render path,
+  the emergency fallback renderer, and the caplog test-compat helper) now
+  pin `exception_formatter=plain_traceback`. The existing PII sanitizer
+  could not catch this: it scrubs the event dict, not the live frame
+  objects the rich formatter walks at render time. Pinned by a test that
+  raises with a sentinel local and asserts it never renders, at every
+  construction site, colorless in every venv.
+
 ## [0.7.0] — 2026-08-14
 
 ### Added
