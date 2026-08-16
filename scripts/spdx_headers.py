@@ -69,11 +69,25 @@ def split_shebang(text: str) -> tuple[str, str]:
 
 
 def strip_leading_comment_block(text: str) -> str:
+    """Drop an existing SPDX header so the canonical block can replace it.
+
+    The whole leading comment block goes, so a legacy header in some other
+    format is replaced rather than left to sit under the canonical one -- with
+    one exception. A "# REUSE-" directive is body, not header: swallowing a
+    "# REUSE-IgnoreStart" leaves its matching "REUSE-IgnoreEnd" orphaned and
+    the file stops being REUSE-compliant, so the script that the SPDX lint
+    error tells you to run could break the very compliance it maintains.
+    Observed on scripts/check_spdx_headers.py, 2026-08-16.
+    """
     lines = text.splitlines(keepends=True)
     idx = 0
     while idx < len(lines):
-        line = lines[idx]
-        if line.startswith("#") or line.strip() == "":
+        stripped = lines[idx].strip()
+        if stripped.startswith("# REUSE-"):
+            # A REUSE directive is body, not header. Consuming it leaves its
+            # partner orphaned and breaks compliance -- see the docstring.
+            break
+        if stripped.startswith("#") or stripped == "":
             idx += 1
             continue
         break

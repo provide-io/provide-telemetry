@@ -93,3 +93,34 @@ def test_find_noncompliant_files(tmp_path: Path) -> None:
     missing, invalid = _CHECK_MODULE.find_noncompliant_files(tmp_path)
     assert missing == [bad]
     assert invalid == []
+
+
+def test_normalize_preserves_a_reuse_directive_below_the_header() -> None:
+    """A REUSE directive is body, not header, and must survive normalization.
+
+    Swallowing "# REUSE-IgnoreStart" leaves its matching "REUSE-IgnoreEnd"
+    orphaned and the file stops being REUSE-compliant -- so the script the SPDX
+    lint error tells you to run could break the compliance it maintains.
+    Observed on scripts/check_spdx_headers.py, 2026-08-16.
+    """
+    text = (
+        "# SPDX-License-Identifier" + ": Apache-2.0\n"
+        "#\n"
+        "\n"
+        "# REUSE-IgnoreStart\n"
+        '"""Docstring quoting SPDX-License-Identifier: MIT as an example."""\n'
+        "# REUSE-IgnoreEnd\n"
+        "x = 1\n"
+    )
+    normalized = _SPDX_MODULE.normalize_python_text(text)
+    assert "# REUSE-IgnoreStart\n" in normalized, normalized
+    assert normalized.count("# REUSE-Ignore") == 2, normalized
+    assert normalized.startswith("".join(_SPDX_MODULE.CANONICAL_BLOCK))
+
+
+def test_normalize_still_replaces_a_legacy_non_spdx_header() -> None:
+    """The stripper's purpose: a legacy header is replaced, not stacked under."""
+    text = "# Copyright (C) 2020 someone else\n# This file is part of an older project.\n\nx = 1\n"
+    normalized = _SPDX_MODULE.normalize_python_text(text)
+    assert "someone else" not in normalized, normalized
+    assert normalized == "".join(_SPDX_MODULE.CANONICAL_BLOCK) + "x = 1\n"
