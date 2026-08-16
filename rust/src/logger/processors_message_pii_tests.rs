@@ -36,8 +36,16 @@ fn make_event(message: &str) -> LogEvent {
 fn sanitize_context_redacts_secret_in_message_string() {
     let mut event = make_event("token AKIAIOSFODNN7EXAMPLE leaked");
     sanitize_context(&mut event, 8);
+    // Span-scoped since 2026-08-16: the credential token is replaced and the
+    // words around it survive. What this pins is that the secret cannot reach
+    // the log; blanking the whole message was the old mechanism, not the rule.
+    assert!(
+        !event.message.contains("AKIAIOSFODNN7EXAMPLE"),
+        "secret survived redaction: {}",
+        event.message
+    );
     assert_eq!(
-        event.message, REDACTED_SENTINEL,
+        event.message, "token *** leaked",
         "message containing a known secret must be redacted"
     );
 }
@@ -62,9 +70,44 @@ fn sanitize_context_redacts_custom_secret_pattern_in_message_string() {
     );
     let mut event = make_event("token INTSECRET-ABC123XYZ789 leaked");
     sanitize_context(&mut event, 8);
+    assert!(
+        !event.message.contains("INTSECRET-ABC123XYZ789"),
+        "custom secret survived redaction: {}",
+        event.message
+    );
     assert_eq!(
-        event.message, REDACTED_SENTINEL,
+        event.message, "token *** leaked",
         "message containing a registered custom secret must be redacted"
     );
     reset_secret_patterns_for_tests();
+}
+
+#[test]
+fn sanitize_context_removes_whole_credential_on_partial_pattern_match() {
+    // The jwt pattern matches header.payload; a JWT has THREE dot-separated
+    // parts, so redacting the literal match alone would publish the signature.
+    let jwt = concat!(
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+        ".eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+        ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    );
+    let signature = jwt.rsplit('.').next().expect("signature segment");
+    let mut event = make_event(&format!("auth header {jwt} rejected"));
+    sanitize_context(&mut event, 8);
+    assert!(
+        !event.message.contains(signature),
+        "JWT signature survived redaction: {}",
+        event.message
+    );
+    assert_eq!(event.message, "auth header *** rejected");
+}
+
+#[test]
+fn sanitize_context_leaves_filesystem_paths_alone() {
+    // [A-Za-z0-9+/]{40,} includes the slash, so a deep path used to match the
+    // base64 rule and the whole message became "***".
+    let line = "make -C /home/deploy/apps/production/current/native/capture install";
+    let mut event = make_event(line);
+    sanitize_context(&mut event, 8);
+    assert_eq!(event.message, line);
 }

@@ -47,7 +47,7 @@ public sealed class Logger
 
         var merged = Merge(fields);
         var schemaError = ValidateSchema(merged, cfg, message);
-        var rendered = cfg.Logging.Sanitize && Pii.DetectSecretInValue(message) ? Pii.Redacted : message;
+        var rendered = cfg.Logging.Sanitize ? Pii.RedactSecretSpans(message) : message;
         var backend = Setup.CurrentBackend;
 
         SignalPipeline.Process(new LogDispatch

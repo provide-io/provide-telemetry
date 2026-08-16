@@ -112,21 +112,77 @@ fn is_secret(value: &Value) -> bool {
 /// Used by the logger pipeline to scrub free-form message strings (which
 /// the map-based [`sanitize_payload`] engine doesn't see).
 pub(crate) fn detect_secret_in_string(text: &str) -> bool {
-    if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
+    secret_span(text).is_some()
+}
+
+/// How many slash-separated parts a span needs before its shape reads as a path.
+const PATH_MIN_SEGMENTS: usize = 3;
+
+/// True when a matched span is a filesystem path rather than a secret.
+///
+/// The long_base64 pattern is `[A-Za-z0-9+/]{40,}` and `/` belongs to the
+/// base64 alphabet, so any deep path of unpunctuated segments matched it:
+/// `/home/deploy/apps/production/current/lib/service` is 48 characters of pure
+/// base64 alphabet containing no secret. Narrowing the charset is not the fix —
+/// dropping `/` costs 44% of detections on 32-byte secrets, because a 44-char
+/// base64 string holding one slash cannot be told from a path by charset alone.
+///
+/// Shape separates them: a path carries several short all-lowercase words
+/// (usr, local, lib), which random base64 effectively never yields — a
+/// 20-character all-lowercase run has probability (26/64)^20, about 1e-8.
+fn looks_like_path(span: &str) -> bool {
+    let segments: Vec<&str> = span.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.len() < PATH_MIN_SEGMENTS {
         return false;
     }
+    let wordy = segments
+        .iter()
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase()))
+        .count();
+    wordy * 2 >= segments.len()
+}
+
+/// Byte span of the first secret-looking match, or None.
+fn secret_span(text: &str) -> Option<(usize, usize)> {
+    if text.len() < crate::secret_patterns_generated::MIN_SECRET_LENGTH {
+        return None;
+    }
     for pattern in builtin_secret_patterns() {
-        if pattern.is_match(text) {
-            return true;
+        if let Some(m) = pattern.find(text) {
+            if !looks_like_path(m.as_str()) {
+                return Some((m.start(), m.end()));
+            }
         }
     }
     let patterns = crate::_lock::lock(custom_secret_patterns());
     for (_, pattern) in patterns.iter() {
-        if pattern.is_match(text) {
-            return true;
+        if let Some(m) = pattern.find(text) {
+            if !looks_like_path(m.as_str()) {
+                return Some((m.start(), m.end()));
+            }
         }
     }
-    false
+    None
+}
+
+/// Replace only the secret-looking token of *text*, leaving the rest readable.
+///
+/// The match is widened to its whitespace-delimited token first. Redacting the
+/// literal match alone can leave part of a credential behind: the jwt pattern
+/// matches header.payload, and a JWT has THREE dot-separated parts, so the
+/// signature would survive. Whitespace is the boundary a secret cannot cross
+/// without ceasing to be one token.
+pub(crate) fn redact_secret_spans(text: &str) -> String {
+    let Some((mut start, mut end)) = secret_span(text) else {
+        return text.to_string();
+    };
+    while start > 0 && !text.as_bytes()[start - 1].is_ascii_whitespace() {
+        start -= 1;
+    }
+    while end < text.len() && !text.as_bytes()[end].is_ascii_whitespace() {
+        end += 1;
+    }
+    format!("{}{}{}", &text[..start], REDACTED, &text[end..])
 }
 
 /// The redaction sentinel emitted when a value or string matches a
@@ -258,7 +314,16 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                     .any(|candidate| candidate == &lowered)
                     || is_secret(value)
                 {
-                    out.insert(key.clone(), Value::String(REDACTED.to_string()));
+                    // Span-scoped for a secret-bearing string: only the
+                    // credential token goes. A sensitive KEY still blanks
+                    // wholesale, since there the whole value is the secret.
+                    let replacement = match value {
+                        Value::String(text) if !DEFAULT_SENSITIVE.iter().any(|c| c == &lowered) => {
+                            redact_secret_spans(text)
+                        }
+                        _ => REDACTED.to_string(),
+                    };
+                    out.insert(key.clone(), Value::String(replacement));
                     record_redaction(&child_path.join("."), "redact", value);
                     continue;
                 }

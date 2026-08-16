@@ -130,19 +130,88 @@ public static class Pii
         Dictionary<string, Regex> Custom,
         List<PendingRedaction> Redactions);
 
-    public static bool DetectSecretInValue(string text)
+    /// <summary>
+    /// How many slash-separated parts a span needs before its shape reads as a path.
+    /// </summary>
+    private const int PathMinSegments = 3;
+
+    /// <summary>
+    /// True when a matched span is a filesystem path rather than a secret.
+    /// </summary>
+    /// <remarks>
+    /// The long_base64 pattern is [A-Za-z0-9+/]{40,} and "/" belongs to the
+    /// base64 alphabet, so any deep path of unpunctuated segments matched it:
+    /// /home/deploy/apps/production/current/lib/service is 48 characters of pure
+    /// base64 alphabet holding no secret. Narrowing the charset is not the fix —
+    /// dropping "/" costs 44% of detections on 32-byte secrets, because a 44-char
+    /// base64 string containing one slash cannot be told from a path by charset.
+    /// Shape separates them: a path carries several short all-lowercase words
+    /// (usr, local, lib), which random base64 effectively never produces.
+    /// </remarks>
+    internal static bool LooksLikePath(string span)
     {
-        if (string.IsNullOrEmpty(text) || text.Length < MinSecretLength) return false;
+        var segments = span.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < PathMinSegments) return false;
+        var wordy = 0;
+        foreach (var segment in segments)
+        {
+            var allLower = segment.Length > 0;
+            foreach (var c in segment)
+            {
+                if (c is < 'a' or > 'z') { allLower = false; break; }
+            }
+            if (allLower) wordy++;
+        }
+        return wordy * 2 >= segments.Length;
+    }
+
+    private static Match? SecretMatch(string text, Dictionary<string, Regex> custom)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length < MinSecretLength) return null;
         foreach (var re in BuiltinSecrets)
         {
-            if (re.IsMatch(text)) return true;
+            var m = re.Match(text);
+            if (m.Success && !LooksLikePath(m.Value)) return m;
         }
-        var (_, custom) = SnapshotRules();
         foreach (var re in custom.Values)
         {
-            if (re.IsMatch(text)) return true;
+            var m = re.Match(text);
+            if (m.Success && !LooksLikePath(m.Value)) return m;
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Replace only the secret-looking token of <paramref name="text"/>.
+    /// </summary>
+    /// <remarks>
+    /// The match is widened to its whitespace-delimited token first. Redacting
+    /// the literal match alone can leave part of a credential behind: the jwt
+    /// pattern matches header.payload, and a JWT has THREE dot-separated parts,
+    /// so the signature would survive. Whitespace is the boundary a secret
+    /// cannot cross without ceasing to be one token.
+    /// </remarks>
+    public static string RedactSecretSpans(string text)
+    {
+        var (_, custom) = SnapshotRules();
+        return RedactSecretSpans(text, custom);
+    }
+
+    private static string RedactSecretSpans(string text, Dictionary<string, Regex> custom)
+    {
+        var m = SecretMatch(text, custom);
+        if (m is null) return text;
+        var start = m.Index;
+        var end = m.Index + m.Length;
+        while (start > 0 && !char.IsWhiteSpace(text[start - 1])) start--;
+        while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
+        return string.Concat(text.AsSpan(0, start), Redacted, text.AsSpan(end));
+    }
+
+    public static bool DetectSecretInValue(string text)
+    {
+        var (_, custom) = SnapshotRules();
+        return SecretMatch(text, custom) is not null;
     }
 
     public static string HashValue(object? value)
@@ -211,9 +280,12 @@ public static class Pii
 
         if (value is string s)
         {
-            return DetectSecret(s, context.Custom)
-                ? (true, Redact(value, fieldPath, context))
-                : (true, value);
+            // Span-scoped: only the credential token is replaced, so the rest
+            // of the string stays readable. A sensitive KEY still blanks
+            // wholesale above, where the entire value is the secret.
+            if (!DetectSecret(s, context.Custom)) return (true, value);
+            Redact(value, fieldPath, context);
+            return (true, RedactSecretSpans(s, context.Custom));
         }
 
         if (value is Dictionary<string, object?> nested)
@@ -284,18 +356,7 @@ public static class Pii
     }
 
     private static bool DetectSecret(string text, Dictionary<string, Regex> custom)
-    {
-        if (text.Length < MinSecretLength) return false;
-        foreach (var re in BuiltinSecrets)
-        {
-            if (re.IsMatch(text)) return true;
-        }
-        foreach (var re in custom.Values)
-        {
-            if (re.IsMatch(text)) return true;
-        }
-        return false;
-    }
+        => SecretMatch(text, custom) is not null;
 
     private static PIIRule CloneRule(PIIRule r) => new()
     {

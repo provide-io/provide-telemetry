@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // ── Concurrency ───────────────────────────────────────────────────────────────
@@ -147,8 +149,46 @@ func TestRegisterSecretPattern_CustomPatternDetectsSecret(t *testing.T) {
 		"message": "here is CUSTOM-abcdefghijklmnopqrstuvwxyz in the value",
 	}
 	result := SanitizePayload(payload, true, 32)
-	if result["message"] != _piiRedacted {
+	// Span-scoped since 2026-08-16: the credential token is replaced and the
+	// words around it survive. What this test defends is that the secret does
+	// not reach the log; blanking the whole value was the old mechanism.
+	if result["message"] != "here is *** in the value" {
 		t.Errorf("expected custom secret pattern to redact, got %v", result["message"])
+	}
+	if strings.Contains(result["message"].(string), "abcdefghijklmnopqrstuvwxyz") {
+		t.Errorf("custom secret survived redaction: %v", result["message"])
+	}
+}
+
+func TestRedactSecretSpans_RemovesWholeCredentialOnPartialMatch(t *testing.T) {
+	// The jwt pattern matches header.payload; a JWT has THREE dot-separated
+	// parts, so redacting the literal match alone would publish the signature.
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + // pragma: allowlist secret
+		".eyJzdWIiOiIxMjM0NTY3ODkwIn0" +
+		".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	signature := jwt[strings.LastIndex(jwt, ".")+1:]
+
+	out := piicore.RedactSecretSpans("auth header "+jwt+" rejected", nil)
+
+	if strings.Contains(out, signature) {
+		t.Errorf("JWT signature survived redaction: %s", out)
+	}
+	if out != "auth header *** rejected" {
+		t.Errorf("unexpected redaction: %s", out)
+	}
+}
+
+func TestRedactSecretSpans_LeavesFilesystemPathsAlone(t *testing.T) {
+	// [A-Za-z0-9+/]{40,} includes the slash, so a deep path used to match and
+	// the whole field became "***".
+	for _, line := range []string{
+		"/home/deploy/apps/production/current/lib/service",
+		"/var/lib/docker/overlay2/abcdef0123456789/merged/app",
+		"make -C /home/deploy/apps/production/current/native/capture install",
+	} {
+		if got := piicore.RedactSecretSpans(line, nil); got != line {
+			t.Errorf("path was redacted:\n  in:  %s\n  out: %s", line, got)
+		}
 	}
 }
 

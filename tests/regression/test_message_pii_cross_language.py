@@ -69,7 +69,11 @@ def test_python_redacts_secret_in_log_message_with_sanitize_enabled() -> None:
     assert "AKIAIOSFODNN7EXAMPLE" not in out, (  # pragma: allowlist secret
         f"secret leaked in message: {out}"
     )
-    assert '"message": "***"' in out, f"expected redacted message, got: {out}"
+    # Span-scoped since 2026-08-16: the secret token is replaced, the words
+    # around it survive. The contract this test defends -- the credential must
+    # not reach the log -- is asserted above; blanking the whole message was
+    # how that used to be achieved, not the requirement itself.
+    assert '"message": "token *** leaked"' in out, f"expected redacted message, got: {out}"
 
 
 def test_python_emits_message_unchanged_when_sanitize_disabled() -> None:
@@ -96,4 +100,26 @@ def test_python_redacts_custom_secret_pattern_in_log_message() -> None:
     out = _capture_log_output(lambda: get_logger("test").info("token INTSECRET-ABC123XYZ789 leaked"))
 
     assert "INTSECRET-ABC123XYZ789" not in out, f"custom secret leaked in message: {out}"
-    assert '"message": "***"' in out, f"expected redacted custom-secret message, got: {out}"
+    assert '"message": "token *** leaked"' in out, f"expected redacted custom-secret message, got: {out}"
+
+
+def test_a_partial_pattern_match_still_removes_the_whole_credential() -> None:
+    """A span-scoped redaction must not leave part of a secret behind.
+
+    The jwt pattern matches header.payload; a JWT has THREE dot-separated
+    parts, so redacting only the literal match would publish the signature.
+    Redaction widens to the whitespace-delimited token for exactly this case.
+    """
+    jwt = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"  # pragma: allowlist secret
+        ".eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    )
+    signature = jwt.rsplit(".", 1)[1]
+
+    cfg = TelemetryConfig(logging=LoggingConfig(fmt="json", sanitize=True))
+    setup_telemetry(cfg)
+    out = _capture_log_output(lambda: get_logger("test").info(f"auth header {jwt} rejected"))
+
+    assert signature not in out, f"JWT signature survived redaction: {out}"
+    assert '"message": "auth header *** rejected"' in out, out

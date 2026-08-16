@@ -92,12 +92,72 @@ export function resetSecretPatternsForTests(): void {
   _customSecretPatterns.clear();
 }
 
+/**
+ * True when a matched span has the shape of a filesystem path rather than a
+ * secret.
+ *
+ * The long_base64 pattern is [A-Za-z0-9+/]{40,} and "/" is in the base64
+ * alphabet, so any deep path of unpunctuated segments matched it —
+ * /home/deploy/apps/production/current/lib/service is 48 characters of pure
+ * base64 alphabet containing no secret. Narrowing the charset is not the fix:
+ * dropping "/" costs 44% of detections on 32-byte secrets, because a 44-char
+ * base64 string holding one slash is indistinguishable from a path by charset.
+ *
+ * Shape separates them. Paths carry several short all-lowercase words (usr,
+ * local, lib); random base64 effectively never does — a 20-character
+ * all-lowercase run has probability (26/64)^20, about 1e-8.
+ */
+const _PATH_MIN_SEGMENTS = 3;
+
+export function _looksLikePath(span: string): boolean {
+  const segments = span.split('/').filter((s) => s.length > 0);
+  if (segments.length < _PATH_MIN_SEGMENTS) return false;
+  const wordy = segments.filter((s) => /^[a-z]+$/.test(s)).length;
+  return wordy * 2 >= segments.length;
+}
+
+function _secretMatch(value: string): RegExpExecArray | null {
+  if (value.length < _MIN_SECRET_LENGTH) return null;
+  for (const p of [..._SECRET_PATTERNS, ..._customSecretPatterns.values()]) {
+    // Patterns may carry /g; exec advances lastIndex, so reset before use.
+    p.lastIndex = 0;
+    const m = p.exec(value);
+    if (m !== null && !_looksLikePath(m[0])) return m;
+  }
+  return null;
+}
+
+/**
+ * Replace only the secret-looking token of *value*, leaving the rest.
+ *
+ * The match is widened to its whitespace-delimited token first. Redacting the
+ * literal match alone can leave part of a credential behind: the jwt pattern
+ * matches header.payload, and a JWT has THREE dot-separated parts, so the
+ * signature would survive. Whitespace is the boundary a secret cannot cross
+ * without ceasing to be one token.
+ */
+export function redactSecretSpans(value: string): string {
+  const m = _secretMatch(value);
+  if (!m) return value;
+  let start = m.index;
+  let end = m.index + m[0].length;
+  while (start > 0 && !/\s/.test(value[start - 1])) start--;
+  while (end < value.length && !/\s/.test(value[end])) end++;
+  return value.slice(0, start) + REDACTED + value.slice(end);
+}
+
 export function _detectSecretInValue(value: string): boolean {
   // Stryker disable next-line ConditionalExpression: removing length check makes patterns match short strings — equivalent when all test secrets are ≥20 chars
   if (value.length < _MIN_SECRET_LENGTH) return false;
-  if (_SECRET_PATTERNS.some((p) => p.test(value))) return true;
+  for (const p of _SECRET_PATTERNS) {
+    p.lastIndex = 0;
+    const m = p.exec(value);
+    if (m !== null && !_looksLikePath(m[0])) return true;
+  }
   for (const p of _customSecretPatterns.values()) {
-    if (p.test(value)) return true;
+    p.lastIndex = 0;
+    const m = p.exec(value);
+    if (m !== null && !_looksLikePath(m[0])) return true;
   }
   return false;
 }
@@ -122,7 +182,7 @@ export function sanitize(obj: Record<string, unknown>, extraFields: string[] = [
       typeof obj[key] === 'string' &&
       _detectSecretInValue(obj[key] as string)
     ) {
-      obj[key] = REDACTED;
+      obj[key] = redactSecretSpans(obj[key] as string);
     }
   }
 }
@@ -308,7 +368,7 @@ function _applyDefaultSensitiveKeyRedaction(
         if (receiptHook !== null) receiptHook(key, 'redact', origVal);
       }
     } else if (typeof val === 'string' && _detectSecretInValue(val)) {
-      result[key] = REDACTED;
+      result[key] = redactSecretSpans(val);
       // Stryker disable next-line StringLiteral: 'redact' action label is verified by receipt tests — Stryker's perTest coverage misattributes
       if (receiptHook !== null) receiptHook(key, 'redact', val);
     } else {

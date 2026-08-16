@@ -24,7 +24,7 @@ import { _resetConfig, setupTelemetry } from '../src/config.js';
 import { _resetContext } from '../src/context.js';
 import { _resetRootLogger, makeWriteHook } from '../src/logger.js';
 import * as otelLogs from '../src/otel-logs.js';
-import { registerSecretPattern, resetPiiRulesForTests } from '../src/pii.js';
+import { redactSecretSpans, registerSecretPattern, resetPiiRulesForTests } from '../src/pii.js';
 
 beforeEach(() => {
   _resetConfig();
@@ -48,7 +48,11 @@ describe('logger message PII — cross-language regression', () => {
     hook({ level: 30, message: 'token AKIAIOSFODNN7EXAMPLE leaked' }); // pragma: allowlist secret
     expect(spy).toHaveBeenCalledOnce();
     const record = spy.mock.calls[0][0] as Record<string, unknown>;
-    expect(record['message']).toBe('***');
+    // Span-scoped since 2026-08-16: the credential token is replaced and the
+    // surrounding words survive. The contract these tests defend -- the secret
+    // must not reach the log -- is asserted above; blanking the whole message
+    // was the old mechanism, not the requirement.
+    expect(record['message']).toBe('token *** leaked');
     spy.mockRestore();
   });
 
@@ -71,7 +75,7 @@ describe('logger message PII — cross-language regression', () => {
     hook({ level: 30, message: 'token INTSECRET-ABC123XYZ789 leaked' });
     expect(spy).toHaveBeenCalledOnce();
     const record = spy.mock.calls[0][0] as Record<string, unknown>;
-    expect(record['message']).toBe('***');
+    expect(record['message']).toBe('token *** leaked');
     spy.mockRestore();
   });
 
@@ -84,5 +88,27 @@ describe('logger message PII — cross-language regression', () => {
     const record = spy.mock.calls[0][0] as Record<string, unknown>;
     expect(record['message']).toBe('user login succeeded');
     spy.mockRestore();
+  });
+});
+
+describe('span-scoped redaction', () => {
+  it('removes a whole credential even when the pattern matches only part of it', () => {
+    // The jwt pattern matches header.payload; a JWT has THREE dot-separated
+    // parts, so redacting the literal match alone would publish the signature.
+    const jwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' +
+      '.eyJzdWIiOiIxMjM0NTY3ODkwIn0' +
+      '.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    const signature = jwt.split('.')[2];
+
+    const out = redactSecretSpans(`auth header ${jwt} rejected`);
+
+    expect(out).not.toContain(signature);
+    expect(out).toBe('auth header *** rejected');
+  });
+
+  it('leaves a filesystem path alone', () => {
+    const line = 'make -C /home/deploy/apps/production/current/native/capture install';
+    expect(redactSecretSpans(line)).toBe(line);
   });
 });

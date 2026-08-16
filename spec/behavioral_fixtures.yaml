@@ -277,6 +277,30 @@ secret_detection:
     - input: "hello world this is normal text"
       detected: false
       note: "Long string but no pattern match"
+    # Filesystem paths. The long_base64 class [A-Za-z0-9+/]{40,} includes the
+    # slash, so any sufficiently deep path of unpunctuated segments matched it
+    # and the whole field was replaced by "***". Observed in the wild: a log
+    # field whose entire job was to print a remediation command became "***".
+    # A path is distinguished from base64 by SHAPE, not by charset -- several
+    # short all-lowercase segments, which random base64 effectively never has.
+    - input: "/home/deploy/apps/production/current/lib/service"
+      detected: false
+      note: "Deep path, no punctuation to break the base64 run"
+    - input: "/var/lib/docker/overlay2/abcdef0123456789/merged/app"
+      detected: false
+      note: "Container path with a hex-ish segment"
+    - input: "make -C /home/deploy/apps/production/current/native/capture install"
+      detected: false
+      note: "Remediation command embedding a path"
+    - input: "/private/var/folders/sg/wy47gw996f78fznt898m8x540000gn/T/pytest-of-tim"
+      detected: false
+      note: "macOS TMPDIR, whose random segment first surfaced this"
+    - input: "GstpFvsHIiSVR91i5FLxOKZ8mNRZ5EifnBQR2i6bOhs="  # pragma: allowlist secret
+      detected: true
+      note: "Real 32-byte base64 secret -- the path guard must not suppress this"
+    - input: "abcdefghij/klmnopqrst/uvwxyzABCD/EFGHIJKLMN/OPQRSTUVWX"  # pragma: allowlist secret
+      detected: true
+      note: "Slash-bearing base64: long segments, no lowercase words -- not a path"
 
 default_sensitive_keys:
   description: >

@@ -207,7 +207,7 @@ func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 
 	message := r.Message
 	if h.cfg.Logging.Sanitize && piicore.DetectSecretInValue(message, _customPIIPatterns()) {
-		message = piicore.Redacted
+		message = piicore.RedactSecretSpans(message, _customPIIPatterns())
 	}
 
 	nr := slog.NewRecord(r.Time, r.Level, message, r.PC)

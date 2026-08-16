@@ -136,6 +136,11 @@ contract_cases:
       status.active: true
       status.service_name: "restarted-service"
 
+  # Span-scoped since 2026-08-16. The credential token is replaced and the
+  # words around it survive; blanking the whole message was how the secret
+  # used to be removed, not the requirement. The requirement -- the credential
+  # must not reach the log -- is what "INTSECRET-ABC123XYZ789" no longer
+  # appearing asserts.
   custom_secret_pattern_redacts_message:
     description: "Registered custom secret patterns redact matching free-form log messages"
     steps:
@@ -149,7 +154,7 @@ contract_cases:
         into: last_log
       - op: shutdown
     expect:
-      last_log.message: "***"
+      last_log.message: "token *** leaked"
 
   baggage_auto_injection:
     description: "Baggage key=value pairs are injected onto log records; W3C properties are stripped"

@@ -107,20 +107,98 @@ func IsDefaultSensitiveKey(key string) bool {
 // or any of the caller-supplied custom patterns.
 // customPatterns may be nil.
 func DetectSecretInValue(s string, customPatterns map[string]*regexp.Regexp) bool { // pragma: allowlist secret
-	if len(s) < MinSecretLength { // pragma: allowlist secret
+	return secretSpan(s, customPatterns) != nil
+}
+
+// pathMinSegments is how many slash-separated parts a span needs before its
+// shape is considered path-like.
+const pathMinSegments = 3
+
+// looksLikePath reports whether a matched span is a filesystem path rather
+// than a secret.
+//
+// The long_base64 pattern is [A-Za-z0-9+/]{40,} and "/" belongs to the base64
+// alphabet, so any deep path of unpunctuated segments matched it:
+// /home/deploy/apps/production/current/lib/service is 48 characters of pure
+// base64 alphabet holding no secret. Narrowing the charset is not the fix —
+// dropping "/" costs 44% of detections on 32-byte secrets, since a 44-char
+// base64 string containing one slash cannot be told from a path by charset.
+//
+// Shape separates them: a path carries several short all-lowercase words
+// (usr, local, lib), which random base64 effectively never produces — a
+// 20-character all-lowercase run has probability (26/64)^20, about 1e-8.
+func looksLikePath(span string) bool {
+	segments := make([]string, 0, 8)
+	for _, seg := range strings.Split(span, "/") {
+		if seg != "" {
+			segments = append(segments, seg)
+		}
+	}
+	if len(segments) < pathMinSegments {
 		return false
 	}
+	wordy := 0
+	for _, seg := range segments {
+		if isLowerAlpha(seg) {
+			wordy++
+		}
+	}
+	return wordy*2 >= len(segments)
+}
+
+func isLowerAlpha(s string) bool {
+	for _, r := range s {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// secretSpan returns the [start,end) span of the first secret-looking match,
+// or nil when the value holds none.
+func secretSpan(s string, customPatterns map[string]*regexp.Regexp) []int {
+	if len(s) < MinSecretLength { // pragma: allowlist secret
+		return nil
+	}
 	for _, re := range BuiltinSecretPatterns {
-		if re.MatchString(s) {
-			return true
+		if loc := re.FindStringIndex(s); loc != nil && !looksLikePath(s[loc[0]:loc[1]]) {
+			return loc
 		}
 	}
 	for _, re := range customPatterns {
-		if re.MatchString(s) {
-			return true
+		if loc := re.FindStringIndex(s); loc != nil && !looksLikePath(s[loc[0]:loc[1]]) {
+			return loc
 		}
 	}
-	return false
+	return nil
+}
+
+// RedactSecretSpans replaces only the secret-looking token of s, leaving the
+// rest of the string readable.
+//
+// The match is first widened to its whitespace-delimited token. Redacting the
+// literal match alone can leave part of a credential behind: the jwt pattern
+// matches header.payload, and a JWT has THREE dot-separated parts, so the
+// signature would survive. Whitespace is the boundary a secret cannot cross
+// without ceasing to be one token.
+func RedactSecretSpans(s string, customPatterns map[string]*regexp.Regexp) string {
+	loc := secretSpan(s, customPatterns)
+	if loc == nil {
+		return s
+	}
+	start, end := loc[0], loc[1]
+	for start > 0 && !isSpaceByte(s[start-1]) {
+		start--
+	}
+	for end < len(s) && !isSpaceByte(s[end]) {
+		end++
+	}
+	return s[:start] + Redacted + s[end:]
+}
+
+func isSpaceByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\v' || b == '\f'
 }
 
 // FireReceiptHook calls hook if non-nil.
@@ -211,7 +289,8 @@ func SanitizeValue(
 	// Scan string values for known secret patterns.
 	if str, ok := value.(string); ok && DetectSecretInValue(str, customPatterns) {
 		FireReceiptHook(receiptHook, key, PIIModeRedact, value)
-		return Redacted, false
+		// Span-scoped: only the credential token goes, the message stays.
+		return RedactSecretSpans(str, customPatterns), false
 	}
 
 	// Recurse into nested structures if depth allows.
