@@ -227,7 +227,7 @@ unsupported-operator = "ignore"
 unused-type-ignore-comment = "ignore"
 
 [tool.codespell]
-skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.sum,./typescript/dist,./typescript/dist/*,./typescript/package-lock.json,./typescript/coverage,./typescript/coverage/*,./typescript/reports,./typescript/reports/*,./memray-output,./memray-output/*,./rust/target,./rust/target/*,./rust/Cargo.lock,./mutants,./mutants/*"
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.sum,./typescript/dist,./typescript/dist/*,./typescript/package-lock.json,./typescript/coverage,./typescript/coverage/*,./typescript/reports,./typescript/reports/*,./memray-output,./memray-output/*,./rust/target,./rust/target/*,./rust/Cargo.lock,./mutants,./mutants/*,./csharp/StrykerOutput,./csharp/StrykerOutput/*"
 ignore-words-list = "ore,opps,wont,strat,nd,rade,caf,als,afterAll,beforeAll"
 
 [tool.bandit]
