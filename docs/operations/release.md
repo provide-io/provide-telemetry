@@ -44,14 +44,31 @@ drift per language, so each language publishes off its own trigger:
 | TypeScript (npm) | push of a `typescript/vX.Y.Z` tag | No |
 | Rust (crates.io) | push of a `rust/vX.Y.Z` tag | No |
 | Go (pkg.go.dev) | push of `go/vX.Y.Z` / `go/otel/vX.Y.Z` tags | No |
-| C# (not yet published) | push of a `csharp/vX.Y.Z` tag | No |
+| C# (NuGet — blocked, see below) | push of a `csharp/vX.Y.Z` tag | No |
 
-**C# builds but does not publish.** The `build-csharp` job version-checks, builds with
-`-warnaserror`, tests, packs *both* `Provide.Telemetry` and
-`Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were produced, and uploads them
-as the `csharp-packages` workflow artifact. There is no `dotnet nuget push` step and no
-`publish-csharp` job, so a `csharp/vX.Y.Z` tag produces artifacts to download, not a NuGet
-release. Pushing to NuGet is a manual step until that job exists.
+**C# builds, attempts to publish, and currently fails at the registry.** The
+`build-csharp` job version-checks, builds with `-warnaserror`, tests, packs *both*
+`Provide.Telemetry` and `Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were
+produced, and uploads them as the `csharp-packages` workflow artifact. A `publish-nuget`
+job (`release.yml`) then runs `dotnet nuget push` against nuget.org via Trusted
+Publishing — no stored API key.
+
+That push fails today, and the whole `🚀 Release` run fails with it:
+
+```
+Token exchange failed (HTTP 400) at https://www.nuget.org/api/v2/token.
+The organization 'provide.io' does not have a confirmed email address.
+```
+
+Trusted Publishing will not issue a token until the `provide.io` organization confirms
+its email address on nuget.org. Until that is done, a `csharp/vX.Y.Z` tag yields
+downloadable `.nupkg` artifacts and a red release run — the artifacts are good, the
+publish leg is not. **A red `🚀 Release` on a `csharp/*` tag does not mean the C# build
+broke; check which job failed before treating it as a regression.**
+
+> This section previously claimed there was no `dotnet nuget push` step and no publish
+> job at all. That was wrong — the job exists at `release.yml:325` — and the error it
+> actually hits is an unconfirmed org email, not a missing implementation.
 
 Cutting a release for one language never touches the others — pushing `typescript/v0.5.2` publishes
 npm only; it does not build, test, or publish Python/Rust/Go/C#, and does not require or create a
