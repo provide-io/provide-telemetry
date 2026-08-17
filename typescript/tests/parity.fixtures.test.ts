@@ -455,3 +455,36 @@ describe('parity: required keys validation', () => {
     expect(() => validateRequiredKeys({ domain: 'auth' }, [])).not.toThrow();
   });
 });
+
+// ── Span-Scoped Redaction ───────────────────────────────────────────────────
+
+describe('parity: secret_span_redaction', () => {
+  afterEach(() => resetPiiRulesForTests());
+
+  // Mirrors spec/behavioral_fixtures.yaml secret_span_redaction. The cases
+  // that matter are the ones a single-span implementation gets wrong: a value
+  // holding two secrets, and a secret sitting behind a filesystem path that
+  // the base64 rule matches first.
+  const cases: Array<[string, string]> = [
+    // surrounding words survive
+    ['token AKIAIOSFODNN7EXAMPLE leaked', 'token *** leaked'],
+    // every secret goes, not only the first
+    ['first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB', 'first *** second ***'],
+    // a suppressed path does not shadow the secret behind it
+    [
+      '/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A',
+      '/home/deploy/apps/production/current/lib/service ***',
+    ],
+    // no secret, no change
+    [
+      'make -C /home/deploy/apps/production/current/native/capture install',
+      'make -C /home/deploy/apps/production/current/native/capture install',
+    ],
+  ];
+
+  it.each(cases)('redacts every secret span in %s', (input, expected) => {
+    const obj: Record<string, unknown> = { data: input };
+    sanitizePayload(obj);
+    expect(obj['data']).toBe(expected);
+  });
+});

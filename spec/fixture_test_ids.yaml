@@ -67,6 +67,12 @@ fixture_test_ids:
     go: TestParity_SecretDetection_AWSKey
     rust: parity_test_secret_detection_matches_fixture
     csharp: SecretDetection_AWSKey
+  secret_span_redaction:
+    python: test_parity_secret_span_redaction_matches_fixture
+    typescript: "parity: secret_span_redaction"
+    go: TestParity_SecretSpanRedaction
+    rust: parity_test_secret_span_redaction_matches_fixture
+    csharp: SecretSpanRedaction
   default_sensitive_keys:
     python: test_parity_default_sensitive_keys_cookie
     typescript: "parity: default_sensitive_keys"

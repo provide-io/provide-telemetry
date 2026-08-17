@@ -132,8 +132,12 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert "cargo-mutants --version 27.1.0 --locked" in workflow
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in workflow
     assert "gremlins/cmd/gremlins@v0.6.0" in workflow
-    assert workflow.count("--threshold-efficacy=100") == 3
-    assert workflow.count("--threshold-mcover=100") == 3
+    # Six gremlins surfaces: root, logger, the three internal/ packages, and
+    # the otel module. The internal/ packages were ungated until 2026-08-16 —
+    # the root step excludes "internal/" and the logger step targets ./logger,
+    # so nothing mutated them. Adding piicore found a real gap on its first run.
+    assert workflow.count("--threshold-efficacy=100") == 6
+    assert workflow.count("--threshold-mcover=100") == 6
     assert '--exclude-files="mutation_constants.go"' in workflow
     # go/otel is a separate module, so its step is legitimately conditional.
     # go/logger is a package of the root module and must NOT be gated on a
@@ -141,6 +145,11 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert "hashFiles('go/otel/go.mod')" in workflow
     assert "hashFiles('go/logger/go.mod')" not in workflow
     assert "Run gremlins mutation tests for go/logger" in workflow
+    for internal_pkg in ("piicore", "fingerprintcore", "schemacore"):
+        assert f"Run gremlins mutation tests for go/internal/{internal_pkg}" in workflow
+        # Each internal step targets "." and widens --coverpkg, because
+        # gremlins builds coverage from the target path's own tests.
+        assert f"provide-telemetry/go/internal/{internal_pkg}" in workflow
 
 
 def test_rust_mutation_workflow_bounds_compiler_and_test_parallelism() -> None:
@@ -212,7 +221,9 @@ def test_csharp_mutation_threshold_matches_the_measured_baseline() -> None:
 
     assert thresholds["break"] == 85
     assert "break threshold of 85" in readme
-    assert "86.81%" in readme
+    # Re-measured 2026-08-16 after the span-redaction change moved the mutant
+    # population (was 86.81% / 1830 scored on 2026-08-15).
+    assert "86.50%" in readme
 
 
 def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:

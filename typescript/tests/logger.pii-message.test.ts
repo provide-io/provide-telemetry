@@ -107,8 +107,63 @@ describe('span-scoped redaction', () => {
     expect(out).toBe('auth header *** rejected');
   });
 
+  it('removes a credential glued to a prefix at the very start of the value', () => {
+    // Every other test puts the secret at a token boundary, where the leftward
+    // widening never has to move. Here the match starts five characters in and
+    // the token starts the value, so widening must run all the way to index 0.
+    //
+    // The secret is an AWS key rather than the JWT deliberately: "abcde" plus a
+    // JWT header is 41 alphanumeric characters, which long_base64 matches from
+    // index 0 on its own. That span has an empty head, so it is immune to a
+    // wrong leftward offset and masks the one being tested.
+    const secret = 'AKIAIOSFODNN7EXAMPLE'; // pragma: allowlist secret
+
+    const out = redactSecretSpans(`abcde${secret} tail`);
+
+    expect(out).not.toContain(secret);
+    expect(out).toBe('*** tail');
+  });
+
   it('leaves a filesystem path alone', () => {
     const line = 'make -C /home/deploy/apps/production/current/native/capture install';
     expect(redactSecretSpans(line)).toBe(line);
+  });
+
+  it('redacts every secret in a value, not just the first', () => {
+    // Whole-value blanking covered every credential in a field for free.
+    // Scoping redaction to one token dropped that guarantee silently: the
+    // field is still flagged, but only the first secret goes.
+    const first = 'AKIAIOSFODNN7EXAMPLE'; // pragma: allowlist secret
+    const second = 'AKIAIOSFODNN7EXAMPLB'; // pragma: allowlist secret
+
+    const out = redactSecretSpans(`first ${first} second ${second}`);
+
+    expect(out).not.toContain(first);
+    expect(out).not.toContain(second);
+    expect(out).toBe('first *** second ***');
+  });
+
+  it('redacts nothing for a pattern that matches the empty string', () => {
+    // Scanning every match means a pattern that can match the empty string
+    // yields one at every position. Without a guard the walk either never
+    // ends or widens a zero-length match to whatever token it landed in,
+    // blanking a word that holds no secret.
+    registerSecretPattern('empty_matcher', /Z*/);
+    const clean = 'the quick brown fox jumps over it';
+    expect(redactSecretSpans(clean)).toBe(clean);
+  });
+
+  it('does not let a path shadow a secret later in the value', () => {
+    // long_base64 matches the path first. Suppressing that match as
+    // path-shaped moved the scan on to the next pattern, and long_base64 is
+    // the last one, so the real secret behind the path was never looked for.
+    // A path prefix must not be a redaction bypass.
+    const path = '/home/deploy/apps/production/current/lib/service';
+    const secret = 'c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A'; // pragma: allowlist secret
+
+    const out = redactSecretSpans(`${path} ${secret}`);
+
+    expect(out).not.toContain(secret);
+    expect(out).toBe(`${path} ***`);
   });
 });

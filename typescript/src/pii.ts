@@ -116,15 +116,104 @@ export function _looksLikePath(span: string): boolean {
   return wordy * 2 >= segments.length;
 }
 
-function _secretMatch(value: string): RegExpExecArray | null {
-  if (value.length < _MIN_SECRET_LENGTH) return null;
+/**
+ * Every secret-looking span in *value*, widened to whole tokens, sorted and
+ * coalesced.
+ *
+ * Every pattern is scanned across the WHOLE value, not stopped at its first
+ * match, and every pattern is tried even after one has hit. Skipping either
+ * leaks:
+ *
+ * - Stopping a pattern at its first match let a path shadow a real secret.
+ *   long_base64 matches a path first; suppressing that match as path-shaped
+ *   moved the scan to the next pattern, and long_base64 is the last one, so
+ *   the credential behind the path was never looked for at all.
+ * - Stopping at the first pattern to hit left a field's second and third
+ *   secrets in the log, which whole-value blanking used to cover for free.
+ *
+ * A non-global exec() runs first as a fast path: a clean value, which is
+ * nearly every log field, allocates nothing, because the all-matches walk is
+ * only entered once a pattern is known to match.
+ */
+function _secretSpans(value: string): Array<[number, number]> {
+  if (value.length < _MIN_SECRET_LENGTH) return [];
+  const spans: Array<[number, number]> = [];
   for (const p of [..._SECRET_PATTERNS, ..._customSecretPatterns.values()]) {
     // Patterns may carry /g; exec advances lastIndex, so reset before use.
     p.lastIndex = 0;
-    const m = p.exec(value);
-    if (m !== null && !_looksLikePath(m[0])) return m;
+    // Stryker disable next-line ConditionalExpression: pure fast path — a
+    // pattern that does not match contributes no spans either way, so
+    // never taking the shortcut is equivalent apart from cost.
+    if (p.exec(value) === null) continue;
+    // Re-walk with a global clone so every match is seen, not just the first.
+    // registerSecretPattern strips g/y before storing, and the generated
+    // built-ins carry no flags, so p.flags never already contains "g" — adding
+    // it unconditionally cannot produce the duplicate flag that RegExp rejects.
+    const all = new RegExp(p.source, `${p.flags}g`);
+    let m: RegExpExecArray | null;
+    while ((m = all.exec(value)) !== null) {
+      // A registered pattern that can match the empty string would otherwise
+      // spin forever and redact a token holding no secret. Step past it.
+      if (m[0].length === 0) {
+        all.lastIndex++;
+        continue;
+      }
+      if (!_looksLikePath(m[0])) spans.push(_expandToToken(value, m.index, m.index + m[0].length));
+    }
   }
-  return null;
+  return _mergeSpans(spans);
+}
+
+/**
+ * Widen a match to its whitespace-delimited token.
+ *
+ * Redacting the literal match alone can leave part of a credential behind:
+ * the jwt pattern matches header.payload, and a JWT has THREE dot-separated
+ * parts, so the signature would survive. Whitespace is the boundary a secret
+ * cannot cross without ceasing to be one token.
+ */
+function _expandToToken(value: string, start: number, end: number): [number, number] {
+  // Anchored matches rather than an index walk. Walking the index needs two
+  // bounds and two steps, and their off-by-one variants mostly cannot be told
+  // apart from the outside — reading one character past the end widens to a
+  // position that slices identically. The regexes say the thing directly: the
+  // run of non-whitespace ending where the match begins, and the run starting
+  // where it ends. Python's _expand_to_token is the same shape.
+  // `\S*` matches the empty string, so both of these always match and the
+  // null arms of a `=== null` guard would be unreachable — hence the casts
+  // rather than a branch no test could ever take.
+  const head = /\S*$/.exec(value.slice(0, start)) as RegExpExecArray;
+  const tail = /^\S*/.exec(value.slice(end)) as RegExpExecArray;
+  return [start - head[0].length, end + tail[0].length];
+}
+
+/**
+ * Sort and coalesce overlapping spans so each region is replaced once. Two
+ * patterns can match the same credential -- long_base64 and jwt both hit a
+ * JWT -- and after widening they overlap exactly, which would emit "******".
+ */
+function _mergeSpans(spans: Array<[number, number]>): Array<[number, number]> {
+  if (spans.length < 2) return spans;
+  const sorted = [...spans].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [sorted[0]];
+  // Stryker disable next-line MethodExpression: dropping slice(1) re-visits
+  // sorted[0], which merges with itself and changes nothing.
+  for (const [start, end] of sorted.slice(1)) {
+    const last = merged[merged.length - 1];
+    // Stryker disable next-line EqualityOperator,BlockStatement: every span is widened to a
+    // whitespace-delimited token, so one span starts at least one whitespace
+    // past the previous span's end — start === last[1] cannot occur. Two
+    // spans that do overlap share a token and are therefore identical, so
+    // skipping the merge entirely drops a duplicate and changes nothing.
+    if (start <= last[1]) {
+      // Stryker disable next-line MethodExpression: overlapping spans share a
+      // token and are therefore identical, so max and min agree.
+      last[1] = Math.max(last[1], end);
+    } else {
+      merged.push([start, end]);
+    }
+  }
+  return merged;
 }
 
 /**
@@ -137,29 +226,36 @@ function _secretMatch(value: string): RegExpExecArray | null {
  * without ceasing to be one token.
  */
 export function redactSecretSpans(value: string): string {
-  const m = _secretMatch(value);
-  if (!m) return value;
-  let start = m.index;
-  let end = m.index + m[0].length;
-  while (start > 0 && !/\s/.test(value[start - 1])) start--;
-  while (end < value.length && !/\s/.test(value[end])) end++;
-  return value.slice(0, start) + REDACTED + value.slice(end);
+  return _redactIfSecret(value) ?? value;
+}
+
+/**
+ * Redacted form of *value*, or null when it holds no secret.
+ *
+ * One scan where the sanitize path used to do two: asking
+ * _detectSecretInValue and then redactSecretSpans ran the whole pattern sweep
+ * twice for every value carrying a credential.
+ */
+function _redactIfSecret(value: string): string | null {
+  const spans = _secretSpans(value);
+  if (spans.length === 0) return null;
+  const chunks: string[] = [];
+  let previousEnd = 0;
+  for (const [start, end] of spans) {
+    chunks.push(value.slice(previousEnd, start), REDACTED);
+    previousEnd = end;
+  }
+  chunks.push(value.slice(previousEnd));
+  return chunks.join('');
 }
 
 export function _detectSecretInValue(value: string): boolean {
-  // Stryker disable next-line ConditionalExpression: removing length check makes patterns match short strings — equivalent when all test secrets are ≥20 chars
-  if (value.length < _MIN_SECRET_LENGTH) return false;
-  for (const p of _SECRET_PATTERNS) {
-    p.lastIndex = 0;
-    const m = p.exec(value);
-    if (m !== null && !_looksLikePath(m[0])) return true;
-  }
-  for (const p of _customSecretPatterns.values()) {
-    p.lastIndex = 0;
-    const m = p.exec(value);
-    if (m !== null && !_looksLikePath(m[0])) return true;
-  }
-  return false;
+  // Shares _secretSpans with redaction rather than running its own loop. When
+  // the two disagreed the value was flagged and then not fully cleaned, which
+  // is how a secret sitting behind a filesystem path escaped: this returned
+  // false because the only pattern that could match it had already been
+  // consumed by the path.
+  return _secretSpans(value).length > 0;
 }
 
 /**
@@ -174,15 +270,18 @@ export function sanitize(obj: Record<string, unknown>, extraFields: string[] = [
     ...extraFields.map((f) => f.toLowerCase()),
   ]);
   for (const key of Object.keys(obj)) {
+    // Assigned inside the else-if so the scan runs once, not once to detect
+    // and again to redact.
+    let redacted: string | null;
     // Stryker disable next-line ConditionalExpression: mutating to true redacts all keys — equivalent because tests use blocked keys
     if (blocked.has(key.toLowerCase())) {
       obj[key] = REDACTED;
     } else if (
       // Stryker disable next-line all: V8 perTest coverage doesn't attribute else-if branches; tested in pii.test.ts secret detection suite
       typeof obj[key] === 'string' &&
-      _detectSecretInValue(obj[key] as string)
+      (redacted = _redactIfSecret(obj[key] as string)) !== null
     ) {
-      obj[key] = redactSecretSpans(obj[key] as string);
+      obj[key] = redacted;
     }
   }
 }
@@ -357,6 +456,9 @@ function _applyDefaultSensitiveKeyRedaction(
     const lk = key.toLowerCase();
     const origVal = orig[key];
     const childPath = [...currentPath, key];
+    // Assigned inside the else-if so the scan runs once, not once to detect
+    // and again to redact.
+    let redacted: string | null;
     if (blocked.has(lk)) {
       // If a custom rule already changed the value, keep the rule's result.
       // Stryker disable next-line ConditionalExpression,BlockStatement: defensive guard — val always equals origVal; removing branch is equivalent
@@ -367,8 +469,8 @@ function _applyDefaultSensitiveKeyRedaction(
         result[key] = REDACTED;
         if (receiptHook !== null) receiptHook(key, 'redact', origVal);
       }
-    } else if (typeof val === 'string' && _detectSecretInValue(val)) {
-      result[key] = redactSecretSpans(val);
+    } else if (typeof val === 'string' && (redacted = _redactIfSecret(val)) !== null) {
+      result[key] = redacted;
       // Stryker disable next-line StringLiteral: 'redact' action label is verified by receipt tests — Stryker's perTest coverage misattributes
       if (receiptHook !== null) receiptHook(key, 'redact', val);
     } else {

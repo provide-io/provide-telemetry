@@ -350,7 +350,15 @@ fn logger_public_paths_cover_secret_message_truncation_strict_schema_and_empty_t
     let events = Logger::drain_events_for_tests();
     assert_eq!(events.len(), 2);
 
-    assert_eq!(events[0].message, "***");
+    // Span-scoped since 2026-08-16: the credential token is replaced and the
+    // words around it survive. What this defends is that the secret does not
+    // reach the log; blanking the whole message was the old mechanism.
+    assert!(
+        !events[0].message.contains("AKIAIOSFODNN7EXAMPLE"),
+        "secret survived redaction: {}",
+        events[0].message
+    );
+    assert_eq!(events[0].message, "token *** leaked");
     assert!(!events[0].context.contains_key("logger_name"));
     assert!(events[0].context.contains_key("_schema_error"));
 

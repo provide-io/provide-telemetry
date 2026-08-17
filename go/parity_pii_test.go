@@ -237,3 +237,40 @@ func TestParity_PIIDepth_DefaultIs8(t *testing.T) {
 		t.Error("depth 8: should NOT be redacted with default max_depth=8")
 	}
 }
+
+// ── Span-Scoped Redaction ────────────────────────────────────────────────────
+
+// TestParity_SecretSpanRedaction mirrors spec/behavioral_fixtures.yaml
+// secret_span_redaction. The cases that matter are the ones a single-span
+// implementation gets wrong: a value holding two secrets, and a secret sitting
+// behind a filesystem path that the base64 rule matches first.
+func TestParity_SecretSpanRedaction(t *testing.T) {
+	cases := []struct{ in, want, note string }{
+		{
+			in:   "token AKIAIOSFODNN7EXAMPLE leaked",
+			want: "token *** leaked",
+			note: "surrounding words survive",
+		},
+		{
+			in:   "first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB",
+			want: "first *** second ***",
+			note: "every secret goes, not only the first",
+		},
+		{
+			in:   "/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A",
+			want: "/home/deploy/apps/production/current/lib/service ***",
+			note: "a suppressed path does not shadow the secret behind it",
+		},
+		{
+			in:   "make -C /home/deploy/apps/production/current/native/capture install",
+			want: "make -C /home/deploy/apps/production/current/native/capture install",
+			note: "no secret, no change",
+		},
+	}
+	for _, c := range cases {
+		result := SanitizePayload(map[string]any{"data": c.in}, true, 32)
+		if got := result["data"]; got != c.want {
+			t.Errorf("%s\n  in:   %s\n  want: %s\n  got:  %v", c.note, c.in, c.want, got)
+		}
+	}
+}

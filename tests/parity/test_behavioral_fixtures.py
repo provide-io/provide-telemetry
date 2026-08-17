@@ -373,6 +373,32 @@ def test_parity_secret_detection_normal_string_unchanged() -> None:
     assert result["data"] == "not-a-secret"
 
 
+# ── Span-Scoped Redaction ────────────────────────────────────────────────────
+
+
+def test_parity_secret_span_redaction_matches_fixture() -> None:
+    """Drive redaction straight off the spec, so the two cannot drift.
+
+    The cases that matter here are the ones a single-span implementation gets
+    wrong: a value holding two secrets, and a secret sitting behind a
+    filesystem path that the base64 rule matches first.
+    """
+    import yaml as _yaml
+
+    from provide.telemetry.pii import redact_secret_spans
+
+    repo_root = _find_repo_root_from(Path(__file__))
+    fixtures = _yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text())
+    cases = fixtures["secret_span_redaction"]["cases"]
+    assert cases, "secret_span_redaction fixture must not be empty"
+
+    for case in cases:
+        actual = redact_secret_spans(case["input"])
+        assert actual == case["output"], (
+            f"{case['note']}\n  in:       {case['input']!r}\n  expected: {case['output']!r}\n  actual:   {actual!r}"
+        )
+
+
 # ── Error Fingerprint Algorithm ──────────────────────────────────────────────
 
 

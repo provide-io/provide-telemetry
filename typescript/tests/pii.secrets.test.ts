@@ -17,6 +17,8 @@ import {
   resetSecretPatternsForTests,
   sanitize,
   sanitizePayload,
+  _looksLikePath,
+  redactSecretSpans,
 } from '../src/pii.js';
 
 afterEach(() => resetPiiRulesForTests());
@@ -416,5 +418,72 @@ describe('registerSecretPattern — custom secret detection', () => {
     sanitizePayload(obj);
     const nested = obj['nested'] as Record<string, unknown>;
     expect(nested['key']).toBe('***');
+  });
+});
+
+// ── Path shape ──────────────────────────────────────────────────────────────
+
+describe('_looksLikePath', () => {
+  // Pins both halves of the shape test: the segment-count floor at its
+  // boundary (two segments is not enough, three is), and the wordy-segment
+  // ratio at its boundary (exactly half is enough, and long wordless segments
+  // are base64 rather than directories). Ported from
+  // tests/hardening/test_secret_span_redaction.py, which had these from the
+  // start while the other runtimes went without.
+  it.each([
+    ['usr/local', false, 'two segments is below the floor, however wordy'],
+    ['ABCDEFGHIJ/1234567890/KLMNOPQRST', false, 'long wordless segments are base64'],
+    ['usr/local/lib', true, 'three short lowercase words is the smallest path'],
+    ['usr/local/AB12/CD34', true, 'exactly half wordy is enough; the test is >=, not >'],
+    // A real path starts with "/", so split() yields a leading empty segment.
+    // Without the empty-segment filter this clears the three-segment floor on
+    // two real words and every absolute two-segment path reads as a path.
+    ['/usr/local', false, 'leading empty segment must not count toward the floor'],
+    // The wordy test is anchored at both ends: a segment that merely starts or
+    // ends lowercase is not a word. Drop either anchor and these four score as
+    // half-wordy and the span flips to path-shaped.
+    ['lib64/opt99/64lib/99opt', false, 'partly-lowercase segments are not words'],
+    // The ratio is a product, not a sum: wordy + 2 >= 3 would call this a path.
+    ['usr/AB12/CD34', false, 'one word in three is a minority'],
+  ] as Array<[string, boolean, string]>)('%s -> %s (%s)', (span, expected) => {
+    expect(_looksLikePath(span)).toBe(expected);
+  });
+});
+
+describe('span collection across patterns', () => {
+  afterEach(() => resetSecretPatternsForTests());
+
+  it('redacts spans found out of order by different patterns', () => {
+    // Patterns are scanned in a fixed order, so a later pattern can match
+    // earlier in the string: long_hex hits at index 0 and aws_key at 45. The
+    // spans therefore arrive unsorted and must be ordered before they are
+    // merged and replaced.
+    const hex = 'a'.repeat(44);
+    const aws = 'AKIAIOSFODNN7EXAMPLE'; // pragma: allowlist secret
+
+    const out = redactSecretSpans(`${hex} ${aws}`);
+
+    expect(out).not.toContain(hex);
+    expect(out).not.toContain(aws);
+    expect(out).toBe('*** ***');
+  });
+
+  it('redacts a token matched by two patterns exactly once', () => {
+    // aws_key matches the AKIA prefix and long_hex the trailing run; after
+    // widening both cover the whole token. Overlapping spans must coalesce, or
+    // the token is replaced twice and emits "******".
+    const token = 'AKIAIOSFODNN7EXAMPLE0123456789abcdef0123456789abcdef'; // pragma: allowlist secret
+
+    expect(redactSecretSpans(token)).toBe('***');
+    expect(redactSecretSpans(`a ${token} b`)).toBe('a *** b');
+  });
+
+  it('handles a registered pattern that already carries the global flag', () => {
+    // The all-matches walk clones the pattern with /g added. A pattern that is
+    // already global must have its flag stripped first — "gg" is not a valid
+    // flag string and the RegExp constructor throws on it.
+    registerSecretPattern('global_pattern', /GLOBALSECRET[0-9]{8}/g);
+
+    expect(redactSecretSpans('lead GLOBALSECRET12345678 tail')).toBe('lead *** tail');
   });
 });

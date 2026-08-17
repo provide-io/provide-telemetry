@@ -329,6 +329,83 @@ jobs:
             --threshold-mcover=100 \
             --exclude-files="mutation_constants.go" \
             ./logger
+      # internal/piicore holds the secret-detection and redaction engine shared
+      # by the root package and go/logger, and until 2026-08-16 no mutation run
+      # touched it: the root step excludes "internal/", the logger step targets
+      # ./logger, and go/otel is a different module.
+      #
+      # It cannot be gated the way the others are. gremlins builds its coverage
+      # profile by running the tests of the TARGET path, and almost everything
+      # that exercises piicore lives in the root package — pii_test.go covers
+      # only looksLikePath, which is unexported and so unreachable from there.
+      # Targeting ./internal/piicore would therefore run that one test, leave
+      # the rest of the package uncovered, and decide almost nothing.
+      #
+      # So the target stays "." (whose tests exist) and --coverpkg is widened to
+      # attribute root-package coverage onto piicore. The exclusions then narrow
+      # what is mutated back down to that one package; "^[^/]+\.go$" drops the
+      # root-level sources, which the step above already covers. Adding this
+      # found a real gap on the first run: no test widened a redaction span
+      # leftward, because every existing one put the secret at a token boundary.
+      - name: Run gremlins mutation tests for go/internal/piicore (100% kill rate required)
+        run: |
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=100 \
+            --threshold-efficacy=100 \
+            --threshold-mcover=100 \
+            --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/piicore" \
+            --exclude-files="secret_patterns_generated.go" \
+            --exclude-files="^[^/]+\.go$" \
+            --exclude-files="cmd/" \
+            --exclude-files="examples/" \
+            --exclude-files="internal/fingerprintcore/" \
+            --exclude-files="internal/schemacore/" \
+            --exclude-files="logger/" \
+            --exclude-files="otel/" \
+            --exclude-files="scripts/" \
+            .
+      # The other two internal packages were ungated for the same reason and
+      # are gated the same way. Both were already at 100% when first measured —
+      # unlike piicore, they needed no new tests — but nothing was holding them
+      # there, which is the whole point of adding the step.
+      - name: Run gremlins mutation tests for go/internal/fingerprintcore (100% kill rate required)
+        run: |
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=100 \
+            --threshold-efficacy=100 \
+            --threshold-mcover=100 \
+            --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/fingerprintcore" \
+            --exclude-files="^[^/]+\.go$" \
+            --exclude-files="cmd/" \
+            --exclude-files="examples/" \
+            --exclude-files="internal/piicore/" \
+            --exclude-files="internal/schemacore/" \
+            --exclude-files="logger/" \
+            --exclude-files="otel/" \
+            --exclude-files="scripts/" \
+            .
+      - name: Run gremlins mutation tests for go/internal/schemacore (100% kill rate required)
+        run: |
+          "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
+            --workers=1 \
+            --test-cpu=1 \
+            --timeout-coefficient=100 \
+            --threshold-efficacy=100 \
+            --threshold-mcover=100 \
+            --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/schemacore" \
+            --exclude-files="^[^/]+\.go$" \
+            --exclude-files="cmd/" \
+            --exclude-files="examples/" \
+            --exclude-files="internal/fingerprintcore/" \
+            --exclude-files="internal/piicore/" \
+            --exclude-files="logger/" \
+            --exclude-files="otel/" \
+            --exclude-files="scripts/" \
+            .
       - name: Run gremlins mutation tests for go/otel (100% kill rate required)
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel

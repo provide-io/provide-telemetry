@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -107,7 +108,7 @@ func IsDefaultSensitiveKey(key string) bool {
 // or any of the caller-supplied custom patterns.
 // customPatterns may be nil.
 func DetectSecretInValue(s string, customPatterns map[string]*regexp.Regexp) bool { // pragma: allowlist secret
-	return secretSpan(s, customPatterns) != nil
+	return len(secretSpans(s, customPatterns)) > 0
 }
 
 // pathMinSegments is how many slash-separated parts a span needs before its
@@ -155,46 +156,121 @@ func isLowerAlpha(s string) bool {
 	return s != ""
 }
 
-// secretSpan returns the [start,end) span of the first secret-looking match,
-// or nil when the value holds none.
-func secretSpan(s string, customPatterns map[string]*regexp.Regexp) []int {
+// secretSpans returns every secret-looking span in s, each widened to its
+// whitespace-delimited token, sorted and coalesced.
+//
+// Every pattern is scanned across the WHOLE value, not stopped at its first
+// match, and every pattern is tried even after one has hit. Skipping either
+// leaks:
+//
+//   - Stopping a pattern at its first match let a path shadow a real secret.
+//     long_base64 matches a path first; suppressing that match as path-shaped
+//     moved the scan to the next pattern, and long_base64 is the last one, so
+//     the credential behind the path was never looked for at all.
+//   - Stopping at the first pattern to hit left a field's second and third
+//     secrets in the log, which whole-value blanking used to cover for free.
+//
+// Collecting every span also makes the result independent of map iteration
+// order, which Go randomises — with one span the chosen secret varied between
+// runs and diverged from the other four runtimes.
+//
+// FindStringIndex runs first as a fast path: a clean value, which is nearly
+// every log field, pays one scan per pattern and allocates nothing, because
+// FindAllStringIndex is only reached once a pattern is known to match.
+func secretSpans(s string, customPatterns map[string]*regexp.Regexp) [][2]int {
 	if len(s) < MinSecretLength { // pragma: allowlist secret
 		return nil
 	}
-	for _, re := range BuiltinSecretPatterns {
-		if loc := re.FindStringIndex(s); loc != nil && !looksLikePath(s[loc[0]:loc[1]]) {
-			return loc
+	var spans [][2]int
+	collect := func(re *regexp.Regexp) {
+		if re.FindStringIndex(s) == nil {
+			return
 		}
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			// A registered pattern that can match the empty string carries no
+			// secret; widening a zero-length match to its token would redact a
+			// word for nothing.
+			if loc[0] == loc[1] {
+				continue
+			}
+			if !looksLikePath(s[loc[0]:loc[1]]) {
+				spans = append(spans, expandToToken(s, loc[0], loc[1]))
+			}
+		}
+	}
+	for _, re := range BuiltinSecretPatterns {
+		collect(re)
 	}
 	for _, re := range customPatterns {
-		if loc := re.FindStringIndex(s); loc != nil && !looksLikePath(s[loc[0]:loc[1]]) {
-			return loc
-		}
+		collect(re)
 	}
-	return nil
+	return mergeSpans(spans)
 }
 
-// RedactSecretSpans replaces only the secret-looking token of s, leaving the
-// rest of the string readable.
+// expandToToken widens a match to its whitespace-delimited token.
 //
-// The match is first widened to its whitespace-delimited token. Redacting the
-// literal match alone can leave part of a credential behind: the jwt pattern
-// matches header.payload, and a JWT has THREE dot-separated parts, so the
-// signature would survive. Whitespace is the boundary a secret cannot cross
-// without ceasing to be one token.
-func RedactSecretSpans(s string, customPatterns map[string]*regexp.Regexp) string {
-	loc := secretSpan(s, customPatterns)
-	if loc == nil {
-		return s
-	}
-	start, end := loc[0], loc[1]
+// Redacting the literal match alone can leave part of a credential behind:
+// the jwt pattern matches header.payload, and a JWT has THREE dot-separated
+// parts, so the signature would survive. Whitespace is the boundary a secret
+// cannot cross without ceasing to be one token.
+func expandToToken(s string, start, end int) [2]int {
 	for start > 0 && !isSpaceByte(s[start-1]) {
 		start--
 	}
 	for end < len(s) && !isSpaceByte(s[end]) {
 		end++
 	}
-	return s[:start] + Redacted + s[end:]
+	return [2]int{start, end}
+}
+
+// mergeSpans sorts spans and coalesces overlaps so each region is replaced
+// once. Two patterns can match the same credential — long_base64 and jwt both
+// hit a JWT — and after widening they overlap exactly, which would otherwise
+// emit "******".
+func mergeSpans(spans [][2]int) [][2]int {
+	if len(spans) < 2 {
+		return spans
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
+	merged := spans[:1]
+	for _, span := range spans[1:] {
+		last := &merged[len(merged)-1]
+		if span[0] <= last[1] {
+			if span[1] > last[1] {
+				last[1] = span[1]
+			}
+			continue
+		}
+		merged = append(merged, span)
+	}
+	return merged
+}
+
+// RedactSecretSpans replaces every secret-looking token of s, leaving the rest
+// of the string readable.
+//
+// Every span goes, not just the first: whole-value blanking removed a field's
+// second and third credentials for free, and scoping redaction to a token
+// silently dropped that guarantee.
+func RedactSecretSpans(s string, customPatterns map[string]*regexp.Regexp) string {
+	spans := secretSpans(s, customPatterns)
+	if len(spans) == 0 {
+		return s
+	}
+	return replaceSpans(s, spans)
+}
+
+// replaceSpans swaps each span for the redaction sentinel.
+func replaceSpans(s string, spans [][2]int) string {
+	var out strings.Builder
+	prev := 0
+	for _, span := range spans {
+		out.WriteString(s[prev:span[0]])
+		out.WriteString(Redacted)
+		prev = span[1]
+	}
+	out.WriteString(s[prev:])
+	return out.String()
 }
 
 func isSpaceByte(b byte) bool {
@@ -286,11 +362,15 @@ func SanitizeValue(
 		return Redacted, false
 	}
 
-	// Scan string values for known secret patterns.
-	if str, ok := value.(string); ok && DetectSecretInValue(str, customPatterns) {
-		FireReceiptHook(receiptHook, key, PIIModeRedact, value)
-		// Span-scoped: only the credential token goes, the message stays.
-		return RedactSecretSpans(str, customPatterns), false
+	// Scan string values for known secret patterns. One scan, not two:
+	// detecting and then redacting ran the whole pattern sweep twice for every
+	// value carrying a credential.
+	if str, ok := value.(string); ok {
+		if spans := secretSpans(str, customPatterns); len(spans) > 0 {
+			FireReceiptHook(receiptHook, key, PIIModeRedact, value)
+			// Span-scoped: only the credential tokens go, the message stays.
+			return replaceSpans(str, spans), false
+		}
 	}
 
 	// Recurse into nested structures if depth allows.

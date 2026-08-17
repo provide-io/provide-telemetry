@@ -86,6 +86,12 @@ def get_secret_patterns() -> tuple[tuple[str, _re.Pattern[str]], ...]:
 # random secrets per size: detection stays 100% and 0.00-0.06% are suppressed.
 _PATH_MIN_SEGMENTS = 3
 
+# Token boundaries for _expand_to_token. `\S` is the exact complement of
+# str.isspace() across the whole BMP, so switching from a hand-rolled
+# character walk to these changed no behaviour.
+_RUN_BEFORE_END = _re.compile(r"\S*\Z")
+_RUN_FROM_POS = _re.compile(r"\S*")
+
 
 def _looks_like_path(span: str) -> bool:
     """Return True if *span* has the shape of a filesystem path, not a secret."""
@@ -96,22 +102,78 @@ def _looks_like_path(span: str) -> bool:
     return wordy * 2 >= len(segments)
 
 
-def _secret_span(value: str) -> tuple[int, int] | None:
-    """Return the span of the first secret-looking match, or None.
+def _secret_spans(value: str) -> list[tuple[int, int]]:
+    """Return every secret-looking span in *value*, merged and in order.
 
-    Path-shaped matches are not secrets; see _looks_like_path.
+    Every pattern is scanned across the WHOLE value, not stopped at its first
+    match, and every pattern is tried even after one has hit. Both halves
+    matter, and skipping either leaks:
+
+    * Stopping a pattern at its first match let a path shadow a real secret.
+      long_base64 matches a path first; suppressing that match as path-shaped
+      moved the scan to the next pattern, and long_base64 is the last one, so
+      the credential behind the path was never looked for at all.
+    * Stopping at the first *pattern* to hit left a field's second and third
+      secrets in the log, which whole-value blanking used to cover for free.
+
+    The fast path is search(): a clean value -- nearly every log field -- pays
+    one search() per pattern and allocates nothing, because finditer() is only
+    entered once a pattern is known to match. Measured, that keeps the clean
+    case at +0.3-10% rather than the +92% an unconditional finditer() costs.
     """
     if len(value) < _MIN_SECRET_LENGTH:
-        return None
+        return []
     if len(value) > _MAX_SECRET_SCAN_LENGTH:
-        return None
+        return []
     with _lock:
         custom = list(_custom_secret_patterns)
-    for _name, pattern in (*_SECRET_PATTERNS, *custom):
-        match = pattern.search(value)
-        if match is not None and not _looks_like_path(match.group(0)):
-            return match.span()
-    return None
+    # Two loops rather than one over (*builtin, *custom): a clean value is
+    # nearly every log field, and building that tuple per call cost more than
+    # the duplicated loop body. The span list is likewise only allocated once
+    # something has actually matched.
+    spans: list[tuple[int, int]] | None = None
+    for patterns in (_SECRET_PATTERNS, custom):
+        for _name, pattern in patterns:
+            # search() is only a presence check -- it is what keeps a clean
+            # value cheap. Once a pattern is known to match, finditer() walks
+            # the whole value from the start so no later match is missed.
+            if pattern.search(value) is None:
+                continue
+            if spans is None:
+                spans = []
+            for match in pattern.finditer(value):
+                matched = match.group(0)
+                # A registered pattern that can match the empty string carries
+                # no secret; widening a zero-length match to its token would
+                # redact a word for nothing.
+                if not matched:
+                    continue
+                if not _looks_like_path(matched):
+                    spans.append(_expand_to_token(value, *match.span()))
+    if spans is None:
+        return []
+    return _merge_spans(spans)
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Sort and coalesce overlapping spans so each region is replaced once.
+
+    Two patterns can match the same credential -- long_base64 and jwt both hit
+    a JWT -- and after widening to the token they overlap exactly. Replacing
+    each separately would emit "******".
+    """
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        # `<` and `<=` are indistinguishable here, so the `<` mutant is
+        # equivalent: every span has been widened to a whitespace-delimited
+        # token, so one span's start is at least one whitespace character past
+        # the previous span's end. start == previous end cannot occur.
+        if merged and start <= merged[-1][1]:  # pragma: no mutate — see above
+            previous_start, previous_end = merged[-1]
+            merged[-1] = (previous_start, max(previous_end, end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def _expand_to_token(value: str, start: int, end: int) -> tuple[int, int]:
@@ -123,48 +185,80 @@ def _expand_to_token(value: str, start: int, end: int) -> tuple[int, int]:
     boundary a secret cannot cross without ceasing to be one token, so
     widening to it means a partial match still removes the whole credential
     while the words around it stay readable.
+
+    The boundaries are found by anchored match rather than by walking an
+    index. Index arithmetic here was the wrong tool twice over: a ``while``
+    loop is one mutated assignment away from never terminating, and the
+    ``range`` form that replaced it carried four separate constants whose
+    off-by-one variants mostly cannot be told apart from the outside. The
+    regexes say the thing directly -- the run of non-whitespace ending where
+    the match begins, and the run starting where it ends.
     """
-    while start > 0 and not value[start - 1].isspace():
-        start -= 1
-    while end < len(value) and not value[end].isspace():
-        end += 1
-    return start, end
+    return (
+        _RUN_BEFORE_END.search(value, 0, start).start(),  # type: ignore[union-attr]
+        _RUN_FROM_POS.match(value, end).end(),  # type: ignore[union-attr]
+    )
 
 
 def redact_secret_spans(value: str) -> str:
-    """Replace only the secret-looking SPAN of *value*, leaving the rest.
+    """Replace every secret-looking SPAN of *value*, leaving the rest.
 
     Blanking the whole field destroys context that was never suspect: a
     remediation string that happened to contain a long path became "***" and
     stopped telling anyone what to run. For a value that IS a secret the span
     covers all of it, so that case is unchanged.
+
+    Every span is replaced, not just the first. Whole-value blanking removed a
+    field's second and third credentials for free, and scoping redaction to a
+    token silently dropped that guarantee.
     """
-    span = _secret_span(value)
-    if span is None:
+    spans = _secret_spans(value)
+    if not spans:
         return value
-    start, end = _expand_to_token(value, *span)
-    return value[:start] + _REDACTED + value[end:]
+    return _replace_spans(value, spans)
+
+
+def _replace_spans(value: str, spans: list[tuple[int, int]]) -> str:
+    """Swap each span for the redaction sentinel.
+
+    Walks the spans back to front so each replacement leaves the indices of
+    the ones still to come untouched. Carrying a cursor forward instead needs
+    a zero sentinel whose only wrong value, None, slices identically -- an
+    unkillable mutant guarding nothing.
+    """
+    redacted = value
+    for start, end in reversed(spans):
+        redacted = redacted[:start] + _REDACTED + redacted[end:]
+    return redacted
+
+
+def _redact_if_secret(value: str) -> str | None:
+    """Redacted form of *value*, or None when it holds no secret.
+
+    One scan where the sanitize path used to do two. Asking
+    _detect_secret_in_value and then redact_secret_spans ran the whole pattern
+    sweep twice for every value carrying a credential, which got measurably
+    worse once the sweep started collecting every match instead of stopping at
+    the first.
+    """
+    spans = _secret_spans(value)
+    if not spans:
+        return None
+    return _replace_spans(value, spans)
 
 
 def _detect_secret_in_value(value: str) -> bool:
-    """Return True if value matches a known secret pattern."""
-    if len(value) < _MIN_SECRET_LENGTH:
-        return False
-    if len(value) > _MAX_SECRET_SCAN_LENGTH:
-        # Oversize input: skip scan to avoid regex ReDoS risk.
-        return False
-    # Thread-safe snapshot — list may be mutated by register_secret_pattern.
-    with _lock:
-        custom = list(_custom_secret_patterns)
-    for _name, pattern in _SECRET_PATTERNS:  # pragma: no mutate — tuple iteration over generated patterns
-        match = pattern.search(value)
-        if match is not None and not _looks_like_path(match.group(0)):
-            return True
-    for _name, pattern in custom:  # pragma: no mutate — iteration mirrors built-in loop above
-        match = pattern.search(value)
-        if match is not None and not _looks_like_path(match.group(0)):
-            return True
-    return False
+    """Return True if value holds a known secret.
+
+    Shares _secret_spans with redaction rather than running its own loop. When
+    the two disagreed the value was flagged and then not fully cleaned, which
+    is exactly how a secret sitting behind a filesystem path escaped: this
+    returned False because the only pattern that could match it had already
+    been consumed by the path.
+
+    The length guards and the ReDoS scan cap live in _secret_spans.
+    """
+    return bool(_secret_spans(value))
 
 
 _DEFAULT_SENSITIVE_KEYS = {
@@ -311,10 +405,10 @@ def _apply_default_sensitive_key_redaction(
                             "redact",
                             orig_value,
                         )
-            elif isinstance(value, str) and _detect_secret_in_value(value):
-                # Span-scoped: only the secret-looking run is replaced, so the
-                # message around it survives.
-                output[key] = redact_secret_spans(value)
+            elif isinstance(value, str) and (redacted := _redact_if_secret(value)) is not None:
+                # Span-scoped: only the secret-looking runs are replaced, so
+                # the message around them survives.
+                output[key] = redacted
                 if receipt_hook is not None:
                     joined = ".".join(cast(tuple[str, ...], child_path))  # pragma: no mutate — cast is identity
                     receipt_hook(
@@ -340,8 +434,8 @@ def _apply_default_sensitive_key_redaction(
         for item, orig in zip(
             node, original, strict=False
         ):  # pragma: no mutate — strict=False because original may have extra trailing items after truncation upstream
-            if isinstance(item, str) and _detect_secret_in_value(item):
-                result.append(redact_secret_spans(item))
+            if isinstance(item, str) and (redacted := _redact_if_secret(item)) is not None:
+                result.append(redacted)
                 if receipt_hook is not None:
                     receipt_hook("(list_item)", "redact", item)
             else:

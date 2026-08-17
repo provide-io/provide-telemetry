@@ -301,6 +301,36 @@ secret_detection:
     - input: "abcdefghij/klmnopqrst/uvwxyzABCD/EFGHIJKLMN/OPQRSTUVWX"  # pragma: allowlist secret
       detected: true
       note: "Slash-bearing base64: long segments, no lowercase words -- not a path"
+    # A path-shaped match must not end the scan for its pattern. long_base64
+    # matches the path first; suppressing that match as path-shaped moved the
+    # scan on to the next pattern, and long_base64 is the last one -- so the
+    # real secret behind the path was never looked for and reached the log in
+    # full. A path prefix must not be a redaction bypass.
+    - input: "/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A"  # pragma: allowlist secret
+      detected: true
+      note: "Suppressed path followed by a real secret -- the secret still counts"
+
+secret_span_redaction:
+  description: >
+    Span-scoped redaction replaces the whitespace-delimited token holding each
+    secret and leaves the rest of the value readable. Blanking the whole value
+    was the old mechanism, not the requirement; the requirement is that no
+    credential reaches the log. Every match is redacted, because whole-value
+    blanking covered a field's second and third secrets for free and scoping
+    to one token drops that guarantee unless every span is replaced.
+  cases:
+    - input: "token AKIAIOSFODNN7EXAMPLE leaked"  # pragma: allowlist secret
+      output: "token *** leaked"
+      note: "Surrounding words survive"
+    - input: "first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB"  # pragma: allowlist secret
+      output: "first *** second ***"
+      note: "Every secret in the value goes, not only the first"
+    - input: "/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A"  # pragma: allowlist secret
+      output: "/home/deploy/apps/production/current/lib/service ***"
+      note: "A suppressed path does not shadow the secret behind it"
+    - input: "make -C /home/deploy/apps/production/current/native/capture install"
+      output: "make -C /home/deploy/apps/production/current/native/capture install"
+      note: "No secret, no change"
 
 default_sensitive_keys:
   description: >

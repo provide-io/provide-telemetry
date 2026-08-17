@@ -14,7 +14,6 @@
 
 use super::super::LogEvent;
 use super::sanitize_context;
-use crate::pii::REDACTED_SENTINEL;
 use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
 use crate::{register_secret_pattern, reset_secret_patterns_for_tests};
 use regex::Regex;
@@ -110,4 +109,61 @@ fn sanitize_context_leaves_filesystem_paths_alone() {
     let mut event = make_event(line);
     sanitize_context(&mut event, 8);
     assert_eq!(event.message, line);
+}
+
+#[test]
+fn sanitize_context_redacts_every_secret_in_a_message() {
+    // Whole-value blanking covered every credential in a field for free.
+    // Scoping redaction to one token dropped that guarantee silently: the
+    // message is still flagged, but only the first secret goes.
+    let first = "AKIAIOSFODNN7EXAMPLE"; // pragma: allowlist secret
+    let second = "AKIAIOSFODNN7EXAMPLB"; // pragma: allowlist secret
+    let mut event = make_event(&format!("first {first} second {second}"));
+
+    sanitize_context(&mut event, 8);
+
+    assert!(
+        !event.message.contains(first) && !event.message.contains(second),
+        "a secret survived redaction: {}",
+        event.message
+    );
+    assert_eq!(event.message, "first *** second ***");
+}
+
+#[test]
+fn sanitize_context_path_does_not_shadow_a_later_secret() {
+    // long_base64 matches the path first. Suppressing that match as
+    // path-shaped moved the scan on to the next pattern, and long_base64 is
+    // the last one, so the real secret behind the path was never looked for.
+    // A path prefix must not be a redaction bypass.
+    let path = "/home/deploy/apps/production/current/lib/service";
+    let secret = "c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A"; // pragma: allowlist secret
+    let mut event = make_event(&format!("{path} {secret}"));
+
+    sanitize_context(&mut event, 8);
+
+    assert!(
+        !event.message.contains(secret),
+        "secret survived behind a path: {}",
+        event.message
+    );
+    assert_eq!(event.message, format!("{path} ***"));
+}
+
+#[test]
+fn sanitize_context_empty_matching_pattern_redacts_nothing() {
+    // Scanning every match means a pattern that can match the empty string
+    // yields one at every position. Without a guard the walk widens a
+    // zero-length match to whatever token it landed in, blanking a word that
+    // holds no secret.
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    register_secret_pattern("empty_matcher", Regex::new("Z*").expect("valid regex"));
+    let clean = "the quick brown fox jumps over it";
+    let mut event = make_event(clean);
+
+    sanitize_context(&mut event, 8);
+
+    assert_eq!(event.message, clean);
+    reset_secret_patterns_for_tests();
 }

@@ -157,4 +157,30 @@ public class ParityPiiTests
         var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["username"] = "tim" }, true, 8);
         Assert.Equal("tim", r["username"]);
     }
+
+    /// <summary>
+    /// Mirrors spec/behavioral_fixtures.yaml secret_span_redaction. The cases
+    /// that matter are the ones a single-span implementation gets wrong: a
+    /// value holding two secrets, and a secret sitting behind a filesystem
+    /// path that the base64 rule matches first.
+    /// </summary>
+    [Theory]
+    // surrounding words survive
+    [InlineData("token AKIAIOSFODNN7EXAMPLE leaked", "token *** leaked")]
+    // every secret goes, not only the first
+    [InlineData("first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB", "first *** second ***")]
+    // a suppressed path does not shadow the secret behind it
+    [InlineData(
+        "/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A",
+        "/home/deploy/apps/production/current/lib/service ***")]
+    // no secret, no change
+    [InlineData(
+        "make -C /home/deploy/apps/production/current/native/capture install",
+        "make -C /home/deploy/apps/production/current/native/capture install")]
+    public void SecretSpanRedaction(string input, string expected)
+    {
+        var result = Pii.SanitizePayload(
+            new Dictionary<string, object?> { ["data"] = input }, true, 32);
+        Assert.Equal(expected, result["data"]);
+    }
 }

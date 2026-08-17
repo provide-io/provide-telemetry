@@ -165,24 +165,91 @@ public static class Pii
         return wordy * 2 >= segments.Length;
     }
 
-    private static Match? SecretMatch(string text, Dictionary<string, Regex> custom)
+    /// <summary>
+    /// Every secret-looking span in <paramref name="text"/>, widened to whole
+    /// tokens, sorted and coalesced.
+    /// </summary>
+    /// <remarks>
+    /// Every pattern is scanned across the WHOLE value, not stopped at its
+    /// first match, and every pattern is tried even after one has hit.
+    /// Skipping either leaks. Stopping a pattern at its first match let a path
+    /// shadow a real secret: long_base64 matches a path first, suppressing
+    /// that match as path-shaped moved the scan to the next pattern, and
+    /// long_base64 is the last one, so the credential behind the path was
+    /// never looked for. Stopping at the first pattern to hit left a field's
+    /// second and third secrets in the log, which whole-value blanking used to
+    /// cover for free.
+    /// <para>
+    /// A single Match runs first as a fast path: a clean value, which is
+    /// nearly every log field, allocates no list, because the all-matches walk
+    /// is only entered once a pattern is known to match.
+    /// </para>
+    /// </remarks>
+    private static List<(int Start, int End)> SecretSpans(string text, Dictionary<string, Regex> custom)
     {
-        if (string.IsNullOrEmpty(text) || text.Length < MinSecretLength) return null;
-        foreach (var re in BuiltinSecrets)
+        var spans = new List<(int Start, int End)>();
+        if (string.IsNullOrEmpty(text) || text.Length < MinSecretLength) return spans;
+        foreach (var re in BuiltinSecrets) Collect(re, text, spans);
+        foreach (var re in custom.Values) Collect(re, text, spans);
+        return MergeSpans(spans);
+    }
+
+    private static void Collect(Regex re, string text, List<(int Start, int End)> spans)
+    {
+        var first = re.Match(text);
+        if (!first.Success) return;
+        for (var m = first; m.Success; m = m.NextMatch())
         {
-            var m = re.Match(text);
-            if (m.Success && !LooksLikePath(m.Value)) return m;
+            // A registered pattern that can match the empty string carries no
+            // secret; widening a zero-length match to its token would redact a
+            // word for nothing. NextMatch steps past an empty match itself, so
+            // skipping here cannot loop.
+            if (m.Length == 0) continue;
+            if (!LooksLikePath(m.Value)) spans.Add(ExpandToToken(text, m.Index, m.Index + m.Length));
         }
-        foreach (var re in custom.Values)
-        {
-            var m = re.Match(text);
-            if (m.Success && !LooksLikePath(m.Value)) return m;
-        }
-        return null;
     }
 
     /// <summary>
-    /// Replace only the secret-looking token of <paramref name="text"/>.
+    /// Widen a match to its whitespace-delimited token.
+    /// </summary>
+    /// <remarks>
+    /// Redacting the literal match alone can leave part of a credential
+    /// behind: the jwt pattern matches header.payload, and a JWT has THREE
+    /// dot-separated parts, so the signature would survive. Whitespace is the
+    /// boundary a secret cannot cross without ceasing to be one token.
+    /// </remarks>
+    private static (int Start, int End) ExpandToToken(string text, int start, int end)
+    {
+        while (start > 0 && !char.IsWhiteSpace(text[start - 1])) start--;
+        while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
+        return (start, end);
+    }
+
+    /// <summary>
+    /// Sort and coalesce overlapping spans so each region is replaced once.
+    /// Two patterns can match the same credential -- long_base64 and jwt both
+    /// hit a JWT -- and after widening they overlap exactly, which would
+    /// otherwise emit "******".
+    /// </summary>
+    private static List<(int Start, int End)> MergeSpans(List<(int Start, int End)> spans)
+    {
+        if (spans.Count < 2) return spans;
+        spans.Sort((a, b) => a.Start.CompareTo(b.Start));
+        var merged = new List<(int Start, int End)>(spans.Count);
+        foreach (var span in spans)
+        {
+            if (merged.Count > 0 && span.Start <= merged[^1].End)
+            {
+                merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, span.End));
+                continue;
+            }
+            merged.Add(span);
+        }
+        return merged;
+    }
+
+    /// <summary>
+    /// Replace every secret-looking token of <paramref name="text"/>.
     /// </summary>
     /// <remarks>
     /// The match is widened to its whitespace-delimited token first. Redacting
@@ -199,19 +266,29 @@ public static class Pii
 
     private static string RedactSecretSpans(string text, Dictionary<string, Regex> custom)
     {
-        var m = SecretMatch(text, custom);
-        if (m is null) return text;
-        var start = m.Index;
-        var end = m.Index + m.Length;
-        while (start > 0 && !char.IsWhiteSpace(text[start - 1])) start--;
-        while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
-        return string.Concat(text.AsSpan(0, start), Redacted, text.AsSpan(end));
+        var spans = SecretSpans(text, custom);
+        return spans.Count == 0 ? text : ReplaceSpans(text, spans);
+    }
+
+    /// <summary>Swap each span for the redaction sentinel.</summary>
+    private static string ReplaceSpans(string text, List<(int Start, int End)> spans)
+    {
+        var builder = new StringBuilder(text.Length);
+        var previousEnd = 0;
+        foreach (var (start, end) in spans)
+        {
+            builder.Append(text, previousEnd, start - previousEnd);
+            builder.Append(Redacted);
+            previousEnd = end;
+        }
+        builder.Append(text, previousEnd, text.Length - previousEnd);
+        return builder.ToString();
     }
 
     public static bool DetectSecretInValue(string text)
     {
         var (_, custom) = SnapshotRules();
-        return SecretMatch(text, custom) is not null;
+        return SecretSpans(text, custom).Count > 0;
     }
 
     public static string HashValue(object? value)
@@ -283,9 +360,12 @@ public static class Pii
             // Span-scoped: only the credential token is replaced, so the rest
             // of the string stays readable. A sensitive KEY still blanks
             // wholesale above, where the entire value is the secret.
-            if (!DetectSecret(s, context.Custom)) return (true, value);
+            // One scan, not two: detecting and then redacting ran the whole
+            // pattern sweep twice for every value carrying a credential.
+            var spans = SecretSpans(s, context.Custom);
+            if (spans.Count == 0) return (true, value);
             Redact(value, fieldPath, context);
-            return (true, RedactSecretSpans(s, context.Custom));
+            return (true, ReplaceSpans(s, spans));
         }
 
         if (value is Dictionary<string, object?> nested)
@@ -354,9 +434,6 @@ public static class Pii
         }
         return true;
     }
-
-    private static bool DetectSecret(string text, Dictionary<string, Regex> custom)
-        => SecretMatch(text, custom) is not null;
 
     private static PIIRule CloneRule(PIIRule r) => new()
     {

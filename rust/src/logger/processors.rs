@@ -21,7 +21,7 @@ use serde_json::Value;
 use crate::config::TelemetryConfig;
 use crate::fingerprint::compute_error_fingerprint;
 use crate::harden::{clean_key, cleaned_key_claims_slot, harden_value, HardenLimits};
-use crate::pii::{detect_secret_in_string, redact_secret_spans, sanitize_payload, REDACTED_SENTINEL};
+use crate::pii::{redact_if_secret, sanitize_payload};
 use crate::runtime::get_runtime_config;
 use crate::schema::{event_name, get_strict_schema, validate_required_keys};
 
@@ -262,9 +262,10 @@ fn add_error_fingerprint(event: &mut LogEvent) {
 /// string. Message is checked directly (not via the map-based engine) so
 /// `Path: ["*"]` rules can't match a sentinel key. Mirrors Python/Go.
 fn sanitize_context(event: &mut LogEvent, max_depth: usize) {
-    let message_has_secret = detect_secret_in_string(&event.message);
-    if message_has_secret {
-        event.message = redact_secret_spans(&event.message);
+    // One scan, not two: detecting and then redacting ran the whole pattern
+    // sweep twice for every message carrying a credential.
+    if let Some(redacted) = redact_if_secret(&event.message) {
+        event.message = redacted;
     }
     if event.context.is_empty() {
         return;

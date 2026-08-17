@@ -192,6 +192,69 @@ func TestRedactSecretSpans_LeavesFilesystemPathsAlone(t *testing.T) {
 	}
 }
 
+func TestRedactSecretSpans_RedactsEverySecretInAValue(t *testing.T) {
+	// Whole-value blanking covered every credential in a field for free.
+	// Scoping redaction to one token dropped that guarantee silently: the
+	// field is still flagged, but only the first secret goes.
+	const first = "AKIAIOSFODNN7EXAMPLE"  // pragma: allowlist secret
+	const second = "AKIAIOSFODNN7EXAMPLB" // pragma: allowlist secret
+	if !piicore.DetectSecretInValue(first, nil) || !piicore.DetectSecretInValue(second, nil) {
+		t.Fatal("both constants must be secrets on their own")
+	}
+
+	out := piicore.RedactSecretSpans("first "+first+" second "+second, nil)
+
+	if strings.Contains(out, first) || strings.Contains(out, second) {
+		t.Errorf("a secret survived redaction: %s", out)
+	}
+	if out != "first *** second ***" {
+		t.Errorf("unexpected redaction: %s", out)
+	}
+}
+
+func TestRedactSecretSpans_PathDoesNotShadowLaterSecret(t *testing.T) {
+	// long_base64 matches the path first. Suppressing that match as
+	// path-shaped moved the scan on to the next pattern, and long_base64 is
+	// the last one, so the real secret behind the path was never looked for.
+	// A path prefix must not be a redaction bypass.
+	const path = "/home/deploy/apps/production/current/lib/service"
+	const secret = "c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A" // pragma: allowlist secret
+	if piicore.DetectSecretInValue(path, nil) {
+		t.Fatal("path must be suppressed on its own")
+	}
+	if !piicore.DetectSecretInValue(secret, nil) {
+		t.Fatal("secret must be caught on its own")
+	}
+
+	out := piicore.RedactSecretSpans(path+" "+secret, nil)
+
+	if strings.Contains(out, secret) {
+		t.Errorf("secret survived behind a path: %s", out)
+	}
+	if out != path+" ***" {
+		t.Errorf("unexpected redaction: %s", out)
+	}
+}
+
+func TestRedactSecretSpans_CustomPatternOrderDoesNotChangeOutput(t *testing.T) {
+	// customPatterns is a map, and Go randomises map iteration order. While
+	// detection returned a bool that did not matter; now the iteration order
+	// picks WHICH span is redacted, so with two matching patterns the output
+	// varied between runs and diverged from the other four runtimes.
+	// Redacting every match is what makes this deterministic.
+	custom := map[string]*regexp.Regexp{
+		"alpha": regexp.MustCompile(`ALPHA-[A-Z0-9]{12}`),
+		"beta":  regexp.MustCompile(`BETA-[A-Z0-9]{12}`),
+	}
+	const line = "a ALPHA-AAAABBBBCCCC b BETA-DDDDEEEEFFFF c"
+
+	for i := range 32 {
+		if got := piicore.RedactSecretSpans(line, custom); got != "a *** b *** c" {
+			t.Fatalf("run %d: map order changed the output: %s", i, got)
+		}
+	}
+}
+
 func TestRegisterSecretPattern_SameNameReplacesPrevious(t *testing.T) {
 	resetPII(t)
 	// Register a pattern that won't match our test string.
@@ -351,5 +414,36 @@ func TestSanitizePayload_DropMode_PrimitiveSliceNotDroppedWithoutMatch(t *testin
 	}
 	if len(tags) != 3 {
 		t.Errorf("expected 3 tags, got %d: %v", len(tags), tags)
+	}
+}
+
+func TestRedactSecretSpans_EmptyMatchingPatternRedactsNothing(t *testing.T) {
+	// Scanning every match means a pattern that can match the empty string
+	// yields one at every position. Without a guard the walk widens a
+	// zero-length match to whatever token it landed in, blanking a word that
+	// holds no secret.
+	custom := map[string]*regexp.Regexp{"empty": regexp.MustCompile(`Z*`)}
+	const clean = "the quick brown fox jumps over it"
+
+	if got := piicore.RedactSecretSpans(clean, custom); got != clean {
+		t.Errorf("empty-matching pattern redacted an innocent word: %s", got)
+	}
+}
+
+func TestRedactSecretSpans_WidensLeftwardToTheTokenStart(t *testing.T) {
+	// The credential is glued to a prefix, so the match begins mid-token and
+	// redaction has to walk left to the token's first byte. Every other test
+	// puts the secret at a token boundary, where that walk never runs — and a
+	// missing walk would leave the prefix behind with the secret's leading
+	// bytes still attached to it.
+	const secret = "AKIAIOSFODNN7EXAMPLE" // pragma: allowlist secret
+
+	out := piicore.RedactSecretSpans("prefix"+secret+" tail", nil)
+
+	if strings.Contains(out, secret) {
+		t.Errorf("secret survived redaction: %s", out)
+	}
+	if out != "*** tail" {
+		t.Errorf("unexpected redaction: %s", out)
 	}
 }

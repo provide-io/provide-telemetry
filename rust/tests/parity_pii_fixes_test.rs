@@ -422,3 +422,38 @@ mod classification_policy_enforcement {
         teardown();
     }
 }
+
+// ── Span-Scoped Redaction ───────────────────────────────────────────────────
+
+/// Mirrors spec/behavioral_fixtures.yaml secret_span_redaction. The cases that
+/// matter are the ones a single-span implementation gets wrong: a value holding
+/// two secrets, and a secret sitting behind a filesystem path that the base64
+/// rule matches first.
+#[test]
+fn parity_test_secret_span_redaction_matches_fixture() {
+    let _guard = pii_fixes_lock().lock().expect("lock poisoned");
+    replace_pii_rules(vec![]);
+    let cases = [
+        // surrounding words survive
+        ("token AKIAIOSFODNN7EXAMPLE leaked", "token *** leaked"),
+        // every secret goes, not only the first
+        (
+            "first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB",
+            "first *** second ***",
+        ),
+        // a suppressed path does not shadow the secret behind it
+        (
+            "/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A",
+            "/home/deploy/apps/production/current/lib/service ***",
+        ),
+        // no secret, no change
+        (
+            "make -C /home/deploy/apps/production/current/native/capture install",
+            "make -C /home/deploy/apps/production/current/native/capture install",
+        ),
+    ];
+    for (input, expected) in cases {
+        let sanitized = sanitize_payload(&json!({ "data": input }), true, 32);
+        assert_eq!(sanitized["data"], expected, "input: {input}");
+    }
+}
