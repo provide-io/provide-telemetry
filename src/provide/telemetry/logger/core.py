@@ -141,11 +141,15 @@ def _make_filtering_bound_logger(level: int) -> type[structlog.typing.BindableLo
         if method_level < structlog_level:
             setattr(cls, method_name, _permissive_nop)
 
-    # .trace() — forwards through debug() with _trace marker when TRACE active
+    # .trace() — forwards through debug() with _trace marker when TRACE active.
+    # *args is not decoration: structlog's bound-logger methods are
+    # (event, *args, **kw) and interpolate event % args, so every sibling level
+    # accepts log.info("chunk %d", n). Narrowing trace to (event, **kw) made
+    # demoting an info call to trace a TypeError instead of a quieter log.
     if level <= TRACE:
 
-        def _trace(self: Any, event: str, **kw: Any) -> None:
-            self.debug(event, _trace=True, **kw)
+        def _trace(self: Any, event: str, *args: Any, **kw: Any) -> None:
+            self.debug(event, *args, _trace=True, **kw)
     else:
         _trace = _permissive_nop
     setattr(cls, "trace", _trace)  # noqa: B010  # pragma: no mutate — API name string is load-bearing; mutation would rename the public method
@@ -474,8 +478,8 @@ class _TraceWrapper:
     def __getattr__(self, item: str) -> Any:
         return getattr(self._logger, item)
 
-    def trace(self, event: str, **kwargs: Any) -> None:
-        self._logger.trace(event, **kwargs)
+    def trace(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._logger.trace(event, *args, **kwargs)
 
     def is_debug_enabled(self) -> bool:
         return bool(self._logger.is_debug_enabled())
@@ -494,8 +498,8 @@ class _LazyLogger:
     def __getattr__(self, item: str) -> Any:
         return getattr(self._resolve(), item)
 
-    def trace(self, event: str, **kwargs: Any) -> None:
-        self._resolve().trace(event, **kwargs)
+    def trace(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._resolve().trace(event, *args, **kwargs)
 
     def is_debug_enabled(self) -> bool:
         return self._resolve().is_debug_enabled()
