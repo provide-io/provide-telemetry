@@ -31,6 +31,21 @@ from provide.telemetry.logger import core as logger_core
 from provide.telemetry.metrics import provider as metrics_provider
 from provide.telemetry.tracing import provider as tracing_provider
 
+# The deadline these tests hand to the bounded-drain path, and the slack the
+# lower bound needs to survive Windows.
+#
+# `run_bounded_drain` waits on `threading.Event.wait(timeout)`, which on Windows
+# lowers to a wait bounded by the system timer tick — 15.6 ms by default.
+# `time.monotonic()` reads the high-resolution performance counter instead, so a
+# 200 ms wait legitimately measures as little as ~187 ms and CI failed on the
+# 13 ms difference. Returning a hair early from a *timeout* is correct: the
+# contract is that the deadline is an upper bound, and the lower bound here is
+# only a proxy for "the caller actually blocked" rather than returning at once.
+# One tick of slack keeps that proxy honest — a drain that never waited returns
+# in microseconds, nowhere near this floor.
+_DEADLINE = 0.2
+_WAIT_SLACK = 0.05
+
 
 class _HangingProvider:
     """A provider whose drain never returns, like an unreachable OTLP endpoint."""
@@ -173,16 +188,18 @@ def test_three_stalled_providers_share_the_callers_deadline(
 
     started = time.monotonic()
     try:
-        setup_mod.shutdown_telemetry(0.2)
+        setup_mod.shutdown_telemetry(_DEADLINE)
         elapsed = time.monotonic() - started
     finally:
         for provider in providers:
             provider.release.set()
         drain._reset_abandoned_workers_for_tests()
 
-    # Sequential would be ~0.6s. Bounded well below that, and at or above the
-    # deadline itself so the assertion still fails if nothing was drained.
-    assert 0.2 <= elapsed < 0.45, f"three stalled teardowns took {elapsed:.2f}s"
+    # Sequential would be ~0.6s. The upper bound is the contract: three stalled
+    # teardowns cost one deadline, not three. shutdown_telemetry() returns None,
+    # so the floor below is the only evidence the caller blocked at all — see
+    # _WAIT_SLACK for why it is not the deadline exactly.
+    assert _DEADLINE - _WAIT_SLACK <= elapsed < 0.45, f"three stalled teardowns took {elapsed:.2f}s"
     for provider in providers:
         assert provider.calls[0] == "force_flush"
 
@@ -198,15 +215,19 @@ def test_three_stalled_flushes_share_the_callers_deadline(
 
     started = time.monotonic()
     try:
-        drained = setup_mod.flush_signals(0.2)
+        drained = setup_mod.flush_signals(_DEADLINE)
         elapsed = time.monotonic() - started
     finally:
         for provider in providers:
             provider.release.set()
         drain._reset_abandoned_workers_for_tests()
 
+    # The per-signal verdicts are not a substitute for the wall-clock floor: a
+    # drain that waited zero seconds also reports "timed_out", so this dict
+    # stays identical if the deadline stops being honoured. Verified by
+    # injecting that regression — only the floor caught it.
     assert drained == {"logs": "timed_out", "traces": "timed_out", "metrics": "timed_out"}
-    assert 0.2 <= elapsed < 0.45, f"three stalled flushes took {elapsed:.2f}s"
+    assert _DEADLINE - _WAIT_SLACK <= elapsed < 0.45, f"three stalled flushes took {elapsed:.2f}s"
 
 
 # ── run_drains_together ────────────────────────────────────────────────

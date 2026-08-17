@@ -374,7 +374,9 @@ fn apply_rules(node: &Value, path: &[String], rules: &[PIIRule], max_depth: usiz
                 }
 
                 let lowered = key.to_ascii_lowercase();
-                let sensitive_key = DEFAULT_SENSITIVE.iter().any(|candidate| candidate == &lowered);
+                let sensitive_key = DEFAULT_SENSITIVE
+                    .iter()
+                    .any(|candidate| candidate == &lowered);
                 // Span-scoped for a secret-bearing string: only the credential
                 // tokens go. A sensitive KEY still blanks wholesale, since
                 // there the whole value is the secret.

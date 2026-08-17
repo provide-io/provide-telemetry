@@ -160,9 +160,9 @@ Every level method — `.trace()`, `.debug()`, `.info()`, `.warning()`,
 `(event, *args, **kwargs)`, and interpolates `event % args`:
 
 ```python
-log.info("io.chunk.read", size=len(chunk))    # event + structured fields
-log.info("chunk %d of %s", 3, "reader")       # printf-style interpolation
-log.trace("chunk %d of %s", 3, "reader")      # identical at every level
+log.info("io.chunk.read", size=len(chunk))  # event + structured fields
+log.info("chunk %d of %s", 3, "reader")  # printf-style interpolation
+log.trace("chunk %d of %s", 3, "reader")  # identical at every level
 ```
 
 Both shapes work at every level, including `.trace()`. Demoting a call from
