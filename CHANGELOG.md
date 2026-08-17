@@ -8,6 +8,49 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [0.7.2] — 2026-08-16
+
+All five languages. The redaction fix is present in every implementation;
+the `.trace()` fix is Python only.
+
+### Fixed
+
+- **Secret redaction kept only the first match in a value.** A string
+  carrying two credentials lost the first and emitted the second intact,
+  because the scan stopped at the earliest match and replaced that single
+  span. `log.info("creds", v="AKIA… and eyJ…")` published the JWT.
+- **A filesystem path could shield a secret behind it.** Path-shaped
+  matches are deliberately exempt so log lines naming real files stay
+  readable, but the exemption was applied to the first match and then
+  abandoned the whole value — a genuine credential later in the same
+  string was never examined.
+
+  Both follow from scanning for one match instead of all of them. Every
+  pattern now runs across the whole value, each match is judged on its own
+  token, and the surviving spans are merged and replaced right to left.
+  The path exemption is per match, not per value. A `search`-first fast
+  path keeps the clean case at one scan: collecting all matches
+  unconditionally cost 92% on a benchmark, because `finditer` allocates
+  per pattern even when nothing matches.
+
+- **`logger.trace()` rejected positional arguments** (Python). structlog's
+  bound-logger methods are `(event, *args, **kw)` and interpolate
+  `event % args`, so `log.info("chunk %d", n)` works at every level except
+  trace, where three hand-written definitions narrowed the signature.
+  Demoting an `info` call to `trace` — the obvious way to quiet a noisy
+  log — raised `TypeError`, and it raised even when TRACE was disabled and
+  the call was a guaranteed no-op.
+
+### Changed
+
+- **Go `internal/` packages are now mutation-gated.** `internal/piicore`,
+  `internal/fingerprintcore` and `internal/schemacore` had no mutation
+  coverage at all despite 100% line coverage: the root gremlins step
+  excludes `internal/` and the logger step targets `./logger`. piicore
+  failed on its first gated run, which is how the redaction leak surfaced.
+- C# Stryker baseline re-measured at 86.50% (1634 killed-or-timed-out of
+  1889 scored); the mutant population moved with `Pii.cs`. Break stays 85.
+
 ## [0.7.1] — 2026-08-15
 
 Python only. The other languages remain on 0.7.0 — their renderers already

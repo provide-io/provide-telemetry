@@ -6,6 +6,18 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
+## [0.7.2] — 2026-08-16
+
+### Fixed
+
+- **Secret redaction kept only the first match in a value.** A string
+  carrying two credentials lost the first and emitted the second intact.
+  A filesystem path earlier in the string could also shield a genuine
+  credential behind it, because the path exemption was applied to the
+  first match and then abandoned the whole value. Every pattern now runs
+  across the whole value, each match is judged on its own token, and the
+  surviving spans are merged and replaced right to left.
+
 ## [0.7.0] — 2026-08-14
 
 First release.

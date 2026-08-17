@@ -2,8 +2,8 @@
 
 This document is the cross-language reference for how `provide-telemetry`
 keeps state consistent under concurrent access. For the higher-level runtime
-architecture, see [`ARCHITECTURE.md`](architecture.md); for the
-initialisation sequence, see [`INTERNALS.md`](internals.md).
+architecture, see [`architecture.md`](architecture.md); for the
+initialisation sequence, see [`internals.md`](internals.md).
 
 ## Shared invariants
 
@@ -87,9 +87,9 @@ cannot be safely swapped after spans are in flight.
 
 ## TypeScript
 
-- `typescript/src/setup.ts` — module-singleton pattern with an init sentinel.
-  A promise-valued `_initialising` handle lets concurrent `setupTelemetry()`
-  calls await the same installation.
+- `typescript/src/config.ts` — module-singleton pattern with an init sentinel.
+  `setupTelemetry()` and `setupTelemetryAsync()` live here; a promise-valued
+  handle lets concurrent async setup calls await the same installation.
 - Request-scoped state uses Node's `AsyncLocalStorage`. The runtime
   convention is the same as Python's `contextvars`: each request's bindings
   are isolated from every concurrent request and restored automatically
@@ -136,9 +136,11 @@ cannot be safely swapped after spans are in flight.
   entirely — metrics and logs then return `DeadlineExceeded` without exporting.
 - Per-request context flows through Go's standard `context.Context`. There
   is no ambient goroutine-local storage; every function that needs trace
-  or session state receives a `context.Context` parameter. The ASGI /
-  HTTP middleware attaches the context on inbound requests and removes it
-  on response.
+  or session state receives a `context.Context` parameter. Go ships no
+  HTTP middleware — the caller extracts inbound context with
+  `ExtractW3CContext` / `BindPropagationContext` at request start and lets
+  the `context.Context` fall out of scope at request end. Only Python has a
+  pre-built request-lifecycle wrapper; see the capability matrix.
 - Cardinality and consent subsystems use a two-phase prune pattern
   (snapshot candidates under the lock, release, delete survivors under
   the lock again) so they never hold the mutex across expensive
@@ -219,5 +221,5 @@ cannot be safely swapped after spans are in flight.
   `_reset_*_for_tests` helpers.
 
 For the initialisation ordering and the processor-chain order, see
-[`INTERNALS.md`](internals.md) — this document intentionally does not
+[`internals.md`](internals.md) — this document intentionally does not
 duplicate that content.

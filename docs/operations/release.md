@@ -221,13 +221,33 @@ go tool cover -func=coverage.out | grep total   # must be 100.0%
 GOWORK=off go vet ./...
 GOWORK=off golangci-lint run
 GOWORK=off govulncheck ./...
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="mutation_constants.go" ./logger
+# Mutation: six surfaces, each through the wrapper. Do NOT call `gremlins
+# unleash` directly — its --threshold-* flags do not gate (v0.6.0 exits 0 even
+# at an impossible 101%). scripts/run_gremlins_gate.sh is what fails the run,
+# on a survivor, an uncovered mutant, a timeout, or a missing summary.
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="mutation_constants.go" ./logger
+
+# The three internal/ packages. The root step excludes "internal/" and the
+# logger step targets ./logger, so without these they are mutated by nothing.
+# Target stays "." because that is where the tests that exercise them live;
+# --coverpkg attributes that coverage onto the internal package and the
+# exclusions narrow what is mutated back down to it.
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/piicore" --exclude-files="secret_patterns_generated.go" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/schemacore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/fingerprintcore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/piicore/" --exclude-files="internal/schemacore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/schemacore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/piicore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
 cd otel
 GOWORK=off go test -race -coverprofile=coverage.out .
 go tool cover -func=coverage.out | grep total   # must be 100.0%
-GOWORK=off gremlins unleash --workers=1 --test-cpu=1 --timeout-coefficient=30 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="cmd/flush_collector_probe/" --exclude-files="examples/" .
+# Locally this module needs GOTOOLCHAIN=go1.26.1: gremlins copies it to a temp
+# dir where its `replace => ../` and Go's toolchain auto-switching disagree.
+GOWORK=off ../../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="cmd/flush_collector_probe/" --exclude-files="examples/" .
 ```
+
+Run these one at a time. Each saturates every core by default, and gremlins is
+memory-hungry enough that stacking them alongside another language's mutation
+gate will OOM a small workstation. CI runs them as separate jobs on separate
+runners, which is why `ci-mutation.yml` passes no concurrency caps.
 
 ### TypeScript validation before release
 

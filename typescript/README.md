@@ -161,7 +161,7 @@ import { sanitize, registerPiiRule } from '@provide-io/telemetry';
 // Built-in: redacts password, token, secret, authorization, api_key, ...
 const obj = { user: 'alice', password: 'hunter2' }; // pragma: allowlist secret
 sanitize(obj);
-// obj is now { user: 'alice', password: '[REDACTED]' }
+// sanitize() mutates in place — obj is now { user: 'alice', password: '***' }
 
 // Custom rule (dot-separated path; '*' as wildcard segment)
 registerPiiRule({ path: 'user.ssn', mode: 'redact' });

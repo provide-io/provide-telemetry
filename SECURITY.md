@@ -36,10 +36,13 @@ Pin OpenTelemetry packages with **caret ranges** (e.g. `^1.27.0`). Run the full 
 
 ## PII and Secret Detection
 
-Both language implementations include built-in sanitization:
-- Default fields (`password`, `token`, `secret`, `authorization`, `api_key`) are redacted automatically.
+All five language implementations include built-in sanitization, with identical
+behaviour pinned by the shared fixtures in `spec/behavioral_fixtures.yaml`:
+- Default fields (`password`, `token`, `secret`, `authorization`, `api_key`) are redacted automatically, with `***` as the sentinel in every language.
 - The PII rule engine supports custom rules with nested object traversal.
-- Secret pattern scanning detects high-entropy strings and known credential formats in attribute values.
+- Secret pattern scanning matches known credential shapes (AWS access keys, JWTs, GitHub tokens) plus long hex and base64 runs, in attribute values **and** in the free-form log message. Detection is shape-based, not an entropy estimate.
+- Every match is redacted, not just the first, and the redaction widens to the whole whitespace-delimited token so no tail of a credential survives. Tokens shaped like filesystem paths are exempt so ordinary log lines stay readable.
+- Register organization-specific token shapes with `register_secret_pattern()` (and its per-language equivalents).
 
 ## Configuration Hardening
 

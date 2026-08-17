@@ -42,6 +42,8 @@ Use `provide.telemetry.event(*segments)` when composing structured events.
   - Error fingerprinting and session correlation.
 - `telemetry/13_security_hardening.py`
   - Security hardening: input sanitization, secret detection.
+- `telemetry/14_data_governance.py`
+  - Consent levels, data classification, and cryptographic redaction receipts.
 
 Run:
 
@@ -59,6 +61,7 @@ uv run --group dev --extra otel python examples/telemetry/10_performance_metrics
 uv run --group dev --extra otel python examples/telemetry/11_lazy_loading_proof.py
 uv run --group dev --extra otel python examples/telemetry/12_error_fingerprint_and_sessions.py
 uv run --group dev --extra otel python examples/telemetry/13_security_hardening.py
+uv run --group dev --extra otel python examples/telemetry/14_data_governance.py
 ```
 
 ## Rust

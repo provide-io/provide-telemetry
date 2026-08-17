@@ -69,7 +69,11 @@ Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) 
 
 - `pyproject.toml` `[tool.mutmut] source_paths` is the source of truth for Python
   mutation roots — it is what `scripts/run_mutation_gate.py` actually runs against.
-- Python mutation policy floor is `95.0` (configured in `scripts/run_mutation_gate.py` and `.github/workflows/ci-mutation.yml`).
+- The bar is a **100% kill** — `_is_clean()` in `scripts/run_mutation_gate.py` passes
+  only on zero survivors, timeouts, suspicious and no-tests results. The `95.0`
+  `--min-mutation-score` floor (configured in `scripts/run_mutation_gate.py` and
+  `.github/workflows/ci-mutation.yml`) is a second guard against an implausibly
+  short run, not the threshold to aim for.
 - If mutation roots or test selection changes, rerun the local mutation gate before declaring policy status to avoid stale baseline assumptions.
 
 ## Docs Quality

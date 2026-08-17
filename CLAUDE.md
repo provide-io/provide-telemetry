@@ -91,8 +91,14 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
   - **Python** — `scripts/run_mutation_gate.py`. Note `_is_clean()` requires *zero*
     survivors, timeouts, suspicious and no-tests results; `--min-mutation-score` is an
     additional floor, not the bar. A run at 99% still fails.
-  - **Go** — gremlins for the root package, `logger`, and the `otel` module, run
-    through `scripts/run_gremlins_gate.sh`. The wrapper is what enforces the gate:
+  - **Go** — gremlins over six surfaces: the root package, `logger`, the three
+    `internal/` packages (`piicore`, `fingerprintcore`, `schemacore`), and the `otel`
+    module — each run through `scripts/run_gremlins_gate.sh`. The `internal/` steps
+    target `.` rather than the package itself, because gremlins builds its coverage
+    profile from the tests of the target path and almost everything exercising those
+    packages lives in the root package; `--coverpkg` attributes that coverage onto the
+    internal package and the `--exclude-files` list narrows what is mutated back down
+    to it. The wrapper is what enforces the gate:
     gremlins' own `--threshold-efficacy` / `--threshold-mcover` flags do **not** fail
     the run — v0.6.0 exits 0 even when asked for an impossible 101% — so the flags are
     kept only for the numbers they print. The wrapper fails on a surviving, uncovered
@@ -191,7 +197,8 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `spec/telemetry-api.yaml` — canonical API surface definition; all languages validate against it.
 - `spec/validate_conformance.py` — checks language exports against spec.
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
-- `VERSION` contains major.minor only (e.g. `0.3`); each language tracks patch independently.
+- `VERSION` holds the canonical full version (currently `0.7.1`); only its major.minor is
+  compared across languages, so each language tracks its own patch and they legitimately drift.
 - `e2e/` — cross-language E2E tests.
 - Language directories: `typescript/`, `go/`, `rust/`, `csharp/` — each self-contained with own build config.
 - Python stays at repo root (`src/`, `pyproject.toml`, `tests/`).

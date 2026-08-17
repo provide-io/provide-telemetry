@@ -86,12 +86,26 @@ When adding new telemetry fields:
 2. Introduce aliases in dashboards/queries first.
 3. Announce canonical key in changelog and docs.
 
-## Python File Header Convention
+## Source File Header Convention
 
-Use the canonical SPDX block for all Python files, with optional shebang first:
+Use the canonical SPDX block for all Python, Go, Rust and C# files, with an
+optional shebang first. `scripts/check_spdx_headers.py` enforces it:
 
-- `SPDX-FileCopyrightText` with `Copyright (C) 2026 provide.io llc`
-- `SPDX-License-Identifier` with `Apache-2.0`
-- `SPDX-Comment` with `Part of Provide Telemetry.`
-- `#`
-- blank line
+```python
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+```
+
+All five lines are required for Python, in that exact order, ending with a
+blank line. The project name in `SPDX-Comment` is the package name
+`provide-telemetry` — lowercase and hyphenated.
+
+Go, Rust and C# are held to a shorter canonical block: only the
+`SPDX-FileCopyrightText` and `SPDX-License-Identifier` lines, with `//`
+markers, are required and checked. Rust and C# sources carry the
+`SPDX-Comment` line as well by convention; Go sources do not.
+
+`Apache-2.0` is the only license identifier the checker accepts — widening
+that allowlist is a policy decision, not a fix.

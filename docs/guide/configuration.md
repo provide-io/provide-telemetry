@@ -158,6 +158,16 @@ Per-signal retry, backoff, timeout, and failure policy. Each variable is prefixe
 | `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | int | `8` | Maximum nesting depth for dict/list attribute values |
 <!-- END GENERATED CONFIG: security -->
 
+## Consent
+
+Read directly by the consent subsystem at first use, not parsed by
+`TelemetryConfig.from_env()` — so it does not appear in the generated tables
+above and is not part of the config-parity contract.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `PROVIDE_CONSENT_LEVEL` | str | `FULL` | Consent gate for telemetry collection: `FULL`, `FUNCTIONAL`, `MINIMAL`, or `NONE`. Parsed case-insensitively after trimming whitespace. An unrecognised value is ignored — it leaves the current level in place rather than raising, so an unset or misspelled variable yields `FULL`. |
+
 ## OpenObserve (Examples and E2E Only)
 
 These are not parsed by `TelemetryConfig.from_env()` but are used by the example scripts and E2E tests.

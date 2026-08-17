@@ -498,7 +498,7 @@ health_snapshot:
     circuit_open_count: 0
     setup_error: null
     receipt_failures: 0
-  circuit_state_values: ["closed", "open", "half_open"]
+  circuit_state_values: ["closed", "open", "half-open"]
 
 pii_depth:
   description: >

@@ -97,7 +97,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["merge_contextvars"] --> B["merge_runtime_context"]
+    A["merge_contextvars"] --> A2["merge_runtime_context"]
+    A2 --> B["inject_logger_name"]
     B --> B2["inject_das_fields"]
     B2 --> C["add_log_level"]
     C --> D{"include_timestamp?"}
@@ -107,17 +108,21 @@ flowchart LR
     F --> G["add_standard_fields"]
     G --> G2["add_error_fingerprint"]
     G2 --> H["enforce_event_schema"]
-    H --> I["apply_sampling"]
-    I -->|DropEvent| X["discarded"]
+    H --> H2{"module_levels?"}
+    H2 -->|yes| H3["make_level_filter"]
+    H2 -->|no| I["apply_sampling"]
+    H3 -->|DropEvent| X["discarded"]
+    H3 --> I
+    I -->|DropEvent| X
     I --> J["sanitize_sensitive_fields"]
-    J --> J2{"module_levels?"}
-    J2 -->|yes| J3["make_level_filter"]
-    J2 -->|no| K{"include_caller?"}
-    J3 --> K
+    J --> K{"include_caller?"}
     K -->|yes| L["CallsiteParameterAdder"]
-    K -->|no| M["Renderer"]
+    K -->|no| M{"fmt == json?"}
     L --> M
-    M --> N["console / json / pretty"]
+    M -->|yes| M2["rename_event_to_message"]
+    M -->|no| N["render_with_backpressure_extra"]
+    M2 --> N
+    N --> O["console / json / pretty"]
 ```
 
 ## Setup and Shutdown State Machine
@@ -179,13 +184,16 @@ flowchart TD
 | `_resource.py` | OTel resource precedence ladder (default < `OTEL_*` env < config) |
 | `_otel.py` | Lazy OTel import helpers, W3C context attach/inject |
 | `logger/core.py` | Structlog pipeline, handler construction |
+| `logger/handlers.py` | Stdlib logging handlers used by the structlog pipeline |
 | `logger/_otel_logs.py` | Stateless OTel log-provider wiring |
 | `logger/context.py` | Contextvars for request/session context |
 | `logger/processors.py` | Processor chain: schema, sampling, PII, standard fields |
 | `logger/pretty.py` | Pretty renderer with configurable colors |
 | `tracing/provider.py` | OTel TracerProvider or no-op fallback |
 | `tracing/context.py` | Contextvars for trace_id/span_id |
+| `tracing/context_runtime.py` | Cross-context-safe OTel attach/detach (avoids `Token.reset()` raising across contexts) |
 | `tracing/decorators.py` | `@trace` async decorator |
+| `tracing/span.py` | Sync block-level `span()` context manager and span attribute helpers |
 | `metrics/provider.py` | OTel MeterProvider or fallback |
 | `metrics/api.py` | `counter()`, `gauge()`, `histogram()` constructors |
 | `metrics/instruments.py` | Re-export shim for Counter/Gauge/Histogram (delegates to `fallback.py`) |
@@ -197,7 +205,10 @@ flowchart TD
 | `sampling.py` | Per-signal probabilistic sampling with overrides |
 | `backpressure.py` | Bounded queue ticket system |
 | `resilience.py` | Retry, timeout, circuit breaker, ThreadPoolExecutor |
-| `pii.py` | PII rule engine with secret detection (built-in + custom patterns) and nested traversal |
+| `resilient_exporter.py` | Per-export resilience wrappers so every `export()` runs under the policy, not just exporter construction |
+| `pii.py` | PII rule engine with span-scoped secret detection (built-in + custom patterns) and nested traversal |
+| `_secret_patterns_generated.py` | Built-in secret patterns, generated from `spec/secret_patterns.yaml` — do not edit |
+| `headers.py` | Shared, safe header extraction (`get_header`) |
 | `cardinality.py` | TTL-based attribute cardinality guards |
 | `health.py` | Self-observability counters and snapshot |
 | `propagation.py` | W3C traceparent/tracestate/baggage extraction |

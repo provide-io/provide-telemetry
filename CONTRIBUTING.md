@@ -55,7 +55,7 @@ Every PR must pass these gates in CI:
 
 | Gate | Command |
 |------|---------|
-| Mutation testing | `uv run python scripts/run_mutation_gate.py --min-mutation-score 95` — zero survivors required in every language (mutmut / Stryker / gremlins / cargo-mutants / Stryker.NET) |
+| Mutation testing | `uv run python scripts/run_mutation_gate.py --min-mutation-score 95` — zero survivors in Python (mutmut), Go (gremlins, six package surfaces) and Rust (cargo-mutants). TypeScript (Stryker) breaks below 95 core / 80 OTLP and currently measures 100%; C# (Stryker.NET) breaks below 85 against a measured baseline — see `csharp/stryker-config.json` for what survives and why |
 | SPDX headers | `uv run python scripts/check_spdx_headers.py` — Apache-2.0 on all Python, Go, Rust, and C# sources (TypeScript is checked in `ci-typescript.yml`) |
 | REUSE compliance | `uvx reuse lint` — every file carries or is annotated with licensing info |
 | Spelling | `uv run codespell` |

@@ -146,11 +146,17 @@ build agree to within ~15%.
 
 ## Mutation Exemptions
 
-The Python mutation gate (`scripts/run_mutation_gate.py`) targets a minimum
-95% mutation score. Some source lines cannot be killed by any reasonable unit
-test — for example, ANSI formatting strings inside a log renderer, or a
-call-site default that every caller overrides. Those lines carry a
-`# pragma: no mutate` annotation so `mutmut` skips them.
+The Python mutation gate (`scripts/run_mutation_gate.py`) requires a **100%
+kill**: `_is_clean()` passes only on zero survivors, zero timeouts, zero
+suspicious and zero no-tests results. The `--min-mutation-score` floor
+(default 95) is an *additional* guard, not the bar — it exists so a run that
+somehow reports no survivors but an implausibly short total fails on the score
+instead of passing silently. A run at 99% with one survivor fails.
+
+Some source lines cannot be killed by any reasonable unit test — for example,
+ANSI formatting strings inside a log renderer, or a call-site default that
+every caller overrides. Those lines carry a `# pragma: no mutate` annotation
+so `mutmut` skips them.
 
 Unmanaged exemptions rot. Every exemption therefore MUST carry a short
 trailing reason. The `scripts/check_pragma_reasons.py` gate enforces this on
@@ -247,9 +253,10 @@ _logger.debug("otel.import.not_installed")  # pragma: no mutate — logs a debug
   and run under the `tooling` pytest marker.
 
 - The mutation gate itself
-  (`uv run python scripts/run_mutation_gate.py --min-mutation-score 95`) is
-  unchanged; this policy document is about *who gets to use* `# pragma: no
-  mutate` and under what documented justification.
+  (`uv run python scripts/run_mutation_gate.py --min-mutation-score 95`, where
+  that floor sits on top of the zero-survivor requirement rather than replacing
+  it) is unchanged; this policy document is about *who gets to use*
+  `# pragma: no mutate` and under what documented justification.
 
 ### Current exemption footprint
 

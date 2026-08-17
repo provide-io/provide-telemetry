@@ -153,6 +153,36 @@ timestamp/caller toggles, and strict-schema / required-key behavior.
 
 Module-level lazy logger instance. Resolves on first attribute access.
 
+### Logger call shapes
+
+Every level method — `.trace()`, `.debug()`, `.info()`, `.warning()`,
+`.error()`, `.critical()` — takes the same shape as structlog's bound logger,
+`(event, *args, **kwargs)`, and interpolates `event % args`:
+
+```python
+log.info("io.chunk.read", size=len(chunk))    # event + structured fields
+log.info("chunk %d of %s", 3, "reader")       # printf-style interpolation
+log.trace("chunk %d of %s", 3, "reader")      # identical at every level
+```
+
+Both shapes work at every level, including `.trace()`. Demoting a call from
+`info` to `trace` never changes what arguments it accepts.
+
+### `.trace()`, `.is_debug_enabled()`, `.is_trace_enabled()`
+
+Additions on top of structlog's `FilteringBoundLogger`. `TRACE` is level 5,
+below `DEBUG`; records emitted through it carry `_trace: true`. The two
+predicates are O(1) checks baked in at class creation, for guarding expensive
+argument construction:
+
+```python
+if log.is_trace_enabled():
+    log.trace("payload %s", expensive_repr(obj))
+```
+
+Standalone `is_debug_enabled()` / `is_trace_enabled()` functions read the
+active config directly and return `True` when telemetry is unconfigured.
+
 ### `bind_context(**kwargs: Any) -> None`
 
 Bind key-value pairs into the structlog contextvars context. Available to all subsequent log events in the current async task.
@@ -221,7 +251,7 @@ Clear the session ID from the current async context.
 
 ## Error Fingerprinting
 
-Error events automatically receive an `error_fingerprint` field — a 12-character hex digest derived from the exception type and normalized stack trace. Fingerprints are stable across deploys and process restarts, making them suitable for deduplication and alert grouping.
+Error events automatically receive an `error_fingerprint` field — a 12-character hex digest derived from the exception type and the top three stack frames. Fingerprints are stable across deploys and process restarts, making them suitable for deduplication and alert grouping.
 
 ## Event Schema
 
@@ -448,14 +478,14 @@ Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across 
 - `retries_{logs,traces,metrics}` — exporter retry count
 - `export_latency_ms_{logs,traces,metrics}` — latest export latency in ms
 - `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran inside an event loop
-- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half_open"`
+- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half-open"` (hyphen, per `spec/telemetry-api.yaml`)
 - `circuit_open_count_{logs,traces,metrics}` — number of times circuit has opened
 - `setup_error` — error message from `setup_telemetry()`, or `None`
 - `receipt_failures` — redaction receipts the sink refused or faulted on
 
 C# populates every field except `async_blocking_risk_{logs,traces,metrics}`,
 which is always zero because C# ships no event-loop blocking guard — see the
-Failure Behavior section of [`OPERATIONS.md`](../operations/runbook.md).
+Failure Behavior section of [`runbook.md`](../operations/runbook.md).
 
 ### `get_health_snapshot() -> HealthSnapshot`
 

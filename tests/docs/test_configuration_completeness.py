@@ -16,6 +16,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 _CONFIG_SOURCES = (
     _ROOT / "src" / "provide" / "telemetry" / "config.py",
     _ROOT / "src" / "provide" / "telemetry" / "_config_validation.py",
+    # consent.py parses PROVIDE_CONSENT_LEVEL directly rather than through
+    # TelemetryConfig.from_env(), so it is a config source for drift purposes
+    # even though it contributes no field to the dataclass.
+    _ROOT / "src" / "provide" / "telemetry" / "consent.py",
 )
 _CONFIG_MD = _ROOT / "docs" / "guide" / "configuration.md"
 

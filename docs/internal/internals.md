@@ -21,17 +21,20 @@ Every log event passes through a linear chain of structlog processors configured
 
 1. **`merge_contextvars`** — Pull all structlog contextvars bindings into the event dict.
 2. **`merge_runtime_context`** — Merge logger context (request ID, session, etc.) and inject `trace_id`/`span_id` from tracing contextvars.
-3. **`add_log_level`** — Stamp the log level string.
-4. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add ISO-8601 timestamp.
-5. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
-6. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
-7. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from exception type and normalized stack trace when `exc_info` is present.
-8. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Annotates `_schema_error` on violation instead of dropping.
-9. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
-10. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
-11. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering, placed late so enrichment processors run first.
-12. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
-13. **Renderer** — One of: `ConsoleRenderer` (default), `JSONRenderer` (`fmt=json`), or `PrettyRenderer` (`fmt=pretty`).
+3. **`inject_logger_name`** — Stamp `logger_name` from the bound logger.
+4. **`inject_das_fields`** — When the event is an `Event` instance, copy its `domain` / `action` / `resource` / `status` parts onto the record and flatten the event back to its string name. Plain-string event names pass through untouched.
+5. **`add_log_level`** — Stamp the log level string.
+6. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add ISO-8601 timestamp.
+7. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
+8. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
+9. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from the exception type plus the top three stack frames when `exc_info` is present.
+10. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Annotates `_schema_error` on violation instead of dropping. Runs before sampling so `_schema_error` is set when `apply_sampling` evaluates the record.
+11. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering. Placed **before** `apply_sampling`: filtered records must not acquire a backpressure ticket, and the `DropEvent` path must not strand a ticket between `apply_sampling` (acquire) and the renderer/handler boundary (release).
+12. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
+13. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
+14. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
+15. **`rename_event_to_message`** *(conditional: `fmt=json`)* — Rename structlog's internal `event` key to the canonical `message` field so all five languages emit the same JSON key.
+16. **Renderer**, wrapped in `render_with_backpressure_extra` — One of: `ConsoleRenderer` (default, with `plain_traceback` pinned so frame locals cannot leak), `JSONRenderer` (`fmt=json`), or `PrettyRenderer` (`fmt=pretty`). The wrapper moves any stashed backpressure ticket off the event dict and onto the stdlib `logging` record's `extra`, so the handler releases it once the record is actually emitted.
 
 ## Setup and Shutdown Coordinator
 
@@ -56,10 +59,15 @@ If any step after `configure_logging` fails, `_rollback()` tears down completed 
 stateDiagram-v2
     [*] --> Uninitialized
     Uninitialized --> Ready: setup_telemetry() [lock]
-    Ready --> Uninitialized: shutdown_telemetry() [lock]
+    Ready --> Stopped: shutdown_telemetry() [lock]
+    Stopped --> Ready: setup_telemetry() [re-setup]
     Ready --> Ready: setup_telemetry() [idempotent, no-op]
     Ready --> Ready: update_runtime_config() [hot reload]
 ```
+
+`Ready` and `Stopped` are the two `RuntimeState` values Python's runtime
+actually reports; the enum carries seven for parity with the runtimes that
+surface intermediate states. See the architecture doc for the full vocabulary.
 
 The `_setup_done` flag and `_lock` mutex ensure:
 - Concurrent `setup_telemetry()` calls are serialized; only the first performs work.
@@ -113,8 +121,8 @@ Each signal (logs, traces, metrics) gets its own lazily-created `ThreadPoolExecu
 ### Circuit Breaker
 
 - **Threshold**: 3 consecutive timeouts trip the breaker for a signal.
-- **Cooldown**: 30 seconds. During cooldown, all attempts for that signal are short-circuited.
-- **Half-open probe**: After cooldown expires, the next attempt is allowed through. Success resets the counter; failure re-trips.
+- **Cooldown**: exponential, `min(30s × 2^open_count, 1024s)`. The first trip waits 30 seconds; each subsequent re-trip doubles the wait, capped at 1024 seconds. A successful half-open probe decays `open_count` by one, so a signal that recovers walks the cooldown back down. During cooldown, all attempts for that signal are short-circuited.
+- **Half-open probe**: After cooldown expires, the next attempt is allowed through. Success resets the timeout counter and decays `open_count`; failure re-trips and increments `open_count`.
 - **Fail-open vs fail-closed**: When the breaker is open, `fail_open=true` (default) returns `None` silently; `fail_open=false` raises `TimeoutError`.
 
 ### Async Safety
@@ -162,7 +170,15 @@ The PII engine (`pii.py` in Python; mirrored in `pii.ts`, the `piicore` package 
 
 2. **Default sensitive-key redaction**: Keys whose lowercased name matches any of `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `auth`, `authorization`, `credential`, `private_key`, `ssn`, `credit_card`, `creditcard`, `cvv`, `pin`, `account_number`, `cookie` are redacted with `"***"` unless a custom rule already targeted them.
 
-3. **Value-based secret detection**: Every string value (and the free-form log message itself) is matched against the built-in secret-pattern set (AWS access keys, JWTs, GitHub PATs, long hex / base64 runs above the `MIN_SECRET_LENGTH` threshold) plus any patterns registered via `register_secret_pattern(name, pattern)`. Matches are replaced with `"***"`. The message is checked separately from the attribute map so wildcard path rules (`Path: ["*"]`) cannot bypass the scrub — see `tests/regression/test_message_pii_cross_language.py` for the cross-language contract tests.
+3. **Value-based secret detection**: Every string value (and the free-form log message itself) is matched against the built-in secret-pattern set (AWS access keys, JWTs, GitHub PATs, long hex / base64 runs above the `MIN_SECRET_LENGTH` threshold) plus any patterns registered via `register_secret_pattern(name, pattern)`. The message is checked separately from the attribute map so wildcard path rules (`Path: ["*"]`) cannot bypass the scrub — see `tests/regression/test_message_pii_cross_language.py` for the cross-language contract tests.
+
+   Pass 3 replaces **spans**, not whole values, and the span rules are load-bearing:
+
+   - **Every match of every pattern is redacted**, not just the first. Each pattern is scanned across the whole value; the resulting spans are merged and replaced right-to-left. A value carrying two credentials loses both.
+   - **The redacted span widens to the whitespace-delimited token** containing the match. A pattern that matches only the recognisable core of a credential (a `AKIA…` prefix inside a longer opaque token, say) still takes the entire token with it, so no tail of the secret survives.
+   - **Path-shaped tokens are left alone.** A token whose shape reads as a filesystem path is not treated as a secret even when a pattern matches inside it, so log lines naming real files stay readable. A path appearing *alongside* a genuine secret does not shield that secret — each match is judged on its own token.
+   - **Values longer than `_MAX_SECRET_SCAN_LENGTH` (8192 chars) are skipped entirely**, bounding the scan cost of a pathological payload. Truncation by `harden_input` normally keeps values far below this.
+   - Redacted spans are replaced with `"***"`, the same sentinel passes 1 and 2 use. All five languages share the sentinel and the span rules; the contract is pinned by the `secret_span_redaction` cases in `spec/behavioral_fixtures.yaml`.
 
 Passes 1 and 2 traverse nested dicts and lists recursively up to `pii_max_depth`. Pass 3 is the gate behind `sanitize=true`; when sanitization is disabled, message and value strings flow through verbatim.
 
