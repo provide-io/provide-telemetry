@@ -37,7 +37,14 @@ for noise-floor or single-shot measurements:
 |---|---|---|
 | `import()` (TypeScript) | 10× | Single-shot cold-cache measurement |
 | `logger.info()` (TypeScript) | 10× | 7ns measurement when logger is silent — noise floor |
+| `should_sample_logs` (Rust) | 10× | 14–32ns baseline — 5× left less absolute headroom than runner noise |
 | Everything else | 5× | Standard per-iter timing |
+
+The Rust override was added after a macos-arm64 run measured 70.9ns against a
+14ns baseline while `parse_baggage` (2.61×) and `sanitize_payload` (1.72×) were
+elevated in the same run — a uniformly slow runner rather than a regression in
+sampling. At 10× a genuine order-of-magnitude regression still trips the gate,
+which is all this gate claims to catch.
 
 The multiplier lives in `baselines/perf-<lang>.json`:
 

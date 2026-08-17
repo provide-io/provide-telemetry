@@ -194,9 +194,12 @@ def _expand_to_token(value: str, start: int, end: int) -> tuple[int, int]:
     regexes say the thing directly -- the run of non-whitespace ending where
     the match begins, and the run starting where it ends.
     """
+    # Both patterns can match empty, so neither call can return None -- but
+    # nothing in the signature says so, and the repo runs two type checkers
+    # that each need telling separately.
     return (
-        _RUN_BEFORE_END.search(value, 0, start).start(),  # type: ignore[union-attr]
-        _RUN_FROM_POS.match(value, end).end(),  # type: ignore[union-attr]
+        _RUN_BEFORE_END.search(value, 0, start).start(),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+        _RUN_FROM_POS.match(value, end).end(),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
     )
 
 
