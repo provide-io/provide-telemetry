@@ -7,6 +7,39 @@ they contained.
 
 ---
 
+## [0.8.0] — 2026-08-19
+
+### Breaking
+
+- **`PROVIDE_LOG_LEVEL=CRITICAL` now excludes `ERROR` records.** `level_order`
+  folded `CRITICAL` and `FATAL` onto `ERROR`, so a CRITICAL threshold admitted
+  ERROR and the ladder's top two levels were indistinguishable. `FATAL` narrows
+  the same way, from an ERROR threshold to a CRITICAL one.
+
+- **`Logger::log(&str, &str)` normalises the level it publishes.**
+  `log("warning", m)` now records `WARN` and `log("bogus", m)` records `INFO`.
+  It used to pass the caller's string through verbatim, which made this the
+  only door in any of the five ports that could put a level no consumer
+  recognises onto the wire, and made it disagree with `warn()` about how to
+  spell rank 3. `log_fields` and `log_event` normalise too.
+
+### Added
+
+- `LogSeverity`, `parse_level`, `try_parse_level` and `level_order`, exported
+  from the crate root. `parse_level` takes the fallback as an argument — Rust
+  has no default arguments, so every call site states what an unrecognised
+  token becomes.
+- `Logger::log_at(LogSeverity, &str)` and `Logger::log_at_fields`. Named
+  `log_at` because `log` was already taken by the string form, which keeps its
+  signature. `Level` was unavailable: `log::Level` is in scope in the same
+  module.
+
+### Fixed
+
+- Consent ranks through the one shared table rather than a second local copy.
+- The `log` crate bridge had the ladder written twice — once as bare numbers
+  for the threshold test, once as strings for the record. Now one mapping.
+
 ## [0.7.2] — 2026-08-16
 
 ### Fixed

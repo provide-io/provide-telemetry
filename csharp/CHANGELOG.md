@@ -6,6 +6,42 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
+## [0.8.0] — 2026-08-19
+
+### Breaking
+
+- **`PROVIDE_LOG_LEVEL=FATAL` now admits only `CRITICAL` records.** It
+  previously admitted everything from `INFO` up, because `FATAL` was absent
+  from `Logger.Rank` and fell through to the default of 20 — which is `INFO`.
+  C# validates no log level, so anyone who set `FATAL` expecting near-silence
+  was getting nearly everything, and was never told. Probed against the build:
+
+  ```
+  configured=FATAL    admits=[CRITICAL]                    # was [INFO,WARN,ERROR,CRITICAL]
+  configured=CRITICAL admits=[CRITICAL]                    # unchanged
+  configured=bogus    admits=[INFO,WARN,ERROR,CRITICAL]    # unchanged
+  ```
+
+### Added
+
+- `LogSeverity` and `Levels.Parse` / `TryParse` / `Name` / `Order`.
+- `Logger.Log(LogSeverity level, string message, fields)` — for adapters that
+  receive a level as data and would otherwise re-implement a dispatch chain
+  whose arms only run when that severity actually occurs.
+
+  Not named `LogLevel`: `Microsoft.Extensions.Logging.LogLevel` is near
+  universal in .NET and the collision raises CS0104 on every unqualified use in
+  any file importing both namespaces — including this package's own
+  `OpenTelemetryBackend.cs`.
+
+### Fixed
+
+- `Logger.Rank` and `Governance.LogLevelOrder` were separate tables that
+  disagreed on an unrecognised level (INFO vs TRACE) and neither knew `FATAL`,
+  so the most severe record in the ladder was dropped by the consent gates as
+  if it were the least. Both resolve through `Levels` now.
+- `OpenTelemetryBackend.MapLevel` understands `FATAL`.
+
 ## [0.7.2] — 2026-08-16
 
 ### Fixed

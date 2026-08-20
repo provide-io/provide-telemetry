@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.8.0] — 2026-08-19
+
+### Breaking
+
+- **`PROVIDE_LOG_LEVEL=CRITICAL` now excludes `ERROR` records.** `_parseLevel`
+  folded `CRITICAL` onto `slog.LevelError`, so a CRITICAL threshold admitted
+  ERROR — while `consent.go`'s own table ranked CRITICAL above ERROR, meaning a
+  single record was ranked one way for filtering and another for consent.
+  CRITICAL now has a level of its own, `LevelCritical`. Applies to
+  `PROVIDE_LOG_MODULE_LEVELS` entries too.
+
+- **The `level` field on a record is now the canonical spelling.** slog renders
+  a level it has no name for by arithmetic on the nearest one it does, so
+  `LevelTrace` reached the wire as `"DEBUG-4"` and `LevelCritical` as
+  `"ERROR+4"` — values no level table anywhere recognises, and CRITICAL is
+  reachable through the ordinary `Log(ctx, ParseLevel(s), msg)` path. The
+  handler now renders through `LevelName`.
+
+### Added
+
+- `ParseLevel(string) slog.Level` and `LevelName(slog.Level) string`, exported
+  from both the root package and `go/logger`. Go needed no new logging door —
+  `slog.Logger.Log(ctx, level, msg, args...)` already is one — only the
+  conversion that every adapter was re-implementing.
+- `LevelCritical`, continuing slog's ladder at the same pitch above `ERROR`.
+- `go/internal/levelcore`, the canonical ladder shared by the root package and
+  `go/logger`, with its own gremlins surface in CI; without it the root step's
+  `internal/` exclusion would have left the new package mutated by nothing.
+
+### Fixed
+
+- `normalizeLevel` accepts `WARN` and `FATAL`, which it rejected while Rust
+  accepted both. The caller's own spelling is still what gets stored.
+- Consent ranks through the one shared table. `FATAL` used to be unrecognised
+  there and was dropped as if it were the least severe record in the ladder.
+
 ## [0.7.2] — 2026-08-16
 
 ### Fixed

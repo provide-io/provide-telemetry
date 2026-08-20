@@ -13,6 +13,9 @@ Legend:
 | Capability | Python | TypeScript | Go | Rust | C# | Contract |
 | --- | --- | --- | --- | --- | --- | --- |
 | Canonical JSON log envelope (`service`, `env`, `version`, `logger_name`, trace/span IDs, timestamp policy) | core | core | core | core | core | core guaranteed |
+| Canonical level vocabulary on the record (`TRACE DEBUG INFO WARN ERROR CRITICAL`, uppercase) | core | core | core | core | core | core guaranteed |
+| Level-parameterised logging door for a level known only at runtime | core | core | core | core | core | core guaranteed; Go's is stdlib `slog.Logger.Log` |
+| One alias-tolerant string-to-level converter, `WARNING`→`WARN` and `FATAL`→`CRITICAL` | core | core | core | core | core | core guaranteed |
 | Lazy logger init uses effective env config | core | core | core | core | core | core guaranteed |
 | Strict-schema rejection emits `_schema_error` instead of dropping the record | core | core | core | core | core | core guaranteed |
 | Required-key rejection emits `_schema_error` instead of dropping the record | core | core | core | core | core | core guaranteed |

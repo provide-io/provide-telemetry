@@ -14,6 +14,41 @@ Two things to know when reading it:
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
 
+## [0.8.0] — 2026-08-19
+
+### Breaking
+
+- **`log` is now a required member of the exported `Logger` interface.** Any
+  consumer that implements `Logger` — a test double, a fake, an adapter —
+  fails to compile with `TS2741: Property 'log' is missing`. Take the logger
+  from `getLogger()` instead, or add a `log` member. It is required rather than
+  optional so `logger.log(level, obj, msg)` needs no `?.` guard at the call
+  site, which is the whole point of the method.
+
+- **The `level` field on a record is a canonical string, not a pino number.**
+  Records carried `40`, `50`, `60`; they now carry `"WARN"`, `"ERROR"`,
+  `"CRITICAL"`, matching the other four ports. Anything reading the numeric
+  level must be updated.
+
+### Added
+
+- `LogSeverity`, `parseLevel`, `tryParseLevel`, `levelOrder`, `severityName`,
+  `pinoLevelName`, `toPinoLevel` and `severityFromPino`.
+- `Logger.log(level, obj, msg?)`, on both `getLogger()` loggers and the
+  module-level `logger`.
+
+### Fixed
+
+- **`PROVIDE_LOG_LEVEL=WARNING` crashed at logger construction.** The raw value
+  was lowercased and handed to pino, whose vocabulary is
+  `trace|debug|info|warn|error|fatal`, so `WARNING` and `CRITICAL` — both
+  listed as applicable to TypeScript in `spec/telemetry-api.yaml` — threw
+  `default level:warning must be included in custom levels`.
+  `PROVIDE_LOG_MODULE_LEVELS` had the same fault at a second site.
+- **TRACE records no longer go through `console.trace()`**, which prepends
+  `"Trace: "` and appends a stack dump, leaving the line unparsable as JSON.
+  They use `console.debug`.
+
 ## [0.7.2] — 2026-08-16
 
 ### Fixed
