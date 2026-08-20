@@ -177,7 +177,7 @@ The level is a `LogSeverity`, a level string, or a stdlib numeric level.
 from provide.telemetry import LogSeverity, parse_level
 
 log.log(LogSeverity.WARN, "io.retry", attempt=3)
-log.log(parse_level(level_from_config), "io.retry")   # level held as a string
+log.log(parse_level(level_from_config), "io.retry")  # level held as a string
 ```
 
 Without it, every adapter that bridges a `(level, message)` callback into a
@@ -186,10 +186,14 @@ that severity actually occurs — so most of them sit permanently uncovered:
 
 ```python
 # before
-if level == "debug": log.debug(message)
-elif level in ("warn", "warning"): log.warning(message)
-elif level == "error": log.error(message)
-else: log.info(message)
+if level == "debug":
+    log.debug(message)
+elif level in ("warn", "warning"):
+    log.warning(message)
+elif level == "error":
+    log.error(message)
+else:
+    log.info(message)
 
 # after
 log.log(parse_level(level), message)
