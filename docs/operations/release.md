@@ -44,31 +44,40 @@ drift per language, so each language publishes off its own trigger:
 | TypeScript (npm) | push of a `typescript/vX.Y.Z` tag | No |
 | Rust (crates.io) | push of a `rust/vX.Y.Z` tag | No |
 | Go (pkg.go.dev) | push of `go/vX.Y.Z` / `go/otel/vX.Y.Z` tags | No |
-| C# (NuGet — blocked, see below) | push of a `csharp/vX.Y.Z` tag | No |
+| C# (NuGet) | push of a `csharp/vX.Y.Z` tag | No |
 
-**C# builds, attempts to publish, and currently fails at the registry.** The
-`build-csharp` job version-checks, builds with `-warnaserror`, tests, packs *both*
-`Provide.Telemetry` and `Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were
-produced, and uploads them as the `csharp-packages` workflow artifact. A `publish-nuget`
-job (`release.yml`) then runs `dotnet nuget push` against nuget.org via Trusted
-Publishing — no stored API key.
+**C# builds and publishes.** The `build-csharp` job version-checks, builds with
+`-warnaserror`, tests, packs *both* `Provide.Telemetry` and
+`Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were produced, and uploads
+them as the `csharp-packages` workflow artifact. A `publish-nuget` job (`release.yml`)
+then runs `dotnet nuget push` against nuget.org via Trusted Publishing — no stored API
+key.
 
-That push fails today, and the whole `🚀 Release` run fails with it:
+That push was blocked from the day the C# package was added until 0.8.0, failing the
+whole `🚀 Release` run with it:
 
 ```
 Token exchange failed (HTTP 400) at https://www.nuget.org/api/v2/token.
 The organization 'provide.io' does not have a confirmed email address.
 ```
 
-Trusted Publishing will not issue a token until the `provide.io` organization confirms
-its email address on nuget.org. Until that is done, a `csharp/vX.Y.Z` tag yields
-downloadable `.nupkg` artifacts and a red release run — the artifacts are good, the
-publish leg is not. **A red `🚀 Release` on a `csharp/*` tag does not mean the C# build
-broke; check which job failed before treating it as a regression.**
+Trusted Publishing will not issue a token until the organization confirms its email
+address on nuget.org. That was done on 2026-08-20, and re-running the existing
+`publish-nuget` job on the already-tagged `csharp/v0.8.0` release run published both
+packages unchanged — no re-tag and no version bump were needed. If this error returns,
+it is the organization email again, not the workflow.
+
+Two things worth knowing about that first successful push. A brand-new package ID goes
+through longer first-time validation on nuget.org, so `Provide.Telemetry.OpenTelemetry`
+took noticeably longer to appear in the registry index than `Provide.Telemetry`, which
+already had prior versions — a green `publish-nuget` with nothing yet visible at
+`api.nuget.org/v3-flatcontainer/<id>/index.json` is expected, not a failure. And both
+pushes emit `warn : Readme missing`; neither package embeds a README, so their nuget.org
+pages render without one.
 
 > This section previously claimed there was no `dotnet nuget push` step and no publish
 > job at all. That was wrong — the job exists at `release.yml:325` — and the error it
-> actually hits is an unconfirmed org email, not a missing implementation.
+> actually hit was an unconfirmed org email, not a missing implementation.
 
 Cutting a release for one language never touches the others — pushing `typescript/v0.5.2` publishes
 npm only; it does not build, test, or publish Python/Rust/Go/C#, and does not require or create a

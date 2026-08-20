@@ -8,12 +8,12 @@ languages; this file covers only what shipped to NuGet.
 
 ## [0.8.0] — 2026-08-19
 
-> **Not on NuGet.** The packages build, pack and verify in CI, but
-> `publish-nuget` fails at the Trusted Publishing token exchange — nuget.org
-> will not issue a token until the `provide.io` organization confirms its email
-> address. `Provide.Telemetry` on NuGet is still 0.7.2; this entry describes
-> what is tagged as `csharp/v0.8.0` and downloadable as the `csharp-packages`
-> workflow artifact. See `docs/operations/release.md`.
+> **First release to actually reach NuGet.** Trusted Publishing had rejected
+> the token exchange on every prior attempt because the `provide.io`
+> organization had no confirmed email address; once confirmed, the existing
+> `publish-nuget` job pushed both packages unchanged. `Provide.Telemetry` goes
+> 0.7.2 → 0.8.0, and `Provide.Telemetry.OpenTelemetry` appears on the registry
+> for the first time.
 
 ### Breaking
 

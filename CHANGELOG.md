@@ -14,11 +14,11 @@ All five languages. A minor bump rather than a patch: the `level` field
 on every emitted record changed in three ports, and the TypeScript
 `Logger` interface gained a required member.
 
-Published to PyPI, npm, crates.io and the Go proxy. **Not published to
-NuGet** — the C# packages build and pack, but the Trusted Publishing token
-exchange is blocked on an unconfirmed `provide.io` organization email, so
-`Provide.Telemetry` on NuGet remains 0.7.2. The `csharp/v0.8.0` tag exists and
-its artifacts are downloadable from the release run.
+Published to all five registries: PyPI, npm, crates.io, the Go proxy and
+NuGet. This is the first release to reach NuGet — Trusted Publishing had been
+rejecting the token exchange since the C# package was added, until the
+`provide.io` organization confirmed its email address.
+`Provide.Telemetry.OpenTelemetry` appears there for the first time at 0.8.0.
 
 ### Breaking
 
