@@ -16,6 +16,12 @@ on:
       - ".github/workflows/ci-python.yml"
       - "baselines/perf-python.json"
       - "scripts/perf_check.py"
+      # ruff formats Python code blocks inside Markdown, so a docs-only change
+      # can break `ruff format --check .` here. Without docs in the trigger set
+      # that failure surfaced only on the next src/ push, against a commit that
+      # had not caused it.
+      - "docs/**"
+      - "README.md"
   pull_request:
     branches: [main]
     paths:
@@ -31,6 +37,8 @@ on:
       - ".github/workflows/ci-python.yml"
       - "baselines/perf-python.json"
       - "scripts/perf_check.py"
+      - "docs/**"
+      - "README.md"
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
