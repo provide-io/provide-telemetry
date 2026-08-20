@@ -192,16 +192,28 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         }
     }
 
-    internal static LogLevel MapLevel(string level) => level.ToUpperInvariant() switch
+    // LogLevel here is Microsoft.Extensions.Logging's; LogSeverity is ours.
+    // The alias and unknown-token handling lives in Levels.Parse, so FATAL and
+    // WARNING resolve the same way on the OTLP path as they do locally.
+    //
+    // A null level stays a fault rather than resolving to INFO. Levels.Parse
+    // would happily accept it, but CanonicalLogRecord.Create never produces one
+    // and EmitLog's catch has no other synchronous fault to prove itself
+    // against -- BeginScope defers attribute enumeration to the export thread.
+    // Hardening here would delete that guard's only coverage.
+    internal static LogLevel MapLevel(string level)
     {
-        "TRACE" => LogLevel.Trace,
-        "DEBUG" => LogLevel.Debug,
-        "INFO" => LogLevel.Information,
-        "WARN" or "WARNING" => LogLevel.Warning,
-        "ERROR" => LogLevel.Error,
-        "CRITICAL" => LogLevel.Critical,
-        _ => LogLevel.Information,
-    };
+        ArgumentNullException.ThrowIfNull(level);
+        return Levels.Parse(level) switch
+        {
+            LogSeverity.Trace => LogLevel.Trace,
+            LogSeverity.Debug => LogLevel.Debug,
+            LogSeverity.Warn => LogLevel.Warning,
+            LogSeverity.Error => LogLevel.Error,
+            LogSeverity.Critical => LogLevel.Critical,
+            _ => LogLevel.Information,
+        };
+    }
 
     public FlushResult Flush(DateTimeOffset deadline) => Drain(deadline, detach: false);
 

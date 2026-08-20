@@ -727,3 +727,148 @@ resource_precedence:
     - description: "all three explicit"
       config: {service_name: "checkout", environment: "prod", version: "1.2.3"}
       expected_explicit_keys: ["service.name", "deployment.environment", "service.version"]
+
+log_levels:
+  description: >
+    The canonical severity ladder and the single alias table every port
+    resolves level strings through. Before this table each port carried two or
+    three private converters that had drifted from one another: CRITICAL was a
+    distinct severity in Python, C# and every consent table but folded onto
+    ERROR by Go's _parseLevel and Rust's level_order; FATAL was understood only
+    by Rust; WARN was missing from both of Python's tables; and TypeScript had
+    no converter at all, handing the raw environment string to pino, which
+    threw on WARNING and CRITICAL -- two values this spec lists as applicable
+    to TypeScript.
+
+    Ordering is the one already agreed by all five consent tables, so this
+    table ratifies the existing majority rather than inventing a new ladder.
+
+    Aliases resolve TO a canonical member; they are not members themselves.
+    That asymmetry is deliberate: it is what stops a second spelling becoming a
+    second public level, which is how WARN and WARNING both ended up on the C#
+    Logger surface.
+
+    Resolution trims surrounding whitespace and is case-insensitive. An
+    unrecognised string is not an error at the logging boundary -- it resolves
+    to the caller-supplied fallback, which is INFO at every call site inside
+    the library. Callers that need to detect an unrecognised level use the
+    try-parse form, which reports failure instead of substituting.
+  language_notes: >-
+    The ladder is one contract with five spellings of its name, recorded here
+    rather than in the exports list because these are additions, not required
+    symbols, and validate_conformance.py keys overrides on kind, not name.
+
+    Python provide.telemetry.LogSeverity, parse_level, try_parse_level,
+    level_order; the door is logger.log(level, event, **kw).
+
+    TypeScript LogSeverity, parseLevel, tryParseLevel, levelOrder; the door is
+    Logger.log(level, obj, msg). toPinoLevel is the boundary that keeps a
+    canonical spelling from reaching pino, whose vocabulary lacks WARNING and
+    CRITICAL.
+
+    Rust LogSeverity, parse_level, try_parse_level, level_order; the door is
+    Logger::log_at, named so because Logger::log(&str, &str) already existed
+    and keeps its behaviour. Level was unavailable: log::Level is in scope in
+    the same module.
+
+    Go has no severity type of its own. slog.Level is the typed level, and
+    slog.Logger.Log(ctx, level, msg, args...) is already the door, so Go gains
+    only ParseLevel and LevelName. Introducing a parallel telemetry.LogSeverity
+    would be a second level type nobody would use. internal/levelcore.Severity
+    is the shared implementation, not public API.
+
+    C# LogSeverity and Levels.Parse/TryParse/Name/Order; the door is
+    Logger.Log(LogSeverity, message, fields). Not named LogLevel because
+    Microsoft.Extensions.Logging.LogLevel is near-universal in .NET and the
+    collision would raise CS0104 on every unqualified use in any file
+    importing both namespaces -- including this repo's OpenTelemetryBackend.cs.
+  canonical:
+    - name: "TRACE"
+      order: 0
+    - name: "DEBUG"
+      order: 1
+    - name: "INFO"
+      order: 2
+    - name: "WARN"
+      order: 3
+    - name: "ERROR"
+      order: 4
+    - name: "CRITICAL"
+      order: 5
+  aliases:
+    - description: "WARNING is a spelling of WARN, not a seventh level"
+      input: "WARNING"
+      expected_name: "WARN"
+      expected_order: 3
+    - description: "FATAL is a spelling of CRITICAL, matching stdlib logging.FATAL is CRITICAL"
+      input: "FATAL"
+      expected_name: "CRITICAL"
+      expected_order: 5
+  parse:
+    - description: "exact canonical spelling"
+      input: "ERROR"
+      expected_name: "ERROR"
+      expected_order: 4
+      expected_recognised: true
+    - description: "lowercase resolves — comparison is case-insensitive"
+      input: "error"
+      expected_name: "ERROR"
+      expected_order: 4
+      expected_recognised: true
+    - description: "mixed case resolves"
+      input: "CrItIcAl"
+      expected_name: "CRITICAL"
+      expected_order: 5
+      expected_recognised: true
+    - description: "surrounding whitespace is trimmed"
+      input: "  warn  "
+      expected_name: "WARN"
+      expected_order: 3
+      expected_recognised: true
+    - description: "alias resolves to its canonical member, lowercased"
+      input: "warning"
+      expected_name: "WARN"
+      expected_order: 3
+      expected_recognised: true
+    - description: "CRITICAL outranks ERROR — it is not an alias for it"
+      input: "CRITICAL"
+      expected_name: "CRITICAL"
+      expected_order: 5
+      expected_recognised: true
+    - description: "unrecognised token falls back to INFO and reports unrecognised"
+      input: "warnn"
+      expected_name: "INFO"
+      expected_order: 2
+      expected_recognised: false
+    - description: "empty string falls back to INFO"
+      input: ""
+      expected_name: "INFO"
+      expected_order: 2
+      expected_recognised: false
+    - description: "whitespace-only string falls back to INFO"
+      input: "   "
+      expected_name: "INFO"
+      expected_order: 2
+      expected_recognised: false
+    - description: "a level-shaped but unknown word does not partial-match a real level"
+      input: "warns"
+      expected_name: "INFO"
+      expected_order: 2
+      expected_recognised: false
+  ordering:
+    - description: "CRITICAL is strictly more severe than ERROR"
+      left: "CRITICAL"
+      right: "ERROR"
+      expected: "greater"
+    - description: "WARNING and WARN are the same severity"
+      left: "WARNING"
+      right: "WARN"
+      expected: "equal"
+    - description: "FATAL and CRITICAL are the same severity"
+      left: "FATAL"
+      right: "CRITICAL"
+      expected: "equal"
+    - description: "TRACE is the floor"
+      left: "TRACE"
+      right: "DEBUG"
+      expected: "less"

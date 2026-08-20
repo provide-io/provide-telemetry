@@ -8,6 +8,8 @@
  * Same color scheme, same layout: timestamp [level] event key=value pairs.
  */
 
+import { parseLevel, pinoLevelName } from './levels.js';
+
 const RESET = '\x1b[0m';
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
@@ -35,14 +37,6 @@ const NAMED_COLORS: Record<string, string> = {
 };
 
 // pino level number → name
-const LEVEL_NAMES: Record<number, string> = {
-  10: 'trace',
-  20: 'debug',
-  30: 'info',
-  40: 'warn',
-  50: 'error',
-  60: 'fatal',
-};
 
 const LEVEL_PAD = 6; // "fatal" = 5, pad to 6
 
@@ -106,11 +100,14 @@ export function formatPretty(
   }
 
   // 2. Level
-  const levelNum = obj['level'] as number;
-  const levelName = LEVEL_NAMES[levelNum] ?? 'log';
+  // The record carries the canonical name now; the rendered vocabulary stays
+  // pino's lowercase spelling so the console output is unchanged.
+  const levelName = pinoLevelName(parseLevel(String(obj['level'])));
   const padded = levelName.padEnd(LEVEL_PAD);
   if (colors) {
-    const c = LEVEL_COLORS[levelName] ?? '';
+    // pinoLevelName only returns names LEVEL_COLORS defines, so there is no
+    // unmatched case to fall back from.
+    const c = LEVEL_COLORS[levelName] as string;
     parts.push('[' + c + padded + RESET + ']');
   } else {
     parts.push('[' + padded + ']');

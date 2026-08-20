@@ -67,7 +67,9 @@ describe('emitLogRecord', () => {
   it('is a noop when no provider is registered', () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
-    expect(() => emitLogRecord({ level: 30, message: 'hello', time: Date.now() })).not.toThrow();
+    expect(() =>
+      emitLogRecord({ level: 'INFO', message: 'hello', time: Date.now() }),
+    ).not.toThrow();
     expect(loggerStub.emit).not.toHaveBeenCalled();
   });
 
@@ -81,7 +83,7 @@ describe('emitLogRecord', () => {
     } as never);
 
     emitLogRecord({
-      level: 30,
+      level: 'INFO',
       message: 'test message',
       time: 1000,
       event: 'test.event',
@@ -107,7 +109,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 10, message: 'trace', time: 1000 });
+    emitLogRecord({ level: 'TRACE', message: 'trace', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(1);
     expect(loggerStub.emit.mock.calls[0][0].severityText).toBe('TRACE');
   });
@@ -120,7 +122,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 20, message: 'debug', time: 1000 });
+    emitLogRecord({ level: 'DEBUG', message: 'debug', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(5);
   });
 
@@ -132,7 +134,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 40, message: 'warn', time: 1000 });
+    emitLogRecord({ level: 'WARN', message: 'warn', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(13);
   });
 
@@ -144,7 +146,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 50, message: 'err', time: 1000 });
+    emitLogRecord({ level: 'ERROR', message: 'err', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(17);
   });
 
@@ -156,7 +158,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 60, message: 'fatal', time: 1000 });
+    emitLogRecord({ level: 'CRITICAL', message: 'fatal', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].severityNumber).toBe(21);
   });
 
@@ -184,7 +186,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 30, event: 'my.event', time: 1000 });
+    emitLogRecord({ level: 'INFO', event: 'my.event', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].body).toBe('my.event');
   });
 
@@ -196,7 +198,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 30, message: 'ts', time: 1234567890 });
+    emitLogRecord({ level: 'INFO', message: 'ts', time: 1234567890 });
     expect(loggerStub.emit.mock.calls[0][0].timestamp).toBe(1234567890);
   });
 
@@ -209,7 +211,7 @@ describe('emitLogRecord', () => {
       otlpEndpoint: 'http://localhost:4318',
     } as never);
     const before = Date.now();
-    emitLogRecord({ level: 30, message: 'no-time' });
+    emitLogRecord({ level: 'INFO', message: 'no-time' });
     const after = Date.now();
     const ts = loggerStub.emit.mock.calls[0][0].timestamp as number;
     expect(ts).toBeGreaterThanOrEqual(before);
@@ -236,7 +238,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 30, time: 1000 });
+    emitLogRecord({ level: 'INFO', time: 1000 });
     expect(loggerStub.emit.mock.calls[0][0].body).toBe('');
   });
 
@@ -248,7 +250,7 @@ describe('emitLogRecord', () => {
       otelEnabled: true,
       otlpEndpoint: 'http://localhost:4318',
     } as never);
-    emitLogRecord({ level: 30, message: 'test', time: 1000, v: 1, service: 'svc' });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, v: 1, service: 'svc' });
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).not.toHaveProperty('v');
     expect(attrs).toHaveProperty('service', 'svc');
@@ -266,7 +268,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     } as never);
     setupTelemetry({ securityMaxAttrValueLength: 10 });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000, longField: 'a'.repeat(20) });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, longField: 'a'.repeat(20) });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['longField']).toBe('a'.repeat(10) + '...');
@@ -282,7 +284,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     } as never);
     setupTelemetry({ securityMaxAttrValueLength: 10 });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000, exact: 'a'.repeat(10) });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, exact: 'a'.repeat(10) });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['exact']).toBe('a'.repeat(10));
@@ -298,7 +300,7 @@ describe('emitLogRecord — securityMaxAttrValueLength', () => {
     } as never);
     setupTelemetry({ securityMaxAttrValueLength: 5 });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000, num: 123456 });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, num: 123456 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['num']).toBe(123456);
@@ -316,7 +318,7 @@ describe('emitLogRecord — securityMaxAttrCount', () => {
     } as never);
     setupTelemetry({ securityMaxAttrCount: 3 });
 
-    const record: Record<string, unknown> = { level: 30, message: 'test', time: 1000 };
+    const record: Record<string, unknown> = { level: 'INFO', message: 'test', time: 1000 };
     for (let i = 0; i < 10; i++) record[`key${i}`] = `val${i}`;
     emitLogRecord(record);
 
@@ -334,7 +336,7 @@ describe('emitLogRecord — securityMaxAttrCount', () => {
     } as never);
     setupTelemetry({ securityMaxAttrCount: 100 });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000, a: 1, b: 2, c: 3 });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, a: 1, b: 2, c: 3 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).toHaveProperty('a', 1);
@@ -355,7 +357,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     setupTelemetry({ logCodeAttributes: true });
 
     emitLogRecord({
-      level: 30,
+      level: 'INFO',
       message: 'test',
       time: 1000,
       caller_file: 'app.ts',
@@ -380,7 +382,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     setupTelemetry({ logCodeAttributes: false });
 
     emitLogRecord({
-      level: 30,
+      level: 'INFO',
       message: 'test',
       time: 1000,
       caller_file: 'app.ts',
@@ -404,7 +406,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     } as never);
     setupTelemetry({ logCodeAttributes: true });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000, caller_file: 'app.ts' });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, caller_file: 'app.ts' });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs['code.filepath']).toBe('app.ts');
@@ -422,7 +424,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
     } as never);
     setupTelemetry({ logCodeAttributes: true });
 
-    emitLogRecord({ level: 30, message: 'test', time: 1000 });
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
     expect(attrs).not.toHaveProperty('code.filepath');

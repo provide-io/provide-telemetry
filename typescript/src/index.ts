@@ -31,6 +31,15 @@ export type { TelemetryConfig, LoggingOverrides, RuntimeOverrides } from './conf
 // Logger
 export { getLogger, logger } from './logger.js';
 export type { Logger } from './logger.js';
+export {
+  LogSeverity,
+  severityName,
+  pinoLevelName,
+  parseLevel,
+  tryParseLevel,
+  levelOrder,
+  toPinoLevel,
+} from './levels.js';
 
 // Context binding (mirrors Python bind_context / unbind_context / clear_context)
 export {

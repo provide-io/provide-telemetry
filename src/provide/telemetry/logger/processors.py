@@ -19,6 +19,8 @@ import structlog
 
 from provide.telemetry._lifecycle import coordinator
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
+from provide.telemetry.levels import LogSeverity, parse_level
 from provide.telemetry.logger.context import get_context
 from provide.telemetry.schema.events import EventSchemaError, validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
@@ -98,15 +100,34 @@ _TRUNCATION_SUFFIX = "..."
 
 TRACE_LEVEL = 5
 
-# Fast lowercase level → numeric lookup (avoids normalize + getLevelName per message)
-_FAST_LEVEL_LOOKUP: dict[str, int] = {
-    "critical": logging.CRITICAL,
-    "error": logging.ERROR,
-    "warning": logging.WARNING,
-    "info": logging.INFO,
-    "debug": logging.DEBUG,
-    "trace": TRACE_LEVEL,
-}
+# Fast lowercase level → numeric lookup (avoids normalize + getLevelName per
+# message). Derived from the one shared table, which is what stops it drifting
+# from the near-identical dict in core.py -- this one knew "warning" but not
+# "warn", so a caller-supplied "warn" fell to the default rank.
+_FAST_LEVEL_LOOKUP: dict[str, int] = {name.lower(): severity.stdlib_level for name, severity in _LEVEL_TABLE.items()}
+
+
+def canonicalize_level(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite the level to the canonical spelling the other four ports emit.
+
+    structlog's ``add_log_level`` writes its own method name — ``"warning"``,
+    ``"critical"``, lowercase — which is Python-specific vocabulary. The
+    canonical ladder is uppercase and spells rank 3 ``WARN``, so a consumer
+    querying ``level="WARN"`` silently missed every Python service.
+
+    TRACE needs the special case: this pipeline floors structlog at DEBUG and
+    implements ``.trace()`` as ``debug(_trace=True)``, so a trace record
+    arrives here claiming to be DEBUG. ``_trace`` is left on the record — it is
+    what the filtering and rendering paths key on.
+    """
+    level = event_dict.get("level")
+    if level is None:
+        return event_dict
+    if event_dict.get("_trace"):
+        event_dict["level"] = LogSeverity.TRACE.canonical_name
+        return event_dict
+    event_dict["level"] = parse_level(str(level)).canonical_name
+    return event_dict
 
 
 def inject_das_fields(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:

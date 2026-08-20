@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
@@ -56,7 +57,7 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyTraceFields(ctx, r)
 
 	// Consent gate: block before any processing when consent level forbids logs.
-	if !ShouldAllow(signalLogs, r.Level.String()) {
+	if !ShouldAllow(signalLogs, levelcore.SlogName(r.Level)) {
 		return nil
 	}
 
@@ -305,19 +306,23 @@ func _isPrefixMatch(name, module string) bool {
 // _parseLevel converts a level string to a slog.Level.
 // Recognises TRACE, DEBUG, INFO, WARN, WARNING, ERROR, CRITICAL.
 func _parseLevel(s string) slog.Level {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case LogLevelTrace:
-		return LevelTrace
-	case LogLevelDebug:
-		return slog.LevelDebug
-	case LogLevelWarn, LogLevelWarning:
-		return slog.LevelWarn
-	case LogLevelError, LogLevelCritical:
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
+	return levelcore.ParseSlog(s, levelcore.Info)
 }
+
+// ParseLevel resolves a level string to the slog.Level that carries it.
+//
+// Exported because adapters that receive a level as data need the conversion
+// too, and every one that re-implemented it got a slightly different table.
+// Recognises TRACE, DEBUG, INFO, WARN, WARNING, ERROR, CRITICAL and FATAL,
+// case-insensitively and ignoring surrounding whitespace; anything else
+// resolves to INFO.
+func ParseLevel(s string) slog.Level { return _parseLevel(s) }
+
+// LevelName is the canonical spelling of an slog.Level.
+//
+// slog.Level.String() renders LevelTrace as "DEBUG-4" and LevelCritical as
+// "ERROR+4", neither of which any level table recognises.
+func LevelName(l slog.Level) string { return levelcore.SlogName(l) }
 
 // _newTelemetryHandler wraps base with a _telemetryHandler for the given config and name.
 func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) slog.Handler {
@@ -338,6 +343,16 @@ func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 			}
 			if a.Key == slog.MessageKey {
 				a.Key = "message"
+			}
+			// slog renders a level it has no name for by arithmetic on the
+			// nearest one it does: LevelTrace becomes "DEBUG-4" and
+			// LevelCritical "ERROR+4". Neither is a level any consumer or any
+			// of this project's other ports recognises, and CRITICAL is
+			// reachable through the ordinary Log(ctx, ParseLevel(s), msg) path.
+			if a.Key == slog.LevelKey {
+				if lvl, ok := a.Value.Any().(slog.Level); ok {
+					return slog.String(slog.LevelKey, levelcore.SlogName(lvl))
+				}
 			}
 			return a
 		},

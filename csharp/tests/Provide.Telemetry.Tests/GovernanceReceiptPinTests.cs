@@ -33,10 +33,36 @@ public class GovernanceReceiptPinTests : IDisposable
     [InlineData("WARN", 3)]
     [InlineData("ERROR", 4)]
     [InlineData("CRITICAL", 5)]
-    [InlineData("unknown", 0)]
+    [InlineData("FATAL", 5)]
+    // Consent now resolves through the shared parser, so an unrecognised level
+    // ranks INFO here as it does everywhere else. It used to rank 0/TRACE. Both
+    // sit below the WARN and ERROR gates, so no consent decision changes --
+    // asserted directly by UnrecognisedLevelsStayGatedOff below.
+    [InlineData("unknown", 2)]
     public void TheLogLevelOrderTableHoldsEveryDocumentedRank(string level, int rank)
     {
         Assert.Equal(rank, Consent.LogOrder(level));
+    }
+
+    [Fact]
+    public void UnrecognisedLevelsStayGatedOff()
+    {
+        Consent.SetConsentLevel(ConsentLevel.Functional);
+        Assert.False(Consent.ShouldAllow(Signals.Logs, "unknown"));
+        Consent.SetConsentLevel(ConsentLevel.Minimal);
+        Assert.False(Consent.ShouldAllow(Signals.Logs, "unknown"));
+    }
+
+    [Fact]
+    public void FatalIsGatedAsCriticalRatherThanDroppedAsUnrecognised()
+    {
+        // FATAL was absent from the old local table, so it ranked 0 and was
+        // dropped by both gates -- the most severe record in the ladder
+        // discarded as if it were the least.
+        Consent.SetConsentLevel(ConsentLevel.Functional);
+        Assert.True(Consent.ShouldAllow(Signals.Logs, "FATAL"));
+        Consent.SetConsentLevel(ConsentLevel.Minimal);
+        Assert.True(Consent.ShouldAllow(Signals.Logs, "FATAL"));
     }
 
     [Fact]

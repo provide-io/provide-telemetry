@@ -11,7 +11,13 @@
 //   PROVIDE_LOG_LEVEL=INFO
 
 import process from 'node:process';
-import { setupTelemetry, getLogger, setTraceContext } from '../../typescript/src/index.js';
+import {
+  setupTelemetry,
+  getLogger,
+  setTraceContext,
+  LogSeverity,
+  severityName,
+} from '../../typescript/src/index.js';
 
 const TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
 const SPAN_ID = 'b7ad6b7169203331';
@@ -22,3 +28,17 @@ setTraceContext(TRACE_ID, SPAN_ID);
 // Use the public API — getLogger() returns the canonical Logger interface.
 const log = getLogger('probe');
 log.info({ event: 'log.output.parity' }, 'log.output.parity');
+
+// Then one record per rung of the ladder, so the cross-language check can see
+// the level vocabulary at every severity rather than only at INFO.
+for (const severity of [
+  LogSeverity.Trace,
+  LogSeverity.Debug,
+  LogSeverity.Info,
+  LogSeverity.Warn,
+  LogSeverity.Error,
+  LogSeverity.Critical,
+]) {
+  const event = `log.level.vocab.${severityName(severity)}`;
+  log.log(severity, { event }, event);
+}

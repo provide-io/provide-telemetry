@@ -33,16 +33,14 @@ pub fn get_consent_level() -> ConsentLevel {
     *crate::_lock::lock(consent_level())
 }
 
-fn log_level_order(level: Option<&str>) -> usize {
-    match level.unwrap_or_default().to_ascii_uppercase().as_str() {
-        "TRACE" => 0,
-        "DEBUG" => 1,
-        "INFO" => 2,
-        "WARNING" | "WARN" => 3,
-        "ERROR" => 4,
-        "CRITICAL" => 5,
-        _ => 0,
-    }
+/// Rank a level for the consent gates, resolving through the one shared table.
+///
+/// An unrecognised level ranks INFO here rather than the old local default of
+/// 0/TRACE. Both sit below the WARN and ERROR gates below, so no consent
+/// decision changes. FATAL does change: it used to be unrecognised and was
+/// dropped as if it were the least severe record in the ladder.
+fn log_level_order(level: Option<&str>) -> u8 {
+    crate::logger::levels::level_order(level.unwrap_or_default())
 }
 
 pub fn should_allow(signal: &str, log_level: Option<&str>) -> bool {

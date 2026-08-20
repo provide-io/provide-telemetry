@@ -6,17 +6,9 @@
  * When deleted, all signals pass through unchanged.
  */
 
-export type ConsentLevel = 'FULL' | 'FUNCTIONAL' | 'MINIMAL' | 'NONE';
+import { LogSeverity, levelOrder } from './levels.js';
 
-const LOG_LEVEL_ORDER: Record<string, number> = {
-  TRACE: 0,
-  DEBUG: 1,
-  INFO: 2,
-  WARNING: 3,
-  WARN: 3,
-  ERROR: 4,
-  CRITICAL: 5,
-};
+export type ConsentLevel = 'FULL' | 'FUNCTIONAL' | 'MINIMAL' | 'NONE';
 
 // Stryker disable next-line StringLiteral: initial value is overwritten by resetConsentForTests before any test observes it
 let _consentLevel: ConsentLevel = 'FULL';
@@ -35,18 +27,14 @@ export function shouldAllow(signal: string, logLevel?: string): boolean {
   if (level === 'NONE') return false;
   if (level === 'FUNCTIONAL') {
     if (signal === 'logs') {
-      // Stryker disable next-line StringLiteral: equivalent — any non-existent key in LOG_LEVEL_ORDER falls back to 0 via ?? 0
-      const order = LOG_LEVEL_ORDER[(logLevel ?? '').toUpperCase()] ?? 0;
-      return order >= LOG_LEVEL_ORDER['WARNING'];
+      return levelOrder(logLevel) >= LogSeverity.Warn;
     }
     if (signal === 'context') return false;
     return true;
   }
   // MINIMAL
   if (signal === 'logs') {
-    // Stryker disable next-line StringLiteral: equivalent — any non-existent key in LOG_LEVEL_ORDER falls back to 0 via ?? 0
-    const order = LOG_LEVEL_ORDER[(logLevel ?? '').toUpperCase()] ?? 0;
-    return order >= LOG_LEVEL_ORDER['ERROR'];
+    return levelOrder(logLevel) >= LogSeverity.Error;
   }
   return false;
 }

@@ -8,6 +8,159 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [0.8.0] — 2026-08-19
+
+All five languages. A minor bump rather than a patch: the `level` field
+on every emitted record changed in three ports, and the TypeScript
+`Logger` interface gained a required member.
+
+### Breaking
+
+**The `level` field on every emitted record is now one vocabulary in all five
+languages: `TRACE DEBUG INFO WARN ERROR CRITICAL`, uppercase.** It was not
+before, and nothing caught it because the canonical-envelope probe only ever
+emitted at INFO — the one severity where the five happened to agree.
+
+```
+                 before                     after
+Python           "warning" "critical"       "WARN" "CRITICAL"
+TypeScript       40 50 60  (pino numbers)   "WARN" "ERROR" "CRITICAL"
+Go               "DEBUG-4" for TRACE        "TRACE"
+Go               "ERROR+4" for CRITICAL     "CRITICAL"
+Rust  log(s, m)  whatever string s was      normalised, so log("bogus", m) is INFO
+C#               already canonical          unchanged
+```
+
+Anything matching on Python's lowercase levels, or reading TypeScript's numeric
+`level`, must be updated. A dashboard querying `level="WARN"` previously missed
+every Python and TypeScript service; it now matches all five.
+
+Two of these were never valid values at all: Go rendered its custom rungs by
+arithmetic on the nearest level slog knows (`"DEBUG-4"`, `"ERROR+4"`), which no
+level table anywhere recognises, and Rust's string door published the caller's
+raw text so `log("bogus", m)` put `"bogus"` on the wire.
+
+Related, TypeScript only:
+
+- **TRACE records no longer go through `console.trace()`.** It prepends
+  `"Trace: "` and appends a stack dump, so a TRACE line was not parseable JSON.
+  They use `console.debug` now.
+- **`PROVIDE_LOG_LEVEL=WARNING` and `=CRITICAL` no longer throw** at logger
+  construction.
+
+The canonical ladder and its aliases are pinned for all five by the `log_levels`
+section of `spec/behavioral_fixtures.yaml`, and the parity harness now emits one
+record per rung and fails if the ports disagree — so this cannot silently drift
+again.
+
+### Breaking
+
+Check these before deploying — each is triggered by one specific configured
+value, and nothing warns you at runtime.
+
+- **C#: `PROVIDE_LOG_LEVEL=FATAL` now admits only `CRITICAL`.** It previously
+  admitted everything from `INFO` up, because `FATAL` was absent from the level
+  table and fell through to the default rank of 20 — which is `INFO`. C#
+  validates no log level, so nobody was ever told. If you set `FATAL` and rely
+  on seeing `ERROR` records, change it to `ERROR`.
+
+- **Go and Rust: `PROVIDE_LOG_LEVEL=CRITICAL` now excludes `ERROR` records.**
+  Both folded `CRITICAL` onto `ERROR`, so a `CRITICAL` threshold admitted
+  `ERROR`. It no longer does. Applies to `PROVIDE_LOG_MODULE_LEVELS` entries
+  too. If you set `CRITICAL` and rely on seeing `ERROR`, change it to `ERROR`.
+
+- **Rust: `PROVIDE_LOG_LEVEL=FATAL` narrows from an `ERROR` threshold to a
+  `CRITICAL` one**, for the same reason.
+
+- **TypeScript: `log` is now a required member of the exported `Logger`
+  interface.** Any consumer that implements `Logger` — a test double, a fake, an
+  adapter — fails to compile with `TS2741: Property 'log' is missing`. Add a
+  `log` member, or take the logger from `getLogger()` rather than implementing
+  the interface. It is required rather than optional so that
+  `logger.log(level, obj, msg)` needs no `?.` guard at the call site, which is
+  the entire point of the method.
+
+- **Python: `logger.log(5, event)` now emits** instead of being silently
+  dropped. `5` is `TRACE`; structlog's own `log()` compared it against a floor
+  of `DEBUG` and discarded the record. Other stdlib numerics are unaffected.
+
+Everything else in this release is strictly more permissive and cannot break a
+working configuration: TypeScript stops throwing on `WARNING` and `CRITICAL`,
+and Python and Go stop rejecting `WARN` and `FATAL` at startup.
+
+### Added
+
+- **A level-parameterised logging door.** Callers that receive a level as
+  *data* had to re-implement a dispatch chain per adapter, and each branch
+  only ran when that severity actually occurred — so most sat permanently
+  uncovered and flapped the consuming repo's coverage gate. The chain is now
+  one expression:
+
+  ```csharp
+  // before
+  if (level == "debug") log.Debug(message);
+  else if (level == "warn" || level == "warning") log.Warn(message);
+  else if (level == "error") log.Error(message);
+  else log.Info(message);
+
+  // after
+  log.Log(Levels.Parse(level), message);
+  ```
+
+  Python `logger.log(level, event, **kw)`, TypeScript `Logger.log(level, obj,
+  msg)`, Rust `Logger::log_at(LogSeverity, &str)`, C# `Logger.Log(LogSeverity,
+  message, fields)`. Go already had one — `slog.Logger.Log` — and gains only
+  the converter. The level is typed; one alias-tolerant parser per port
+  converts a string at the boundary. Existing per-level methods are unchanged.
+
+- **A public string-to-level parser** in every port: `parse_level` /
+  `parseLevel` / `ParseLevel` / `Levels.Parse`, with a `try` form that reports
+  an unrecognised level instead of substituting for it. The fallback is a
+  parameter, not a hidden constant, so the substitution is visible at the call
+  site.
+
+### Fixed
+
+- **`PROVIDE_LOG_LEVEL=WARNING` crashed TypeScript at logger construction.**
+  The raw value was lowercased and handed to pino, whose vocabulary is
+  `trace|debug|info|warn|error|fatal`; `WARNING` and `CRITICAL` — both listed
+  as applicable to TypeScript in `spec/telemetry-api.yaml` — threw
+  `default level:warning must be included in custom levels`.
+  `PROVIDE_LOG_MODULE_LEVELS` had the same fault.
+
+- **`CRITICAL` was not one severity across the tree.** Python, C# and every
+  consent table ranked it above `ERROR`; Go's `_parseLevel` and Rust's
+  `level_order` folded it onto `ERROR`. A `CRITICAL` threshold therefore
+  admitted `ERROR` records in Go and Rust, and inside Go a single record could
+  be ranked one way for filtering and another for consent. `CRITICAL` is now a
+  distinct rank in all five, carried in Go by a new `LevelCritical` slog level.
+
+- **`FATAL` was understood only by Rust.** Everywhere else it was an
+  unrecognised level, which the consent gates ranked lowest — so the most
+  severe record in the ladder was dropped as if it were the least. It is now an
+  alias for `CRITICAL` in all five, matching stdlib `logging.FATAL`.
+
+- **`WARN` was missing from both of Python's level tables** and rejected by
+  Python's and Go's config validators, while Rust accepted it. All five now
+  accept `WARN` and `WARNING`.
+
+- **Go ranked custom levels by `slog.Level.String()`**, which renders them as
+  `"DEBUG-4"` and `"ERROR+4"`. No level table contains those, so records at
+  `LevelTrace` reached the consent gate as unrecognised. `LevelName` renders
+  the canonical spelling instead.
+
+### Changed
+
+- Each port now resolves every level through **one** table. Previously Python
+  had three, Go four, C# three, Rust two, and TypeScript none. The canonical
+  ladder and its alias table are pinned for all five by the new `log_levels`
+  section of `spec/behavioral_fixtures.yaml`.
+
+- An unrecognised level ranks `INFO` in the consent gates rather than `TRACE`.
+  Both sit below the `WARN` and `ERROR` gates, so no consent decision changes.
+
+---
+
 ## [0.7.2] — 2026-08-16
 
 All five languages. The redaction fix is present in every implementation;

@@ -320,8 +320,10 @@ describe('logger singleton', () => {
 });
 
 describe('write hook — LEVEL_MAP console routing', () => {
-  it('level 10 (trace) routes to console.trace when consoleOutput=true', () => {
-    const spy = vi.spyOn(console, 'trace').mockImplementation(() => {});
+  // console.trace would prepend "Trace: " and a stack dump, which stops the
+  // line being parseable; trace records go to console.debug instead.
+  it('level 10 (trace) routes to console.debug when consoleOutput=true', () => {
+    const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     makeCfg({ consoleOutput: true });
     const hook = makeWriteHook();
     hook({ level: 10, event: 'x' });

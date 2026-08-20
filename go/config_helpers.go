@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 )
 
 // strTrue, strFalse, strYes, and strNo are canonical string representations of
@@ -80,12 +82,14 @@ func parseEnvBool(value string, defaultVal bool, field string) (bool, error) {
 
 // normalizeLevel validates and normalises a log level string.
 func normalizeLevel(value string) (string, error) {
-	allowed := map[string]struct{}{
-		LogLevelTrace: {}, LogLevelDebug: {}, LogLevelInfo: {},
-		LogLevelWarning: {}, LogLevelError: {}, LogLevelCritical: {},
-	}
+	// Validated against the shared table -- which widens what is accepted to
+	// WARN and FATAL, rejected here before while Rust accepted both. The
+	// caller's own spelling is what is stored, not the ladder's canonical one:
+	// spec/telemetry-api.yaml makes WARNING the canonical configured spelling,
+	// while the ladder's canonical name is WARN because that is what Go and C#
+	// put on the record. Both resolve to the same severity downstream.
 	upper := strings.ToUpper(strings.TrimSpace(value))
-	if _, ok := allowed[upper]; !ok {
+	if _, ok := levelcore.TryParse(upper); !ok {
 		return "", NewConfigurationError(fmt.Sprintf("invalid log level: %s", value))
 	}
 	return upper, nil

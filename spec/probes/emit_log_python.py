@@ -21,7 +21,7 @@ import sys
 # Ensure the source tree is importable when run from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from provide.telemetry import get_logger, set_trace_context, setup_telemetry
+from provide.telemetry import LogSeverity, get_logger, set_trace_context, setup_telemetry
 
 TRACE_ID = "0af7651916cd43dd8448eb211c80319c"
 SPAN_ID = "b7ad6b7169203331"
@@ -30,3 +30,8 @@ setup_telemetry()
 set_trace_context(TRACE_ID, SPAN_ID)
 log = get_logger("probe")
 log.info("log.output.parity")
+
+# Then one record per rung of the ladder, so the cross-language check can see
+# the level vocabulary at every severity rather than only at INFO.
+for _severity in LogSeverity:
+    log.log(_severity, f"log.level.vocab.{_severity.canonical_name}")

@@ -15,8 +15,11 @@ from typing import Any
 
 import structlog
 
+from provide.telemetry import levels as _levels
 from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
+from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
@@ -24,6 +27,7 @@ from provide.telemetry.logger.processors import (
     add_error_fingerprint,
     add_standard_fields,
     apply_sampling,
+    canonicalize_level,
     enforce_event_schema,
     harden_input,
     inject_das_fields,
@@ -56,17 +60,16 @@ def _load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
 
 _make_handler = _otel_logs.make_otel_logging_handler
 
-TRACE = 5
+# Re-bound as a module attribute rather than imported directly: mypy's
+# no_implicit_reexport rejects a bare re-import, and a module attribute is what
+# the tests patch. Same reasoning as the OTel bindings above.
+TRACE = _levels.TRACE
 logging.addLevelName(TRACE, "TRACE")
 
-_LEVEL_NAME_TO_NUMERIC: dict[str, int] = {
-    "CRITICAL": logging.CRITICAL,
-    "ERROR": logging.ERROR,
-    "WARNING": logging.WARNING,
-    "INFO": logging.INFO,
-    "DEBUG": logging.DEBUG,
-    "TRACE": TRACE,
-}
+# Derived from the one shared table rather than restated. The literal version
+# of this dict knew WARNING but not WARN, and nothing kept it in step with the
+# near-identical table in processors.py.
+_LEVEL_NAME_TO_NUMERIC: dict[str, int] = {name: severity.stdlib_level for name, severity in _LEVEL_TABLE.items()}
 
 
 def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
@@ -227,12 +230,16 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
 def _setup_emergency_fallback(exc: Exception) -> None:
     """Configure minimal stderr-only structlog pipeline when normal setup fails."""
     global _configured, _active_config
+    # Annotated list[Any] like the main chain: structlog's Processor alias is
+    # MutableMapping-based, and this repo's processors are all dict-typed.
+    fallback_processors: list[Any] = [
+        structlog.processors.add_log_level,
+        canonicalize_level,
+        _iso_timestamper(),
+        _plain_console_renderer(),
+    ]
     structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            _iso_timestamper(),
-            _plain_console_renderer(),
-        ],
+        processors=fallback_processors,
         wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=False,
@@ -291,6 +298,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         inject_logger_name,
         inject_das_fields,
         structlog.processors.add_log_level,
+        canonicalize_level,
     ]
     if config.logging.include_timestamp:
         processors.append(structlog.processors.TimeStamper(fmt="iso"))
@@ -481,6 +489,25 @@ class _TraceWrapper:
     def trace(self, event: str, *args: Any, **kwargs: Any) -> None:
         self._logger.trace(event, *args, **kwargs)
 
+    def log(self, level: LogSeverity | str | int, event: str, *args: Any, **kwargs: Any) -> None:
+        """Emit at a level known only at runtime.
+
+        For adapters that receive a level as data. structlog's own ``log()``
+        takes a stdlib numeric level, so a level *string* raised TypeError on
+        the ``level < min_level`` comparison inside the filtering bound logger
+        -- the one thing an adapter holding ``"warn"`` actually wanted to do.
+        """
+        numeric = to_stdlib_level(level)
+        if numeric <= TRACE:
+            # structlog's level-to-method map starts at DEBUG, and this
+            # pipeline implements TRACE as debug(_trace=True) rather than as a
+            # structlog level -- see _make_filtering_bound_logger, which floors
+            # structlog at DEBUG. Routing TRACE through log() would compare
+            # 5 < 10 and drop the record without a word.
+            self.trace(event, *args, **kwargs)
+            return
+        self._logger.log(numeric, event, *args, **kwargs)
+
     def is_debug_enabled(self) -> bool:
         return bool(self._logger.is_debug_enabled())
 
@@ -500,6 +527,10 @@ class _LazyLogger:
 
     def trace(self, event: str, *args: Any, **kwargs: Any) -> None:
         self._resolve().trace(event, *args, **kwargs)
+
+    def log(self, level: LogSeverity | str | int, event: str, *args: Any, **kwargs: Any) -> None:
+        """See :meth:`_TraceWrapper.log`."""
+        self._resolve().log(level, event, *args, **kwargs)
 
     def is_debug_enabled(self) -> bool:
         return self._resolve().is_debug_enabled()

@@ -3,7 +3,7 @@
 // @vitest-environment node
 
 /**
- * The pino-level → OTel-severity tables, asserted from a freshly evaluated module.
+ * The canonical-level → OTel-severity tables, asserted from a freshly evaluated module.
  *
  * SEVERITY_MAP and SEVERITY_TEXT are module-level object literals, so they are
  * built once at import time — before any test has started. Stryker's perTest V8
@@ -37,13 +37,13 @@ interface EmittedRecord {
 }
 
 /**
- * Re-evaluate otel-logs.ts, then push one record per pino level through it.
+ * Re-evaluate otel-logs.ts, then push one record per canonical level through it.
  *
  * The mocked peer deps are re-instantiated by resetModules too, so the logger
  * stub has to be installed on the freshly imported @opentelemetry/api-logs
  * rather than on the copy this file imported at load time.
  */
-async function severitiesFor(levels: number[]): Promise<EmittedRecord[]> {
+async function severitiesFor(levels: string[]): Promise<EmittedRecord[]> {
   vi.resetModules();
   const apiLogs = await import('@opentelemetry/api-logs');
   const emitted: EmittedRecord[] = [];
@@ -69,8 +69,16 @@ describe('otel-logs severity tables', () => {
     vi.resetModules();
   });
 
-  it('maps every pino level to its OTel severity number and text', async () => {
-    const emitted = await severitiesFor([10, 20, 30, 40, 50, 60, 99]);
+  it('maps every canonical level to its OTel severity number and text', async () => {
+    const emitted = await severitiesFor([
+      'TRACE',
+      'DEBUG',
+      'INFO',
+      'WARN',
+      'ERROR',
+      'CRITICAL',
+      'nonsense',
+    ]);
     expect(emitted.map((r) => [r.severityNumber, r.severityText])).toEqual([
       [1, 'TRACE'],
       [5, 'DEBUG'],

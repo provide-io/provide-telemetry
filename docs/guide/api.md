@@ -168,6 +168,57 @@ log.trace("chunk %d of %s", 3, "reader")  # identical at every level
 Both shapes work at every level, including `.trace()`. Demoting a call from
 `info` to `trace` never changes what arguments it accepts.
 
+### `.log(level, event, *args, **kwargs)` — logging at a runtime level
+
+For callers that receive a level as *data* rather than choosing it in source.
+The level is a `LogSeverity`, a level string, or a stdlib numeric level.
+
+```python
+from provide.telemetry import LogSeverity, parse_level
+
+log.log(LogSeverity.WARN, "io.retry", attempt=3)
+log.log(parse_level(level_from_config), "io.retry")   # level held as a string
+```
+
+Without it, every adapter that bridges a `(level, message)` callback into a
+logger re-implements the same dispatch chain, and each branch only runs when
+that severity actually occurs — so most of them sit permanently uncovered:
+
+```python
+# before
+if level == "debug": log.debug(message)
+elif level in ("warn", "warning"): log.warning(message)
+elif level == "error": log.error(message)
+else: log.info(message)
+
+# after
+log.log(parse_level(level), message)
+```
+
+`parse_level` is the single alias-tolerant converter. It trims whitespace,
+compares case-insensitively, accepts `WARNING` for `WARN` and `FATAL` for
+`CRITICAL`, and substitutes a caller-supplied fallback — `INFO` by default —
+for anything it does not recognise. `try_parse_level` reports non-recognition
+instead of substituting. The canonical ladder is
+`TRACE(0) DEBUG(1) INFO(2) WARN(3) ERROR(4) CRITICAL(5)`; `WARNING` and `FATAL`
+are spellings, not members.
+
+> **Per-language names:** Python `logger.log(level, event, **kw)` with
+> `LogSeverity` / `parse_level`. TypeScript `Logger.log(level, obj, msg)` with
+> `LogSeverity` / `parseLevel`. Rust `Logger::log_at(LogSeverity, &str)` —
+> `log` was already taken by the pre-existing string form, which is unchanged.
+> C# `Logger.Log(LogSeverity, message, fields)` with `Levels.Parse`; the type is
+> `LogSeverity` rather than `LogLevel` because
+> `Microsoft.Extensions.Logging.LogLevel` would collide. Go needs no new door —
+> `slog.Logger.Log(ctx, slog.Level, msg, args...)` is already it — and gains
+> only `ParseLevel(string) slog.Level` and `LevelName(slog.Level) string`.
+>
+> Every port publishes the same canonical `level` on the record —
+> `TRACE DEBUG INFO WARN ERROR CRITICAL`, uppercase. Python's TRACE records
+> still carry `_trace: true` as well, because the pipeline floors structlog at
+> DEBUG and implements `.trace()` as `debug(_trace=True)`; the published level
+> is `TRACE` regardless.
+
 ### `.trace()`, `.is_debug_enabled()`, `.is_trace_enabled()`
 
 Additions on top of structlog's `FilteringBoundLogger`. `TRACE` is level 5,

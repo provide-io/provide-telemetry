@@ -172,7 +172,9 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
         "WARN passes under WARNING alias"
     );
 
-    // CRITICAL is an alias for ERROR.
+    // CRITICAL is its own level, one rank above ERROR. It used to fold onto
+    // ERROR, so a CRITICAL threshold admitted ERROR records and the ladder's
+    // top two levels were indistinguishable.
     let cfg2 = LoggingConfig {
         level: "CRITICAL".to_string(),
         fmt: "json".to_string(),
@@ -191,8 +193,30 @@ fn logger_test_log_trait_level_aliases_warning_and_critical() {
         "WARN filtered under CRITICAL alias"
     );
     assert!(
-        out2.contains("error.passes.critical"),
-        "ERROR passes under CRITICAL alias"
+        !out2.contains("error.passes.critical"),
+        "ERROR is filtered under a CRITICAL threshold"
+    );
+
+    // The log crate's ladder stops at Error, so nothing routed through it can
+    // reach CRITICAL. The typed door is how a CRITICAL record is emitted.
+    let cfg3 = LoggingConfig {
+        level: "CRITICAL".to_string(),
+        fmt: "json".to_string(),
+        include_timestamp: false,
+        ..LoggingConfig::default()
+    };
+    configure_logging(cfg3);
+    enable_json_capture_for_tests();
+    get_logger(Some("tests.alias_lvl")).log_at(
+        provide_telemetry::LogSeverity::Critical,
+        "critical.passes.critical",
+    );
+    let out3 = String::from_utf8(take_json_capture()).expect("utf8");
+    reset_logging_config_for_tests();
+    Logger::drain_events_for_tests();
+    assert!(
+        out3.contains("critical.passes.critical"),
+        "CRITICAL passes under a CRITICAL threshold"
     );
 }
 

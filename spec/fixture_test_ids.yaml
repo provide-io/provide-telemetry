@@ -163,3 +163,9 @@ fixture_test_ids:
     go: TestBuildResource_ExplicitBeatsEnv
     rust: env_provided_key_is_not_overridden_by_floor
     csharp: ResourcePrecedence_ServiceNameFromEnv
+  log_levels:
+    python: test_parity_log_levels_canonical_ladder
+    typescript: "parity: log_levels"
+    go: TestParity_LogLevels_CanonicalLadder
+    rust: canonical_ladder_has_six_members_in_order
+    csharp: Log_CollapsesTheDownstreamAdapterDispatchChain

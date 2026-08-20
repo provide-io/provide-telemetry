@@ -78,7 +78,13 @@ func TestParseLevel_AllVariants(t *testing.T) {
 		{"WARN", slog.LevelWarn},
 		{"WARNING", slog.LevelWarn},
 		{"ERROR", slog.LevelError},
-		{"CRITICAL", slog.LevelError},
+		// CRITICAL used to fold onto slog.LevelError, so a CRITICAL threshold
+		// admitted ERROR records and the ladder's top two levels were
+		// indistinguishable. It now has a level of its own.
+		{"CRITICAL", LevelCritical},
+		{"FATAL", LevelCritical},
+		{"WARN", slog.LevelWarn},
+		{"  warning  ", slog.LevelWarn},
 		{"unknown", slog.LevelInfo},
 		{"", slog.LevelInfo},
 	}

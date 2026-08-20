@@ -48,7 +48,7 @@ afterEach(() => {
 
 describe('LEVEL_MAP — pino level number to console method name', () => {
   it.each([
-    [10, 'trace'],
+    [10, 'debug'],
     [20, 'debug'],
     [30, 'log'], // info maps to console.log, not console.info
     [40, 'warn'],
@@ -79,7 +79,7 @@ describe('LEVEL_MAP — pino level number to console method name', () => {
 
 describe('LEVEL_MAP — pino level number to console method name, from a fresh module', () => {
   it.each([
-    [10, 'trace'],
+    [10, 'debug'],
     [20, 'debug'],
     [30, 'log'],
     [40, 'warn'],

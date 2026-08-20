@@ -18,7 +18,7 @@ use crate::sampling::{set_sampling_policy, should_sample, SamplingPolicy, Signal
 use crate::tracer::get_trace_context;
 
 mod emit;
-mod levels;
+pub mod levels;
 mod pretty;
 mod processors;
 
@@ -32,6 +32,12 @@ pub use emit::{
     enable_pretty_capture_for_tests, take_console_capture, take_json_capture, take_pretty_capture,
 };
 use levels::{effective_level_threshold, level_order};
+pub use levels::{parse_level, try_parse_level, LogSeverity};
+
+/// Normalise a caller-supplied level string to its canonical spelling.
+fn canonical_level(level: &str) -> &'static str {
+    parse_level(level, LogSeverity::Info).name()
+}
 use processors::process_event;
 
 #[inline(always)]
@@ -298,13 +304,42 @@ impl Logger {
         self.log("ERROR", message);
     }
 
+    /// Emit at a level given as a string.
+    ///
+    /// The level is normalised through the shared table before it reaches the
+    /// record: `log("warning", m)` publishes `WARN` and `log("bogus", m)`
+    /// publishes `INFO`. It used to pass the caller's string through verbatim,
+    /// which made this the only door in any port that could put a level no
+    /// consumer recognises — `"bogus"` — onto the wire, and made it disagree
+    /// with `warn()` about how to spell rank 3.
     pub fn log(&self, level: &str, message: &str) {
-        log_event(level, &self.target, message);
+        log_event(canonical_level(level), &self.target, message);
+    }
+
+    /// Emit at a level known only at runtime, typed.
+    ///
+    /// Named `log_at` rather than `log` because `log` was already taken by the
+    /// string form above, which predates this and stays as it was. For adapters
+    /// that receive a level as data: convert once at the boundary with
+    /// [`parse_level`] rather than re-implementing a dispatch chain whose arms
+    /// only run when that severity actually occurs.
+    pub fn log_at(&self, level: LogSeverity, message: &str) {
+        self.log(level.name(), message);
+    }
+
+    /// [`Logger::log_at`] with extra step-local structured fields.
+    pub fn log_at_fields(
+        &self,
+        level: LogSeverity,
+        message: &str,
+        fields: &BTreeMap<String, Value>,
+    ) {
+        self.log_fields(level.name(), message, fields);
     }
 
     /// Emit with extra step-local structured fields merged into the event context.
     pub fn log_fields(&self, level: &str, message: &str, fields: &BTreeMap<String, Value>) {
-        log_event_with_fields(level, &self.target, message, fields);
+        log_event_with_fields(canonical_level(level), &self.target, message, fields);
     }
 
     pub fn debug_fields(&self, message: &str, fields: &BTreeMap<String, Value>) {
@@ -340,7 +375,7 @@ impl Logger {
     }
 
     pub fn log_event(&self, level: &str, event: &crate::schema::Event) {
-        log_event_with_event(level, &self.target, event);
+        log_event_with_event(canonical_level(level), &self.target, event);
     }
 
     pub fn drain_events_for_tests() -> Vec<LogEvent> {
@@ -398,6 +433,7 @@ impl BufferLogger {
 
     pub fn log(&self, level: &str, message: &str) {
         let config = active_logging_config();
+        let level = canonical_level(level);
         if level_order(level) < effective_level_threshold(&self.target, &config) {
             return;
         }
@@ -424,31 +460,38 @@ pub fn buffer_logger(name: Option<&str>) -> BufferLogger {
     BufferLogger::new(name)
 }
 
+/// Map a `log` crate level onto the canonical ladder.
+///
+/// The `log` crate's ladder tops out at Error and has no CRITICAL, so records
+/// arriving through it can never exceed ERROR. This used to be two separate
+/// matches -- one to a bare number for the threshold test, one to a string for
+/// the record -- which is two more places for the ladder to drift.
+fn severity_of(level: log::Level) -> LogSeverity {
+    match level {
+        log::Level::Error => LogSeverity::Error,
+        log::Level::Warn => LogSeverity::Warn,
+        log::Level::Info => LogSeverity::Info,
+        log::Level::Debug => LogSeverity::Debug,
+        log::Level::Trace => LogSeverity::Trace,
+    }
+}
+
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
         let config = active_logging_config();
-        let record_order: u8 = match metadata.level() {
-            log::Level::Error => 4,
-            log::Level::Warn => 3,
-            log::Level::Info => 2,
-            log::Level::Debug => 1,
-            log::Level::Trace => 0,
-        };
-        record_order >= effective_level_threshold(metadata.target(), &config)
+        severity_of(metadata.level()).order()
+            >= effective_level_threshold(metadata.target(), &config)
     }
 
     fn log(&self, record: &log::Record<'_>) {
         if !self.enabled(record.metadata()) {
             return;
         }
-        let level = match record.level() {
-            log::Level::Error => "ERROR",
-            log::Level::Warn => "WARN",
-            log::Level::Info => "INFO",
-            log::Level::Debug => "DEBUG",
-            log::Level::Trace => "TRACE",
-        };
-        log_event(level, record.target(), &record.args().to_string());
+        log_event(
+            severity_of(record.level()).name(),
+            record.target(),
+            &record.args().to_string(),
+        );
     }
 
     fn flush(&self) {}

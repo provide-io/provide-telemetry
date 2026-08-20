@@ -10,8 +10,13 @@ fn consent_test_log_level_order_covers_critical_and_unknown() {
     assert_eq!(log_level_order(Some("DEBUG")), 1);
     assert_eq!(log_level_order(Some("INFO")), 2);
     assert_eq!(log_level_order(Some("CRITICAL")), 5);
-    assert_eq!(log_level_order(Some("unexpected")), 0);
-    assert_eq!(log_level_order(None), 0);
+    assert_eq!(log_level_order(Some("FATAL")), 5);
+    // Consent now ranks through the one shared table, so an unrecognised level
+    // and an absent one land on INFO rather than the old local default of
+    // 0/TRACE. Both sit below the WARN and ERROR gates, so no consent decision
+    // changes -- asserted directly below.
+    assert_eq!(log_level_order(Some("unexpected")), 2);
+    assert_eq!(log_level_order(None), 2);
 }
 
 #[test]
@@ -28,6 +33,13 @@ fn consent_test_should_allow_covers_functional_and_minimal_policies() {
     assert!(should_allow("logs", Some("WARN")));
     assert!(should_allow("logs", Some("ERROR")));
     assert!(should_allow("logs", Some("CRITICAL")));
+    // FATAL used to be unrecognised here, so it ranked 0 and was dropped -- the
+    // most severe record in the ladder discarded as if it were the least.
+    assert!(should_allow("logs", Some("FATAL")));
+    // An unrecognised level now ranks INFO rather than the old 0/TRACE. Both
+    // sit below this gate, so the decision is unchanged.
+    assert!(!should_allow("logs", Some("unexpected")));
+    assert!(!should_allow("logs", None));
     assert!(should_allow("traces", None));
 
     set_consent_level(ConsentLevel::Minimal);
@@ -36,6 +48,9 @@ fn consent_test_should_allow_covers_functional_and_minimal_policies() {
     assert!(!should_allow("logs", Some("WARN")));
     assert!(should_allow("logs", Some("ERROR")));
     assert!(should_allow("logs", Some("CRITICAL")));
+    assert!(should_allow("logs", Some("FATAL")));
+    assert!(!should_allow("logs", Some("unexpected")));
+    assert!(!should_allow("logs", None));
     assert!(!should_allow("context", None));
 
     set_consent_level(ConsentLevel::None);

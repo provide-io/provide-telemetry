@@ -20,6 +20,7 @@ from provide.telemetry import _lazy
 from provide.telemetry._masking import redact_config
 from provide.telemetry.config import RuntimeOverrides, TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError, ProviderImmutableError, TelemetryError
+from provide.telemetry.levels import LogSeverity, level_order, parse_level, try_parse_level
 from provide.telemetry.logger import bind_context, clear_context, logger, unbind_context
 from provide.telemetry.logger.context import bind_session_context, clear_session_context, get_session_id
 from provide.telemetry.schema.events import Event, EventSchemaError, event, event_name
@@ -131,6 +132,7 @@ __all__ = [
     "ExporterPolicy",
     "FlushResult",
     "HealthSnapshot",
+    "LogSeverity",
     "PIIRule",
     "ProviderImmutableError",
     "ProviderMode",
@@ -187,8 +189,10 @@ __all__ = [
     "guard_attributes",
     "histogram",
     "inject_traceparent",
+    "level_order",
     "logger",
     "parse_baggage",
+    "parse_level",
     "provider_immutable_error",
     "provider_mode",
     "reconfigure_result",
@@ -226,6 +230,7 @@ __all__ = [
     "telemetry_runtime",
     "trace",
     "tracer",
+    "try_parse_level",
     "unbind_context",
     "update_runtime_config",
 ]

@@ -38,7 +38,9 @@ _PROBE_ENV_DEFAULTS: dict[str, str] = {
     "PROVIDE_TELEMETRY_SERVICE_NAME": "probe",
     "PROVIDE_TELEMETRY_ENV": "parity",
     "PROVIDE_TELEMETRY_VERSION": "1.2.3",
-    "PROVIDE_LOG_LEVEL": "INFO",
+    # TRACE so the vocabulary probe can emit every rung; the canonical
+    # envelope record is still the INFO one, emitted first.
+    "PROVIDE_LOG_LEVEL": "TRACE",
     "PROVIDE_LOG_INCLUDE_TIMESTAMP": "false",
     "PROVIDE_LOG_INCLUDE_CALLER": "false",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "",
@@ -87,7 +89,12 @@ _FIELD_RENAMES: dict[str, str] = {
 }
 
 _NOISE_FIELDS: frozenset[str] = frozenset({"pid", "hostname", "v", "event"})
-_PINO_LEVELS: dict[int, str] = {10: "TRACE", 20: "DEBUG", 30: "INFO", 40: "WARN", 50: "ERROR", 60: "FATAL"}
+# pino numeric level -> the canonical spelling. 60 is pino's "fatal", which
+# the canonical ladder treats as a spelling of CRITICAL -- and CRITICAL is
+# what the other four ports put on the record, so that is what it maps to.
+# Reachable since Logger.log(LogSeverity.Critical, ...) was added; before
+# that no public TypeScript method emitted at 60.
+_PINO_LEVELS: dict[int, str] = {10: "TRACE", 20: "DEBUG", 30: "INFO", 40: "WARN", 50: "ERROR", 60: "CRITICAL"}
 _ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
 _VALID_LEVELS: frozenset[str] = frozenset({"TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "CRITICAL"})
 _TRACE_ID_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{32}$")
@@ -201,6 +208,45 @@ def _extract_json_line(output: str) -> dict[str, object] | None:
     return None
 
 
+def _extract_level_vocabulary(output: str) -> dict[str, str]:
+    """Map each log.level.vocab.* event to the level the port published for it.
+
+    Keyed by the event name rather than by position so a port that filters or
+    reorders a rung shows up as a missing key instead of shifting every
+    comparison after it.
+    """
+    vocab: dict[str, str] = {}
+    for line in output.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        norm = _normalize_log_record(rec)
+        event = str(norm.get("message") or norm.get("event") or "")
+        if event.startswith("log.level.vocab."):
+            vocab[event.removeprefix("log.level.vocab.")] = str(norm.get("level"))
+    return vocab
+
+
+def _compare_level_vocabularies(vocabs: dict[str, dict[str, str]]) -> list[str]:
+    """Every port must publish the same level string for the same rung."""
+    mismatches: list[str] = []
+    rungs = sorted({rung for v in vocabs.values() for rung in v})
+    if not rungs:
+        return ["  no log.level.vocab.* records were emitted by any language"]
+    for rung in rungs:
+        published = {lang: v.get(rung) for lang, v in vocabs.items()}
+        distinct = {value for value in published.values() if value is not None}
+        if len(distinct) > 1 or any(value is None for value in published.values()):
+            mismatches.append(
+                f"  rung {rung}: " + ", ".join(f"{lang}={value!r}" for lang, value in sorted(published.items()))
+            )
+    return mismatches
+
+
 def _compare_outputs(records: dict[str, dict[str, object]]) -> list[str]:
     """Cross-compare required and optional fields across all language records."""
     mismatches: list[str] = []
@@ -258,6 +304,7 @@ def run_output_check(
     """Run output probes and compare canonical JSON fields. Returns True if all pass."""
     runners = [r for r in _probe_runners(repo, cargo_bin, cargo_env) if r.name in selected]
     records: dict[str, dict[str, object]] = {}
+    vocabularies: dict[str, dict[str, str]] = {}
     all_ok = True
 
     print()
@@ -277,6 +324,7 @@ def run_output_check(
             continue
         norm = _normalize_log_record(raw)
         records[runner.name] = norm
+        vocabularies[runner.name] = _extract_level_vocabulary(output)
         print(f"  [{runner.label:12s}] captured: {json.dumps(norm, sort_keys=True)}")
 
     if len(records) < 2:
@@ -293,6 +341,23 @@ def run_output_check(
     else:
         langs = ", ".join(sorted(records))
         print(f"  MATCH: canonical envelope agrees across [{langs}]")
+
+    # The envelope check above only ever exercises INFO. The level field is the
+    # most-queried one in a record, and it used to differ per port at every
+    # other rung -- Python published "warning", TypeScript published the number
+    # 40 -- with nothing failing, because no probe emitted above INFO.
+    print()
+    print("── Log level vocabulary ────────────────────────────")
+    vocab_mismatches = _compare_level_vocabularies(vocabularies)
+    if vocab_mismatches:
+        print("  MISMATCH:")
+        for mismatch in vocab_mismatches:
+            print(mismatch)
+        all_ok = False
+    else:
+        rungs = ", ".join(sorted(next(iter(vocabularies.values()), {})))
+        langs = ", ".join(sorted(vocabularies))
+        print(f"  MATCH: [{langs}] agree on every rung [{rungs}]")
 
     return all_ok
 

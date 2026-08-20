@@ -27,10 +27,15 @@ import { EventSchemaError, validateEventName, validateRequiredKeys } from './sch
 import { tryAcquire, release } from './backpressure.js';
 import { setSamplingPolicy, shouldSample } from './sampling.js';
 import { getTraceContext } from './tracing.js';
+import { LogSeverity, severityFromPino, severityName, toPinoLevel } from './levels.js';
 
 /** Pino level number → console method name. */
+// 10 maps to console.debug, not console.trace: console.trace prepends "Trace: "
+// and appends a stack dump, so a TRACE record emitted through it is no longer
+// a parseable line. console.debug is the same severity channel without the
+// decoration.
 const LEVEL_MAP: Record<number, string> = {
-  10: 'trace',
+  10: 'debug',
   20: 'debug',
   30: 'log',
   40: 'warn',
@@ -55,6 +60,14 @@ export interface Logger {
   info(obj: Record<string, unknown>, msg?: string): void;
   warn(obj: Record<string, unknown>, msg?: string): void;
   error(obj: Record<string, unknown>, msg?: string): void;
+  /**
+   * Emit at a level known only at runtime.
+   *
+   * For adapters that receive a level as data. Callers holding a level string
+   * convert once at the boundary with `parseLevel` rather than re-implementing
+   * a dispatch chain whose arms only run when that severity actually occurs.
+   */
+  log(level: LogSeverity, obj: Record<string, unknown>, msg?: string): void;
   /** Create a child logger with additional bound fields. */
   child(bindings: Record<string, unknown>): Logger;
 }
@@ -117,6 +130,13 @@ export function makeWriteHook() {
 
       // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
       if (!o['message']) o['message'] = o['event'] ?? '';
+
+      // Publish the canonical level name rather than pino's number. Every
+      // other port writes a string here; a record reading `"level":40` forces
+      // any consumer to carry a pino lookup table just for TypeScript.
+      // The number is kept locally for the console-method choice below.
+      const pinoLevel = o['level'] as number;
+      o['level'] = severityName(severityFromPino(pinoLevel));
 
       // Caller info injection — intentionally expensive (creates Error per call).
       // Stryker disable all
@@ -223,7 +243,7 @@ export function makeWriteHook() {
 
       // Emit to console only when explicitly enabled (opt-in).
       if (cfg.consoleOutput) {
-        const method = LEVEL_MAP[o['level'] as number] ?? 'log';
+        const method = LEVEL_MAP[pinoLevel] ?? 'log';
         if (cfg.logFormat === 'pretty' || cfg.logFormat === 'console') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (console as any)[method](
@@ -294,6 +314,40 @@ function getRootLogger(): pino.Logger {
   return _root;
 }
 
+/**
+ * Dispatch to the pino method for a severity.
+ *
+ * The one place this library maps a severity onto a pino call. CRITICAL has no
+ * pino method of its own -- pino's most severe is fatal, which is where the
+ * canonical ladder puts it.
+ */
+function emitAt(
+  pinoLogger: pino.Logger,
+  level: LogSeverity,
+  obj: Record<string, unknown>,
+  msg: string,
+): void {
+  switch (level) {
+    case LogSeverity.Trace:
+      pinoLogger.trace(obj, msg);
+      return;
+    case LogSeverity.Debug:
+      pinoLogger.debug(obj, msg);
+      return;
+    case LogSeverity.Warn:
+      pinoLogger.warn(obj, msg);
+      return;
+    case LogSeverity.Error:
+      pinoLogger.error(obj, msg);
+      return;
+    case LogSeverity.Critical:
+      pinoLogger.fatal(obj, msg);
+      return;
+    default:
+      pinoLogger.info(obj, msg);
+  }
+}
+
 function adaptPino(pinoLogger: pino.Logger): Logger {
   // Stryker disable all
   return {
@@ -302,6 +356,7 @@ function adaptPino(pinoLogger: pino.Logger): Logger {
     info: (obj, msg) => pinoLogger.info(obj, msg ?? ''),
     warn: (obj, msg) => pinoLogger.warn(obj, msg ?? ''),
     error: (obj, msg) => pinoLogger.error(obj, msg ?? ''),
+    log: (level, obj, msg) => emitAt(pinoLogger, level, obj, msg ?? ''),
     child: (bindings) => adaptPino(pinoLogger.child(bindings)),
   };
   // Stryker enable all
@@ -343,7 +398,7 @@ export function getLogger(name?: string): Logger {
     if (Object.keys(moduleLevels).length > 0) {
       const level = findModuleLevel(name, moduleLevels);
       if (level) {
-        pinoLogger.level = level.toLowerCase();
+        pinoLogger.level = toPinoLevel(level);
       }
     }
   }
@@ -365,6 +420,7 @@ export const logger: Logger = {
   info: (obj, msg) => getLogger('default').info(obj, msg),
   warn: (obj, msg) => getLogger('default').warn(obj, msg),
   error: (obj, msg) => getLogger('default').error(obj, msg),
+  log: (level, obj, msg) => getLogger('default').log(level, obj, msg),
   child: (bindings) => getLogger('default').child(bindings),
 };
 // Stryker enable all

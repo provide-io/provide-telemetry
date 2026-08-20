@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 )
 
 // signalContext is the signal name used for context/baggage telemetry.
@@ -24,9 +26,12 @@ const (
 	ConsentNone                           // No telemetry collected
 )
 
-var _logLevelOrder = map[string]int{
-	LogLevelTrace: 0, LogLevelDebug: 1, LogLevelInfo: 2, LogLevelWarning: 3, LogLevelWarn: 3, LogLevelError: 4, LogLevelCritical: 5,
-}
+// _logLevelOrder ranks a level string for the consent gates, through the one
+// shared table. An unrecognised level now ranks INFO rather than 0/TRACE; both
+// sit below the WARN and ERROR gates, so no consent decision changes. FATAL
+// does change: it used to be unrecognised and was dropped as if it were the
+// least severe record in the ladder.
+func _logLevelOrder(level string) int { return int(levelcore.Order(level)) }
 
 var (
 	_consentMu    sync.RWMutex
@@ -62,8 +67,7 @@ func ShouldAllow(signal string, logLevel string) bool {
 		return false
 	case ConsentFunctional:
 		if signal == signalLogs {
-			order := _logLevelOrder[strings.ToUpper(logLevel)]
-			return order >= _logLevelOrder[LogLevelWarning]
+			return _logLevelOrder(logLevel) >= int(levelcore.Warn)
 		}
 		if signal == signalContext {
 			return false
@@ -71,8 +75,7 @@ func ShouldAllow(signal string, logLevel string) bool {
 		return true
 	case ConsentMinimal:
 		if signal == signalLogs {
-			order := _logLevelOrder[strings.ToUpper(logLevel)]
-			return order >= _logLevelOrder[LogLevelError]
+			return _logLevelOrder(logLevel) >= int(levelcore.Error)
 		}
 		return false
 	}

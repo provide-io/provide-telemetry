@@ -19,6 +19,8 @@ import enum
 import os
 import threading
 
+from provide.telemetry.levels import LogSeverity, level_order
+
 
 class ConsentLevel(enum.Enum):
     FULL = "FULL"
@@ -26,8 +28,6 @@ class ConsentLevel(enum.Enum):
     MINIMAL = "MINIMAL"
     NONE = "NONE"
 
-
-_LOG_LEVEL_ORDER = {"TRACE": 0, "DEBUG": 1, "INFO": 2, "WARNING": 3, "ERROR": 4, "CRITICAL": 5}
 
 _lock = threading.Lock()
 _level: ConsentLevel = ConsentLevel.FULL
@@ -44,23 +44,19 @@ def get_consent_level() -> ConsentLevel:
         return _level
 
 
-# The two provably-equivalent literals from _rank, hoisted so each carries its
-# own suppression instead of one bare pragma silencing the whole expression.
-# A bare pragma applies to the entire line, so it would also have hidden the
-# `.upper()` -> `.lower()` swap and the `or` -> `and` mutation, both of which
-# genuinely change what should_allow() returns.
-#
-# Placeholder for a missing level: "" and any other string absent from
-# _LOG_LEVEL_ORDER resolve to the same lookup miss.
-_MISSING_LEVEL_PLACEHOLDER = ""  # pragma: no mutate — any string absent from _LOG_LEVEL_ORDER is the same lookup miss
-# Miss sentinel: 0 and 1 both sit below every threshold this is compared
-# against (WARNING=3, ERROR=4).
-_UNKNOWN_LEVEL_RANK = 0  # pragma: no mutate — 0 and 1 both rank below every consent threshold (WARNING=3, ERROR=4)
-
-
 def _rank(log_level: str | None) -> int:
-    """Order a log level for consent comparisons; unknown levels sort lowest."""
-    return _LOG_LEVEL_ORDER.get((log_level or _MISSING_LEVEL_PLACEHOLDER).upper(), _UNKNOWN_LEVEL_RANK)
+    """Order a log level for consent comparisons.
+
+    Resolves through the one shared table. An unrecognised level now ranks INFO
+    rather than the old local default of 0/TRACE; both sit below the WARN and
+    ERROR gates below, so no consent decision changes. FATAL does change: it
+    used to be unrecognised and was dropped as if it were the least severe
+    record in the ladder.
+
+    The two hoisted pragma constants this replaced -- a placeholder for the
+    missing-level lookup and its 0 rank -- went with the dict they served.
+    """
+    return level_order(log_level)
 
 
 def should_allow(signal: str, log_level: str | None = None) -> bool:
@@ -73,11 +69,11 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
         return False
     if level == ConsentLevel.FUNCTIONAL:
         if signal == "logs":
-            return _rank(log_level) >= _LOG_LEVEL_ORDER["WARNING"]
+            return _rank(log_level) >= LogSeverity.WARN
         return signal != "context"  # traces and metrics allowed; context blocked
     # MINIMAL
     if signal == "logs":
-        return _rank(log_level) >= _LOG_LEVEL_ORDER["ERROR"]
+        return _rank(log_level) >= LogSeverity.ERROR
     return False  # traces/metrics/context blocked at MINIMAL
 
 

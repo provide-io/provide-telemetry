@@ -132,12 +132,15 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert "cargo-mutants --version 27.1.0 --locked" in workflow
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in workflow
     assert "gremlins/cmd/gremlins@v0.6.0" in workflow
-    # Six gremlins surfaces: root, logger, the three internal/ packages, and
+    # Seven gremlins surfaces: root, logger, the four internal/ packages, and
     # the otel module. The internal/ packages were ungated until 2026-08-16 —
     # the root step excludes "internal/" and the logger step targets ./logger,
     # so nothing mutated them. Adding piicore found a real gap on its first run.
-    assert workflow.count("--threshold-efficacy=100") == 6
-    assert workflow.count("--threshold-mcover=100") == 6
+    # levelcore joined them when the shared severity ladder moved there; it is
+    # gated for the same reason, and the count is asserted so a new internal
+    # package cannot be added without a step that mutates it.
+    assert workflow.count("--threshold-efficacy=100") == 7
+    assert workflow.count("--threshold-mcover=100") == 7
     assert '--exclude-files="mutation_constants.go"' in workflow
     # go/otel is a separate module, so its step is legitimately conditional.
     # go/logger is a package of the root module and must NOT be gated on a

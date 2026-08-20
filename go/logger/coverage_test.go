@@ -215,7 +215,10 @@ func TestParseLevels(t *testing.T) {
 		{logger.LogLevelWarn, slog.LevelWarn},
 		{logger.LogLevelWarning, slog.LevelWarn},
 		{logger.LogLevelError, slog.LevelError},
-		{logger.LogLevelCritical, slog.LevelError},
+		// CRITICAL used to fold onto slog.LevelError, so a CRITICAL threshold
+		// admitted ERROR records. It now has a level of its own, one rung above.
+		{logger.LogLevelCritical, logger.LevelCritical},
+		{"FATAL", logger.LevelCritical},
 		{"UNKNOWN", slog.LevelInfo}, // default fallback
 	}
 	for _, tc := range cases {

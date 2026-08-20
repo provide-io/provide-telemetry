@@ -201,10 +201,13 @@ class TestEmergencyFallbackMutations:
                 _setup_emergency_fallback(RuntimeError("fail"))
 
         processors = configure_calls[0]["processors"]
-        # Should have exactly 3 processors
-        assert len(processors) == 3
-        # Second processor should be a TimeStamper with iso format
-        ts_proc = processors[1]
+        # add_log_level, canonicalize_level, TimeStamper, renderer. The
+        # canonicaliser is in the fallback chain too: a record emitted while
+        # normal setup is broken still has to carry the same level vocabulary
+        # as every other port, or the one path that only runs during an
+        # incident is the one that logs an unrecognisable level.
+        assert len(processors) == 4
+        ts_proc = processors[2]
         assert isinstance(ts_proc, structlog.processors.TimeStamper)
         # Verify fmt="iso" by running the processor and checking output format
         test_dict: dict[str, Any] = {"event": "test"}

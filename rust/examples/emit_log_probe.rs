@@ -18,4 +18,17 @@ fn main() {
     );
     let logger = provide_telemetry::get_logger(Some("probe"));
     logger.info("log.output.parity");
+
+    // Then one record per rung of the ladder, so the cross-language check can
+    // see the level vocabulary at every severity rather than only at INFO.
+    for severity in [
+        provide_telemetry::LogSeverity::Trace,
+        provide_telemetry::LogSeverity::Debug,
+        provide_telemetry::LogSeverity::Info,
+        provide_telemetry::LogSeverity::Warn,
+        provide_telemetry::LogSeverity::Error,
+        provide_telemetry::LogSeverity::Critical,
+    ] {
+        logger.log_at(severity, &format!("log.level.vocab.{}", severity.name()));
+    }
 }

@@ -22,5 +22,12 @@ func main() {
 	ctx := telemetry.SetTraceContext(context.Background(), traceID, spanID)
 	log := telemetry.GetLogger(ctx, "probe")
 	log.Info("log.output.parity", "event", "log.output.parity")
+
+	// Then one record per rung of the ladder, so the cross-language check can
+	// see the level vocabulary at every severity rather than only at INFO.
+	for _, name := range []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"} {
+		event := "log.level.vocab." + name
+		log.Log(context.Background(), telemetry.ParseLevel(name), event, "event", event)
+	}
 	_ = os.Stderr.Sync()
 }

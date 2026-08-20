@@ -17,14 +17,14 @@ describe('formatPretty — event falls back to obj["message"] specifically', () 
   it('uses obj.message when event is absent (kills StringLiteral "" mutant)', () => {
     // If the literal 'message' is replaced with '', the fallback becomes obj[''] === undefined,
     // so the rendered line would not contain the message text.
-    const line = formatPretty({ level: 30, message: 'hello-from-message-key' }, false);
+    const line = formatPretty({ level: 'INFO', message: 'hello-from-message-key' }, false);
     expect(line).toContain('hello-from-message-key');
   });
 
   it('empty-string key lookup returns undefined (guards against accidental "" literal)', () => {
     // Belt and braces: if the literal were '' the fallback would look up obj[''],
     // which is never set by callers — ensure the renderer *does* find 'message'.
-    const obj: Record<string, unknown> = { level: 30, message: 'REAL' };
+    const obj: Record<string, unknown> = { level: 'INFO', message: 'REAL' };
     // Sanity check the runtime behaviour we rely on.
     expect(obj['']).toBeUndefined();
     const line = formatPretty(obj, false);
@@ -40,12 +40,12 @@ describe('formatPretty — cold-module lookup tables', () => {
     const pretty = await import('../src/pretty.js');
 
     const levels = [
-      [10, 'trace', '\x1b[36m'],
-      [20, 'debug', '\x1b[34m'],
-      [30, 'info', '\x1b[32m'],
-      [40, 'warn', '\x1b[33m'],
-      [50, 'error', '\x1b[31m'],
-      [60, 'fatal', '\x1b[31;1m'],
+      ['TRACE', 'trace', '\x1b[36m'],
+      ['DEBUG', 'debug', '\x1b[34m'],
+      ['INFO', 'info', '\x1b[32m'],
+      ['WARN', 'warn', '\x1b[33m'],
+      ['ERROR', 'error', '\x1b[31m'],
+      ['CRITICAL', 'fatal', '\x1b[31;1m'],
     ] as const;
     for (const [level, name, color] of levels) {
       expect(pretty.formatPretty({ level, event: 'probe' }, true)).toBe(
@@ -67,7 +67,7 @@ describe('formatPretty — cold-module lookup tables', () => {
     ] as const;
     for (const [colorName, code] of namedColors) {
       expect(
-        pretty.formatPretty({ level: 30, event: 'probe', key: 'value' }, true, {
+        pretty.formatPretty({ level: 'INFO', event: 'probe', key: 'value' }, true, {
           keyColor: colorName,
           valueColor: colorName,
         }),
@@ -78,7 +78,7 @@ describe('formatPretty — cold-module lookup tables', () => {
     }
 
     const reserved = {
-      level: 30,
+      level: 'INFO',
       time: 'now',
       message: 'message',
       msg: 'msg',
@@ -90,7 +90,7 @@ describe('formatPretty — cold-module lookup tables', () => {
     };
     expect(pretty.formatPretty(reserved, false)).toBe('now [info  ] event visible=true');
     expect(
-      pretty.formatPretty({ level: 30, event: 'probe', key: 'value' }, true, {
+      pretty.formatPretty({ level: 'INFO', event: 'probe', key: 'value' }, true, {
         keyColor: '  BoLd  ',
         valueColor: ' CyAn ',
       }),

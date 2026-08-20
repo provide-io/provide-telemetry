@@ -64,6 +64,7 @@ pub use errors::{
 };
 pub use fingerprint::compute_error_fingerprint;
 pub use health::{get_health_snapshot, HealthSnapshot};
+pub use logger::levels::{level_order, parse_level, try_parse_level, LogSeverity};
 pub use logger::{
     buffer_logger, configure_logging, enable_console_capture_for_tests,
     enable_json_capture_for_tests, enable_pretty_capture_for_tests, get_logger, logger,

@@ -11,10 +11,17 @@ package telemetry
 import (
 	"log/slog"
 	"time"
+
+	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 )
 
 // LevelTrace is a custom slog level below DEBUG for very verbose output.
 const LevelTrace = slog.Level(-8)
+
+// LevelCritical is a custom slog level above ERROR. slog's own ladder stops at
+// ERROR, so without it CRITICAL had to fold onto ERROR and the ladder's top two
+// levels were indistinguishable.
+const LevelCritical = levelcore.SlogCritical
 
 const (
 	_cbBaseCooldown = 30 * time.Second

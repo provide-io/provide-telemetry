@@ -7,6 +7,7 @@
  */
 
 import type { TelemetryConfig } from './config.js';
+import { toPinoLevel } from './levels.js';
 import { DEFAULTS, parseOtlpHeaders } from './config.js';
 import { ConfigurationError } from './exceptions.js';
 
@@ -115,6 +116,14 @@ function splitTrimmed(raw: string | undefined): string[] {
  * Uses the same env var names as the Python package.
  * Explicit values passed to setupTelemetry() override env vars.
  */
+/**
+ * Resolve a configured level to the name pino accepts, leaving the default in
+ * place when the variable is unset.
+ */
+function normalizeConfiguredLevel(raw: string | undefined): string {
+  return raw === undefined ? DEFAULTS.logLevel : toPinoLevel(raw);
+}
+
 export function configFromEnv(): TelemetryConfig {
   const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
   const parsedHeaders = otelHeader ? parseOtlpHeaders(otelHeader) : undefined;
@@ -123,7 +132,11 @@ export function configFromEnv(): TelemetryConfig {
     serviceName: nodeEnv('PROVIDE_TELEMETRY_SERVICE_NAME') ?? DEFAULTS.serviceName,
     environment: nodeEnv('PROVIDE_TELEMETRY_ENV') ?? nodeEnv('PROVIDE_ENV') ?? DEFAULTS.environment,
     version: nodeEnv('PROVIDE_TELEMETRY_VERSION') ?? nodeEnv('PROVIDE_VERSION') ?? DEFAULTS.version,
-    logLevel: nodeEnv('PROVIDE_LOG_LEVEL')?.toLowerCase() ?? DEFAULTS.logLevel,
+    // Normalised through the shared table rather than merely lowercased: the
+    // value ends up as pino's `level`, and pino's vocabulary has no "warning"
+    // or "critical" even though spec/telemetry-api.yaml lists both as
+    // applicable here. Lowercasing alone threw at logger construction.
+    logLevel: normalizeConfiguredLevel(nodeEnv('PROVIDE_LOG_LEVEL')),
     logFormat: (() => {
       const fmt = nodeEnv('PROVIDE_LOG_FORMAT');
       // Stryker disable next-line ConditionalExpression: 'console' is DEFAULTS.logFormat so removing its check returns the same default value

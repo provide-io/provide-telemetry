@@ -113,17 +113,6 @@ public static class Consent
 {
     private static int _level = (int)ConsentLevel.Full;
 
-    private static readonly Dictionary<string, int> LogLevelOrder = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["TRACE"] = 0,
-        ["DEBUG"] = 1,
-        ["INFO"] = 2,
-        ["WARNING"] = 3,
-        ["WARN"] = 3,
-        ["ERROR"] = 4,
-        ["CRITICAL"] = 5,
-    };
-
     public static void SetConsentLevel(ConsentLevel level) =>
         Interlocked.Exchange(ref _level, (int)level);
 
@@ -147,14 +136,14 @@ public static class Consent
             case ConsentLevel.Functional:
                 if (signal == Signals.Logs)
                 {
-                    return LogOrder(logLevel) >= LogLevelOrder["WARNING"];
+                    return LogOrder(logLevel) >= (int)LogSeverity.Warn;
                 }
                 if (signal == Signals.Context) return false;
                 return true;
             case ConsentLevel.Minimal:
                 if (signal == Signals.Logs)
                 {
-                    return LogOrder(logLevel) >= LogLevelOrder["ERROR"];
+                    return LogOrder(logLevel) >= (int)LogSeverity.Error;
                 }
                 return false;
             default:
@@ -185,8 +174,12 @@ public static class Consent
 
     internal static void Reset() => SetConsentLevel(ConsentLevel.Full);
 
-    internal static int LogOrder(string logLevel) =>
-        LogLevelOrder.TryGetValue(logLevel ?? "", out var o) ? o : 0;
+    // Resolves through the one shared table. An unrecognised level lands on
+    // INFO rather than the old local default of 0/TRACE; both sit below the
+    // WARN and ERROR gates above, so no consent decision changes. FATAL does
+    // change: it used to be unrecognised here and was dropped as if it were
+    // the least severe record in the ladder.
+    internal static int LogOrder(string? logLevel) => Levels.Order(logLevel);
 }
 
 public static class Slo

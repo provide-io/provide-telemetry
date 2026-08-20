@@ -6,14 +6,14 @@ import { formatPretty, supportsColor } from '../src/pretty.js';
 
 describe('formatPretty', () => {
   it('includes timestamp, level, and event', () => {
-    const line = formatPretty({ time: 1700000000000, level: 30, event: 'app.start.ok' }, false);
+    const line = formatPretty({ time: 1700000000000, level: 'INFO', event: 'app.start.ok' }, false);
     expect(line).toContain('[info  ]');
     expect(line).toContain('app.start.ok');
     expect(line).toContain('2023-'); // ISO timestamp
   });
 
   it('includes key=value pairs sorted alphabetically', () => {
-    const line = formatPretty({ level: 30, event: 'test', zebra: 1, alpha: 2 }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test', zebra: 1, alpha: 2 }, false);
     const alphaIdx = line.indexOf('alpha=');
     const zebraIdx = line.indexOf('zebra=');
     expect(alphaIdx).toBeLessThan(zebraIdx);
@@ -22,7 +22,7 @@ describe('formatPretty', () => {
   it('skips internal keys (level, time, msg, v, pid, hostname)', () => {
     const line = formatPretty(
       {
-        level: 30,
+        level: 'INFO',
         time: 123,
         msg: 'hi',
         event: 'test',
@@ -40,50 +40,53 @@ describe('formatPretty', () => {
   });
 
   it('adds ANSI colors when enabled', () => {
-    const line = formatPretty({ level: 50, event: 'error.test' }, true);
+    const line = formatPretty({ level: 'ERROR', event: 'error.test' }, true);
     expect(line).toContain('\x1b[31m'); // red for error
     expect(line).toContain('\x1b[0m'); // reset
   });
 
   it('no ANSI codes when colors disabled', () => {
-    const line = formatPretty({ level: 50, event: 'error.test' }, false);
+    const line = formatPretty({ level: 'ERROR', event: 'error.test' }, false);
     expect(line).not.toContain('\x1b[');
   });
 
   it('handles missing event — falls back to msg', () => {
-    const line = formatPretty({ level: 30, msg: 'fallback message' }, false);
+    const line = formatPretty({ level: 'INFO', msg: 'fallback message' }, false);
     expect(line).toContain('fallback message');
   });
 
   it('handles missing event and msg — empty string', () => {
-    const line = formatPretty({ level: 30 }, false);
+    const line = formatPretty({ level: 'INFO' }, false);
     expect(line).toContain('[info  ]');
   });
 
   it('handles missing time', () => {
-    const line = formatPretty({ level: 30, event: 'no-time' }, false);
+    const line = formatPretty({ level: 'INFO', event: 'no-time' }, false);
     expect(line).toContain('[info  ]');
     expect(line).toContain('no-time');
   });
 
-  it('handles unknown level number without colors', () => {
-    const line = formatPretty({ level: 99, event: 'custom' }, false);
-    expect(line).toContain('[log   ]');
+  // An unrecognised level resolves to INFO here exactly as it does in the
+  // parser, the consent gates and every other port. There is no longer a
+  // separate "[log]" rendering for a level the table does not know.
+  it('renders an unknown level as info without colors', () => {
+    const line = formatPretty({ level: 'nonsense', event: 'custom' }, false);
+    expect(line).toContain('[info  ]');
   });
 
-  it('handles unknown level number with colors (no color code)', () => {
-    const line = formatPretty({ level: 99, event: 'custom' }, true);
-    expect(line).toContain('[log   ');
+  it('renders an unknown level as info with colors', () => {
+    const line = formatPretty({ level: 'nonsense', event: 'custom' }, true);
+    expect(line).toContain('info  ');
     expect(line).toContain('\x1b[0m'); // reset still present
   });
 
   it('dims keys in color mode', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test', user: 'alice' }, true);
     expect(line).toContain('\x1b[2m'); // dim
   });
 
   it('honors explicit pretty key and value colors', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true, {
+    const line = formatPretty({ level: 'INFO', event: 'test', user: 'alice' }, true, {
       keyColor: 'bold',
       valueColor: 'cyan',
     });
@@ -91,7 +94,7 @@ describe('formatPretty', () => {
   });
 
   it('falls back to no color for unknown pretty color names', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true, {
+    const line = formatPretty({ level: 'INFO', event: 'test', user: 'alice' }, true, {
       keyColor: 'bogus',
       valueColor: 'also-bogus',
     });
@@ -101,42 +104,49 @@ describe('formatPretty', () => {
   });
 
   it('filters pretty fields when provided', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice', hidden: 'nope' }, false, {
-      fields: ['user'],
-    });
+    const line = formatPretty(
+      { level: 'INFO', event: 'test', user: 'alice', hidden: 'nope' },
+      false,
+      {
+        fields: ['user'],
+      },
+    );
     expect(line).toContain('user="alice"');
     expect(line).not.toContain('hidden=');
   });
 
   it('falls back to String(value) when JSON.stringify returns undefined', () => {
-    const line = formatPretty({ level: 30, event: 'test', missing: undefined }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test', missing: undefined }, false);
     expect(line).toContain('missing=undefined');
   });
 
   it('formats non-string time as string', () => {
-    const line = formatPretty({ level: 30, event: 'test', time: 'custom-timestamp' }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test', time: 'custom-timestamp' }, false);
     expect(line).toContain('custom-timestamp');
   });
 
   it('colors timestamp when colors enabled and time is numeric', () => {
-    const line = formatPretty({ level: 30, event: 'test', time: 1700000000000 }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test', time: 1700000000000 }, true);
     expect(line).toContain('\x1b[2m'); // dim for timestamp
     expect(line).toContain('2023-');
   });
 
   it('colors timestamp when colors enabled and time is string', () => {
-    const line = formatPretty({ level: 30, event: 'test', time: 'my-ts' }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test', time: 'my-ts' }, true);
     expect(line).toContain('\x1b[2m' + 'my-ts' + '\x1b[0m');
   });
 
   it('renders all level colors correctly', () => {
+    // Canonical level on the record -> pino's lowercase spelling on screen.
+    // CRITICAL renders as "fatal" because that is the display vocabulary this
+    // renderer has always used; only the input spelling changed.
     for (const [num, name] of [
-      [10, 'trace'],
-      [20, 'debug'],
-      [30, 'info'],
-      [40, 'warn'],
-      [50, 'error'],
-      [60, 'fatal'],
+      ['TRACE', 'trace'],
+      ['DEBUG', 'debug'],
+      ['INFO', 'info'],
+      ['WARN', 'warn'],
+      ['ERROR', 'error'],
+      ['CRITICAL', 'fatal'],
     ] as const) {
       const line = formatPretty({ level: num, event: 'test' }, true);
       expect(line).toContain(name);
@@ -144,7 +154,7 @@ describe('formatPretty', () => {
   });
 
   it('renders level without color when colors disabled', () => {
-    const line = formatPretty({ level: 50, event: 'test' }, false);
+    const line = formatPretty({ level: 'ERROR', event: 'test' }, false);
     expect(line).toContain('[error ');
     expect(line).not.toContain('\x1b[');
   });
@@ -220,42 +230,42 @@ describe('supportsColor', () => {
 
 describe('formatPretty and supportsColor — exact assertions (mutation kills)', () => {
   it('fatal level uses bold red \\x1b[31;1m (not plain red)', () => {
-    const line = formatPretty({ level: 60, event: 'test' }, true);
+    const line = formatPretty({ level: 'CRITICAL', event: 'test' }, true);
     expect(line).toContain('\x1b[31;1m');
     // Verify it is NOT the plain (non-bold) red used by error
     expect(line).not.toContain('\x1b[31m[');
   });
 
   it('error level uses plain red \\x1b[31m (not bold)', () => {
-    const line = formatPretty({ level: 50, event: 'test' }, true);
+    const line = formatPretty({ level: 'ERROR', event: 'test' }, true);
     expect(line).toContain('\x1b[31m');
     expect(line).not.toContain('\x1b[31;1m');
   });
 
   it('warn level uses yellow \\x1b[33m', () => {
-    const line = formatPretty({ level: 40, event: 'test' }, true);
+    const line = formatPretty({ level: 'WARN', event: 'test' }, true);
     expect(line).toContain('\x1b[33m');
   });
 
   it('info level uses green \\x1b[32m', () => {
-    const line = formatPretty({ level: 30, event: 'test' }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test' }, true);
     expect(line).toContain('\x1b[32m');
   });
 
   it('debug level uses blue \\x1b[34m', () => {
-    const line = formatPretty({ level: 20, event: 'test' }, true);
+    const line = formatPretty({ level: 'DEBUG', event: 'test' }, true);
     expect(line).toContain('\x1b[34m');
   });
 
   it('trace level uses cyan \\x1b[36m', () => {
-    const line = formatPretty({ level: 10, event: 'test' }, true);
+    const line = formatPretty({ level: 'TRACE', event: 'test' }, true);
     expect(line).toContain('\x1b[36m');
   });
 
   it('skips all 7 internal SKIP_KEYS: level, time, message, event, v, pid, hostname', () => {
     const line = formatPretty(
       {
-        level: 30,
+        level: 'INFO',
         time: 123,
         message: 'hi',
         event: 'test',
@@ -290,20 +300,20 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
 
   it('omits timestamp entirely when time is absent', () => {
     // mutation: `time !== undefined` → `true` would include "undefined" in output
-    const line = formatPretty({ level: 30, event: 'test' }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test' }, false);
     expect(line).not.toContain('undefined');
     // Line starts directly with level bracket, not a timestamp
     expect(line.trimStart()).toMatch(/^\[/);
   });
 
   it('key=value separator is = in no-color mode', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test', user: 'alice' }, false);
     expect(line).toContain('user=');
     expect(line).toContain('="alice"');
   });
 
   it('key=value separator is = in color mode (with DIM wrapping)', () => {
-    const line = formatPretty({ level: 30, event: 'test', user: 'alice' }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test', user: 'alice' }, true);
     // DIM + key + RESET + '=' + value
     expect(line).toContain('\x1b[2muser\x1b[0m=');
   });
@@ -311,20 +321,20 @@ describe('formatPretty and supportsColor — exact assertions (mutation kills)',
   it('level bracket has closing ] in color mode', () => {
     // Kills: `RESET + ']'` → `RESET + ""`
     // The closing bracket must be present after RESET.
-    const line = formatPretty({ level: 30, event: 'test' }, true);
+    const line = formatPretty({ level: 'INFO', event: 'test' }, true);
     expect(line).toContain('\x1b[0m]');
   });
 
   it('parts joined with space, not empty string', () => {
     // Kills: `parts.join(' ')` → `parts.join("")`
-    const line = formatPretty({ level: 30, event: 'test.ok', time: 1700000000000 }, false);
+    const line = formatPretty({ level: 'INFO', event: 'test.ok', time: 1700000000000 }, false);
     // timestamp, level bracket, and event should be space-separated
     expect(line).toMatch(/\[info\s+\] test\.ok/);
   });
 
   it('missing event and message produce empty string, not sentinel', () => {
     // Kills: `obj['event'] ?? obj['message'] ?? ''` → `?? "Stryker was here!"`
-    const line = formatPretty({ level: 30 }, false);
+    const line = formatPretty({ level: 'INFO' }, false);
     expect(line).not.toContain('Stryker');
     // The line should contain the level bracket followed by a space then empty event
     expect(line).toMatch(/\[info\s+\]/);

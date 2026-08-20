@@ -94,7 +94,9 @@ public class LiveProviderPathTests : IDisposable
         // ITelemetryBackend.EmitLog is documented "must not throw": the caller is
         // in the middle of its own work and a broken record must degrade
         // telemetry, not fault the application. A null level is the cheapest way
-        // to make the bridge itself fail, standing in for any exporter fault.
+        // to make the bridge itself fail, standing in for any exporter fault --
+        // MapLevel rejects it explicitly so this stays the case now that level
+        // parsing goes through the shared table.
         using var backend = new OpenTelemetryBackend(LiveConfig());
         var malformed = new CanonicalLogRecord(
             DateTimeOffset.UtcNow,
@@ -239,3 +241,4 @@ public class ExportAttemptDeadlineTests
             Signals.Logs, null!, DateTimeOffset.UtcNow.AddSeconds(1)));
     }
 }
+

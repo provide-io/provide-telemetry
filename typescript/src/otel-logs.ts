@@ -29,6 +29,7 @@
  * Mirrors Python provide.telemetry.logger.core OTLPLogExporter wiring.
  */
 
+import { LogSeverity, parseLevel } from './levels.js';
 import type { TelemetryConfig } from './config.js';
 import { getConfig } from './config.js';
 import { validateOtlpEndpoint } from './endpoint.js';
@@ -39,23 +40,25 @@ import { wrapResilientExporter } from './resilient-exporter.js';
 import type { ShutdownableProvider } from './runtime.js';
 
 /** Pino level number → OTel SeverityNumber (from @opentelemetry/api-logs). */
-const SEVERITY_MAP: Record<number, number> = {
-  10: 1, // TRACE
-  20: 5, // DEBUG
-  30: 9, // INFO
-  40: 13, // WARN
-  50: 17, // ERROR
-  60: 21, // FATAL
+// Keyed by canonical severity rank now that the record carries a name. The
+// OTLP severity_text for CRITICAL stays "FATAL": that is OpenTelemetry's own
+// name for severity number 21, and it is what the Rust port already sends.
+const SEVERITY_MAP: Record<LogSeverity, number> = {
+  [LogSeverity.Trace]: 1,
+  [LogSeverity.Debug]: 5,
+  [LogSeverity.Info]: 9,
+  [LogSeverity.Warn]: 13,
+  [LogSeverity.Error]: 17,
+  [LogSeverity.Critical]: 21,
 };
-const SEVERITY_TEXT: Record<number, string> = {
-  10: 'TRACE',
-  20: 'DEBUG',
-  30: 'INFO',
-  40: 'WARN',
-  50: 'ERROR',
-  60: 'FATAL',
+const SEVERITY_TEXT: Record<LogSeverity, string> = {
+  [LogSeverity.Trace]: 'TRACE',
+  [LogSeverity.Debug]: 'DEBUG',
+  [LogSeverity.Info]: 'INFO',
+  [LogSeverity.Warn]: 'WARN',
+  [LogSeverity.Error]: 'ERROR',
+  [LogSeverity.Critical]: 'FATAL',
 };
-const DEFAULT_SEVERITY = 9; // INFO
 
 /** Internal singleton — set by setupOtelLogProvider, read by emitLogRecord. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,10 +136,12 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
 export function emitLogRecord(o: Record<string, unknown>): void {
   if (!_otelLogger) return;
 
-  const level = (o['level'] as number) ?? 30;
+  const severity = parseLevel(String(o['level'] ?? ''));
   const body = String(o['message'] ?? o['event'] ?? '');
-  const severityNumber = SEVERITY_MAP[level] ?? DEFAULT_SEVERITY;
-  const severityText = SEVERITY_TEXT[level] ?? 'INFO';
+  // No fallback: parseLevel only ever yields a LogSeverity, and both tables
+  // are typed Record<LogSeverity, …> so the compiler requires every rung.
+  const severityNumber = SEVERITY_MAP[severity];
+  const severityText = SEVERITY_TEXT[severity];
 
   // Build attributes: everything except the pino-internal fields already
   // represented by body / severity / timestamp.

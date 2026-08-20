@@ -40,6 +40,7 @@ from provide.telemetry._masking import _mask_header_value as _mask_header_value
 from provide.telemetry._masking import _mask_headers as _mask_headers
 from provide.telemetry._masking import _masked_dataclass_repr as _masked_dataclass_repr
 from provide.telemetry.exceptions import ConfigurationError
+from provide.telemetry.levels import try_parse_level
 
 if TYPE_CHECKING:
     from provide.telemetry.receipts import ReceiptSink
@@ -405,9 +406,17 @@ def _validate_color(value: str, field: str) -> None:
 
 
 def _normalize_level(value: str) -> str:
-    allowed = {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-    normalized = value.upper()
-    if normalized not in allowed:
+    """Validate a configured level against the one shared table.
+
+    Widens what is accepted to WARN and FATAL, both of which this rejected
+    while Rust accepted them. The caller's own spelling is what is stored
+    rather than the ladder's canonical name: spec/telemetry-api.yaml makes
+    WARNING the canonical configured spelling, while the ladder's canonical
+    name is WARN because that is what Go and C# put on the record. Both
+    resolve to the same severity downstream.
+    """
+    normalized = value.strip().upper()
+    if try_parse_level(normalized) is None:
         raise ConfigurationError(f"invalid log level: {value}")
     return normalized
 

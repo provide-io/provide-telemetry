@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 )
 
 // Logger is the package-level default logger. Set by Configure.
@@ -254,19 +256,14 @@ func _isPrefixMatch(name, module string) bool {
 }
 
 func _parseLevel(s string) slog.Level {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case LogLevelTrace:
-		return LevelTrace
-	case LogLevelDebug:
-		return slog.LevelDebug
-	case LogLevelWarn, LogLevelWarning:
-		return slog.LevelWarn
-	case LogLevelError, LogLevelCritical:
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
+	return levelcore.ParseSlog(s, levelcore.Info)
 }
+
+// ParseLevel resolves a level string to the slog.Level that carries it.
+// Recognises TRACE, DEBUG, INFO, WARN, WARNING, ERROR, CRITICAL and FATAL,
+// case-insensitively and ignoring surrounding whitespace; anything else
+// resolves to INFO.
+func ParseLevel(s string) slog.Level { return _parseLevel(s) }
 
 func _newTelemetryHandler(base slog.Handler, cfg LogConfig, name string) slog.Handler {
 	return &_telemetryHandler{next: base, cfg: cfg, name: name}
@@ -328,20 +325,14 @@ func NewBufferLogger(w io.Writer, level slog.Level) *slog.Logger {
 // mutants on the case expression, so a switch here reports fully-covered code as
 // "not covered" and fails --threshold-mcover=100. See go/slo.go for the detail.
 func _slogLevelToString(l slog.Level) string {
-	if l <= LevelTrace {
-		return LogLevelTrace
-	}
-	if l <= slog.LevelDebug {
-		return LogLevelDebug
-	}
-	if l <= slog.LevelInfo {
-		return LogLevelInfo
-	}
-	if l <= slog.LevelWarn {
-		return LogLevelWarn
-	}
-	return LogLevelError
+	return levelcore.SlogName(l)
 }
+
+// LevelName is the canonical spelling of an slog.Level.
+//
+// slog.Level.String() renders LevelTrace as "DEBUG-4" and LevelCritical as
+// "ERROR+4", neither of which any level table recognises.
+func LevelName(l slog.Level) string { return levelcore.SlogName(l) }
 
 // GetLogger returns a *slog.Logger with the telemetry handler chain bound to name.
 // If ctx carries trace/span IDs (written by SetTraceContext), they are pre-attached

@@ -28,6 +28,18 @@ public sealed class Logger
     public void Critical(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
         Emit("CRITICAL", message, fields);
 
+    /// <summary>Emit at a level known only at runtime.</summary>
+    /// <remarks>
+    /// For adapters that receive a level as data. Callers holding a level
+    /// string convert once at the boundary with <see cref="Levels.Parse"/>
+    /// rather than re-implementing a dispatch chain whose arms only execute
+    /// when that severity actually occurs — the shape that leaves two of four
+    /// branches permanently uncovered in the consuming repo.
+    /// </remarks>
+    public void Log(
+        LogSeverity level, string message, IReadOnlyDictionary<string, object?>? fields = null) =>
+        Emit(Levels.Name(level), message, fields);
+
     /// <summary>Log an exception, attaching its stable fingerprint.</summary>
     public void Error(string message, Exception error, IReadOnlyDictionary<string, object?>? fields = null)
     {
@@ -209,23 +221,8 @@ public sealed class Logger
         return best;
     }
 
-    private static readonly Dictionary<string, int> Rank = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["TRACE"] = 0,
-        ["DEBUG"] = 10,
-        ["INFO"] = 20,
-        ["WARN"] = 30,
-        ["WARNING"] = 30,
-        ["ERROR"] = 40,
-        ["CRITICAL"] = 50,
-    };
-
-    private static bool LevelEnabled(string messageLevel, string configured)
-    {
-        var ml = Rank.GetValueOrDefault(messageLevel, 20);
-        var cl = Rank.GetValueOrDefault(configured, 20);
-        return ml >= cl;
-    }
+    private static bool LevelEnabled(string messageLevel, string configured) =>
+        Levels.Order(messageLevel) >= Levels.Order(configured);
 }
 
 public static class Logging
