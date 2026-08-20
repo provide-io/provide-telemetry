@@ -197,7 +197,7 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `spec/telemetry-api.yaml` — canonical API surface definition; all languages validate against it.
 - `spec/validate_conformance.py` — checks language exports against spec.
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
-- `VERSION` holds the canonical full version (currently `0.7.1`); only its major.minor is
+- `VERSION` holds the canonical full version (currently `0.8.0`); only its major.minor is
   compared across languages, so each language tracks its own patch and they legitimately drift.
 - `e2e/` — cross-language E2E tests.
 - Language directories: `typescript/`, `go/`, `rust/`, `csharp/` — each self-contained with own build config.
