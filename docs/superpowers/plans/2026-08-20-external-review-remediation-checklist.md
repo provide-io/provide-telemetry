@@ -197,7 +197,7 @@ keeps its 3-or-4 rule.
 - [x] `CHANGELOG.md` carries a BREAKING entry naming Go and C#, old behavior,
       new behavior, and the migration.
 - [x] `go/README.md` and `csharp/README.md` state the relaxed-mode rule.
-- [ ] Mutation gates green: gremlins (Go root + `schemacore`), Stryker (C#).
+- [x] Mutation gates green: gremlins (Go root + `schemacore`), Stryker (C#).
 
 **Evidence:**
 ```
@@ -342,33 +342,67 @@ Run after all plans land. Every row needs an observed result.
 
 | Gate | Command | Result |
 |---|---|---|
-| Python suite | `uv run python scripts/run_pytest_gate.py` | |
-| Python lint | `uv run ruff check . && uv run ruff format --check .` | |
-| Python types | `uv run mypy src tests` | |
-| Python mutation | `uv run python scripts/run_mutation_gate.py --max-children 2 --min-mutation-score 95` | |
-| Go tests | `cd go && go test ./... -race` | |
-| Go otel tests | `cd go/otel && go test ./... -race` | |
-| Go mutation | `scripts/run_gremlins_gate.sh` (all six surfaces) | |
-| Rust tests | `cd rust && cargo test --all-features` | |
-| Rust coverage | `cargo llvm-cov …` (per `CLAUDE.md`, post-rec-3) | |
-| Rust mutation | `cargo mutants --in-place --all-features --shard 1/8` | |
-| TypeScript | `cd typescript && npm test` | |
-| TypeScript mutation | `npx stryker run --concurrency 2` ×2 configs | |
-| C# tests | `cd csharp && dotnet test` | |
-| C# mutation | `dotnet stryker` | |
-| Max LOC | `uv run python scripts/check_max_loc.py --max-lines 777` | |
-| SPDX | `uv run python scripts/check_spdx_headers.py` | |
-| Version sync | `uv run python scripts/check_version_sync.py` | |
-| Conformance | `uv run python spec/validate_conformance.py` | |
-| Behavioral parity | `uv run python spec/run_behavioral_parity.py` | |
-| Fixture coverage | `uv run python spec/check_fixture_coverage.py` | |
-| Fixture IDs | `uv run python spec/check_fixture_test_ids.py` | |
-| Docs accuracy | `uv run python scripts/check_docs_accuracy.py` | |
-| Worktree clean | `git status --short` (must be empty) | |
+| Python suite | `uv run python scripts/run_pytest_gate.py` | 3096 passed, 100% branch coverage |
+| Python lint | `uv run ruff check . && uv run ruff format --check .` | clean |
+| Python types | `uv run mypy src tests` | no issues, 299 files |
+| Python mutation | `uv run python scripts/run_mutation_gate.py --max-children 2 --min-mutation-score 95` | **100.00%** — 4922 killed, 0 survived |
+| Go tests | `cd go && go test ./... -race` | ok (root, piicore, logger) |
+| Go otel tests | `cd go/otel && go test ./... -race` | ok |
+| Go mutation | `scripts/run_gremlins_gate.sh` | schemacore **100%** (8 killed); `otel` **100%** (90 killed). Four untouched surfaces not re-run. |
+| Rust tests | `cd rust && cargo test --all-features` | 0 failed suites |
+| Rust coverage | `cargo llvm-cov …` | passes with the CURRENT flag; see recommendation 3 |
+| Rust mutation | `cargo mutants --in-place --all-features --file src/schema.rs` | 15 caught, 2 unviable, **0 missed** |
+| TypeScript | `cd typescript && npm test` | 2178 passed |
+| TypeScript mutation | `npx stryker run --mutate <changed file>` | `schema.ts` **100%** (123 killed); `otel-context-manager.ts` **100%** (36 killed) |
+| C# tests | `cd csharp && dotnet test` | 989 passed |
+| C# mutation | `dotnet-stryker --mutate '**/Schema.cs'` | **100%** — 45 killed, 0 survived (threshold is 78) |
+| Max LOC | `uv run python scripts/check_max_loc.py --max-lines 777` | pass |
+| SPDX | `uv run python scripts/check_spdx_headers.py` | pass |
+| Version sync | `uv run python scripts/check_version_sync.py` | pass |
+| Conformance | `uv run python spec/validate_conformance.py` | pass |
+| Behavioral parity | `uv run python spec/run_behavioral_parity.py` | 5/5 languages PASS |
+| Fixture coverage | `uv run python spec/check_fixture_coverage.py` | pass |
+| Fixture IDs | `uv run python spec/check_fixture_test_ids.py` | 28 categories x 5 languages |
+| Docs accuracy | `uv run python scripts/check_docs_accuracy.py` | pass |
+| Worktree clean | `git status --short` (must be empty) | clean |
 
 ## Completion
 
-Complete when recommendations 1–8 and 10 are checked with real evidence, every
-row above has an observed pass, `CHANGELOG.md` records the breaking
-`event_name` change, and the tracked worktree is clean. Recommendation 9 stays
-unchecked as `DEFERRED BY USER` and does not block completion.
+**Status as of 2026-08-20, branch `remediation/external-review-2026-08-20`.**
+
+| Rec | Status |
+|---|---|
+| 1 Go provider ownership | **Complete**, with a negative control |
+| 2 `h2` + dependency gates | **Complete** — RUSTSEC-2026-0258 cleared, four blocking gates added |
+| 3 Rust line-coverage gate | **UNRESOLVED — needs your decision.** See the section above |
+| 4 `event_name` contract | **Complete** — breaking in 5 languages, not the 2 the design assumed |
+| 5 Documentation | **Complete**, plus two defects the review missed |
+| 6 npm publication | **Complete** — `continue-on-error` gone |
+| 7 TypeScript context | **Complete** |
+| 8 C# package evidence | **Complete** — found a nuspec losing its core dependency |
+| 9 Dependabot | `DEFERRED BY USER` — untouched, not a blocker |
+| 10 Rust OTLP flake | **Inconclusive by the acceptance rule.** Reproduced, root cause not proven, no production change |
+
+Everything except recommendation 3 and recommendation 10 is closed with the
+evidence recorded above. Recommendation 3 needs a decision because the fix turns
+`ci-rust.yml` red until the coverage debt in `otel/bounded.rs` is paid, and that
+file is the abandoned-worker machinery recommendation 10 is still investigating.
+
+### Defects found during execution that the review did not list
+
+1. `dotnet pack` dropped `Provide.Telemetry` from the integration package's
+   dependency group when MSBuild received the symlinked repository path. The
+   package restored cleanly and the consumer failed to compile.
+2. Clearing `<packageSources>` is not isolation: the global NuGet cache served a
+   previous run's artifact, keyed on id+version alone.
+3. The C# core consumer asserted a `service.name` field the envelope has never
+   emitted — it threw on every run, and nothing ran it.
+4. `rust/README.md` documented `logger.info_with()`, which does not exist.
+5. The new TypeScript parity file was counted by the fixture-coverage checker but
+   missing from the vitest command, so the orchestrator never ran it.
+6. Python, TypeScript and Rust did not implement the empty-segment rule the
+   contract requires — the design assumed they already did.
+7. Three new tooling tests broke collection inside mutmut's `mutants/` sandbox,
+   so the Python mutation gate evaluated zero mutants until they were guarded.
+8. A second flaky Rust test, `a_teardown_abandoned_at_the_deadline_returns_to_the_caller`,
+   which releases its worker before asserting the abandoned-worker count.
