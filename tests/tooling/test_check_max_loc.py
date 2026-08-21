@@ -122,3 +122,85 @@ def test_node_modules_and_target_excluded(tmp_path: Path) -> None:
         [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path
     )
     assert offenders == []
+
+
+def test_filenames_without_extension_are_scanned(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "Makefile").write_text("\n".join(["x"] * 12))
+    (root / "notes.txt").write_text("\n".join(["x"] * 12))
+    offenders, _ = find_loc_offenders(
+        [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, filenames=("Makefile",)
+    )
+    assert [p.name for p, _ in offenders] == ["Makefile"]
+
+
+def test_explicit_file_list_replaces_root_walk(tmp_path: Path) -> None:
+    """A tracked-file list is the scan set; files outside it are not walked."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    tracked = root / "tracked.py"
+    tracked.write_text("\n".join(["x"] * 12))
+    (root / "untracked.py").write_text("\n".join(["x"] * 12))
+    offenders, _ = find_loc_offenders(
+        [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, files=[tracked]
+    )
+    assert [p for p, _ in offenders] == [tracked]
+
+
+def test_explicit_file_list_still_filters_by_extension_and_exclusion(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    (root / "node_modules").mkdir(parents=True)
+    vendored = root / "node_modules" / "big.js"
+    vendored.write_text("\n".join(["x"] * 12))
+    readme = root / "README.md"
+    readme.write_text("\n".join(["x"] * 12))
+    offenders, _ = find_loc_offenders(
+        [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, files=[vendored, readme]
+    )
+    assert offenders == []
+
+
+def test_git_tracked_files_lists_the_repo(tmp_path: Path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "a.py").write_text("print()\n")
+    (repo / "b.py").write_text("print()\n")
+    subprocess.run(["git", "add", "a.py"], cwd=repo, check=True)
+    tracked = _MODULE.git_tracked_files(repo)
+    assert tracked == [repo / "a.py"]
+
+
+def test_git_tracked_files_is_none_outside_a_repo(tmp_path: Path) -> None:
+    assert _MODULE.git_tracked_files(tmp_path) is None
+
+
+def test_git_tracked_files_is_none_without_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing(*_args: object, **_kwargs: object) -> object:
+        raise OSError("git not found")
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", _missing)
+    assert _MODULE.git_tracked_files(tmp_path) is None
+
+
+def test_default_roots_cover_every_tracked_source_file() -> None:
+    """The git scan is primary, but the fallback roots must agree with it."""
+    repo_root = _SCRIPT_PATH.resolve().parent.parent
+    tracked = _MODULE.git_tracked_files(repo_root)
+    if tracked is None:
+        pytest.skip("git unavailable")
+    roots = [repo_root / r for r in _MODULE.DEFAULT_ROOTS]
+    walked = set(_MODULE._iter_source_files(roots, DEFAULT_EXTENSIONS, _MODULE.DEFAULT_FILENAMES))
+    expected = {
+        p
+        for p in tracked
+        if p.is_file()
+        and _MODULE._is_source_file(p, DEFAULT_EXTENSIONS, _MODULE.DEFAULT_FILENAMES)
+        and not _MODULE._is_excluded(p.relative_to(repo_root))
+        and p.parent != repo_root  # top-level files (Makefile) have no directory root
+    }
+    missing = sorted(str(p.relative_to(repo_root)) for p in expected - walked)
+    assert missing == []

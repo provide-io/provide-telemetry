@@ -99,7 +99,7 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 @pytest.fixture(scope="session")
 def parse_total_allocations() -> Callable[[str], int]:
-    """Read "Total allocations" out of ``memray stats`` output.
+    r"""Read "Total allocations" out of ``memray stats`` output.
 
     memray >= 1.15 emits the label in ANSI bold and puts the count on the *next*
     line, so the previous ``r"Total allocations:\s+([\d,]+)"`` could not match:
