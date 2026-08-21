@@ -362,3 +362,51 @@ def test_inject_das_fields_ignores_missing_event() -> None:
     event_dict: dict[str, object] = {"some_key": "value"}
     result = inject_das_fields(None, "info", event_dict)
     assert "domain" not in result
+
+
+# ── empty-segment rule: mutation coverage ────────────────────────────────────
+#
+# The relaxed empty-segment check is written without splitting, because
+# validate_event_name runs on every log record through enforce_event_schema. It
+# therefore tests four things separately — empty name, leading separator,
+# trailing separator, doubled separator — and each needs its own case or the
+# corresponding mutant survives. The messages are asserted too: replacing one
+# with None is a surviving mutant otherwise.
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("", id="empty-string"),
+        pytest.param(".a.b", id="leading-separator"),
+        pytest.param("a.b.", id="trailing-separator"),
+        pytest.param("a..b", id="doubled-separator"),
+        pytest.param(".", id="separator-only"),
+    ],
+)
+def test_validate_event_name_relaxed_rejects_every_empty_segment_shape(name: str) -> None:
+    with pytest.raises(EventSchemaError, match=r"segments must be non-empty"):
+        validate_event_name(name, strict_event_name=False)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("startup", id="single-segment"),
+        pytest.param("app.ready", id="two-segments"),
+        pytest.param("User.Login-OK", id="grammar-violating"),
+        pytest.param("a.b.c.d.e.f", id="six-segments"),
+    ],
+)
+def test_validate_event_name_relaxed_accepts_non_empty_segments(name: str) -> None:
+    validate_event_name(name, strict_event_name=False)
+
+
+def test_event_name_empty_segment_message_names_the_position() -> None:
+    with pytest.raises(EventSchemaError, match=r"segments must be non-empty: segment\[1\]"):
+        event_name("user", "", "ok")
+
+
+def test_event_name_zero_segments_message() -> None:
+    with pytest.raises(EventSchemaError, match=r"requires at least 1 segment"):
+        event_name()
