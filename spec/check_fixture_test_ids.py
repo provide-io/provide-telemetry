@@ -90,6 +90,37 @@ def _is_probe(identifier: str) -> bool:
     return path.is_file() and "log.output.parity" in path.read_text(encoding="utf-8")
 
 
+def _resolve_ids(
+    *,
+    category: str,
+    language: str,
+    identifier: object,
+    case_count: int,
+    discovered: set[str],
+) -> list[str]:
+    """Resolve one category/language mapping to a list of errors.
+
+    A string is the legacy form: one test stands in for a whole category. A list
+    is per-case evidence — exactly one identifier per fixture case — which is
+    what stops a category passing on a single test that merely mentions it.
+    """
+    if not identifier or not isinstance(identifier, (str, list)):
+        return [f"{category}:{language}: missing test ID"]
+    if isinstance(identifier, list):
+        if len(identifier) != case_count:
+            return [f"{category}:{language}: expected {case_count} test IDs, got {len(identifier)}"]
+        errors: list[str] = []
+        for entry in identifier:
+            if not isinstance(entry, str) or not entry:
+                errors.append(f"{category}:{language}: missing test ID in list")
+            elif entry not in discovered and not _is_probe(entry):
+                errors.append(f"{category}:{language}: unresolved test ID {entry!r}")
+        return errors
+    if identifier not in discovered and not _is_probe(identifier):
+        return [f"{category}:{language}: unresolved test ID {identifier!r}"]
+    return []
+
+
 def validate() -> list[str]:
     fixtures = yaml.safe_load((ROOT / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8"))
     manifest = yaml.safe_load((ROOT / "spec" / "fixture_test_ids.yaml").read_text(encoding="utf-8"))
@@ -114,11 +145,15 @@ def validate() -> list[str]:
             errors.append(f"{category}: mapping must be an object")
             continue
         for language in REQUIRED_LANGUAGES:
-            identifier = by_language.get(language)
-            if not isinstance(identifier, str) or not identifier:
-                errors.append(f"{category}:{language}: missing test ID")
-            elif identifier not in discovered[language] and not _is_probe(identifier):
-                errors.append(f"{category}:{language}: unresolved test ID {identifier!r}")
+            errors.extend(
+                _resolve_ids(
+                    category=category,
+                    language=language,
+                    identifier=by_language.get(language),
+                    case_count=len(fixtures[category]),
+                    discovered=discovered[language],
+                )
+            )
         extra = set(by_language) - set(REQUIRED_LANGUAGES)
         if extra:
             errors.append(f"{category}: unknown languages {sorted(extra)}")
