@@ -25,9 +25,11 @@ func _warnIfTracerProviderConflict() {
 	if strings.Contains(existingType, "global") || strings.Contains(existingType, "noop") {
 		return
 	}
-	if _, isSDK := existing.(*sdktrace.TracerProvider); isSDK {
-		return
-	}
+	// No type-based suppression. This function is only reached when our own
+	// provider field is nil — we have not installed anything — so a live
+	// concrete provider on the global belongs to the host by definition, and a
+	// host running the same SDK we do is the most likely real conflict, not the
+	// least. Ownership is the evidence, not the type.
 	if logger := telemetry.Logger(); logger != nil {
 		logger.Warn("otel.tracer_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),
@@ -45,9 +47,11 @@ func _warnIfMeterProviderConflict() {
 	if strings.Contains(existingType, "global") || strings.Contains(existingType, "noop") {
 		return
 	}
-	if _, isSDK := existing.(*sdkmetric.MeterProvider); isSDK {
-		return
-	}
+	// No type-based suppression. This function is only reached when our own
+	// provider field is nil — we have not installed anything — so a live
+	// concrete provider on the global belongs to the host by definition, and a
+	// host running the same SDK we do is the most likely real conflict, not the
+	// least. Ownership is the evidence, not the type.
 	if logger := telemetry.Logger(); logger != nil {
 		logger.Warn("otel.meter_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),
@@ -65,9 +69,11 @@ func _warnIfLoggerProviderConflict() {
 	if strings.Contains(existingType, "global") || strings.Contains(existingType, "noop") {
 		return
 	}
-	if _, isSDK := existing.(*sdklog.LoggerProvider); isSDK {
-		return
-	}
+	// No type-based suppression. This function is only reached when our own
+	// provider field is nil — we have not installed anything — so a live
+	// concrete provider on the global belongs to the host by definition, and a
+	// host running the same SDK we do is the most likely real conflict, not the
+	// least. Ownership is the evidence, not the type.
 	if logger := telemetry.Logger(); logger != nil {
 		logger.Warn("otel.logger_provider_conflict",
 			slog.String("existing_type", fmt.Sprintf("%T", existing)),

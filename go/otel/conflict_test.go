@@ -94,7 +94,13 @@ func TestWarnIfTracerProviderConflict_NoWarnForDefaultGlobal(t *testing.T) {
 	}
 }
 
-func TestWarnIfTracerProviderConflict_NoWarnForOwnSDKProvider(t *testing.T) {
+// Renamed and inverted on 2026-08-20. This asserted silence for a concrete
+// *sdktrace.TracerProvider, which encoded the defect: the global here was set
+// directly, without our provider field being populated, so the incumbent is the
+// HOST's provider, not ours. Suppressing the warning for it meant the most
+// likely real conflict — a host running the same SDK we do — announced nothing
+// before we overwrote it.
+func TestWarnIfTracerProviderConflict_WarnsForAHostSDKProviderOnTheGlobal(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() {
 		resetOTelGlobal(t)
@@ -111,8 +117,8 @@ func TestWarnIfTracerProviderConflict_NoWarnForOwnSDKProvider(t *testing.T) {
 
 	_warnIfTracerProviderConflict()
 
-	if strings.Contains(h.buf.String(), "conflict") {
-		t.Fatalf("unexpected conflict warning for own SDK provider: %s", h.buf.String())
+	if !strings.Contains(h.buf.String(), "otel.tracer_provider_conflict") {
+		t.Fatalf("expected a conflict warning for a host SDK provider, got %q", h.buf.String())
 	}
 }
 
@@ -255,4 +261,73 @@ func TestWarnConflictHelpers_NoLogger_NoPanic(t *testing.T) {
 	_warnIfTracerProviderConflict()
 	_warnIfMeterProviderConflict()
 	_warnIfLoggerProviderConflict()
+}
+
+// A host-installed *sdktrace.TracerProvider is not ours. The old code
+// suppressed the warning for any concrete SDK provider, so the case most likely
+// to be a real conflict — a host running the same SDK we do — was the case that
+// warned least. Ownership already short-circuits these functions, so reaching
+// the incumbent check means the provider belongs to the host by definition.
+
+func TestWarnIfTracerProviderConflict_WarnsForAHostInstalledSDKProvider(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
+
+	hostTP := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = hostTP.Shutdown(context.Background()) })
+	otel.SetTracerProvider(hostTP)
+
+	h := newCaptureHandler(slog.LevelWarn)
+	telemetry.SetLogger(slog.New(h))
+
+	_warnIfTracerProviderConflict()
+
+	if !strings.Contains(h.buf.String(), "otel.tracer_provider_conflict") {
+		t.Fatalf("no conflict warning for a host-installed SDK provider: %q", h.buf.String())
+	}
+}
+
+func TestWarnIfMeterProviderConflict_WarnsForAHostInstalledSDKProvider(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
+
+	hostMP := sdkmetric.NewMeterProvider()
+	t.Cleanup(func() { _ = hostMP.Shutdown(context.Background()) })
+	otel.SetMeterProvider(hostMP)
+
+	h := newCaptureHandler(slog.LevelWarn)
+	telemetry.SetLogger(slog.New(h))
+
+	_warnIfMeterProviderConflict()
+
+	if !strings.Contains(h.buf.String(), "otel.meter_provider_conflict") {
+		t.Fatalf("no conflict warning for a host-installed SDK provider: %q", h.buf.String())
+	}
+}
+
+func TestWarnIfLoggerProviderConflict_WarnsForAHostInstalledSDKProvider(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() {
+		resetOTelGlobal(t)
+		resetSetupState(t)
+	})
+
+	hostLP := sdklog.NewLoggerProvider()
+	t.Cleanup(func() { _ = hostLP.Shutdown(context.Background()) })
+	logglobal.SetLoggerProvider(hostLP)
+
+	h := newCaptureHandler(slog.LevelWarn)
+	telemetry.SetLogger(slog.New(h))
+
+	_warnIfLoggerProviderConflict()
+
+	if !strings.Contains(h.buf.String(), "otel.logger_provider_conflict") {
+		t.Fatalf("no conflict warning for a host-installed SDK provider: %q", h.buf.String())
+	}
 }
