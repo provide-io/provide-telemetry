@@ -1,0 +1,70 @@
+Rust OTLP export flake — evidence record
+========================================
+
+ORIGINAL CI FAILURE
+-------------------
+No original failure output was recorded in CI logs, git history, or repository
+docs. The 2026-08-20 external review named the failure but preserved no output.
+The investigation therefore starts from reproduction rather than from a
+preserved failure.
+
+REPRODUCTION (2026-08-20, local)
+--------------------------------
+Machine: darwin 25.6.0, aarch64, cargo 1.97.1 (Homebrew)
+Command: cd rust && cargo test --all-features        (default parallelism)
+Tree:    remediation/external-review-2026-08-20 at the Plan 1 schema changes
+
+  run set A:  3 / 8 runs failed
+  run set B:  1 / 6 runs failed
+  combined:   4 / 14 runs failed  (~29%)
+
+Failing tests, all in the --lib binary, all in the otel::logs export surface:
+
+  otel::logs::export_tests::apply_policies_alone_does_not_block_direct_log_exports
+      src/otel/logs_export_tests.rs:324
+  otel::logs::export_tests::apply_policies_alone_does_not_block_direct_trace_exports
+      src/otel/logs_export_tests.rs:354
+  otel::logs::export_runtime_tests::apply_policies_with_metrics_do_not_block_direct_trace_exports
+      src/otel/logs_export_runtime_tests.rs:113
+
+Each run failed exactly ONE test out of 517; never the same one twice in a row.
+Every one of these passes in isolation and with --test-threads=1.
+
+TWO DISTINCT FAILURE SIGNATURES
+-------------------------------
+Signature 1 — the export failed:
+
+  expected /v1/logs export, saw []
+  emitted_logs: 1, export_failures_logs: 1, export_latency_ms_logs: 0.0
+
+  The record was emitted and the export attempt FAILED, so nothing reached the
+  collector. Consistent with the collector socket being gone or refusing.
+
+Signature 2 — the export SUCCEEDED but landed elsewhere:
+
+  expected /v1/traces export, saw []
+  emitted_traces: 1, export_failures_traces: 0, export_latency_ms_traces: 1.08
+
+  Zero failures and a real latency reading mean the exporter completed a
+  request. The fake collector this test was asserting against saw nothing, so
+  the request went somewhere else.
+
+LEADING HYPOTHESIS (not yet proven)
+-----------------------------------
+Signature 2 is the informative one: a successful export that the asserting
+collector never saw points at process-global OTLP endpoint configuration being
+crossed between tests running concurrently in the same binary. Test A installs
+its collector endpoint, test B overwrites it, and A's span is delivered to B's
+collector — which is why the failure moves between tests run to run and why
+serial execution is clean.
+
+This is the same class of defect that required acquire_test_state_lock() in
+rust/tests/parity_event_name_test.rs during Plan 1: process-global telemetry
+state read and written by tests cargo schedules in parallel.
+
+NOT YET DONE (Plan 6)
+---------------------
+- Confirm the rate on an unmodified checkout of main.
+- Instrument lifecycle generation + bound collector port per test.
+- Build a deterministic fault-injected reproducer (must fail 20/20).
+- Only then change production or test code, with a negative control.
