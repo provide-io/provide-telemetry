@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::backpressure::{release, try_acquire, QueueTicket};
 use crate::config::TelemetryConfig;
-use crate::consent::should_allow;
+use crate::consent::{load_consent_from_env, should_allow};
 use crate::context::get_context;
 use crate::health::increment_emitted;
 use crate::runtime::get_runtime_config;
@@ -99,6 +99,12 @@ fn apply_lazy_logger_policies_from_env() {
     if get_runtime_config().is_some() {
         return;
     }
+    // The pre-setup path must honour PROVIDE_CONSENT_LEVEL too: a process that
+    // only ever calls get_logger() still gets the operator's opt-out. Read
+    // before the sampling short-circuit below, which would otherwise skip it
+    // whenever no sampling rate is set. Once setup has run this whole helper is
+    // skipped, so a level set programmatically after setup stays put.
+    load_consent_from_env();
     if std::env::var_os("PROVIDE_SAMPLING_LOGS_RATE").is_none() {
         return;
     }

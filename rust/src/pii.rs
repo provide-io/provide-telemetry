@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 
 use crate::classification::{classify_key, get_classification_policy};
+use crate::jcs::canonical_json;
 use crate::receipts::record_redaction;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +25,21 @@ pub struct PIIRule {
     pub path: Vec<String>,
     pub mode: PIIMode,
     pub truncate_to: usize,
+}
+
+/// Characters a truncate rule keeps when it names no limit of its own -- the
+/// spec default every SDK shares, so `PIIRule { .., ..Default::default() }`
+/// truncates the same way as a rule registered without a limit elsewhere.
+pub const DEFAULT_TRUNCATE_TO: usize = 8;
+
+impl Default for PIIRule {
+    fn default() -> Self {
+        Self {
+            path: Vec::new(),
+            mode: PIIMode::Redact,
+            truncate_to: DEFAULT_TRUNCATE_TO,
+        }
+    }
 }
 
 impl PIIRule {
@@ -305,11 +321,17 @@ pub fn get_pii_rules() -> Vec<PIIRule> {
     crate::_lock::lock(rules()).clone()
 }
 
+/// First 12 hex characters of the SHA-256 of *value*.
+///
+/// A string hashes its own UTF-8 bytes. Anything else hashes its RFC 8785
+/// canonical JSON -- the receipts canonicaliser, not `Display`, which differs
+/// for floats (`2.0` versus `2`) and key order, and would leave this SDK's
+/// digests disagreeing with the others' for the same value.
 fn hash_value(value: &Value) -> String {
     let mut hasher = Sha256::new();
     match value {
         Value::String(text) => hasher.update(text.as_bytes()),
-        _ => hasher.update(value.to_string().as_bytes()),
+        _ => hasher.update(canonical_json(value).as_bytes()),
     }
     let digest = hasher.finalize();
     format!("{:x}", digest)[..12].to_string()
@@ -447,7 +469,7 @@ fn annotate_governance_classes(cleaned: &mut Value) {
                         "hash" => PIIMode::Hash,
                         _ => PIIMode::Truncate,
                     };
-                    let masked = mask_value(&current, &mode, 8)
+                    let masked = mask_value(&current, &mode, DEFAULT_TRUNCATE_TO)
                         .expect("classification governance modes never drop values");
                     map.insert(key.clone(), masked);
                 }

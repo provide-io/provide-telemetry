@@ -33,6 +33,38 @@ pub fn get_consent_level() -> ConsentLevel {
     *crate::_lock::lock(consent_level())
 }
 
+/// The operator's consent opt-out. Read by `setup_telemetry` and by the lazy
+/// logger path rather than by `TelemetryConfig`, so it binds whether or not a
+/// config was passed in.
+pub(crate) const CONSENT_LEVEL_ENV_VAR: &str = "PROVIDE_CONSENT_LEVEL";
+
+/// Parse one spelling of a consent level, trimmed and ASCII-upper-cased so
+/// `" none "` and `minimal` both count. `None` for anything unrecognised.
+fn parse_consent_level(raw: &str) -> Option<ConsentLevel> {
+    match raw.trim().to_ascii_uppercase().as_str() {
+        "FULL" => Some(ConsentLevel::Full),
+        "FUNCTIONAL" => Some(ConsentLevel::Functional),
+        "MINIMAL" => Some(ConsentLevel::Minimal),
+        "NONE" => Some(ConsentLevel::None),
+        _ => None,
+    }
+}
+
+/// Read `PROVIDE_CONSENT_LEVEL` and apply it.
+///
+/// An unset or unrecognised value leaves the current level untouched rather
+/// than resetting it to FULL: an unset variable means the operator has no
+/// opinion, and a misspelled one must not silently widen consent that was
+/// narrowed programmatically with [`set_consent_level`].
+pub fn load_consent_from_env() {
+    let Ok(raw) = std::env::var(CONSENT_LEVEL_ENV_VAR) else {
+        return;
+    };
+    if let Some(level) = parse_consent_level(&raw) {
+        set_consent_level(level);
+    }
+}
+
 /// Rank a level for the consent gates, resolving through the one shared table.
 ///
 /// An unrecognised level ranks INFO here rather than the old local default of

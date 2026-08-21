@@ -6,6 +6,7 @@
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::TelemetryConfig;
+use crate::consent::load_consent_from_env;
 use crate::errors::TelemetryError;
 use crate::otel::{flush_otel, setup_otel, shutdown_otel};
 use crate::policies::apply_policies;
@@ -52,6 +53,12 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
     config
         .validate()
         .map_err(|err| TelemetryError::new(err.message))?;
+    // Consent is read here, not by `TelemetryConfig`: PROVIDE_CONSENT_LEVEL is
+    // an operator opt-out that must bind whether or not a config was passed in,
+    // and it must be in force before any provider is installed. Only on this
+    // first pass -- a repeated call returns above without re-reading it, so a
+    // level set programmatically after setup is never clobbered.
+    load_consent_from_env();
     setup_otel(&config)?;
     apply_policies(&config);
     set_active_config(Some(config.clone()));
@@ -252,6 +259,70 @@ mod tests {
         assert!(err.message.contains("PROVIDE_LOG_INCLUDE_TIMESTAMP"));
 
         std::env::remove_var("PROVIDE_LOG_INCLUDE_TIMESTAMP");
+    }
+
+    /// PROVIDE_CONSENT_LEVEL=NONE is read by setup itself, so an operator
+    /// opt-out takes effect without any code change in the host.
+    #[test]
+    fn setup_test_consent_env_is_loaded_at_setup() {
+        use crate::consent::{get_consent_level, reset_consent_for_tests, ConsentLevel};
+
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+        reset_consent_for_tests();
+        std::env::set_var(crate::consent::CONSENT_LEVEL_ENV_VAR, "NONE");
+
+        setup_telemetry(None).expect("setup should succeed");
+        assert_eq!(get_consent_level(), ConsentLevel::None);
+
+        shutdown_telemetry(None).expect("shutdown should succeed");
+        std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+        reset_consent_for_tests();
+    }
+
+    /// With the variable unset, setup leaves a programmatically narrowed level
+    /// alone -- it must not reset consent to FULL as a side effect.
+    #[test]
+    fn setup_test_unset_consent_env_leaves_programmatic_level_alone() {
+        use crate::consent::{
+            get_consent_level, reset_consent_for_tests, set_consent_level, ConsentLevel,
+        };
+
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+        std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+        set_consent_level(ConsentLevel::Minimal);
+
+        setup_telemetry(None).expect("setup should succeed");
+        assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+
+        shutdown_telemetry(None).expect("shutdown should succeed");
+        reset_consent_for_tests();
+    }
+
+    /// Only the first, installing pass reads the variable. A repeated call
+    /// returns the existing config and must not clobber a level set in code
+    /// after setup.
+    #[test]
+    fn setup_test_repeated_setup_does_not_reload_consent_from_env() {
+        use crate::consent::{
+            get_consent_level, reset_consent_for_tests, set_consent_level, ConsentLevel,
+        };
+
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+        reset_consent_for_tests();
+        std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+
+        setup_telemetry(None).expect("first setup should succeed");
+        set_consent_level(ConsentLevel::Minimal);
+        std::env::set_var(crate::consent::CONSENT_LEVEL_ENV_VAR, "NONE");
+        setup_telemetry(None).expect("second setup should return existing config");
+        assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+
+        shutdown_telemetry(None).expect("shutdown should succeed");
+        std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+        reset_consent_for_tests();
     }
 
     #[cfg(feature = "otel")]

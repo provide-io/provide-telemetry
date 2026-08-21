@@ -49,6 +49,7 @@ fn reset_logger_state() {
         "PROVIDE_LOG_INCLUDE_TIMESTAMP",
         "PROVIDE_LOG_MODULE_LEVELS",
         "PROVIDE_SAMPLING_LOGS_RATE",
+        crate::consent::CONSENT_LEVEL_ENV_VAR,
     ] {
         std::env::remove_var(key);
     }

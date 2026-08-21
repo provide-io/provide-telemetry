@@ -20,14 +20,40 @@ fn capture_record(message: &str) -> Value {
     panic!("no JSON object found in output: {output:?}");
 }
 
-fn emit_debug_capture(name: &str, message: &str) -> Vec<Value> {
-    provide_telemetry::enable_json_capture_for_tests();
-    provide_telemetry::get_logger(Some(name)).debug(message);
+fn take_json_records() -> Vec<Value> {
     let output = String::from_utf8(provide_telemetry::take_json_capture()).expect("utf8 output");
     output
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .collect()
+}
+
+fn emit_debug_capture(name: &str, message: &str) -> Vec<Value> {
+    provide_telemetry::enable_json_capture_for_tests();
+    provide_telemetry::get_logger(Some(name)).debug(message);
+    take_json_records()
+}
+
+fn emit_info_capture(name: &str, message: &str) -> Vec<Value> {
+    provide_telemetry::enable_json_capture_for_tests();
+    provide_telemetry::get_logger(Some(name)).info(message);
+    take_json_records()
+}
+
+fn consent_is_none() -> bool {
+    provide_telemetry::get_consent_level() == provide_telemetry::ConsentLevel::None
+}
+
+/// Emit one INFO record and report whether nothing came of it. Checked two
+/// ways so the answer cannot be vacuous: the JSON capture holds no record with
+/// that message, and the health counter of emitted logs did not move -- the
+/// latter is format-independent, so a console-format run cannot pass this by
+/// merely writing nowhere the JSON capture looks.
+fn info_record_is_suppressed(message: &str) -> bool {
+    let before = provide_telemetry::get_health_snapshot().emitted_logs;
+    let records = emit_info_capture("probe", message);
+    let after = provide_telemetry::get_health_snapshot().emitted_logs;
+    !has_message(&records, message) && after == before
 }
 
 fn has_message(records: &[Value], message: &str) -> bool {
@@ -101,6 +127,31 @@ fn main() {
                 "case": case,
                 "emitted": true,
                 "schema_error": record.get("_schema_error").is_some(),
+            })
+        }
+        // PROVIDE_CONSENT_LEVEL=NONE is read by setup_telemetry itself, so the
+        // one INFO record emitted afterwards is suppressed with no code change.
+        "consent_env_none_at_setup" => {
+            provide_telemetry::setup_telemetry(None).expect("setup");
+            let status = provide_telemetry::get_runtime_status();
+            let consent_none = consent_is_none();
+            let suppressed = info_record_is_suppressed("consent.none.setup");
+            provide_telemetry::shutdown_telemetry(None).expect("shutdown");
+            json!({
+                "case": case,
+                "setup_done": status.setup_done,
+                "consent_none": consent_none,
+                "record_suppressed": suppressed,
+            })
+        }
+        // The lazy logger path reads it too: a process that never calls
+        // setup_telemetry still gets the operator's opt-out.
+        "consent_env_none_lazy_logger" => {
+            let suppressed = info_record_is_suppressed("consent.none.lazy");
+            json!({
+                "case": case,
+                "consent_none": consent_is_none(),
+                "record_suppressed": suppressed,
             })
         }
         "invalid_config" => json!({

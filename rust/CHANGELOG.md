@@ -7,6 +7,28 @@ they contained.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `load_consent_from_env`, exported from the crate root. Reads
+  `PROVIDE_CONSENT_LEVEL` (trimmed, case-insensitive; `FULL`, `FUNCTIONAL`,
+  `MINIMAL` or `NONE`) and applies it; an unset or unrecognised value leaves
+  the current level untouched. `setup_telemetry` calls it on its first,
+  installing pass and `get_logger` calls it before setup has run, so an
+  operator opt-out now takes effect in Rust as it already did in the other
+  four SDKs. A level set in code after setup is never clobbered.
+- `DEFAULT_TRUNCATE_TO` (8) and `impl Default for PIIRule`, so
+  `PIIRule { path, mode: PIIMode::Truncate, ..Default::default() }` truncates
+  to the spec default rather than requiring a limit to be spelled out.
+
+### Fixed
+
+- `PIIMode::Hash` of a non-string value now hashes its RFC 8785 canonical
+  JSON, produced by the same canonicaliser the receipts use, instead of its
+  `Display` text. The two differ for floats (`2.0` versus `2`) and key order,
+  so digests of booleans, null, numbers and objects now match the other SDKs.
+
 ## [0.8.0] — 2026-08-19
 
 ### Breaking

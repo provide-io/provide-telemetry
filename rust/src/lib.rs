@@ -52,7 +52,8 @@ pub use config::{
     TracingConfig,
 };
 pub use consent::{
-    get_consent_level, reset_consent_for_tests, set_consent_level, should_allow, ConsentLevel,
+    get_consent_level, load_consent_from_env, reset_consent_for_tests, set_consent_level,
+    should_allow, ConsentLevel,
 };
 pub use context::{
     bind_context, bind_session_context, clear_context, clear_session_context, get_session_id,
@@ -80,7 +81,7 @@ pub use otel::{_reset_otel_for_tests, otel_installed_for_tests};
 pub use pii::{
     get_pii_rules, get_secret_patterns, register_pii_rule, register_secret_pattern,
     replace_pii_rules, reset_secret_patterns_for_tests, sanitize_payload, PIIMode, PIIRule,
-    SecretPattern,
+    SecretPattern, DEFAULT_TRUNCATE_TO,
 };
 pub use propagation::{
     bind_propagation_context, extract_w3c_context, parse_baggage, PropagationContext,

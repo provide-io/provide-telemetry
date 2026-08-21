@@ -150,3 +150,52 @@ fn get_logger_before_setup_ignores_invalid_env_log_sampling_policy() {
     assert_eq!(events[0].message, "invalid.sampling.env");
     std::env::remove_var("PROVIDE_SAMPLING_LOGS_RATE");
 }
+
+/// PROVIDE_CONSENT_LEVEL is read on the lazy path too -- and independently of
+/// PROVIDE_SAMPLING_LOGS_RATE, which is deliberately left unset here so the
+/// sampling short-circuit cannot be what skipped it.
+#[test]
+fn get_logger_before_setup_applies_env_consent_level() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+
+    std::env::set_var(crate::consent::CONSENT_LEVEL_ENV_VAR, "NONE");
+    let log = get_logger(Some("tests.lazy.env.consent"));
+    assert_eq!(crate::get_consent_level(), ConsentLevel::None);
+    log.info("consent.none.lazy");
+
+    assert!(Logger::drain_events_for_tests().is_empty());
+    std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+    reset_consent_for_tests();
+}
+
+/// With the variable unset, the lazy path leaves a level set in code alone.
+#[test]
+fn get_logger_before_setup_leaves_programmatic_consent_when_env_unset() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+
+    set_consent_level(ConsentLevel::Minimal);
+    let _ = get_logger(Some("tests.lazy.env.consent_unset"));
+
+    assert_eq!(crate::get_consent_level(), ConsentLevel::Minimal);
+    reset_consent_for_tests();
+}
+
+/// Once setup has run, get_logger() no longer consults the environment, so a
+/// level narrowed programmatically after setup is never clobbered by it.
+#[test]
+fn get_logger_after_setup_does_not_reload_consent_from_env() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+
+    crate::setup::setup_telemetry(None).expect("setup should succeed");
+    set_consent_level(ConsentLevel::Minimal);
+    std::env::set_var(crate::consent::CONSENT_LEVEL_ENV_VAR, "NONE");
+    let _ = get_logger(Some("tests.lazy.env.consent_after_setup"));
+
+    assert_eq!(crate::get_consent_level(), ConsentLevel::Minimal);
+    std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
+    let _ = crate::setup::shutdown_telemetry(None);
+    reset_consent_for_tests();
+}

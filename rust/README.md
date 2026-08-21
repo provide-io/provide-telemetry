@@ -156,7 +156,7 @@ use serde_json::json;
 register_pii_rule(PIIRule {
     path: vec!["user".into(), "ssn".into()],
     mode: PIIMode::Redact,
-    truncate_to: 0,
+    ..Default::default() // truncate_to: DEFAULT_TRUNCATE_TO (8), used by Truncate rules
 });
 
 let payload = json!({"user": {"ssn": "123-45-6789", "name": "Alice"}});

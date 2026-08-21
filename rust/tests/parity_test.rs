@@ -164,6 +164,77 @@ fn parity_test_pii_truncate_mode() {
     provide_telemetry::replace_pii_rules(Vec::new());
 }
 
+// ── PII truncate limits ─────────────────────────────────────────────────────
+// Parity category: pii_truncate -- the unset, zero and code-point fixtures.
+// `truncate_to` is a usize, so the fixture's negative limit (clamped to 0 in
+// the other SDKs) cannot be expressed here; the zero case is its floor.
+
+#[test]
+fn parity_test_pii_truncate_unset_limit_defaults_to_eight() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    provide_telemetry::replace_pii_rules(vec![PIIRule {
+        path: vec!["note".to_string()],
+        mode: PIIMode::Truncate,
+        ..Default::default()
+    }]);
+    let result = sanitize_payload(&json!({"note": "abcdefghij"}), true, 32);
+    assert_eq!(result["note"], "abcdefgh...");
+    provide_telemetry::replace_pii_rules(Vec::new());
+}
+
+#[test]
+fn parity_test_pii_truncate_zero_limit_keeps_only_suffix() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    provide_telemetry::replace_pii_rules(vec![PIIRule {
+        path: vec!["note".to_string()],
+        mode: PIIMode::Truncate,
+        truncate_to: 0,
+    }]);
+    let result = sanitize_payload(&json!({"note": "hello"}), true, 32);
+    assert_eq!(result["note"], "...");
+    provide_telemetry::replace_pii_rules(Vec::new());
+}
+
+#[test]
+fn parity_test_pii_truncate_limit_counts_code_points() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    provide_telemetry::replace_pii_rules(vec![PIIRule {
+        path: vec!["note".to_string()],
+        mode: PIIMode::Truncate,
+        truncate_to: 3,
+    }]);
+    // Five astral code points; a UTF-16 slice of 3 would split the second emoji.
+    let result = sanitize_payload(&json!({"note": "😀😀😀😀😀"}), true, 32);
+    assert_eq!(result["note"], "😀😀😀...");
+    provide_telemetry::replace_pii_rules(Vec::new());
+}
+
+// ── PII hash of non-string values ───────────────────────────────────────────
+// Parity category: pii_hash -- a non-string hashes its RFC 8785 canonical JSON,
+// so every SDK spells booleans, null, numbers and objects the same way first.
+
+#[test]
+fn parity_test_pii_hash_non_string_values_use_canonical_json() {
+    let _guard = parity_lock().lock().expect("parity lock");
+    provide_telemetry::replace_pii_rules(vec![PIIRule {
+        path: vec!["value".to_string()],
+        mode: PIIMode::Hash,
+        ..Default::default()
+    }]);
+    let cases: [(serde_json::Value, &str); 5] = [
+        (json!(42), "73475cb40a56"),                 // pragma: allowlist secret
+        (json!(true), "b5bea41b6c62"),               // pragma: allowlist secret
+        (json!(null), "74234e98afe7"),               // pragma: allowlist secret
+        (json!(1.5), "9f29a130438b"),                // pragma: allowlist secret
+        (json!({"b": 1, "a": "x"}), "cdab067e9f3b"), // pragma: allowlist secret
+    ];
+    for (input, expected) in cases {
+        let result = sanitize_payload(&json!({"value": input}), true, 32);
+        assert_eq!(result["value"], expected, "input: {input}");
+    }
+    provide_telemetry::replace_pii_rules(Vec::new());
+}
+
 #[test]
 fn parity_test_pii_redact_mode() {
     let _guard = parity_lock().lock().expect("parity lock");

@@ -155,3 +155,73 @@ fn pii_test_a_credential_glued_to_a_prefix_is_removed_whole() {
         Some("*** tail".to_string())
     );
 }
+
+// ── Truncate defaults and limits ────────────────────────────────────────────
+
+/// A rule built with `..Default::default()` truncates to the spec default of 8,
+/// the same limit every other SDK applies to a rule registered without one.
+#[test]
+fn pii_test_default_rule_truncates_to_eight() {
+    let rule = PIIRule {
+        path: vec!["note".to_string()],
+        mode: PIIMode::Truncate,
+        ..Default::default()
+    };
+    assert_eq!(DEFAULT_TRUNCATE_TO, 8);
+    assert_eq!(rule.truncate_to, DEFAULT_TRUNCATE_TO);
+    assert_eq!(
+        mask_value(
+            &serde_json::json!("abcdefghij"),
+            &rule.mode,
+            rule.truncate_to
+        ),
+        Some(serde_json::json!("abcdefgh..."))
+    );
+}
+
+#[test]
+fn pii_test_default_rule_is_redact_with_empty_path() {
+    let rule = PIIRule::default();
+    assert!(rule.path.is_empty());
+    assert_eq!(rule.mode, PIIMode::Redact);
+    assert_eq!(rule.truncate_to, DEFAULT_TRUNCATE_TO);
+}
+
+/// A zero limit keeps nothing but the suffix. `truncate_to` is a usize, so the
+/// spec's negative-limit case (clamped to 0, never an error) cannot arise in
+/// Rust at all; zero is the floor and this pins it.
+#[test]
+fn pii_test_zero_truncate_limit_keeps_only_the_suffix() {
+    assert_eq!(
+        mask_value(&serde_json::json!("hello"), &PIIMode::Truncate, 0),
+        Some(serde_json::json!("..."))
+    );
+}
+
+/// The limit counts Unicode scalar values, never UTF-16 units or bytes, so an
+/// astral character is kept whole or not at all.
+#[test]
+fn pii_test_truncate_limit_counts_code_points() {
+    assert_eq!(
+        mask_value(&serde_json::json!("😀😀😀😀😀"), &PIIMode::Truncate, 3),
+        Some(serde_json::json!("😀😀😀..."))
+    );
+}
+
+// ── Hash of non-string values ───────────────────────────────────────────────
+
+/// Non-strings hash their RFC 8785 canonical JSON, not their Display text.
+/// serde_json prints 2.0 as `2.0` where JCS prints `2`, so the float case is
+/// the one that tells the two apart; the rest pin the fixture digests.
+#[test]
+fn pii_test_hash_of_non_string_uses_canonical_json() {
+    assert_eq!(hash_value(&serde_json::json!(2.0)), "d4735e3a265e"); // sha256("2") pragma: allowlist secret
+    assert_eq!(hash_value(&serde_json::json!(true)), "b5bea41b6c62"); // pragma: allowlist secret
+    assert_eq!(hash_value(&serde_json::json!(null)), "74234e98afe7"); // pragma: allowlist secret
+    assert_eq!(
+        hash_value(&serde_json::json!({"b": 1, "a": "x"})),
+        "cdab067e9f3b" // pragma: allowlist secret
+    );
+    // A string still hashes its own bytes, not a quoted JSON literal.
+    assert_eq!(hash_value(&serde_json::json!("same-input")), "f52c2013103b"); // pragma: allowlist secret
+}
