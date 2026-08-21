@@ -97,7 +97,8 @@ def test_go_ci_runs_real_otlp_collector_gate() -> None:
     assert "PROVIDE_TEST_OTLP_ENDPOINT" in workflow
     assert "PROVIDE_TEST_OTLP_OUTPUT_DIR" in workflow
     assert "run: ../ci/wait-for-collector.sh" in workflow
-    assert "hashFiles('go/logger/go.mod')" in workflow
+    # go/logger was removed in 0.9.0; nothing in the Go CI may reference it.
+    assert "go/logger" not in workflow
     assert "hashFiles('go/otel/go.mod')" in workflow
 
 
@@ -132,22 +133,22 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert "cargo-mutants --version 27.1.0 --locked" in workflow
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in workflow
     assert "gremlins/cmd/gremlins@v0.6.0" in workflow
-    # Seven gremlins surfaces: root, logger, the four internal/ packages, and
-    # the otel module. The internal/ packages were ungated until 2026-08-16 —
-    # the root step excludes "internal/" and the logger step targets ./logger,
-    # so nothing mutated them. Adding piicore found a real gap on its first run.
-    # levelcore joined them when the shared severity ladder moved there; it is
-    # gated for the same reason, and the count is asserted so a new internal
-    # package cannot be added without a step that mutates it.
-    assert workflow.count("--threshold-efficacy=100") == 7
-    assert workflow.count("--threshold-mcover=100") == 7
+    # Six gremlins surfaces: root, the four internal/ packages, and the otel
+    # module. The internal/ packages were ungated until 2026-08-16 — the root
+    # step excludes "internal/", so nothing mutated them. Adding piicore found a
+    # real gap on its first run. levelcore joined them when the shared severity
+    # ladder moved there; it is gated for the same reason, and the count is
+    # asserted so a new internal package cannot be added without a step that
+    # mutates it.
+    assert workflow.count("--threshold-efficacy=100") == 6
+    assert workflow.count("--threshold-mcover=100") == 6
     assert '--exclude-files="mutation_constants.go"' in workflow
     # go/otel is a separate module, so its step is legitimately conditional.
-    # go/logger is a package of the root module and must NOT be gated on a
-    # go.mod that will never exist — that gate silently skipped the step.
     assert "hashFiles('go/otel/go.mod')" in workflow
-    assert "hashFiles('go/logger/go.mod')" not in workflow
-    assert "Run gremlins mutation tests for go/logger" in workflow
+    # go/logger was removed in 0.9.0: no step, no exclusion, no comment.
+    assert "go/logger" not in workflow
+    assert "./logger" not in workflow
+    assert '--exclude-files="logger/"' not in workflow
     for internal_pkg in ("piicore", "fingerprintcore", "schemacore"):
         assert f"Run gremlins mutation tests for go/internal/{internal_pkg}" in workflow
         # Each internal step targets "." and widens --coverpkg, because

@@ -91,8 +91,8 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
   - **Python** — `scripts/run_mutation_gate.py`. Note `_is_clean()` requires *zero*
     survivors, timeouts, suspicious and no-tests results; `--min-mutation-score` is an
     additional floor, not the bar. A run at 99% still fails.
-  - **Go** — gremlins over six surfaces: the root package, `logger`, the three
-    `internal/` packages (`piicore`, `fingerprintcore`, `schemacore`), and the `otel`
+  - **Go** — gremlins over six surfaces: the root package, the four `internal/`
+    packages (`piicore`, `fingerprintcore`, `schemacore`, `levelcore`), and the `otel`
     module — each run through `scripts/run_gremlins_gate.sh`. The `internal/` steps
     target `.` rather than the package itself, because gremlins builds its coverage
     profile from the tests of the target path and almost everything exercising those

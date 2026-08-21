@@ -66,7 +66,6 @@ github.com/prometheus/client_model v0.6.2 h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNw
 github.com/prometheus/client_model v0.6.2/go.mod h1:y3m2F6Gdpfy6Ut/GBsUqTWZqCUvMVzSfMLjcu6wAwpE=
 github.com/provide-io/provide-telemetry/go v0.4.0/go.mod h1:wAkDwSB+o3Rq/A9dsgig20yoXVeZzJuWR/xtShQ4re8=
 github.com/provide-io/provide-telemetry/go/internal v0.4.0/go.mod h1:1M4RMqJIuVNhrET6LRu0cGQx8ciryAOT3wf4G7vTIOk=
-github.com/provide-io/provide-telemetry/go/logger v0.4.0/go.mod h1:6cJsUbA1AqNtBRdRjgQd8EoBr82FizqIfuEpCrWEBk0=
 github.com/rogpeppe/fastuuid v1.2.0 h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=

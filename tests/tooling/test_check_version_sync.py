@@ -40,13 +40,10 @@ def _make_minimal_repo(
     *,
     go_version: str = "0.4.0",
     go_internal_version: str = "0.4.0",
-    go_logger_version: str = "0.4.0",
-    logger_internal_version: str = "0.4.0",
 ) -> Path:
     _write(tmp_path / "VERSION", f"{go_version}\n")
     _write(tmp_path / "go" / "VERSION", f"{go_version}\n")
     _write(tmp_path / "go" / "internal" / "VERSION", f"{go_internal_version}\n")
-    _write(tmp_path / "go" / "logger" / "VERSION", f"{go_logger_version}\n")
     _write(
         tmp_path / "go" / "go.mod",
         "\n".join(
@@ -71,19 +68,6 @@ def _make_minimal_repo(
             ]
         ),
     )
-    _write(
-        tmp_path / "go" / "logger" / "go.mod",
-        "\n".join(
-            [
-                f"module {_GO_MODULE}/logger",
-                "",
-                "go 1.26.0",
-                "",
-                f"require {_GO_MODULE}/internal v{logger_internal_version}",
-                "",
-            ]
-        ),
-    )
     return tmp_path
 
 
@@ -98,8 +82,6 @@ def _make_otel_repo(
         tmp_path,
         go_version=go_version,
         go_internal_version=go_version,
-        go_logger_version=go_version,
-        logger_internal_version=go_version,
     )
     _write(repo_root / "go" / "otel" / "VERSION", f"{go_otel_version}\n")
     _write(
@@ -146,21 +128,25 @@ def test_version_sync_fails_when_go_internal_version_mismatches_root(
     assert "go 0.4.0" in output
 
 
-def test_version_sync_fails_when_go_logger_dep_mismatches_internal_version(
+def test_version_sync_ignores_removed_go_logger_module(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    repo_root = _make_minimal_repo(tmp_path, logger_internal_version="0.3.0")
+    # go/logger was removed in 0.9.0; the script must not read or report it
+    # even when a stale checkout still carries the directory.
+    repo_root = _make_minimal_repo(tmp_path)
+    _write(repo_root / "go" / "logger" / "VERSION", "0.1.0\n")
     module = _load_script_module()
     monkeypatch.setattr(module, "_REPO_ROOT", repo_root)
+    assert "go/logger" not in module.OPTIONAL_MODULES
 
-    assert module.main([]) == 1
+    # The minimal repo carries only the Go modules, so the other required
+    # languages are reported missing; the exit code is not the point here.
+    module.main([])
 
-    output = capsys.readouterr().out
-    assert "go/logger dependency" in output
-    assert "v0.3.0" in output
-    assert "v0.4.0" in output
+    captured = capsys.readouterr()
+    assert "go/logger" not in captured.out + captured.err
 
 
 def test_version_sync_fails_when_go_otel_dep_mismatches_root_version(

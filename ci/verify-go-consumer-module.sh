@@ -38,7 +38,6 @@ import (
 	"testing"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
-	logger "github.com/provide-io/provide-telemetry/go/logger"
 )
 
 func TestTaggedModuleConsumerProbe(t *testing.T) {
@@ -117,8 +116,8 @@ esac
       ;;
   esac
   # Populate go.sum with hashes for transitive deps imported by the
-  # tagged module's sub-packages (e.g. go/logger pulls in
-  # go.opentelemetry.io/otel/trace). go get only adds direct deps,
+  # tagged module's sub-packages (e.g. go/internal/piicore pulls in
+  # golang.org/x/text). go get only adds direct deps,
   # so without this 'go test .' fails with "missing go.sum entry".
   #
   # The proxy is used from here on, deliberately. GOPROXY=direct is the point

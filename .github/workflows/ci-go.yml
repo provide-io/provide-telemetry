@@ -70,20 +70,6 @@ jobs:
           export GOWORK="${WORKFILE}"
           echo "Using workspace: ${WORKFILE}"
           go env GOWORK
-      - name: Run go/logger tests with coverage
-        if: ${{ hashFiles('go/logger/go.mod') != '' }}
-        working-directory: go
-        run: go test -race -coverprofile=logger.coverage.out ./logger/...
-      - name: Enforce go/logger 100% coverage
-        if: ${{ hashFiles('go/logger/go.mod') != '' }}
-        working-directory: go
-        run: |
-          TOTAL=$(go tool cover -func=logger.coverage.out | grep total | awk '{print $3}')
-          echo "Total coverage: $TOTAL"
-          if [ "$TOTAL" != "100.0%" ]; then
-            echo "FAIL: coverage is $TOTAL, expected 100.0%"
-            exit 1
-          fi
       - name: Confirm root module stays free of OTel SDK and exporter deps
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go

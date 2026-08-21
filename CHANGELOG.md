@@ -50,6 +50,22 @@ one method and relaxed in its sibling `EventName`.
 segments in every mode: that count belongs to the DAS/DARS record shape, not to
 the name.
 
+**Go: the `go/logger` package is removed.** `github.com/provide-io/provide-telemetry/go/logger`
+duplicated the root package's API (`GetLogger`, `EventName`, PII rules, error
+fingerprinting, schema validation) behind a second import path, was imported
+by nothing in the repository, and was the one surface that skipped the root
+package's `init`-time PII hash canonicaliser — a binary linking only
+`go/logger` hashed non-string values with `%v` rather than RFC 8785 canonical
+JSON. Import the root package instead:
+`telemetry "github.com/provide-io/provide-telemetry/go"`. The ten names that
+existed only in `go/logger` (`Configure`, `DefaultLogConfig`,
+`GetDefaultLogger`, `IsEnabled`, `NewBufferLogger`, `NewNullLogger`,
+`ResetPIIRules`, `ResetSecretPatterns`, `SetSamplingFunc`,
+`SetSanitizePayloadFunc`) were test helpers and hooks with no root-package
+equivalent. Its gremlins step and the two `ci-go.yml` coverage steps — gated
+on a `go/logger/go.mod` that never existed, so they had silently never run —
+go with it.
+
 ### Fixed
 
 - **`PROVIDE_CONSENT_LEVEL` is honoured by setup and by the lazy logger path

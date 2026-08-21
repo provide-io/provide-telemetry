@@ -17,7 +17,7 @@ namespace Provide.Telemetry;
 /// <remarks>
 /// The algorithm is the five-language contract, matching
 /// <c>src/provide/telemetry/logger/processors.py</c> (<c>_compute_error_fingerprint</c>),
-/// <c>typescript/src/fingerprint.ts</c>, <c>go/logger/fingerprint.go</c>, and
+/// <c>typescript/src/fingerprint.ts</c>, <c>go/internal/fingerprintcore/fingerprint.go</c>, and
 /// <c>rust/src/fingerprint.rs</c>: lowercase the parts, join with <c>:</c>,
 /// SHA-256 the UTF-8 bytes, and keep the first 12 hex characters.
 /// </remarks>

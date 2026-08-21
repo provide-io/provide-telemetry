@@ -108,14 +108,6 @@ def _go_internal_version() -> str | None:
     return None
 
 
-def _go_logger_version() -> str | None:
-    """Read version from go/logger/VERSION."""
-    v = _REPO_ROOT / "go" / "logger" / "VERSION"
-    if v.exists():
-        return v.read_text(encoding="utf-8").strip()
-    return None
-
-
 def _go_otel_version() -> str | None:
     """Read version from go/otel/VERSION."""
     v = _REPO_ROOT / "go" / "otel" / "VERSION"
@@ -242,7 +234,6 @@ OPTIONAL_MODULES: dict[str, _VersionReader] = {
     "typescript/runtime": _typescript_runtime_version,
     "typescript/lockfile": _typescript_lockfile_version,
     "go/internal": _go_internal_version,
-    "go/logger": _go_logger_version,
     "go/otel": _go_otel_version,
     # Optional for the same reason go/otel is: the OpenTelemetry integration is a
     # separate shippable artifact, and a core-only checkout legitimately lacks it.
@@ -326,14 +317,10 @@ def main(argv: list[str] | None = None) -> int:
 
     go_version = _go_version()
     go_internal = _go_internal_version()
-    go_logger = _go_logger_version()
     go_otel = _go_otel_version()
     if go_version and go_internal and go_version != go_internal:
         print(f"  go exact sync: go/internal {go_internal} != go {go_version}")
         errors.append(f"go/internal VERSION {go_internal} does not exactly match go VERSION {go_version}")
-    if go_version and go_logger and go_version != go_logger:
-        print(f"  go exact sync: go/logger {go_logger} != go {go_version}")
-        errors.append(f"go/logger VERSION {go_logger} does not exactly match go VERSION {go_version}")
     if go_version and go_otel and go_version != go_otel:
         print(f"  go exact sync: go/otel {go_otel} != go {go_version}")
         errors.append(f"go/otel VERSION {go_otel} does not exactly match go VERSION {go_version}")
@@ -349,19 +336,6 @@ def main(argv: list[str] | None = None) -> int:
         errors.append(
             "go go.mod dependency "
             f"{go_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
-        )
-
-    logger_requires_internal = _go_required_version(
-        _REPO_ROOT / "go" / "logger" / "go.mod",
-        "github.com/provide-io/provide-telemetry/go/internal",
-    )
-    if go_internal and logger_requires_internal and logger_requires_internal != _normalize_go_version(go_internal):
-        print(
-            f"  go/logger dependency: internal {logger_requires_internal} != go/internal VERSION {_normalize_go_version(go_internal)}"
-        )
-        errors.append(
-            "go/logger go.mod dependency "
-            f"{logger_requires_internal} does not exactly match go/internal VERSION {_normalize_go_version(go_internal)}"
         )
 
     otel_requires_go = _go_required_version(

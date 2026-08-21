@@ -58,7 +58,6 @@ go_version_gt() {
 for module_dir in \
   "${repo_root_shell}/go" \
   "${repo_root_shell}/go/internal" \
-  "${repo_root_shell}/go/logger" \
   "${repo_root_shell}/go/otel" \
   "${repo_root_shell}/go/cmd/e2e_cross_language_client"
 do

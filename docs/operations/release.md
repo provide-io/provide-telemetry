@@ -237,7 +237,6 @@ Release steps:
 ### Go validation before release
 
 ```bash
-GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/logger/...
 GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go test -race ./go/otel
 GOWORK="$(./ci/init-go-workspace.sh "$PWD" /tmp/provide-telemetry-go-work)" go build ./go/otel/examples/openobserve/...
 cd go
@@ -251,17 +250,17 @@ GOWORK=off govulncheck ./...
 # unleash` directly — its --threshold-* flags do not gate (v0.6.0 exits 0 even
 # at an impossible 101%). scripts/run_gremlins_gate.sh is what fails the run,
 # on a survivor, an uncovered mutant, a timeout, or a missing summary.
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="mutation_constants.go" ./logger
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
 
-# The three internal/ packages. The root step excludes "internal/" and the
-# logger step targets ./logger, so without these they are mutated by nothing.
+# The four internal/ packages. The root step excludes "internal/", so without
+# these they are mutated by nothing.
 # Target stays "." because that is where the tests that exercise them live;
 # --coverpkg attributes that coverage onto the internal package and the
 # exclusions narrow what is mutated back down to it.
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/piicore" --exclude-files="secret_patterns_generated.go" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/schemacore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/fingerprintcore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/piicore/" --exclude-files="internal/schemacore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/schemacore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/piicore/" --exclude-files="logger/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/piicore" --exclude-files="secret_patterns_generated.go" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/schemacore/" --exclude-files="internal/levelcore/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/fingerprintcore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/piicore/" --exclude-files="internal/schemacore/" --exclude-files="internal/levelcore/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/schemacore" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/piicore/" --exclude-files="internal/levelcore/" --exclude-files="otel/" --exclude-files="scripts/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go,github.com/provide-io/provide-telemetry/go/internal/levelcore" --exclude-files="mutation_constants.go" --exclude-files="^[^/]+\.go$" --exclude-files="cmd/" --exclude-files="examples/" --exclude-files="internal/fingerprintcore/" --exclude-files="internal/piicore/" --exclude-files="internal/schemacore/" --exclude-files="otel/" --exclude-files="scripts/" .
 cd otel
 GOWORK=off go test -race -coverprofile=coverage.out .
 go tool cover -func=coverage.out | grep total   # must be 100.0%

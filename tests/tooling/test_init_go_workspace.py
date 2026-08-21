@@ -119,7 +119,6 @@ def test_workspace_script_supports_multi_module_layout(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     _write_go_module(repo_root / "go", "github.com/provide-io/provide-telemetry/go")
     _write_go_module(repo_root / "go" / "internal", "github.com/provide-io/provide-telemetry/go/internal")
-    _write_go_module(repo_root / "go" / "logger", "github.com/provide-io/provide-telemetry/go/logger")
     _write_go_module(
         repo_root / "go" / "cmd" / "e2e_cross_language_client",
         "github.com/provide-io/provide-telemetry/go/cmd/e2e_cross_language_client",
@@ -129,7 +128,7 @@ def test_workspace_script_supports_multi_module_layout(tmp_path: Path) -> None:
 
     assert _workspace_path(repo_root / "go") in workfile
     assert _workspace_path(repo_root / "go" / "internal") in workfile
-    assert _workspace_path(repo_root / "go" / "logger") in workfile
+    assert "go/logger" not in workfile
     assert _workspace_path(repo_root / "go" / "cmd" / "e2e_cross_language_client") in workfile
     assert _workspace_path(repo_root / "go" / "otel") not in workfile
 
@@ -144,7 +143,7 @@ def test_workspace_script_supports_optional_otel_layout(tmp_path: Path) -> None:
     assert _workspace_path(repo_root / "go") in workfile
     assert _workspace_path(repo_root / "go" / "otel") in workfile
     assert _workspace_path(repo_root / "go" / "internal") not in workfile
-    assert _workspace_path(repo_root / "go" / "logger") not in workfile
+    assert "go/logger" not in workfile
     assert _workspace_path(repo_root / "go" / "tracer") not in workfile
 
 

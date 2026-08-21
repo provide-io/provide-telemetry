@@ -46,9 +46,9 @@ func ClassifyError(excName string, statusCode int) map[string]string {
 	// *expression*. The mutant column then falls outside every covered block, so
 	// fully exercised code reports as "not covered" and fails the
 	// --threshold-mcover=100 gate in .github/workflows/ci-mutation.yml.
-	// Rewriting this to a switch drops go/logger's mutator coverage to 88.41%.
+	// Rewriting this to a switch drops the package's mutator coverage to 88.41%.
 	//nolint:gocritic // ifElseChain is deliberate; see the comment above — a
-	// switch here drops go/logger mutator coverage to 88.41% and fails the
+	// switch here drops mutator coverage to 88.41% and fails the
 	// mutation gate.
 	if isTimeout {
 		result["error.category"] = _errCatTimeout
