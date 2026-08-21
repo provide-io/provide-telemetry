@@ -252,8 +252,6 @@ jobs:
   publish-npm:
     needs: build-npm
     if: startsWith(github.ref, 'refs/tags/typescript/')
-    # continue-on-error: safe to retrigger — npm will fail with 403 if version already published
-    continue-on-error: true
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -281,14 +279,17 @@ jobs:
       # Publish via OIDC trusted publishing. --provenance records a signed
       # attestation linking the tarball to this exact workflow run, surfaced
       # as the "verified" badge on npmjs.com.
+      - name: Unpack the built tarball
+        run: tar xzf npm-pack/*.tgz -C npm-pack
+      # The script queries the registry for the exact version first: an existing
+      # version is a documented no-op, and every other failure — auth, network,
+      # package, provenance — stays fatal. A postcondition then confirms the
+      # version is actually present. This replaces the job-level
+      # continue-on-error, which reported success for all of those.
       - name: Publish to npm
-        run: |
-          ls -la npm-pack/
-          cd npm-pack
-          tar xzf *.tgz
-          cd package
-          cat package.json | head -5
-          npm publish --access public --provenance --ignore-scripts
+        run: ./ci/publish-npm.sh
+        env:
+          PACKAGE_DIR: npm-pack/package
 
   publish-rust:
     needs: build-rust
