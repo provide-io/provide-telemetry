@@ -476,6 +476,21 @@ class PIIRule:
     truncate_to: int = 8
 ```
 
+Mode semantics are identical in all five SDKs (`spec/telemetry-api.yaml`,
+`pii_truncation` / `pii_hash`):
+
+- `truncate` keeps the first `truncate_to` Unicode scalar values (code points,
+  never UTF-16 units or bytes) and appends `...` when anything was cut. An
+  unset limit is `8`; `0` keeps only the suffix; a negative limit is clamped to
+  `0`. Go's zero-value `TruncateTo` means "unset" and is normalised to `8` when
+  the rule is registered.
+- `hash` is the first 12 lowercase hex characters of SHA-256. A string hashes
+  its own UTF-8 bytes; any other value hashes its RFC 8785 canonical JSON (the
+  same canonicaliser receipts use), so `True` → `"true"`, `None` → `"null"`,
+  `1.5` → `"1.5"` and mappings are key-sorted before hashing. The digest is a
+  deterministic 48-bit fingerprint: equal inputs are linkable across services,
+  and low-entropy inputs can be recovered by guessing — it is not anonymisation.
+
 ### `register_pii_rule(rule: PIIRule) -> None`
 
 Append a PII rule to the active rule list.

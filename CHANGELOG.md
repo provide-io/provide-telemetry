@@ -50,8 +50,56 @@ one method and relaxed in its sibling `EventName`.
 segments in every mode: that count belongs to the DAS/DARS record shape, not to
 the name.
 
+### Fixed
+
+- **`PROVIDE_CONSENT_LEVEL` is honoured by setup and by the lazy logger path
+  in every SDK.** Python, TypeScript and Go shipped an environment loader that
+  nothing called, and Rust had none, so an operator opt-out of `NONE` left
+  telemetry at `FULL`; only C# applied it. All five now read the variable at
+  `setup_telemetry()` and on the first `get_logger()` before setup. Loader
+  semantics are unified: unset leaves the current level untouched (Python and
+  TypeScript used to reset it to `FULL`), unrecognised values are ignored, and
+  a `set_consent_level()` made after setup is never overwritten. A runtime
+  probe (`consent_env_none_at_setup`, `consent_env_none_lazy_logger`) pins it
+  cross-language.
+- **PII `truncate` behaves identically everywhere.** C#'s `PIIRule.TruncateTo`
+  defaulted to `0`, which returned the whole plaintext; it now defaults to `8`
+  and `0` keeps only the suffix, like the other SDKs. Go clamps a negative
+  limit to `0` instead of panicking on a negative slice bound, and normalises
+  its zero-value `TruncateTo` to the spec default `8` at registration. Rust
+  gains `DEFAULT_TRUNCATE_TO` and a `Default` for `PIIRule`. TypeScript and C#
+  count Unicode scalar values rather than UTF-16 units, so a limit can no
+  longer split a surrogate pair.
+- **PII `hash` of a non-string value is the same digest in every SDK.** The
+  value is serialised with the RFC 8785 canonical-JSON routine receipts already
+  use before hashing; previously each SDK used its native string form, so a
+  boolean hashed as `"True"` in Python and C# but `"true"` elsewhere. Strings
+  and integers are unchanged.
+- Python's cross-context-safe OTel runtime context adopts the live
+  `ContextVar` instead of copying only the caller's current value, so tasks
+  already holding a span when `setup_telemetry()` runs keep their context and
+  their tokens still detach cleanly. A renamed private OTel attribute now
+  degrades setup with a `RuntimeWarning` instead of failing it.
+- The Python runtime-reconfiguration examples pass `RuntimeOverrides` instead
+  of a whole `TelemetryConfig`, and `examples/` is type-checked in CI.
+- `go/otel` is now linted, vetted and scanned by gosec/govulncheck in CI (the
+  root-module patterns never reached the nested module) and its five
+  outstanding lint findings are fixed.
+- `scripts/check_max_loc.py` scans every git-tracked source file (`.sh`,
+  `.js`, `.mjs`, `.mts`, `.tsx`, `Makefile`, `Dockerfile` included) instead of
+  a hand-kept root list that silently omitted `e2e/`, TypeScript scripts and
+  examples, Rust benches and C# perf code.
+- `scripts/oss-fuzz-local.sh` starts with its shebang again, the operations
+  runbook no longer claims an `*_ALLOW_BLOCKING_EVENT_LOOP` guard for
+  TypeScript, Rust or C#, and a memray test fixture no longer emits a
+  `SyntaxWarning`.
+
 ### Changed
 
+- `spec/telemetry-api.yaml` spells out the `pii_truncation` unit (Unicode
+  scalar values), zero/negative/unset limits, and the `pii_hash` serialisation
+  of non-string values; `spec/behavioral_fixtures.yaml` gains the matching
+  cases and every language's parity tests execute them.
 - The canonical `event_schema` block in `spec/telemetry-api.yaml` now describes
   the record builder and the name builder separately, with relaxed and strict
   sub-contracts. The single `min_segments: 3` / `max_segments: 4` pair could not

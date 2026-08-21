@@ -160,13 +160,20 @@ Per-signal retry, backoff, timeout, and failure policy. Each variable is prefixe
 
 ## Consent
 
-Read directly by the consent subsystem at first use, not parsed by
-`TelemetryConfig.from_env()` — so it does not appear in the generated tables
-above and is not part of the config-parity contract.
+Read by the consent subsystem, not parsed by `TelemetryConfig.from_env()` — so
+it does not appear in the generated tables above and is not part of the
+config-parity contract. Every SDK reads it at the same two points: explicit
+setup (`setup_telemetry()` / `setupTelemetry()` / `SetupTelemetry()`) and the
+lazy logger path taken when a logger is requested before setup. A process that
+never calls setup still honours the variable on its first `get_logger()`.
+
+Precedence: the environment wins at setup time over a level set in code before
+it; a `set_consent_level()` call made *after* setup is never overwritten (the
+lazy path only runs while setup has not happened).
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `PROVIDE_CONSENT_LEVEL` | str | `FULL` | Consent gate for telemetry collection: `FULL`, `FUNCTIONAL`, `MINIMAL`, or `NONE`. Parsed case-insensitively after trimming whitespace. An unrecognised value is ignored — it leaves the current level in place rather than raising, so an unset or misspelled variable yields `FULL`. |
+| `PROVIDE_CONSENT_LEVEL` | str | `FULL` | Consent gate for telemetry collection: `FULL`, `FUNCTIONAL`, `MINIMAL`, or `NONE`. Parsed case-insensitively after trimming whitespace. An unset variable is a no-op — a level chosen in code survives setup. An unrecognised value is ignored rather than raised (fail-open): it leaves the current level in place, so a misspelled variable in an otherwise untouched process yields `FULL`. |
 
 ## OpenObserve (Examples and E2E Only)
 
