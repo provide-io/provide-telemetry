@@ -144,9 +144,9 @@ def test_parity_event_name_contract_covers_every_fixture_case() -> None:
     each resolves. This checks the other direction: that the number of cases in
     the YAML has not grown past what this module actually exercises.
     """
-    import yaml
-
     from pathlib import Path
+
+    import yaml
 
     repo_root = Path(__file__).resolve().parents[2]
     fixtures = yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text())
@@ -160,6 +160,5 @@ def test_parity_event_name_contract_covers_every_fixture_case() -> None:
         or name.startswith("test_parity_validate_event_name_")
     }
     assert len(covering) == len(cases), (
-        f"{len(cases)} fixture cases but {len(covering)} tests covering them: "
-        f"{sorted(covering)}"
+        f"{len(cases)} fixture cases but {len(covering)} tests covering them: {sorted(covering)}"
     )
