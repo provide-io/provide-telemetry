@@ -8,10 +8,29 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-DOC_PATHS = ("README.md", "docs", "examples/README.md")
+# Every document a package consumer or a contributor reads. The language
+# READMEs sat outside this list until 2026-08-20, which is how rust/README.md
+# came to ship a quick start that does not compile — see
+# tests/tooling/test_readme_snippets.py. Entries that do not exist are skipped
+# by _iter_markdown_files, so listing an optional file here is harmless.
+DOC_PATHS = (
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs",
+    "examples/README.md",
+    "go/README.md",
+    "rust/README.md",
+    "typescript/README.md",
+    "csharp/README.md",
+)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 MUTATION_CMD_RE = re.compile(r"run_mutation_gate\.py\b")
+# The enforced bar is zero survivors, timeouts, suspicious and no-tests results
+# (scripts/run_mutation_gate.py::_is_clean). --min-mutation-score is a second,
+# looser floor layered on top, which is why this is 95 and not 100: raising it
+# would not tighten the gate, and presenting it as "the" threshold misreads what
+# the gate enforces.
 MIN_MUTATION_SCORE = 95.0
 MIN_MUTATION_RE = re.compile(r"--min-mutation-score\s+(?P<score>\d+(?:\.\d+)?)\b")
 
@@ -157,7 +176,11 @@ def _claim_violations(path: Path, content: str) -> list[str]:
 
         match = MIN_MUTATION_RE.search(line)
         if match is None or float(match.group("score")) < MIN_MUTATION_SCORE:
-            violations.append(f"{path}:{line_no}: run_mutation_gate command must include --min-mutation-score 95")
+            violations.append(
+                f"{path}:{line_no}: run_mutation_gate command must include "
+                f"--min-mutation-score {MIN_MUTATION_SCORE:g} (an additional floor; "
+                f"the gate itself requires zero survivors)"
+            )
     return violations
 
 

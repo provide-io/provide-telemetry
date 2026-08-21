@@ -117,6 +117,41 @@ jobs:
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run codespell
 
+  # Fails the build on any known vulnerability in the committed uv.lock,
+  # production and development dependencies alike. Blocking from day one:
+  # a gate that cannot fail is not a gate.
+  # Compiles the published Rust and Go quick starts. A README snippet with a
+  # wrong signature is a break a consumer hits in their first five minutes, and
+  # nothing else in CI reads those files as code.
+  docs-snippets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version: "1.26"
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
+      - run: uv run python scripts/run_pytest_gate.py --no-cov -q -m tooling tests/docs/test_compiled_readme_snippets.py
+
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      # Install the dev group so pip-audit itself is available.
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
+      # Export the committed lock and audit it. An empty inventory fails
+      # rather than reading as a clean scan.
+      - run: uv run python ci/audit_python.py
+
   otel-extras-validation:
     runs-on: ubuntu-24.04
     strategy:

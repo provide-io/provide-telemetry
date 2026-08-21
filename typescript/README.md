@@ -21,10 +21,20 @@ npm install \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/exporter-metrics-otlp-http \
   @opentelemetry/exporter-logs-otlp-http \
-  @opentelemetry/api-logs
+  @opentelemetry/api-logs \
+  @opentelemetry/context-async-hooks
 ```
 
-All eight are optional — the library degrades gracefully to no-op providers when they are absent.
+All nine are optional — the library degrades gracefully to no-op providers when they are absent.
+
+`@opentelemetry/context-async-hooks` is the one worth calling out. On Node it
+provides the AsyncLocalStorage context manager that `startActiveSpan` needs to
+carry a span across an `await` boundary. Without it telemetry still exports, but
+child spans are emitted with no parent, so the trace tree is what degrades —
+which reads as a tracing bug rather than a missing dependency. When it is absent
+on Node, `getHealthSnapshot().setupError` and `getRuntimeStatus().setupError`
+both say so. Browser and edge builds have no AsyncLocalStorage and are not meant
+to; there the library stays silent.
 
 ## Quick start
 

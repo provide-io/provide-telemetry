@@ -88,15 +88,46 @@ public class SchemaValidationTests
         Assert.Equal(string.Join(".", segments), Schema.EventName(segments));
     }
 
+    // Strict mode as of 2026-08-20: the 3-5 count is now a strict-mode rule, so
+    // relaxed mode no longer reaches this comparison at all.
     [Theory]
     [InlineData(2)]
     [InlineData(6)]
-    public void EventName_RejectsArityOutsideThreeToFive(int count)
+    public void EventName_StrictMode_RejectsArityOutsideThreeToFive(int count)
     {
+        Schema.SetStrictSchema(true);
         var segments = Enumerable.Repeat("seg", count).ToArray();
 
         var error = Assert.Throws<EventSchemaError>(() => Schema.EventName(segments));
         Assert.Equal($"event name requires 3-5 segments, got {count}", error.Message);
+    }
+
+    // The relaxed side of the same boundary: no upper bound, a floor of one, and
+    // an empty segment still rejected. The old count check was the only thing
+    // rejecting an empty segment, so this case used to pass.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(6)]
+    public void EventName_LenientMode_AcceptsAnyNonEmptyArity(int count)
+    {
+        var segments = Enumerable.Repeat("seg", count).ToArray();
+
+        Assert.Equal(string.Join(".", segments), Schema.EventName(segments));
+    }
+
+    [Fact]
+    public void EventName_LenientMode_RejectsZeroSegments()
+    {
+        var error = Assert.Throws<EventSchemaError>(() => Schema.EventName());
+        Assert.Equal("event name requires at least 1 segment, got 0", error.Message);
+    }
+
+    [Fact]
+    public void EventName_LenientMode_RejectsAnEmptySegment()
+    {
+        var error = Assert.Throws<EventSchemaError>(() => Schema.EventName("order", "", "ok"));
+        Assert.Equal("event name segments must be non-empty", error.Message);
     }
 
     [Fact]
@@ -125,31 +156,71 @@ public class SchemaValidationTests
         Schema.ValidateEventName(message);
     }
 
+    // Strict mode as of 2026-08-20, for the same reason as
+    // EventName_StrictMode_RejectsArityOutsideThreeToFive.
     [Theory]
     [InlineData("order.create", 2)]
     [InlineData("a.b.c.d.e.f", 6)]
-    public void ValidateEventName_RejectsArityOutsideThreeToFive(string message, int parts)
+    public void ValidateEventName_StrictMode_RejectsArityOutsideThreeToFive(string message, int parts)
     {
+        Schema.SetStrictSchema(true);
+
         var error = Assert.Throws<EventSchemaError>(() => Schema.ValidateEventName(message));
         Assert.Equal($"event name requires 3-5 segments, got {parts}", error.Message);
     }
 
     [Theory]
-    // Leading digit, uppercase, a hyphen, and an empty segment: the grammar is
-    // ^[a-z][a-z0-9_]*$ and each of these violates a different part of it.
+    [InlineData("startup")]
+    [InlineData("order.create")]
+    [InlineData("a.b.c.d.e.f")]
+    public void ValidateEventName_LenientMode_AcceptsAnyNonEmptyArity(string message)
+    {
+        Schema.ValidateEventName(message);
+    }
+
+    // "" splits to one empty segment, never zero segments, so the empty-segment
+    // rule is what rejects an empty name.
+    [Theory]
+    [InlineData("")]
+    [InlineData("a..b")]
+    public void ValidateEventName_LenientMode_RejectsAnEmptySegment(string message)
+    {
+        var error = Assert.Throws<EventSchemaError>(() => Schema.ValidateEventName(message));
+        Assert.Equal("event name segments must be non-empty", error.Message);
+    }
+
+    [Theory]
+    // Leading digit, uppercase, and a hyphen: the grammar is ^[a-z][a-z0-9_]*$
+    // and each of these violates a different part of it. The empty-segment case
+    // moved to ValidateEventName_LenientMode_RejectsAnEmptySegment, because an
+    // empty segment is now rejected before the grammar is consulted and carries
+    // its own message.
     [InlineData("order.create.Success", "Success")]
     [InlineData("order.1create.success", "1create")]
     [InlineData("order.create-thing.success", "create-thing")]
-    [InlineData("order..success", "")]
-    public void ValidateEventName_AlwaysCheckesTheGrammarAndNamesTheBadSegment(
+    public void ValidateEventName_StrictMode_ChecksTheGrammarAndNamesTheBadSegment(
         string message, string offender)
     {
-        // Unlike Event/EventName this one does not consult strict mode: a caller
-        // reaching for the validator directly has already asked for the check.
-        Assert.False(Schema.GetStrictSchema());
+        // Changed on 2026-08-20. This method used to apply the grammar on every
+        // call without reading GetStrictSchema — a deliberate C# choice ("a
+        // caller reaching for the validator has already asked for the check"),
+        // but one no other language made, so relaxed mode was strict here and
+        // relaxed in its sibling EventName. The five-language contract now wins.
+        Schema.SetStrictSchema(true);
 
         var error = Assert.Throws<EventSchemaError>(() => Schema.ValidateEventName(message));
         Assert.Equal($"invalid event segment: {offender}", error.Message);
+    }
+
+    [Theory]
+    [InlineData("order.create.Success")]
+    [InlineData("order.1create.success")]
+    [InlineData("order.create-thing.success")]
+    public void ValidateEventName_LenientMode_LeavesTheGrammarUnchecked(string message)
+    {
+        Assert.False(Schema.GetStrictSchema());
+
+        Schema.ValidateEventName(message);
     }
 
     // ── Schema.ValidateRequiredKeys ──────────────────────────────────────────

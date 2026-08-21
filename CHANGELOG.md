@@ -8,6 +8,79 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [Unreleased]
+
+All five languages.
+
+### Breaking
+
+**`event_name` now behaves identically in all five languages.** Relaxed mode —
+the default — accepts one or more non-empty segments and enforces no segment
+grammar. Strict mode accepts three to five segments, each matching
+`^[a-z][a-z0-9_]*$`. Zero segments and empty segments fail in both modes.
+
+Two things changed to get there.
+
+*Go and C# stop enforcing the strict count in relaxed mode.* `EventName` and
+`ValidateEventName` rejected anything outside 3–5 segments regardless of mode,
+while Python, TypeScript and Rust have always accepted `event_name("startup")`.
+Go and C# now accept it too. To restore count enforcement, enable strict schema
+mode (`PROVIDE_TELEMETRY_STRICT_SCHEMA`).
+
+*All five languages start rejecting an empty segment.* In Go and C# the count
+check was the only thing that rejected one; in Python, TypeScript and Rust
+nothing did. These used to succeed and now raise:
+
+```
+event_name("user", "", "ok")     ->  was "user..ok"
+validate_event_name("a..b")      ->  was accepted
+validate_event_name("")          ->  was accepted
+```
+
+TypeScript's `validateEventName` already rejected empty segments in relaxed
+mode; its `eventName` did not, so the two entry points disagreed.
+
+**C#'s `Schema.ValidateEventName` now reads `GetStrictSchema()`.** It applied
+the segment grammar on every call regardless of mode — a deliberate choice, on
+the reasoning that a caller reaching for the validator has already asked for the
+check, but one no other language made. Relaxed mode was therefore strict in that
+one method and relaxed in its sibling `EventName`.
+
+`event()` / `Event()` is unchanged. It still requires exactly three or four
+segments in every mode: that count belongs to the DAS/DARS record shape, not to
+the name.
+
+### Changed
+
+- The canonical `event_schema` block in `spec/telemetry-api.yaml` now describes
+  the record builder and the name builder separately, with relaxed and strict
+  sub-contracts. The single `min_segments: 3` / `max_segments: 4` pair could not
+  express the split and already disagreed with the 3–5 range every `EventName`
+  implementation shipped.
+- Go's OTel backend only resets a global provider that still holds the exact
+  provider it installed. A host application that registered its own provider
+  after `SetupTelemetry` had it replaced with an API no-op at shutdown, silently
+  disabling its telemetry.
+- Go's provider-conflict warning no longer suppresses itself for a concrete SDK
+  provider on the global. That check is only reached when Provide has installed
+  nothing, so the incumbent belongs to the host — the most likely real conflict
+  rather than the least.
+
+### Security
+
+- Rust: `h2` upgraded 0.4.15 → 0.4.18 for RUSTSEC-2026-0258 ("unbounded empty
+  DATA frames"), reachable through `hyper` from both `reqwest` and `tonic` under
+  `opentelemetry-otlp`.
+- Blocking dependency-vulnerability gates added for Python (`pip-audit` over the
+  committed `uv.lock`), TypeScript (`npm audit` over the full graph), Rust
+  (`cargo audit` with expiring, rationale-bearing exceptions in `rust/deny.toml`)
+  and C# (`dotnet list package --vulnerable --include-transitive`). Each asserts
+  a non-empty inventory, because a scanner that examined nothing is a broken
+  scan rather than a clean one. Go's existing `gosec` and `govulncheck` already
+  cover it.
+- TypeScript: five transitive development advisories upgraded away (`fast-uri`,
+  `nanoid`, `qs` via `typed-rest-client`).
+
 ## [0.8.0] — 2026-08-19
 
 All five languages. A minor bump rather than a patch: the `level` field

@@ -318,18 +318,23 @@ _MIN_PACKAGES = 20
 def _export_requirements() -> str:
     """Render the committed lock as a requirements file, dev groups included."""
     result = subprocess.run(
-        ["uv", "export", "--frozen", "--all-groups", "--all-extras", "--no-hashes",
-         "--format", "requirements-txt"],
-        cwd=_REPO_ROOT, capture_output=True, text=True, check=True,
+        ["uv", "export", "--frozen", "--all-groups", "--all-extras", "--no-hashes", "--format", "requirements-txt"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return result.stdout
 
 
 def _audit(requirements: str) -> tuple[int, list[Finding]]:
     result = subprocess.run(
-        ["uv", "run", "pip-audit", "--requirement", "/dev/stdin", "--format", "json",
-         "--progress-spinner", "off"],
-        cwd=_REPO_ROOT, input=requirements, capture_output=True, text=True, check=False,
+        ["uv", "run", "pip-audit", "--requirement", "/dev/stdin", "--format", "json", "--progress-spinner", "off"],
+        cwd=_REPO_ROOT,
+        input=requirements,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if not result.stdout.strip():
         print(f"python: pip-audit produced no output\n{result.stderr}", file=sys.stderr)
@@ -578,9 +583,7 @@ _MIN_PROJECTS = 2
 
 
 def _run(*args: str) -> str:
-    result = subprocess.run(
-        args, cwd=_CSHARP_DIR, capture_output=True, text=True, check=False
-    )
+    result = subprocess.run(args, cwd=_CSHARP_DIR, capture_output=True, text=True, check=False)
     if result.returncode != 0 and not result.stdout.strip():
         print(f"csharp: {' '.join(args)} failed\n{result.stderr}", file=sys.stderr)
         raise SystemExit(2)
@@ -591,9 +594,7 @@ def _audit() -> tuple[int, list[Finding]]:
     # Restore first: `list package` reports nothing on an unrestored solution,
     # which would otherwise look exactly like a clean result.
     _run("dotnet", "restore")
-    raw = _run(
-        "dotnet", "list", "package", "--vulnerable", "--include-transitive", "--format", "json"
-    )
+    raw = _run("dotnet", "list", "package", "--vulnerable", "--include-transitive", "--format", "json")
     if not raw.strip():
         print("csharp: dotnet list package produced no output", file=sys.stderr)
         raise SystemExit(2)
@@ -715,8 +716,7 @@ def test_live_exception_with_reason_is_clean() -> None:
     config = {
         "advisories": {
             "ignore": [
-                {"id": "RUSTSEC-2026-0001", "reason": "no patched release yet; upstream #42",
-                 "expires": "2026-10-01"}
+                {"id": "RUSTSEC-2026-0001", "reason": "no patched release yet; upstream #42", "expires": "2026-10-01"}
             ]
         }
     }
@@ -724,25 +724,13 @@ def test_live_exception_with_reason_is_clean() -> None:
 
 
 def test_expired_exception_is_an_error() -> None:
-    config = {
-        "advisories": {
-            "ignore": [
-                {"id": "RUSTSEC-2026-0001", "reason": "stale", "expires": "2026-08-19"}
-            ]
-        }
-    }
+    config = {"advisories": {"ignore": [{"id": "RUSTSEC-2026-0001", "reason": "stale", "expires": "2026-08-19"}]}}
     errors = validate(config, _TODAY)
     assert any("expired" in error for error in errors)
 
 
 def test_exception_expiring_today_is_still_live() -> None:
-    config = {
-        "advisories": {
-            "ignore": [
-                {"id": "RUSTSEC-2026-0001", "reason": "ok", "expires": "2026-08-20"}
-            ]
-        }
-    }
+    config = {"advisories": {"ignore": [{"id": "RUSTSEC-2026-0001", "reason": "ok", "expires": "2026-08-20"}]}}
     assert validate(config, _TODAY) == []
 
 
@@ -752,20 +740,12 @@ def test_missing_expiry_is_an_error() -> None:
 
 
 def test_missing_reason_is_an_error() -> None:
-    config = {
-        "advisories": {"ignore": [{"id": "RUSTSEC-2026-0001", "expires": "2026-10-01"}]}
-    }
+    config = {"advisories": {"ignore": [{"id": "RUSTSEC-2026-0001", "expires": "2026-10-01"}]}}
     assert any("reason" in error for error in validate(config, _TODAY))
 
 
 def test_expiry_further_out_than_ninety_days_is_an_error() -> None:
-    config = {
-        "advisories": {
-            "ignore": [
-                {"id": "RUSTSEC-2026-0001", "reason": "ok", "expires": "2027-01-01"}
-            ]
-        }
-    }
+    config = {"advisories": {"ignore": [{"id": "RUSTSEC-2026-0001", "reason": "ok", "expires": "2027-01-01"}]}}
     assert any("90 days" in error for error in validate(config, _TODAY))
 ```
 
@@ -828,9 +808,7 @@ def validate(config: dict[str, object], today: dt.date) -> list[str]:
         if expires < today:
             errors.append(f"{identifier}: expired on {expires.isoformat()} — re-review or remove it")
         elif (expires - today).days > _MAX_HORIZON_DAYS:
-            errors.append(
-                f"{identifier}: expires {expires.isoformat()}, more than 90 days out"
-            )
+            errors.append(f"{identifier}: expires {expires.isoformat()}, more than 90 days out")
     return errors
 
 

@@ -28,21 +28,43 @@ func ValidateSegmentFormat(segment string) bool {
 	return SegmentRe.MatchString(segment)
 }
 
-// ValidateEventSegments validates segment count and optionally segment format.
-// If strictSchema is true, each segment must match ^[a-z][a-z0-9_]*$.
-// Returns a non-nil error string suitable for wrapping in EventSchemaError.
+// ValidateEventSegments validates event-name segments under the shared
+// five-language contract.
+//
+// Relaxed (the default) accepts one or more segments and enforces no grammar.
+// Strict accepts MinSegments..MaxSegments and requires every segment to match
+// SegmentRe. Zero segments and empty segments fail in both modes.
+//
+// This is deliberately more permissive than the pre-2026-08-20 Go behaviour,
+// which enforced the 3–5 count regardless of mode while Python, TypeScript and
+// Rust accepted any non-empty segment list in relaxed mode. See CHANGELOG.
+// It is also stricter in one respect: relaxed mode used to accept an empty
+// segment, so EventName("user", "", "ok") and ValidateEventName("a..b") both
+// passed.
+//
+// ValidateEventCall is a separate contract and is not affected: event() builds
+// a positional DAS/DARS record, so its 3-or-4 rule belongs to the record shape
+// rather than to the name.
 func ValidateEventSegments(strictSchema bool, segments []string) error {
-	n := len(segments)
-	if n < MinSegments || n > MaxSegments {
+	if len(segments) == 0 {
+		return fmt.Errorf("event name requires at least 1 segment, got 0")
+	}
+	for _, seg := range segments {
+		if seg == "" {
+			return fmt.Errorf("event name segments must be non-empty")
+		}
+	}
+	if !strictSchema {
+		return nil
+	}
+	if n := len(segments); n < MinSegments || n > MaxSegments {
 		return fmt.Errorf("event name must have %d–%d segments, got %d",
 			MinSegments, MaxSegments, n)
 	}
-	if strictSchema {
-		for _, seg := range segments {
-			if !ValidateSegmentFormat(seg) {
-				return fmt.Errorf(
-					"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg)
-			}
+	for _, seg := range segments {
+		if !ValidateSegmentFormat(seg) {
+			return fmt.Errorf(
+				"invalid event name segment %q: must match ^[a-z][a-z0-9_]*$", seg)
 		}
 	}
 	return nil

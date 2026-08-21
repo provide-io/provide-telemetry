@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
@@ -206,7 +207,11 @@ func TestCoverageLowLevel_ConflictWarningsWithNilLogger(t *testing.T) {
 	_warnIfLoggerProviderConflict()
 }
 
-func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_NoWarnForOwnSDKProviders(t *testing.T) {
+// Renamed and inverted on 2026-08-20 for the same reason as
+// TestWarnIfTracerProviderConflict_WarnsForAHostSDKProviderOnTheGlobal: these
+// providers are on the global without our provider field being set, so they
+// are the host's and overwriting them is exactly what deserves a warning.
+func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_WarnForHostSDKProviders(t *testing.T) {
 	resetSetupState(t)
 	t.Cleanup(func() {
 		resetOTelGlobal(t)
@@ -226,8 +231,12 @@ func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_NoWarnForOwnSDKPr
 	logglobal.SetLoggerProvider(lp)
 	_warnIfLoggerProviderConflict()
 
-	if h.buf.Len() != 0 {
-		t.Fatalf("expected no conflict warning for SDK-owned providers, got %q", h.buf.String())
+	out := h.buf.String()
+	if !strings.Contains(out, "otel.meter_provider_conflict") {
+		t.Fatalf("expected a meter conflict warning for a host SDK provider, got %q", out)
+	}
+	if !strings.Contains(out, "otel.logger_provider_conflict") {
+		t.Fatalf("expected a logger conflict warning for a host SDK provider, got %q", out)
 	}
 }
 

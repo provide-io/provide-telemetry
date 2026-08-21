@@ -10,7 +10,7 @@ TypeScript packages.
 go get github.com/provide-io/provide-telemetry/go
 ```
 
-Requires Go 1.22+.
+Requires Go 1.26+.
 
 ### Optional OTel peer dependencies
 
@@ -86,8 +86,23 @@ logger.Error("db.query.error", slog.String("table", "users"))
 ```
 
 Event names follow the DA(R)S pattern: `Event()` accepts exactly 3 segments
-(`domain.action.status`) or 4 segments (`domain.action.resource.status`).
-`EventName()` accepts 3–5 segments.
+(`domain.action.status`) or 4 segments (`domain.action.resource.status`). That
+count is a property of the record shape, so it applies in every mode.
+
+`EventName()` and `ValidateEventName()` follow the shared five-language name
+contract instead, which depends on the schema mode:
+
+- **Relaxed** (the default) accepts one or more segments and enforces no segment
+  grammar, so `EventName("startup")` and `EventName("User", "Login-OK")` are
+  both valid.
+- **Strict** (`PROVIDE_TELEMETRY_STRICT_SCHEMA=true`) accepts 3–5 segments, each
+  matching `^[a-z][a-z0-9_]*$`.
+- Zero segments and empty segments fail in both modes, so `EventName()`,
+  `EventName("user", "", "ok")` and `ValidateEventName("a..b")` all return an
+  error.
+
+Before 0.8.1 Go enforced the strict 3–5 count in relaxed mode too, and accepted
+an empty segment. See the changelog.
 
 ### Tracing
 
@@ -265,7 +280,7 @@ python3 ../spec/validate_conformance.py
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.26+
 
 ## License
 

@@ -1,15 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Provide.Telemetry.OpenTelemetry\Provide.Telemetry.OpenTelemetry.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Provide.Telemetry.OpenTelemetryConsumer</AssemblyName>
+    <ProvideTelemetryVersion Condition="'$(ProvideTelemetryVersion)' == ''">0.8.0</ProvideTelemetryVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only the integration package is named. Provide.Telemetry must arrive
+         transitively — if it does not, the integration package's dependency
+         group is wrong and this restore fails, which is the point. -->
+    <PackageReference Include="Provide.Telemetry.OpenTelemetry" Version="[$(ProvideTelemetryVersion)]" />
+  </ItemGroup>
 
 </Project>

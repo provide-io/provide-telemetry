@@ -90,6 +90,16 @@ impl Drop for MockOtlpCollector {
 }
 
 fn read_request_path(stream: &mut TcpStream) -> Option<String> {
+    // The listener is non-blocking so the accept loop can poll its stop flag,
+    // and on macOS and the BSDs an accepted socket inherits that O_NONBLOCK.
+    // Without clearing it the first `read` returns `WouldBlock` whenever the
+    // request bytes have not landed yet, the request is silently dropped, and
+    // the collector still answers 200 OK — the exporter then reports a
+    // successful export that this test never sees. Same defect, and same fix,
+    // as src/otel/logs_export_test_support.rs.
+    stream
+        .set_nonblocking(false)
+        .expect("mock collector blocking mode");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("mock collector read timeout");

@@ -115,6 +115,118 @@ event_dars:
     segments: ["a", "b", "c", "d", "e"]
     expected_error: true
 
+event_name_contract:
+  # Variadic entry point: event_name() / EventName().
+  - id: relaxed_single_segment_ok
+    description: "relaxed: 1 segment is accepted"
+    mode: relaxed
+    segments: ["startup"]
+    expected: "startup"
+
+  - id: relaxed_two_segments_ok
+    description: "relaxed: 2 segments are accepted"
+    mode: relaxed
+    segments: ["app", "ready"]
+    expected: "app.ready"
+
+  - id: relaxed_six_segments_ok
+    description: "relaxed: no upper bound"
+    mode: relaxed
+    segments: ["a", "b", "c", "d", "e", "f"]
+    expected: "a.b.c.d.e.f"
+
+  - id: relaxed_grammar_not_enforced
+    description: "relaxed: segments violating the strict grammar are accepted"
+    mode: relaxed
+    segments: ["User", "Login-OK"]
+    expected: "User.Login-OK"
+
+  - id: relaxed_zero_segments_error
+    description: "relaxed: zero segments always fail"
+    mode: relaxed
+    segments: []
+    expected_error: true
+
+  - id: relaxed_empty_segment_error
+    description: "relaxed: an empty segment always fails"
+    mode: relaxed
+    segments: ["user", "", "ok"]
+    expected_error: true
+
+  - id: strict_three_segments_ok
+    description: "strict: 3 segments accepted"
+    mode: strict
+    segments: ["user", "login", "ok"]
+    expected: "user.login.ok"
+
+  - id: strict_five_segments_ok
+    description: "strict: 5 segments accepted"
+    mode: strict
+    segments: ["a", "b", "c", "d", "e"]
+    expected: "a.b.c.d.e"
+
+  - id: strict_two_segments_error
+    description: "strict: 2 segments rejected"
+    mode: strict
+    segments: ["too", "few"]
+    expected_error: true
+
+  - id: strict_six_segments_error
+    description: "strict: 6 segments rejected"
+    mode: strict
+    segments: ["a", "b", "c", "d", "e", "f"]
+    expected_error: true
+
+  - id: strict_grammar_enforced
+    description: "strict: a segment violating ^[a-z][a-z0-9_]*$ is rejected"
+    mode: strict
+    segments: ["user", "Login", "ok"]
+    expected_error: true
+
+  - id: strict_zero_segments_error
+    description: "strict: zero segments rejected"
+    mode: strict
+    segments: []
+    expected_error: true
+
+  # Dotted-string entry point: validate_event_name() / ValidateEventName().
+  - id: validate_relaxed_single_segment_ok
+    description: "validate, relaxed: a 1-segment dotted name is accepted"
+    mode: relaxed
+    name: "startup"
+    expected_error: false
+
+  - id: validate_relaxed_empty_string_error
+    description: "validate, relaxed: the empty string is one empty segment, and fails"
+    mode: relaxed
+    name: ""
+    expected_error: true
+
+  - id: validate_relaxed_interior_empty_segment_error
+    description: "validate, relaxed: a..b has an empty interior segment, and fails"
+    mode: relaxed
+    name: "a..b"
+    expected_error: true
+
+  - id: validate_relaxed_grammar_not_enforced
+    description: "validate, relaxed: grammar violations are accepted"
+    mode: relaxed
+    name: "User.Login-OK"
+    expected_error: false
+
+  - id: validate_strict_grammar_enforced
+    description: "validate, strict: grammar violations are rejected"
+    mode: strict
+    name: "user.Login.ok"
+    expected_error: true
+
+  - id: validate_strict_two_segments_error
+    description: "validate, strict: 2 segments rejected"
+    mode: strict
+    name: "too.few"
+    expected_error: true
+
+
 propagation_guards:
   - description: "traceparent at limit (512 bytes) is accepted"
     header: "traceparent"

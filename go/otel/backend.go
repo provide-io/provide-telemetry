@@ -12,8 +12,10 @@ import (
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
+	otellog "go.opentelemetry.io/otel/log"
 	logglobal "go.opentelemetry.io/otel/log/global"
 	otellognoop "go.opentelemetry.io/otel/log/noop"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -204,28 +206,49 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	// than in a provider being torn down.
 	_providersMu.Lock()
 	providers := _installedProvidersLocked()
+	// Captured before the nil-out: _resetGlobalsWeSet compares these against the
+	// live globals to decide whether the registration is still ours to undo.
+	installedTP, installedMP, installedLP := _otelTracerProvider, _otelMeterProvider, _otelLoggerProvider
 	_otelTracerProvider = nil
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
-	_resetGlobalsWeSet()
+	_resetGlobalsWeSet(installedTP, installedMP, installedLP)
 	_providersMu.Unlock()
 
 	return _drainConcurrently(ctx, providers, _drainable.Shutdown)
 }
 
 // _resetGlobalsWeSet returns to the API no-ops only for the globals this
-// backend registered, leaving a host application's registration intact.
-func _resetGlobalsWeSet() {
+// backend registered AND still owns.
+//
+// The ownership booleans alone are not enough. They record that we registered a
+// provider once; they say nothing about whether that registration survived. A
+// host that calls otel.SetTracerProvider after our Setup owns the global from
+// that moment on — an auto-instrumentation agent, a vendor distro, a lazily
+// initialised SDK — and handing the global back to a no-op would silently
+// disable the host's telemetry. So identity decides: reset only while the
+// global still holds the exact provider we installed.
+//
+// The flag is cleared either way. Once the host has taken the global there is
+// no registration of ours left to undo, so continuing to claim ownership would
+// only mean clobbering it on some later shutdown.
+func _resetGlobalsWeSet(tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider, lp *sdklog.LoggerProvider) {
 	if _weSetTracerGlobal {
-		otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
+		if tp != nil && otel.GetTracerProvider() == oteltrace.TracerProvider(tp) {
+			otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
+		}
 		_weSetTracerGlobal = false
 	}
 	if _weSetMeterGlobal {
-		otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
+		if mp != nil && otel.GetMeterProvider() == otelmetric.MeterProvider(mp) {
+			otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
+		}
 		_weSetMeterGlobal = false
 	}
 	if _weSetLoggerGlobal {
-		logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+		if lp != nil && logglobal.GetLoggerProvider() == otellog.LoggerProvider(lp) {
+			logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+		}
 		_weSetLoggerGlobal = false
 	}
 }

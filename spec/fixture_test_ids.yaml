@@ -169,3 +169,104 @@ fixture_test_ids:
     go: TestParity_LogLevels_CanonicalLadder
     rust: canonical_ladder_has_six_members_in_order
     csharp: Log_CollapsesTheDownstreamAdapterDispatchChain
+  event_name_contract:
+    # 18 identifiers, in the same order as the fixture cases. The gate checks
+    # the count, not the order, so the ordering is a convention for readers.
+    python:
+      - test_parity_event_name_relaxed_single_segment_ok
+      - test_parity_event_name_relaxed_two_segments_ok
+      - test_parity_event_name_relaxed_six_segments_ok
+      - test_parity_event_name_relaxed_grammar_not_enforced
+      - test_parity_event_name_relaxed_zero_segments_error
+      - test_parity_event_name_relaxed_empty_segment_error
+      - test_parity_event_name_strict_three_segments_ok
+      - test_parity_event_name_strict_five_segments_ok
+      - test_parity_event_name_strict_two_segments_error
+      - test_parity_event_name_strict_six_segments_error
+      - test_parity_event_name_strict_grammar_enforced
+      - test_parity_event_name_strict_zero_segments_error
+      - test_parity_validate_event_name_relaxed_single_segment_ok
+      - test_parity_validate_event_name_relaxed_empty_string_error
+      - test_parity_validate_event_name_relaxed_interior_empty_segment_error
+      - test_parity_validate_event_name_relaxed_grammar_not_enforced
+      - test_parity_validate_event_name_strict_grammar_enforced
+      - test_parity_validate_event_name_strict_two_segments_error
+    typescript:
+      - relaxed_single_segment_ok
+      - relaxed_two_segments_ok
+      - relaxed_six_segments_ok
+      - relaxed_grammar_not_enforced
+      - relaxed_zero_segments_error
+      - relaxed_empty_segment_error
+      - strict_three_segments_ok
+      - strict_five_segments_ok
+      - strict_two_segments_error
+      - strict_six_segments_error
+      - strict_grammar_enforced
+      - strict_zero_segments_error
+      - validate_relaxed_single_segment_ok
+      - validate_relaxed_empty_string_error
+      - validate_relaxed_interior_empty_segment_error
+      - validate_relaxed_grammar_not_enforced
+      - validate_strict_grammar_enforced
+      - validate_strict_two_segments_error
+    go:
+      - TestParity_EventName_RelaxedSingleSegmentOK
+      - TestParity_EventName_RelaxedTwoSegmentsOK
+      - TestParity_EventName_RelaxedSixSegmentsOK
+      - TestParity_EventName_RelaxedGrammarNotEnforced
+      - TestParity_EventName_RelaxedZeroSegmentsError
+      - TestParity_EventName_RelaxedEmptySegmentError
+      - TestParity_EventName_StrictThreeSegmentsOK
+      - TestParity_EventName_StrictFiveSegmentsOK
+      - TestParity_EventName_StrictTwoSegmentsError
+      - TestParity_EventName_StrictSixSegmentsError
+      - TestParity_EventName_StrictGrammarEnforced
+      - TestParity_EventName_StrictZeroSegmentsError
+      - TestParity_ValidateEventName_RelaxedSingleSegmentOK
+      - TestParity_ValidateEventName_RelaxedEmptyStringError
+      - TestParity_ValidateEventName_RelaxedInteriorEmptySegmentError
+      - TestParity_ValidateEventName_RelaxedGrammarNotEnforced
+      - TestParity_ValidateEventName_StrictGrammarEnforced
+      - TestParity_ValidateEventName_StrictTwoSegmentsError
+    # Rust ships no validate_event_name — the spec surface requires only
+    # event_name and the remediation's non-goals forbid widening the public
+    # API — so the dotted-string cases are asserted through split + event_name.
+    rust:
+      - parity_event_name_relaxed_single_segment_ok
+      - parity_event_name_relaxed_two_segments_ok
+      - parity_event_name_relaxed_six_segments_ok
+      - parity_event_name_relaxed_grammar_not_enforced
+      - parity_event_name_relaxed_zero_segments_error
+      - parity_event_name_relaxed_empty_segment_error
+      - parity_event_name_strict_three_segments_ok
+      - parity_event_name_strict_five_segments_ok
+      - parity_event_name_strict_two_segments_error
+      - parity_event_name_strict_six_segments_error
+      - parity_event_name_strict_grammar_enforced
+      - parity_event_name_strict_zero_segments_error
+      - parity_validate_event_name_relaxed_single_segment_ok
+      - parity_validate_event_name_relaxed_empty_string_error
+      - parity_validate_event_name_relaxed_interior_empty_segment_error
+      - parity_validate_event_name_relaxed_grammar_not_enforced
+      - parity_validate_event_name_strict_grammar_enforced
+      - parity_validate_event_name_strict_two_segments_error
+    csharp:
+      - EventName_RelaxedSingleSegment_Ok
+      - EventName_RelaxedTwoSegments_Ok
+      - EventName_RelaxedSixSegments_Ok
+      - EventName_RelaxedGrammarNotEnforced_Ok
+      - EventName_RelaxedZeroSegments_Throws
+      - EventName_RelaxedEmptySegment_Throws
+      - EventName_StrictThreeSegments_Ok
+      - EventName_StrictFiveSegments_Ok
+      - EventName_StrictTwoSegments_Throws
+      - EventName_StrictSixSegments_Throws
+      - EventName_StrictGrammarEnforced_Throws
+      - EventName_StrictZeroSegments_Throws
+      - ValidateEventName_RelaxedSingleSegment_Ok
+      - ValidateEventName_RelaxedEmptyString_Throws
+      - ValidateEventName_RelaxedInteriorEmptySegment_Throws
+      - ValidateEventName_RelaxedGrammarNotEnforced_Ok
+      - ValidateEventName_StrictGrammarEnforced_Throws
+      - ValidateEventName_StrictTwoSegments_Throws

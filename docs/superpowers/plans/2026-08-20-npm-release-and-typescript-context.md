@@ -83,7 +83,7 @@ def _stub_npm(tmp_path: Path, *, view_exit: int, view_stdout: str, publish_exit:
         f'echo "$@" >> "{tmp_path}/npm-calls.txt"\n'
         'case "$1" in\n'
         f'  view) printf "%s" "{view_stdout}"; exit {view_exit} ;;\n'
-        f'  publish) exit {publish_exit} ;;\n'
+        f"  publish) exit {publish_exit} ;;\n"
         "  *) exit 0 ;;\n"
         "esac\n"
     )

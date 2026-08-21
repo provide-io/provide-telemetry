@@ -75,6 +75,15 @@ pub fn event(segments: &[&str]) -> Result<Event, EventSchemaError> {
 }
 
 pub fn event_name(segments: &[&str]) -> Result<String, EventSchemaError> {
+    // An empty segment fails in both modes. Until 2026-08-20 only the empty
+    // slice was rejected here, so event_name(&["user", "", "ok"]) produced
+    // "user..ok" — and splitting a dotted name on '.' made "" and "a..b" pass
+    // as well.
+    if segments.iter().any(|segment| segment.is_empty()) {
+        return Err(EventSchemaError::new(
+            "event name segments must be non-empty",
+        ));
+    }
     let strict = get_strict_schema();
     if strict {
         if !(3..=5).contains(&segments.len()) {

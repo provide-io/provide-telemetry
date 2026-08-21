@@ -969,9 +969,34 @@ behavioral_parity:
 
 event_schema:
   segment_pattern: "^[a-z][a-z0-9_]*$"
-  min_segments: 3
-  max_segments: 4  # event() implementations accept 3-4 segments (DARS); event_name() is the plain-string helper.
   separator: "."
+
+  # event() / Event(): positional DAS/DARS record builder. Its count rule is a
+  # property of the record shape — a 1-segment event has no domain/action/status
+  # to fill — so it is independent of strict mode and was NOT changed by the
+  # 2026-08-20 remediation.
+  event_record:
+    min_segments: 3
+    max_segments: 4
+
+  # event_name() / EventName() and validate_event_name() / ValidateEventName():
+  # the name builder and the dotted-string validator. Relaxed is the default.
+  # Before 2026-08-20 Go and C# enforced the strict 3-5 count in relaxed mode
+  # too; all five languages now share the contract below.
+  event_name:
+    relaxed:
+      min_segments: 1
+      max_segments: null        # unbounded
+      grammar_enforced: false
+    strict:
+      min_segments: 3
+      max_segments: 5
+      grammar_enforced: true
+
+  # An empty segment is rejected in BOTH modes, through BOTH the variadic and
+  # the dotted-string entry points. Zero segments is only reachable through the
+  # variadic form: splitting "" on "." yields one empty segment, not zero.
+  empty_segment: reject
 
 # TypeScript-only extras: framework helpers that have no polyglot equivalent.
 # These are NOT validated by validate_conformance.py and are NOT required by

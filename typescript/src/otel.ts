@@ -36,6 +36,9 @@ import { validateOtlpEndpoint } from './endpoint.js';
 import { buildOtelResource } from './otel-resource.js';
 import { setupOtelLogProvider } from './otel-logs.js';
 import { dynImportOtel } from './otel-dynimport.js';
+import { installContextManager } from './otel-context-manager.js';
+import { _isNodeLike } from './config.js';
+import { getHealthSnapshot, setSetupError } from './health.js';
 import { wrapResilientExporter } from './resilient-exporter.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
@@ -98,15 +101,19 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // ── Context manager ──────────────────────────────────────────────────────────
   // Install AsyncLocalStorageContextManager so startActiveSpan propagates spans
   // through async boundaries in Node.js. Must happen before TracerProvider setup.
-  try {
-    const ctxHooks = await dynImportOtel('@opentelemetry/context-async-hooks');
-    const { context } = await import('@opentelemetry/api');
-    const ctxMgr = new ctxHooks.AsyncLocalStorageContextManager();
-    ctxMgr.enable();
-    context.setGlobalContextManager(ctxMgr);
-  } catch {
-    // Not a Node.js environment or peer dep not installed — skip silently.
-  }
+  //
+  // Failure is reported through setSetupError rather than swallowed: a browser
+  // build wanting no context manager and a Node process missing the peer
+  // dependency are different situations, and only the first should be silent.
+  // See otel-context-manager.ts. Export stays fail-open either way.
+  await installContextManager({
+    isNode: _isNodeLike,
+    importHooks: () => dynImportOtel('@opentelemetry/context-async-hooks'),
+    importApi: () => import('@opentelemetry/api'),
+    warn: (message) => console.warn(message),
+    setSetupError,
+    readSetupError: () => getHealthSnapshot().setupError,
+  });
 
   // ── Tracing ──────────────────────────────────────────────────────────────────
   if (cfg.tracingEnabled) {

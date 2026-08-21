@@ -58,14 +58,23 @@ Notes:
   rather than bytes on the wire. TypeScript's logs row was wrong for a period
   — the row said `core` while the log processor had no exporter and dropped
   every record — and the integration test did not catch it because it asserted
-  only `providers.traces`. **C# is the one language whose OTLP rows have no
-  blocking CI evidence**: its collector assertion lives in
-  `csharp/tests/Provide.Telemetry.Tests/OpenObserveIntegrationTests.cs`, which
-  asserts all three signals but is a `SkippableFact` that self-skips when
-  `OPENOBSERVE_*` is unset, and `ci-csharp.yml` supplies no such credentials.
-  The rows record what the integration package implements
-  (`OpenTelemetryBackend.InstallTraces` / `InstallMetrics` / `InstallLogs`), not
-  what CI proves. If you add a signal or a language, the collector job is the
+  only `providers.traces`. C#'s OTLP rows are backed by
+  `csharp/tests/Provide.Telemetry.OpenTelemetry.Tests/WireDeliveryTests.cs`,
+  which asserts logs, traces and metrics delivery against the in-process
+  `FakeOtlpCollector`. It needs no credentials and runs in `ci-csharp.yml`, so
+  it is blocking evidence. The credentialed
+  `csharp/tests/Provide.Telemetry.Tests/OpenObserveIntegrationTests.cs` remains
+  as live-backend verification: it asserts all three signals but is a
+  `SkippableFact` that self-skips when `OPENOBSERVE_*` is unset, and it is
+  additional to the wire test rather than a substitute for it.
+
+  Artifact-level evidence is separate again:
+  `ci/verify-csharp-consumer-packages.sh` packs both packages into a throwaway
+  feed and installs them at an exact version with our package ids confined to
+  that feed, so a broken nuspec, a wrong target framework or a missing
+  dependency group fails CI rather than reaching a consumer. It found exactly
+  that on 2026-08-20: the integration package was packing without its dependency
+  on `Provide.Telemetry`. If you add a signal or a language, the collector job is the
   row's evidence: make it assert every signal it claims.
 - Rust and C# cannot auto-detect a host-installed provider. In Rust,
   `opentelemetry`'s `global::tracer_provider()` returns an opaque
