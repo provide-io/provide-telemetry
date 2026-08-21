@@ -85,6 +85,21 @@ jobs:
         shell: bash
         run: npx tsx scripts/perf-smoke.ts --emit-json | uv run --no-project python ../scripts/perf_check.py --lang typescript
 
+  # Blocks on any npm advisory across the full production+dev graph. The
+  # package-count floor makes an empty or failed audit fail rather than read
+  # as a clean scan.
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: "22"
+      # Install from the lockfile so the audited graph is the committed one.
+      - run: npm ci
+        working-directory: typescript
+      - run: ./ci/audit_typescript.sh
+
   typescript-examples-smoke:
     runs-on: ubuntu-24.04
     defaults:
