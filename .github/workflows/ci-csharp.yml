@@ -83,6 +83,20 @@ jobs:
       - name: Run telemetry examples
         run: bash ci/run-csharp-example-smoke.sh
 
+  # Packs both NuGet packages into a throwaway local feed and consumes them the
+  # way a customer would — exact-version PackageReference, no ProjectReference,
+  # our package ids confined to that feed by packageSourceMapping — then builds
+  # and runs both consumers. A ProjectReference compiles the source tree and
+  # proves nothing about the packed artifact.
+  package-consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      - run: ./ci/verify-csharp-consumer-packages.sh
+
   performance-smoke:
     strategy:
       fail-fast: false

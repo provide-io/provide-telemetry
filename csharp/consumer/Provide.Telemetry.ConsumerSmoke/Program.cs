@@ -41,7 +41,11 @@ if (root.GetProperty("message").GetString() != "consumer.smoke.ok")
     Console.Error.WriteLine($"FAIL message={line}");
     return 1;
 }
-if (root.GetProperty("service.name").GetString() != "consumer-smoke")
+// The canonical envelope field is "service", not "service.name" — Python's
+// add_standard_fields emits the same key. This assertion said "service.name"
+// and threw KeyNotFoundException on every run; nothing noticed because the
+// consumer was never built or run by CI.
+if (root.GetProperty("service").GetString() != "consumer-smoke")
 {
     Console.Error.WriteLine($"FAIL service={line}");
     return 1;
@@ -63,6 +67,37 @@ using (var span = ProvideTelemetry.GetTracer("consumer").StartSpan("consumer.smo
         return 1;
     }
 }
+
+// ── BCL-only boundary ────────────────────────────────────────────────────────
+// The two-package split promises that the core package drags in no
+// OpenTelemetry dependency. GetReferencedAssemblies reflects what the compiler
+// baked into the shipped assembly, so a reference that crept into the packed
+// core shows up here even though nothing in this program mentions OTel.
+var coreAssembly = typeof(ProvideTelemetry).Assembly;
+var otelReferences = coreAssembly
+    .GetReferencedAssemblies()
+    .Where(a => a.Name is not null && a.Name.StartsWith("OpenTelemetry", StringComparison.Ordinal))
+    .Select(a => a.Name!)
+    .ToArray();
+if (otelReferences.Length > 0)
+{
+    Console.Error.WriteLine($"FAIL core package references {string.Join(", ", otelReferences)}");
+    return 1;
+}
+
+// And nothing OpenTelemetry may be loadable at all in a core-only consumer.
+var loadedOtel = AppDomain.CurrentDomain
+    .GetAssemblies()
+    .Where(a => a.GetName().Name?.StartsWith("OpenTelemetry", StringComparison.Ordinal) == true)
+    .Select(a => a.GetName().Name!)
+    .ToArray();
+if (loadedOtel.Length > 0)
+{
+    Console.Error.WriteLine($"FAIL OpenTelemetry assembly loaded in a core-only consumer: {string.Join(", ", loadedOtel)}");
+    return 1;
+}
+
+Console.WriteLine("core-only consumer OK: BCL-only boundary intact");
 
 rt.Flush();
 rt.Shutdown();
