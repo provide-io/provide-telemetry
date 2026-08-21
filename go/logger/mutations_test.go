@@ -50,38 +50,71 @@ func TestEventRecordAttrsResourcePresent(t *testing.T) {
 
 // ---- schema: exact segment boundary for EventName ----
 
-// TestEventNameExactBoundaries verifies _maxSegments (5) passes and 6 fails.
-// Kills CONDITIONALS_BOUNDARY at schema.go:83:27 and 104:27.
+// TestEventNameExactBoundaries verifies MaxSegments (5) passes and 6 fails.
+// Kills CONDITIONALS_BOUNDARY on the min/max comparison in
+// internal/schemacore/schema.go.
+//
+// Uses strict mode as of 2026-08-20: the 3-5 count is now a strict-mode rule,
+// so driving it through relaxed mode would no longer reach the comparison and
+// the boundary mutants would survive. Relaxed mode has no upper bound — that is
+// covered by TestEventNameRelaxedBoundaries below.
 func TestEventNameExactBoundaries(t *testing.T) {
-	// _maxSegments = 5: should succeed.
-	_, err := EventName(false, "a", "b", "c", "d", "e")
+	// MaxSegments = 5: should succeed.
+	_, err := EventName(true, "a", "b", "c", "d", "e")
 	if err != nil {
 		t.Fatalf("5 segments should be valid, got: %v", err)
 	}
 	// 6 segments: should fail.
-	_, err = EventName(false, "a", "b", "c", "d", "e", "f")
+	_, err = EventName(true, "a", "b", "c", "d", "e", "f")
 	if err == nil {
-		t.Fatal("6 segments should fail")
+		t.Fatal("6 segments should fail in strict mode")
+	}
+	// MinSegments = 3: should succeed; 2 must fail.
+	if _, err = EventName(true, "a", "b", "c"); err != nil {
+		t.Fatalf("3 segments should be valid, got: %v", err)
+	}
+	if _, err = EventName(true, "a", "b"); err == nil {
+		t.Fatal("2 segments should fail in strict mode")
 	}
 }
 
-// TestValidateEventNameExactBoundaries verifies exact boundaries in ValidateEventName.
+// TestEventNameRelaxedBoundaries pins the relaxed contract: 1+ segments, no
+// upper bound, but zero segments and empty segments still fail. Kills the
+// mutants on the length-zero and empty-string guards.
+func TestEventNameRelaxedBoundaries(t *testing.T) {
+	if _, err := EventName(false, "a"); err != nil {
+		t.Fatalf("1 segment should be valid in relaxed mode: %v", err)
+	}
+	if _, err := EventName(false, "a", "b", "c", "d", "e", "f"); err != nil {
+		t.Fatalf("6 segments should be valid in relaxed mode: %v", err)
+	}
+	if _, err := EventName(false); err == nil {
+		t.Fatal("zero segments should fail in relaxed mode")
+	}
+	if _, err := EventName(false, "a", "", "c"); err == nil {
+		t.Fatal("an empty segment should fail in relaxed mode")
+	}
+}
+
+// TestValidateEventNameExactBoundaries verifies exact boundaries in
+// ValidateEventName. Strict mode for the same reason as
+// TestEventNameExactBoundaries.
 func TestValidateEventNameExactBoundaries(t *testing.T) {
 	// 5 segments: ok.
-	if err := ValidateEventName(false, "a.b.c.d.e"); err != nil {
+	if err := ValidateEventName(true, "a.b.c.d.e"); err != nil {
 		t.Fatalf("5-segment name should be valid: %v", err)
 	}
 	// 6 segments: error.
-	if err := ValidateEventName(false, "a.b.c.d.e.f"); err == nil {
-		t.Fatal("6-segment name should fail")
+	if err := ValidateEventName(true, "a.b.c.d.e.f"); err == nil {
+		t.Fatal("6-segment name should fail in strict mode")
 	}
-	// _minSegments = 3: ok.
-	if err := ValidateEventName(false, "a.b.c"); err != nil {
+	// MinSegments = 3: ok.
+	if err := ValidateEventName(true, "a.b.c"); err != nil {
 		t.Fatalf("3-segment name should be valid: %v", err)
 	}
 	// 2 segments: error.
-	if err := ValidateEventName(false, "a.b"); err == nil {
-		t.Fatal("2-segment name should fail")
+	if err := ValidateEventName(true, "a.b"); err == nil {
+		t.Fatal("2-segment name should fail in strict mode")
 	}
 }
 

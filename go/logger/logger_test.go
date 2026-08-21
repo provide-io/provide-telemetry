@@ -130,9 +130,20 @@ func TestEventName(t *testing.T) {
 	if err != nil || name != "auth.login.success" {
 		t.Fatalf("EventName = %q, %v", name, err)
 	}
-	_, err = logger.EventName(false, "too", "few")
-	if err == nil {
-		t.Fatal("expected error for 2 segments")
+	// Relaxed mode accepts 1+ non-empty segments as of 2026-08-20; it used to
+	// enforce the strict 3-5 count here, unlike Python, TypeScript and Rust.
+	// See docs/superpowers/plans/2026-08-20-runtime-contract-remediation.md.
+	if name, err = logger.EventName(false, "too", "few"); err != nil || name != "too.few" {
+		t.Fatalf("relaxed 2 segments: got %q, %v", name, err)
+	}
+	if _, err = logger.EventName(false); err == nil {
+		t.Fatal("expected error for zero segments in relaxed mode")
+	}
+	if _, err = logger.EventName(false, "auth", "", "success"); err == nil {
+		t.Fatal("expected error for an empty segment in relaxed mode")
+	}
+	if _, err = logger.EventName(true, "too", "few"); err == nil {
+		t.Fatal("expected error for 2 segments in strict mode")
 	}
 	_, err = logger.EventName(true, "auth", "Bad-Segment", "success")
 	if err == nil {
@@ -161,8 +172,18 @@ func TestValidateEventName(t *testing.T) {
 	if err := logger.ValidateEventName(false, "a.b.c"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := logger.ValidateEventName(false, "a.b"); err == nil {
-		t.Fatal("expected error for 2 segments")
+	// Relaxed mode accepts 1+ non-empty segments as of 2026-08-20.
+	if err := logger.ValidateEventName(false, "a.b"); err != nil {
+		t.Fatalf("relaxed 2 segments rejected: %v", err)
+	}
+	if err := logger.ValidateEventName(false, ""); err == nil {
+		t.Fatal(`expected error for "": one empty segment`)
+	}
+	if err := logger.ValidateEventName(false, "a..b"); err == nil {
+		t.Fatal("expected error for an interior empty segment")
+	}
+	if err := logger.ValidateEventName(true, "a.b"); err == nil {
+		t.Fatal("expected error for 2 segments in strict mode")
 	}
 	if err := logger.ValidateEventName(true, "a.Bad.c"); err == nil {
 		t.Fatal("expected error for invalid segment")
