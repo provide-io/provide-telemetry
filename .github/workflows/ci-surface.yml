@@ -61,11 +61,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.11"
-      # Checks all four languages match the API surface in spec/telemetry-api.yaml
+      # Checks all five languages match the API surface in spec/telemetry-api.yaml
       - name: API conformance check
         run: python spec/validate_conformance.py
 
-  # Ensure all four languages share the same major.minor version from VERSION.
+  # Ensure all five languages share the same major.minor version from VERSION.
   version-sync:
     runs-on: ubuntu-24.04
     steps:

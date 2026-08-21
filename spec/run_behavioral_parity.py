@@ -131,6 +131,8 @@ def _runners(repo: Path) -> list[LanguageRunner]:
             #   tests/parity.levels.test.ts   — the canonical severity ladder,
             #                                   its alias table, and the
             #                                   level-parameterised log() door
+            #   tests/parity-event-name.test.ts — the event_name_contract
+            #                                   category, one case per test
             #   tests/endpoint.test.ts        — endpoint-validation parity
             # The whole test directory is NOT used to avoid attributing unrelated
             # failures to the parity gate.
@@ -142,6 +144,7 @@ def _runners(repo: Path) -> list[LanguageRunner]:
                     "tests/parity.test.ts",
                     "tests/parity.fixtures.test.ts",
                     "tests/parity.levels.test.ts",
+                    "tests/parity-event-name.test.ts",
                     "tests/endpoint.test.ts",
                 ],
             ],

@@ -70,14 +70,14 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all four language parity suites with strict defaults: output-format probes
+      # Run all five language parity suites with strict defaults: output-format probes
       # are on by default.  --skip-output disables if needed for ad-hoc debugging.
       - name: Behavioral parity check (output format)
         run: uv run python spec/run_behavioral_parity.py --skip-contracts
 
   # Contract probe DSL — step-based cross-language semantic tests that exercise real
   # public APIs (setup, bind_propagation, emit_log, clear_propagation, etc.) and
-  # cross-compare observable outputs across all four languages.
+  # cross-compare observable outputs across all five languages.
   contract-probes:
     runs-on: ubuntu-24.04
     steps:
@@ -113,7 +113,7 @@ jobs:
       # Install Python and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Run all 6 contract cases across all 4 languages and cross-compare results.
+      # Run all 6 contract cases across all 5 languages and cross-compare results.
       # Cases exercise: propagation→logger correlation, trace field precedence,
       # config validation, lifecycle, baggage injection, propagation cleanup.
       # Contract checks are on by default; --skip-output skips the output probes

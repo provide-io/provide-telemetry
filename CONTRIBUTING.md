@@ -4,7 +4,7 @@
 
 - **Python**: [uv](https://docs.astral.sh/uv/) (manages Python versions and virtualenvs)
 - **TypeScript**: Node.js 22+, npm
-- **Go**: Go 1.22+
+- **Go**: Go 1.26+
 - **Rust**: stable toolchain via rustup
 - **C#**: .NET SDK 10
 - **Docker** (for local OpenObserve stack)

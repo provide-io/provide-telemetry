@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.11"
-      # Checks all four languages match the API surface in spec/telemetry-api.yaml,
+      # Checks all five languages match the API surface in spec/telemetry-api.yaml,
       # including governance-capability-gated symbols for languages that advertise governance.
       - name: API conformance check
         run: python spec/validate_conformance.py

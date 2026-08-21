@@ -10,7 +10,7 @@ TypeScript packages.
 go get github.com/provide-io/provide-telemetry/go
 ```
 
-Requires Go 1.22+.
+Requires Go 1.26+.
 
 ### Optional OTel peer dependencies
 
@@ -280,7 +280,7 @@ python3 ../spec/validate_conformance.py
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.26+
 
 ## License
 

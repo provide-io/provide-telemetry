@@ -54,7 +54,7 @@ def _stub_npm(
         f'    [[ -n "{view_before}" ]] || exit 1\n'
         f'    printf "%s" "{view_before}"; exit 0 ;;\n'
         "  publish)\n"
-        f"    [[ {publish_exit} -eq 0 ]] && touch \"{tmp_path}/published\"\n"
+        f'    [[ {publish_exit} -eq 0 ]] && touch "{tmp_path}/published"\n'
         f"    exit {publish_exit} ;;\n"
         "  *) exit 0 ;;\n"
         "esac\n"

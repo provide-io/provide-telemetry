@@ -11,9 +11,10 @@ Add to `Cargo.toml`:
 ```toml
 [dependencies]
 provide-telemetry = { path = "../rust" }          # local workspace
+serde_json = "1"                                  # structured log fields are serde_json::Value
 
 # or once published:
-# provide-telemetry = "0.3"
+# provide-telemetry = "0.8"
 ```
 
 Requires Rust 1.81+.
@@ -21,19 +22,24 @@ Requires Rust 1.81+.
 ## Quick start
 
 ```rust
-use provide_telemetry::{setup_telemetry, shutdown_telemetry, get_logger};
+use provide_telemetry::{get_logger, setup_telemetry, shutdown_telemetry};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 fn main() {
-    setup_telemetry().expect("telemetry setup failed");
+    // None reads the configuration from the environment.
+    setup_telemetry(None).expect("telemetry setup failed");
 
     let logger = get_logger(Some("myapp.handler"));
     logger.info("request.received.ok");
-    logger.info_with("db.query.ok", |ctx| {
-        ctx.insert("table".into(), "users".into());
-        ctx.insert("rows".into(), 42.into());
-    });
 
-    shutdown_telemetry();
+    let mut fields = BTreeMap::new();
+    fields.insert("table".to_string(), Value::from("users"));
+    fields.insert("rows".to_string(), Value::from(42));
+    logger.info_fields("db.query.ok", &fields);
+
+    // None uses the default shutdown timeout.
+    shutdown_telemetry(None).expect("telemetry shutdown failed");
 }
 ```
 
@@ -43,13 +49,13 @@ fn main() {
 
 | Export | Description |
 |--------|-------------|
-| `setup_telemetry()` | Idempotent init from environment variables. |
+| `setup_telemetry(Option<TelemetryConfig>) -> Result<TelemetryConfig, TelemetryError>` | Idempotent init; `None` reads the environment. |
 | `reconfigure_telemetry(overrides)` | Hot-reload sampling / backpressure / exporter policy. |
-| `flush_telemetry()` | Drain every installed provider and leave them installed. |
+| `flush_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Drain every installed provider and leave them installed; the argument is a timeout in seconds. |
 | `adopt_global_providers(AdoptedProviders)` | Tell the facade the host installed live providers on the OTel globals, so emission routes through them. Rust cannot detect this for itself. |
-| `shutdown_telemetry()` | Flush and shut down all providers. |
-| `get_runtime_config()` | Inspect the applied config snapshot. |
-| `get_runtime_status()` | Inspect provider state, fallback mode, last error. |
+| `shutdown_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Flush and shut down all providers; the argument is a timeout in seconds. |
+| `get_runtime_config() -> Option<TelemetryConfig>` | Inspect the applied config snapshot; `None` before setup. |
+| `get_runtime_status() -> RuntimeStatus` | Inspect provider state, fallback mode, last error. |
 
 ### Logging
 
