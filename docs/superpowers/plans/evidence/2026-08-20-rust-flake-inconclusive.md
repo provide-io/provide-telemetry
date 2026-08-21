@@ -16,7 +16,8 @@ Reproduced locally at **4 failures in 14 full-suite runs (~29%)** with
 - `otel::logs::export_tests::apply_policies_alone_does_not_block_direct_trace_exports`
 - `otel::logs::export_runtime_tests::apply_policies_with_metrics_do_not_block_direct_trace_exports`
 
-All pass in isolation and under `--test-threads=1`.
+All pass when run in isolation. They were also believed to pass under
+`--test-threads=1` — see the serial reproduction below, which disproves that.
 
 Two signatures, from the preserved health snapshots:
 
@@ -53,6 +54,41 @@ is back to 517 passed, 0 failed.
 Lesson for the next attempt: grepping test bodies for the lock call
 under-reports serialisation. Check helpers that return a `MutexGuard`.
 
+## Second reproduction: it happens SERIALLY too
+
+On 2026-08-20, during the coverage run, the same test failed under
+`RUST_TEST_THREADS=1`:
+
+```
+otel::logs::export_tests::apply_policies_alone_does_not_block_direct_trace_exports
+src/otel/logs_export_tests.rs:354
+expected /v1/traces export, saw []
+emitted_traces: 1, export_failures_traces: 0, export_latency_ms_traces: 1.17
+```
+
+Signature 2 again — a completed export the asserting collector never saw — but
+with **no concurrent test bodies at all**. This kills the whole family of
+"two tests ran at once" explanations, including the rejected one above, and
+leaves only mechanisms where work outlives the test that started it.
+
+The same run surfaced a second, independent flaky test in the same area:
+
+```
+otel::bounded_flush_tests::a_teardown_abandoned_at_the_deadline_returns_to_the_caller
+src/otel/bounded_flush_tests.rs:358
+provide_telemetry: traces shutdown exceeded 0.050s deadline; abandoning background flush
+assertion `left == right` failed: an abandoned teardown worker still charges the shared budget
+  left: 0, right: 1
+```
+
+That test releases the abandoned worker (`release_tx.send(())`) *before* it
+asserts the abandoned-worker count, so a worker finishing in that window
+decrements the count back to zero and the assertion reads 0. It is a narrower
+and far more tractable race than the export flake, it lives in the same
+abandoned-worker machinery, and it is worth attacking first: a deterministic
+reproducer there is straightforward — hold the worker until after the
+assertion.
+
 ## Leading hypothesis, NOT yet tested
 
 The lock serialises test *bodies*. It does not cover background work that
@@ -65,8 +101,9 @@ outlives a guard:
 
 Combined, an abandoned exporter from test A can deliver to test B's collector on
 a recycled port — which is signature 2 exactly, and signature 1 whenever the old
-port is closed rather than recycled. This would explain the movement between
-tests, the rate, and why serial runs are clean.
+port is closed rather than recycled. This explains the movement between tests,
+the rate, and — crucially — why it still happens serially: an abandoned worker
+does not care how many test threads there are.
 
 ## What would make this conclusive
 

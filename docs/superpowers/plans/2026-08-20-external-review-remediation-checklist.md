@@ -45,12 +45,12 @@ Second defect: `_warnIfTracerProviderConflict` (`go/otel/providers.go:19-36`)
 suppresses the warning for any `*sdktrace.TracerProvider`, treating a host SDK
 provider as Provide-owned.
 
-- [ ] Regression test proves late host replacement survives `ShutdownTelemetry`
+- [x] Regression test proves late host replacement survives `ShutdownTelemetry`
       (traces, metrics, logs).
-- [ ] Regression test proves the conflict warning fires for a host-installed
+- [x] Regression test proves the conflict warning fires for a host-installed
       concrete SDK provider.
-- [ ] Negative control: revert the identity check, confirm the test fails, restore.
-- [ ] `go test ./... -race` green in `go/` and `go/otel/`.
+- [x] Negative control: revert the identity check, confirm the test fails, restore.
+- [x] `go test ./... -race` green in `go/` and `go/otel/`.
 - [ ] Gremlins gate green for the `otel` module.
 
 **Evidence:**
@@ -109,60 +109,69 @@ patched version:  0.4.16
 command:          cd rust && cargo audit   (cargo-audit 0.22.1)
 ```
 
-### 3. Rust line-coverage gate
+### 3. Rust line-coverage gate — **UNRESOLVED, needs a decision**
 
 **Plan:** [`2026-08-20-security-and-coverage-gates.md`](2026-08-20-security-and-coverage-gates.md) — Task 9
 
-`.github/workflows/ci-rust.yml:102` passes `--fail-uncovered-lines 0`. The claim
-that this is inert is **unverified**. Prove it before changing it.
+`.github/workflows/ci-rust.yml:102` passes `--fail-uncovered-lines 0`.
 
 - [x] Controlled coverage fixture with a known-uncovered line built.
 - [x] Current command run against the fixture; result recorded below.
-- [x] **The current command fails correctly → CLOSED AS FALSE POSITIVE.** No flag
-      change made to `.github/workflows/ci-rust.yml` or `CLAUDE.md`.
-- [x] ~~If the current command **passes** → replace with `--fail-under-lines 100`~~
-      — not reached; the flag is not inert.
-- [x] ~~`CLAUDE.md` coverage command updated in lockstep~~ — no change needed.
+- [x] Current command run against the **real repository**; result recorded below.
+- [ ] **Not resolved.** The three measurements disagree, so no flag change was
+      made. Flipping the flag would fail `ci-rust.yml` on coverage debt that
+      cannot currently be located reliably, which is worse than the status quo.
+- [ ] `CLAUDE.md` coverage command — unchanged, in lockstep with the workflow.
 
-**Evidence:**
+**Evidence — three measurements, two of which disagree:**
 
-The review claimed `--fail-uncovered-lines 0` was semantically inert. It is not.
-A first fixture with an uncovered *function* could not settle it, because
-`--fail-under-functions 100` would fail on its own and mask the line flag. The
-fixture below has **100% function coverage and 87.5% line coverage**, so only
-the line flag can reject it.
-
-```rust
-// $SCRATCH/covfixture/src/lib.rs — every function is called; the else arm is not.
-pub fn classify(a: i32) -> &'static str {
-    if a > 0 { "positive" } else { "not positive" }
-}
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn only_the_positive_arm() { assert_eq!(super::classify(1), "positive"); }
-}
-```
+*1. Synthetic fixture (100% functions, 87.5% lines) — the flag FIRES:*
 
 ```
-$ cargo llvm-cov --all-targets --all-features \
-    --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' \
-    --fail-uncovered-lines 0 --fail-under-functions 100
-
-# under-covered fixture (else arm untested)
-TOTAL   regions 9/88.89%   functions 2 missed 0 = 100.00%   lines 8 missed 1 = 87.50%
-exit=1                              <-- the flag FIRES
-
-# control: same command, both arms tested
-TOTAL   regions 11/100.00%  functions 2 missed 0 = 100.00%  lines 7 missed 0 = 100.00%
-exit=0                              <-- and passes when it should
+# else arm untested
+TOTAL  functions 2 missed 0 = 100.00%   lines 8 missed 1 = 87.50%
+--fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 1
+# both arms tested
+TOTAL  functions 2 missed 0 = 100.00%   lines 7 missed 0 = 100.00%
+--fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 0
 ```
 
-Conclusion: recommendation 3 is a false positive. `--fail-uncovered-lines 0`
-enforces zero uncovered lines exactly as intended, and swapping it for
-`--fail-under-lines 100` would have been a no-op rename presented as a fix.
-Local runs need `LLVM_COV`/`LLVM_PROFDATA` pointed at the rustup toolchain when
-`cargo` comes from Homebrew; CI installs `llvm-tools-preview` so it is unaffected.
+*2. Real repository (100% functions, 99.77% lines) — the flag does NOT fire:*
+
+```
+TOTAL   10465 regions, 32 missed, 99.69% | 854 functions, 0 missed, 100.00%
+        6905 lines,   16 missed, 99.77%
+otel/bounded.rs        202 lines, 14 missed, 93.07%
+runtime_facade.rs      264 lines,  2 missed, 99.24%
+
+--fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 0   <-- 16 uncovered lines pass
+--fail-under-lines 100  --fail-under-functions 100    ->  exit 1
+```
+
+*3. lcov export of the same run — reports ZERO uncovered lines:*
+
+```
+$ cargo llvm-cov ... --lcov --output-path cov.lcov
+$ grep -c '^DA:' cov.lcov        -> 6746
+$ grep -c '^DA:.*,0$' cov.lcov   -> 0
+```
+
+**Reading.** On the artifact that matters — this repository — the current flag
+lets 16 uncovered source lines through and the proposed replacement rejects
+them, so the review's concern is very likely correct and my earlier
+"false positive" reading was premature. But measurement 3 contradicts
+measurement 2 about whether those lines are uncovered at all, and the coverage
+run is itself intermittently broken by the recommendation-10 flake, so the
+input is not trustworthy enough to justify a change that turns CI red.
+
+**Decision needed:**
+
+1. Flip to `--fail-under-lines 100` and cover `otel/bounded.rs` (14 lines) and
+   `runtime_facade.rs` (2 lines) — note that `otel/bounded.rs` is the
+   abandoned-worker machinery implicated in recommendation 10, so this is
+   entangled with that investigation; or
+2. Flip the flag and accept a red `ci-rust.yml` until the debt is paid; or
+3. Leave the flag and track the debt separately.
 
 ### 4. `event_name` standardization — **BREAKING for Go and C#**
 
@@ -173,21 +182,21 @@ segments, each matching `^[a-z][a-z0-9_]*$`. Zero segments always fail. Empty
 segment always fails, both modes. `Event()` / `event()` is **out of scope** and
 keeps its 3-or-4 rule.
 
-- [ ] `spec/telemetry-api.yaml` `event_schema` block restructured for both modes
+- [x] `spec/telemetry-api.yaml` `event_schema` block restructured for both modes
       and both entry points.
-- [ ] `spec/behavioral_fixtures.yaml` gains an `event_name_contract` category.
-- [ ] `spec/fixture_test_ids.yaml` maps every new case ID per language.
-- [ ] Go `EventName` / `ValidateEventName` honour relaxed mode.
-- [ ] C# `EventName` / `ValidateEventName` honour relaxed mode.
-- [ ] C# `ValidateEventName` reads `GetStrictSchema()` (second, independent defect).
+- [x] `spec/behavioral_fixtures.yaml` gains an `event_name_contract` category.
+- [x] `spec/fixture_test_ids.yaml` maps every new case ID per language.
+- [x] Go `EventName` / `ValidateEventName` honour relaxed mode.
+- [x] C# `EventName` / `ValidateEventName` honour relaxed mode.
+- [x] C# `ValidateEventName` reads `GetStrictSchema()` (second, independent defect).
 - [ ] Python / TypeScript / Rust confirmed unchanged, with tests proving it.
-- [ ] `Event()` behavior proven unchanged in all five languages.
-- [ ] `spec/run_behavioral_parity.py` green across all five languages.
-- [ ] `spec/check_fixture_coverage.py` and `check_fixture_test_ids.py` green.
-- [ ] `spec/validate_conformance.py` green — spec and implementations agree.
-- [ ] `CHANGELOG.md` carries a BREAKING entry naming Go and C#, old behavior,
+- [x] `Event()` behavior proven unchanged in all five languages.
+- [x] `spec/run_behavioral_parity.py` green across all five languages.
+- [x] `spec/check_fixture_coverage.py` and `check_fixture_test_ids.py` green.
+- [x] `spec/validate_conformance.py` green — spec and implementations agree.
+- [x] `CHANGELOG.md` carries a BREAKING entry naming Go and C#, old behavior,
       new behavior, and the migration.
-- [ ] `go/README.md` and `csharp/README.md` state the relaxed-mode rule.
+- [x] `go/README.md` and `csharp/README.md` state the relaxed-mode rule.
 - [ ] Mutation gates green: gremlins (Go root + `schemacore`), Stryker (C#).
 
 **Evidence:**
@@ -199,24 +208,24 @@ keeps its 3-or-4 rule.
 
 **Plan:** [`2026-08-20-documentation-accuracy.md`](2026-08-20-documentation-accuracy.md)
 
-- [ ] `go/README.md:13` and `:268` — "Go 1.22+" corrected to match
+- [x] `go/README.md:13` and `:268` — "Go 1.22+" corrected to match
       `go/go.mod:3` (`go 1.26.0`).
-- [ ] `rust/README.md:16` — `"0.3"` corrected to the shipped version.
+- [x] `rust/README.md:16` — `"0.3"` corrected to the shipped version.
 - [ ] `rust/README.md:24-36` — lifecycle snippet corrected to the real
       signatures (`setup_telemetry(Option<TelemetryConfig>)`,
       `shutdown_telemetry(Option<f64>)`, both returning `Result`).
-- [ ] `docs/guide/capability-matrix.md:61-65` — C# OTLP evidence claim corrected
+- [x] `docs/guide/capability-matrix.md:61-65` — C# OTLP evidence claim corrected
       to cite `WireDeliveryTests` / `FakeOtlpCollector`.
 - [ ] Stale "four languages" comments fixed: `ci-spec.yml:49`,
       `ci-contracts.yml:73`, `:80`, `:116`, `ci-surface.yml:64`, `:68`.
-- [ ] `scripts/check_docs_accuracy.py:15` mutation-score language reconciled
+- [x] `scripts/check_docs_accuracy.py:15` mutation-score language reconciled
       with the enforced 100 percent kill.
 - [ ] `scripts/check_docs_accuracy.py:11` `DOC_PATHS` widened to include
       `go/README.md`, `rust/README.md`, `typescript/README.md`,
       `csharp/README.md`, `CONTRIBUTING.md`.
-- [ ] Executable snippet test compiles/runs the Rust quick start.
-- [ ] Executable snippet test compiles/runs the Go quick start.
-- [ ] `uv run python scripts/check_docs_accuracy.py` green.
+- [x] Executable snippet test compiles/runs the Rust quick start.
+- [x] Executable snippet test compiles/runs the Go quick start.
+- [x] `uv run python scripts/check_docs_accuracy.py` green.
 
 **Evidence:**
 ```
@@ -227,15 +236,15 @@ keeps its 3-or-4 rule.
 
 **Plan:** [`2026-08-20-npm-release-and-typescript-context.md`](2026-08-20-npm-release-and-typescript-context.md) — Tasks 1–2
 
-- [ ] `continue-on-error: true` removed from `publish-npm`
+- [x] `continue-on-error: true` removed from `publish-npm`
       (`.github/workflows/release.yml:255`). **Everything else is inert until
       this line is gone.**
-- [ ] Pre-publish registry query for the exact version.
-- [ ] Existing version → documented successful no-op.
-- [ ] Auth / network / package / provenance / new-version failures → fatal.
-- [ ] Postcondition verifies the requested version exists after the job.
-- [ ] Publish logic lives in a `ci/` script, not inline YAML (repo policy).
-- [ ] Script unit-tested for: version-exists, version-absent, registry error.
+- [x] Pre-publish registry query for the exact version.
+- [x] Existing version → documented successful no-op.
+- [x] Auth / network / package / provenance / new-version failures → fatal.
+- [x] Postcondition verifies the requested version exists after the job.
+- [x] Publish logic lives in a `ci/` script, not inline YAML (repo policy).
+- [x] Script unit-tested for: version-exists, version-absent, registry error.
 
 **Evidence:**
 ```
@@ -251,18 +260,18 @@ declared `peerDependency` in `typescript/package.json`. The gaps are that it is
 undocumented in install instructions and that `typescript/src/otel.ts:106-108`
 swallows every failure in a bare `catch {}`.
 
-- [ ] README install instructions name `@opentelemetry/context-async-hooks` and
+- [x] README install instructions name `@opentelemetry/context-async-hooks` and
       say what breaks without it in Node.
-- [ ] Non-Node runtime → silent, no `setupError`.
-- [ ] Node + module not found → actionable `setupError` + one-time warning.
-- [ ] Node + context manager construction/enable throws → actionable
+- [x] Non-Node runtime → silent, no `setupError`.
+- [x] Node + module not found → actionable `setupError` + one-time warning.
+- [x] Node + context manager construction/enable throws → actionable
       `setupError` + one-time warning.
-- [ ] Message visible from `getHealthSnapshot().setupError` **and**
+- [x] Message visible from `getHealthSnapshot().setupError` **and**
       `getRuntimeStatus().setupError`.
-- [ ] Later success clears only its own message, never an unrelated setup error.
-- [ ] Fail-open confirmed: signal export still works with the context manager
+- [x] Later success clears only its own message, never an unrelated setup error.
+- [x] Fail-open confirmed: signal export still works with the context manager
       absent.
-- [ ] No new public status fields added.
+- [x] No new public status fields added.
 - [ ] Stryker green for both TypeScript configs.
 
 **Evidence:**
@@ -274,16 +283,16 @@ swallows every failure in a bare `catch {}`.
 
 **Plan:** [`2026-08-20-csharp-package-verification.md`](2026-08-20-csharp-package-verification.md)
 
-- [ ] `docs/guide/capability-matrix.md` corrected to cite the existing
+- [x] `docs/guide/capability-matrix.md` corrected to cite the existing
       credential-free `WireDeliveryTests` / `FakeOtlpCollector`.
-- [ ] CI packs both packages into a temporary local feed.
-- [ ] Consumer projects use `PackageReference` only — **no `ProjectReference`**.
-- [ ] Exact-version installs from the temporary feed (no nuget.org fallback).
-- [ ] OTel consumer proves registration activates the backend.
-- [ ] Core-only consumer proves the BCL-only boundary holds (no OTel assembly
+- [x] CI packs both packages into a temporary local feed.
+- [x] Consumer projects use `PackageReference` only — **no `ProjectReference`**.
+- [x] Exact-version installs from the temporary feed (no nuget.org fallback).
+- [x] OTel consumer proves registration activates the backend.
+- [x] Core-only consumer proves the BCL-only boundary holds (no OTel assembly
       resolvable).
-- [ ] Both consumers build **and run**, not just restore.
-- [ ] Credentialed OpenObserve tests retained, not replaced.
+- [x] Both consumers build **and run**, not just restore.
+- [x] Credentialed OpenObserve tests retained, not replaced.
 
 **Evidence:**
 ```
@@ -304,8 +313,8 @@ This item is not a completion blocker. Revisit separately.
 Policy: root cause or nothing. No quarantine, no `#[ignore]`, no retry wrapper,
 no longer sleeps.
 
-- [ ] Failing test identified by name and file; original output preserved.
-- [ ] Statistical reproduction: N runs, failure count recorded.
+- [x] Failing test identified by name and file; original output preserved.
+- [x] Statistical reproduction: N runs, failure count recorded.
 - [ ] Deterministic fault-injected reproducer built.
 - [ ] Lifecycle / generation instrumentation demonstrates the root cause.
 - [ ] Regression test fails without the fix.
@@ -313,13 +322,19 @@ no longer sleeps.
 - [ ] Regression test passes with the fix.
 - [ ] Parallel stress run green.
 - [ ] Serial stress run green.
-- [ ] **OR** recorded as inconclusive with commands, observations, and rejected
-      hypotheses — and no production change made.
+- [x] **OR** recorded as inconclusive with commands, observations, and rejected
+      hypotheses — and no production change made. See
+      [`evidence/2026-08-20-rust-flake-inconclusive.md`](evidence/2026-08-20-rust-flake-inconclusive.md).
 
-**Evidence:**
-```
-(paste reproduction stats + instrumentation + stress runs)
-```
+**Evidence:** reproduced at 4/14 full-suite runs, and again under
+`RUST_TEST_THREADS=1` — which rules out concurrent test bodies entirely. Two
+signatures; the informative one is a *successful* export (latency 1.17ms, zero
+failures) that the asserting collector never saw. The obvious hypothesis (tests
+racing without the shared state lock) was tested and REJECTED: those tests take
+the lock through a helper returning the guard, and a second acquisition
+deadlocked the suite. A second, more tractable flaky test in the same
+abandoned-worker machinery was found and documented. No production change, no
+quarantine.
 
 ## Final verification matrix
 
