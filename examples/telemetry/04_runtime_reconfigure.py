@@ -25,7 +25,7 @@ from provide.telemetry import (
     shutdown_telemetry,
     update_runtime_config,
 )
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import RuntimeOverrides, SamplingConfig, TelemetryConfig
 
 
 def main() -> None:
@@ -42,8 +42,9 @@ def main() -> None:
 
     # ── 🔧 Hot-swap sampling rate to 0% ──────────────────
     print("\n🔧 Hot-swapping sampling rate to 0%...")
-    cfg_after = TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "0.0"})
-    updated = update_runtime_config(cfg_after)
+    # RuntimeOverrides carries only the hot policies being changed. Passing a
+    # whole TelemetryConfig would also reset every other hot policy to defaults.
+    updated = update_runtime_config(RuntimeOverrides(sampling=SamplingConfig(logs_rate=0.0)))
     print(f"  ✅ After update: logs_rate={updated.sampling.logs_rate}")
 
     log.info(event("example", "runtime", "dropped"))

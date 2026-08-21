@@ -20,15 +20,15 @@ from __future__ import annotations
 
 import ast
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 
-def _bench(fn: object, iterations: int = 10_000) -> float:
+def _bench(fn: Callable[[], object], iterations: int = 10_000) -> float:
     """Run *fn* for *iterations* and return ns/op."""
-    callable_fn = fn  # type: ignore[assignment]
     start = time.perf_counter_ns()
     for _ in range(iterations):
-        callable_fn()
+        fn()
     elapsed_ns = time.perf_counter_ns() - start
     ns_per_op = elapsed_ns / iterations
     return ns_per_op

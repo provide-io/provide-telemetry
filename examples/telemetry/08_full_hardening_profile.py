@@ -42,7 +42,7 @@ from provide.telemetry import (
     update_runtime_config,
 )
 from provide.telemetry.cardinality import guard_attributes
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import RuntimeOverrides, SamplingConfig, TelemetryConfig
 
 
 def main() -> None:
@@ -111,8 +111,8 @@ def main() -> None:
     print("\n🔧 Hot-swapping log sampling to 100%...")
     current = get_runtime_config()
     print(f"  📋 Before: logs_rate={current.sampling.logs_rate}")
-    new_cfg = TelemetryConfig.from_env({"PROVIDE_SAMPLING_LOGS_RATE": "1.0"})
-    updated = update_runtime_config(new_cfg)
+    # Only the sampling policy is being changed, so only it goes in the overrides.
+    updated = update_runtime_config(RuntimeOverrides(sampling=SamplingConfig(logs_rate=1.0)))
     print(f"  ✅ After:  logs_rate={updated.sampling.logs_rate}")
 
     # ── 🩺 Health snapshot ──────────────────────────────────

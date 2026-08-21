@@ -87,6 +87,9 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy src tests
       - run: uv run ty check src tests
+      # Examples are user-facing code; keep them honest against the public API.
+      - run: uv run mypy examples
+      - run: uv run ty check examples
       - run: uv run bandit -r src -ll
         if: runner.os == 'Linux'
       - run: uv run xenon --max-absolute C --max-modules B --max-average A src/

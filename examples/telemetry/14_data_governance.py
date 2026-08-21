@@ -95,8 +95,8 @@ def demo_receipts() -> None:
     # Enable test-mode receipt collection (in production, receipts are logged/forwarded)
     from provide.telemetry import receipts as _r
 
-    _r._reset_receipts_for_tests()  # type: ignore[attr-defined]
-    _r._test_mode = True  # type: ignore[attr-defined]
+    _r._reset_receipts_for_tests()
+    _r._test_mode = True
     enable_receipts(
         enabled=True,
         signing_key="demo-hmac-key",  # pragma: allowlist secret
