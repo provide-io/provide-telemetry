@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+
+# RustSec advisory policy. Every advisory blocks the build.
+#
+# To accept one temporarily, add an entry to [advisories].ignore with:
+#   id      — the RUSTSEC identifier
+#   reason  — why it is accepted; name the upstream issue or the blocking pin
+#   expires — an ISO date, at most 90 days out
+#
+# scripts/check_advisory_expiry.py fails the build on an entry that is expired,
+# undated, unexplained, or dated further than 90 days ahead, so an exception
+# cannot outlive its review. The reviewer is whoever approves the pull request
+# that adds it.
+[advisories]
+ignore = []

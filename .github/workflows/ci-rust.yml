@@ -101,6 +101,28 @@ jobs:
           RUST_TEST_THREADS: "1"
         run: cargo llvm-cov --all-targets --all-features --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' --fail-uncovered-lines 0 --fail-under-functions 100
 
+  # Blocks on any RustSec advisory against the committed Cargo.lock, and
+  # separately rejects an advisory exception that is expired or unexplained.
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      # Audit the committed lockfile — no resolution, no network drift.
+      - name: Audit Rust dependencies
+        run: cargo audit
+        working-directory: rust
+      # An exception without a live expiry and a reason is a silent downgrade.
+      - name: Check advisory exception expiry
+        run: uv run python scripts/check_advisory_expiry.py
+
   conformance:
     runs-on: ubuntu-24.04
     steps:
