@@ -394,9 +394,7 @@ _FENCE_RE = re.compile(r"^```(?P<lang>[a-zA-Z]+)\n(?P<body>.*?)^```", re.MULTILI
 def extract_snippets(markdown: str, language: str) -> list[str]:
     """Return the bodies of every fenced block tagged with `language`."""
     return [
-        match.group("body")
-        for match in _FENCE_RE.finditer(markdown)
-        if match.group("lang").lower() == language.lower()
+        match.group("body") for match in _FENCE_RE.finditer(markdown) if match.group("lang").lower() == language.lower()
     ]
 
 
@@ -411,7 +409,9 @@ def test_extract_snippets_returns_empty_for_an_absent_language() -> None:
 
 
 def _first_main_snippet(readme: Path, language: str) -> str:
-    snippets = [s for s in extract_snippets(readme.read_text(encoding="utf-8"), language) if "fn main" in s or "func main" in s]
+    snippets = [
+        s for s in extract_snippets(readme.read_text(encoding="utf-8"), language) if "fn main" in s or "func main" in s
+    ]
     if not snippets:
         pytest.fail(f"{readme}: no runnable {language} quick start found")
     return snippets[0]
@@ -431,9 +431,7 @@ def test_rust_quick_start_compiles(tmp_path: Path) -> None:
         f'provide-telemetry = {{ path = "{(_REPO_ROOT / "rust").as_posix()}" }}\n'
     )
     (crate / "src" / "main.rs").write_text(snippet)
-    result = subprocess.run(
-        ["cargo", "build", "--quiet"], cwd=crate, capture_output=True, text=True, check=False
-    )
+    result = subprocess.run(["cargo", "build", "--quiet"], cwd=crate, capture_output=True, text=True, check=False)
     assert result.returncode == 0, f"rust/README.md quick start does not compile:\n{result.stderr}"
 
 

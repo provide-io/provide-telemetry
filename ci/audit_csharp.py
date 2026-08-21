@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -51,7 +52,7 @@ def _run(*args: str) -> str:
     return result.stdout
 
 
-def _findings_for(project: dict[str, object]) -> list[Finding]:
+def _findings_for(project: Mapping[str, object]) -> list[Finding]:
     findings: list[Finding] = []
     frameworks = project.get("frameworks") or []
     if not isinstance(frameworks, list):

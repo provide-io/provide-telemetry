@@ -18,6 +18,7 @@ import datetime as dt
 import os
 import sys
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 
 _REPO_ROOT = Path(os.environ.get("PROVIDE_REPO_ROOT", Path(__file__).resolve().parent.parent))
@@ -25,7 +26,7 @@ _DENY_PATH = _REPO_ROOT / "rust" / "deny.toml"
 _MAX_HORIZON_DAYS = 90
 
 
-def validate(config: dict[str, object], today: dt.date) -> list[str]:
+def validate(config: Mapping[str, object], today: dt.date) -> list[str]:
     """Return one error string per unacceptable exception entry."""
     # `or {}` would be wrong here: an empty list is falsy, so a malformed
     # `advisories = []` would be silently treated as an absent section and the
