@@ -117,6 +117,22 @@ jobs:
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run codespell
 
+  # Fails the build on any known vulnerability in the committed uv.lock,
+  # production and development dependencies alike. Blocking from day one:
+  # a gate that cannot fail is not a gate.
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      # Install the dev group so pip-audit itself is available.
+      - run: bash ci/run_uv_sync_with_retry.sh --group dev
+      # Export the committed lock and audit it. An empty inventory fails
+      # rather than reading as a clean scan.
+      - run: uv run python ci/audit_python.py
+
   otel-extras-validation:
     runs-on: ubuntu-24.04
     strategy:
