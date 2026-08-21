@@ -315,7 +315,9 @@ export function applyConfigPolicies(cfg: TelemetryConfig): void {
 const _FALLBACK_MESSAGE =
   'AsyncLocalStorage unavailable in a Node.js environment — concurrent requests would share propagation context. Check that node:async_hooks is not excluded from your bundler config.';
 
-function _isNodeLike(): boolean {
+// Exported for otel.ts's context-manager installer so there is one runtime
+// predicate rather than two. Internal: not re-exported from index.ts.
+export function _isNodeLike(): boolean {
   // Only the host-presence half is suppressed, and only for
   // ConditionalExpression: `process` is defined and `process.versions` is a
   // real object in every environment this suite runs in (only `.node` is ever
