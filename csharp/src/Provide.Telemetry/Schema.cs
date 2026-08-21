@@ -59,39 +59,60 @@ public static class Schema
             };
     }
 
-    public static string EventName(params string[] segments)
+    /// <summary>
+    /// Validates event-name segments under the shared five-language contract.
+    /// Relaxed (the default) accepts one or more non-empty segments and enforces
+    /// no grammar; strict accepts 3-5 segments each matching the segment
+    /// pattern. Zero segments and empty segments fail in both modes.
+    /// </summary>
+    /// <remarks>
+    /// Before 2026-08-20 both callers enforced the strict 3-5 count regardless
+    /// of mode, unlike Python, TypeScript and Rust. Separately,
+    /// <see cref="ValidateEventName"/> applied the grammar on every call without
+    /// reading <see cref="GetStrictSchema"/>, so one entry point was strict
+    /// while its sibling was not. Both now share this validator.
+    /// </remarks>
+    private static void ValidateSegments(string[] segments)
     {
+        if (segments.Length == 0)
+        {
+            throw new EventSchemaError("event name requires at least 1 segment, got 0");
+        }
+        foreach (var seg in segments)
+        {
+            if (seg.Length == 0)
+            {
+                throw new EventSchemaError("event name segments must be non-empty");
+            }
+        }
+        if (!GetStrictSchema())
+        {
+            return;
+        }
         if (segments.Length is < 3 or > 5)
         {
             throw new EventSchemaError($"event name requires 3-5 segments, got {segments.Length}");
         }
-        if (GetStrictSchema())
-        {
-            foreach (var seg in segments)
-            {
-                if (!SegmentPattern.IsMatch(seg))
-                {
-                    throw new EventSchemaError($"invalid event segment: {seg}");
-                }
-            }
-        }
-        return string.Join(".", segments);
-    }
-
-    public static void ValidateEventName(string message)
-    {
-        var parts = message.Split('.');
-        if (parts.Length is < 3 or > 5)
-        {
-            throw new EventSchemaError($"event name requires 3-5 segments, got {parts.Length}");
-        }
-        foreach (var seg in parts)
+        foreach (var seg in segments)
         {
             if (!SegmentPattern.IsMatch(seg))
             {
                 throw new EventSchemaError($"invalid event segment: {seg}");
             }
         }
+    }
+
+    public static string EventName(params string[] segments)
+    {
+        ValidateSegments(segments);
+        return string.Join(".", segments);
+    }
+
+    public static void ValidateEventName(string message)
+    {
+        // Splitting "" on '.' yields one empty segment, never zero, so the
+        // empty-segment rule is what rejects an empty name here.
+        ValidateSegments(message.Split('.'));
     }
 
     public static void ValidateRequiredKeys(IReadOnlyDictionary<string, object?> attrs, IEnumerable<string> keys)
