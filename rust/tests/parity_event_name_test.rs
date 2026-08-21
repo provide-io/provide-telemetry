@@ -82,7 +82,10 @@ fn parity_event_name_relaxed_empty_segment_error() {
 #[test]
 fn parity_event_name_strict_three_segments_ok() {
     let _guard = strict();
-    assert_eq!(event_name(&["user", "login", "ok"]).unwrap(), "user.login.ok");
+    assert_eq!(
+        event_name(&["user", "login", "ok"]).unwrap(),
+        "user.login.ok"
+    );
 }
 
 #[test]
