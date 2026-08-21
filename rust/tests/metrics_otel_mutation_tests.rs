@@ -120,6 +120,15 @@ impl Drop for MockMetricsCollector {
 }
 
 fn read_request(stream: &mut TcpStream) -> Option<ObservedRequest> {
+    // The listener is non-blocking so the accept loop can poll its stop flag,
+    // and on macOS and the BSDs an accepted socket inherits that O_NONBLOCK.
+    // Without clearing it the first `read` returns `WouldBlock` whenever the
+    // request bytes have not landed yet and the request is silently dropped
+    // while the collector still answers 200 OK. Same defect, and same fix, as
+    // src/otel/logs_export_test_support.rs.
+    stream
+        .set_nonblocking(false)
+        .expect("metrics mock collector blocking mode");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("metrics mock collector read timeout");

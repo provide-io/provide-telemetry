@@ -184,6 +184,10 @@ fn export_test_support_read_request_path_handles_invalid_inputs() {
         read_request_bytes(Some(b"POST /v1/logs HTTP/1.1\r\nContent-Length: 0\r\n\r\n")),
         Some("/v1/logs".to_string())
     );
+    // read_request_path now clears O_NONBLOCK itself, so setting it here no
+    // longer forces the WouldBlock branch — the read blocks and then sees the
+    // peer close. The case still asserts None, now through EOF rather than
+    // through a would-block error, and it documents that the clear happens.
     assert_eq!(
         read_request_with_writer(
             |stream| stream
@@ -290,3 +294,40 @@ fn export_test_support_read_request_path_handles_body_read_errors() {
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 //
+
+/// A request whose bytes arrive AFTER the accept must still be recorded.
+///
+/// `MockOtlpCollector` binds its listener non-blocking so the accept loop can
+/// poll a stop flag. On macOS (and the BSDs) an accepted socket inherits
+/// O_NONBLOCK from that listener, so the first `read` returns `WouldBlock`
+/// whenever the request bytes have not landed yet — and `read_request_path`
+/// treats every `Err` as "no request", discards it, and still answers 200 OK.
+/// The exporter therefore records a successful export while the collector
+/// recorded nothing, which is precisely the intermittent
+/// "expected /v1/traces export, saw []" failure. Delaying the write reproduces
+/// it on demand instead of once every ten full-suite runs.
+#[test]
+fn a_request_written_after_the_accept_is_still_recorded() {
+    let _guard = acquire_test_state_lock();
+    let collector = MockOtlpCollector::start();
+    let addr = collector.endpoint.trim_start_matches("http://").to_string();
+
+    let writer = thread::spawn(move || {
+        let mut stream = TcpStream::connect(&addr).expect("connect to mock collector");
+        // Long enough that the accept has certainly returned before any byte
+        // of the request is on the wire.
+        thread::sleep(Duration::from_millis(250));
+        stream
+            .write_all(b"POST /v1/traces HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+            .expect("write request");
+        stream.flush().expect("flush request");
+    });
+
+    let seen = collector.wait_for_path("/v1/traces", Duration::from_secs(5));
+    writer.join().expect("writer thread");
+
+    assert!(
+        seen.iter().any(|path| path == "/v1/traces"),
+        "a request written after the accept was dropped; saw {seen:?}"
+    );
+}

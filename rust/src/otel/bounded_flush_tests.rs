@@ -345,7 +345,6 @@ fn a_teardown_abandoned_at_the_deadline_returns_to_the_caller() {
         let _ = release_rx.recv_timeout(Duration::from_secs(2));
     });
     let elapsed = started.elapsed();
-    let _ = release_tx.send(());
 
     // The margins are wide on purpose: an abandoned teardown returns around
     // the 0.05s deadline while waiting for the worker takes the full 2s, and
@@ -360,6 +359,14 @@ fn a_teardown_abandoned_at_the_deadline_returns_to_the_caller() {
         1,
         "an abandoned teardown worker still charges the shared budget"
     );
+
+    // Release the worker only AFTER reading the count. Releasing first — as
+    // this test used to — lets the worker reach note_worker_finished and
+    // decrement the budget back to zero before the assertion runs, so the read
+    // returns 0 and the test fails for a reason that has nothing to do with the
+    // behaviour under test. Widening that window to 50ms failed 10 runs out of
+    // 10; it was one of two races behind the intermittent Rust suite failures.
+    let _ = release_tx.send(());
     _reset_abandoned_workers_for_tests();
 }
 
