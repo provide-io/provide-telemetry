@@ -8,10 +8,16 @@
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
-from scripts.check_advisory_expiry import validate
+# See the note in test_audit_report.py: the mutmut sandbox omits these trees.
+_SCRIPT_PATH = Path("scripts/check_advisory_expiry.py")
+if not _SCRIPT_PATH.exists():
+    pytest.skip("scripts/ not available in this test runtime", allow_module_level=True)
+
+from scripts.check_advisory_expiry import validate  # noqa: E402  (guarded above)
 
 pytestmark = pytest.mark.tooling
 

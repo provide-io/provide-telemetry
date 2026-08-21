@@ -7,9 +7,23 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from ci.audit_report import Finding, assert_non_empty_inventory, fail_on_findings
+# mutmut runs the suite from a copied `mutants/` tree that does not include
+# ci/, so the import fails there exactly as it does for spec/ elsewhere. Skip
+# rather than error: this module tests tooling, and mutmut only mutates
+# src/provide/telemetry.
+_CI_PATH = Path("ci/audit_report.py")
+if not _CI_PATH.exists():
+    pytest.skip("ci/ not available in this test runtime", allow_module_level=True)
+
+from ci.audit_report import (  # noqa: E402  (guarded above)
+    Finding,
+    assert_non_empty_inventory,
+    fail_on_findings,
+)
 
 pytestmark = pytest.mark.tooling
 

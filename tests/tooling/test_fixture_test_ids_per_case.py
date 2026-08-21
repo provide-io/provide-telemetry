@@ -7,9 +7,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from spec.check_fixture_test_ids import _resolve_ids
+# See the note in test_audit_report.py: the mutmut sandbox omits spec/.
+_SPEC_PATH = Path("spec/check_fixture_test_ids.py")
+if not _SPEC_PATH.exists():
+    pytest.skip("spec/ not available in this test runtime", allow_module_level=True)
+
+from spec.check_fixture_test_ids import _resolve_ids  # noqa: E402  (guarded above)
 
 pytestmark = pytest.mark.tooling
 
