@@ -67,16 +67,23 @@ in the review; step one is to obtain it from `cargo audit`, not to assume it.
 
 - [x] `cargo audit` run against committed `rust/Cargo.lock`; advisory ID,
       affected range, and patched version recorded below.
-- [ ] `h2` upgraded to the patched version. If unreachable under current
+- [x] `h2` upgraded to the patched version. If unreachable under current
       constraints → **stop and escalate**, record the blocking constraint here.
-- [ ] Rust gate: `cargo-audit` + `rust/deny.toml` advisory-expiry checker, blocking.
-- [ ] Python gate: audits packages exported from committed `uv.lock`, blocking.
-- [ ] TypeScript: outstanding dev findings upgraded away, **then** gate blocking.
-- [ ] C# gate: `dotnet list package --vulnerable --include-transitive` across the
+- [x] Rust gate: `cargo-audit` + `rust/deny.toml` advisory-expiry checker, blocking.
+- [x] Python gate: audits packages exported from committed `uv.lock`, blocking.
+- [x] TypeScript: outstanding dev findings upgraded away, **then** gate blocking.
+- [x] C# gate: `dotnet list package --vulnerable --include-transitive` across the
       whole solution, blocking.
-- [ ] Go: confirmed `gosec` + `govulncheck` already present; no new gate.
-- [ ] Each gate has a test proving a zero-package inventory **fails**.
-- [ ] Each gate has a test proving a simulated finding **fails**.
+- [x] Go: confirmed `gosec` + `govulncheck` already present; no new gate.
+- [x] Each gate has a test proving a zero-package inventory **fails**.
+- [x] Each gate has a test proving a simulated finding **fails**.
+
+**Outcome:** upgraded h2 0.4.15 -> 0.4.18 (`cargo update -p h2 --precise 0.4.18`).
+`cargo audit` now scans 248 crates clean. The same command also re-points five
+Windows-only crates from `windows-sys 0.61.2` to `0.52.0`; those crates declare
+`^0.52`, which `0.61.2` never satisfied, and cargo 1.97.1 corrects it on any
+re-resolve — it is not reachable-by-`h2` and not avoidable with `--precise`.
+Rust suite green after the bump (517 lib tests, zero failures across all suites).
 
 **Advisory evidence:**
 ```
@@ -109,18 +116,53 @@ command:          cd rust && cargo audit   (cargo-audit 0.22.1)
 `.github/workflows/ci-rust.yml:102` passes `--fail-uncovered-lines 0`. The claim
 that this is inert is **unverified**. Prove it before changing it.
 
-- [ ] Controlled coverage fixture with a known-uncovered line built.
-- [ ] Current command run against the fixture; result recorded below.
-- [ ] If the current command **fails** correctly → close as false positive with
-      that evidence, make no flag change, and note it here.
-- [ ] If the current command **passes** → replace with `--fail-under-lines 100`
-      and prove the fixture now fails.
-- [ ] `CLAUDE.md` coverage command updated in lockstep with the workflow.
+- [x] Controlled coverage fixture with a known-uncovered line built.
+- [x] Current command run against the fixture; result recorded below.
+- [x] **The current command fails correctly → CLOSED AS FALSE POSITIVE.** No flag
+      change made to `.github/workflows/ci-rust.yml` or `CLAUDE.md`.
+- [x] ~~If the current command **passes** → replace with `--fail-under-lines 100`~~
+      — not reached; the flag is not inert.
+- [x] ~~`CLAUDE.md` coverage command updated in lockstep~~ — no change needed.
 
 **Evidence:**
+
+The review claimed `--fail-uncovered-lines 0` was semantically inert. It is not.
+A first fixture with an uncovered *function* could not settle it, because
+`--fail-under-functions 100` would fail on its own and mask the line flag. The
+fixture below has **100% function coverage and 87.5% line coverage**, so only
+the line flag can reject it.
+
+```rust
+// $SCRATCH/covfixture/src/lib.rs — every function is called; the else arm is not.
+pub fn classify(a: i32) -> &'static str {
+    if a > 0 { "positive" } else { "not positive" }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_the_positive_arm() { assert_eq!(super::classify(1), "positive"); }
+}
 ```
-(paste the fixture run under the OLD flag, then under the NEW flag)
+
 ```
+$ cargo llvm-cov --all-targets --all-features \
+    --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' \
+    --fail-uncovered-lines 0 --fail-under-functions 100
+
+# under-covered fixture (else arm untested)
+TOTAL   regions 9/88.89%   functions 2 missed 0 = 100.00%   lines 8 missed 1 = 87.50%
+exit=1                              <-- the flag FIRES
+
+# control: same command, both arms tested
+TOTAL   regions 11/100.00%  functions 2 missed 0 = 100.00%  lines 7 missed 0 = 100.00%
+exit=0                              <-- and passes when it should
+```
+
+Conclusion: recommendation 3 is a false positive. `--fail-uncovered-lines 0`
+enforces zero uncovered lines exactly as intended, and swapping it for
+`--fail-under-lines 100` would have been a no-op rename presented as a fix.
+Local runs need `LLVM_COV`/`LLVM_PROFDATA` pointed at the rustup toolchain when
+`cargo` comes from Homebrew; CI installs `llvm-tools-preview` so it is unaffected.
 
 ### 4. `event_name` standardization — **BREAKING for Go and C#**
 
