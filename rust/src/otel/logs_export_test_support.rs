@@ -218,6 +218,12 @@ fn signal_observed(expected: bool, latency_ms: f64, failures: u64) -> bool {
 }
 
 fn read_request_path(stream: &mut TcpStream) -> Option<String> {
+    read_request_path_within(stream, MOCK_COLLECTOR_READ_TIMEOUT)
+}
+
+/// `read_request_path` with the read deadline injected, so a test can drive the
+/// timeout branch without waiting ten seconds for it.
+fn read_request_path_within(stream: &mut TcpStream, timeout: Duration) -> Option<String> {
     // The listener is non-blocking so the accept loop can poll its stop flag,
     // and on macOS and the BSDs an accepted socket INHERITS that O_NONBLOCK.
     // Without clearing it the first `read` returns `WouldBlock` whenever the
@@ -231,7 +237,7 @@ fn read_request_path(stream: &mut TcpStream) -> Option<String> {
         .set_nonblocking(false)
         .expect("mock collector blocking mode");
     stream
-        .set_read_timeout(Some(MOCK_COLLECTOR_READ_TIMEOUT))
+        .set_read_timeout(Some(timeout))
         .expect("mock collector read timeout");
     let mut buf = Vec::new();
     let mut chunk = [0_u8; 4096];

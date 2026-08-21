@@ -331,3 +331,27 @@ fn a_request_written_after_the_accept_is_still_recorded() {
         "a request written after the accept was dropped; saw {seen:?}"
     );
 }
+
+/// A client that connects and then says nothing must not wedge the collector:
+/// the read deadline expires, the request is discarded, and the accept loop
+/// moves on. This is the `Err(_) => return None` arm of the read loop, which
+/// stopped being reachable through a non-blocking socket once
+/// `read_request_path` began clearing O_NONBLOCK itself.
+#[test]
+fn a_silent_client_times_out_instead_of_wedging_the_collector() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind silent-client listener");
+    let addr = listener.local_addr().expect("silent-client local addr");
+
+    let holder = thread::spawn(move || {
+        let stream = TcpStream::connect(addr).expect("connect silent client");
+        // Hold the connection open, silently, past the read deadline below.
+        thread::sleep(Duration::from_millis(300));
+        drop(stream);
+    });
+
+    let (mut server, _) = listener.accept().expect("accept silent client");
+    let observed = read_request_path_within(&mut server, Duration::from_millis(20));
+    holder.join().expect("silent client thread");
+
+    assert_eq!(observed, None, "a silent client must time out, not block");
+}

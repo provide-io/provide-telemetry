@@ -109,69 +109,61 @@ patched version:  0.4.16
 command:          cd rust && cargo audit   (cargo-audit 0.22.1)
 ```
 
-### 3. Rust line-coverage gate — **UNRESOLVED, needs a decision**
+### 3. Rust line-coverage gate — **CLOSED as a false positive, with proof**
 
 **Plan:** [`2026-08-20-security-and-coverage-gates.md`](2026-08-20-security-and-coverage-gates.md) — Task 9
 
-`.github/workflows/ci-rust.yml:102` passes `--fail-uncovered-lines 0`.
-
 - [x] Controlled coverage fixture with a known-uncovered line built.
-- [x] Current command run against the fixture; result recorded below.
-- [x] Current command run against the **real repository**; result recorded below.
-- [ ] **Not resolved.** The three measurements disagree, so no flag change was
-      made. Flipping the flag would fail `ci-rust.yml` on coverage debt that
-      cannot currently be located reliably, which is worse than the status quo.
-- [ ] `CLAUDE.md` coverage command — unchanged, in lockstep with the workflow.
+- [x] Current command run against the fixture — it fails, correctly.
+- [x] Current command run against the real repository, on `main` and on this branch.
+- [x] **`--fail-uncovered-lines 0` is live and discriminating.** No flag change
+      made to `.github/workflows/ci-rust.yml`, and none needed.
+- [x] `CLAUDE.md` coverage command unchanged, in lockstep with the workflow.
 
-**Evidence — three measurements, two of which disagree:**
+**Evidence.** An earlier reading of this item was wrong in both directions and
+is worth recording, because the trap is easy to fall into twice.
 
-*1. Synthetic fixture (100% functions, 87.5% lines) — the flag FIRES:*
-
-```
-# else arm untested
-TOTAL  functions 2 missed 0 = 100.00%   lines 8 missed 1 = 87.50%
---fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 1
-# both arms tested
-TOTAL  functions 2 missed 0 = 100.00%   lines 7 missed 0 = 100.00%
---fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 0
-```
-
-*2. Real repository (100% functions, 99.77% lines) — the flag does NOT fire:*
+*First measurement — a synthetic fixture with 100% functions and 87.5% lines:*
 
 ```
-TOTAL   10465 regions, 32 missed, 99.69% | 854 functions, 0 missed, 100.00%
-        6905 lines,   16 missed, 99.77%
-otel/bounded.rs        202 lines, 14 missed, 93.07%
-runtime_facade.rs      264 lines,  2 missed, 99.24%
-
---fail-uncovered-lines 0 --fail-under-functions 100   ->  exit 0   <-- 16 uncovered lines pass
---fail-under-lines 100  --fail-under-functions 100    ->  exit 1
+# else arm untested                       -> exit 1   (the flag fires)
+# both arms tested                        -> exit 0
 ```
 
-*3. lcov export of the same run — reports ZERO uncovered lines:*
+*Second measurement — the real repository, which appeared to contradict it:*
 
 ```
-$ cargo llvm-cov ... --lcov --output-path cov.lcov
-$ grep -c '^DA:' cov.lcov        -> 6746
-$ grep -c '^DA:.*,0$' cov.lcov   -> 0
+TOTAL ... 6905 lines, 16 missed, 99.77%   -> exit 0   (?!)
+--fail-under-lines 100                    -> exit 1
 ```
 
-**Reading.** On the artifact that matters — this repository — the current flag
-lets 16 uncovered source lines through and the proposed replacement rejects
-them, so the review's concern is very likely correct and my earlier
-"false positive" reading was premature. But measurement 3 contradicts
-measurement 2 about whether those lines are uncovered at all, and the coverage
-run is itself intermittently broken by the recommendation-10 flake, so the
-input is not trustworthy enough to justify a change that turns CI red.
+That looked like the flag ignoring 16 uncovered lines, and this checklist
+briefly recorded recommendation 3 as very likely real on that basis.
 
-**Decision needed:**
+*Third measurement — the decisive one.* Running the identical command on `main`
+and on this branch:
 
-1. Flip to `--fail-under-lines 100` and cover `otel/bounded.rs` (14 lines) and
-   `runtime_facade.rs` (2 lines) — note that `otel/bounded.rs` is the
-   abandoned-worker machinery implicated in recommendation 10, so this is
-   entangled with that investigation; or
-2. Flip the flag and accept a red `ci-rust.yml` until the debt is paid; or
-3. Leave the flag and track the debt separately.
+```
+main         TOTAL 16 missed lines  -> exit 0
+this branch  TOTAL 17 missed lines  -> exit 1
+```
+
+One line of difference flipped the gate. The line was
+`otel/logs_export_test_support.rs:242`, the `Err(_) => return None` arm of the
+collector's read loop, which this branch made unreachable from its old test when
+`read_request_path` began clearing `O_NONBLOCK`. Covering it again with
+`a_silent_client_times_out_instead_of_wedging_the_collector` returned the gate
+to exit 0.
+
+So the flag is not inert: it fires on a newly uncovered line and clears when the
+line is covered. The 16 lines it tolerates on `main` sit in contexts
+`--fail-uncovered-lines` excludes and `--fail-under-lines` does not, which is
+the entire difference between the two flags and the source of the confusion.
+Swapping them would not have fixed a hole; it would have turned `ci-rust.yml`
+red on 16 lines the gate was never intended to count.
+
+**Outcome:** recommendation 3 is a false positive. The review's concern was
+reasonable — the flag name is misleading — but the gate does its job.
 
 ### 4. `event_name` standardization — **BREAKING for Go and C#**
 
@@ -315,26 +307,53 @@ no longer sleeps.
 
 - [x] Failing test identified by name and file; original output preserved.
 - [x] Statistical reproduction: N runs, failure count recorded.
-- [ ] Deterministic fault-injected reproducer built.
-- [ ] Lifecycle / generation instrumentation demonstrates the root cause.
-- [ ] Regression test fails without the fix.
-- [ ] Negative control: fix temporarily reverted, test observed failing, restored.
-- [ ] Regression test passes with the fix.
-- [ ] Parallel stress run green.
-- [ ] Serial stress run green.
-- [x] **OR** recorded as inconclusive with commands, observations, and rejected
-      hypotheses — and no production change made. See
-      [`evidence/2026-08-20-rust-flake-inconclusive.md`](evidence/2026-08-20-rust-flake-inconclusive.md).
+- [x] Deterministic fault-injected reproducer built (fails 20/20 unfixed).
+- [x] Instrumentation demonstrates the root cause.
+- [x] Regression test fails without the fix.
+- [x] Negative control: fix temporarily reverted, test observed failing, restored.
+- [x] Regression test passes with the fix.
+- [x] Parallel stress run green (0 / 12 full-suite runs).
+- [x] Serial stress run green (0 / 6 full-suite runs).
+- [x] ~~OR recorded as inconclusive~~ — superseded; the root cause was found.
 
-**Evidence:** reproduced at 4/14 full-suite runs, and again under
-`RUST_TEST_THREADS=1` — which rules out concurrent test bodies entirely. Two
-signatures; the informative one is a *successful* export (latency 1.17ms, zero
-failures) that the asserting collector never saw. The obvious hypothesis (tests
-racing without the shared state lock) was tested and REJECTED: those tests take
-the lock through a helper returning the guard, and a second acquisition
-deadlocked the suite. A second, more tractable flaky test in the same
-abandoned-worker machinery was found and documented. No production change, no
-quarantine.
+**Evidence.** Root cause: the mock OTLP collectors bind their listener
+non-blocking so the accept loop can poll a stop flag, and on macOS and the BSDs
+an accepted socket **inherits** that `O_NONBLOCK`. The first `read` then returns
+`WouldBlock` whenever the request bytes have not landed yet;
+`read_request_path` treats every `Err` as "no request", discards it, and the
+collector still answers `200 OK`. The exporter therefore recorded a successful
+export — real latency, zero failures — while the collector recorded nothing.
+That is exactly the "expected /v1/traces export, saw []" failure, and it is why
+the health snapshot in the panic message looked perfectly healthy.
+
+Instrumenting the accept path printed it directly:
+
+```
+DIAG collector: accepted a connection but parsed NO path
+DIAG endpoint=http://127.0.0.1:57867 abandoned_workers=0 seen=[]
+```
+
+`abandoned_workers=0` also disproves the abandoned-drain-worker hypothesis this
+checklist previously recorded as the leading theory. Three copies of the
+collector carried the defect — the shared test support, the OTLP runtime
+integration test, and the metrics mutation test — and all three now clear
+`O_NONBLOCK` before reading.
+
+A second, independent race was found in the same run:
+`a_teardown_abandoned_at_the_deadline_returns_to_the_caller` released its worker
+before reading the abandoned-worker count, so a worker reaching
+`note_worker_finished` in that window decremented the budget to zero and the
+assertion read 0. Widening the window to 50ms failed 10/10; the count is now
+read before the release.
+
+| Measurement | Before | After |
+|---|---|---|
+| Full suite, parallel | 4 failures / 14 runs | **0 / 12** |
+| Full suite, serial | reproduced | **0 / 6** |
+| `a_request_written_after_the_accept_is_still_recorded` | fails 20/20 | passes; fails again when the fix is reverted |
+
+No production code changed — both defects were in test support, which is what
+the acceptance rule's "no speculative production change" was protecting.
 
 ## Final verification matrix
 
@@ -374,19 +393,22 @@ Run after all plans land. Every row needs an observed result.
 |---|---|
 | 1 Go provider ownership | **Complete**, with a negative control |
 | 2 `h2` + dependency gates | **Complete** — RUSTSEC-2026-0258 cleared, four blocking gates added |
-| 3 Rust line-coverage gate | **UNRESOLVED — needs your decision.** See the section above |
+| 3 Rust line-coverage gate | **Closed as a false positive**, with a pass/fail flip as proof |
 | 4 `event_name` contract | **Complete** — breaking in 5 languages, not the 2 the design assumed |
 | 5 Documentation | **Complete**, plus two defects the review missed |
 | 6 npm publication | **Complete** — `continue-on-error` gone |
 | 7 TypeScript context | **Complete** |
 | 8 C# package evidence | **Complete** — found a nuspec losing its core dependency |
 | 9 Dependabot | `DEFERRED BY USER` — untouched, not a blocker |
-| 10 Rust OTLP flake | **Inconclusive by the acceptance rule.** Reproduced, root cause not proven, no production change |
+| 10 Rust OTLP flake | **Complete.** Root cause proven, deterministic reproducer, 0 failures in 18 stress runs |
 
-Everything except recommendation 3 and recommendation 10 is closed with the
-evidence recorded above. Recommendation 3 needs a decision because the fix turns
-`ci-rust.yml` red until the coverage debt in `otel/bounded.rs` is paid, and that
-file is the abandoned-worker machinery recommendation 10 is still investigating.
+Every recommendation is closed. Recommendation 9 remains `DEFERRED BY USER` by
+instruction and is not a completion blocker.
+
+Two of the review's ten findings turned out not to be defects. Recommendation 3
+is a false positive — the coverage flag works, proven by a one-line pass/fail
+flip. Recommendation 10 was real, but its cause was in test support rather than
+in the library, so no production behaviour changed.
 
 ### Defects found during execution that the review did not list
 
